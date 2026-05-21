@@ -3,14 +3,45 @@
 
 local download = {}
 
--- Check if we have access to required libraries
-local function getZipLibrary()
-    -- Try common zip libraries available in Lua
-    local success, zip = pcall(require, "zip")
-    if success then
-        return zip
+-- CRC-32 lookup table
+local crc32_table = {}
+for i = 0, 255 do
+    local crc = i
+    for j = 1, 8 do
+        if bit.band(crc, 1) == 1 then
+            crc = bit.bxor(bit.rshift(crc, 1), 0xEDB88320)
+        else
+            crc = bit.rshift(crc, 1)
+        end
     end
-    return nil
+    crc32_table[i] = crc
+end
+
+-- Calculate CRC-32 for data
+local function calculateCRC32(data)
+    local crc = 0xFFFFFFFF
+    for i = 1, #data do
+        local byte = string.byte(data, i)
+        crc = bit.bxor(crc32_table[bit.band(bit.bxor(crc, byte), 0xFF)], bit.rshift(crc, 8))
+    end
+    return bit.bxor(crc, 0xFFFFFFFF)
+end
+
+-- Convert number to little-endian bytes
+local function toLE32(num)
+    return string.char(
+        bit.band(num, 0xFF),
+        bit.band(bit.rshift(num, 8), 0xFF),
+        bit.band(bit.rshift(num, 16), 0xFF),
+        bit.band(bit.rshift(num, 24), 0xFF)
+    )
+end
+
+local function toLE16(num)
+    return string.char(
+        bit.band(num, 0xFF),
+        bit.band(bit.rshift(num, 8), 0xFF)
+    )
 end
 
 -- Create a simple base64 encoder for file compression
@@ -19,7 +50,7 @@ local base64Charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234
 local function base64Encode(data)
     local result = {}
     for i = 1, #data, 3 do
-        local a, b, c = data:byte(i), data:byte(i + 1), data:byte(i + 2)
+        local a, b, c = string.byte(data, i), string.byte(data, i + 1), string.byte(data, i + 2)
         local bitmap = bit.bor(
             bit.lshift(a or 0, 16),
             bit.lshift(b or 0, 8),
@@ -44,54 +75,81 @@ local function base64Encode(data)
     return table.concat(result)
 end
 
--- Create a zip file structure
+-- Create a properly formatted zip file
 function download.createZip(files)
     --[[
     files: table of {filename = "name.lua", content = "script content"}
-    Returns: zip file content as string
+    Returns: zip file content as string (binary)
     ]]
     
-    local zipContent = {}
-    local fileHeaders = {}
-    local centralDirectory = {}
-    local offset = 0
+    local localFileHeaders = {}
+    local centralDirectoryHeaders = {}
+    local fileOffset = 0
     
-    -- Local file headers for each file
+    -- Build local file headers and central directory entries
     for _, file in ipairs(files) do
         local filename = file.filename
         local content = file.content
-        
-        -- Local file header signature
-        table.insert(fileHeaders, string.char(0x50, 0x4B, 0x03, 0x04)) -- PK\003\004
-        table.insert(fileHeaders, string.char(0x14, 0x00)) -- version needed
-        table.insert(fileHeaders, string.char(0x00, 0x00)) -- general purpose bit flag
-        table.insert(fileHeaders, string.char(0x00, 0x00)) -- compression method (0 = stored)
-        
-        -- File modification time and date (stub values)
-        table.insert(fileHeaders, string.char(0x00, 0x00, 0x00, 0x00))
-        
-        -- CRC-32 (simplified - set to 0)
-        table.insert(fileHeaders, string.char(0x00, 0x00, 0x00, 0x00))
-        
-        -- File sizes
         local fileSize = #content
-        table.insert(fileHeaders, string.pack("<I4", fileSize)) -- compressed size
-        table.insert(fileHeaders, string.pack("<I4", fileSize)) -- uncompressed size
+        local crc32 = calculateCRC32(content)
         
-        -- Filename length and extra field length
-        table.insert(fileHeaders, string.pack("<H", #filename))
-        table.insert(fileHeaders, string.char(0x00, 0x00))
+        -- Local file header
+        local localHeader = string.char(0x50, 0x4B, 0x03, 0x04) -- Local file header signature
+        localHeader = localHeader .. toLE16(20) -- Version needed to extract
+        localHeader = localHeader .. toLE16(0) -- General purpose bit flag
+        localHeader = localHeader .. toLE16(0) -- Compression method (0 = stored)
+        localHeader = localHeader .. toLE16(0) -- File last modification time
+        localHeader = localHeader .. toLE16(0) -- File last modification date
+        localHeader = localHeader .. toLE32(crc32) -- CRC-32
+        localHeader = localHeader .. toLE32(fileSize) -- Compressed size
+        localHeader = localHeader .. toLE32(fileSize) -- Uncompressed size
+        localHeader = localHeader .. toLE16(#filename) -- Filename length
+        localHeader = localHeader .. toLE16(0) -- Extra field length
+        localHeader = localHeader .. filename
         
-        -- Filename
-        table.insert(fileHeaders, filename)
+        -- Track offset for central directory
+        table.insert(localFileHeaders, localHeader .. content)
         
-        -- File content
-        table.insert(fileHeaders, content)
+        -- Central directory header
+        local centralHeader = string.char(0x50, 0x4B, 0x01, 0x02) -- Central file header signature
+        centralHeader = centralHeader .. toLE16(20) -- Version made by
+        centralHeader = centralHeader .. toLE16(20) -- Version needed to extract
+        centralHeader = centralHeader .. toLE16(0) -- General purpose bit flag
+        centralHeader = centralHeader .. toLE16(0) -- Compression method
+        centralHeader = centralHeader .. toLE16(0) -- File last modification time
+        centralHeader = centralHeader .. toLE16(0) -- File last modification date
+        centralHeader = centralHeader .. toLE32(crc32) -- CRC-32
+        centralHeader = centralHeader .. toLE32(fileSize) -- Compressed size
+        centralHeader = centralHeader .. toLE32(fileSize) -- Uncompressed size
+        centralHeader = centralHeader .. toLE16(#filename) -- Filename length
+        centralHeader = centralHeader .. toLE16(0) -- Extra field length
+        centralHeader = centralHeader .. toLE16(0) -- File comment length
+        centralHeader = centralHeader .. toLE16(0) -- Disk number start
+        centralHeader = centralHeader .. toLE16(0) -- Internal file attributes
+        centralHeader = centralHeader .. toLE32(0) -- External file attributes
+        centralHeader = centralHeader .. toLE32(fileOffset) -- Relative offset of local header
+        centralHeader = centralHeader .. filename
         
-        offset = offset + #table.concat(fileHeaders)
+        table.insert(centralDirectoryHeaders, centralHeader)
+        fileOffset = fileOffset + #localFileHeaders[#localFileHeaders]
     end
     
-    return table.concat(fileHeaders)
+    local localData = table.concat(localFileHeaders)
+    local centralData = table.concat(centralDirectoryHeaders)
+    local centralDirOffset = #localData
+    local centralDirSize = #centralData
+    
+    -- End of central directory record
+    local endOfCentralDir = string.char(0x50, 0x4B, 0x05, 0x06) -- End of central dir signature
+    endOfCentralDir = endOfCentralDir .. toLE16(0) -- Disk number
+    endOfCentralDir = endOfCentralDir .. toLE16(0) -- Disk with central directory
+    endOfCentralDir = endOfCentralDir .. toLE16(#files) -- Number of entries on this disk
+    endOfCentralDir = endOfCentralDir .. toLE16(#files) -- Total number of entries
+    endOfCentralDir = endOfCentralDir .. toLE32(centralDirSize) -- Size of central directory
+    endOfCentralDir = endOfCentralDir .. toLE32(centralDirOffset) -- Offset of central directory
+    endOfCentralDir = endOfCentralDir .. toLE16(0) -- ZIP file comment length
+    
+    return localData .. centralData .. endOfCentralDir
 end
 
 -- Generate download link for browser
@@ -116,7 +174,7 @@ end
 function download.packageZip(scripts)
     --[[
     scripts: table of {name = "script_name", content = "obfuscated code"}
-    Returns: zip file data
+    Returns: zip file data (binary string)
     ]]
     
     local files = {}
