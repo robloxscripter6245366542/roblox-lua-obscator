@@ -1,17 +1,16 @@
--- ── Drag — PC mouse + all touch devices (Delta iOS/Android/iPad) ─────────────
--- Uses absolute pixel coordinates so clamping to screen bounds is exact.
+-- ── Drag — PC mouse + touch (Delta iOS/Android/iPad) ─────────────────────────
+-- Stores start position as absolute pixels; delta is applied in pixel space.
+-- Clamps to viewport so the window can never leave the screen.
+-- Ignores secondary touches while dragging (multi-touch safe).
 
-local _dragging  = false
-local _dragWinX  = 0
-local _dragWinY  = 0
-local _dragTchX  = 0
-local _dragTchY  = 0
+local _dragging = false
+local _dragWinX, _dragWinY = 0, 0
+local _dragTchX, _dragTchY = 0, 0
 
 TBAR.InputBegan:Connect(function(inp)
     local t = inp.UserInputType
     if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
-        -- On multi-touch screens ignore secondary fingers while already dragging
-        if _dragging and t == Enum.UserInputType.Touch then return end
+        if _dragging and t == Enum.UserInputType.Touch then return end   -- ignore 2nd finger
         _dragging  = true
         _dragTchX  = inp.Position.X
         _dragTchY  = inp.Position.Y
@@ -24,13 +23,14 @@ UIS.InputChanged:Connect(function(inp)
     if not _dragging then return end
     local t = inp.UserInputType
     if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then
-        local dx   = inp.Position.X - _dragTchX
-        local dy   = inp.Position.Y - _dragTchY
-        local vp   = workspace.CurrentCamera.ViewportSize
-        local winSz = WIN.AbsoluteSize
-        local newX = math.clamp(_dragWinX + dx, 0, math.max(0, vp.X - winSz.X))
-        local newY = math.clamp(_dragWinY + dy, 0, math.max(0, vp.Y - winSz.Y))
-        WIN.Position = UDim2.new(0, newX, 0, newY)
+        local dx  = inp.Position.X - _dragTchX
+        local dy  = inp.Position.Y - _dragTchY
+        local vp  = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize
+                    or Vector2.new(WIN_W, WIN_H)
+        local wsz = WIN.AbsoluteSize
+        local nx  = math.clamp(_dragWinX + dx, 0, math.max(0, vp.X - wsz.X))
+        local ny  = math.clamp(_dragWinY + dy, 0, math.max(0, vp.Y - wsz.Y))
+        WIN.Position = UDim2.new(0, nx, 0, ny)
     end
 end)
 
@@ -49,64 +49,52 @@ BtnMin.MouseButton1Click:Connect(function()
     if _minimised then
         tw(WIN, {Size = UDim2.new(0, WIN_W, 0, 44)}, TS2)
         BODY.Visible = false
-        SIDE.Visible = false
-        BtnMin.Text  = "□"
+        if SIDE   then SIDE.Visible   = false end
+        if TABBAR then TABBAR.Visible = false end
+        BtnMin.Text = "□"
     else
         tw(WIN, {Size = UDim2.new(0, WIN_W, 0, WIN_H)}, TS2)
         task.delay(0.12, function()
             BODY.Visible = true
-            SIDE.Visible = true
+            if SIDE   then SIDE.Visible   = true end
+            if TABBAR then TABBAR.Visible = true end
         end)
         BtnMin.Text = "—"
     end
 end)
 
--- ── Keyboard shortcuts (desktop only — mobile has no physical keyboard) ────────
+-- ── Keyboard shortcuts (desktop only) ────────────────────────────────────────
 if not isMobile then
     UIS.InputBegan:Connect(function(inp, gpe)
         if gpe then return end
-        -- F5 = flash current tab (visual "refresh" hint)
         if inp.KeyCode == Enum.KeyCode.F5 then
             if pages[curPage] then
-                tw(pages[curPage], {BackgroundTransparency = 0.4})
-                task.delay(0.12, function()
-                    tw(pages[curPage], {BackgroundTransparency = 1})
-                end)
+                tw(pages[curPage],{BackgroundTransparency=0.4})
+                task.delay(0.12,function() tw(pages[curPage],{BackgroundTransparency=1}) end)
             end
         end
-        -- F1–F9: jump directly to tab
         for i = 1, 9 do
-            if inp.KeyCode == Enum.KeyCode["F" .. i] and pages[i] then
+            if inp.KeyCode == Enum.KeyCode["F"..i] and pages[i] then
                 showPage(i); break
             end
         end
     end)
 end
 
--- ── Initialise UI ─────────────────────────────────────────────────────────────
+-- ── Init ─────────────────────────────────────────────────────────────────────
 showPage(1)
 
--- Checker sub-tab default
-if switchSub  then switchSub(1)  end
-if buildList  then buildList(1)  end
+if switchSub   then switchSub(1)   end
+if buildList   then buildList(1)   end
+if buildScripts then buildScripts("") end
+if refreshPlrs  then refreshPlrs()   end
 
--- Environ auto-run
 task.spawn(function()
     if runCheck then runCheck() end
 end)
 
--- Script hub listing
-if buildScripts then buildScripts("") end
-
--- Server tab player list
-if refreshPlrs  then refreshPlrs()   end
-
--- Loaded notification
 task.delay(0.5, function()
     notify("Nexus Executor",
-        string.format("Loaded ✓  %d tabs  |  %s  |  %s",
-            tabN,
-            SESSION.executor,
-            SESSION.platform),
-        5)
+        ("Loaded ✓  %d tabs  |  %s  |  %s"):format(
+            tabN, SESSION.executor, SESSION.platform), 5)
 end)

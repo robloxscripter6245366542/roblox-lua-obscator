@@ -25,7 +25,17 @@ local HEADER = [[local _ok,_err = pcall(function()
 
 local FOOTER = [[
 end)
-if not _ok then warn("[Nexus] STARTUP ERROR: "..tostring(_err)) end
+if not _ok then
+    warn("[Nexus] STARTUP ERROR: "..tostring(_err))
+    -- Show visible notification so mobile users see the error
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification",{
+            Title="Nexus Error",
+            Text=tostring(_err):sub(1,120),
+            Duration=12,
+        })
+    end)
+end
 ]]
 
 local parts = {HEADER}

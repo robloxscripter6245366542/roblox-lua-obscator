@@ -2,194 +2,152 @@ local _ok,_err = pcall(function()
 -- ════════════════════════════════════════
 -- SOURCE: src/core/01_services.lua
 -- ════════════════════════════════════════
--- ── Services & LocalPlayer ──────────────────────────────────────────────────
-local Players   = game:GetService("Players")
-local RS        = game:GetService("ReplicatedStorage")
-local UIS       = game:GetService("UserInputService")
-local TS        = game:GetService("TweenService")
-local RUN       = game:GetService("RunService")
-local SG        = game:GetService("StarterGui")
-local WS        = game:GetService("Workspace")
-local HTTP      = game:GetService("HttpService")
-local CSvc      = game:GetService("ContentProvider")
-local MktSvc    = game:GetService("MarketplaceService")
-local TelSvc    = game:GetService("TeleportService")
-local PhysSvc   = game:GetService("PhysicsService")
-local CollSvc   = game:GetService("CollectionService")
-local DataSvc   = game:GetService("DataStoreService")
-local TwSvc     = game:GetService("TweenService")
-local CmdSvc    = game:GetService("Chat")
+-- ── Services ──────────────────────────────────────────────────────────────────
+local Players = game:GetService("Players")
+local RS      = game:GetService("ReplicatedStorage")
+local UIS     = game:GetService("UserInputService")
+local TS      = game:GetService("TweenService")
+local RUN     = game:GetService("RunService")
+local SG      = game:GetService("StarterGui")
+local WS      = game:GetService("Workspace")
+local HTTP    = game:GetService("HttpService")
+local MktSvc  = game:GetService("MarketplaceService")
+local TelSvc  = game:GetService("TeleportService")
+local CollSvc = game:GetService("CollectionService")
+local CmdSvc  = game:GetService("Chat")
+-- NOTE: DataStoreService / PhysicsService are server-only; never import them here.
 
--- ── LocalPlayer — works across all executors (no RunService dependency) ───────
+-- ── LocalPlayer — polling loop, works on every executor ───────────────────────
 local LP
 for _ = 1, 120 do
     LP = Players.LocalPlayer
     if LP then break end
     task.wait(0.1)
 end
-if not LP then warn("[Nexus] No LocalPlayer after 12s — aborting."); return end
+if not LP then warn("[Nexus] No LocalPlayer after 12 s"); return end
 
--- ── GUI Parent — gethui() preferred (Delta/Synapse), PlayerGui fallback ───────
+-- ── Notification helper (available immediately, before any GUI) ────────────────
+local function notify(title, body, dur)
+    pcall(function()
+        SG:SetCore("SendNotification",{Title=title,Text=body,Duration=dur or 3})
+    end)
+end
+notify("Nexus Executor","Loading…",3)
+
+-- ── GUI parent — gethui() (Delta/Synapse) → PlayerGui fallback ────────────────
 local function getGuiParent()
-    if type(gethui) == "function" then
-        local ok, h = pcall(gethui)
-        if ok and h and typeof(h) == "Instance" then return h end
+    if type(gethui)=="function" then
+        local ok,h = pcall(gethui)
+        if ok and h and typeof(h)=="Instance" then return h end
     end
     local pg = LP:FindFirstChildOfClass("PlayerGui")
     if pg then return pg end
-    return LP:WaitForChild("PlayerGui", 15)
+    return LP:WaitForChild("PlayerGui",15)
 end
 local PGui = getGuiParent()
-if not PGui then warn("[Nexus] No PlayerGui — aborting."); return end
+if not PGui then warn("[Nexus] No PlayerGui"); return end
 
--- Remove any stale Nexus GUI
+-- Remove any stale GUI
 local _old = PGui:FindFirstChild("__SS_EXEC__")
 if _old then _old:Destroy() end
 
--- ── Startup notification ──────────────────────────────────────────────────────
-local function notify(title, body, duration)
-    pcall(function()
-        SG:SetCore("SendNotification", {
-            Title    = title,
-            Text     = body,
-            Duration = duration or 3,
-        })
-    end)
-end
-notify("Nexus Executor", "Loading…", 2)
-
--- ── loadstring compat (Delta + all PC executors) ──────────────────────────────
+-- ── loadstring compat ─────────────────────────────────────────────────────────
 local _ld = loadstring or load
+
+-- ── Camera / viewport — safe getter with fallback ─────────────────────────────
+-- workspace.CurrentCamera can be nil briefly on mobile. We retry for up to
+-- 5 seconds before falling back to a safe default size.
+local function getViewport()
+    for _ = 1, 50 do
+        local cam = WS:FindFirstChildOfClass("Camera")
+        if cam then return cam.ViewportSize end
+        task.wait(0.1)
+    end
+    return Vector2.new(800,600)   -- safe fallback if camera never appears
+end
+local _VP = getViewport()
+
+-- ── Platform & adaptive sizing ────────────────────────────────────────────────
+local isMobile = UIS.TouchEnabled   -- true on Delta iOS/Android/iPad
+
+-- Mobile → full-screen. Desktop → fixed 650×530 floating window.
+local WIN_W  = isMobile and math.floor(_VP.X) or 650
+local WIN_H  = isMobile and math.floor(_VP.Y) or 530
+local SIDE_W = 54    -- sidebar width  (desktop only)
+local TAB_SP = 40    -- sidebar tab row pitch (desktop only)
+local TAB_SZ = 34    -- sidebar button height (desktop only)
 
 -- ── Executor detection ────────────────────────────────────────────────────────
 local function detectExecutor()
-    -- Standard API (Delta, Solara, Wave, KRNL 2+)
-    if type(identifyexecutor) == "function" then
-        local ok, name = pcall(identifyexecutor)
-        if ok and name and name ~= "" then return tostring(name) end
+    if type(identifyexecutor)=="function" then
+        local ok,n = pcall(identifyexecutor)
+        if ok and n and n~="" then return tostring(n) end
     end
-    if type(getexecutorname) == "function" then
-        local ok, name = pcall(getexecutorname)
-        if ok and name and name ~= "" then return tostring(name) end
+    if type(getexecutorname)=="function" then
+        local ok,n = pcall(getexecutorname)
+        if ok and n and n~="" then return tostring(n) end
     end
-    -- Fingerprint by unique globals
-    if rawget(_G,"delta")   or rawget(_G,"_DELTA") or rawget(_G,"DELTA")   then return "Delta"     end
-    if rawget(_G,"wave")    or rawget(_G,"Wave")                            then return "Wave"      end
-    if rawget(_G,"syn")     or rawget(_G,"Synapse")                         then return "Synapse X" end
-    if rawget(_G,"KRNL_LOADED")                                             then return "KRNL"      end
-    if rawget(_G,"fluxus")  or rawget(_G,"Fluxus")                         then return "Fluxus"    end
-    if rawget(_G,"solara")  or rawget(_G,"Solara")                         then return "Solara"    end
-    if rawget(_G,"is_sirhurt_closure")                                      then return "SirHurt"   end
-    if rawget(_G,"OXYGEN_U")                                               then return "Oxygen U"  end
-    if rawget(_G,"ANDROID_APP")                                            then return "Arceus X"  end
+    if rawget(_G,"delta")  or rawget(_G,"_DELTA") or rawget(_G,"DELTA")  then return "Delta"     end
+    if rawget(_G,"wave")   or rawget(_G,"Wave")                           then return "Wave"      end
+    if rawget(_G,"syn")    or rawget(_G,"Synapse")                        then return "Synapse X" end
+    if rawget(_G,"KRNL_LOADED")                                           then return "KRNL"      end
+    if rawget(_G,"fluxus") or rawget(_G,"Fluxus")                        then return "Fluxus"    end
+    if rawget(_G,"solara") or rawget(_G,"Solara")                        then return "Solara"    end
+    if rawget(_G,"is_sirhurt_closure")                                    then return "SirHurt"   end
+    if rawget(_G,"ANDROID_APP")                                           then return "Arceus X"  end
     return "Unknown Executor"
 end
 
--- ── Platform detection ────────────────────────────────────────────────────────
-local isMobile = UIS.TouchEnabled   -- true on Delta iOS/Android
-
--- ── Adaptive window dimensions ────────────────────────────────────────────────
--- Compute once from the camera viewport at load time.
--- Mobile: use most of the screen; Desktop: fixed 650×530.
-local function _vp() return workspace.CurrentCamera.ViewportSize end
-local _VP0   = _vp()
-local WIN_W  = isMobile and math.min(math.floor(_VP0.X) - 8,  510) or 650
-local WIN_H  = isMobile and math.min(math.floor(_VP0.Y) - 8,  560) or 530
-local SIDE_W = isMobile and 50 or 54
--- Space for 10 tab buttons inside (WIN_H - titlebar - top gap)
-local _tabArea = WIN_H - 50
-local TAB_SP   = isMobile and math.min(37, math.floor(_tabArea / 10)) or 40
-local TAB_SZ   = math.max(26, TAB_SP - 6)   -- button height = spacing minus gap
-
--- ── Utility helpers ───────────────────────────────────────────────────────────
-local function safeGet(tbl, key)
-    if type(tbl) ~= "table" then return nil end
-    return rawget(tbl, key)
+-- ── Utilities ─────────────────────────────────────────────────────────────────
+local function safeGet(t,k) return type(t)=="table" and rawget(t,k) or nil end
+local function safeCall(fn,...)
+    if type(fn)~="function" then return false,"not a function" end
+    return pcall(fn,...)
 end
-
-local function safeCall(fn, ...)
-    if type(fn) ~= "function" then return false, "not a function" end
-    return pcall(fn, ...)
-end
-
-local function isFunc(x)  return type(x) == "function" end
-local function isTable(x) return type(x) == "table"    end
-local function isStr(x)   return type(x) == "string"   end
-local function isNum(x)   return type(x) == "number"   end
+local function isFunc(x)  return type(x)=="function" end
+local function isTable(x) return type(x)=="table"    end
+local function isStr(x)   return type(x)=="string"   end
+local function isNum(x)   return type(x)=="number"   end
 
 local function ts() return os.date("[%H:%M:%S] ") end
 
 local function fmtNum(n)
-    if n >= 1e9 then return ("%.2fB"):format(n/1e9)
-    elseif n >= 1e6 then return ("%.2fM"):format(n/1e6)
-    elseif n >= 1e3 then return ("%.1fK"):format(n/1e3)
+    if n>=1e9 then return("%.2fB"):format(n/1e9)
+    elseif n>=1e6 then return("%.2fM"):format(n/1e6)
+    elseif n>=1e3 then return("%.1fK"):format(n/1e3)
     else return tostring(n) end
 end
 
-local function trunc(s, max)
-    s = tostring(s)
-    return #s > max and s:sub(1, max) .. "…" or s
+local function trunc(s,max)
+    s=tostring(s); return #s>max and s:sub(1,max).."…" or s
 end
 
-local function split(s, sep)
-    local parts = {}
-    for part in s:gmatch("([^" .. sep .. "]+)") do
-        parts[#parts+1] = part
-    end
-    return parts
+local function split(s,sep)
+    local p={}; for x in s:gmatch("([^"..sep.."]+)") do p[#p+1]=x end; return p
 end
 
-local function trim(s) return (tostring(s):gsub("^%s*(.-)%s*$", "%1")) end
+local function trim(s) return (tostring(s):gsub("^%s*(.-)%s*$","%1")) end
 
 local function deepCopy(t)
-    if type(t) ~= "table" then return t end
-    local copy = {}
-    for k, v in pairs(t) do copy[k] = deepCopy(v) end
-    return copy
+    if type(t)~="table" then return t end
+    local c={}; for k,v in pairs(t) do c[k]=deepCopy(v) end; return c
 end
 
-local function tableHas(tbl, val)
-    for _, v in tbl do if v == val then return true end end
+local function tableHas(t,v) for _,x in t do if x==v then return true end end; return false end
+local function tableMap(t,fn) local o={}; for i,v in t do o[i]=fn(v) end; return o end
+local function tableFilter(t,fn) local o={}; for _,v in t do if fn(v) then o[#o+1]=v end end; return o end
+
+-- Clipboard — setclipboard works on Delta iOS/Android/iPad
+local function copyText(txt)
+    if type(setclipboard)=="function" then return pcall(setclipboard,txt) end
     return false
 end
 
-local function tableMap(tbl, fn)
-    local out = {}
-    for i, v in tbl do out[i] = fn(v) end
-    return out
-end
-
-local function tableFilter(tbl, fn)
-    local out = {}
-    for _, v in tbl do if fn(v) then out[#out+1] = v end end
-    return out
-end
-
--- ── Clipboard helper (Delta iOS uses setclipboard) ────────────────────────────
-local function copyText(text)
-    if type(setclipboard) == "function" then
-        local ok = pcall(setclipboard, text)
-        return ok
-    end
-    return false
-end
-
--- ── Character helpers ─────────────────────────────────────────────────────────
-local function getRoot()
-    local char = LP and LP.Character
-    if not char then return nil end
-    return char:FindFirstChild("HumanoidRootPart")
-end
-
-local function getHum()
-    local char = LP and LP.Character
-    if not char then return nil end
-    return char:FindFirstChildOfClass("Humanoid")
-end
-
+local function getRoot() local c=LP and LP.Character; return c and c:FindFirstChild("HumanoidRootPart") end
+local function getHum()  local c=LP and LP.Character; return c and c:FindFirstChildOfClass("Humanoid")   end
 local function getChar() return LP and LP.Character end
 
--- ── Session metadata ──────────────────────────────────────────────────────────
+-- ── Session ───────────────────────────────────────────────────────────────────
 local SESSION = {
     startTime   = os.time(),
     executor    = detectExecutor(),
@@ -818,8 +776,8 @@ end
 -- SOURCE: src/core/05_window.lua
 -- ════════════════════════════════════════
 -- ── Main Window & Tab System ─────────────────────────────────────────────────
--- Fully responsive: adapts to mobile touch (Delta iOS/Android/iPad)
--- and desktop PC executors (Synapse X, KRNL, Fluxus, Wave, Solara, Delta PC).
+-- Mobile  → full-screen, bottom tab bar, touch-optimised (Delta iOS/Android/iPad)
+-- Desktop → 650×530 floating window, left sidebar, hover tooltips
 
 local GUI = Instance.new("ScreenGui")
 GUI.Name              = "__SS_EXEC__"
@@ -829,103 +787,114 @@ GUI.DisplayOrder      = 999
 GUI.ZIndexBehavior    = Enum.ZIndexBehavior.Sibling
 GUI.Parent            = PGui
 
--- Window position: anchored top-left on mobile so it's fully visible;
--- centered on desktop.
-local _winPos = isMobile
-    and UDim2.new(0, 4, 0, 4)
-    or  UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+local WIN = F(GUI,
+    UDim2.new(0, WIN_W, 0, WIN_H),
+    isMobile and UDim2.new(0, 0, 0, 0)
+           or  UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2),
+    C.BG, "Window")
 
-local WIN = F(GUI, UDim2.new(0, WIN_W, 0, WIN_H), _winPos, C.BG, "Window")
-corner(WIN, 12); stroke(WIN, C.BDR, 1.5)
-
--- Drop shadow (desktop only — too heavy on mobile GPU)
-if not isMobile then
-    local Sh = Instance.new("ImageLabel")
-    Sh.Size               = UDim2.new(1, 60, 1, 60)
-    Sh.Position           = UDim2.new(0, -30, 0, -30)
+if isMobile then
+    -- No rounded corners on full-screen window
+else
+    corner(WIN, 12)
+    stroke(WIN, C.BDR, 1.5)
+    -- Drop shadow
+    local Sh          = Instance.new("ImageLabel")
+    Sh.Size           = UDim2.new(1,60,1,60)
+    Sh.Position       = UDim2.new(0,-30,0,-30)
     Sh.BackgroundTransparency = 1
-    Sh.Image              = "rbxassetid://6014261993"
-    Sh.ImageColor3        = C.BLK
-    Sh.ImageTransparency  = 0.42
-    Sh.ScaleType          = Enum.ScaleType.Slice
-    Sh.SliceCenter        = Rect.new(49, 49, 450, 450)
-    Sh.ZIndex             = 0
-    Sh.Parent             = WIN
+    Sh.Image          = "rbxassetid://6014261993"
+    Sh.ImageColor3    = C.BLK
+    Sh.ImageTransparency = 0.42
+    Sh.ScaleType      = Enum.ScaleType.Slice
+    Sh.SliceCenter    = Rect.new(49,49,450,450)
+    Sh.ZIndex         = 0
+    Sh.Parent         = WIN
 end
 
 -- ── Title bar ─────────────────────────────────────────────────────────────────
-local TBAR = F(WIN, UDim2.new(1, 0, 0, 44), UDim2.new(0, 0, 0, 0), C.SIDE, "TBar")
-corner(TBAR, 12)
--- Fill bottom-left/right corners of titlebar (stays rectangular on sides)
-F(WIN, UDim2.new(1, 0, 0, 12), UDim2.new(0, 0, 0, 32), C.SIDE)
-
--- Logo icon
-local LBG = F(TBAR, UDim2.new(0, 30, 0, 30), UDim2.new(0, 9, 0, 7), C.ACC); corner(LBG, 8)
-L(LBG, "⚡", UDim2.new(1, 0, 1, 0), nil, C.WHT, FB, 16, Enum.TextXAlignment.Center)
-L(TBAR, "NEXUS",         UDim2.new(0, 60, 0, 22), UDim2.new(0, 46, 0, 3),  C.WHT,  FB, 16)
-L(TBAR, "EXECUTOR  v8",  UDim2.new(0, 120, 0, 13), UDim2.new(0, 46, 0, 24), C.TXTS, FN, 10)
-
--- Bridge status indicator — scale X position with window width
-local _bDotX = math.min(163, WIN_W - 180)
-local ODot      = dot(TBAR, UDim2.new(0, 8, 0, 8),  UDim2.new(0, _bDotX, 0, 18))
-local BridgeTxt = L(TBAR, "checking…",
-    UDim2.new(0, math.min(100, WIN_W - _bDotX - 80), 0, 14),
-    UDim2.new(0, _bDotX + 14, 0, 15), C.TXTS, FN, 11)
-
--- Live FPS + uptime (desktop only — they need TBAR space that mobile doesn't have)
-local FpsTxt, uptimeLbl
+local _TBAR_H = isMobile and 50 or 44
+local TBAR = F(WIN, UDim2.new(1,0,0,_TBAR_H), UDim2.new(0,0,0,0), C.SIDE, "TBar")
 if not isMobile then
-    FpsTxt = L(TBAR, "", UDim2.new(0, 72, 0, 14), UDim2.new(0, 308, 0, 15), C.TXTD, FN, 10)
-    uptimeLbl = L(TBAR, "00:00", UDim2.new(0, 50, 0, 14), UDim2.new(0, 384, 0, 15), C.TXTD, FC, 10)
+    corner(TBAR, 12)
+    F(WIN, UDim2.new(1,0,0,12), UDim2.new(0,0,0,32), C.SIDE)  -- fill bottom corners
 end
 
+-- Logo
+local LBG = F(TBAR, UDim2.new(0,30,0,30), UDim2.new(0,9,0,10), C.ACC); corner(LBG,8)
+L(LBG, "⚡", UDim2.new(1,0,1,0), nil, C.WHT, FB, 16, Enum.TextXAlignment.Center)
+L(TBAR, "NEXUS",        UDim2.new(0,60,0,22), UDim2.new(0,46,0,4),  C.WHT,  FB, isMobile and 15 or 16)
+L(TBAR, "EXECUTOR  v8", UDim2.new(0,120,0,13),UDim2.new(0,46,0,25), C.TXTS, FN, 10)
+
+-- Bridge status — X position scaled so it fits any window width
+local _bX = math.min(170, WIN_W - 190)
+local ODot      = dot(TBAR, UDim2.new(0,8,0,8),  UDim2.new(0,_bX,0,21))
+local BridgeTxt = L(TBAR, "…",
+    UDim2.new(0, math.max(60, WIN_W-_bX-80), 0,13),
+    UDim2.new(0,_bX+14,0,19), C.TXTS, FN, 11)
+
+-- FPS + uptime — desktop only (no room in mobile titlebar)
 local _fpsConn
-if FpsTxt then
+if not isMobile then
+    local FpsTxt = L(TBAR,"",UDim2.new(0,72,0,14),UDim2.new(0,308,0,15),C.TXTD,FN,10)
+    local uptL   = L(TBAR,"00:00",UDim2.new(0,50,0,14),UDim2.new(0,384,0,15),C.TXTD,FC,10)
     _fpsConn = RUN.RenderStepped:Connect(function(dt)
-        FpsTxt.Text = ("%.0f fps"):format(1 / dt)
+        FpsTxt.Text = ("%.0f fps"):format(1/dt)
     end)
-end
-
-if uptimeLbl then
     task.spawn(function()
         local t0 = os.clock()
         while GUI.Parent do
-            local e = math.floor(os.clock() - t0)
-            uptimeLbl.Text = ("%02d:%02d"):format(math.floor(e / 60), e % 60)
+            local e = math.floor(os.clock()-t0)
+            uptL.Text = ("%02d:%02d"):format(math.floor(e/60),e%60)
             task.wait(1)
         end
     end)
 end
 
--- ── Window control buttons ─────────────────────────────────────────────────────
--- On mobile, make them taller (easier to tap)
-local _ctrlH  = isMobile and 30 or 24
-local _ctrlY  = isMobile and  7 or 10
-local BtnMin = B(TBAR, "—", UDim2.new(0, 30, 0, _ctrlH), UDim2.new(1, -68, 0, _ctrlY), C.GREY)
-local BtnX   = B(TBAR, "✕", UDim2.new(0, 30, 0, _ctrlH), UDim2.new(1, -34, 0, _ctrlY), C.RED)
-hov(BtnMin, C.GREY, C.GRYHV)
-hov(BtnX,   C.RED,  C.REDHV)
+-- ── Control buttons ───────────────────────────────────────────────────────────
+local _cH = isMobile and 32 or 24
+local _cY = isMobile and  9 or 10
+local BtnMin = B(TBAR,"—",UDim2.new(0,32,0,_cH),UDim2.new(1,-70,0,_cY),C.GREY)
+local BtnX   = B(TBAR,"✕",UDim2.new(0,32,0,_cH),UDim2.new(1,-34,0,_cY),C.RED)
+hov(BtnMin,C.GREY,C.GRYHV); hov(BtnX,C.RED,C.REDHV)
 
 BtnX.MouseButton1Click:Connect(function()
     if _fpsConn then _fpsConn:Disconnect() end
-    tw(WIN, {BackgroundTransparency = 1}, TF2)
-    task.wait(0.22)
-    GUI:Destroy()
+    tw(WIN,{BackgroundTransparency=1},TF2)
+    task.wait(0.22); GUI:Destroy()
 end)
 
--- ── Bridge ping on startup ─────────────────────────────────────────────────────
+-- Bridge ping
 task.spawn(function()
     local alive = pingBridge()
-    ODot.BackgroundColor3  = alive and C.GRN or C.RED
-    BridgeTxt.Text         = alive and "bridge ✓" or "no bridge"
-    BridgeTxt.TextColor3   = alive and C.GRN or C.RED
+    ODot.BackgroundColor3 = alive and C.GRN or C.RED
+    BridgeTxt.Text        = alive and "bridge ✓" or "no bridge"
+    BridgeTxt.TextColor3  = alive and C.GRN or C.RED
 end)
 
--- ── Sidebar & body ─────────────────────────────────────────────────────────────
-local SIDE = F(WIN, UDim2.new(0, SIDE_W, 1, -44), UDim2.new(0, 0, 0, 44), C.SIDE, "Side")
-F(WIN, UDim2.new(0, 1, 1, -44), UDim2.new(0, SIDE_W, 0, 44), Color3.fromRGB(32, 44, 82))  -- separator
-local BODY = F(WIN, UDim2.new(1, -(SIDE_W + 6), 1, -50), UDim2.new(0, SIDE_W + 3, 0, 48), C.BLK, "Body")
-BODY.BackgroundTransparency = 1
+-- ── Layout: BODY + nav elements ───────────────────────────────────────────────
+-- Mobile:  full-width body between titlebar and 52px bottom tab bar
+-- Desktop: sidebar on left, body fills the rest
+local SIDE, BODY, TABBAR
+
+if isMobile then
+    local _TABB_H = 52
+    BODY = F(WIN,
+        UDim2.new(1, 0, 1, -(_TBAR_H + _TABB_H)),
+        UDim2.new(0, 0, 0, _TBAR_H),
+        C.BLK, "Body")
+    BODY.BackgroundTransparency = 1
+
+    -- Bottom tab bar
+    TABBAR = F(WIN, UDim2.new(1,0,0,_TABB_H), UDim2.new(0,0,1,-_TABB_H), C.SIDE, "TabBar")
+    -- top separator line
+    F(TABBAR, UDim2.new(1,0,0,1), UDim2.new(0,0,0,0), C.BDR2)
+else
+    SIDE = F(WIN, UDim2.new(0,SIDE_W,1,-44), UDim2.new(0,0,0,44), C.SIDE, "Side")
+    F(WIN, UDim2.new(0,1,1,-44), UDim2.new(0,SIDE_W,0,44), Color3.fromRGB(32,44,82))
+    BODY = F(WIN, UDim2.new(1,-(SIDE_W+6),1,-50), UDim2.new(0,SIDE_W+3,0,48), C.BLK, "Body")
+    BODY.BackgroundTransparency = 1
+end
 
 -- ── Tab system ────────────────────────────────────────────────────────────────
 local sbBtns  = {}
@@ -934,61 +903,91 @@ local curPage = 0
 local tabN    = 0
 
 local TCOL = {
-    Color3.fromRGB( 59, 130, 246),  -- 1  Execute   blue
-    Color3.fromRGB( 34, 197,  94),  -- 2  Server    green
-    Color3.fromRGB(249, 115,  22),  -- 3  Sandbox   orange
-    Color3.fromRGB(236,  72, 153),  -- 4  Player    pink
-    Color3.fromRGB(139,  92, 246),  -- 5  RemoteSpy purple
-    Color3.fromRGB(220,  55,  55),  -- 6  Scanner   red
-    Color3.fromRGB(250, 204,  21),  -- 7  Deobfusc  yellow
-    Color3.fromRGB( 20, 184, 166),  -- 8  Checker   teal
-    Color3.fromRGB( 96, 165, 250),  -- 9  Scripts   sky
-    Color3.fromRGB(167, 139, 250),  -- 10 Environ   lavender
+    Color3.fromRGB( 59,130,246),  Color3.fromRGB( 34,197, 94),
+    Color3.fromRGB(249,115, 22),  Color3.fromRGB(236, 72,153),
+    Color3.fromRGB(139, 92,246),  Color3.fromRGB(220, 55, 55),
+    Color3.fromRGB(250,204, 21),  Color3.fromRGB( 20,184,166),
+    Color3.fromRGB( 96,165,250),  Color3.fromRGB(167,139,250),
 }
 
 local function showPage(idx)
-    for i, p in pages  do p.Visible = (i == idx) end
-    for i, b in sbBtns do
+    for i,p in pages  do p.Visible = (i==idx) end
+    for i,b in sbBtns do
         local ac = TCOL[i] or C.ACC
+        local on = (i==idx)
         tw(b, {
-            BackgroundColor3 = (i == idx) and ac or Color3.fromRGB(16, 16, 24),
-            TextColor3       = (i == idx) and C.WHT or C.TXTD,
+            BackgroundColor3 = on and ac or (isMobile and Color3.fromRGB(8,11,20) or Color3.fromRGB(16,16,24)),
+            TextColor3       = on and C.WHT or C.TXTD,
         })
+        -- mobile: show/hide indicator stripe at top of each tab button
+        if isMobile then
+            local ind = b:FindFirstChild("Ind")
+            if ind then ind.BackgroundTransparency = on and 0 or 1 end
+        end
     end
     curPage = idx
 end
 
 local function newTab(icon, label)
     tabN += 1
-    local idx  = tabN
-    local yp   = 6 + (idx - 1) * TAB_SP
-    local ac   = TCOL[idx] or C.ACC
-    local btnW = SIDE_W - 12   -- 4px margin each side
+    local idx = tabN
+    local ac  = TCOL[idx] or C.ACC
+    local btn
 
-    local btn = Instance.new("TextButton")
-    btn.Size             = UDim2.new(0, btnW, 0, TAB_SZ)
-    btn.Position         = UDim2.new(0, 6, 0, yp)
-    btn.BackgroundColor3 = Color3.fromRGB(16, 16, 24)
-    btn.Text             = icon
-    btn.TextColor3       = C.TXTD
-    btn.Font             = FB
-    btn.TextSize         = isMobile and 16 or 18
-    btn.AutoButtonColor  = false
-    btn.BorderSizePixel  = 0
-    btn.Parent           = SIDE
-    corner(btn, 7)
+    if isMobile then
+        -- Bottom tab bar: 10 equal-width buttons (0.1 scale each)
+        btn = Instance.new("TextButton")
+        btn.Size             = UDim2.new(0.1, 0, 1, 0)
+        btn.Position         = UDim2.new((idx-1)*0.1, 0, 0, 0)
+        btn.BackgroundColor3 = Color3.fromRGB(8,11,20)
+        btn.Text             = icon
+        btn.TextColor3       = C.TXTD
+        btn.Font             = FB
+        btn.TextSize         = 20
+        btn.AutoButtonColor  = false
+        btn.BorderSizePixel  = 0
+        btn.Parent           = TABBAR
 
-    -- Touch flash feedback (mobile has no hover)
-    btn.MouseButton1Down:Connect(function()
-        tw(btn, {BackgroundColor3 = Color3.fromRGB(30, 30, 48)})
-    end)
+        -- Coloured indicator stripe at top (visible when active)
+        local ind = F(btn, UDim2.new(1,0,0,3), UDim2.new(0,0,0,1), ac, "Ind")
+        ind.BackgroundTransparency = 1
 
-    -- Tooltip / label (desktop only — on mobile it would overlap content)
-    if not isMobile then
-        local tipW = math.max(80, #label * 8 + 16)
+        -- Left separator between buttons
+        if idx > 1 then
+            local sep = F(btn, UDim2.new(0,1,0.6,0), UDim2.new(0,0,0.2,0), C.BDR)
+            sep.ZIndex = 2
+        end
+
+        -- Press ripple
+        btn.MouseButton1Down:Connect(function()
+            tw(btn,{BackgroundColor3=Color3.fromRGB(20,26,42)})
+        end)
+        btn.MouseButton1Up:Connect(function()
+            tw(btn,{BackgroundColor3=curPage==idx and ac or Color3.fromRGB(8,11,20)})
+        end)
+        btn.MouseButton1Click:Connect(function() showPage(idx) end)
+    else
+        -- Desktop: left sidebar
+        local yp   = 6 + (idx-1)*TAB_SP
+        local btnW = SIDE_W - 12
+        btn = Instance.new("TextButton")
+        btn.Size             = UDim2.new(0,btnW,0,TAB_SZ)
+        btn.Position         = UDim2.new(0,6,0,yp)
+        btn.BackgroundColor3 = Color3.fromRGB(16,16,24)
+        btn.Text             = icon
+        btn.TextColor3       = C.TXTD
+        btn.Font             = FB
+        btn.TextSize         = 18
+        btn.AutoButtonColor  = false
+        btn.BorderSizePixel  = 0
+        btn.Parent           = SIDE
+        corner(btn,7)
+
+        -- Tooltip
+        local tipW = math.max(80,#label*8+16)
         local tip  = Instance.new("TextLabel")
-        tip.Size             = UDim2.new(0, tipW, 0, 22)
-        tip.Position         = UDim2.new(1, 6, 0, yp + 4)
+        tip.Size             = UDim2.new(0,tipW,0,22)
+        tip.Position         = UDim2.new(1,6,0,yp+4)
         tip.BackgroundColor3 = C.PANEL
         tip.Text             = label
         tip.TextColor3       = C.TXT
@@ -999,26 +998,22 @@ local function newTab(icon, label)
         tip.ZIndex           = 15
         tip.Visible          = false
         tip.Parent           = SIDE
-        corner(tip, 5); stroke(tip, ac, 1)
+        corner(tip,5); stroke(tip,ac,1)
 
         btn.MouseEnter:Connect(function()
             tip.Visible = true
-            if curPage ~= idx then
-                tw(btn, {BackgroundColor3 = Color3.fromRGB(22, 22, 34), TextColor3 = C.TXTS})
-            end
+            if curPage~=idx then tw(btn,{BackgroundColor3=Color3.fromRGB(22,22,34),TextColor3=C.TXTS}) end
         end)
         btn.MouseLeave:Connect(function()
             tip.Visible = false
-            if curPage ~= idx then
-                tw(btn, {BackgroundColor3 = Color3.fromRGB(16, 16, 24), TextColor3 = C.TXTD})
-            end
+            if curPage~=idx then tw(btn,{BackgroundColor3=Color3.fromRGB(16,16,24),TextColor3=C.TXTD}) end
         end)
+        btn.MouseButton1Click:Connect(function() showPage(idx) end)
     end
 
-    btn.MouseButton1Click:Connect(function() showPage(idx) end)
     sbBtns[idx] = btn
 
-    local pg = F(BODY, UDim2.new(1, 0, 1, 0), UDim2.new(0, 0, 0, 0), C.BLK, "P" .. idx)
+    local pg = F(BODY, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), C.BLK, "P"..idx)
     pg.BackgroundTransparency = 1
     pg.Visible = false
     pages[idx] = pg
@@ -2735,20 +2730,19 @@ end)
 -- ════════════════════════════════════════
 -- SOURCE: src/core/06_init.lua
 -- ════════════════════════════════════════
--- ── Drag — PC mouse + all touch devices (Delta iOS/Android/iPad) ─────────────
--- Uses absolute pixel coordinates so clamping to screen bounds is exact.
+-- ── Drag — PC mouse + touch (Delta iOS/Android/iPad) ─────────────────────────
+-- Stores start position as absolute pixels; delta is applied in pixel space.
+-- Clamps to viewport so the window can never leave the screen.
+-- Ignores secondary touches while dragging (multi-touch safe).
 
-local _dragging  = false
-local _dragWinX  = 0
-local _dragWinY  = 0
-local _dragTchX  = 0
-local _dragTchY  = 0
+local _dragging = false
+local _dragWinX, _dragWinY = 0, 0
+local _dragTchX, _dragTchY = 0, 0
 
 TBAR.InputBegan:Connect(function(inp)
     local t = inp.UserInputType
     if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
-        -- On multi-touch screens ignore secondary fingers while already dragging
-        if _dragging and t == Enum.UserInputType.Touch then return end
+        if _dragging and t == Enum.UserInputType.Touch then return end   -- ignore 2nd finger
         _dragging  = true
         _dragTchX  = inp.Position.X
         _dragTchY  = inp.Position.Y
@@ -2761,13 +2755,14 @@ UIS.InputChanged:Connect(function(inp)
     if not _dragging then return end
     local t = inp.UserInputType
     if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then
-        local dx   = inp.Position.X - _dragTchX
-        local dy   = inp.Position.Y - _dragTchY
-        local vp   = workspace.CurrentCamera.ViewportSize
-        local winSz = WIN.AbsoluteSize
-        local newX = math.clamp(_dragWinX + dx, 0, math.max(0, vp.X - winSz.X))
-        local newY = math.clamp(_dragWinY + dy, 0, math.max(0, vp.Y - winSz.Y))
-        WIN.Position = UDim2.new(0, newX, 0, newY)
+        local dx  = inp.Position.X - _dragTchX
+        local dy  = inp.Position.Y - _dragTchY
+        local vp  = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize
+                    or Vector2.new(WIN_W, WIN_H)
+        local wsz = WIN.AbsoluteSize
+        local nx  = math.clamp(_dragWinX + dx, 0, math.max(0, vp.X - wsz.X))
+        local ny  = math.clamp(_dragWinY + dy, 0, math.max(0, vp.Y - wsz.Y))
+        WIN.Position = UDim2.new(0, nx, 0, ny)
     end
 end)
 
@@ -2786,67 +2781,65 @@ BtnMin.MouseButton1Click:Connect(function()
     if _minimised then
         tw(WIN, {Size = UDim2.new(0, WIN_W, 0, 44)}, TS2)
         BODY.Visible = false
-        SIDE.Visible = false
-        BtnMin.Text  = "□"
+        if SIDE   then SIDE.Visible   = false end
+        if TABBAR then TABBAR.Visible = false end
+        BtnMin.Text = "□"
     else
         tw(WIN, {Size = UDim2.new(0, WIN_W, 0, WIN_H)}, TS2)
         task.delay(0.12, function()
             BODY.Visible = true
-            SIDE.Visible = true
+            if SIDE   then SIDE.Visible   = true end
+            if TABBAR then TABBAR.Visible = true end
         end)
         BtnMin.Text = "—"
     end
 end)
 
--- ── Keyboard shortcuts (desktop only — mobile has no physical keyboard) ────────
+-- ── Keyboard shortcuts (desktop only) ────────────────────────────────────────
 if not isMobile then
     UIS.InputBegan:Connect(function(inp, gpe)
         if gpe then return end
-        -- F5 = flash current tab (visual "refresh" hint)
         if inp.KeyCode == Enum.KeyCode.F5 then
             if pages[curPage] then
-                tw(pages[curPage], {BackgroundTransparency = 0.4})
-                task.delay(0.12, function()
-                    tw(pages[curPage], {BackgroundTransparency = 1})
-                end)
+                tw(pages[curPage],{BackgroundTransparency=0.4})
+                task.delay(0.12,function() tw(pages[curPage],{BackgroundTransparency=1}) end)
             end
         end
-        -- F1–F9: jump directly to tab
         for i = 1, 9 do
-            if inp.KeyCode == Enum.KeyCode["F" .. i] and pages[i] then
+            if inp.KeyCode == Enum.KeyCode["F"..i] and pages[i] then
                 showPage(i); break
             end
         end
     end)
 end
 
--- ── Initialise UI ─────────────────────────────────────────────────────────────
+-- ── Init ─────────────────────────────────────────────────────────────────────
 showPage(1)
 
--- Checker sub-tab default
-if switchSub  then switchSub(1)  end
-if buildList  then buildList(1)  end
+if switchSub   then switchSub(1)   end
+if buildList   then buildList(1)   end
+if buildScripts then buildScripts("") end
+if refreshPlrs  then refreshPlrs()   end
 
--- Environ auto-run
 task.spawn(function()
     if runCheck then runCheck() end
 end)
 
--- Script hub listing
-if buildScripts then buildScripts("") end
-
--- Server tab player list
-if refreshPlrs  then refreshPlrs()   end
-
--- Loaded notification
 task.delay(0.5, function()
     notify("Nexus Executor",
-        string.format("Loaded ✓  %d tabs  |  %s  |  %s",
-            tabN,
-            SESSION.executor,
-            SESSION.platform),
-        5)
+        ("Loaded ✓  %d tabs  |  %s  |  %s"):format(
+            tabN, SESSION.executor, SESSION.platform), 5)
 end)
 
 end)
-if not _ok then warn("[Nexus] STARTUP ERROR: "..tostring(_err)) end
+if not _ok then
+    warn("[Nexus] STARTUP ERROR: "..tostring(_err))
+    -- Show visible notification so mobile users see the error
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification",{
+            Title="Nexus Error",
+            Text=tostring(_err):sub(1,120),
+            Duration=12,
+        })
+    end)
+end
