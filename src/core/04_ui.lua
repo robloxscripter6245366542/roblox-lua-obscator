@@ -1,5 +1,6 @@
--- ── UI Helper Library ────────────────────────────────────────────────────────
--- All Instance-creation wrappers used throughout every tab
+-- ── UI Helper Library ─────────────────────────────────────────────────────────
+-- All Instance-creation wrappers. `isMobile` and `WIN_W/H/SIDE_W` are
+-- already in scope (defined in 01_services.lua).
 
 -- UICorner
 local function corner(p, r)
@@ -187,52 +188,77 @@ local function OUT(par, sz, pos, ph)
     return b
 end
 
--- ScrollingFrame (auto canvas)
+-- ScrollingFrame (auto canvas, vertical by default)
 local function SCR(par, sz, pos, barThick)
     local s = Instance.new("ScrollingFrame")
-    s.Size                 = sz
-    s.Position             = pos or UDim2.new(0, 0, 0, 0)
+    s.Size                  = sz
+    s.Position              = pos or UDim2.new(0, 0, 0, 0)
     s.BackgroundTransparency = 1
-    s.BorderSizePixel      = 0
-    s.ScrollBarThickness   = barThick or 3
-    s.ScrollBarImageColor3 = C.ACC
-    s.CanvasSize           = UDim2.new(0, 0, 0, 0)
-    s.AutomaticCanvasSize  = Enum.AutomaticSize.Y
-    s.Parent               = par
+    s.BorderSizePixel       = 0
+    s.ScrollBarThickness    = barThick or (isMobile and 2 or 3)
+    s.ScrollBarImageColor3  = C.ACC
+    s.CanvasSize            = UDim2.new(0, 0, 0, 0)
+    s.AutomaticCanvasSize   = Enum.AutomaticSize.Y
+    s.Parent                = par
     return s
 end
 
--- Hover tween helper
+-- Hover tween helper — touch devices get press-feedback instead of hover
 local function hov(btn, normal, hovered)
-    btn.MouseEnter:Connect(function()
-        tw(btn, {BackgroundColor3 = hovered})
-    end)
-    btn.MouseLeave:Connect(function()
-        tw(btn, {BackgroundColor3 = normal})
-    end)
+    if not isMobile then
+        btn.MouseEnter:Connect(function()
+            tw(btn, {BackgroundColor3 = hovered})
+        end)
+        btn.MouseLeave:Connect(function()
+            tw(btn, {BackgroundColor3 = normal})
+        end)
+    end
+    -- Press feedback works on all devices
     btn.MouseButton1Down:Connect(function()
-        tw(btn, {BackgroundColor3 = normal})
+        tw(btn, {BackgroundColor3 = hovered})
     end)
     btn.MouseButton1Up:Connect(function()
-        tw(btn, {BackgroundColor3 = hovered})
+        tw(btn, {BackgroundColor3 = normal})
     end)
 end
 
 -- Hover with text color change
 local function hovFull(btn, nBg, hBg, nTxt, hTxt)
-    btn.MouseEnter:Connect(function()  tw(btn,{BackgroundColor3=hBg,TextColor3=hTxt or C.WHT}) end)
-    btn.MouseLeave:Connect(function()  tw(btn,{BackgroundColor3=nBg,TextColor3=nTxt or C.TXT}) end)
+    if not isMobile then
+        btn.MouseEnter:Connect(function()  tw(btn, {BackgroundColor3=hBg, TextColor3=hTxt or C.WHT}) end)
+        btn.MouseLeave:Connect(function()  tw(btn, {BackgroundColor3=nBg, TextColor3=nTxt or C.TXT}) end)
+    end
+    btn.MouseButton1Down:Connect(function() tw(btn, {BackgroundColor3=hBg}) end)
+    btn.MouseButton1Up:Connect(function()   tw(btn, {BackgroundColor3=nBg}) end)
 end
 
--- Horizontal row container (transparent, horizontal list)
+-- Horizontal row container.
+-- On mobile: uses a horizontal ScrollingFrame (invisible scrollbar) so button
+-- rows that exceed the content width can be swiped left/right.
+-- On desktop: plain transparent frame with UIListLayout.
 local function rowBar(par, yOff, h)
-    local r = F(par, UDim2.new(1, 0, 0, h or 26), UDim2.new(0, 0, 0, yOff or 0), C.BLK)
-    r.BackgroundTransparency = 1
-    listH(r, 4)
-    return r
+    if isMobile then
+        local r = Instance.new("ScrollingFrame")
+        r.Size                  = UDim2.new(1, 0, 0, h or 26)
+        r.Position              = UDim2.new(0, 0, 0, yOff or 0)
+        r.BackgroundTransparency = 1
+        r.BorderSizePixel       = 0
+        r.ScrollBarThickness    = 0            -- invisible — swipe gesture only
+        r.ScrollingDirection    = Enum.ScrollingDirection.X
+        r.CanvasSize            = UDim2.new(0, 0, 0, 0)
+        r.AutomaticCanvasSize   = Enum.AutomaticSize.X
+        r.Parent                = par
+        listH(r, 4)
+        return r
+    else
+        local r = F(par, UDim2.new(1, 0, 0, h or 26), UDim2.new(0, 0, 0, yOff or 0), C.BLK)
+        r.BackgroundTransparency = 1
+        listH(r, 4)
+        return r
+    end
 end
 
--- Section header (coloured panel with purple label)
+-- Section header (coloured panel with label)
 local function sectionHdr(par, txt, col)
     local r = F(par, UDim2.new(1, -4, 0, 22), nil, col or C.PANEL)
     corner(r, 5)
@@ -240,14 +266,14 @@ local function sectionHdr(par, txt, col)
     return r
 end
 
--- Status dot (small circle)
+-- Status dot (small circle indicator)
 local function dot(par, sz, pos, col)
     local d = F(par, sz or UDim2.new(0, 8, 0, 8), pos or UDim2.new(0, 0, 0, 0), col or C.GREY)
     corner(d, 99)
     return d
 end
 
--- Badge (small pill label)
+-- Badge / pill label
 local function pill(par, txt, col, sz, pos)
     local bg = F(par, sz or UDim2.new(0, 60, 0, 18), pos, col or C.GREY)
     corner(bg, 4)
@@ -271,8 +297,9 @@ local function IMG(par, assetId, sz, pos)
     return i
 end
 
--- Tooltip (hover label)
+-- Tooltip (desktop hover only — on mobile tooltips are inaccessible)
 local function tooltip(btn, text, yOff)
+    if isMobile then return end
     local tip = Instance.new("TextLabel")
     tip.Size = UDim2.new(0, #text * 7 + 16, 0, 22)
     tip.Position = UDim2.new(0, 0, 1, yOff or 4)
@@ -301,7 +328,7 @@ local function toggleButton(par, txt, sz, pos, onCol, offCol)
     return b, getState, setState
 end
 
--- Number stepper (+ / - buttons with label)
+-- Number stepper (+/- with label)
 local function stepper(par, label, default, min, max, step, sz, pos)
     local container = F(par, sz or UDim2.new(0, 200, 0, 28), pos, C.PANEL)
     corner(container, 6)
@@ -337,20 +364,19 @@ local function card(par, title, subtitle, h)
     return r
 end
 
--- util row (card with action button on right)
+-- Util row (card + action button)
 local function utilRow(par, title, desc, btnTxt, btnCol, action)
     local Row = card(par, title, desc, 54)
-    local bc = btnCol or C.ACC
-    local hc = Color3.fromRGB(
-        math.min(255, bc.R*255 + 30),
-        math.min(255, bc.G*255 + 30),
-        math.min(255, bc.B*255 + 30)
+    local bc  = btnCol or C.ACC
+    local hc  = Color3.fromRGB(
+        math.min(255, bc.R * 255 + 30),
+        math.min(255, bc.G * 255 + 30),
+        math.min(255, bc.B * 255 + 30)
     )
     local btn = B(Row, btnTxt, UDim2.new(0, 88, 0, 26), UDim2.new(1, -96, 0.5, -13), bc)
     btn.TextSize = 11; hov(btn, bc, hc)
     btn.MouseButton1Click:Connect(function()
         local ok2, res = pcall(action)
-        -- result is surfaced by the tab's output
         return ok2, res
     end)
     return Row, btn
