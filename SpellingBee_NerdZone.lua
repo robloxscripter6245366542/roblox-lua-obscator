@@ -29,7 +29,7 @@ end)
 
 -- ── Load Rayfield ──────────────────────────────────────────────────────
 local ok, result = pcall(function()
-    return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusXT/Rayfield/main/lib/main.lua"))()
 end)
 if not ok or not result then
     pcall(function()
