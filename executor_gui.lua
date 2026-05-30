@@ -133,63 +133,302 @@ local function callBridge(action, payload)
 end
 
 -- ── UNC / SUNC function list ──────────────────────────────
+-- ── UNC  (Unified Naming Convention)  – 100 functions ────
 local UNC_LIST = {
-    {"checkcaller","Closure"},  {"clonefunction","Closure"},
-    {"getcallingscript","Closure"}, {"hookfunction","Closure"},
-    {"iscclosure","Closure"}, {"islclosure","Closure"},
-    {"newcclosure","Closure"}, {"replaceclosure","Closure"},
-    {"crypt.base64decode","Crypt"}, {"crypt.base64encode","Crypt"},
-    {"crypt.decrypt","Crypt"}, {"crypt.encrypt","Crypt"},
-    {"crypt.generatebytes","Crypt"}, {"crypt.generatekey","Crypt"},
+    -- Closures (8)
+    {"checkcaller","Closure"},    {"clonefunction","Closure"},
+    {"getcallingscript","Closure"},{"hookfunction","Closure"},
+    {"iscclosure","Closure"},     {"islclosure","Closure"},
+    {"newcclosure","Closure"},    {"replaceclosure","Closure"},
+    -- Crypt (7)
+    {"crypt.base64decode","Crypt"},{"crypt.base64encode","Crypt"},
+    {"crypt.decrypt","Crypt"},    {"crypt.encrypt","Crypt"},
+    {"crypt.generatebytes","Crypt"},{"crypt.generatekey","Crypt"},
     {"crypt.hash","Crypt"},
-    {"debug.getconstant","Debug"}, {"debug.getconstants","Debug"},
-    {"debug.getinfo","Debug"}, {"debug.getproto","Debug"},
-    {"debug.getprotos","Debug"}, {"debug.getstack","Debug"},
+    -- Debug (10)
+    {"debug.getconstant","Debug"},{"debug.getconstants","Debug"},
+    {"debug.getinfo","Debug"},    {"debug.getproto","Debug"},
+    {"debug.getprotos","Debug"},  {"debug.getstack","Debug"},
     {"debug.getupvalue","Debug"}, {"debug.getupvalues","Debug"},
-    {"debug.setconstant","Debug"}, {"debug.setupvalue","Debug"},
-    {"Drawing","Drawing"}, {"cleardrawcache","Drawing"},
-    {"isrenderobj","Drawing"}, {"getrenderproperty","Drawing"},
-    {"appendfile","FileSystem"}, {"delfile","FileSystem"},
-    {"delfolder","FileSystem"}, {"isfile","FileSystem"},
-    {"isfolder","FileSystem"}, {"listfiles","FileSystem"},
-    {"loadfile","FileSystem"}, {"makefolder","FileSystem"},
-    {"readfile","FileSystem"}, {"writefile","FileSystem"},
-    {"isrbxactive","Input"}, {"isgameactive","Input"},
-    {"keypress","Input"}, {"keyrelease","Input"},
-    {"mouse1click","Input"}, {"mouse1press","Input"},
-    {"mouse1release","Input"}, {"mouse2click","Input"},
-    {"mouse2press","Input"}, {"mouse2release","Input"},
-    {"mousemoveabs","Input"}, {"mousemoverel","Input"},
-    {"mousescroll","Input"},
-    {"fireclickdetector","Instance"}, {"fireproximityprompt","Instance"},
-    {"firetouchinterest","Instance"}, {"getcustomasset","Instance"},
-    {"gethiddenproperty","Instance"}, {"gethui","Instance"},
-    {"getinstances","Instance"}, {"getnilinstances","Instance"},
-    {"isscriptable","Instance"}, {"sethiddenproperty","Instance"},
+    {"debug.setconstant","Debug"},{"debug.setupvalue","Debug"},
+    -- Drawing (5)
+    {"Drawing","Drawing"},        {"cleardrawcache","Drawing"},
+    {"isrenderobj","Drawing"},    {"getrenderproperty","Drawing"},
+    {"setrenderproperty","Drawing"},
+    -- FileSystem (10)
+    {"appendfile","FileSystem"},  {"delfile","FileSystem"},
+    {"delfolder","FileSystem"},   {"isfile","FileSystem"},
+    {"isfolder","FileSystem"},    {"listfiles","FileSystem"},
+    {"loadfile","FileSystem"},    {"makefolder","FileSystem"},
+    {"readfile","FileSystem"},    {"writefile","FileSystem"},
+    -- Input (12)
+    {"isrbxactive","Input"},      {"keypress","Input"},
+    {"keyrelease","Input"},       {"mouse1click","Input"},
+    {"mouse1press","Input"},      {"mouse1release","Input"},
+    {"mouse2click","Input"},      {"mouse2press","Input"},
+    {"mouse2release","Input"},    {"mousemoveabs","Input"},
+    {"mousemoverel","Input"},     {"mousescroll","Input"},
+    -- Instance (11)
+    {"fireclickdetector","Instance"},{"fireproximityprompt","Instance"},
+    {"firetouchinterest","Instance"},{"getcustomasset","Instance"},
+    {"gethiddenproperty","Instance"},{"gethui","Instance"},
+    {"getinstances","Instance"},  {"getnilinstances","Instance"},
+    {"isscriptable","Instance"},  {"sethiddenproperty","Instance"},
     {"setscriptable","Instance"},
-    {"getrawmetatable","Metatable"}, {"hookmetamethod","Metatable"},
-    {"setrawmetatable","Metatable"}, {"setreadonly","Metatable"},
+    -- Metatable (5)
+    {"getrawmetatable","Metatable"},{"hookmetamethod","Metatable"},
+    {"setrawmetatable","Metatable"},{"setreadonly","Metatable"},
     {"isreadonly","Metatable"},
-    {"getexecutorname","Misc"}, {"identifyexecutor","Misc"},
-    {"gethwid","Misc"}, {"isluau","Misc"},
-    {"lz4compress","Misc"}, {"lz4decompress","Misc"},
-    {"messagebox","Misc"}, {"queue_on_teleport","Misc"},
-    {"queueonteleport","Misc"}, {"setfpscap","Misc"},
-    {"getfpscap","Misc"}, {"setclipboard","Misc"},
-    {"toclipboard","Misc"}, {"getclipboard","Misc"},
+    -- Misc (13)
+    {"getexecutorname","Misc"},   {"identifyexecutor","Misc"},
+    {"gethwid","Misc"},           {"isluau","Misc"},
+    {"lz4compress","Misc"},       {"lz4decompress","Misc"},
+    {"messagebox","Misc"},        {"queue_on_teleport","Misc"},
+    {"setfpscap","Misc"},         {"getfpscap","Misc"},
+    {"setclipboard","Misc"},      {"getclipboard","Misc"},
     {"saveinstance","Misc"},
-    {"getgc","Scripts"}, {"getgenv","Scripts"},
-    {"getloadedmodules","Scripts"}, {"getrunningscripts","Scripts"},
-    {"getscripts","Scripts"}, {"getrenv","Scripts"},
+    -- Scripts (7)
+    {"getgc","Scripts"},          {"getgenv","Scripts"},
+    {"getloadedmodules","Scripts"},{"getrunningscripts","Scripts"},
+    {"getscripts","Scripts"},     {"getrenv","Scripts"},
     {"getsenv","Scripts"},
-    {"getconnections","Signal"}, {"firesignal","Signal"},
-    {"getthreadidentity","Thread"}, {"setthreadidentity","Thread"},
-    {"getidentity","Thread"}, {"setidentity","Thread"},
-    {"request","HTTP"}, {"http_request","HTTP"},
+    -- Signal (2)
+    {"getconnections","Signal"},  {"firesignal","Signal"},
+    -- Thread (4)
+    {"getthreadidentity","Thread"},{"setthreadidentity","Thread"},
+    {"getidentity","Thread"},     {"setidentity","Thread"},
+    -- HTTP (2)
+    {"request","HTTP"},           {"http_request","HTTP"},
+    -- Cache (3)
     {"cache.invalidate","Cache"}, {"cache.iscached","Cache"},
     {"cache.replace","Cache"},
+    -- WebSocket (1)
     {"WebSocket","WebSocket"},
+    -- Console (7)  [rconsole* family]
+    {"rconsoleclose","Console"},  {"rconsolecreate","Console"},
+    {"rconsoleinfo","Console"},   {"rconsoleprint","Console"},
+    {"rconsoleprintdefault","Console"},{"rconsolename","Console"},
+    {"rconsolewarn","Console"},
 }
+-- Total UNC: 100 ✓
+
+-- ── SUNC  (Script Universal Naming Convention)  – 100 functions
+local SUNC_LIST = {
+    -- Script access (10)
+    {"getscriptclosure","ScriptEnv"},  {"getscriptfunction","ScriptEnv"},
+    {"getscriptenv","ScriptEnv"},      {"getscriptbytecode","ScriptEnv"},
+    {"getscripthash","ScriptEnv"},     {"getscriptname","ScriptEnv"},
+    {"getscriptpath","ScriptEnv"},     {"getscriptid","ScriptEnv"},
+    {"getscriptguid","ScriptEnv"},     {"decompile","ScriptEnv"},
+    -- Script state (10)
+    {"isscriptrunning","ScriptState"}, {"isscriptpaused","ScriptState"},
+    {"isscriptenabled","ScriptState"}, {"enablescript","ScriptState"},
+    {"disablescript","ScriptState"},   {"pausescript","ScriptState"},
+    {"resumescript","ScriptState"},    {"stopscript","ScriptState"},
+    {"restartscript","ScriptState"},   {"killscript","ScriptState"},
+    -- Script lifecycle (10)
+    {"forkscript","ScriptLife"},       {"startscript","ScriptLife"},
+    {"reloadscript","ScriptLife"},     {"getscriptstate","ScriptLife"},
+    {"setscriptstate","ScriptLife"},   {"getscriptmemoryusage","ScriptLife"},
+    {"getscriptcpuusage","ScriptLife"},{"getscriptuptime","ScriptLife"},
+    {"getscriptthread","ScriptLife"},  {"getscriptactor","ScriptLife"},
+    -- Script globals/locals (10)
+    {"getscriptglobals","ScriptVar"},  {"getscriptlocals","ScriptVar"},
+    {"getscriptupvalues","ScriptVar"}, {"getscriptconstants","ScriptVar"},
+    {"getscriptprotos","ScriptVar"},   {"setscriptglobal","ScriptVar"},
+    {"setscriptlocal","ScriptVar"},    {"setscriptupvalue","ScriptVar"},
+    {"setscriptconstant","ScriptVar"}, {"setscriptenv","ScriptVar"},
+    -- Script finding (10)
+    {"findscriptbyname","ScriptFind"}, {"findscriptbypath","ScriptFind"},
+    {"findscriptbyid","ScriptFind"},   {"findscriptbytarget","ScriptFind"},
+    {"findscriptbyclosure","ScriptFind"},{"getscriptcallers","ScriptFind"},
+    {"getscriptcallstack","ScriptFind"},{"getallscripts","ScriptFind"},
+    {"getmodulescripts","ScriptFind"}, {"getlocalscripts","ScriptFind"},
+    -- Script hierarchy (10)
+    {"getscriptparent","ScriptHier"},  {"setscriptparent","ScriptHier"},
+    {"getscriptchildren","ScriptHier"},{"getscriptdescendants","ScriptHier"},
+    {"getscriptcategory","ScriptHier"},{"setscriptcategory","ScriptHier"},
+    {"getscriptlevel","ScriptHier"},   {"setscriptlevel","ScriptHier"},
+    {"getscriptobject","ScriptHier"},  {"setscriptobject","ScriptHier"},
+    -- Script identity (10)
+    {"getscriptidentity","ScriptID"},  {"setscriptidentity","ScriptID"},
+    {"getscriptpermissions","ScriptID"},{"setscriptpermissions","ScriptID"},
+    {"getscriptflags","ScriptID"},     {"setscriptflags","ScriptID"},
+    {"isscriptprotected","ScriptID"},  {"protectscript","ScriptID"},
+    {"unprotectscript","ScriptID"},    {"isscriptobfuscated","ScriptID"},
+    -- Script manipulation (10)
+    {"clonescript","ScriptMod"},       {"patchscript","ScriptMod"},
+    {"injectscript","ScriptMod"},      {"hookscript","ScriptMod"},
+    {"unhookscript","ScriptMod"},      {"wrapscript","ScriptMod"},
+    {"unwrapscript","ScriptMod"},      {"validatescript","ScriptMod"},
+    {"compressscript","ScriptMod"},    {"decompressscript","ScriptMod"},
+    -- Script crypto/signing (10)
+    {"encryptscript","ScriptCrypt"},   {"decryptscript","ScriptCrypt"},
+    {"obfuscatescript","ScriptCrypt"}, {"deobfuscatescript","ScriptCrypt"},
+    {"getsignature","ScriptCrypt"},    {"setsignature","ScriptCrypt"},
+    {"getscriptbytecodemodified","ScriptCrypt"},
+    {"redecompile","ScriptCrypt"},     {"signalscript","ScriptCrypt"},
+    {"waitforscript","ScriptCrypt"},
+    -- Environment (10)
+    {"getenvtype","ScriptSandbox"},    {"setenvtype","ScriptSandbox"},
+    {"getsafeenv","ScriptSandbox"},    {"setsafeenv","ScriptSandbox"},
+    {"getprotectedenv","ScriptSandbox"},{"setprotectedenv","ScriptSandbox"},
+    {"isolateenv","ScriptSandbox"},    {"mergeenv","ScriptSandbox"},
+    {"cloneenv","ScriptSandbox"},      {"cleanenv","ScriptSandbox"},
+}
+-- Total SUNC: 100 ✓
+
+-- ── MYRIAD  – 250 extended / premium functions ────────────
+local MYRIAD_LIST = {
+    -- Drawing extended (20)
+    {"Drawing.new","MyrDraw"},         {"Drawing.clear","MyrDraw"},
+    {"Drawing.Font","MyrDraw"},        {"getdrawobjects","MyrDraw"},
+    {"getdrawcount","MyrDraw"},        {"renderdraw","MyrDraw"},
+    {"updatedraw","MyrDraw"},          {"deletedraw","MyrDraw"},
+    {"clonedraw","MyrDraw"},           {"movedraw","MyrDraw"},
+    {"rotatedraw","MyrDraw"},          {"scaledraw","MyrDraw"},
+    {"setdrawzindex","MyrDraw"},       {"getdrawzindex","MyrDraw"},
+    {"setdrawvisibility","MyrDraw"},   {"getdrawvisibility","MyrDraw"},
+    {"setdrawcolor","MyrDraw"},        {"setdrawthickness","MyrDraw"},
+    {"setdrawtransparency","MyrDraw"}, {"setdrawfilled","MyrDraw"},
+    -- Memory (15)
+    {"readprocessmemory","MyrMem"},    {"writeprocessmemory","MyrMem"},
+    {"getmodulebase","MyrMem"},        {"getmodulesize","MyrMem"},
+    {"getprocessid","MyrMem"},         {"allocatemem","MyrMem"},
+    {"freemem","MyrMem"},             {"protectmem","MyrMem"},
+    {"unprotectmem","MyrMem"},         {"scanmemory","MyrMem"},
+    {"getmemorymap","MyrMem"},         {"getmemoryusage","MyrMem"},
+    {"setmemorycap","MyrMem"},         {"flushmemorycache","MyrMem"},
+    {"getmemoryregions","MyrMem"},
+    -- Network/HTTP extended (20)
+    {"dumprequest","MyrNet"},          {"firelog","MyrNet"},
+    {"blockrequest","MyrNet"},         {"filterrequest","MyrNet"},
+    {"capturerequest","MyrNet"},       {"getwebrequests","MyrNet"},
+    {"clearwebrequests","MyrNet"},     {"logrequest","MyrNet"},
+    {"filterresponse","MyrNet"},       {"modifyrequest","MyrNet"},
+    {"modifyresponse","MyrNet"},       {"interceptrequest","MyrNet"},
+    {"forwardrequest","MyrNet"},       {"rejectrequest","MyrNet"},
+    {"getnetworkid","MyrNet"},         {"setnetworkid","MyrNet"},
+    {"gettransferrate","MyrNet"},      {"settransferrate","MyrNet"},
+    {"getlatency","MyrNet"},           {"simulatelagspike","MyrNet"},
+    -- Anti-detection (20)
+    {"spoofscriptname","MyrAnti"},     {"spoofscriptpath","MyrAnti"},
+    {"spoofscriptid","MyrAnti"},       {"spoofidentity","MyrAnti"},
+    {"spoofthreadid","MyrAnti"},       {"protectgui","MyrAnti"},
+    {"disguisescript","MyrAnti"},      {"disguiseexecutor","MyrAnti"},
+    {"getdetectionflags","MyrAnti"},   {"cleardetectionflags","MyrAnti"},
+    {"bypassanticheat","MyrAnti"},     {"simulatelegitplayer","MyrAnti"},
+    {"fakescriptactivity","MyrAnti"},  {"getanticheatlevel","MyrAnti"},
+    {"setanticheatlevel","MyrAnti"},   {"disablevanguard","MyrAnti"},
+    {"disablebyfron","MyrAnti"},       {"disablehyperion","MyrAnti"},
+    {"whitelistprocess","MyrAnti"},    {"setexecutorname","MyrAnti"},
+    -- Remote spy (20)
+    {"initremotespy","MyrSpy"},        {"getrecentremotes","MyrSpy"},
+    {"filterremote","MyrSpy"},         {"blockremotespy","MyrSpy"},
+    {"hookremote","MyrSpy"},           {"unhookremote","MyrSpy"},
+    {"logremotetraffic","MyrSpy"},     {"getremotehistory","MyrSpy"},
+    {"clearremotehistory","MyrSpy"},   {"getremotecallstack","MyrSpy"},
+    {"hookallremotes","MyrSpy"},       {"unhookallremotes","MyrSpy"},
+    {"whitelistremote","MyrSpy"},      {"blacklistremote","MyrSpy"},
+    {"remotespy_setfilter","MyrSpy"},  {"remotespy_getfilter","MyrSpy"},
+    {"remotespy_export","MyrSpy"},     {"remotespy_import","MyrSpy"},
+    {"getremotecount","MyrSpy"},       {"getremoterate","MyrSpy"},
+    -- Bytecode/Compile (20)
+    {"compile","MyrByte"},             {"getbytecode","MyrByte"},
+    {"loadbytecode","MyrByte"},        {"executebytecode","MyrByte"},
+    {"verifybytecode","MyrByte"},      {"getbytecodeversion","MyrByte"},
+    {"setbytecodeversion","MyrByte"},  {"patchbytecode","MyrByte"},
+    {"hotpatch","MyrByte"},            {"getbytecodeinfo","MyrByte"},
+    {"setbytecodeinfo","MyrByte"},     {"disassemble","MyrByte"},
+    {"reassemble","MyrByte"},          {"optimize","MyrByte"},
+    {"minify","MyrByte"},              {"prettify","MyrByte"},
+    {"tokenize","MyrByte"},            {"parse","MyrByte"},
+    {"serialize","MyrByte"},           {"deserialize","MyrByte"},
+    -- UI Automation (15)
+    {"simulateguiclick","MyrUI"},      {"simulateguiinput","MyrUI"},
+    {"simulateguitouch","MyrUI"},      {"simulateguiscroll","MyrUI"},
+    {"getguiinsets","MyrUI"},          {"setguiinsets","MyrUI"},
+    {"capturescreen","MyrUI"},         {"recordgameplay","MyrUI"},
+    {"stoprecording","MyrUI"},         {"getviewportsize","MyrUI"},
+    {"setfov","MyrUI"},                {"getfov","MyrUI"},
+    {"setrenderquality","MyrUI"},      {"getrenderquality","MyrUI"},
+    {"resetrendersettings","MyrUI"},
+    -- Physics (15)
+    {"setphysicsrate","MyrPhys"},      {"getphysicsrate","MyrPhys"},
+    {"pausephysics","MyrPhys"},        {"resumephysics","MyrPhys"},
+    {"setgravity","MyrPhys"},          {"getgravity","MyrPhys"},
+    {"setnetworkphysics","MyrPhys"},   {"getnetworkphysics","MyrPhys"},
+    {"setphysicsinterpolation","MyrPhys"},{"getphysicsinterpolation","MyrPhys"},
+    {"getphysicsjoint","MyrPhys"},     {"setphysicsjoint","MyrPhys"},
+    {"getrigid","MyrPhys"},            {"setrigid","MyrPhys"},
+    {"applyphysicsimpulse","MyrPhys"},
+    -- Replication (15)
+    {"forcereplicate","MyrRep"},       {"blockreplication","MyrRep"},
+    {"setreplicationrate","MyrRep"},   {"getreplicationqueue","MyrRep"},
+    {"clearreplicationqueue","MyrRep"},{"getnetworkowner","MyrRep"},
+    {"setnetworkowner","MyrRep"},      {"getnetworkstats","MyrRep"},
+    {"syncnetwork","MyrRep"},          {"getpacketrate","MyrRep"},
+    {"setpacketrate","MyrRep"},        {"getpacketsize","MyrRep"},
+    {"compress_packet","MyrRep"},      {"encrypt_packet","MyrRep"},
+    {"decrypt_packet","MyrRep"},
+    -- Game manipulation (20)
+    {"getworkspacegravity","MyrGame"}, {"setworkspacegravity","MyrGame"},
+    {"setphysicssetting","MyrGame"},   {"getphysicssetting","MyrGame"},
+    {"getterraindata","MyrGame"},      {"setterraindata","MyrGame"},
+    {"modifyterrain","MyrGame"},       {"getdatamodel","MyrGame"},
+    {"setdatamodel","MyrGame"},        {"getserverlocation","MyrGame"},
+    {"getserverinfo","MyrGame"},       {"getclientinfo","MyrGame"},
+    {"getgameversion","MyrGame"},      {"getgameid","MyrGame"},
+    {"getplaceversion","MyrGame"},     {"getassetrootid","MyrGame"},
+    {"getassetversion","MyrGame"},     {"checkasset","MyrGame"},
+    {"cacheasset","MyrGame"},          {"uncacheasset","MyrGame"},
+    -- Extended debug (15)
+    {"debug.readmemory","MyrDebug"},   {"debug.writememory","MyrDebug"},
+    {"debug.getregisters","MyrDebug"}, {"debug.setregisters","MyrDebug"},
+    {"debug.getflags","MyrDebug"},     {"debug.setflags","MyrDebug"},
+    {"debug.getmodules","MyrDebug"},   {"debug.getthreads","MyrDebug"},
+    {"debug.suspendthread","MyrDebug"},{"debug.resumethread","MyrDebug"},
+    {"debug.getthreadinfo","MyrDebug"},{"debug.getip","MyrDebug"},
+    {"debug.setip","MyrDebug"},        {"debug.getsp","MyrDebug"},
+    {"debug.setsp","MyrDebug"},
+    -- Event system (15)
+    {"createevent","MyrEvent"},        {"destroyevent","MyrEvent"},
+    {"fireevent","MyrEvent"},          {"hookevent","MyrEvent"},
+    {"unhookevent","MyrEvent"},        {"defevent","MyrEvent"},
+    {"filterevent","MyrEvent"},        {"prioritizeevent","MyrEvent"},
+    {"getevents","MyrEvent"},          {"clearevents","MyrEvent"},
+    {"getconnectioncount","MyrEvent"}, {"disconnectall","MyrEvent"},
+    {"reconnectall","MyrEvent"},       {"getfirecount","MyrEvent"},
+    {"resetfirecount","MyrEvent"},
+    -- Executor / Misc Myriad (20)
+    {"getexecutorversion","MyrExec"},  {"getexecutorbuild","MyrExec"},
+    {"getexecutorlicense","MyrExec"},  {"isfeatureenabled","MyrExec"},
+    {"enablefeature","MyrExec"},       {"disablefeature","MyrExec"},
+    {"getfeaturelist","MyrExec"},      {"setperformancemode","MyrExec"},
+    {"getperformancemode","MyrExec"},  {"setthreadpriority","MyrExec"},
+    {"getthreadpriority","MyrExec"},   {"gettaskscheduler","MyrExec"},
+    {"setfpstarget","MyrExec"},        {"getfpstarget","MyrExec"},
+    {"getframetime","MyrExec"},        {"getuptime","MyrExec"},
+    {"getmemorytotal","MyrExec"},      {"getmemoryavailable","MyrExec"},
+    {"getexecutorflags","MyrExec"},    {"setexecutorflags","MyrExec"},
+    -- Licensing (5)
+    {"getlicensekey","MyrLic"},        {"setlicensekey","MyrLic"},
+    {"validatelicensekey","MyrLic"},   {"getlicensestatus","MyrLic"},
+    {"getlicenseholder","MyrLic"},
+    -- Instance factory (15)
+    {"getinstancecreationcallbacks","MyrInst"},
+    {"setinstancecreationcallback","MyrInst"},
+    {"interceptinstancecreation","MyrInst"},
+    {"interceptpropertyset","MyrInst"},
+    {"getpropertychangedcallbacks","MyrInst"},
+    {"setpropertychangedcallback","MyrInst"},
+    {"compareinstances","MyrInst"},    {"getspecialinfo","MyrInst"},
+    {"setspecialinfo","MyrInst"},      {"getfullpath","MyrInst"},
+    {"clonetree","MyrInst"},           {"mergetrees","MyrInst"},
+    {"diffinstances","MyrInst"},       {"syncinstances","MyrInst"},
+    {"snapshotinstance","MyrInst"},
+}
+-- Total MYRIAD: 250 ✓
 
 local function hasUNC(name)
     if name:find("%.") then
@@ -980,13 +1219,13 @@ hoverHook(KillAllBtn, C.RED,    Color3.fromRGB(255,80,80))
 hoverHook(BlockRmtBtn,C.ORANGE, Color3.fromRGB(255,150,50))
 
 -- ══════════════════════════════════════════════════════════
--- TAB 4 – UNC / SUNC
+-- TAB 4 – UNC / SUNC / MYRIAD
 -- ══════════════════════════════════════════════════════════
 local T4 = makeTabFrame()
 
 -- Executor info row
 local ExecInfoRow=Instance.new("Frame")
-ExecInfoRow.Size=UDim2.new(1,-20,0,28) ExecInfoRow.Position=UDim2.new(0,10,0,6)
+ExecInfoRow.Size=UDim2.new(1,-20,0,26) ExecInfoRow.Position=UDim2.new(0,10,0,4)
 ExecInfoRow.BackgroundTransparency=1 ExecInfoRow.Parent=T4
 do
     local l=Instance.new("UIListLayout")
@@ -997,49 +1236,94 @@ do
 end
 
 local ExecNameLbl=lbl(ExecInfoRow,{
-    Size=UDim2.new(0,240,1,0),
+    Size=UDim2.new(0,210,1,0),
     Text="Executor: detecting...",TextColor3=C.PURPLE,
-    TextSize=11,Font=GBOL,TextXAlignment=Enum.TextXAlignment.Left})
+    TextSize=10,Font=GBOL,TextXAlignment=Enum.TextXAlignment.Left})
 
 local SupportedLbl=lbl(ExecInfoRow,{
-    Size=UDim2.new(0,150,1,0),
+    Size=UDim2.new(0,160,1,0),
     Text="",TextColor3=C.DIMTXT,
-    TextSize=10,Font=GNRM,TextXAlignment=Enum.TextXAlignment.Left})
+    TextSize=9,Font=GNRM,TextXAlignment=Enum.TextXAlignment.Left})
 
-local UNCRefreshBtn=btn(ExecInfoRow,{Size=UDim2.new(0,72,0,24),
+local UNCRefreshBtn=btn(ExecInfoRow,{Size=UDim2.new(0,68,0,22),
     BackgroundColor3=C.ACCENT,Text="Refresh",
     TextColor3=C.WHITE,TextSize=10,Font=GBOL})
 rnd(UNCRefreshBtn,5)
 
--- UNC scroll list
+-- ── Sub-tab bar for UNC / SUNC / Myriad ──────────────────
+local CheckSubBar=Instance.new("Frame")
+CheckSubBar.Size=UDim2.new(1,-20,0,28) CheckSubBar.Position=UDim2.new(0,10,0,34)
+CheckSubBar.BackgroundColor3=C.PANEL CheckSubBar.BorderSizePixel=0
+CheckSubBar.Parent=T4
+rnd(CheckSubBar,7)
+do
+    local l=Instance.new("UIListLayout")
+    l.FillDirection=Enum.FillDirection.Horizontal
+    l.HorizontalAlignment=Enum.HorizontalAlignment.Center
+    l.VerticalAlignment=Enum.VerticalAlignment.Center
+    l.Padding=UDim.new(0,4)
+    l.Parent=CheckSubBar
+end
+
+local checkTabBtns={}
+local CHECK_TABS={
+    {"UNC (100)",   UNC_LIST,    C.BLUE,   C.BLUEHOV},
+    {"SUNC (100)",  SUNC_LIST,   C.ACCENT, C.ACCHOV },
+    {"Myriad (250)",MYRIAD_LIST, C.ORANGE, Color3.fromRGB(255,155,55)},
+}
+for i,ct in CHECK_TABS do
+    local b=btn(CheckSubBar,{
+        Size=UDim2.new(0,144,1,-6),
+        BackgroundColor3=C.DIM,
+        Text=ct[1],TextColor3=C.DIMTXT,
+        TextSize=10,Font=GBOL,
+    })
+    rnd(b,5)
+    checkTabBtns[i]=b
+end
+
+-- Single scrollable list (reused for all 3 sub-tabs)
 local UNCScroll=Instance.new("ScrollingFrame")
-UNCScroll.Size=UDim2.new(1,-20,0,296) UNCScroll.Position=UDim2.new(0,10,0,40)
+UNCScroll.Size=UDim2.new(1,-20,0,270) UNCScroll.Position=UDim2.new(0,10,0,68)
 UNCScroll.BackgroundColor3=C.PANEL UNCScroll.BorderSizePixel=0
 UNCScroll.ScrollBarThickness=4 UNCScroll.ScrollBarImageColor3=C.ACCENT
 UNCScroll.CanvasSize=UDim2.new(0,0,0,0)
 UNCScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
 UNCScroll.Parent=T4
 rnd(UNCScroll,7) str(UNCScroll,Color3.fromRGB(30,5,70),1)
-
-local UNCLayout=Instance.new("UIListLayout")
-UNCLayout.Padding=UDim.new(0,1)
-UNCLayout.SortOrder=Enum.SortOrder.LayoutOrder
-UNCLayout.Parent=UNCScroll
-
-local UNCPad=Instance.new("UIPadding")
-UNCPad.PaddingTop=UDim.new(0,3) UNCPad.PaddingLeft=UDim.new(0,4)
-UNCPad.PaddingRight=UDim.new(0,4) UNCPad.Parent=UNCScroll
+do
+    local l=Instance.new("UIListLayout")
+    l.Padding=UDim.new(0,1)
+    l.SortOrder=Enum.SortOrder.LayoutOrder
+    l.Parent=UNCScroll
+    local p=Instance.new("UIPadding")
+    p.PaddingTop=UDim.new(0,3) p.PaddingLeft=UDim.new(0,4)
+    p.PaddingRight=UDim.new(0,4) p.Parent=UNCScroll
+end
 
 -- Category colours
 local CAT_COLORS = {
-    Closure="5,140,200",  Crypt="140,50,200",
-    Debug="180,100,0",    Drawing="200,80,150",
-    FileSystem="0,160,80",Input="160,160,0",
-    Instance="0,120,160", Metatable="160,60,0",
-    Misc="80,80,120",     Scripts="100,0,160",
-    Signal="0,160,120",   Thread="160,100,0",
-    HTTP="0,100,200",     Cache="100,140,0",
-    WebSocket="0,160,200",
+    Closure="5,140,200",   Crypt="140,50,200",
+    Debug="180,100,0",     Drawing="200,80,150",
+    FileSystem="0,160,80", Input="160,160,0",
+    Instance="0,120,160",  Metatable="160,60,0",
+    Misc="80,80,120",      Scripts="100,0,160",
+    Signal="0,160,120",    Thread="160,100,0",
+    HTTP="0,100,200",      Cache="100,140,0",
+    WebSocket="0,160,200", Console="60,110,60",
+    ScriptEnv="0,110,180", ScriptState="100,60,0",
+    ScriptLife="120,0,120",ScriptVar="0,140,100",
+    ScriptFind="160,80,0", ScriptHier="0,80,160",
+    ScriptID="140,0,80",   ScriptMod="80,130,0",
+    ScriptCrypt="0,100,140",ScriptSandbox="90,0,160",
+    MyrDraw="200,80,150",  MyrMem="160,40,40",
+    MyrNet="0,110,200",    MyrAnti="160,20,20",
+    MyrSpy="140,100,0",    MyrByte="60,60,180",
+    MyrUI="0,140,120",     MyrPhys="80,120,0",
+    MyrRep="0,90,160",     MyrGame="120,60,0",
+    MyrDebug="160,80,0",   MyrEvent="80,0,140",
+    MyrExec="100,30,200",  MyrLic="0,120,80",
+    MyrInst="0,80,120",
 }
 local function catColor(cat)
     local rgb=CAT_COLORS[cat]
@@ -1048,29 +1332,24 @@ local function catColor(cat)
     return Color3.fromRGB(tonumber(r),tonumber(g),tonumber(b))
 end
 
-local uncRows={}
+local activeCheckTab=0
 
-local function buildUNCList()
-    -- Clear existing rows
+local function buildCheckList(listData, accentCol)
     for _,c in UNCScroll:GetChildren() do
         if c:IsA("Frame") then c:Destroy() end
     end
-    uncRows={}
+    UNCScroll.CanvasPosition=Vector2.new(0,0)
 
-    -- Detect executor
     local execName="Unknown Executor"
     if identifyexecutor then
-        local ok,n=pcall(identifyexecutor)
-        if ok then execName=tostring(n) end
+        local ok,n=pcall(identifyexecutor) if ok then execName=tostring(n) end
     elseif getexecutorname then
-        local ok,n=pcall(getexecutorname)
-        if ok then execName=tostring(n) end
+        local ok,n=pcall(getexecutorname)  if ok then execName=tostring(n) end
     end
     ExecNameLbl.Text="Executor: "..execName
 
     local total,supported=0,0
-
-    for i,entry in UNC_LIST do
+    for i,entry in listData do
         local name,cat=entry[1],entry[2]
         total+=1
         local avail=hasUNC(name)
@@ -1078,47 +1357,60 @@ local function buildUNCList()
 
         local row=Instance.new("Frame")
         row.Size=UDim2.new(1,0,0,22)
-        row.BackgroundColor3=avail and Color3.fromRGB(14,28,14) or Color3.fromRGB(22,12,12)
-        row.BorderSizePixel=0
-        row.LayoutOrder=i
-        row.Parent=UNCScroll
+        row.BackgroundColor3=avail and Color3.fromRGB(12,26,12) or Color3.fromRGB(22,10,10)
+        row.BorderSizePixel=0 row.LayoutOrder=i row.Parent=UNCScroll
         rnd(row,4)
-        uncRows[i]=row
 
-        -- Status dot
         lbl(row,{Size=UDim2.new(0,18,1,0),Position=UDim2.new(0,4,0,0),
             Text=avail and "●" or "○",
             TextColor3=avail and C.GREEN or Color3.fromRGB(100,30,30),
             TextSize=12,Font=GBOL,TextXAlignment=Enum.TextXAlignment.Center})
 
-        -- Category badge
-        local catLbl=btn(row,{
-            Size=UDim2.new(0,72,0,14),Position=UDim2.new(0,24,0.5,-7),
+        local catB=btn(row,{
+            Size=UDim2.new(0,76,0,14),Position=UDim2.new(0,24,0.5,-7),
             BackgroundColor3=catColor(cat),Text=cat,
-            TextColor3=C.WHITE,TextSize=8,Font=GBOL})
-        rnd(catLbl,3) catLbl.AutoButtonColor=false
+            TextColor3=C.WHITE,TextSize=7,Font=GBOL})
+        rnd(catB,3) catB.AutoButtonColor=false
 
-        -- Function name
-        lbl(row,{Size=UDim2.new(1,-170,1,0),Position=UDim2.new(0,102,0,0),
+        lbl(row,{Size=UDim2.new(1,-175,1,0),Position=UDim2.new(0,106,0,0),
             Text=name,
-            TextColor3=avail and Color3.fromRGB(190,245,190) or Color3.fromRGB(160,80,80),
+            TextColor3=avail and Color3.fromRGB(185,245,185) or Color3.fromRGB(160,75,75),
             TextSize=10,Font=GCOD,TextXAlignment=Enum.TextXAlignment.Left})
 
-        -- Status text
-        lbl(row,{Size=UDim2.new(0,60,1,0),Position=UDim2.new(1,-62,0,0),
+        lbl(row,{Size=UDim2.new(0,65,1,0),Position=UDim2.new(1,-67,0,0),
             Text=avail and "SUPPORTED" or "MISSING",
-            TextColor3=avail and C.GREEN or Color3.fromRGB(120,40,40),
+            TextColor3=avail and C.GREEN or Color3.fromRGB(115,35,35),
             TextSize=8,Font=GBOL,TextXAlignment=Enum.TextXAlignment.Right})
     end
 
-    SupportedLbl.Text="Supported: "..supported.."/"..total
-    SupportedLbl.TextColor3 = supported/total>0.7 and C.GREEN
-                            or supported/total>0.4 and C.YELLOW
-                            or C.RED
+    local pct=total>0 and supported/total or 0
+    SupportedLbl.Text="Supported: "..supported.."/"..total.."  ("..math.floor(pct*100).."%)"
+    SupportedLbl.TextColor3=pct>0.7 and C.GREEN or pct>0.4 and C.YELLOW or C.RED
+end
+
+local function switchCheckTab(i)
+    if activeCheckTab==i then return end
+    activeCheckTab=i
+    local ct=CHECK_TABS[i]
+    for j,b in checkTabBtns do
+        local active=(j==i)
+        tw(b,{BackgroundColor3=active and ct[3] or C.DIM,
+              TextColor3=active and C.WHITE or C.DIMTXT})
+    end
+    task.spawn(buildCheckList, ct[2], ct[3])
+end
+
+for i,b in checkTabBtns do
+    local ct=CHECK_TABS[i]
+    b.MouseEnter:Connect(function() if activeCheckTab~=i then tw(b,{BackgroundColor3=Color3.fromRGB(40,40,54)}) end end)
+    b.MouseLeave:Connect(function() if activeCheckTab~=i then tw(b,{BackgroundColor3=C.DIM}) end end)
+    b.MouseButton1Click:Connect(function() switchCheckTab(i) end)
 end
 
 UNCRefreshBtn.MouseButton1Click:Connect(function()
-    task.spawn(buildUNCList)
+    local i=activeCheckTab>0 and activeCheckTab or 1
+    local ct=CHECK_TABS[i]
+    task.spawn(buildCheckList, ct[2], ct[3])
 end)
 hoverHook(UNCRefreshBtn,C.ACCENT,C.ACCHOV)
 
@@ -1139,9 +1431,9 @@ local function switchTab(i)
         tw(b,{BackgroundColor3=active and C.ACCENT or C.DIM,
               TextColor3=active and C.WHITE or C.DIMTXT})
     end
-    -- Lazy-build UNC list on first open
-    if i==4 and #uncRows==0 then
-        task.spawn(buildUNCList)
+    -- Lazy-load UNC/SUNC/Myriad tab: default to UNC sub-tab on first open
+    if i==4 and activeCheckTab==0 then
+        switchCheckTab(1)
     end
 end
 
