@@ -117,7 +117,7 @@ e("")
 
 -- Short aliases (all single-char names)
 e("local _c=string.char;local _fc=string.find;local _sb=string.sub")
-e("local _tc=table.concat;local _mf=math.floor;local _ld=load")
+e("local _tc=table.concat;local _mf=math.floor;local _ld=loadstring or load")
 e("")
 
 -- Key in 4 scattered parts — requires reassembling all 4 to decrypt
