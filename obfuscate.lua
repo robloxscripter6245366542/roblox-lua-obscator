@@ -177,11 +177,14 @@ e("    return _tc(_r)")
 e("end")
 e("")
 
--- Payload (base64 ciphertext split across many concat lines)
-e("local _P=''")
-for _, chunk in ipairs(payloadChunks) do
-    e("_P=_P..'" .. chunk .. "'")
+-- Payload assembled with table.concat (O(n) not O(n²) — important on mobile)
+e("local _T={")
+for i, chunk in ipairs(payloadChunks) do
+    local comma = i < #payloadChunks and "," or ""
+    e("'" .. chunk .. "'" .. comma)
 end
+e("}")
+e("local _P=_tc(_T)")
 e("")
 
 -- Decode → decrypt → compile → run
