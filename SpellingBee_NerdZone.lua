@@ -1,39 +1,187 @@
 -- ═══════════════════════════════════════════════════════════════════════
---  SPELLING BEE SCRIPT  |  by Nerd Zone
---  UI: Rayfield Library
---  Features: Auto-Bot, Speed Typer, Speed/Jump mods, Anti-AFK
+--  SPELLING BEE  —  NerdZone  |  Script by Nerd Zone Hub
+--  Game:  "Spelling Bee [🐰 SPRING]"  by NerdZone
+--  UI:    Rayfield Library  (sirius.menu/rayfield)
+--
+--  Features:
+--    • Auto-Bot  — reads the word, types it automatically
+--    • Typing Speed slider (instant → realistic slow)
+--    • Manual word override + one-click type
+--    • WalkSpeed / JumpPower sliders
+--    • Infinite Jump, Anti-AFK
 -- ═══════════════════════════════════════════════════════════════════════
 
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
 -- ── Services ──────────────────────────────────────────────────────────
-local Players    = game:GetService("Players")
-local UIS        = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
+local Players     = game:GetService("Players")
+local UIS         = game:GetService("UserInputService")
+local RunService  = game:GetService("RunService")
 local VirtualUser = game:GetService("VirtualUser")
-local TweenService = game:GetService("TweenService")
-local LP         = Players.LocalPlayer
-local PGui       = LP:WaitForChild("PlayerGui")
+local RS          = game:GetService("ReplicatedStorage")
+local LP          = Players.LocalPlayer
+local PGui        = LP:WaitForChild("PlayerGui")
 
 -- ── State ─────────────────────────────────────────────────────────────
-local botEnabled    = false
-local typingSpeed   = 0.05   -- seconds between each character (lower = faster)
-local currentWord   = ""
-local isTyping      = false
-local antiAFK       = false
-local infiniteJump  = false
-local walkSpeed     = 16
-local jumpPower     = 50
+local botEnabled  = false
+local typingDelay = 0.05   -- seconds between each character
+local currentWord = ""
+local isTyping    = false
+local antiAFK     = false
+local infJump     = false
+local walkSpd     = 16
+local jumpPwr     = 50
 
--- ── Rayfield Window ───────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════════════════
+--  GAME-SPECIFIC HELPERS  (NerdZone Spelling Bee)
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- Find the label that shows the word to spell.
+-- NerdZone Spelling Bee displays the target word in a ScreenGui label.
+local function findWordLabel()
+    -- Priority: check common NerdZone label names first
+    local priority = {"Word","CurrentWord","SpellWord","WordToSpell","TargetWord","Prompt","Question"}
+    for _, name in priority do
+        local obj = PGui:FindFirstChild(name, true)
+        if obj and obj:IsA("TextLabel") and obj.Text ~= "" and obj.Visible then
+            return obj
+        end
+    end
+    -- Fallback: scan every visible TextLabel for a plain dictionary word
+    local best, bestScore = nil, -1
+    for _, obj in PGui:GetDescendants() do
+        if obj:IsA("TextLabel") and obj.Visible and obj.Text ~= "" then
+            local t = obj.Text
+            -- Score: single word, all alpha chars, 3–30 chars, no numbers/symbols
+            if t:match("^%a+$") and #t >= 3 and #t <= 30 then
+                local score = #t
+                if score > bestScore then best = obj; bestScore = score end
+            end
+        end
+    end
+    return best
+end
+
+-- Find the TextBox the player types into.
+local function findInputBox()
+    -- Common NerdZone input names
+    local priority = {"Input","AnswerBox","TypeBox","SpellInput","TextInput","Answer","TypeHere"}
+    for _, name in priority do
+        local obj = PGui:FindFirstChild(name, true)
+        if obj and obj:IsA("TextBox") and obj.TextEditable and obj.Visible then
+            return obj
+        end
+    end
+    -- Fallback: first visible editable TextBox
+    for _, obj in PGui:GetDescendants() do
+        if obj:IsA("TextBox") and obj.TextEditable and obj.Visible then
+            return obj
+        end
+    end
+    return nil
+end
+
+-- Try to submit via a ReplicatedStorage remote (backup method).
+local function remoteSubmit(word)
+    for _, obj in RS:GetDescendants() do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            local n = obj.Name:lower()
+            if n:find("submit") or n:find("answer") or n:find("spell") or n:find("word") or n:find("type") then
+                pcall(function()
+                    if obj:IsA("RemoteEvent") then
+                        obj:FireServer(word)
+                    else
+                        obj:InvokeServer(word)
+                    end
+                end)
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- ── Core type function — fills the box one character at a time ─────────
+-- This matches NerdZone's real-time letter-tracking exactly the same way
+-- a human would type: focus the box, append each character, release.
+local function typeWord(box, word, delay)
+    if isTyping then return end
+    isTyping  = true
+    box.Text  = ""
+    box:CaptureFocus()
+    task.wait(0.05)
+    for i = 1, #word do
+        if not isTyping then break end
+        box.Text = word:sub(1, i)
+        task.wait(delay)
+    end
+    task.wait(0.05)
+    box:ReleaseFocus(true)   -- enterPressed = true  →  game treats it as submit
+    isTyping = false
+end
+
+-- ── Keypress-based fallback (if the game uses UIS instead of TextBox) ──
+-- Some Spelling Bee versions listen to raw keypresses; simulate each key.
+local CHAR_TO_KEY = {}
+do
+    local alpha = "abcdefghijklmnopqrstuvwxyz"
+    for i = 1, #alpha do
+        local ch  = alpha:sub(i, i)
+        local key = Enum.KeyCode[ch:upper()]
+        if key then CHAR_TO_KEY[ch] = key end
+    end
+end
+
+local function keypressType(word, delay)
+    if isTyping then return end
+    isTyping = true
+    for i = 1, #word do
+        if not isTyping then break end
+        local ch  = word:sub(i, i):lower()
+        local key = CHAR_TO_KEY[ch]
+        if key then
+            -- Try executor keypress first (Delta/Synapse/KRNL)
+            if type(keypress) == "function" then
+                pcall(keypress, key.Value)
+                task.wait(0.02)
+                pcall(keyrelease, key.Value)
+            end
+        end
+        task.wait(delay)
+    end
+    -- Press Enter to submit
+    if type(keypress) == "function" then
+        pcall(keypress, 13)   -- Return/Enter
+        task.wait(0.05)
+        pcall(keyrelease, 13)
+    end
+    isTyping = false
+end
+
+-- ── Master type function: tries TextBox → keypress → remote ──────────
+local function doType(word)
+    if word == "" then return end
+    local box = findInputBox()
+    if box then
+        task.spawn(function() typeWord(box, word, typingDelay) end)
+    elseif type(keypress) == "function" then
+        task.spawn(function() keypressType(word, typingDelay) end)
+    else
+        remoteSubmit(word)
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  RAYFIELD WINDOW
+-- ═══════════════════════════════════════════════════════════════════════
 local Window = Rayfield:CreateWindow({
-    Name             = "Spelling Bee  |  Nerd Zone",
-    Icon             = "pencil",
-    LoadingTitle     = "Nerd Zone",
-    LoadingSubtitle  = "Spelling Bee Script",
-    Theme            = "Default",
-    DisableRayfieldPrompts  = false,
-    DisableBuildWarnings    = true,
+    Name            = "Spelling Bee  |  NerdZone",
+    Icon            = "pencil",
+    LoadingTitle    = "NerdZone Hub",
+    LoadingSubtitle = "Spelling Bee Script",
+    Theme           = "Default",
+    DisableRayfieldPrompts = false,
+    DisableBuildWarnings   = true,
     ConfigurationSaving = {
         Enabled    = true,
         FolderName = "NerdZone",
@@ -44,237 +192,136 @@ local Window = Rayfield:CreateWindow({
 })
 
 -- ═══════════════════════════════════════════════════════════════════════
---  HELPER: Locate the active answer TextBox in the game
--- ═══════════════════════════════════════════════════════════════════════
-local function findAnswerBox()
-    -- Most Spelling Bee games put the input box inside PlayerGui
-    for _, obj in PGui:GetDescendants() do
-        if obj:IsA("TextBox") and obj.TextEditable and obj.Visible then
-            local n = obj.Name:lower()
-            if n:find("answer") or n:find("input") or n:find("spell")
-            or n:find("type")  or n:find("word")  or n:find("text") then
-                return obj
-            end
-        end
-    end
-    -- Fallback: return the first visible, editable TextBox found
-    for _, obj in PGui:GetDescendants() do
-        if obj:IsA("TextBox") and obj.TextEditable and obj.Visible then
-            return obj
-        end
-    end
-    -- Also check workspace GUIs (BillboardGuis etc.)
-    for _, obj in workspace:GetDescendants() do
-        if obj:IsA("TextBox") and obj.TextEditable and obj.Visible then
-            return obj
-        end
-    end
-    return nil
-end
-
--- ── Locate the label that shows the word to spell ─────────────────────
-local function findWordLabel()
-    local candidates = {}
-    for _, obj in PGui:GetDescendants() do
-        if obj:IsA("TextLabel") and obj.Visible and obj.Text ~= "" then
-            local n = obj.Name:lower()
-            local t = obj.Text:lower()
-            if n:find("word") or n:find("spell") or n:find("current")
-            or n:find("question") or n:find("prompt") then
-                table.insert(candidates, obj)
-            end
-        end
-    end
-    -- Return the one with the shortest, most word-like text
-    table.sort(candidates, function(a, b)
-        return #a.Text < #b.Text
-    end)
-    return candidates[1]
-end
-
--- ── Type a string into a TextBox, one char at a time ──────────────────
-local function typeWord(box, word, speed)
-    if isTyping then return end
-    isTyping = true
-    box.Text = ""
-    box:CaptureFocus()
-    for i = 1, #word do
-        if not isTyping then break end  -- cancel if bot toggled off mid-type
-        box.Text = word:sub(1, i)
-        task.wait(speed)
-    end
-    task.wait(0.05)
-    box:ReleaseFocus(true)   -- submit (fires FocusLost with enterPressed=true)
-    task.wait(0.1)
-    isTyping = false
-end
-
--- ── Submit via RemoteEvent as fallback ────────────────────────────────
-local function tryRemoteSubmit(word)
-    local RS = game:GetService("ReplicatedStorage")
-    for _, obj in RS:GetDescendants() do
-        if obj:IsA("RemoteEvent") then
-            local n = obj.Name:lower()
-            if n:find("answer") or n:find("submit") or n:find("spell") or n:find("word") then
-                pcall(function() obj:FireServer(word) end)
-                return true
-            end
-        end
-    end
-    return false
-end
-
--- ═══════════════════════════════════════════════════════════════════════
---  TABS
--- ═══════════════════════════════════════════════════════════════════════
-local TabBot    = Window:CreateTab("Bot",    "bot")
-local TabPlayer = Window:CreateTab("Player", "user")
-local TabMisc   = Window:CreateTab("Misc",   "settings")
-
--- ═══════════════════════════════════════════════════════════════════════
 --  BOT TAB
 -- ═══════════════════════════════════════════════════════════════════════
-TabBot:CreateSection("Auto Typer Bot")
+local BotTab    = Window:CreateTab("Bot",    "bot")
+local PlayerTab = Window:CreateTab("Player", "user")
+local MiscTab   = Window:CreateTab("Misc",   "settings")
 
--- Live word display
-local WordLabel = TabBot:CreateLabel("Current Word: —", "book-open", Color3.fromRGB(100, 200, 255), true)
+-- ── Bot Tab ───────────────────────────────────────────────────────────
+BotTab:CreateSection("Auto Typer")
 
--- Bot toggle
-TabBot:CreateToggle({
-    Name         = "Enable Bot  (auto-detects & types)",
+local WordLabel = BotTab:CreateLabel("Word: —", "book-open", Color3.fromRGB(100, 210, 255), true)
+
+BotTab:CreateToggle({
+    Name         = "Enable Auto-Bot",
     CurrentValue = false,
-    Flag         = "BotEnabled",
+    Flag         = "BotOn",
     Callback     = function(v)
         botEnabled = v
         if not v then isTyping = false end
     end,
 })
 
--- Typing speed slider  (0.00 = instant, 0.15 = realistic slow)
-TabBot:CreateSlider({
-    Name         = "Typing Speed  (lower = faster)",
-    Range        = {0, 15},
+-- Speed: slider goes 0–20; value / 100 = delay in seconds
+-- 0  → instant  (0.00 s per char)
+-- 5  → fast     (0.05 s per char)  ← default
+-- 20 → slow     (0.20 s per char, looks human)
+BotTab:CreateSlider({
+    Name         = "Typing Speed  (0 = instant, 20 = slow)",
+    Range        = {0, 20},
     Increment    = 1,
     Suffix       = "",
     CurrentValue = 5,
-    Flag         = "TypingSpeed",
+    Flag         = "TypingSpd",
     Callback     = function(v)
-        typingSpeed = v / 100   -- 5 → 0.05 s between chars
+        typingDelay = v / 100
     end,
 })
 
-TabBot:CreateSection("Manual Control")
+BotTab:CreateSection("Manual")
 
--- Manual word input
-TabBot:CreateInput({
-    Name                  = "Set Word Manually",
-    CurrentValue          = "",
-    PlaceholderText       = "Type the word here…",
+BotTab:CreateInput({
+    Name                     = "Set Word Manually",
+    CurrentValue             = "",
+    PlaceholderText          = "e.g.  mississippi",
     RemoveTextAfterFocusLost = false,
-    Flag                  = "ManualWord",
-    Callback              = function(text)
+    Flag                     = "ManualWord",
+    Callback                 = function(text)
+        text = text:lower():match("^%s*(.-)%s*$")
         if text ~= "" then
-            currentWord = text:lower():gsub("^%s*(.-)%s*$", "%1")
-            WordLabel:Set("Current Word: " .. currentWord)
+            currentWord = text
+            WordLabel:Set("Word: " .. currentWord)
         end
     end,
 })
 
--- Detect word button
-TabBot:CreateButton({
-    Name     = "Detect Word from Game",
+BotTab:CreateButton({
+    Name     = "Detect Word from Screen",
     Callback = function()
         local lbl = findWordLabel()
         if lbl then
-            local w = lbl.Text:lower():gsub("^%s*(.-)%s*$", "%1")
+            local w = lbl.Text:lower():match("^%s*(.-)%s*$")
             currentWord = w
-            WordLabel:Set("Current Word: " .. w)
-            Rayfield:Notify({ Title="Word Found", Content=w, Duration=3, Image="check" })
+            WordLabel:Set("Word: " .. w)
+            Rayfield:Notify({ Title = "Detected", Content = w, Duration = 3, Image = "check" })
         else
-            Rayfield:Notify({ Title="Not Found", Content="Could not find a word label.", Duration=3, Image="x" })
+            Rayfield:Notify({ Title = "Not Found", Content = "No word label found yet.", Duration = 3, Image = "x" })
         end
     end,
 })
 
--- Type now button
-TabBot:CreateButton({
+BotTab:CreateButton({
     Name     = "▶  Type Answer Now",
     Callback = function()
         if currentWord == "" then
-            Rayfield:Notify({ Title="No Word", Content="Set a word first.", Duration=3, Image="alert-circle" })
+            Rayfield:Notify({ Title = "No Word", Content = "Detect or set a word first.", Duration = 3, Image = "alert-circle" })
             return
         end
-        local box = findAnswerBox()
-        if box then
-            task.spawn(function() typeWord(box, currentWord, typingSpeed) end)
-            Rayfield:Notify({ Title="Typing…", Content=currentWord, Duration=2, Image="pencil" })
-        else
-            -- Try remote fallback
-            local ok = tryRemoteSubmit(currentWord)
-            Rayfield:Notify({
-                Title   = ok and "Submitted via Remote" or "No Input Found",
-                Content = ok and currentWord or "Could not find a TextBox or RemoteEvent.",
-                Duration = 3,
-                Image   = ok and "check" or "x",
-            })
-        end
+        Rayfield:Notify({ Title = "Typing…", Content = currentWord, Duration = 2, Image = "pencil" })
+        doType(currentWord)
     end,
 })
 
--- Stop typing button
-TabBot:CreateButton({
-    Name     = "■  Stop Typing",
+BotTab:CreateButton({
+    Name     = "■  Stop",
     Callback = function()
         isTyping = false
-        Rayfield:Notify({ Title="Stopped", Content="Typing cancelled.", Duration=2, Image="square" })
+        Rayfield:Notify({ Title = "Stopped", Content = "Typing cancelled.", Duration = 2, Image = "square" })
     end,
 })
 
 -- ═══════════════════════════════════════════════════════════════════════
 --  PLAYER TAB
 -- ═══════════════════════════════════════════════════════════════════════
-TabPlayer:CreateSection("Movement")
+PlayerTab:CreateSection("Movement")
 
-TabPlayer:CreateSlider({
+PlayerTab:CreateSlider({
     Name         = "Walk Speed",
     Range        = {1, 300},
     Increment    = 1,
     Suffix       = "",
     CurrentValue = 16,
-    Flag         = "WalkSpeed",
+    Flag         = "WalkSpd",
     Callback     = function(v)
-        walkSpeed = v
-        pcall(function()
-            LP.Character.Humanoid.WalkSpeed = v
-        end)
+        walkSpd = v
+        pcall(function() LP.Character.Humanoid.WalkSpeed = v end)
     end,
 })
 
-TabPlayer:CreateSlider({
+PlayerTab:CreateSlider({
     Name         = "Jump Power",
     Range        = {1, 300},
     Increment    = 1,
     Suffix       = "",
     CurrentValue = 50,
-    Flag         = "JumpPower",
+    Flag         = "JumpPwr",
     Callback     = function(v)
-        jumpPower = v
-        pcall(function()
-            LP.Character.Humanoid.JumpPower = v
-        end)
+        jumpPwr = v
+        pcall(function() LP.Character.Humanoid.JumpPower = v end)
     end,
 })
 
-TabPlayer:CreateToggle({
+PlayerTab:CreateToggle({
     Name         = "Infinite Jump",
     CurrentValue = false,
     Flag         = "InfJump",
-    Callback     = function(v) infiniteJump = v end,
+    Callback     = function(v) infJump = v end,
 })
 
-TabPlayer:CreateSection("Character")
+PlayerTab:CreateSection("Character")
 
-TabPlayer:CreateButton({
+PlayerTab:CreateButton({
     Name     = "Reset Character",
     Callback = function()
         pcall(function() LP.Character.Humanoid.Health = 0 end)
@@ -284,18 +331,19 @@ TabPlayer:CreateButton({
 -- ═══════════════════════════════════════════════════════════════════════
 --  MISC TAB
 -- ═══════════════════════════════════════════════════════════════════════
-TabMisc:CreateSection("Utilities")
+MiscTab:CreateSection("Utilities")
 
-TabMisc:CreateToggle({
+MiscTab:CreateToggle({
     Name         = "Anti-AFK",
     CurrentValue = false,
     Flag         = "AntiAFK",
     Callback     = function(v) antiAFK = v end,
 })
 
-TabMisc:CreateSection("Info")
-TabMisc:CreateLabel("Script by Nerd Zone", "zap",    Color3.fromRGB(100, 180, 255), true)
-TabMisc:CreateLabel("UI:  Rayfield Library", "layout", Color3.fromRGB(160, 160, 160), true)
+MiscTab:CreateSection("Info")
+MiscTab:CreateLabel("Script: NerdZone Hub",    "zap",    Color3.fromRGB(100, 180, 255), true)
+MiscTab:CreateLabel("UI: Rayfield Library",     "layout", Color3.fromRGB(160, 160, 160), true)
+MiscTab:CreateLabel("Game: Spelling Bee by NerdZone", "bee", Color3.fromRGB(255, 220, 60), true)
 
 -- ═══════════════════════════════════════════════════════════════════════
 --  BACKGROUND LOOPS
@@ -303,20 +351,20 @@ TabMisc:CreateLabel("UI:  Rayfield Library", "layout", Color3.fromRGB(160, 160, 
 
 -- Infinite jump
 UIS.JumpRequest:Connect(function()
-    if infiniteJump then
+    if infJump then
         pcall(function()
             LP.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
         end)
     end
 end)
 
--- Anti-AFK heartbeat
-local _afkTick = 0
+-- Anti-AFK (kicks every ~60 frames)
+local _afkFrame = 0
 RunService.Heartbeat:Connect(function()
     if antiAFK then
-        _afkTick += 1
-        if _afkTick >= 60 then
-            _afkTick = 0
+        _afkFrame += 1
+        if _afkFrame >= 120 then
+            _afkFrame = 0
             pcall(function() VirtualUser:CaptureController() end)
         end
     end
@@ -326,44 +374,53 @@ end)
 LP.CharacterAdded:Connect(function(char)
     task.wait(0.5)
     pcall(function()
-        char.Humanoid.WalkSpeed = walkSpeed
-        char.Humanoid.JumpPower = jumpPower
+        char.Humanoid.WalkSpeed = walkSpd
+        char.Humanoid.JumpPower = jumpPwr
     end)
 end)
 
--- Bot auto-loop: detect word every second and type it
+-- ── Bot main loop — polls every 0.8 s ─────────────────────────────────
 task.spawn(function()
+    local lastWord = ""
     while true do
-        task.wait(1)
+        task.wait(0.8)
+
         if botEnabled and not isTyping then
-            -- Try to detect the word from the game UI
+            -- 1. Detect word from screen
             local lbl = findWordLabel()
             if lbl then
-                local w = lbl.Text:lower():gsub("^%s*(.-)%s*$", "%1")
-                -- Only act if the word changed
-                if w ~= "" and w ~= currentWord then
+                local w = lbl.Text:lower():match("^%s*(.-)%s*$")
+                if w and w ~= "" and w:match("^%a+$") then
                     currentWord = w
-                    WordLabel:Set("Current Word: " .. w)
+                    if w ~= lastWord then
+                        lastWord = w
+                        WordLabel:Set("Word: " .. w)
+                    end
                 end
             end
 
-            -- If we have a word and a box, type it
+            -- 2. Type it if box is empty / doesn't match yet
             if currentWord ~= "" then
-                local box = findAnswerBox()
-                if box and box.Text ~= currentWord then
-                    typeWord(box, currentWord, typingSpeed)
+                local box = findInputBox()
+                if box and box.Text:lower() ~= currentWord then
+                    doType(currentWord)
+                elseif not box then
+                    -- No TextBox: try remote every new word
+                    if currentWord ~= lastWord then
+                        remoteSubmit(currentWord)
+                    end
                 end
             end
         end
     end
 end)
 
--- Load saved configuration
+-- ── Load saved config & show welcome ──────────────────────────────────
 Rayfield:LoadConfiguration()
 
 Rayfield:Notify({
-    Title   = "Nerd Zone  |  Spelling Bee",
-    Content = "Script loaded! Go to the Bot tab to start.",
+    Title   = "NerdZone  |  Spelling Bee",
+    Content = "Loaded! Enable Auto-Bot in the Bot tab.",
     Duration = 5,
     Image   = "pencil",
 })
