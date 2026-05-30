@@ -247,10 +247,12 @@ local TAB_CLRS = {
     Color3.fromRGB(110, 18, 230),   -- Execute   purple
     Color3.fromRGB(25, 112, 232),   -- Server    blue
     Color3.fromRGB(230, 98,  18),   -- Injector  orange
+    Color3.fromRGB(225, 40, 120),   -- Sandbox   pink/magenta
     Color3.fromRGB(28, 180,  70),   -- Scripts   green
     Color3.fromRGB(218, 38,  38),   -- Malware   red
     Color3.fromRGB(175, 128, 255),  -- Deobfusc  lavender
     Color3.fromRGB(252, 188,  28),  -- Checker   gold
+    Color3.fromRGB(20, 200, 200),   -- Environ   cyan
 }
 
 local function refreshSidebar()
@@ -269,13 +271,13 @@ end
 local function registerTab(icon, _name)
     tabCount += 1
     local idx   = tabCount
-    local yPos  = 8 + (idx-1)*46
+    local yPos  = 6 + (idx-1)*42
     local ac    = TAB_CLRS[idx] or C.ACC
 
     -- Round button (full circle via CornerRadius 0.5)
     local btn = Instance.new("TextButton")
-    btn.Size             = UDim2.new(0,38,0,38)
-    btn.Position         = UDim2.new(0,7,0,yPos)
+    btn.Size             = UDim2.new(0,36,0,36)
+    btn.Position         = UDim2.new(0,8,0,yPos)
     btn.BackgroundColor3 = Color3.fromRGB(18,18,26)
     btn.Text             = icon
     btn.TextColor3       = C.TXTD
@@ -290,7 +292,7 @@ local function registerTab(icon, _name)
     local tipW = math.max(72, #_name*7+18)
     local tip  = Instance.new("TextLabel")
     tip.Size                 = UDim2.new(0,tipW,0,22)
-    tip.Position             = UDim2.new(1,6,0,yPos+8)
+    tip.Position             = UDim2.new(1,6,0,yPos+7)
     tip.BackgroundColor3     = C.PANEL
     tip.BackgroundTransparency = 0
     tip.Text                 = _name
@@ -343,10 +345,12 @@ local TAB_FILES = {
     "execute.lua",
     "server.lua",
     "injector.lua",
+    "sandbox.lua",
     "scripts.lua",
     "malware.lua",
     "deobfusc.lua",
     "checker.lua",
+    "env.lua",
 }
 
 local loadErrors = {}
