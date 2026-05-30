@@ -1,1390 +1,1091 @@
--- ============================================================
---  FULL SS EXECUTOR  –  Single Loadstring Script
---  Paste into any Roblox executor (PC or Mobile / iOS / Android)
---  Server features require SS_Executor.lua injected server-side.
--- ============================================================
-
-local ok, err = pcall(function()
-
--- ── Services ──────────────────────────────────────────────
-local Players     = game:GetService("Players")
-local RepStore    = game:GetService("ReplicatedStorage")
-local UIS         = game:GetService("UserInputService")
-local TweenSvc    = game:GetService("TweenService")
-
--- ── Player / GUI root ─────────────────────────────────────
-local LP = Players.LocalPlayer
-if not LP then
-    -- fallback: wait up to 5 s
-    local t = 0
-    repeat task.wait(0.1) t = t + 0.1 LP = Players.LocalPlayer until LP or t >= 5
-end
-if not LP then warn("[SS] No LocalPlayer found.") return end
-
--- Prefer CoreGui/gethui so the GUI survives game resets
-local function getGuiParent()
-    if gethui then return gethui() end
-    local ok2, cg = pcall(function() return game:GetService("CoreGui") end)
-    if ok2 and cg then return cg end
-    return LP:WaitForChild("PlayerGui")
-end
-local GuiRoot = getGuiParent()
-
--- Remove stale GUI
-local old = GuiRoot:FindFirstChild("SS_ExecGUI")
-if old then old:Destroy() end
-
--- Optional server bridge (nil if SS_Executor.lua not running)
-local Bridge = RepStore:FindFirstChild("SS_ExecBridge")
-
--- ── Theme ─────────────────────────────────────────────────
-local C = {
-    BG      = Color3.fromRGB(8,   8,  11),
-    PANEL   = Color3.fromRGB(16,  16, 21),
-    PANEL2  = Color3.fromRGB(20,  20, 27),
-    INPUT   = Color3.fromRGB(11,  11, 15),
-    ACCENT  = Color3.fromRGB(105, 15, 225),
-    ACCHOV  = Color3.fromRGB(125, 38, 248),
-    BLUE    = Color3.fromRGB(25,  120, 220),
-    BLUEHOV = Color3.fromRGB(40,  145, 245),
-    DIM     = Color3.fromRGB(28,  28,  38),
-    DIMTXT  = Color3.fromRGB(125, 125, 160),
-    WHITE   = Color3.new(1, 1, 1),
-    GREEN   = Color3.fromRGB(60,  210,  75),
-    RED     = Color3.fromRGB(238,  60,  60),
-    YELLOW  = Color3.fromRGB(255, 198,  42),
-    PURPLE  = Color3.fromRGB(185, 140, 255),
-    STROKE  = Color3.fromRGB(70,    8, 170),
-    ORANGE  = Color3.fromRGB(240, 130,  30),
-}
-local TIF  = TweenInfo.new(0.14)
-local TIS  = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local GBOL = Enum.Font.GothamBold
-local GNRM = Enum.Font.Gotham
-local GCOD = Enum.Font.Code
-
--- ── Helpers ───────────────────────────────────────────────
-local function tw(o, p)  TweenSvc:Create(o, TIF, p):Play() end
-local function tws(o, p) TweenSvc:Create(o, TIS, p):Play() end
-
-local function rnd(p, r)
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, r or 7)
-    c.Parent = p
-end
-
-local function str(p, col, th)
-    local s = Instance.new("UIStroke")
-    s.Color     = col or C.STROKE
-    s.Thickness = th or 1.2
-    s.Parent    = p
-end
-
-local function lbl(parent, props)
-    local l = Instance.new("TextLabel")
-    l.BackgroundTransparency = 1
-    for k, v in props do pcall(function() l[k] = v end) end
-    l.Parent = parent
-    return l
-end
-
-local function btn(parent, props)
-    local b = Instance.new("TextButton")
-    b.BorderSizePixel = 0
-    b.AutoButtonColor = false
-    for k, v in props do pcall(function() b[k] = v end) end
-    b.Parent = parent
-    return b
-end
-
-local function makeScrollFrame(parent, pos, size)
-    local sf = Instance.new("ScrollingFrame")
-    sf.Position              = pos
-    sf.Size                  = size
-    sf.BackgroundColor3      = C.INPUT
-    sf.BorderSizePixel       = 0
-    sf.ScrollBarThickness    = 4
-    sf.ScrollBarImageColor3  = C.ACCENT
-    sf.CanvasSize            = UDim2.new(0, 0, 0, 0)
-    sf.AutomaticCanvasSize   = Enum.AutomaticSize.Y
-    sf.Parent                = parent
-    rnd(sf, 7)
-    str(sf, Color3.fromRGB(48, 4, 115), 1)
-    return sf
-end
-
-local function makeCodeBox(parent, placeholder)
-    local tb = Instance.new("TextBox")
-    tb.Size               = UDim2.new(1, -10, 1, 0)
-    tb.Position           = UDim2.new(0, 5, 0, 5)
-    tb.BackgroundTransparency = 1
-    tb.Text               = ""
-    tb.PlaceholderText    = placeholder or ""
-    tb.PlaceholderColor3  = Color3.fromRGB(55, 55, 78)
-    tb.TextColor3         = Color3.fromRGB(215, 215, 255)
-    tb.TextSize           = 12
-    tb.Font               = GCOD
-    tb.MultiLine          = true
-    tb.TextXAlignment     = Enum.TextXAlignment.Left
-    tb.TextYAlignment     = Enum.TextYAlignment.Top
-    tb.ClearTextOnFocus   = false
-    tb.Parent             = parent
-    return tb
-end
-
-local function hookHover(b, norm, hov)
-    b.MouseEnter:Connect(function() tw(b, {BackgroundColor3 = hov})  end)
-    b.MouseLeave:Connect(function() tw(b, {BackgroundColor3 = norm}) end)
-end
-
-local function callBridge(action, payload)
-    if not Bridge then return {ok=false, msg="Bridge not found. Inject SS_Executor.lua server-side."} end
-    local ok2, res = pcall(Bridge.InvokeServer, Bridge, action, payload or {})
-    if not ok2 then return {ok=false, msg=tostring(res)} end
-    return res or {ok=false, msg="nil response"}
-end
-
--- ── Base64 decode ─────────────────────────────────────────
-local B64CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-local function b64decode(data)
-    data = data:gsub("[^" .. B64CHARS .. "=]", "")
-    return (data:gsub(".", function(x)
-        if x == "=" then return "" end
-        local r, f = "", B64CHARS:find(x) - 1
-        for i = 6, 1, -1 do
-            r = r .. (f % 2^i - f % 2^(i-1) > 0 and "1" or "0")
-        end
-        return r
-    end):gsub("%d%d%d%d%d%d%d%d", function(x)
-        local n = 0
-        for i = 1, 8 do n = n + (x:sub(i,i)=="1" and 2^(8-i) or 0) end
-        return string.char(n)
-    end))
-end
-
--- ── Deobfuscator ──────────────────────────────────────────
-local function detectObfType(s)
-    if s:find("Luraph") or s:find("lura%.ph") then return "Luraph"
-    elseif s:find("IronBrew") or s:find("Iron%s*Brew") then return "IronBrew 2"
-    elseif s:find("Prometheus") then return "Prometheus"
-    elseif s:find("Moonsec")   then return "Moonsec"
-    elseif s:find("_0x%x+") and #s > 500 then return "Hex-var obfuscated"
-    elseif s:find("string%.byte") and s:find("string%.char") and #s > 2000 then return "String-table VM"
-    elseif s:find("local%s+[A-Z][A-Z0-9]*%s*=%s*{") and #s > 3000 then return "Custom VM/bytecode"
-    end
-    return "Unknown / Custom"
-end
-
-local function deobfuscate(src)
-    local out = src
-    local log = {}
-    local n
-
-    out, n = out:gsub("\\x(%x%x)", function(h)
-        return string.char(tonumber(h, 16))
-    end)
-    if n > 0 then table.insert(log, "Decoded "..n.." hex esc") end
-
-    out, n = out:gsub("\\(%d%d?%d?)", function(d)
-        local v = tonumber(d)
-        if v and v >= 32 and v <= 126 then return string.char(v) end
-        return "\\" .. d
-    end)
-    if n > 0 then table.insert(log, "Decoded "..n.." dec esc") end
-
-    out = out:gsub("string%.char%(([%d,%s]+)%)", function(args)
-        local chars = {}
-        for num in args:gmatch("%d+") do
-            local v = tonumber(num)
-            if not v or v < 32 or v > 126 then return "string.char("..args..")" end
-            table.insert(chars, string.char(v))
-        end
-        table.insert(log, "Folded string.char")
-        return '"' .. table.concat(chars):gsub('"', '\\"') .. '"'
-    end)
-
-    local changed, folds = true, 0
-    while changed do
-        changed = false
-        out = out:gsub('"([^"\\]*)"%s*%.%.%s*"([^"\\]*)"', function(a, b)
-            changed = true ; folds = folds + 1
-            return '"' .. a .. b .. '"'
-        end)
-    end
-    if folds > 0 then table.insert(log, "Folded "..folds.." concat(s)") end
-
-    out = out:gsub("\n\n\n+", "\n\n")
-    return out, #log > 0 and table.concat(log, "  |  ") or "Nothing simplified."
-end
-
--- ── UNC / SUNC / Myriad lists ─────────────────────────────
-local UNC_LIST = {
-    {"checkcaller","Closure"},    {"clonefunction","Closure"},
-    {"getcallingscript","Closure"},{"hookfunction","Closure"},
-    {"iscclosure","Closure"},     {"islclosure","Closure"},
-    {"newcclosure","Closure"},    {"replaceclosure","Closure"},
-    {"crypt.base64decode","Crypt"},{"crypt.base64encode","Crypt"},
-    {"crypt.decrypt","Crypt"},    {"crypt.encrypt","Crypt"},
-    {"crypt.generatebytes","Crypt"},{"crypt.generatekey","Crypt"},
-    {"crypt.hash","Crypt"},
-    {"debug.getconstant","Debug"},{"debug.getconstants","Debug"},
-    {"debug.getinfo","Debug"},    {"debug.getproto","Debug"},
-    {"debug.getprotos","Debug"},  {"debug.getstack","Debug"},
-    {"debug.getupvalue","Debug"}, {"debug.getupvalues","Debug"},
-    {"debug.setconstant","Debug"},{"debug.setupvalue","Debug"},
-    {"Drawing","Drawing"},        {"cleardrawcache","Drawing"},
-    {"isrenderobj","Drawing"},    {"getrenderproperty","Drawing"},
-    {"setrenderproperty","Drawing"},
-    {"appendfile","FileSystem"},  {"delfile","FileSystem"},
-    {"delfolder","FileSystem"},   {"isfile","FileSystem"},
-    {"isfolder","FileSystem"},    {"listfiles","FileSystem"},
-    {"loadfile","FileSystem"},    {"makefolder","FileSystem"},
-    {"readfile","FileSystem"},    {"writefile","FileSystem"},
-    {"isrbxactive","Input"},      {"keypress","Input"},
-    {"keyrelease","Input"},       {"mouse1click","Input"},
-    {"mouse1press","Input"},      {"mouse1release","Input"},
-    {"mouse2click","Input"},      {"mouse2press","Input"},
-    {"mouse2release","Input"},    {"mousemoveabs","Input"},
-    {"mousemoverel","Input"},     {"mousescroll","Input"},
-    {"fireclickdetector","Instance"},{"fireproximityprompt","Instance"},
-    {"firetouchinterest","Instance"},{"getcustomasset","Instance"},
-    {"gethiddenproperty","Instance"},{"gethui","Instance"},
-    {"getinstances","Instance"},  {"getnilinstances","Instance"},
-    {"isscriptable","Instance"},  {"sethiddenproperty","Instance"},
-    {"setscriptable","Instance"},
-    {"getrawmetatable","Metatable"},{"hookmetamethod","Metatable"},
-    {"setrawmetatable","Metatable"},{"setreadonly","Metatable"},
-    {"isreadonly","Metatable"},
-    {"getexecutorname","Misc"},   {"identifyexecutor","Misc"},
-    {"gethwid","Misc"},           {"isluau","Misc"},
-    {"lz4compress","Misc"},       {"lz4decompress","Misc"},
-    {"messagebox","Misc"},        {"queue_on_teleport","Misc"},
-    {"setfpscap","Misc"},         {"getfpscap","Misc"},
-    {"setclipboard","Misc"},      {"getclipboard","Misc"},
-    {"saveinstance","Misc"},
-    {"getgc","Scripts"},          {"getgenv","Scripts"},
-    {"getloadedmodules","Scripts"},{"getrunningscripts","Scripts"},
-    {"getscripts","Scripts"},     {"getrenv","Scripts"},
-    {"getsenv","Scripts"},
-    {"getconnections","Signal"},  {"firesignal","Signal"},
-    {"getthreadidentity","Thread"},{"setthreadidentity","Thread"},
-    {"getidentity","Thread"},     {"setidentity","Thread"},
-    {"request","HTTP"},           {"http_request","HTTP"},
-    {"cache.invalidate","Cache"}, {"cache.iscached","Cache"},
-    {"cache.replace","Cache"},    {"WebSocket","WebSocket"},
-    {"rconsoleclose","Console"},  {"rconsolecreate","Console"},
-    {"rconsoleinfo","Console"},   {"rconsoleprint","Console"},
-    {"rconsoleprintdefault","Console"},{"rconsolename","Console"},
-    {"rconsolewarn","Console"},
-}
-
-local SUNC_LIST = {
-    {"getscriptclosure","ScriptEnv"},  {"getscriptfunction","ScriptEnv"},
-    {"getscriptenv","ScriptEnv"},      {"getscriptbytecode","ScriptEnv"},
-    {"getscripthash","ScriptEnv"},     {"getscriptname","ScriptEnv"},
-    {"getscriptpath","ScriptEnv"},     {"getscriptid","ScriptEnv"},
-    {"getscriptguid","ScriptEnv"},     {"decompile","ScriptEnv"},
-    {"isscriptrunning","ScriptState"}, {"isscriptpaused","ScriptState"},
-    {"isscriptenabled","ScriptState"}, {"enablescript","ScriptState"},
-    {"disablescript","ScriptState"},   {"pausescript","ScriptState"},
-    {"resumescript","ScriptState"},    {"stopscript","ScriptState"},
-    {"restartscript","ScriptState"},   {"killscript","ScriptState"},
-    {"forkscript","ScriptLife"},       {"startscript","ScriptLife"},
-    {"reloadscript","ScriptLife"},     {"getscriptstate","ScriptLife"},
-    {"setscriptstate","ScriptLife"},   {"getscriptmemoryusage","ScriptLife"},
-    {"getscriptcpuusage","ScriptLife"},{"getscriptuptime","ScriptLife"},
-    {"getscriptthread","ScriptLife"},  {"getscriptactor","ScriptLife"},
-    {"getscriptglobals","ScriptVar"},  {"getscriptlocals","ScriptVar"},
-    {"getscriptupvalues","ScriptVar"}, {"getscriptconstants","ScriptVar"},
-    {"getscriptprotos","ScriptVar"},   {"setscriptglobal","ScriptVar"},
-    {"setscriptlocal","ScriptVar"},    {"setscriptupvalue","ScriptVar"},
-    {"setscriptconstant","ScriptVar"}, {"setscriptenv","ScriptVar"},
-    {"findscriptbyname","ScriptFind"}, {"findscriptbypath","ScriptFind"},
-    {"findscriptbyid","ScriptFind"},   {"findscriptbytarget","ScriptFind"},
-    {"findscriptbyclosure","ScriptFind"},{"getscriptcallers","ScriptFind"},
-    {"getscriptcallstack","ScriptFind"},{"getallscripts","ScriptFind"},
-    {"getmodulescripts","ScriptFind"}, {"getlocalscripts","ScriptFind"},
-    {"getscriptparent","ScriptHier"},  {"setscriptparent","ScriptHier"},
-    {"getscriptchildren","ScriptHier"},{"getscriptdescendants","ScriptHier"},
-    {"getscriptcategory","ScriptHier"},{"setscriptcategory","ScriptHier"},
-    {"getscriptlevel","ScriptHier"},   {"setscriptlevel","ScriptHier"},
-    {"getscriptobject","ScriptHier"},  {"setscriptobject","ScriptHier"},
-    {"getscriptidentity","ScriptID"},  {"setscriptidentity","ScriptID"},
-    {"getscriptpermissions","ScriptID"},{"setscriptpermissions","ScriptID"},
-    {"getscriptflags","ScriptID"},     {"setscriptflags","ScriptID"},
-    {"isscriptprotected","ScriptID"},  {"protectscript","ScriptID"},
-    {"unprotectscript","ScriptID"},    {"isscriptobfuscated","ScriptID"},
-    {"clonescript","ScriptMod"},       {"patchscript","ScriptMod"},
-    {"injectscript","ScriptMod"},      {"hookscript","ScriptMod"},
-    {"unhookscript","ScriptMod"},      {"wrapscript","ScriptMod"},
-    {"unwrapscript","ScriptMod"},      {"validatescript","ScriptMod"},
-    {"compressscript","ScriptMod"},    {"decompressscript","ScriptMod"},
-    {"encryptscript","ScriptCrypt"},   {"decryptscript","ScriptCrypt"},
-    {"obfuscatescript","ScriptCrypt"}, {"deobfuscatescript","ScriptCrypt"},
-    {"getsignature","ScriptCrypt"},    {"setsignature","ScriptCrypt"},
-    {"getscriptbytecodemodified","ScriptCrypt"},
-    {"redecompile","ScriptCrypt"},     {"signalscript","ScriptCrypt"},
-    {"waitforscript","ScriptCrypt"},
-    {"getenvtype","ScriptSandbox"},    {"setenvtype","ScriptSandbox"},
-    {"getsafeenv","ScriptSandbox"},    {"setsafeenv","ScriptSandbox"},
-    {"getprotectedenv","ScriptSandbox"},{"setprotectedenv","ScriptSandbox"},
-    {"isolateenv","ScriptSandbox"},    {"mergeenv","ScriptSandbox"},
-    {"cloneenv","ScriptSandbox"},      {"cleanenv","ScriptSandbox"},
-}
-
-local MYRIAD_LIST = {
-    {"Drawing.new","MyrDraw"},{"Drawing.clear","MyrDraw"},{"Drawing.Font","MyrDraw"},
-    {"getdrawobjects","MyrDraw"},{"getdrawcount","MyrDraw"},{"renderdraw","MyrDraw"},
-    {"updatedraw","MyrDraw"},{"deletedraw","MyrDraw"},{"clonedraw","MyrDraw"},{"movedraw","MyrDraw"},
-    {"rotatedraw","MyrDraw"},{"scaledraw","MyrDraw"},{"setdrawzindex","MyrDraw"},{"getdrawzindex","MyrDraw"},
-    {"setdrawvisibility","MyrDraw"},{"getdrawvisibility","MyrDraw"},{"setdrawcolor","MyrDraw"},
-    {"setdrawthickness","MyrDraw"},{"setdrawtransparency","MyrDraw"},{"setdrawfilled","MyrDraw"},
-    {"readprocessmemory","MyrMem"},{"writeprocessmemory","MyrMem"},{"getmodulebase","MyrMem"},
-    {"getmodulesize","MyrMem"},{"getprocessid","MyrMem"},{"allocatemem","MyrMem"},
-    {"freemem","MyrMem"},{"protectmem","MyrMem"},{"unprotectmem","MyrMem"},{"scanmemory","MyrMem"},
-    {"getmemorymap","MyrMem"},{"getmemoryusage","MyrMem"},{"setmemorycap","MyrMem"},
-    {"flushmemorycache","MyrMem"},{"getmemoryregions","MyrMem"},
-    {"dumprequest","MyrNet"},{"firelog","MyrNet"},{"blockrequest","MyrNet"},{"filterrequest","MyrNet"},
-    {"capturerequest","MyrNet"},{"getwebrequests","MyrNet"},{"clearwebrequests","MyrNet"},
-    {"logrequest","MyrNet"},{"filterresponse","MyrNet"},{"modifyrequest","MyrNet"},
-    {"modifyresponse","MyrNet"},{"interceptrequest","MyrNet"},{"forwardrequest","MyrNet"},
-    {"rejectrequest","MyrNet"},{"getnetworkid","MyrNet"},{"setnetworkid","MyrNet"},
-    {"gettransferrate","MyrNet"},{"settransferrate","MyrNet"},{"getlatency","MyrNet"},
-    {"simulatelagspike","MyrNet"},
-    {"spoofscriptname","MyrAnti"},{"spoofscriptpath","MyrAnti"},{"spoofscriptid","MyrAnti"},
-    {"spoofidentity","MyrAnti"},{"spoofthreadid","MyrAnti"},{"protectgui","MyrAnti"},
-    {"disguisescript","MyrAnti"},{"disguiseexecutor","MyrAnti"},{"getdetectionflags","MyrAnti"},
-    {"cleardetectionflags","MyrAnti"},{"bypassanticheat","MyrAnti"},{"simulatelegitplayer","MyrAnti"},
-    {"fakescriptactivity","MyrAnti"},{"getanticheatlevel","MyrAnti"},{"setanticheatlevel","MyrAnti"},
-    {"disablevanguard","MyrAnti"},{"disablebyfron","MyrAnti"},{"disablehyperion","MyrAnti"},
-    {"whitelistprocess","MyrAnti"},{"setexecutorname","MyrAnti"},
-    {"initremotespy","MyrSpy"},{"getrecentremotes","MyrSpy"},{"filterremote","MyrSpy"},
-    {"blockremotespy","MyrSpy"},{"hookremote","MyrSpy"},{"unhookremote","MyrSpy"},
-    {"logremotetraffic","MyrSpy"},{"getremotehistory","MyrSpy"},{"clearremotehistory","MyrSpy"},
-    {"getremotecallstack","MyrSpy"},{"hookallremotes","MyrSpy"},{"unhookallremotes","MyrSpy"},
-    {"whitelistremote","MyrSpy"},{"blacklistremote","MyrSpy"},{"remotespy_setfilter","MyrSpy"},
-    {"remotespy_getfilter","MyrSpy"},{"remotespy_export","MyrSpy"},{"remotespy_import","MyrSpy"},
-    {"getremotecount","MyrSpy"},{"getremoterate","MyrSpy"},
-    {"compile","MyrByte"},{"getbytecode","MyrByte"},{"loadbytecode","MyrByte"},
-    {"executebytecode","MyrByte"},{"verifybytecode","MyrByte"},{"getbytecodeversion","MyrByte"},
-    {"setbytecodeversion","MyrByte"},{"patchbytecode","MyrByte"},{"hotpatch","MyrByte"},
-    {"getbytecodeinfo","MyrByte"},{"setbytecodeinfo","MyrByte"},{"disassemble","MyrByte"},
-    {"reassemble","MyrByte"},{"optimize","MyrByte"},{"minify","MyrByte"},
-    {"prettify","MyrByte"},{"tokenize","MyrByte"},{"parse","MyrByte"},
-    {"serialize","MyrByte"},{"deserialize","MyrByte"},
-    {"simulateguiclick","MyrUI"},{"simulateguiinput","MyrUI"},{"simulateguitouch","MyrUI"},
-    {"simulateguiscroll","MyrUI"},{"getguiinsets","MyrUI"},{"setguiinsets","MyrUI"},
-    {"capturescreen","MyrUI"},{"recordgameplay","MyrUI"},{"stoprecording","MyrUI"},
-    {"getviewportsize","MyrUI"},{"setfov","MyrUI"},{"getfov","MyrUI"},
-    {"setrenderquality","MyrUI"},{"getrenderquality","MyrUI"},{"resetrendersettings","MyrUI"},
-    {"setphysicsrate","MyrPhys"},{"getphysicsrate","MyrPhys"},{"pausephysics","MyrPhys"},
-    {"resumephysics","MyrPhys"},{"setgravity","MyrPhys"},{"getgravity","MyrPhys"},
-    {"setnetworkphysics","MyrPhys"},{"getnetworkphysics","MyrPhys"},
-    {"setphysicsinterpolation","MyrPhys"},{"getphysicsinterpolation","MyrPhys"},
-    {"getphysicsjoint","MyrPhys"},{"setphysicsjoint","MyrPhys"},{"getrigid","MyrPhys"},
-    {"setrigid","MyrPhys"},{"applyphysicsimpulse","MyrPhys"},
-    {"forcereplicate","MyrRep"},{"blockreplication","MyrRep"},{"setreplicationrate","MyrRep"},
-    {"getreplicationqueue","MyrRep"},{"clearreplicationqueue","MyrRep"},{"getnetworkowner","MyrRep"},
-    {"setnetworkowner","MyrRep"},{"getnetworkstats","MyrRep"},{"syncnetwork","MyrRep"},
-    {"getpacketrate","MyrRep"},{"setpacketrate","MyrRep"},{"getpacketsize","MyrRep"},
-    {"compress_packet","MyrRep"},{"encrypt_packet","MyrRep"},{"decrypt_packet","MyrRep"},
-    {"getworkspacegravity","MyrGame"},{"setworkspacegravity","MyrGame"},
-    {"setphysicssetting","MyrGame"},{"getphysicssetting","MyrGame"},{"getterraindata","MyrGame"},
-    {"setterraindata","MyrGame"},{"modifyterrain","MyrGame"},{"getdatamodel","MyrGame"},
-    {"setdatamodel","MyrGame"},{"getserverlocation","MyrGame"},{"getserverinfo","MyrGame"},
-    {"getclientinfo","MyrGame"},{"getgameversion","MyrGame"},{"getgameid","MyrGame"},
-    {"getplaceversion","MyrGame"},{"getassetrootid","MyrGame"},{"getassetversion","MyrGame"},
-    {"checkasset","MyrGame"},{"cacheasset","MyrGame"},{"uncacheasset","MyrGame"},
-    {"debug.readmemory","MyrDbg"},{"debug.writememory","MyrDbg"},{"debug.getregisters","MyrDbg"},
-    {"debug.setregisters","MyrDbg"},{"debug.getflags","MyrDbg"},{"debug.setflags","MyrDbg"},
-    {"debug.getmodules","MyrDbg"},{"debug.getthreads","MyrDbg"},{"debug.suspendthread","MyrDbg"},
-    {"debug.resumethread","MyrDbg"},{"debug.getthreadinfo","MyrDbg"},{"debug.getip","MyrDbg"},
-    {"debug.setip","MyrDbg"},{"debug.getsp","MyrDbg"},{"debug.setsp","MyrDbg"},
-    {"createevent","MyrEvt"},{"destroyevent","MyrEvt"},{"fireevent","MyrEvt"},
-    {"hookevent","MyrEvt"},{"unhookevent","MyrEvt"},{"defevent","MyrEvt"},
-    {"filterevent","MyrEvt"},{"prioritizeevent","MyrEvt"},{"getevents","MyrEvt"},
-    {"clearevents","MyrEvt"},{"getconnectioncount","MyrEvt"},{"disconnectall","MyrEvt"},
-    {"reconnectall","MyrEvt"},{"getfirecount","MyrEvt"},{"resetfirecount","MyrEvt"},
-    {"getexecutorversion","MyrExec"},{"getexecutorbuild","MyrExec"},{"getexecutorlicense","MyrExec"},
-    {"isfeatureenabled","MyrExec"},{"enablefeature","MyrExec"},{"disablefeature","MyrExec"},
-    {"getfeaturelist","MyrExec"},{"setperformancemode","MyrExec"},{"getperformancemode","MyrExec"},
-    {"setthreadpriority","MyrExec"},{"getthreadpriority","MyrExec"},{"gettaskscheduler","MyrExec"},
-    {"setfpstarget","MyrExec"},{"getfpstarget","MyrExec"},{"getframetime","MyrExec"},
-    {"getuptime","MyrExec"},{"getmemorytotal","MyrExec"},{"getmemoryavailable","MyrExec"},
-    {"getexecutorflags","MyrExec"},{"setexecutorflags","MyrExec"},
-    {"getlicensekey","MyrLic"},{"setlicensekey","MyrLic"},{"validatelicensekey","MyrLic"},
-    {"getlicensestatus","MyrLic"},{"getlicenseholder","MyrLic"},
-    {"getinstancecreationcallbacks","MyrInst"},{"setinstancecreationcallback","MyrInst"},
-    {"interceptinstancecreation","MyrInst"},{"interceptpropertyset","MyrInst"},
-    {"getpropertychangedcallbacks","MyrInst"},{"setpropertychangedcallback","MyrInst"},
-    {"compareinstances","MyrInst"},{"getspecialinfo","MyrInst"},{"setspecialinfo","MyrInst"},
-    {"getfullpath","MyrInst"},{"clonetree","MyrInst"},{"mergetrees","MyrInst"},
-    {"diffinstances","MyrInst"},{"syncinstances","MyrInst"},{"snapshotinstance","MyrInst"},
-}
-
-local function hasUNC(name)
-    if name:find("%.") then
-        local tbl, key = name:match("^(.-)%.(.+)$")
-        local t = rawget(_G, tbl)
-        if t == nil then
-            local ok2, v = pcall(function() return _G[tbl] end)
-            t = ok2 and v or nil
-        end
-        if type(t) == "table" then return rawget(t, key) ~= nil end
-        return false
-    end
-    if rawget(_G, name) ~= nil then return true end
-    local ok2, v = pcall(function()
-        local env = (getfenv and getfenv()) or _G
-        return rawget(env, name)
-    end)
-    return ok2 and v ~= nil
-end
-
--- ── Root ScreenGui ────────────────────────────────────────
-local SG = Instance.new("ScreenGui")
-SG.Name           = "SS_ExecGUI"
-SG.ResetOnSpawn   = false
-SG.DisplayOrder   = 999
-SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-SG.IgnoreGuiInset = true
-SG.Parent         = GuiRoot
-
-local WIN_W, WIN_H = 520, 420
-
-local Win = Instance.new("Frame")
-Win.Name             = "Win"
-Win.Size             = UDim2.new(0, WIN_W, 0, WIN_H)
-Win.Position         = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
-Win.BackgroundColor3 = C.BG
-Win.BorderSizePixel  = 0
-Win.ClipsDescendants = true
-Win.Parent           = SG
-rnd(Win, 10)
-str(Win, C.STROKE, 1.5)
-
--- ── Title bar ─────────────────────────────────────────────
-local TBar = Instance.new("Frame")
-TBar.Name             = "TBar"
-TBar.Size             = UDim2.new(1, 0, 0, 40)
-TBar.BackgroundColor3 = C.PANEL
-TBar.BorderSizePixel  = 0
-TBar.ZIndex           = 4
-TBar.Parent           = Win
-rnd(TBar, 10)
-
-local TBarPatch = Instance.new("Frame")
-TBarPatch.Size             = UDim2.new(1, 0, 0.5, 0)
-TBarPatch.Position         = UDim2.new(0, 0, 0.5, 0)
-TBarPatch.BackgroundColor3 = C.PANEL
-TBarPatch.BorderSizePixel  = 0
-TBarPatch.ZIndex           = 4
-TBarPatch.Parent           = TBar
-
-lbl(TBar, {
-    Size = UDim2.new(1, -110, 1, 0),
-    Position = UDim2.new(0, 12, 0, 0),
-    Text = "  Full SS Executor",
-    TextColor3 = C.PURPLE,
-    TextSize = 14,
-    Font = GBOL,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    ZIndex = 5,
-})
-
-local DotLbl = lbl(Win, {
-    Size = UDim2.new(0, 200, 0, 14),
-    Position = UDim2.new(0, 12, 0, 26),
-    Text = "● Connecting...",
-    TextColor3 = C.YELLOW,
-    TextSize = 10,
-    Font = GNRM,
-    TextXAlignment = Enum.TextXAlignment.Left,
-})
-
-local MinBtn = btn(TBar, {
-    Size = UDim2.new(0, 30, 0, 24),
-    Position = UDim2.new(1, -68, 0.5, -12),
-    BackgroundColor3 = C.DIM,
-    Text = "—",
-    TextColor3 = C.DIMTXT,
-    TextSize = 13,
-    Font = GBOL,
-    ZIndex = 5,
-})
-rnd(MinBtn, 5)
-
-local CloseBtn = btn(TBar, {
-    Size = UDim2.new(0, 30, 0, 24),
-    Position = UDim2.new(1, -32, 0.5, -12),
-    BackgroundColor3 = Color3.fromRGB(195, 36, 52),
-    Text = "✕",
-    TextColor3 = C.WHITE,
-    TextSize = 13,
-    Font = GBOL,
-    ZIndex = 5,
-})
-rnd(CloseBtn, 5)
-
--- ── Main tab bar ──────────────────────────────────────────
-local TabBar = Instance.new("Frame")
-TabBar.Size             = UDim2.new(1, -20, 0, 34)
-TabBar.Position         = UDim2.new(0, 10, 0, 44)
-TabBar.BackgroundColor3 = C.PANEL
-TabBar.BorderSizePixel  = 0
-TabBar.Parent           = Win
-rnd(TabBar, 8)
-
-do
-    local l = Instance.new("UIListLayout")
-    l.FillDirection       = Enum.FillDirection.Horizontal
-    l.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    l.VerticalAlignment   = Enum.VerticalAlignment.Center
-    l.Padding             = UDim.new(0, 4)
-    l.Parent              = TabBar
-end
-
-local tabBtns   = {}
-local tabFrames = {}
-local TAB_NAMES = {"Execute", "Deobfusc.", "Malware", "UNC/SUNC"}
-
-for _, name in TAB_NAMES do
-    local b = btn(TabBar, {
-        Size             = UDim2.new(0, 112, 1, -8),
-        BackgroundColor3 = C.DIM,
-        Text             = name,
-        TextColor3       = C.DIMTXT,
-        TextSize         = 11,
-        Font             = GBOL,
-    })
-    rnd(b, 5)
-    table.insert(tabBtns, b)
-end
-
-local BODY_Y = 82
-local Body = Instance.new("Frame")
-Body.Size               = UDim2.new(1, 0, 1, -BODY_Y)
-Body.Position           = UDim2.new(0, 0, 0, BODY_Y)
-Body.BackgroundTransparency = 1
-Body.Parent             = Win
-
-local function makeTabFrame()
-    local f = Instance.new("Frame")
-    f.Size    = UDim2.new(1, 0, 1, 0)
-    f.BackgroundTransparency = 1
-    f.Visible = false
-    f.Parent  = Body
-    return f
-end
-
--- ══════════════════════════════════════════════════════════
--- TAB 1 – EXECUTE
--- ══════════════════════════════════════════════════════════
-local T1 = makeTabFrame()
-
-local ModeBar = Instance.new("Frame")
-ModeBar.Size             = UDim2.new(1, -20, 0, 34)
-ModeBar.Position         = UDim2.new(0, 10, 0, 8)
-ModeBar.BackgroundColor3 = C.PANEL
-ModeBar.BorderSizePixel  = 0
-ModeBar.Parent           = T1
-rnd(ModeBar, 8)
-
-local function modeTabBtn(text, xScale, xOff)
-    local b = btn(ModeBar, {
-        Size             = UDim2.new(0.5, -5, 1, -8),
-        Position         = UDim2.new(xScale, xOff, 0, 4),
-        BackgroundColor3 = C.DIM,
-        Text             = text,
-        TextColor3       = C.DIMTXT,
-        TextSize         = 12,
-        Font             = GBOL,
-    })
-    rnd(b, 5)
-    return b
-end
-
-local ClientTab = modeTabBtn("  Client Side", 0,   4)
-local ServerTab = modeTabBtn("  Server Side", 0.5, 1)
-
-local SubBar = Instance.new("Frame")
-SubBar.Size             = UDim2.new(1, -20, 0, 28)
-SubBar.Position         = UDim2.new(0, 10, 0, 48)
-SubBar.BackgroundColor3 = C.PANEL
-SubBar.BorderSizePixel  = 0
-SubBar.Visible          = false
-SubBar.Parent           = T1
-rnd(SubBar, 7)
-
-local function subModeBtn(text, xScale, xOff)
-    local b = btn(SubBar, {
-        Size             = UDim2.new(0.5, -5, 1, -6),
-        Position         = UDim2.new(xScale, xOff, 0, 3),
-        BackgroundColor3 = C.DIM,
-        Text             = text,
-        TextColor3       = C.DIMTXT,
-        TextSize         = 11,
-        Font             = GBOL,
-    })
-    rnd(b, 5)
-    return b
-end
-
-local SubLS  = subModeBtn("loadstring", 0,   4)
-local SubReq = subModeBtn("require",    0.5, 1)
-
-local TypeBar = Instance.new("Frame")
-TypeBar.Size             = UDim2.new(1, -20, 0, 24)
-TypeBar.Position         = UDim2.new(0, 10, 0, 82)
-TypeBar.BackgroundColor3 = C.PANEL
-TypeBar.BorderSizePixel  = 0
-TypeBar.Parent           = T1
-rnd(TypeBar, 6)
-
-do
-    local l = Instance.new("UIListLayout")
-    l.FillDirection       = Enum.FillDirection.Horizontal
-    l.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    l.VerticalAlignment   = Enum.VerticalAlignment.Center
-    l.Padding             = UDim.new(0, 4)
-    l.Parent              = TypeBar
-end
-
-local codeTypeBtns = {}
-for i, label in {"Normal", "URL", "Base64"} do
-    local b = btn(TypeBar, {
-        Size             = UDim2.new(0, 95, 1, -6),
-        BackgroundColor3 = i == 1 and C.ACCENT or C.DIM,
-        Text             = label,
-        TextColor3       = i == 1 and C.WHITE or C.DIMTXT,
-        TextSize         = 10,
-        Font             = GBOL,
-    })
-    rnd(b, 4)
-    table.insert(codeTypeBtns, b)
-end
-
-local ExecHint = lbl(T1, {
-    Size             = UDim2.new(1, -20, 0, 14),
-    Position         = UDim2.new(0, 10, 0, 112),
-    Text             = "Client Side  →  loadstring(code)()",
-    TextColor3       = Color3.fromRGB(90, 55, 170),
-    TextSize         = 10,
-    Font             = GNRM,
-    TextXAlignment   = Enum.TextXAlignment.Left,
-})
-
-local EditorScroll = makeScrollFrame(T1, UDim2.new(0, 10, 0, 130), UDim2.new(1, -20, 0, 140))
-local CodeBox      = makeCodeBox(EditorScroll, "-- Paste or type your script here...")
-
-local ExecStatus = lbl(T1, {
-    Size           = UDim2.new(1, -20, 0, 15),
-    Position       = UDim2.new(0, 10, 0, 278),
-    Text           = "Ready.",
-    TextColor3     = C.DIMTXT,
-    TextSize       = 10,
-    Font           = GNRM,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    TextTruncate   = Enum.TextTruncate.AtEnd,
-})
-
-local BtnRow = Instance.new("Frame")
-BtnRow.Size               = UDim2.new(1, -20, 0, 36)
-BtnRow.Position           = UDim2.new(0, 10, 0, 296)
-BtnRow.BackgroundTransparency = 1
-BtnRow.Parent             = T1
-
-do
-    local l = Instance.new("UIListLayout")
-    l.FillDirection      = Enum.FillDirection.Horizontal
-    l.VerticalAlignment  = Enum.VerticalAlignment.Center
-    l.Padding            = UDim.new(0, 7)
-    l.Parent             = BtnRow
-end
-
-local function makeExecBtn(text, bg, w)
-    local b = btn(BtnRow, {
-        Size             = UDim2.new(0, w, 0, 32),
-        BackgroundColor3 = bg,
-        Text             = text,
-        TextColor3       = C.WHITE,
-        TextSize         = 12,
-        Font             = GBOL,
-    })
-    rnd(b, 6)
-    return b
-end
-
-local ExecBtn  = makeExecBtn("  Execute", C.ACCENT, 120)
-local ClearBtn = makeExecBtn("Clear",     C.DIM,    72)
-local CopyBtn  = makeExecBtn("Copy",      C.DIM,    66)
-local URLBtn   = makeExecBtn("From URL",  C.DIM,    82)
-ClearBtn.TextColor3 = C.DIMTXT
-CopyBtn.TextColor3  = C.DIMTXT
-URLBtn.TextColor3   = C.DIMTXT
-
-local execMode    = "client"
-local execSubMode = "ls"
-local execCodeType= "normal"
-
-local function setStatus(msg, col)
-    ExecStatus.Text       = msg
-    ExecStatus.TextColor3 = col or C.DIMTXT
-end
-
-local function applyMode(m)
-    execMode = m
-    if m == "server" then
-        tw(ServerTab, {BackgroundColor3 = C.BLUE,   TextColor3 = C.WHITE  })
-        tw(ClientTab, {BackgroundColor3 = C.DIM,    TextColor3 = C.DIMTXT })
-        SubBar.Visible = true
-        ExecBtn.BackgroundColor3 = C.BLUE
-        ExecHint.Text = execSubMode == "ls"
-            and "Server Side  →  loadstring(code)()  [full server perms]"
-            or  "Server Side  →  require(assetId)  [numeric ID]"
-    else
-        tw(ClientTab, {BackgroundColor3 = C.ACCENT, TextColor3 = C.WHITE  })
-        tw(ServerTab, {BackgroundColor3 = C.DIM,    TextColor3 = C.DIMTXT })
-        SubBar.Visible = false
-        ExecBtn.BackgroundColor3 = C.ACCENT
-        ExecHint.Text = "Client Side  →  loadstring(code)()  [your client]"
-    end
-end
-
-local function applySubMode(s)
-    execSubMode = s
-    if s == "ls" then
-        tw(SubLS,  {BackgroundColor3 = C.BLUE, TextColor3 = C.WHITE  })
-        tw(SubReq, {BackgroundColor3 = C.DIM,  TextColor3 = C.DIMTXT })
-    else
-        tw(SubReq, {BackgroundColor3 = C.BLUE, TextColor3 = C.WHITE  })
-        tw(SubLS,  {BackgroundColor3 = C.DIM,  TextColor3 = C.DIMTXT })
-    end
-    if execMode == "server" then
-        ExecHint.Text = s == "ls"
-            and "Server Side  →  loadstring(code)()  [full server perms]"
-            or  "Server Side  →  require(assetId)  [numeric ID]"
-    end
-end
-
-local function applyCodeType(t)
-    execCodeType = t
-    local names = {"Normal", "URL", "Base64"}
-    for i, b in codeTypeBtns do
-        local active = names[i]:lower() == t
-        tw(b, {BackgroundColor3 = active and C.ACCENT or C.DIM,
-               TextColor3       = active and C.WHITE  or C.DIMTXT})
-    end
-end
-
-applyMode("client")
-applySubMode("ls")
-applyCodeType("normal")
-
-ClientTab.MouseButton1Click:Connect(function() applyMode("client") end)
-ServerTab.MouseButton1Click:Connect(function() applyMode("server") end)
-SubLS.MouseButton1Click:Connect(function()     applySubMode("ls")  end)
-SubReq.MouseButton1Click:Connect(function()    applySubMode("req") end)
-codeTypeBtns[1].MouseButton1Click:Connect(function() applyCodeType("normal") end)
-codeTypeBtns[2].MouseButton1Click:Connect(function() applyCodeType("url")    end)
-codeTypeBtns[3].MouseButton1Click:Connect(function() applyCodeType("base64") end)
-
-ExecBtn.MouseButton1Click:Connect(function()
-    local raw = CodeBox.Text
-    if raw == "" or raw:match("^%s*$") then
-        setStatus("Nothing to execute.", C.YELLOW)
-        return
-    end
-    setStatus("Executing...", C.YELLOW)
-
-    if execMode == "client" then
-        local code = raw
-        if execCodeType == "url" then
-            local ok2, src = pcall(function() return game:HttpGet(raw, true) end)
-            if not ok2 then setStatus("HTTP error: " .. tostring(src):sub(1,70), C.RED) return end
-            code = src
-        elseif execCodeType == "base64" then
-            local ok2, dec = pcall(b64decode, raw)
-            if not ok2 then setStatus("Base64 decode failed.", C.RED) return end
-            code = dec
-        end
-        local fn, compErr = loadstring(code)
-        if not fn then setStatus("Compile: " .. tostring(compErr):sub(1,70), C.RED) return end
-        local ok2, runErr = pcall(fn)
-        if ok2 then setStatus("Executed on client.", C.GREEN)
-        else         setStatus("Runtime: " .. tostring(runErr):sub(1,70), C.RED) end
-
-    else
-        local action, payload = nil, {}
-        if execSubMode == "req" then
-            action = "req" ; payload.id = raw
-        elseif execCodeType == "url" then
-            action = "ls_url" ; payload.url = raw
-        else
-            local code = raw
-            if execCodeType == "base64" then
-                local ok2, dec = pcall(b64decode, raw)
-                if not ok2 then setStatus("Base64 decode failed.", C.RED) return end
-                code = dec
-            end
-            action = "ls" ; payload.code = code
-        end
-        local res = callBridge(action, payload)
-        if res.ok then setStatus(tostring(res.msg), C.GREEN)
-        else           setStatus(tostring(res.msg):sub(1,80), C.RED) end
-    end
-end)
-
-ClearBtn.MouseButton1Click:Connect(function()
-    CodeBox.Text = ""
-    setStatus("Cleared.", C.DIMTXT)
-end)
-
-CopyBtn.MouseButton1Click:Connect(function()
-    if setclipboard then
-        setclipboard(CodeBox.Text)
-        setStatus("Copied to clipboard.", C.PURPLE)
-    else
-        setStatus("setclipboard not available.", C.YELLOW)
-    end
-end)
-
-URLBtn.MouseButton1Click:Connect(function()
-    applyCodeType("url")
-    CodeBox.Text = ""
-    setStatus("Paste a raw script URL and press Execute.", C.YELLOW)
-end)
-
-hookHover(ExecBtn,  C.ACCENT,                    C.ACCHOV)
-hookHover(ClearBtn, C.DIM,    Color3.fromRGB(40, 40, 54))
-hookHover(CopyBtn,  C.DIM,    Color3.fromRGB(40, 40, 54))
-hookHover(URLBtn,   C.DIM,    Color3.fromRGB(40, 40, 54))
-
--- ══════════════════════════════════════════════════════════
--- TAB 2 – DEOBFUSCATE
--- ══════════════════════════════════════════════════════════
-local T2 = makeTabFrame()
-
-lbl(T2, {Size=UDim2.new(1,-20,0,14),Position=UDim2.new(0,10,0,6),
-    Text="Obfuscated Input:",TextColor3=C.DIMTXT,TextSize=11,Font=GBOL,
-    TextXAlignment=Enum.TextXAlignment.Left})
-
-local D_InScroll = makeScrollFrame(T2, UDim2.new(0,10,0,24), UDim2.new(1,-20,0,108))
-local D_InBox    = makeCodeBox(D_InScroll, "-- Paste obfuscated script here...")
-
-local D_CtrlRow = Instance.new("Frame")
-D_CtrlRow.Size               = UDim2.new(1,-20,0,30)
-D_CtrlRow.Position           = UDim2.new(0,10,0,138)
-D_CtrlRow.BackgroundTransparency = 1
-D_CtrlRow.Parent             = T2
-do
-    local l=Instance.new("UIListLayout") l.FillDirection=Enum.FillDirection.Horizontal
-    l.VerticalAlignment=Enum.VerticalAlignment.Center l.Padding=UDim.new(0,8) l.Parent=D_CtrlRow
-end
-
-local D_DetectBtn = btn(D_CtrlRow, {Size=UDim2.new(0,110,0,28),BackgroundColor3=C.DIM,
-    Text="Detect Type",TextColor3=C.WHITE,TextSize=11,Font=GBOL}) ; rnd(D_DetectBtn,6)
-local D_DeobfBtn  = btn(D_CtrlRow, {Size=UDim2.new(0,120,0,28),BackgroundColor3=C.ACCENT,
-    Text="Deobfuscate",TextColor3=C.WHITE,TextSize=11,Font=GBOL}) ; rnd(D_DeobfBtn,6)
-local D_TypeLbl   = lbl(D_CtrlRow, {Size=UDim2.new(0,210,0,28),Text="Type: —",
-    TextColor3=C.YELLOW,TextSize=11,Font=GNRM,TextXAlignment=Enum.TextXAlignment.Left})
-
-local D_StepsLbl = lbl(T2, {Size=UDim2.new(1,-20,0,14),Position=UDim2.new(0,10,0,174),
-    Text="Steps: —",TextColor3=Color3.fromRGB(80,55,155),TextSize=10,Font=GNRM,
-    TextXAlignment=Enum.TextXAlignment.Left})
-
-lbl(T2, {Size=UDim2.new(1,-20,0,14),Position=UDim2.new(0,10,0,192),
-    Text="Deobfuscated Output:",TextColor3=C.DIMTXT,TextSize=11,Font=GBOL,
-    TextXAlignment=Enum.TextXAlignment.Left})
-
-local D_OutScroll = makeScrollFrame(T2, UDim2.new(0,10,0,210), UDim2.new(1,-20,0,96))
-local D_OutBox    = makeCodeBox(D_OutScroll, "-- Output appears here...")
-D_OutBox.TextEditable = false
-
-local D_BtmRow = Instance.new("Frame")
-D_BtmRow.Size               = UDim2.new(1,-20,0,26)
-D_BtmRow.Position           = UDim2.new(0,10,0,311)
-D_BtmRow.BackgroundTransparency = 1
-D_BtmRow.Parent             = T2
-do
-    local l=Instance.new("UIListLayout") l.FillDirection=Enum.FillDirection.Horizontal
-    l.VerticalAlignment=Enum.VerticalAlignment.Center l.Padding=UDim.new(0,8) l.Parent=D_BtmRow
-end
-
-local D_CopyBtn = btn(D_BtmRow,{Size=UDim2.new(0,110,0,24),BackgroundColor3=C.DIM,
-    Text="Copy Output",TextColor3=C.DIMTXT,TextSize=11,Font=GBOL}) ; rnd(D_CopyBtn,5)
-local D_ExecBtn = btn(D_BtmRow,{Size=UDim2.new(0,140,0,24),BackgroundColor3=C.ACCENT,
-    Text="Execute Output",TextColor3=C.WHITE,TextSize=11,Font=GBOL}) ; rnd(D_ExecBtn,5)
-
-D_DetectBtn.MouseButton1Click:Connect(function()
-    local s = D_InBox.Text
-    if s == "" then return end
-    D_TypeLbl.Text = "Type: " .. detectObfType(s)
-end)
-D_DeobfBtn.MouseButton1Click:Connect(function()
-    local s = D_InBox.Text
-    if s == "" or s:match("^%s*$") then return end
-    D_TypeLbl.Text = "Type: " .. detectObfType(s)
-    local out, steps = deobfuscate(s)
-    D_OutBox.Text  = out
-    D_StepsLbl.Text = "Steps: " .. steps
-end)
-D_CopyBtn.MouseButton1Click:Connect(function()
-    if setclipboard and D_OutBox.Text ~= "" then
-        setclipboard(D_OutBox.Text)
-        D_TypeLbl.Text = "Copied!"
-        task.delay(1.5, function() D_TypeLbl.Text = "Type: —" end)
-    end
-end)
-D_ExecBtn.MouseButton1Click:Connect(function()
-    local code = D_OutBox.Text
-    if code == "" then return end
-    local fn, e = loadstring(code)
-    if not fn then D_TypeLbl.Text = "Compile error." return end
-    local ok2, e2 = pcall(fn)
-    D_TypeLbl.Text = ok2 and "Executed!" or "Error: " .. tostring(e2):sub(1,40)
-end)
-
-hookHover(D_DeobfBtn,  C.ACCENT, C.ACCHOV)
-hookHover(D_DetectBtn, C.DIM,    Color3.fromRGB(40,40,54))
-hookHover(D_CopyBtn,   C.DIM,    Color3.fromRGB(40,40,54))
-hookHover(D_ExecBtn,   C.ACCENT, C.ACCHOV)
-
--- ══════════════════════════════════════════════════════════
--- TAB 3 – ANTI-MALWARE
--- ══════════════════════════════════════════════════════════
-local T3 = makeTabFrame()
-
-local M_BtnRow = Instance.new("Frame")
-M_BtnRow.Size               = UDim2.new(1,-20,0,34)
-M_BtnRow.Position           = UDim2.new(0,10,0,8)
-M_BtnRow.BackgroundTransparency = 1
-M_BtnRow.Parent             = T3
-do
-    local l=Instance.new("UIListLayout") l.FillDirection=Enum.FillDirection.Horizontal
-    l.VerticalAlignment=Enum.VerticalAlignment.Center l.Padding=UDim.new(0,8) l.Parent=M_BtnRow
-end
-
-local function malBtn(text,bg,w)
-    local b=btn(M_BtnRow,{Size=UDim2.new(0,w,0,30),BackgroundColor3=bg,Text=text,TextColor3=C.WHITE,TextSize=11,Font=GBOL})
-    rnd(b,6) return b
-end
-local M_ScanBtn    = malBtn("  Scan Game",    C.BLUE,   120)
-local M_KillAll    = malBtn("Kill All",       C.RED,    80)
-local M_BlockRmt   = malBtn("Block Remotes",  C.ORANGE, 110)
-
-local M_StatusLbl = lbl(T3,{Size=UDim2.new(1,-20,0,15),Position=UDim2.new(0,10,0,48),
-    Text="Press Scan to detect threats.",TextColor3=C.DIMTXT,TextSize=10,Font=GNRM,
-    TextXAlignment=Enum.TextXAlignment.Left})
-
-local M_Scroll = Instance.new("ScrollingFrame")
-M_Scroll.Size                = UDim2.new(1,-20,0,244)
-M_Scroll.Position            = UDim2.new(0,10,0,68)
-M_Scroll.BackgroundColor3    = C.PANEL
-M_Scroll.BorderSizePixel     = 0
-M_Scroll.ScrollBarThickness  = 4
-M_Scroll.ScrollBarImageColor3 = C.ACCENT
-M_Scroll.CanvasSize          = UDim2.new(0,0,0,0)
-M_Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-M_Scroll.Parent              = T3
-rnd(M_Scroll,7) str(M_Scroll,Color3.fromRGB(35,5,85),1)
-
-do
-    local l=Instance.new("UIListLayout") l.Padding=UDim.new(0,2) l.SortOrder=Enum.SortOrder.LayoutOrder l.Parent=M_Scroll
-    local p=Instance.new("UIPadding") p.PaddingTop=UDim.new(0,4) p.PaddingLeft=UDim.new(0,4) p.PaddingRight=UDim.new(0,4) p.Parent=M_Scroll
-end
-
-local M_AutoRow = Instance.new("Frame")
-M_AutoRow.Size               = UDim2.new(1,-20,0,22)
-M_AutoRow.Position           = UDim2.new(0,10,0,318)
-M_AutoRow.BackgroundTransparency = 1
-M_AutoRow.Parent             = T3
-do
-    local l=Instance.new("UIListLayout") l.FillDirection=Enum.FillDirection.Horizontal
-    l.VerticalAlignment=Enum.VerticalAlignment.Center l.Padding=UDim.new(0,8) l.Parent=M_AutoRow
-end
-local autoMonOn = false
-local M_AutoBtn = btn(M_AutoRow,{Size=UDim2.new(0,130,0,20),BackgroundColor3=C.DIM,
-    Text="Auto-Monitor: OFF",TextColor3=C.DIMTXT,TextSize=10,Font=GBOL}) ; rnd(M_AutoBtn,4)
-lbl(M_AutoRow,{Size=UDim2.new(0,260,0,20),Text="Scans every 30s and kills new threats",
-    TextColor3=Color3.fromRGB(60,60,85),TextSize=9,Font=GNRM,TextXAlignment=Enum.TextXAlignment.Left})
-
-local currentFindings = {}
-
-local function clearFindings()
-    currentFindings = {}
-    for _, c in M_Scroll:GetChildren() do
-        if c:IsA("Frame") then c:Destroy() end
-    end
-end
-
-local function addFindingRow(finding, i)
-    local row = Instance.new("Frame")
-    row.Size             = UDim2.new(1,0,0,40)
-    row.BackgroundColor3 = C.PANEL2
-    row.BorderSizePixel  = 0
-    row.LayoutOrder      = i
-    row.Parent           = M_Scroll
-    rnd(row,5)
-
-    local kindCol = finding.kind:find("Script") and C.ORANGE or C.RED
-    local badge = btn(row,{Size=UDim2.new(0,68,0,20),Position=UDim2.new(0,6,0.5,-10),
-        BackgroundColor3=kindCol,Text=finding.kind:sub(1,10),TextColor3=C.WHITE,TextSize=9,Font=GBOL})
-    rnd(badge,4)
-
-    lbl(row,{Size=UDim2.new(1,-210,0,14),Position=UDim2.new(0,82,0,4),
-        Text=finding.path:sub(-48),TextColor3=C.WHITE,TextSize=10,Font=GCOD,
-        TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
-    lbl(row,{Size=UDim2.new(1,-210,0,12),Position=UDim2.new(0,82,0,20),
-        Text=finding.detail,TextColor3=C.DIMTXT,TextSize=9,Font=GNRM,
-        TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
-
-    local killBtn = btn(row,{Size=UDim2.new(0,50,0,24),Position=UDim2.new(1,-112,0.5,-12),
-        BackgroundColor3=C.RED,Text="Kill",TextColor3=C.WHITE,TextSize=10,Font=GBOL}) ; rnd(killBtn,5)
-    local blockBtn = btn(row,{Size=UDim2.new(0,54,0,24),Position=UDim2.new(1,-54,0.5,-12),
-        BackgroundColor3=C.ORANGE,Text="Block",TextColor3=C.WHITE,TextSize=10,Font=GBOL}) ; rnd(blockBtn,5)
-    blockBtn.Visible = finding.kind:find("Remote") ~= nil
-
-    killBtn.MouseButton1Click:Connect(function()
-        local res = callBridge("kill", {path=finding.path})
-        M_StatusLbl.Text       = res.ok and "Killed: "..finding.path:sub(-50) or "Failed: "..tostring(res.msg)
-        M_StatusLbl.TextColor3 = res.ok and C.GREEN or C.RED
-        if res.ok then row:Destroy() end
-    end)
-    blockBtn.MouseButton1Click:Connect(function()
-        local res = callBridge("block_remote", {path=finding.path})
-        M_StatusLbl.Text       = tostring(res.msg)
-        M_StatusLbl.TextColor3 = res.ok and C.GREEN or C.RED
-    end)
-end
-
-local function runScan()
-    M_StatusLbl.Text       = "Scanning..."
-    M_StatusLbl.TextColor3 = C.YELLOW
-    clearFindings()
-    local res = callBridge("scan")
-    if not res.ok then
-        M_StatusLbl.Text       = "Scan failed: " .. tostring(res.msg)
-        M_StatusLbl.TextColor3 = C.RED
-        return
-    end
-    local data = res.data or {}
-    if #data == 0 then
-        M_StatusLbl.Text       = "Clean! No threats found."
-        M_StatusLbl.TextColor3 = C.GREEN
-        return
-    end
-    for i, line in data do
-        local kind, path, detail = line:match("^(.-)|(.-)|(.*)")
-        local f = {kind=kind or"?", path=path or"?", detail=detail or"?"}
-        currentFindings[i] = f
-        addFindingRow(f, i)
-    end
-    M_StatusLbl.Text       = tostring(res.msg) .. " – review below."
-    M_StatusLbl.TextColor3 = C.ORANGE
-end
-
-M_ScanBtn.MouseButton1Click:Connect(function() task.spawn(runScan) end)
-M_KillAll.MouseButton1Click:Connect(function()
-    M_StatusLbl.Text = "Killing all..." M_StatusLbl.TextColor3 = C.YELLOW
-    local res = callBridge("kill_all")
-    M_StatusLbl.Text = tostring(res.msg) M_StatusLbl.TextColor3 = res.ok and C.GREEN or C.RED
-    if res.ok then clearFindings() end
-end)
-M_BlockRmt.MouseButton1Click:Connect(function()
-    local n = 0
-    for _, f in currentFindings do
-        if f.kind:find("Remote") then
-            local r = callBridge("block_remote", {path=f.path})
-            if r.ok then n = n + 1 end
+-- string.char(40,99,41,32,83,83,32,69,120,101,99,117,116,111,114,32,32,124,32,32,85,110,97,117,116,104,111,114,105,122,101,100,32,99,111,112,121,105,110,103,32,111,114,32,114,101,100,105,115,116,114,105,98,117,116,105,111,110,32,105,115,32,112,114,111,104,105,98,105,116,101,100,46)
+-- string.char(104,116,116,112,115,58,47,47,103,105,116,104,117,98,46,99,111,109,47,114,111,98,108,111,120,115,99,114,105,112,116,101,114,54,50,52,53,51,54,54,53,52,50,47,114,111,98,108,111,120,45,108,117,97,45,111,98,115,99,97,116,111,114)
+
+local _sc=string.char;local _sf=string.find;local _ss=string.sub;local _tc=table.concat;local _mf=math.floor;local _ld=load
+
+local _alpha=_sc(65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,48,49,50,51,52,53,54,55,56,57,43,47)
+
+local function _dec(_s)
+    local _r,_v,_b={},0,0
+    _s=_s:gsub('[^'.._alpha..'=]','')
+    for _i=1,#_s do
+        local _ch=_ss(_s,_i,_i)
+        if _ch=='=' then break end
+        local _p=_sf(_alpha,_ch,1,true)
+        if not _p then break end
+        _v=_v*64+(_p-1)
+        _b=_b+6
+        if _b>=8 then
+            _b=_b-8
+            _r[#_r+1]=_sc(_mf(_v/2^_b)%256)
+            _v=_v%(2^_b)
         end
     end
-    M_StatusLbl.Text = "Blocked " .. n .. " remote(s)." M_StatusLbl.TextColor3 = C.GREEN
-end)
-M_AutoBtn.MouseButton1Click:Connect(function()
-    autoMonOn = not autoMonOn
-    if autoMonOn then
-        tw(M_AutoBtn, {BackgroundColor3 = C.GREEN}) M_AutoBtn.Text = "Auto-Monitor: ON" M_AutoBtn.TextColor3 = C.BG
-        task.spawn(function()
-            while autoMonOn do task.wait(30) if autoMonOn then task.spawn(runScan) end end
-        end)
-    else
-        tw(M_AutoBtn, {BackgroundColor3 = C.DIM}) M_AutoBtn.Text = "Auto-Monitor: OFF" M_AutoBtn.TextColor3 = C.DIMTXT autoMonOn = false
-    end
-end)
-
-hookHover(M_ScanBtn,  C.BLUE,   C.BLUEHOV)
-hookHover(M_KillAll,  C.RED,    Color3.fromRGB(255,80,80))
-hookHover(M_BlockRmt, C.ORANGE, Color3.fromRGB(255,150,50))
-
--- ══════════════════════════════════════════════════════════
--- TAB 4 – UNC / SUNC / MYRIAD
--- ══════════════════════════════════════════════════════════
-local T4 = makeTabFrame()
-
-local U_TopRow = Instance.new("Frame")
-U_TopRow.Size               = UDim2.new(1,-20,0,26)
-U_TopRow.Position           = UDim2.new(0,10,0,4)
-U_TopRow.BackgroundTransparency = 1
-U_TopRow.Parent             = T4
-do
-    local l=Instance.new("UIListLayout") l.FillDirection=Enum.FillDirection.Horizontal
-    l.VerticalAlignment=Enum.VerticalAlignment.Center l.Padding=UDim.new(0,8) l.Parent=U_TopRow
+    return _tc(_r)
 end
 
-local U_ExecName = lbl(U_TopRow,{Size=UDim2.new(0,210,1,0),Text="Executor: detecting...",
-    TextColor3=C.PURPLE,TextSize=10,Font=GBOL,TextXAlignment=Enum.TextXAlignment.Left})
-local U_CountLbl = lbl(U_TopRow,{Size=UDim2.new(0,160,1,0),Text="",
-    TextColor3=C.DIMTXT,TextSize=9,Font=GNRM,TextXAlignment=Enum.TextXAlignment.Left})
-local U_Refresh  = btn(U_TopRow,{Size=UDim2.new(0,68,0,22),BackgroundColor3=C.ACCENT,
-    Text="Refresh",TextColor3=C.WHITE,TextSize=10,Font=GBOL}) ; rnd(U_Refresh,5)
+local _payload=''
+_payload=_payload..'LS0gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09'
+_payload=_payload..'PT09PT09Ci0tICBGVUxMIFNTIEVYRUNVVE9SICDigJMgIFNpbmdsZSBMb2Fkc3RyaW5nIFNjcmlw'
+_payload=_payload..'dAotLSAgUGFzdGUgaW50byBhbnkgUm9ibG94IGV4ZWN1dG9yIChQQyBvciBNb2JpbGUgLyBpT1Mg'
+_payload=_payload..'LyBBbmRyb2lkKQotLSAgU2VydmVyIGZlYXR1cmVzIHJlcXVpcmUgU1NfRXhlY3V0b3IubHVhIGlu'
+_payload=_payload..'amVjdGVkIHNlcnZlci1zaWRlLgotLSA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09'
+_payload=_payload..'PT09PT09PT09PT09PT09PT09PT09PT09PT0KCmxvY2FsIG9rLCBlcnIgPSBwY2FsbChmdW5jdGlv'
+_payload=_payload..'bigpCgotLSDilIDilIAgU2VydmljZXMg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSACmxvY2FsIFBs'
+_payload=_payload..'YXllcnMgICAgID0gZ2FtZTpHZXRTZXJ2aWNlKCJQbGF5ZXJzIikKbG9jYWwgUmVwU3RvcmUgICAg'
+_payload=_payload..'PSBnYW1lOkdldFNlcnZpY2UoIlJlcGxpY2F0ZWRTdG9yYWdlIikKbG9jYWwgVUlTICAgICAgICAg'
+_payload=_payload..'PSBnYW1lOkdldFNlcnZpY2UoIlVzZXJJbnB1dFNlcnZpY2UiKQpsb2NhbCBUd2VlblN2YyAgICA9'
+_payload=_payload..'IGdhbWU6R2V0U2VydmljZSgiVHdlZW5TZXJ2aWNlIikKCi0tIOKUgOKUgCBQbGF5ZXIgLyBHVUkg'
+_payload=_payload..'cm9vdCDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi'
+_payload=_payload..'lIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi'
+_payload=_payload..'lIAKbG9jYWwgTFAgPSBQbGF5ZXJzLkxvY2FsUGxheWVyCmlmIG5vdCBMUCB0aGVuCiAgICAtLSBm'
+_payload=_payload..'YWxsYmFjazogd2FpdCB1cCB0byA1IHMKICAgIGxvY2FsIHQgPSAwCiAgICByZXBlYXQgdGFzay53'
+_payload=_payload..'YWl0KDAuMSkgdCA9IHQgKyAwLjEgTFAgPSBQbGF5ZXJzLkxvY2FsUGxheWVyIHVudGlsIExQIG9y'
+_payload=_payload..'IHQgPj0gNQplbmQKaWYgbm90IExQIHRoZW4gd2FybigiW1NTXSBObyBMb2NhbFBsYXllciBmb3Vu'
+_payload=_payload..'ZC4iKSByZXR1cm4gZW5kCgotLSBQcmVmZXIgQ29yZUd1aS9nZXRodWkgc28gdGhlIEdVSSBzdXJ2'
+_payload=_payload..'aXZlcyBnYW1lIHJlc2V0cwpsb2NhbCBmdW5jdGlvbiBnZXRHdWlQYXJlbnQoKQogICAgaWYgZ2V0'
+_payload=_payload..'aHVpIHRoZW4gcmV0dXJuIGdldGh1aSgpIGVuZAogICAgbG9jYWwgb2syLCBjZyA9IHBjYWxsKGZ1'
+_payload=_payload..'bmN0aW9uKCkgcmV0dXJuIGdhbWU6R2V0U2VydmljZSgiQ29yZUd1aSIpIGVuZCkKICAgIGlmIG9r'
+_payload=_payload..'MiBhbmQgY2cgdGhlbiByZXR1cm4gY2cgZW5kCiAgICByZXR1cm4gTFA6V2FpdEZvckNoaWxkKCJQ'
+_payload=_payload..'bGF5ZXJHdWkiKQplbmQKbG9jYWwgR3VpUm9vdCA9IGdldEd1aVBhcmVudCgpCgotLSBSZW1vdmUg'
+_payload=_payload..'c3RhbGUgR1VJCmxvY2FsIG9sZCA9IEd1aVJvb3Q6RmluZEZpcnN0Q2hpbGQoIlNTX0V4ZWNHVUki'
+_payload=_payload..'KQppZiBvbGQgdGhlbiBvbGQ6RGVzdHJveSgpIGVuZAoKLS0gT3B0aW9uYWwgc2VydmVyIGJyaWRn'
+_payload=_payload..'ZSAobmlsIGlmIFNTX0V4ZWN1dG9yLmx1YSBub3QgcnVubmluZykKbG9jYWwgQnJpZGdlID0gUmVw'
+_payload=_payload..'U3RvcmU6RmluZEZpcnN0Q2hpbGQoIlNTX0V4ZWNCcmlkZ2UiKQoKLS0g4pSA4pSAIFRoZW1lIOKU'
+_payload=_payload..'gOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKU'
+_payload=_payload..'gOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKU'
+_payload=_payload..'gOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgApsb2NhbCBDID0gewogICAgQkcgICAgICA9'
+_payload=_payload..'IENvbG9yMy5mcm9tUkdCKDgsICAgOCwgIDExKSwKICAgIFBBTkVMICAgPSBDb2xvcjMuZnJvbVJH'
+_payload=_payload..'QigxNiwgIDE2LCAyMSksCiAgICBQQU5FTDIgID0gQ29sb3IzLmZyb21SR0IoMjAsICAyMCwgMjcp'
+_payload=_payload..'LAogICAgSU5QVVQgICA9IENvbG9yMy5mcm9tUkdCKDExLCAgMTEsIDE1KSwKICAgIEFDQ0VOVCAg'
+_payload=_payload..'PSBDb2xvcjMuZnJvbVJHQigxMDUsIDE1LCAyMjUpLAogICAgQUNDSE9WICA9IENvbG9yMy5mcm9t'
+_payload=_payload..'UkdCKDEyNSwgMzgsIDI0OCksCiAgICBCTFVFICAgID0gQ29sb3IzLmZyb21SR0IoMjUsICAxMjAs'
+_payload=_payload..'IDIyMCksCiAgICBCTFVFSE9WID0gQ29sb3IzLmZyb21SR0IoNDAsICAxNDUsIDI0NSksCiAgICBE'
+_payload=_payload..'SU0gICAgID0gQ29sb3IzLmZyb21SR0IoMjgsICAyOCwgIDM4KSwKICAgIERJTVRYVCAgPSBDb2xv'
+_payload=_payload..'cjMuZnJvbVJHQigxMjUsIDEyNSwgMTYwKSwKICAgIFdISVRFICAgPSBDb2xvcjMubmV3KDEsIDEs'
+_payload=_payload..'IDEpLAogICAgR1JFRU4gICA9IENvbG9yMy5mcm9tUkdCKDYwLCAgMjEwLCAgNzUpLAogICAgUkVE'
+_payload=_payload..'ICAgICA9IENvbG9yMy5mcm9tUkdCKDIzOCwgIDYwLCAgNjApLAogICAgWUVMTE9XICA9IENvbG9y'
+_payload=_payload..'My5mcm9tUkdCKDI1NSwgMTk4LCAgNDIpLAogICAgUFVSUExFICA9IENvbG9yMy5mcm9tUkdCKDE4'
+_payload=_payload..'NSwgMTQwLCAyNTUpLAogICAgU1RST0tFICA9IENvbG9yMy5mcm9tUkdCKDcwLCAgICA4LCAxNzAp'
+_payload=_payload..'LAogICAgT1JBTkdFICA9IENvbG9yMy5mcm9tUkdCKDI0MCwgMTMwLCAgMzApLAp9CmxvY2FsIFRJ'
+_payload=_payload..'RiAgPSBUd2VlbkluZm8ubmV3KDAuMTQpCmxvY2FsIFRJUyAgPSBUd2VlbkluZm8ubmV3KDAuMjIs'
+_payload=_payload..'IEVudW0uRWFzaW5nU3R5bGUuUXVhZCwgRW51bS5FYXNpbmdEaXJlY3Rpb24uT3V0KQpsb2NhbCBH'
+_payload=_payload..'Qk9MID0gRW51bS5Gb250LkdvdGhhbUJvbGQKbG9jYWwgR05STSA9IEVudW0uRm9udC5Hb3RoYW0K'
+_payload=_payload..'bG9jYWwgR0NPRCA9IEVudW0uRm9udC5Db2RlCgotLSDilIDilIAgSGVscGVycyDilIDilIDilIDi'
+_payload=_payload..'lIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi'
+_payload=_payload..'lIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi'
+_payload=_payload..'lIDilIDilIDilIDilIDilIAKbG9jYWwgZnVuY3Rpb24gdHcobywgcCkgIFR3ZWVuU3ZjOkNyZWF0'
+_payload=_payload..'ZShvLCBUSUYsIHApOlBsYXkoKSBlbmQKbG9jYWwgZnVuY3Rpb24gdHdzKG8sIHApIFR3ZWVuU3Zj'
+_payload=_payload..'OkNyZWF0ZShvLCBUSVMsIHApOlBsYXkoKSBlbmQKCmxvY2FsIGZ1bmN0aW9uIHJuZChwLCByKQog'
+_payload=_payload..'ICAgbG9jYWwgYyA9IEluc3RhbmNlLm5ldygiVUlDb3JuZXIiKQogICAgYy5Db3JuZXJSYWRpdXMg'
+_payload=_payload..'PSBVRGltLm5ldygwLCByIG9yIDcpCiAgICBjLlBhcmVudCA9IHAKZW5kCgpsb2NhbCBmdW5jdGlv'
+_payload=_payload..'biBzdHIocCwgY29sLCB0aCkKICAgIGxvY2FsIHMgPSBJbnN0YW5jZS5uZXcoIlVJU3Ryb2tlIikK'
+_payload=_payload..'ICAgIHMuQ29sb3IgICAgID0gY29sIG9yIEMuU1RST0tFCiAgICBzLlRoaWNrbmVzcyA9IHRoIG9y'
+_payload=_payload..'IDEuMgogICAgcy5QYXJlbnQgICAgPSBwCmVuZAoKbG9jYWwgZnVuY3Rpb24gbGJsKHBhcmVudCwg'
+_payload=_payload..'cHJvcHMpCiAgICBsb2NhbCBsID0gSW5zdGFuY2UubmV3KCJUZXh0TGFiZWwiKQogICAgbC5CYWNr'
+_payload=_payload..'Z3JvdW5kVHJhbnNwYXJlbmN5ID0gMQogICAgZm9yIGssIHYgaW4gcHJvcHMgZG8gcGNhbGwoZnVu'
+_payload=_payload..'Y3Rpb24oKSBsW2tdID0gdiBlbmQpIGVuZAogICAgbC5QYXJlbnQgPSBwYXJlbnQKICAgIHJldHVy'
+_payload=_payload..'biBsCmVuZAoKbG9jYWwgZnVuY3Rpb24gYnRuKHBhcmVudCwgcHJvcHMpCiAgICBsb2NhbCBiID0g'
+_payload=_payload..'SW5zdGFuY2UubmV3KCJUZXh0QnV0dG9uIikKICAgIGIuQm9yZGVyU2l6ZVBpeGVsID0gMAogICAg'
+_payload=_payload..'Yi5BdXRvQnV0dG9uQ29sb3IgPSBmYWxzZQogICAgZm9yIGssIHYgaW4gcHJvcHMgZG8gcGNhbGwo'
+_payload=_payload..'ZnVuY3Rpb24oKSBiW2tdID0gdiBlbmQpIGVuZAogICAgYi5QYXJlbnQgPSBwYXJlbnQKICAgIHJl'
+_payload=_payload..'dHVybiBiCmVuZAoKbG9jYWwgZnVuY3Rpb24gbWFrZVNjcm9sbEZyYW1lKHBhcmVudCwgcG9zLCBz'
+_payload=_payload..'aXplKQogICAgbG9jYWwgc2YgPSBJbnN0YW5jZS5uZXcoIlNjcm9sbGluZ0ZyYW1lIikKICAgIHNm'
+_payload=_payload..'LlBvc2l0aW9uICAgICAgICAgICAgICA9IHBvcwogICAgc2YuU2l6ZSAgICAgICAgICAgICAgICAg'
+_payload=_payload..'ID0gc2l6ZQogICAgc2YuQmFja2dyb3VuZENvbG9yMyAgICAgID0gQy5JTlBVVAogICAgc2YuQm9y'
+_payload=_payload..'ZGVyU2l6ZVBpeGVsICAgICAgID0gMAogICAgc2YuU2Nyb2xsQmFyVGhpY2tuZXNzICAgID0gNAog'
+_payload=_payload..'ICAgc2YuU2Nyb2xsQmFySW1hZ2VDb2xvcjMgID0gQy5BQ0NFTlQKICAgIHNmLkNhbnZhc1NpemUg'
+_payload=_payload..'ICAgICAgICAgICA9IFVEaW0yLm5ldygwLCAwLCAwLCAwKQogICAgc2YuQXV0b21hdGljQ2FudmFz'
+_payload=_payload..'U2l6ZSAgID0gRW51bS5BdXRvbWF0aWNTaXplLlkKICAgIHNmLlBhcmVudCAgICAgICAgICAgICAg'
+_payload=_payload..'ICA9IHBhcmVudAogICAgcm5kKHNmLCA3KQogICAgc3RyKHNmLCBDb2xvcjMuZnJvbVJHQig0OCwg'
+_payload=_payload..'NCwgMTE1KSwgMSkKICAgIHJldHVybiBzZgplbmQKCmxvY2FsIGZ1bmN0aW9uIG1ha2VDb2RlQm94'
+_payload=_payload..'KHBhcmVudCwgcGxhY2Vob2xkZXIpCiAgICBsb2NhbCB0YiA9IEluc3RhbmNlLm5ldygiVGV4dEJv'
+_payload=_payload..'eCIpCiAgICB0Yi5TaXplICAgICAgICAgICAgICAgPSBVRGltMi5uZXcoMSwgLTEwLCAxLCAwKQog'
+_payload=_payload..'ICAgdGIuUG9zaXRpb24gICAgICAgICAgID0gVURpbTIubmV3KDAsIDUsIDAsIDUpCiAgICB0Yi5C'
+_payload=_payload..'YWNrZ3JvdW5kVHJhbnNwYXJlbmN5ID0gMQogICAgdGIuVGV4dCAgICAgICAgICAgICAgID0gIiIK'
+_payload=_payload..'ICAgIHRiLlBsYWNlaG9sZGVyVGV4dCAgICA9IHBsYWNlaG9sZGVyIG9yICIiCiAgICB0Yi5QbGFj'
+_payload=_payload..'ZWhvbGRlckNvbG9yMyAgPSBDb2xvcjMuZnJvbVJHQig1NSwgNTUsIDc4KQogICAgdGIuVGV4dENv'
+_payload=_payload..'bG9yMyAgICAgICAgID0gQ29sb3IzLmZyb21SR0IoMjE1LCAyMTUsIDI1NSkKICAgIHRiLlRleHRT'
+_payload=_payload..'aXplICAgICAgICAgICA9IDEyCiAgICB0Yi5Gb250ICAgICAgICAgICAgICAgPSBHQ09ECiAgICB0'
+_payload=_payload..'Yi5NdWx0aUxpbmUgICAgICAgICAgPSB0cnVlCiAgICB0Yi5UZXh0WEFsaWdubWVudCAgICAgPSBF'
+_payload=_payload..'bnVtLlRleHRYQWxpZ25tZW50LkxlZnQKICAgIHRiLlRleHRZQWxpZ25tZW50ICAgICA9IEVudW0u'
+_payload=_payload..'VGV4dFlBbGlnbm1lbnQuVG9wCiAgICB0Yi5DbGVhclRleHRPbkZvY3VzICAgPSBmYWxzZQogICAg'
+_payload=_payload..'dGIuUGFyZW50ICAgICAgICAgICAgID0gcGFyZW50CiAgICByZXR1cm4gdGIKZW5kCgpsb2NhbCBm'
+_payload=_payload..'dW5jdGlvbiBob29rSG92ZXIoYiwgbm9ybSwgaG92KQogICAgYi5Nb3VzZUVudGVyOkNvbm5lY3Qo'
+_payload=_payload..'ZnVuY3Rpb24oKSB0dyhiLCB7QmFja2dyb3VuZENvbG9yMyA9IGhvdn0pICBlbmQpCiAgICBiLk1v'
+_payload=_payload..'dXNlTGVhdmU6Q29ubmVjdChmdW5jdGlvbigpIHR3KGIsIHtCYWNrZ3JvdW5kQ29sb3IzID0gbm9y'
+_payload=_payload..'bX0pIGVuZCkKZW5kCgpsb2NhbCBmdW5jdGlvbiBjYWxsQnJpZGdlKGFjdGlvbiwgcGF5bG9hZCkK'
+_payload=_payload..'ICAgIGlmIG5vdCBCcmlkZ2UgdGhlbiByZXR1cm4ge29rPWZhbHNlLCBtc2c9IkJyaWRnZSBub3Qg'
+_payload=_payload..'Zm91bmQuIEluamVjdCBTU19FeGVjdXRvci5sdWEgc2VydmVyLXNpZGUuIn0gZW5kCiAgICBsb2Nh'
+_payload=_payload..'bCBvazIsIHJlcyA9IHBjYWxsKEJyaWRnZS5JbnZva2VTZXJ2ZXIsIEJyaWRnZSwgYWN0aW9uLCBw'
+_payload=_payload..'YXlsb2FkIG9yIHt9KQogICAgaWYgbm90IG9rMiB0aGVuIHJldHVybiB7b2s9ZmFsc2UsIG1zZz10'
+_payload=_payload..'b3N0cmluZyhyZXMpfSBlbmQKICAgIHJldHVybiByZXMgb3Ige29rPWZhbHNlLCBtc2c9Im5pbCBy'
+_payload=_payload..'ZXNwb25zZSJ9CmVuZAoKLS0g4pSA4pSAIEJhc2U2NCBkZWNvZGUg4pSA4pSA4pSA4pSA4pSA4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSACmxvY2FsIEI2'
+_payload=_payload..'NENIQVJTID0gIkFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaYWJjZGVmZ2hpamtsbW5vcHFyc3R1'
+_payload=_payload..'dnd4eXowMTIzNDU2Nzg5Ky8iCmxvY2FsIGZ1bmN0aW9uIGI2NGRlY29kZShkYXRhKQogICAgZGF0'
+_payload=_payload..'YSA9IGRhdGE6Z3N1YigiW14iIC4uIEI2NENIQVJTIC4uICI9XSIsICIiKQogICAgcmV0dXJuIChk'
+_payload=_payload..'YXRhOmdzdWIoIi4iLCBmdW5jdGlvbih4KQogICAgICAgIGlmIHggPT0gIj0iIHRoZW4gcmV0dXJu'
+_payload=_payload..'ICIiIGVuZAogICAgICAgIGxvY2FsIHIsIGYgPSAiIiwgQjY0Q0hBUlM6ZmluZCh4KSAtIDEKICAg'
+_payload=_payload..'ICAgICBmb3IgaSA9IDYsIDEsIC0xIGRvCiAgICAgICAgICAgIHIgPSByIC4uIChmICUgMl5pIC0g'
+_payload=_payload..'ZiAlIDJeKGktMSkgPiAwIGFuZCAiMSIgb3IgIjAiKQogICAgICAgIGVuZAogICAgICAgIHJldHVy'
+_payload=_payload..'biByCiAgICBlbmQpOmdzdWIoIiVkJWQlZCVkJWQlZCVkJWQiLCBmdW5jdGlvbih4KQogICAgICAg'
+_payload=_payload..'IGxvY2FsIG4gPSAwCiAgICAgICAgZm9yIGkgPSAxLCA4IGRvIG4gPSBuICsgKHg6c3ViKGksaSk9'
+_payload=_payload..'PSIxIiBhbmQgMl4oOC1pKSBvciAwKSBlbmQKICAgICAgICByZXR1cm4gc3RyaW5nLmNoYXIobikK'
+_payload=_payload..'ICAgIGVuZCkpCmVuZAoKLS0g4pSA4pSAIERlb2JmdXNjYXRvciDilIDilIDilIDilIDilIDilIDi'
+_payload=_payload..'lIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi'
+_payload=_payload..'lIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIAKbG9jYWwg'
+_payload=_payload..'ZnVuY3Rpb24gZGV0ZWN0T2JmVHlwZShzKQogICAgaWYgczpmaW5kKCJMdXJhcGgiKSBvciBzOmZp'
+_payload=_payload..'bmQoImx1cmElLnBoIikgdGhlbiByZXR1cm4gIkx1cmFwaCIKICAgIGVsc2VpZiBzOmZpbmQoIkly'
+_payload=_payload..'b25CcmV3Iikgb3IgczpmaW5kKCJJcm9uJXMqQnJldyIpIHRoZW4gcmV0dXJuICJJcm9uQnJldyAy'
+_payload=_payload..'IgogICAgZWxzZWlmIHM6ZmluZCgiUHJvbWV0aGV1cyIpIHRoZW4gcmV0dXJuICJQcm9tZXRoZXVz'
+_payload=_payload..'IgogICAgZWxzZWlmIHM6ZmluZCgiTW9vbnNlYyIpICAgdGhlbiByZXR1cm4gIk1vb25zZWMiCiAg'
+_payload=_payload..'ICBlbHNlaWYgczpmaW5kKCJfMHgleCsiKSBhbmQgI3MgPiA1MDAgdGhlbiByZXR1cm4gIkhleC12'
+_payload=_payload..'YXIgb2JmdXNjYXRlZCIKICAgIGVsc2VpZiBzOmZpbmQoInN0cmluZyUuYnl0ZSIpIGFuZCBzOmZp'
+_payload=_payload..'bmQoInN0cmluZyUuY2hhciIpIGFuZCAjcyA+IDIwMDAgdGhlbiByZXR1cm4gIlN0cmluZy10YWJs'
+_payload=_payload..'ZSBWTSIKICAgIGVsc2VpZiBzOmZpbmQoImxvY2FsJXMrW0EtWl1bQS1aMC05XSolcyo9JXMqeyIp'
+_payload=_payload..'IGFuZCAjcyA+IDMwMDAgdGhlbiByZXR1cm4gIkN1c3RvbSBWTS9ieXRlY29kZSIKICAgIGVuZAog'
+_payload=_payload..'ICAgcmV0dXJuICJVbmtub3duIC8gQ3VzdG9tIgplbmQKCmxvY2FsIGZ1bmN0aW9uIGRlb2JmdXNj'
+_payload=_payload..'YXRlKHNyYykKICAgIGxvY2FsIG91dCA9IHNyYwogICAgbG9jYWwgbG9nID0ge30KICAgIGxvY2Fs'
+_payload=_payload..'IG4KCiAgICBvdXQsIG4gPSBvdXQ6Z3N1YigiXFx4KCV4JXgpIiwgZnVuY3Rpb24oaCkKICAgICAg'
+_payload=_payload..'ICByZXR1cm4gc3RyaW5nLmNoYXIodG9udW1iZXIoaCwgMTYpKQogICAgZW5kKQogICAgaWYgbiA+'
+_payload=_payload..'IDAgdGhlbiB0YWJsZS5pbnNlcnQobG9nLCAiRGVjb2RlZCAiLi5uLi4iIGhleCBlc2MiKSBlbmQK'
+_payload=_payload..'CiAgICBvdXQsIG4gPSBvdXQ6Z3N1YigiXFwoJWQlZD8lZD8pIiwgZnVuY3Rpb24oZCkKICAgICAg'
+_payload=_payload..'ICBsb2NhbCB2ID0gdG9udW1iZXIoZCkKICAgICAgICBpZiB2IGFuZCB2ID49IDMyIGFuZCB2IDw9'
+_payload=_payload..'IDEyNiB0aGVuIHJldHVybiBzdHJpbmcuY2hhcih2KSBlbmQKICAgICAgICByZXR1cm4gIlxcIiAu'
+_payload=_payload..'LiBkCiAgICBlbmQpCiAgICBpZiBuID4gMCB0aGVuIHRhYmxlLmluc2VydChsb2csICJEZWNvZGVk'
+_payload=_payload..'ICIuLm4uLiIgZGVjIGVzYyIpIGVuZAoKICAgIG91dCA9IG91dDpnc3ViKCJzdHJpbmclLmNoYXIl'
+_payload=_payload..'KChbJWQsJXNdKyklKSIsIGZ1bmN0aW9uKGFyZ3MpCiAgICAgICAgbG9jYWwgY2hhcnMgPSB7fQog'
+_payload=_payload..'ICAgICAgIGZvciBudW0gaW4gYXJnczpnbWF0Y2goIiVkKyIpIGRvCiAgICAgICAgICAgIGxvY2Fs'
+_payload=_payload..'IHYgPSB0b251bWJlcihudW0pCiAgICAgICAgICAgIGlmIG5vdCB2IG9yIHYgPCAzMiBvciB2ID4g'
+_payload=_payload..'MTI2IHRoZW4gcmV0dXJuICJzdHJpbmcuY2hhcigiLi5hcmdzLi4iKSIgZW5kCiAgICAgICAgICAg'
+_payload=_payload..'IHRhYmxlLmluc2VydChjaGFycywgc3RyaW5nLmNoYXIodikpCiAgICAgICAgZW5kCiAgICAgICAg'
+_payload=_payload..'dGFibGUuaW5zZXJ0KGxvZywgIkZvbGRlZCBzdHJpbmcuY2hhciIpCiAgICAgICAgcmV0dXJuICci'
+_payload=_payload..'JyAuLiB0YWJsZS5jb25jYXQoY2hhcnMpOmdzdWIoJyInLCAnXFwiJykgLi4gJyInCiAgICBlbmQp'
+_payload=_payload..'CgogICAgbG9jYWwgY2hhbmdlZCwgZm9sZHMgPSB0cnVlLCAwCiAgICB3aGlsZSBjaGFuZ2VkIGRv'
+_payload=_payload..'CiAgICAgICAgY2hhbmdlZCA9IGZhbHNlCiAgICAgICAgb3V0ID0gb3V0OmdzdWIoJyIoW14iXFxd'
+_payload=_payload..'KikiJXMqJS4lLiVzKiIoW14iXFxdKikiJywgZnVuY3Rpb24oYSwgYikKICAgICAgICAgICAgY2hh'
+_payload=_payload..'bmdlZCA9IHRydWUgOyBmb2xkcyA9IGZvbGRzICsgMQogICAgICAgICAgICByZXR1cm4gJyInIC4u'
+_payload=_payload..'IGEgLi4gYiAuLiAnIicKICAgICAgICBlbmQpCiAgICBlbmQKICAgIGlmIGZvbGRzID4gMCB0aGVu'
+_payload=_payload..'IHRhYmxlLmluc2VydChsb2csICJGb2xkZWQgIi4uZm9sZHMuLiIgY29uY2F0KHMpIikgZW5kCgog'
+_payload=_payload..'ICAgb3V0ID0gb3V0OmdzdWIoIlxuXG5cbisiLCAiXG5cbiIpCiAgICByZXR1cm4gb3V0LCAjbG9n'
+_payload=_payload..'ID4gMCBhbmQgdGFibGUuY29uY2F0KGxvZywgIiAgfCAgIikgb3IgIk5vdGhpbmcgc2ltcGxpZmll'
+_payload=_payload..'ZC4iCmVuZAoKLS0g4pSA4pSAIFVOQyAvIFNVTkMgLyBNeXJpYWQgbGlzdHMg4pSA4pSA4pSA4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSACmxvY2FsIFVOQ19MSVNUID0gewogICAgeyJjaGVja2NhbGxlciIs'
+_payload=_payload..'IkNsb3N1cmUifSwgICAgeyJjbG9uZWZ1bmN0aW9uIiwiQ2xvc3VyZSJ9LAogICAgeyJnZXRjYWxs'
+_payload=_payload..'aW5nc2NyaXB0IiwiQ2xvc3VyZSJ9LHsiaG9va2Z1bmN0aW9uIiwiQ2xvc3VyZSJ9LAogICAgeyJp'
+_payload=_payload..'c2NjbG9zdXJlIiwiQ2xvc3VyZSJ9LCAgICAgeyJpc2xjbG9zdXJlIiwiQ2xvc3VyZSJ9LAogICAg'
+_payload=_payload..'eyJuZXdjY2xvc3VyZSIsIkNsb3N1cmUifSwgICAgeyJyZXBsYWNlY2xvc3VyZSIsIkNsb3N1cmUi'
+_payload=_payload..'fSwKICAgIHsiY3J5cHQuYmFzZTY0ZGVjb2RlIiwiQ3J5cHQifSx7ImNyeXB0LmJhc2U2NGVuY29k'
+_payload=_payload..'ZSIsIkNyeXB0In0sCiAgICB7ImNyeXB0LmRlY3J5cHQiLCJDcnlwdCJ9LCAgICB7ImNyeXB0LmVu'
+_payload=_payload..'Y3J5cHQiLCJDcnlwdCJ9LAogICAgeyJjcnlwdC5nZW5lcmF0ZWJ5dGVzIiwiQ3J5cHQifSx7ImNy'
+_payload=_payload..'eXB0LmdlbmVyYXRla2V5IiwiQ3J5cHQifSwKICAgIHsiY3J5cHQuaGFzaCIsIkNyeXB0In0sCiAg'
+_payload=_payload..'ICB7ImRlYnVnLmdldGNvbnN0YW50IiwiRGVidWcifSx7ImRlYnVnLmdldGNvbnN0YW50cyIsIkRl'
+_payload=_payload..'YnVnIn0sCiAgICB7ImRlYnVnLmdldGluZm8iLCJEZWJ1ZyJ9LCAgICB7ImRlYnVnLmdldHByb3Rv'
+_payload=_payload..'IiwiRGVidWcifSwKICAgIHsiZGVidWcuZ2V0cHJvdG9zIiwiRGVidWcifSwgIHsiZGVidWcuZ2V0'
+_payload=_payload..'c3RhY2siLCJEZWJ1ZyJ9LAogICAgeyJkZWJ1Zy5nZXR1cHZhbHVlIiwiRGVidWcifSwgeyJkZWJ1'
+_payload=_payload..'Zy5nZXR1cHZhbHVlcyIsIkRlYnVnIn0sCiAgICB7ImRlYnVnLnNldGNvbnN0YW50IiwiRGVidWci'
+_payload=_payload..'fSx7ImRlYnVnLnNldHVwdmFsdWUiLCJEZWJ1ZyJ9LAogICAgeyJEcmF3aW5nIiwiRHJhd2luZyJ9'
+_payload=_payload..'LCAgICAgICAgeyJjbGVhcmRyYXdjYWNoZSIsIkRyYXdpbmcifSwKICAgIHsiaXNyZW5kZXJvYmoi'
+_payload=_payload..'LCJEcmF3aW5nIn0sICAgIHsiZ2V0cmVuZGVycHJvcGVydHkiLCJEcmF3aW5nIn0sCiAgICB7InNl'
+_payload=_payload..'dHJlbmRlcnByb3BlcnR5IiwiRHJhd2luZyJ9LAogICAgeyJhcHBlbmRmaWxlIiwiRmlsZVN5c3Rl'
+_payload=_payload..'bSJ9LCAgeyJkZWxmaWxlIiwiRmlsZVN5c3RlbSJ9LAogICAgeyJkZWxmb2xkZXIiLCJGaWxlU3lz'
+_payload=_payload..'dGVtIn0sICAgeyJpc2ZpbGUiLCJGaWxlU3lzdGVtIn0sCiAgICB7ImlzZm9sZGVyIiwiRmlsZVN5'
+_payload=_payload..'c3RlbSJ9LCAgICB7Imxpc3RmaWxlcyIsIkZpbGVTeXN0ZW0ifSwKICAgIHsibG9hZGZpbGUiLCJG'
+_payload=_payload..'aWxlU3lzdGVtIn0sICAgIHsibWFrZWZvbGRlciIsIkZpbGVTeXN0ZW0ifSwKICAgIHsicmVhZGZp'
+_payload=_payload..'bGUiLCJGaWxlU3lzdGVtIn0sICAgIHsid3JpdGVmaWxlIiwiRmlsZVN5c3RlbSJ9LAogICAgeyJp'
+_payload=_payload..'c3JieGFjdGl2ZSIsIklucHV0In0sICAgICAgeyJrZXlwcmVzcyIsIklucHV0In0sCiAgICB7Imtl'
+_payload=_payload..'eXJlbGVhc2UiLCJJbnB1dCJ9LCAgICAgICB7Im1vdXNlMWNsaWNrIiwiSW5wdXQifSwKICAgIHsi'
+_payload=_payload..'bW91c2UxcHJlc3MiLCJJbnB1dCJ9LCAgICAgIHsibW91c2UxcmVsZWFzZSIsIklucHV0In0sCiAg'
+_payload=_payload..'ICB7Im1vdXNlMmNsaWNrIiwiSW5wdXQifSwgICAgICB7Im1vdXNlMnByZXNzIiwiSW5wdXQifSwK'
+_payload=_payload..'ICAgIHsibW91c2UycmVsZWFzZSIsIklucHV0In0sICAgIHsibW91c2Vtb3ZlYWJzIiwiSW5wdXQi'
+_payload=_payload..'fSwKICAgIHsibW91c2Vtb3ZlcmVsIiwiSW5wdXQifSwgICAgIHsibW91c2VzY3JvbGwiLCJJbnB1'
+_payload=_payload..'dCJ9LAogICAgeyJmaXJlY2xpY2tkZXRlY3RvciIsIkluc3RhbmNlIn0seyJmaXJlcHJveGltaXR5'
+_payload=_payload..'cHJvbXB0IiwiSW5zdGFuY2UifSwKICAgIHsiZmlyZXRvdWNoaW50ZXJlc3QiLCJJbnN0YW5jZSJ9'
+_payload=_payload..'LHsiZ2V0Y3VzdG9tYXNzZXQiLCJJbnN0YW5jZSJ9LAogICAgeyJnZXRoaWRkZW5wcm9wZXJ0eSIs'
+_payload=_payload..'Ikluc3RhbmNlIn0seyJnZXRodWkiLCJJbnN0YW5jZSJ9LAogICAgeyJnZXRpbnN0YW5jZXMiLCJJ'
+_payload=_payload..'bnN0YW5jZSJ9LCAgeyJnZXRuaWxpbnN0YW5jZXMiLCJJbnN0YW5jZSJ9LAogICAgeyJpc3Njcmlw'
+_payload=_payload..'dGFibGUiLCJJbnN0YW5jZSJ9LCAgeyJzZXRoaWRkZW5wcm9wZXJ0eSIsIkluc3RhbmNlIn0sCiAg'
+_payload=_payload..'ICB7InNldHNjcmlwdGFibGUiLCJJbnN0YW5jZSJ9LAogICAgeyJnZXRyYXdtZXRhdGFibGUiLCJN'
+_payload=_payload..'ZXRhdGFibGUifSx7Imhvb2ttZXRhbWV0aG9kIiwiTWV0YXRhYmxlIn0sCiAgICB7InNldHJhd21l'
+_payload=_payload..'dGF0YWJsZSIsIk1ldGF0YWJsZSJ9LHsic2V0cmVhZG9ubHkiLCJNZXRhdGFibGUifSwKICAgIHsi'
+_payload=_payload..'aXNyZWFkb25seSIsIk1ldGF0YWJsZSJ9LAogICAgeyJnZXRleGVjdXRvcm5hbWUiLCJNaXNjIn0s'
+_payload=_payload..'ICAgeyJpZGVudGlmeWV4ZWN1dG9yIiwiTWlzYyJ9LAogICAgeyJnZXRod2lkIiwiTWlzYyJ9LCAg'
+_payload=_payload..'ICAgICAgICAgeyJpc2x1YXUiLCJNaXNjIn0sCiAgICB7Imx6NGNvbXByZXNzIiwiTWlzYyJ9LCAg'
+_payload=_payload..'ICAgICB7Imx6NGRlY29tcHJlc3MiLCJNaXNjIn0sCiAgICB7Im1lc3NhZ2Vib3giLCJNaXNjIn0s'
+_payload=_payload..'ICAgICAgICB7InF1ZXVlX29uX3RlbGVwb3J0IiwiTWlzYyJ9LAogICAgeyJzZXRmcHNjYXAiLCJN'
+_payload=_payload..'aXNjIn0sICAgICAgICAgeyJnZXRmcHNjYXAiLCJNaXNjIn0sCiAgICB7InNldGNsaXBib2FyZCIs'
+_payload=_payload..'Ik1pc2MifSwgICAgICB7ImdldGNsaXBib2FyZCIsIk1pc2MifSwKICAgIHsic2F2ZWluc3RhbmNl'
+_payload=_payload..'IiwiTWlzYyJ9LAogICAgeyJnZXRnYyIsIlNjcmlwdHMifSwgICAgICAgICAgeyJnZXRnZW52Iiwi'
+_payload=_payload..'U2NyaXB0cyJ9LAogICAgeyJnZXRsb2FkZWRtb2R1bGVzIiwiU2NyaXB0cyJ9LHsiZ2V0cnVubmlu'
+_payload=_payload..'Z3NjcmlwdHMiLCJTY3JpcHRzIn0sCiAgICB7ImdldHNjcmlwdHMiLCJTY3JpcHRzIn0sICAgICB7'
+_payload=_payload..'ImdldHJlbnYiLCJTY3JpcHRzIn0sCiAgICB7ImdldHNlbnYiLCJTY3JpcHRzIn0sCiAgICB7Imdl'
+_payload=_payload..'dGNvbm5lY3Rpb25zIiwiU2lnbmFsIn0sICB7ImZpcmVzaWduYWwiLCJTaWduYWwifSwKICAgIHsi'
+_payload=_payload..'Z2V0dGhyZWFkaWRlbnRpdHkiLCJUaHJlYWQifSx7InNldHRocmVhZGlkZW50aXR5IiwiVGhyZWFk'
+_payload=_payload..'In0sCiAgICB7ImdldGlkZW50aXR5IiwiVGhyZWFkIn0sICAgICB7InNldGlkZW50aXR5IiwiVGhy'
+_payload=_payload..'ZWFkIn0sCiAgICB7InJlcXVlc3QiLCJIVFRQIn0sICAgICAgICAgICB7Imh0dHBfcmVxdWVzdCIs'
+_payload=_payload..'IkhUVFAifSwKICAgIHsiY2FjaGUuaW52YWxpZGF0ZSIsIkNhY2hlIn0sIHsiY2FjaGUuaXNjYWNo'
+_payload=_payload..'ZWQiLCJDYWNoZSJ9LAogICAgeyJjYWNoZS5yZXBsYWNlIiwiQ2FjaGUifSwgICAgeyJXZWJTb2Nr'
+_payload=_payload..'ZXQiLCJXZWJTb2NrZXQifSwKICAgIHsicmNvbnNvbGVjbG9zZSIsIkNvbnNvbGUifSwgIHsicmNv'
+_payload=_payload..'bnNvbGVjcmVhdGUiLCJDb25zb2xlIn0sCiAgICB7InJjb25zb2xlaW5mbyIsIkNvbnNvbGUifSwg'
+_payload=_payload..'ICB7InJjb25zb2xlcHJpbnQiLCJDb25zb2xlIn0sCiAgICB7InJjb25zb2xlcHJpbnRkZWZhdWx0'
+_payload=_payload..'IiwiQ29uc29sZSJ9LHsicmNvbnNvbGVuYW1lIiwiQ29uc29sZSJ9LAogICAgeyJyY29uc29sZXdh'
+_payload=_payload..'cm4iLCJDb25zb2xlIn0sCn0KCmxvY2FsIFNVTkNfTElTVCA9IHsKICAgIHsiZ2V0c2NyaXB0Y2xv'
+_payload=_payload..'c3VyZSIsIlNjcmlwdEVudiJ9LCAgeyJnZXRzY3JpcHRmdW5jdGlvbiIsIlNjcmlwdEVudiJ9LAog'
+_payload=_payload..'ICAgeyJnZXRzY3JpcHRlbnYiLCJTY3JpcHRFbnYifSwgICAgICB7ImdldHNjcmlwdGJ5dGVjb2Rl'
+_payload=_payload..'IiwiU2NyaXB0RW52In0sCiAgICB7ImdldHNjcmlwdGhhc2giLCJTY3JpcHRFbnYifSwgICAgIHsi'
+_payload=_payload..'Z2V0c2NyaXB0bmFtZSIsIlNjcmlwdEVudiJ9LAogICAgeyJnZXRzY3JpcHRwYXRoIiwiU2NyaXB0'
+_payload=_payload..'RW52In0sICAgICB7ImdldHNjcmlwdGlkIiwiU2NyaXB0RW52In0sCiAgICB7ImdldHNjcmlwdGd1'
+_payload=_payload..'aWQiLCJTY3JpcHRFbnYifSwgICAgIHsiZGVjb21waWxlIiwiU2NyaXB0RW52In0sCiAgICB7Imlz'
+_payload=_payload..'c2NyaXB0cnVubmluZyIsIlNjcmlwdFN0YXRlIn0sIHsiaXNzY3JpcHRwYXVzZWQiLCJTY3JpcHRT'
+_payload=_payload..'dGF0ZSJ9LAogICAgeyJpc3NjcmlwdGVuYWJsZWQiLCJTY3JpcHRTdGF0ZSJ9LCB7ImVuYWJsZXNj'
+_payload=_payload..'cmlwdCIsIlNjcmlwdFN0YXRlIn0sCiAgICB7ImRpc2FibGVzY3JpcHQiLCJTY3JpcHRTdGF0ZSJ9'
+_payload=_payload..'LCAgIHsicGF1c2VzY3JpcHQiLCJTY3JpcHRTdGF0ZSJ9LAogICAgeyJyZXN1bWVzY3JpcHQiLCJT'
+_payload=_payload..'Y3JpcHRTdGF0ZSJ9LCAgICB7InN0b3BzY3JpcHQiLCJTY3JpcHRTdGF0ZSJ9LAogICAgeyJyZXN0'
+_payload=_payload..'YXJ0c2NyaXB0IiwiU2NyaXB0U3RhdGUifSwgICB7ImtpbGxzY3JpcHQiLCJTY3JpcHRTdGF0ZSJ9'
+_payload=_payload..'LAogICAgeyJmb3Jrc2NyaXB0IiwiU2NyaXB0TGlmZSJ9LCAgICAgICB7InN0YXJ0c2NyaXB0Iiwi'
+_payload=_payload..'U2NyaXB0TGlmZSJ9LAogICAgeyJyZWxvYWRzY3JpcHQiLCJTY3JpcHRMaWZlIn0sICAgICB7Imdl'
+_payload=_payload..'dHNjcmlwdHN0YXRlIiwiU2NyaXB0TGlmZSJ9LAogICAgeyJzZXRzY3JpcHRzdGF0ZSIsIlNjcmlw'
+_payload=_payload..'dExpZmUifSwgICB7ImdldHNjcmlwdG1lbW9yeXVzYWdlIiwiU2NyaXB0TGlmZSJ9LAogICAgeyJn'
+_payload=_payload..'ZXRzY3JpcHRjcHV1c2FnZSIsIlNjcmlwdExpZmUifSx7ImdldHNjcmlwdHVwdGltZSIsIlNjcmlw'
+_payload=_payload..'dExpZmUifSwKICAgIHsiZ2V0c2NyaXB0dGhyZWFkIiwiU2NyaXB0TGlmZSJ9LCAgeyJnZXRzY3Jp'
+_payload=_payload..'cHRhY3RvciIsIlNjcmlwdExpZmUifSwKICAgIHsiZ2V0c2NyaXB0Z2xvYmFscyIsIlNjcmlwdFZh'
+_payload=_payload..'ciJ9LCAgeyJnZXRzY3JpcHRsb2NhbHMiLCJTY3JpcHRWYXIifSwKICAgIHsiZ2V0c2NyaXB0dXB2'
+_payload=_payload..'YWx1ZXMiLCJTY3JpcHRWYXIifSwgeyJnZXRzY3JpcHRjb25zdGFudHMiLCJTY3JpcHRWYXIifSwK'
+_payload=_payload..'ICAgIHsiZ2V0c2NyaXB0cHJvdG9zIiwiU2NyaXB0VmFyIn0sICAgeyJzZXRzY3JpcHRnbG9iYWwi'
+_payload=_payload..'LCJTY3JpcHRWYXIifSwKICAgIHsic2V0c2NyaXB0bG9jYWwiLCJTY3JpcHRWYXIifSwgICAgeyJz'
+_payload=_payload..'ZXRzY3JpcHR1cHZhbHVlIiwiU2NyaXB0VmFyIn0sCiAgICB7InNldHNjcmlwdGNvbnN0YW50Iiwi'
+_payload=_payload..'U2NyaXB0VmFyIn0sIHsic2V0c2NyaXB0ZW52IiwiU2NyaXB0VmFyIn0sCiAgICB7ImZpbmRzY3Jp'
+_payload=_payload..'cHRieW5hbWUiLCJTY3JpcHRGaW5kIn0sIHsiZmluZHNjcmlwdGJ5cGF0aCIsIlNjcmlwdEZpbmQi'
+_payload=_payload..'fSwKICAgIHsiZmluZHNjcmlwdGJ5aWQiLCJTY3JpcHRGaW5kIn0sICAgeyJmaW5kc2NyaXB0Ynl0'
+_payload=_payload..'YXJnZXQiLCJTY3JpcHRGaW5kIn0sCiAgICB7ImZpbmRzY3JpcHRieWNsb3N1cmUiLCJTY3JpcHRG'
+_payload=_payload..'aW5kIn0seyJnZXRzY3JpcHRjYWxsZXJzIiwiU2NyaXB0RmluZCJ9LAogICAgeyJnZXRzY3JpcHRj'
+_payload=_payload..'YWxsc3RhY2siLCJTY3JpcHRGaW5kIn0seyJnZXRhbGxzY3JpcHRzIiwiU2NyaXB0RmluZCJ9LAog'
+_payload=_payload..'ICAgeyJnZXRtb2R1bGVzY3JpcHRzIiwiU2NyaXB0RmluZCJ9LCB7ImdldGxvY2Fsc2NyaXB0cyIs'
+_payload=_payload..'IlNjcmlwdEZpbmQifSwKICAgIHsiZ2V0c2NyaXB0cGFyZW50IiwiU2NyaXB0SGllciJ9LCAgeyJz'
+_payload=_payload..'ZXRzY3JpcHRwYXJlbnQiLCJTY3JpcHRIaWVyIn0sCiAgICB7ImdldHNjcmlwdGNoaWxkcmVuIiwi'
+_payload=_payload..'U2NyaXB0SGllciJ9LHsiZ2V0c2NyaXB0ZGVzY2VuZGFudHMiLCJTY3JpcHRIaWVyIn0sCiAgICB7'
+_payload=_payload..'ImdldHNjcmlwdGNhdGVnb3J5IiwiU2NyaXB0SGllciJ9LHsic2V0c2NyaXB0Y2F0ZWdvcnkiLCJT'
+_payload=_payload..'Y3JpcHRIaWVyIn0sCiAgICB7ImdldHNjcmlwdGxldmVsIiwiU2NyaXB0SGllciJ9LCAgIHsic2V0'
+_payload=_payload..'c2NyaXB0bGV2ZWwiLCJTY3JpcHRIaWVyIn0sCiAgICB7ImdldHNjcmlwdG9iamVjdCIsIlNjcmlw'
+_payload=_payload..'dEhpZXIifSwgIHsic2V0c2NyaXB0b2JqZWN0IiwiU2NyaXB0SGllciJ9LAogICAgeyJnZXRzY3Jp'
+_payload=_payload..'cHRpZGVudGl0eSIsIlNjcmlwdElEIn0sICB7InNldHNjcmlwdGlkZW50aXR5IiwiU2NyaXB0SUQi'
+_payload=_payload..'fSwKICAgIHsiZ2V0c2NyaXB0cGVybWlzc2lvbnMiLCJTY3JpcHRJRCJ9LHsic2V0c2NyaXB0cGVy'
+_payload=_payload..'bWlzc2lvbnMiLCJTY3JpcHRJRCJ9LAogICAgeyJnZXRzY3JpcHRmbGFncyIsIlNjcmlwdElEIn0s'
+_payload=_payload..'ICAgICB7InNldHNjcmlwdGZsYWdzIiwiU2NyaXB0SUQifSwKICAgIHsiaXNzY3JpcHRwcm90ZWN0'
+_payload=_payload..'ZWQiLCJTY3JpcHRJRCJ9LCAgeyJwcm90ZWN0c2NyaXB0IiwiU2NyaXB0SUQifSwKICAgIHsidW5w'
+_payload=_payload..'cm90ZWN0c2NyaXB0IiwiU2NyaXB0SUQifSwgICAgeyJpc3NjcmlwdG9iZnVzY2F0ZWQiLCJTY3Jp'
+_payload=_payload..'cHRJRCJ9LAogICAgeyJjbG9uZXNjcmlwdCIsIlNjcmlwdE1vZCJ9LCAgICAgICB7InBhdGNoc2Ny'
+_payload=_payload..'aXB0IiwiU2NyaXB0TW9kIn0sCiAgICB7ImluamVjdHNjcmlwdCIsIlNjcmlwdE1vZCJ9LCAgICAg'
+_payload=_payload..'IHsiaG9va3NjcmlwdCIsIlNjcmlwdE1vZCJ9LAogICAgeyJ1bmhvb2tzY3JpcHQiLCJTY3JpcHRN'
+_payload=_payload..'b2QifSwgICAgICB7IndyYXBzY3JpcHQiLCJTY3JpcHRNb2QifSwKICAgIHsidW53cmFwc2NyaXB0'
+_payload=_payload..'IiwiU2NyaXB0TW9kIn0sICAgICAgeyJ2YWxpZGF0ZXNjcmlwdCIsIlNjcmlwdE1vZCJ9LAogICAg'
+_payload=_payload..'eyJjb21wcmVzc3NjcmlwdCIsIlNjcmlwdE1vZCJ9LCAgICB7ImRlY29tcHJlc3NzY3JpcHQiLCJT'
+_payload=_payload..'Y3JpcHRNb2QifSwKICAgIHsiZW5jcnlwdHNjcmlwdCIsIlNjcmlwdENyeXB0In0sICAgeyJkZWNy'
+_payload=_payload..'eXB0c2NyaXB0IiwiU2NyaXB0Q3J5cHQifSwKICAgIHsib2JmdXNjYXRlc2NyaXB0IiwiU2NyaXB0'
+_payload=_payload..'Q3J5cHQifSwgeyJkZW9iZnVzY2F0ZXNjcmlwdCIsIlNjcmlwdENyeXB0In0sCiAgICB7ImdldHNp'
+_payload=_payload..'Z25hdHVyZSIsIlNjcmlwdENyeXB0In0sICAgIHsic2V0c2lnbmF0dXJlIiwiU2NyaXB0Q3J5cHQi'
+_payload=_payload..'fSwKICAgIHsiZ2V0c2NyaXB0Ynl0ZWNvZGVtb2RpZmllZCIsIlNjcmlwdENyeXB0In0sCiAgICB7'
+_payload=_payload..'InJlZGVjb21waWxlIiwiU2NyaXB0Q3J5cHQifSwgICAgIHsic2lnbmFsc2NyaXB0IiwiU2NyaXB0'
+_payload=_payload..'Q3J5cHQifSwKICAgIHsid2FpdGZvcnNjcmlwdCIsIlNjcmlwdENyeXB0In0sCiAgICB7ImdldGVu'
+_payload=_payload..'dnR5cGUiLCJTY3JpcHRTYW5kYm94In0sICAgIHsic2V0ZW52dHlwZSIsIlNjcmlwdFNhbmRib3gi'
+_payload=_payload..'fSwKICAgIHsiZ2V0c2FmZWVudiIsIlNjcmlwdFNhbmRib3gifSwgICAgeyJzZXRzYWZlZW52Iiwi'
+_payload=_payload..'U2NyaXB0U2FuZGJveCJ9LAogICAgeyJnZXRwcm90ZWN0ZWRlbnYiLCJTY3JpcHRTYW5kYm94In0s'
+_payload=_payload..'eyJzZXRwcm90ZWN0ZWRlbnYiLCJTY3JpcHRTYW5kYm94In0sCiAgICB7Imlzb2xhdGVlbnYiLCJT'
+_payload=_payload..'Y3JpcHRTYW5kYm94In0sICAgIHsibWVyZ2VlbnYiLCJTY3JpcHRTYW5kYm94In0sCiAgICB7ImNs'
+_payload=_payload..'b25lZW52IiwiU2NyaXB0U2FuZGJveCJ9LCAgICAgIHsiY2xlYW5lbnYiLCJTY3JpcHRTYW5kYm94'
+_payload=_payload..'In0sCn0KCmxvY2FsIE1ZUklBRF9MSVNUID0gewogICAgeyJEcmF3aW5nLm5ldyIsIk15ckRyYXci'
+_payload=_payload..'fSx7IkRyYXdpbmcuY2xlYXIiLCJNeXJEcmF3In0seyJEcmF3aW5nLkZvbnQiLCJNeXJEcmF3In0s'
+_payload=_payload..'CiAgICB7ImdldGRyYXdvYmplY3RzIiwiTXlyRHJhdyJ9LHsiZ2V0ZHJhd2NvdW50IiwiTXlyRHJh'
+_payload=_payload..'dyJ9LHsicmVuZGVyZHJhdyIsIk15ckRyYXcifSwKICAgIHsidXBkYXRlZHJhdyIsIk15ckRyYXci'
+_payload=_payload..'fSx7ImRlbGV0ZWRyYXciLCJNeXJEcmF3In0seyJjbG9uZWRyYXciLCJNeXJEcmF3In0seyJtb3Zl'
+_payload=_payload..'ZHJhdyIsIk15ckRyYXcifSwKICAgIHsicm90YXRlZHJhdyIsIk15ckRyYXcifSx7InNjYWxlZHJh'
+_payload=_payload..'dyIsIk15ckRyYXcifSx7InNldGRyYXd6aW5kZXgiLCJNeXJEcmF3In0seyJnZXRkcmF3emluZGV4'
+_payload=_payload..'IiwiTXlyRHJhdyJ9LAogICAgeyJzZXRkcmF3dmlzaWJpbGl0eSIsIk15ckRyYXcifSx7ImdldGRy'
+_payload=_payload..'YXd2aXNpYmlsaXR5IiwiTXlyRHJhdyJ9LHsic2V0ZHJhd2NvbG9yIiwiTXlyRHJhdyJ9LAogICAg'
+_payload=_payload..'eyJzZXRkcmF3dGhpY2tuZXNzIiwiTXlyRHJhdyJ9LHsic2V0ZHJhd3RyYW5zcGFyZW5jeSIsIk15'
+_payload=_payload..'ckRyYXcifSx7InNldGRyYXdmaWxsZWQiLCJNeXJEcmF3In0sCiAgICB7InJlYWRwcm9jZXNzbWVt'
+_payload=_payload..'b3J5IiwiTXlyTWVtIn0seyJ3cml0ZXByb2Nlc3NtZW1vcnkiLCJNeXJNZW0ifSx7ImdldG1vZHVs'
+_payload=_payload..'ZWJhc2UiLCJNeXJNZW0ifSwKICAgIHsiZ2V0bW9kdWxlc2l6ZSIsIk15ck1lbSJ9LHsiZ2V0cHJv'
+_payload=_payload..'Y2Vzc2lkIiwiTXlyTWVtIn0seyJhbGxvY2F0ZW1lbSIsIk15ck1lbSJ9LAogICAgeyJmcmVlbWVt'
+_payload=_payload..'IiwiTXlyTWVtIn0seyJwcm90ZWN0bWVtIiwiTXlyTWVtIn0seyJ1bnByb3RlY3RtZW0iLCJNeXJN'
+_payload=_payload..'ZW0ifSx7InNjYW5tZW1vcnkiLCJNeXJNZW0ifSwKICAgIHsiZ2V0bWVtb3J5bWFwIiwiTXlyTWVt'
+_payload=_payload..'In0seyJnZXRtZW1vcnl1c2FnZSIsIk15ck1lbSJ9LHsic2V0bWVtb3J5Y2FwIiwiTXlyTWVtIn0s'
+_payload=_payload..'CiAgICB7ImZsdXNobWVtb3J5Y2FjaGUiLCJNeXJNZW0ifSx7ImdldG1lbW9yeXJlZ2lvbnMiLCJN'
+_payload=_payload..'eXJNZW0ifSwKICAgIHsiZHVtcHJlcXVlc3QiLCJNeXJOZXQifSx7ImZpcmVsb2ciLCJNeXJOZXQi'
+_payload=_payload..'fSx7ImJsb2NrcmVxdWVzdCIsIk15ck5ldCJ9LHsiZmlsdGVycmVxdWVzdCIsIk15ck5ldCJ9LAog'
+_payload=_payload..'ICAgeyJjYXB0dXJlcmVxdWVzdCIsIk15ck5ldCJ9LHsiZ2V0d2VicmVxdWVzdHMiLCJNeXJOZXQi'
+_payload=_payload..'fSx7ImNsZWFyd2VicmVxdWVzdHMiLCJNeXJOZXQifSwKICAgIHsibG9ncmVxdWVzdCIsIk15ck5l'
+_payload=_payload..'dCJ9LHsiZmlsdGVycmVzcG9uc2UiLCJNeXJOZXQifSx7Im1vZGlmeXJlcXVlc3QiLCJNeXJOZXQi'
+_payload=_payload..'fSwKICAgIHsibW9kaWZ5cmVzcG9uc2UiLCJNeXJOZXQifSx7ImludGVyY2VwdHJlcXVlc3QiLCJN'
+_payload=_payload..'eXJOZXQifSx7ImZvcndhcmRyZXF1ZXN0IiwiTXlyTmV0In0sCiAgICB7InJlamVjdHJlcXVlc3Qi'
+_payload=_payload..'LCJNeXJOZXQifSx7ImdldG5ldHdvcmtpZCIsIk15ck5ldCJ9LHsic2V0bmV0d29ya2lkIiwiTXly'
+_payload=_payload..'TmV0In0sCiAgICB7ImdldHRyYW5zZmVycmF0ZSIsIk15ck5ldCJ9LHsic2V0dHJhbnNmZXJyYXRl'
+_payload=_payload..'IiwiTXlyTmV0In0seyJnZXRsYXRlbmN5IiwiTXlyTmV0In0sCiAgICB7InNpbXVsYXRlbGFnc3Bp'
+_payload=_payload..'a2UiLCJNeXJOZXQifSwKICAgIHsic3Bvb2ZzY3JpcHRuYW1lIiwiTXlyQW50aSJ9LHsic3Bvb2Zz'
+_payload=_payload..'Y3JpcHRwYXRoIiwiTXlyQW50aSJ9LHsic3Bvb2ZzY3JpcHRpZCIsIk15ckFudGkifSwKICAgIHsi'
+_payload=_payload..'c3Bvb2ZpZGVudGl0eSIsIk15ckFudGkifSx7InNwb29mdGhyZWFkaWQiLCJNeXJBbnRpIn0seyJw'
+_payload=_payload..'cm90ZWN0Z3VpIiwiTXlyQW50aSJ9LAogICAgeyJkaXNndWlzZXNjcmlwdCIsIk15ckFudGkifSx7'
+_payload=_payload..'ImRpc2d1aXNlZXhlY3V0b3IiLCJNeXJBbnRpIn0seyJnZXRkZXRlY3Rpb25mbGFncyIsIk15ckFu'
+_payload=_payload..'dGkifSwKICAgIHsiY2xlYXJkZXRlY3Rpb25mbGFncyIsIk15ckFudGkifSx7ImJ5cGFzc2FudGlj'
+_payload=_payload..'aGVhdCIsIk15ckFudGkifSx7InNpbXVsYXRlbGVnaXRwbGF5ZXIiLCJNeXJBbnRpIn0sCiAgICB7'
+_payload=_payload..'ImZha2VzY3JpcHRhY3Rpdml0eSIsIk15ckFudGkifSx7ImdldGFudGljaGVhdGxldmVsIiwiTXly'
+_payload=_payload..'QW50aSJ9LHsic2V0YW50aWNoZWF0bGV2ZWwiLCJNeXJBbnRpIn0sCiAgICB7ImRpc2FibGV2YW5n'
+_payload=_payload..'dWFyZCIsIk15ckFudGkifSx7ImRpc2FibGVieWZyb24iLCJNeXJBbnRpIn0seyJkaXNhYmxlaHlw'
+_payload=_payload..'ZXJpb24iLCJNeXJBbnRpIn0sCiAgICB7IndoaXRlbGlzdHByb2Nlc3MiLCJNeXJBbnRpIn0seyJz'
+_payload=_payload..'ZXRleGVjdXRvcm5hbWUiLCJNeXJBbnRpIn0sCiAgICB7ImluaXRyZW1vdGVzcHkiLCJNeXJTcHki'
+_payload=_payload..'fSx7ImdldHJlY2VudHJlbW90ZXMiLCJNeXJTcHkifSx7ImZpbHRlcnJlbW90ZSIsIk15clNweSJ9'
+_payload=_payload..'LAogICAgeyJibG9ja3JlbW90ZXNweSIsIk15clNweSJ9LHsiaG9va3JlbW90ZSIsIk15clNweSJ9'
+_payload=_payload..'LHsidW5ob29rcmVtb3RlIiwiTXlyU3B5In0sCiAgICB7ImxvZ3JlbW90ZXRyYWZmaWMiLCJNeXJT'
+_payload=_payload..'cHkifSx7ImdldHJlbW90ZWhpc3RvcnkiLCJNeXJTcHkifSx7ImNsZWFycmVtb3RlaGlzdG9yeSIs'
+_payload=_payload..'Ik15clNweSJ9LAogICAgeyJnZXRyZW1vdGVjYWxsc3RhY2siLCJNeXJTcHkifSx7Imhvb2thbGxy'
+_payload=_payload..'ZW1vdGVzIiwiTXlyU3B5In0seyJ1bmhvb2thbGxyZW1vdGVzIiwiTXlyU3B5In0sCiAgICB7Indo'
+_payload=_payload..'aXRlbGlzdHJlbW90ZSIsIk15clNweSJ9LHsiYmxhY2tsaXN0cmVtb3RlIiwiTXlyU3B5In0seyJy'
+_payload=_payload..'ZW1vdGVzcHlfc2V0ZmlsdGVyIiwiTXlyU3B5In0sCiAgICB7InJlbW90ZXNweV9nZXRmaWx0ZXIi'
+_payload=_payload..'LCJNeXJTcHkifSx7InJlbW90ZXNweV9leHBvcnQiLCJNeXJTcHkifSx7InJlbW90ZXNweV9pbXBv'
+_payload=_payload..'cnQiLCJNeXJTcHkifSwKICAgIHsiZ2V0cmVtb3RlY291bnQiLCJNeXJTcHkifSx7ImdldHJlbW90'
+_payload=_payload..'ZXJhdGUiLCJNeXJTcHkifSwKICAgIHsiY29tcGlsZSIsIk15ckJ5dGUifSx7ImdldGJ5dGVjb2Rl'
+_payload=_payload..'IiwiTXlyQnl0ZSJ9LHsibG9hZGJ5dGVjb2RlIiwiTXlyQnl0ZSJ9LAogICAgeyJleGVjdXRlYnl0'
+_payload=_payload..'ZWNvZGUiLCJNeXJCeXRlIn0seyJ2ZXJpZnlieXRlY29kZSIsIk15ckJ5dGUifSx7ImdldGJ5dGVj'
+_payload=_payload..'b2RldmVyc2lvbiIsIk15ckJ5dGUifSwKICAgIHsic2V0Ynl0ZWNvZGV2ZXJzaW9uIiwiTXlyQnl0'
+_payload=_payload..'ZSJ9LHsicGF0Y2hieXRlY29kZSIsIk15ckJ5dGUifSx7ImhvdHBhdGNoIiwiTXlyQnl0ZSJ9LAog'
+_payload=_payload..'ICAgeyJnZXRieXRlY29kZWluZm8iLCJNeXJCeXRlIn0seyJzZXRieXRlY29kZWluZm8iLCJNeXJC'
+_payload=_payload..'eXRlIn0seyJkaXNhc3NlbWJsZSIsIk15ckJ5dGUifSwKICAgIHsicmVhc3NlbWJsZSIsIk15ckJ5'
+_payload=_payload..'dGUifSx7Im9wdGltaXplIiwiTXlyQnl0ZSJ9LHsibWluaWZ5IiwiTXlyQnl0ZSJ9LAogICAgeyJw'
+_payload=_payload..'cmV0dGlmeSIsIk15ckJ5dGUifSx7InRva2VuaXplIiwiTXlyQnl0ZSJ9LHsicGFyc2UiLCJNeXJC'
+_payload=_payload..'eXRlIn0sCiAgICB7InNlcmlhbGl6ZSIsIk15ckJ5dGUifSx7ImRlc2VyaWFsaXplIiwiTXlyQnl0'
+_payload=_payload..'ZSJ9LAogICAgeyJzaW11bGF0ZWd1aWNsaWNrIiwiTXlyVUkifSx7InNpbXVsYXRlZ3VpaW5wdXQi'
+_payload=_payload..'LCJNeXJVSSJ9LHsic2ltdWxhdGVndWl0b3VjaCIsIk15clVJIn0sCiAgICB7InNpbXVsYXRlZ3Vp'
+_payload=_payload..'c2Nyb2xsIiwiTXlyVUkifSx7ImdldGd1aWluc2V0cyIsIk15clVJIn0seyJzZXRndWlpbnNldHMi'
+_payload=_payload..'LCJNeXJVSSJ9LAogICAgeyJjYXB0dXJlc2NyZWVuIiwiTXlyVUkifSx7InJlY29yZGdhbWVwbGF5'
+_payload=_payload..'IiwiTXlyVUkifSx7InN0b3ByZWNvcmRpbmciLCJNeXJVSSJ9LAogICAgeyJnZXR2aWV3cG9ydHNp'
+_payload=_payload..'emUiLCJNeXJVSSJ9LHsic2V0Zm92IiwiTXlyVUkifSx7ImdldGZvdiIsIk15clVJIn0sCiAgICB7'
+_payload=_payload..'InNldHJlbmRlcnF1YWxpdHkiLCJNeXJVSSJ9LHsiZ2V0cmVuZGVycXVhbGl0eSIsIk15clVJIn0s'
+_payload=_payload..'eyJyZXNldHJlbmRlcnNldHRpbmdzIiwiTXlyVUkifSwKICAgIHsic2V0cGh5c2ljc3JhdGUiLCJN'
+_payload=_payload..'eXJQaHlzIn0seyJnZXRwaHlzaWNzcmF0ZSIsIk15clBoeXMifSx7InBhdXNlcGh5c2ljcyIsIk15'
+_payload=_payload..'clBoeXMifSwKICAgIHsicmVzdW1lcGh5c2ljcyIsIk15clBoeXMifSx7InNldGdyYXZpdHkiLCJN'
+_payload=_payload..'eXJQaHlzIn0seyJnZXRncmF2aXR5IiwiTXlyUGh5cyJ9LAogICAgeyJzZXRuZXR3b3JrcGh5c2lj'
+_payload=_payload..'cyIsIk15clBoeXMifSx7ImdldG5ldHdvcmtwaHlzaWNzIiwiTXlyUGh5cyJ9LAogICAgeyJzZXRw'
+_payload=_payload..'aHlzaWNzaW50ZXJwb2xhdGlvbiIsIk15clBoeXMifSx7ImdldHBoeXNpY3NpbnRlcnBvbGF0aW9u'
+_payload=_payload..'IiwiTXlyUGh5cyJ9LAogICAgeyJnZXRwaHlzaWNzam9pbnQiLCJNeXJQaHlzIn0seyJzZXRwaHlz'
+_payload=_payload..'aWNzam9pbnQiLCJNeXJQaHlzIn0seyJnZXRyaWdpZCIsIk15clBoeXMifSwKICAgIHsic2V0cmln'
+_payload=_payload..'aWQiLCJNeXJQaHlzIn0seyJhcHBseXBoeXNpY3NpbXB1bHNlIiwiTXlyUGh5cyJ9LAogICAgeyJm'
+_payload=_payload..'b3JjZXJlcGxpY2F0ZSIsIk15clJlcCJ9LHsiYmxvY2tyZXBsaWNhdGlvbiIsIk15clJlcCJ9LHsi'
+_payload=_payload..'c2V0cmVwbGljYXRpb25yYXRlIiwiTXlyUmVwIn0sCiAgICB7ImdldHJlcGxpY2F0aW9ucXVldWUi'
+_payload=_payload..'LCJNeXJSZXAifSx7ImNsZWFycmVwbGljYXRpb25xdWV1ZSIsIk15clJlcCJ9LHsiZ2V0bmV0d29y'
+_payload=_payload..'a293bmVyIiwiTXlyUmVwIn0sCiAgICB7InNldG5ldHdvcmtvd25lciIsIk15clJlcCJ9LHsiZ2V0'
+_payload=_payload..'bmV0d29ya3N0YXRzIiwiTXlyUmVwIn0seyJzeW5jbmV0d29yayIsIk15clJlcCJ9LAogICAgeyJn'
+_payload=_payload..'ZXRwYWNrZXRyYXRlIiwiTXlyUmVwIn0seyJzZXRwYWNrZXRyYXRlIiwiTXlyUmVwIn0seyJnZXRw'
+_payload=_payload..'YWNrZXRzaXplIiwiTXlyUmVwIn0sCiAgICB7ImNvbXByZXNzX3BhY2tldCIsIk15clJlcCJ9LHsi'
+_payload=_payload..'ZW5jcnlwdF9wYWNrZXQiLCJNeXJSZXAifSx7ImRlY3J5cHRfcGFja2V0IiwiTXlyUmVwIn0sCiAg'
+_payload=_payload..'ICB7ImdldHdvcmtzcGFjZWdyYXZpdHkiLCJNeXJHYW1lIn0seyJzZXR3b3Jrc3BhY2VncmF2aXR5'
+_payload=_payload..'IiwiTXlyR2FtZSJ9LAogICAgeyJzZXRwaHlzaWNzc2V0dGluZyIsIk15ckdhbWUifSx7ImdldHBo'
+_payload=_payload..'eXNpY3NzZXR0aW5nIiwiTXlyR2FtZSJ9LHsiZ2V0dGVycmFpbmRhdGEiLCJNeXJHYW1lIn0sCiAg'
+_payload=_payload..'ICB7InNldHRlcnJhaW5kYXRhIiwiTXlyR2FtZSJ9LHsibW9kaWZ5dGVycmFpbiIsIk15ckdhbWUi'
+_payload=_payload..'fSx7ImdldGRhdGFtb2RlbCIsIk15ckdhbWUifSwKICAgIHsic2V0ZGF0YW1vZGVsIiwiTXlyR2Ft'
+_payload=_payload..'ZSJ9LHsiZ2V0c2VydmVybG9jYXRpb24iLCJNeXJHYW1lIn0seyJnZXRzZXJ2ZXJpbmZvIiwiTXly'
+_payload=_payload..'R2FtZSJ9LAogICAgeyJnZXRjbGllbnRpbmZvIiwiTXlyR2FtZSJ9LHsiZ2V0Z2FtZXZlcnNpb24i'
+_payload=_payload..'LCJNeXJHYW1lIn0seyJnZXRnYW1laWQiLCJNeXJHYW1lIn0sCiAgICB7ImdldHBsYWNldmVyc2lv'
+_payload=_payload..'biIsIk15ckdhbWUifSx7ImdldGFzc2V0cm9vdGlkIiwiTXlyR2FtZSJ9LHsiZ2V0YXNzZXR2ZXJz'
+_payload=_payload..'aW9uIiwiTXlyR2FtZSJ9LAogICAgeyJjaGVja2Fzc2V0IiwiTXlyR2FtZSJ9LHsiY2FjaGVhc3Nl'
+_payload=_payload..'dCIsIk15ckdhbWUifSx7InVuY2FjaGVhc3NldCIsIk15ckdhbWUifSwKICAgIHsiZGVidWcucmVh'
+_payload=_payload..'ZG1lbW9yeSIsIk15ckRiZyJ9LHsiZGVidWcud3JpdGVtZW1vcnkiLCJNeXJEYmcifSx7ImRlYnVn'
+_payload=_payload..'LmdldHJlZ2lzdGVycyIsIk15ckRiZyJ9LAogICAgeyJkZWJ1Zy5zZXRyZWdpc3RlcnMiLCJNeXJE'
+_payload=_payload..'YmcifSx7ImRlYnVnLmdldGZsYWdzIiwiTXlyRGJnIn0seyJkZWJ1Zy5zZXRmbGFncyIsIk15ckRi'
+_payload=_payload..'ZyJ9LAogICAgeyJkZWJ1Zy5nZXRtb2R1bGVzIiwiTXlyRGJnIn0seyJkZWJ1Zy5nZXR0aHJlYWRz'
+_payload=_payload..'IiwiTXlyRGJnIn0seyJkZWJ1Zy5zdXNwZW5kdGhyZWFkIiwiTXlyRGJnIn0sCiAgICB7ImRlYnVn'
+_payload=_payload..'LnJlc3VtZXRocmVhZCIsIk15ckRiZyJ9LHsiZGVidWcuZ2V0dGhyZWFkaW5mbyIsIk15ckRiZyJ9'
+_payload=_payload..'LHsiZGVidWcuZ2V0aXAiLCJNeXJEYmcifSwKICAgIHsiZGVidWcuc2V0aXAiLCJNeXJEYmcifSx7'
+_payload=_payload..'ImRlYnVnLmdldHNwIiwiTXlyRGJnIn0seyJkZWJ1Zy5zZXRzcCIsIk15ckRiZyJ9LAogICAgeyJj'
+_payload=_payload..'cmVhdGVldmVudCIsIk15ckV2dCJ9LHsiZGVzdHJveWV2ZW50IiwiTXlyRXZ0In0seyJmaXJlZXZl'
+_payload=_payload..'bnQiLCJNeXJFdnQifSwKICAgIHsiaG9va2V2ZW50IiwiTXlyRXZ0In0seyJ1bmhvb2tldmVudCIs'
+_payload=_payload..'Ik15ckV2dCJ9LHsiZGVmZXZlbnQiLCJNeXJFdnQifSwKICAgIHsiZmlsdGVyZXZlbnQiLCJNeXJF'
+_payload=_payload..'dnQifSx7InByaW9yaXRpemVldmVudCIsIk15ckV2dCJ9LHsiZ2V0ZXZlbnRzIiwiTXlyRXZ0In0s'
+_payload=_payload..'CiAgICB7ImNsZWFyZXZlbnRzIiwiTXlyRXZ0In0seyJnZXRjb25uZWN0aW9uY291bnQiLCJNeXJF'
+_payload=_payload..'dnQifSx7ImRpc2Nvbm5lY3RhbGwiLCJNeXJFdnQifSwKICAgIHsicmVjb25uZWN0YWxsIiwiTXly'
+_payload=_payload..'RXZ0In0seyJnZXRmaXJlY291bnQiLCJNeXJFdnQifSx7InJlc2V0ZmlyZWNvdW50IiwiTXlyRXZ0'
+_payload=_payload..'In0sCiAgICB7ImdldGV4ZWN1dG9ydmVyc2lvbiIsIk15ckV4ZWMifSx7ImdldGV4ZWN1dG9yYnVp'
+_payload=_payload..'bGQiLCJNeXJFeGVjIn0seyJnZXRleGVjdXRvcmxpY2Vuc2UiLCJNeXJFeGVjIn0sCiAgICB7Imlz'
+_payload=_payload..'ZmVhdHVyZWVuYWJsZWQiLCJNeXJFeGVjIn0seyJlbmFibGVmZWF0dXJlIiwiTXlyRXhlYyJ9LHsi'
+_payload=_payload..'ZGlzYWJsZWZlYXR1cmUiLCJNeXJFeGVjIn0sCiAgICB7ImdldGZlYXR1cmVsaXN0IiwiTXlyRXhl'
+_payload=_payload..'YyJ9LHsic2V0cGVyZm9ybWFuY2Vtb2RlIiwiTXlyRXhlYyJ9LHsiZ2V0cGVyZm9ybWFuY2Vtb2Rl'
+_payload=_payload..'IiwiTXlyRXhlYyJ9LAogICAgeyJzZXR0aHJlYWRwcmlvcml0eSIsIk15ckV4ZWMifSx7ImdldHRo'
+_payload=_payload..'cmVhZHByaW9yaXR5IiwiTXlyRXhlYyJ9LHsiZ2V0dGFza3NjaGVkdWxlciIsIk15ckV4ZWMifSwK'
+_payload=_payload..'ICAgIHsic2V0ZnBzdGFyZ2V0IiwiTXlyRXhlYyJ9LHsiZ2V0ZnBzdGFyZ2V0IiwiTXlyRXhlYyJ9'
+_payload=_payload..'LHsiZ2V0ZnJhbWV0aW1lIiwiTXlyRXhlYyJ9LAogICAgeyJnZXR1cHRpbWUiLCJNeXJFeGVjIn0s'
+_payload=_payload..'eyJnZXRtZW1vcnl0b3RhbCIsIk15ckV4ZWMifSx7ImdldG1lbW9yeWF2YWlsYWJsZSIsIk15ckV4'
+_payload=_payload..'ZWMifSwKICAgIHsiZ2V0ZXhlY3V0b3JmbGFncyIsIk15ckV4ZWMifSx7InNldGV4ZWN1dG9yZmxh'
+_payload=_payload..'Z3MiLCJNeXJFeGVjIn0sCiAgICB7ImdldGxpY2Vuc2VrZXkiLCJNeXJMaWMifSx7InNldGxpY2Vu'
+_payload=_payload..'c2VrZXkiLCJNeXJMaWMifSx7InZhbGlkYXRlbGljZW5zZWtleSIsIk15ckxpYyJ9LAogICAgeyJn'
+_payload=_payload..'ZXRsaWNlbnNlc3RhdHVzIiwiTXlyTGljIn0seyJnZXRsaWNlbnNlaG9sZGVyIiwiTXlyTGljIn0s'
+_payload=_payload..'CiAgICB7ImdldGluc3RhbmNlY3JlYXRpb25jYWxsYmFja3MiLCJNeXJJbnN0In0seyJzZXRpbnN0'
+_payload=_payload..'YW5jZWNyZWF0aW9uY2FsbGJhY2siLCJNeXJJbnN0In0sCiAgICB7ImludGVyY2VwdGluc3RhbmNl'
+_payload=_payload..'Y3JlYXRpb24iLCJNeXJJbnN0In0seyJpbnRlcmNlcHRwcm9wZXJ0eXNldCIsIk15ckluc3QifSwK'
+_payload=_payload..'ICAgIHsiZ2V0cHJvcGVydHljaGFuZ2VkY2FsbGJhY2tzIiwiTXlySW5zdCJ9LHsic2V0cHJvcGVy'
+_payload=_payload..'dHljaGFuZ2VkY2FsbGJhY2siLCJNeXJJbnN0In0sCiAgICB7ImNvbXBhcmVpbnN0YW5jZXMiLCJN'
+_payload=_payload..'eXJJbnN0In0seyJnZXRzcGVjaWFsaW5mbyIsIk15ckluc3QifSx7InNldHNwZWNpYWxpbmZvIiwi'
+_payload=_payload..'TXlySW5zdCJ9LAogICAgeyJnZXRmdWxscGF0aCIsIk15ckluc3QifSx7ImNsb25ldHJlZSIsIk15'
+_payload=_payload..'ckluc3QifSx7Im1lcmdldHJlZXMiLCJNeXJJbnN0In0sCiAgICB7ImRpZmZpbnN0YW5jZXMiLCJN'
+_payload=_payload..'eXJJbnN0In0seyJzeW5jaW5zdGFuY2VzIiwiTXlySW5zdCJ9LHsic25hcHNob3RpbnN0YW5jZSIs'
+_payload=_payload..'Ik15ckluc3QifSwKfQoKbG9jYWwgZnVuY3Rpb24gaGFzVU5DKG5hbWUpCiAgICBpZiBuYW1lOmZp'
+_payload=_payload..'bmQoIiUuIikgdGhlbgogICAgICAgIGxvY2FsIHRibCwga2V5ID0gbmFtZTptYXRjaCgiXiguLSkl'
+_payload=_payload..'LiguKykkIikKICAgICAgICBsb2NhbCB0ID0gcmF3Z2V0KF9HLCB0YmwpCiAgICAgICAgaWYgdCA9'
+_payload=_payload..'PSBuaWwgdGhlbgogICAgICAgICAgICBsb2NhbCBvazIsIHYgPSBwY2FsbChmdW5jdGlvbigpIHJl'
+_payload=_payload..'dHVybiBfR1t0YmxdIGVuZCkKICAgICAgICAgICAgdCA9IG9rMiBhbmQgdiBvciBuaWwKICAgICAg'
+_payload=_payload..'ICBlbmQKICAgICAgICBpZiB0eXBlKHQpID09ICJ0YWJsZSIgdGhlbiByZXR1cm4gcmF3Z2V0KHQs'
+_payload=_payload..'IGtleSkgfj0gbmlsIGVuZAogICAgICAgIHJldHVybiBmYWxzZQogICAgZW5kCiAgICBpZiByYXdn'
+_payload=_payload..'ZXQoX0csIG5hbWUpIH49IG5pbCB0aGVuIHJldHVybiB0cnVlIGVuZAogICAgbG9jYWwgb2syLCB2'
+_payload=_payload..'ID0gcGNhbGwoZnVuY3Rpb24oKQogICAgICAgIGxvY2FsIGVudiA9IChnZXRmZW52IGFuZCBnZXRm'
+_payload=_payload..'ZW52KCkpIG9yIF9HCiAgICAgICAgcmV0dXJuIHJhd2dldChlbnYsIG5hbWUpCiAgICBlbmQpCiAg'
+_payload=_payload..'ICByZXR1cm4gb2syIGFuZCB2IH49IG5pbAplbmQKCi0tIOKUgOKUgCBSb290IFNjcmVlbkd1aSDi'
+_payload=_payload..'lIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi'
+_payload=_payload..'lIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi'
+_payload=_payload..'lIDilIAKbG9jYWwgU0cgPSBJbnN0YW5jZS5uZXcoIlNjcmVlbkd1aSIpClNHLk5hbWUgICAgICAg'
+_payload=_payload..'ICAgID0gIlNTX0V4ZWNHVUkiClNHLlJlc2V0T25TcGF3biAgID0gZmFsc2UKU0cuRGlzcGxheU9y'
+_payload=_payload..'ZGVyICAgPSA5OTkKU0cuWkluZGV4QmVoYXZpb3IgPSBFbnVtLlpJbmRleEJlaGF2aW9yLlNpYmxp'
+_payload=_payload..'bmcKU0cuSWdub3JlR3VpSW5zZXQgPSB0cnVlClNHLlBhcmVudCAgICAgICAgID0gR3VpUm9vdAoK'
+_payload=_payload..'bG9jYWwgV0lOX1csIFdJTl9IID0gNTIwLCA0MjAKCmxvY2FsIFdpbiA9IEluc3RhbmNlLm5ldygi'
+_payload=_payload..'RnJhbWUiKQpXaW4uTmFtZSAgICAgICAgICAgICA9ICJXaW4iCldpbi5TaXplICAgICAgICAgICAg'
+_payload=_payload..'ID0gVURpbTIubmV3KDAsIFdJTl9XLCAwLCBXSU5fSCkKV2luLlBvc2l0aW9uICAgICAgICAgPSBV'
+_payload=_payload..'RGltMi5uZXcoMC41LCAtV0lOX1cvMiwgMC41LCAtV0lOX0gvMikKV2luLkJhY2tncm91bmRDb2xv'
+_payload=_payload..'cjMgPSBDLkJHCldpbi5Cb3JkZXJTaXplUGl4ZWwgID0gMApXaW4uQ2xpcHNEZXNjZW5kYW50cyA9'
+_payload=_payload..'IHRydWUKV2luLlBhcmVudCAgICAgICAgICAgPSBTRwpybmQoV2luLCAxMCkKc3RyKFdpbiwgQy5T'
+_payload=_payload..'VFJPS0UsIDEuNSkKCi0tIOKUgOKUgCBUaXRsZSBiYXIg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSACmxv'
+_payload=_payload..'Y2FsIFRCYXIgPSBJbnN0YW5jZS5uZXcoIkZyYW1lIikKVEJhci5OYW1lICAgICAgICAgICAgID0g'
+_payload=_payload..'IlRCYXIiClRCYXIuU2l6ZSAgICAgICAgICAgICA9IFVEaW0yLm5ldygxLCAwLCAwLCA0MCkKVEJh'
+_payload=_payload..'ci5CYWNrZ3JvdW5kQ29sb3IzID0gQy5QQU5FTApUQmFyLkJvcmRlclNpemVQaXhlbCAgPSAwClRC'
+_payload=_payload..'YXIuWkluZGV4ICAgICAgICAgICA9IDQKVEJhci5QYXJlbnQgICAgICAgICAgID0gV2luCnJuZChU'
+_payload=_payload..'QmFyLCAxMCkKCmxvY2FsIFRCYXJQYXRjaCA9IEluc3RhbmNlLm5ldygiRnJhbWUiKQpUQmFyUGF0'
+_payload=_payload..'Y2guU2l6ZSAgICAgICAgICAgICA9IFVEaW0yLm5ldygxLCAwLCAwLjUsIDApClRCYXJQYXRjaC5Q'
+_payload=_payload..'b3NpdGlvbiAgICAgICAgID0gVURpbTIubmV3KDAsIDAsIDAuNSwgMCkKVEJhclBhdGNoLkJhY2tn'
+_payload=_payload..'cm91bmRDb2xvcjMgPSBDLlBBTkVMClRCYXJQYXRjaC5Cb3JkZXJTaXplUGl4ZWwgID0gMApUQmFy'
+_payload=_payload..'UGF0Y2guWkluZGV4ICAgICAgICAgICA9IDQKVEJhclBhdGNoLlBhcmVudCAgICAgICAgICAgPSBU'
+_payload=_payload..'QmFyCgpsYmwoVEJhciwgewogICAgU2l6ZSA9IFVEaW0yLm5ldygxLCAtMTEwLCAxLCAwKSwKICAg'
+_payload=_payload..'IFBvc2l0aW9uID0gVURpbTIubmV3KDAsIDEyLCAwLCAwKSwKICAgIFRleHQgPSAiICBGdWxsIFNT'
+_payload=_payload..'IEV4ZWN1dG9yIiwKICAgIFRleHRDb2xvcjMgPSBDLlBVUlBMRSwKICAgIFRleHRTaXplID0gMTQs'
+_payload=_payload..'CiAgICBGb250ID0gR0JPTCwKICAgIFRleHRYQWxpZ25tZW50ID0gRW51bS5UZXh0WEFsaWdubWVu'
+_payload=_payload..'dC5MZWZ0LAogICAgWkluZGV4ID0gNSwKfSkKCmxvY2FsIERvdExibCA9IGxibChXaW4sIHsKICAg'
+_payload=_payload..'IFNpemUgPSBVRGltMi5uZXcoMCwgMjAwLCAwLCAxNCksCiAgICBQb3NpdGlvbiA9IFVEaW0yLm5l'
+_payload=_payload..'dygwLCAxMiwgMCwgMjYpLAogICAgVGV4dCA9ICLil48gQ29ubmVjdGluZy4uLiIsCiAgICBUZXh0'
+_payload=_payload..'Q29sb3IzID0gQy5ZRUxMT1csCiAgICBUZXh0U2l6ZSA9IDEwLAogICAgRm9udCA9IEdOUk0sCiAg'
+_payload=_payload..'ICBUZXh0WEFsaWdubWVudCA9IEVudW0uVGV4dFhBbGlnbm1lbnQuTGVmdCwKfSkKCmxvY2FsIE1p'
+_payload=_payload..'bkJ0biA9IGJ0bihUQmFyLCB7CiAgICBTaXplID0gVURpbTIubmV3KDAsIDMwLCAwLCAyNCksCiAg'
+_payload=_payload..'ICBQb3NpdGlvbiA9IFVEaW0yLm5ldygxLCAtNjgsIDAuNSwgLTEyKSwKICAgIEJhY2tncm91bmRD'
+_payload=_payload..'b2xvcjMgPSBDLkRJTSwKICAgIFRleHQgPSAi4oCUIiwKICAgIFRleHRDb2xvcjMgPSBDLkRJTVRY'
+_payload=_payload..'VCwKICAgIFRleHRTaXplID0gMTMsCiAgICBGb250ID0gR0JPTCwKICAgIFpJbmRleCA9IDUsCn0p'
+_payload=_payload..'CnJuZChNaW5CdG4sIDUpCgpsb2NhbCBDbG9zZUJ0biA9IGJ0bihUQmFyLCB7CiAgICBTaXplID0g'
+_payload=_payload..'VURpbTIubmV3KDAsIDMwLCAwLCAyNCksCiAgICBQb3NpdGlvbiA9IFVEaW0yLm5ldygxLCAtMzIs'
+_payload=_payload..'IDAuNSwgLTEyKSwKICAgIEJhY2tncm91bmRDb2xvcjMgPSBDb2xvcjMuZnJvbVJHQigxOTUsIDM2'
+_payload=_payload..'LCA1MiksCiAgICBUZXh0ID0gIuKclSIsCiAgICBUZXh0Q29sb3IzID0gQy5XSElURSwKICAgIFRl'
+_payload=_payload..'eHRTaXplID0gMTMsCiAgICBGb250ID0gR0JPTCwKICAgIFpJbmRleCA9IDUsCn0pCnJuZChDbG9z'
+_payload=_payload..'ZUJ0biwgNSkKCi0tIOKUgOKUgCBNYWluIHRhYiBiYXIg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSACmxvY2FsIFRhYkJh'
+_payload=_payload..'ciA9IEluc3RhbmNlLm5ldygiRnJhbWUiKQpUYWJCYXIuU2l6ZSAgICAgICAgICAgICA9IFVEaW0y'
+_payload=_payload..'Lm5ldygxLCAtMjAsIDAsIDM0KQpUYWJCYXIuUG9zaXRpb24gICAgICAgICA9IFVEaW0yLm5ldygw'
+_payload=_payload..'LCAxMCwgMCwgNDQpClRhYkJhci5CYWNrZ3JvdW5kQ29sb3IzID0gQy5QQU5FTApUYWJCYXIuQm9y'
+_payload=_payload..'ZGVyU2l6ZVBpeGVsICA9IDAKVGFiQmFyLlBhcmVudCAgICAgICAgICAgPSBXaW4Kcm5kKFRhYkJh'
+_payload=_payload..'ciwgOCkKCmRvCiAgICBsb2NhbCBsID0gSW5zdGFuY2UubmV3KCJVSUxpc3RMYXlvdXQiKQogICAg'
+_payload=_payload..'bC5GaWxsRGlyZWN0aW9uICAgICAgID0gRW51bS5GaWxsRGlyZWN0aW9uLkhvcml6b250YWwKICAg'
+_payload=_payload..'IGwuSG9yaXpvbnRhbEFsaWdubWVudCA9IEVudW0uSG9yaXpvbnRhbEFsaWdubWVudC5DZW50ZXIK'
+_payload=_payload..'ICAgIGwuVmVydGljYWxBbGlnbm1lbnQgICA9IEVudW0uVmVydGljYWxBbGlnbm1lbnQuQ2VudGVy'
+_payload=_payload..'CiAgICBsLlBhZGRpbmcgICAgICAgICAgICAgPSBVRGltLm5ldygwLCA0KQogICAgbC5QYXJlbnQg'
+_payload=_payload..'ICAgICAgICAgICAgID0gVGFiQmFyCmVuZAoKbG9jYWwgdGFiQnRucyAgID0ge30KbG9jYWwgdGFi'
+_payload=_payload..'RnJhbWVzID0ge30KbG9jYWwgVEFCX05BTUVTID0geyJFeGVjdXRlIiwgIkRlb2JmdXNjLiIsICJN'
+_payload=_payload..'YWx3YXJlIiwgIlVOQy9TVU5DIn0KCmZvciBfLCBuYW1lIGluIFRBQl9OQU1FUyBkbwogICAgbG9j'
+_payload=_payload..'YWwgYiA9IGJ0bihUYWJCYXIsIHsKICAgICAgICBTaXplICAgICAgICAgICAgID0gVURpbTIubmV3'
+_payload=_payload..'KDAsIDExMiwgMSwgLTgpLAogICAgICAgIEJhY2tncm91bmRDb2xvcjMgPSBDLkRJTSwKICAgICAg'
+_payload=_payload..'ICBUZXh0ICAgICAgICAgICAgID0gbmFtZSwKICAgICAgICBUZXh0Q29sb3IzICAgICAgID0gQy5E'
+_payload=_payload..'SU1UWFQsCiAgICAgICAgVGV4dFNpemUgICAgICAgICA9IDExLAogICAgICAgIEZvbnQgICAgICAg'
+_payload=_payload..'ICAgICAgPSBHQk9MLAogICAgfSkKICAgIHJuZChiLCA1KQogICAgdGFibGUuaW5zZXJ0KHRhYkJ0'
+_payload=_payload..'bnMsIGIpCmVuZAoKbG9jYWwgQk9EWV9ZID0gODIKbG9jYWwgQm9keSA9IEluc3RhbmNlLm5ldygi'
+_payload=_payload..'RnJhbWUiKQpCb2R5LlNpemUgICAgICAgICAgICAgICA9IFVEaW0yLm5ldygxLCAwLCAxLCAtQk9E'
+_payload=_payload..'WV9ZKQpCb2R5LlBvc2l0aW9uICAgICAgICAgICA9IFVEaW0yLm5ldygwLCAwLCAwLCBCT0RZX1kp'
+_payload=_payload..'CkJvZHkuQmFja2dyb3VuZFRyYW5zcGFyZW5jeSA9IDEKQm9keS5QYXJlbnQgICAgICAgICAgICAg'
+_payload=_payload..'PSBXaW4KCmxvY2FsIGZ1bmN0aW9uIG1ha2VUYWJGcmFtZSgpCiAgICBsb2NhbCBmID0gSW5zdGFu'
+_payload=_payload..'Y2UubmV3KCJGcmFtZSIpCiAgICBmLlNpemUgICAgPSBVRGltMi5uZXcoMSwgMCwgMSwgMCkKICAg'
+_payload=_payload..'IGYuQmFja2dyb3VuZFRyYW5zcGFyZW5jeSA9IDEKICAgIGYuVmlzaWJsZSA9IGZhbHNlCiAgICBm'
+_payload=_payload..'LlBhcmVudCAgPSBCb2R5CiAgICByZXR1cm4gZgplbmQKCi0tIOKVkOKVkOKVkOKVkOKVkOKVkOKV'
+_payload=_payload..'kOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKV'
+_payload=_payload..'kOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKV'
+_payload=_payload..'kOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkAotLSBUQUIgMSDigJMgRVhF'
+_payload=_payload..'Q1VURQotLSDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDi'
+_payload=_payload..'lZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDi'
+_payload=_payload..'lZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDi'
+_payload=_payload..'lZDilZDilZDilZAKbG9jYWwgVDEgPSBtYWtlVGFiRnJhbWUoKQoKbG9jYWwgTW9kZUJhciA9IElu'
+_payload=_payload..'c3RhbmNlLm5ldygiRnJhbWUiKQpNb2RlQmFyLlNpemUgICAgICAgICAgICAgPSBVRGltMi5uZXco'
+_payload=_payload..'MSwgLTIwLCAwLCAzNCkKTW9kZUJhci5Qb3NpdGlvbiAgICAgICAgID0gVURpbTIubmV3KDAsIDEw'
+_payload=_payload..'LCAwLCA4KQpNb2RlQmFyLkJhY2tncm91bmRDb2xvcjMgPSBDLlBBTkVMCk1vZGVCYXIuQm9yZGVy'
+_payload=_payload..'U2l6ZVBpeGVsICA9IDAKTW9kZUJhci5QYXJlbnQgICAgICAgICAgID0gVDEKcm5kKE1vZGVCYXIs'
+_payload=_payload..'IDgpCgpsb2NhbCBmdW5jdGlvbiBtb2RlVGFiQnRuKHRleHQsIHhTY2FsZSwgeE9mZikKICAgIGxv'
+_payload=_payload..'Y2FsIGIgPSBidG4oTW9kZUJhciwgewogICAgICAgIFNpemUgICAgICAgICAgICAgPSBVRGltMi5u'
+_payload=_payload..'ZXcoMC41LCAtNSwgMSwgLTgpLAogICAgICAgIFBvc2l0aW9uICAgICAgICAgPSBVRGltMi5uZXco'
+_payload=_payload..'eFNjYWxlLCB4T2ZmLCAwLCA0KSwKICAgICAgICBCYWNrZ3JvdW5kQ29sb3IzID0gQy5ESU0sCiAg'
+_payload=_payload..'ICAgICAgVGV4dCAgICAgICAgICAgICA9IHRleHQsCiAgICAgICAgVGV4dENvbG9yMyAgICAgICA9'
+_payload=_payload..'IEMuRElNVFhULAogICAgICAgIFRleHRTaXplICAgICAgICAgPSAxMiwKICAgICAgICBGb250ICAg'
+_payload=_payload..'ICAgICAgICAgID0gR0JPTCwKICAgIH0pCiAgICBybmQoYiwgNSkKICAgIHJldHVybiBiCmVuZAoK'
+_payload=_payload..'bG9jYWwgQ2xpZW50VGFiID0gbW9kZVRhYkJ0bigiICBDbGllbnQgU2lkZSIsIDAsICAgNCkKbG9j'
+_payload=_payload..'YWwgU2VydmVyVGFiID0gbW9kZVRhYkJ0bigiICBTZXJ2ZXIgU2lkZSIsIDAuNSwgMSkKCmxvY2Fs'
+_payload=_payload..'IFN1YkJhciA9IEluc3RhbmNlLm5ldygiRnJhbWUiKQpTdWJCYXIuU2l6ZSAgICAgICAgICAgICA9'
+_payload=_payload..'IFVEaW0yLm5ldygxLCAtMjAsIDAsIDI4KQpTdWJCYXIuUG9zaXRpb24gICAgICAgICA9IFVEaW0y'
+_payload=_payload..'Lm5ldygwLCAxMCwgMCwgNDgpClN1YkJhci5CYWNrZ3JvdW5kQ29sb3IzID0gQy5QQU5FTApTdWJC'
+_payload=_payload..'YXIuQm9yZGVyU2l6ZVBpeGVsICA9IDAKU3ViQmFyLlZpc2libGUgICAgICAgICAgPSBmYWxzZQpT'
+_payload=_payload..'dWJCYXIuUGFyZW50ICAgICAgICAgICA9IFQxCnJuZChTdWJCYXIsIDcpCgpsb2NhbCBmdW5jdGlv'
+_payload=_payload..'biBzdWJNb2RlQnRuKHRleHQsIHhTY2FsZSwgeE9mZikKICAgIGxvY2FsIGIgPSBidG4oU3ViQmFy'
+_payload=_payload..'LCB7CiAgICAgICAgU2l6ZSAgICAgICAgICAgICA9IFVEaW0yLm5ldygwLjUsIC01LCAxLCAtNiks'
+_payload=_payload..'CiAgICAgICAgUG9zaXRpb24gICAgICAgICA9IFVEaW0yLm5ldyh4U2NhbGUsIHhPZmYsIDAsIDMp'
+_payload=_payload..'LAogICAgICAgIEJhY2tncm91bmRDb2xvcjMgPSBDLkRJTSwKICAgICAgICBUZXh0ICAgICAgICAg'
+_payload=_payload..'ICAgID0gdGV4dCwKICAgICAgICBUZXh0Q29sb3IzICAgICAgID0gQy5ESU1UWFQsCiAgICAgICAg'
+_payload=_payload..'VGV4dFNpemUgICAgICAgICA9IDExLAogICAgICAgIEZvbnQgICAgICAgICAgICAgPSBHQk9MLAog'
+_payload=_payload..'ICAgfSkKICAgIHJuZChiLCA1KQogICAgcmV0dXJuIGIKZW5kCgpsb2NhbCBTdWJMUyAgPSBzdWJN'
+_payload=_payload..'b2RlQnRuKCJsb2Fkc3RyaW5nIiwgMCwgICA0KQpsb2NhbCBTdWJSZXEgPSBzdWJNb2RlQnRuKCJy'
+_payload=_payload..'ZXF1aXJlIiwgICAgMC41LCAxKQoKbG9jYWwgVHlwZUJhciA9IEluc3RhbmNlLm5ldygiRnJhbWUi'
+_payload=_payload..'KQpUeXBlQmFyLlNpemUgICAgICAgICAgICAgPSBVRGltMi5uZXcoMSwgLTIwLCAwLCAyNCkKVHlw'
+_payload=_payload..'ZUJhci5Qb3NpdGlvbiAgICAgICAgID0gVURpbTIubmV3KDAsIDEwLCAwLCA4MikKVHlwZUJhci5C'
+_payload=_payload..'YWNrZ3JvdW5kQ29sb3IzID0gQy5QQU5FTApUeXBlQmFyLkJvcmRlclNpemVQaXhlbCAgPSAwClR5'
+_payload=_payload..'cGVCYXIuUGFyZW50ICAgICAgICAgICA9IFQxCnJuZChUeXBlQmFyLCA2KQoKZG8KICAgIGxvY2Fs'
+_payload=_payload..'IGwgPSBJbnN0YW5jZS5uZXcoIlVJTGlzdExheW91dCIpCiAgICBsLkZpbGxEaXJlY3Rpb24gICAg'
+_payload=_payload..'ICAgPSBFbnVtLkZpbGxEaXJlY3Rpb24uSG9yaXpvbnRhbAogICAgbC5Ib3Jpem9udGFsQWxpZ25t'
+_payload=_payload..'ZW50ID0gRW51bS5Ib3Jpem9udGFsQWxpZ25tZW50LkNlbnRlcgogICAgbC5WZXJ0aWNhbEFsaWdu'
+_payload=_payload..'bWVudCAgID0gRW51bS5WZXJ0aWNhbEFsaWdubWVudC5DZW50ZXIKICAgIGwuUGFkZGluZyAgICAg'
+_payload=_payload..'ICAgICAgICA9IFVEaW0ubmV3KDAsIDQpCiAgICBsLlBhcmVudCAgICAgICAgICAgICAgPSBUeXBl'
+_payload=_payload..'QmFyCmVuZAoKbG9jYWwgY29kZVR5cGVCdG5zID0ge30KZm9yIGksIGxhYmVsIGluIHsiTm9ybWFs'
+_payload=_payload..'IiwgIlVSTCIsICJCYXNlNjQifSBkbwogICAgbG9jYWwgYiA9IGJ0bihUeXBlQmFyLCB7CiAgICAg'
+_payload=_payload..'ICAgU2l6ZSAgICAgICAgICAgICA9IFVEaW0yLm5ldygwLCA5NSwgMSwgLTYpLAogICAgICAgIEJh'
+_payload=_payload..'Y2tncm91bmRDb2xvcjMgPSBpID09IDEgYW5kIEMuQUNDRU5UIG9yIEMuRElNLAogICAgICAgIFRl'
+_payload=_payload..'eHQgICAgICAgICAgICAgPSBsYWJlbCwKICAgICAgICBUZXh0Q29sb3IzICAgICAgID0gaSA9PSAx'
+_payload=_payload..'IGFuZCBDLldISVRFIG9yIEMuRElNVFhULAogICAgICAgIFRleHRTaXplICAgICAgICAgPSAxMCwK'
+_payload=_payload..'ICAgICAgICBGb250ICAgICAgICAgICAgID0gR0JPTCwKICAgIH0pCiAgICBybmQoYiwgNCkKICAg'
+_payload=_payload..'IHRhYmxlLmluc2VydChjb2RlVHlwZUJ0bnMsIGIpCmVuZAoKbG9jYWwgRXhlY0hpbnQgPSBsYmwo'
+_payload=_payload..'VDEsIHsKICAgIFNpemUgICAgICAgICAgICAgPSBVRGltMi5uZXcoMSwgLTIwLCAwLCAxNCksCiAg'
+_payload=_payload..'ICBQb3NpdGlvbiAgICAgICAgID0gVURpbTIubmV3KDAsIDEwLCAwLCAxMTIpLAogICAgVGV4dCAg'
+_payload=_payload..'ICAgICAgICAgICA9ICJDbGllbnQgU2lkZSAg4oaSICBsb2Fkc3RyaW5nKGNvZGUpKCkiLAogICAg'
+_payload=_payload..'VGV4dENvbG9yMyAgICAgICA9IENvbG9yMy5mcm9tUkdCKDkwLCA1NSwgMTcwKSwKICAgIFRleHRT'
+_payload=_payload..'aXplICAgICAgICAgPSAxMCwKICAgIEZvbnQgICAgICAgICAgICAgPSBHTlJNLAogICAgVGV4dFhB'
+_payload=_payload..'bGlnbm1lbnQgICA9IEVudW0uVGV4dFhBbGlnbm1lbnQuTGVmdCwKfSkKCmxvY2FsIEVkaXRvclNj'
+_payload=_payload..'cm9sbCA9IG1ha2VTY3JvbGxGcmFtZShUMSwgVURpbTIubmV3KDAsIDEwLCAwLCAxMzApLCBVRGlt'
+_payload=_payload..'Mi5uZXcoMSwgLTIwLCAwLCAxNDApKQpsb2NhbCBDb2RlQm94ICAgICAgPSBtYWtlQ29kZUJveChF'
+_payload=_payload..'ZGl0b3JTY3JvbGwsICItLSBQYXN0ZSBvciB0eXBlIHlvdXIgc2NyaXB0IGhlcmUuLi4iKQoKbG9j'
+_payload=_payload..'YWwgRXhlY1N0YXR1cyA9IGxibChUMSwgewogICAgU2l6ZSAgICAgICAgICAgPSBVRGltMi5uZXco'
+_payload=_payload..'MSwgLTIwLCAwLCAxNSksCiAgICBQb3NpdGlvbiAgICAgICA9IFVEaW0yLm5ldygwLCAxMCwgMCwg'
+_payload=_payload..'Mjc4KSwKICAgIFRleHQgICAgICAgICAgID0gIlJlYWR5LiIsCiAgICBUZXh0Q29sb3IzICAgICA9'
+_payload=_payload..'IEMuRElNVFhULAogICAgVGV4dFNpemUgICAgICAgPSAxMCwKICAgIEZvbnQgICAgICAgICAgID0g'
+_payload=_payload..'R05STSwKICAgIFRleHRYQWxpZ25tZW50ID0gRW51bS5UZXh0WEFsaWdubWVudC5MZWZ0LAogICAg'
+_payload=_payload..'VGV4dFRydW5jYXRlICAgPSBFbnVtLlRleHRUcnVuY2F0ZS5BdEVuZCwKfSkKCmxvY2FsIEJ0blJv'
+_payload=_payload..'dyA9IEluc3RhbmNlLm5ldygiRnJhbWUiKQpCdG5Sb3cuU2l6ZSAgICAgICAgICAgICAgID0gVURp'
+_payload=_payload..'bTIubmV3KDEsIC0yMCwgMCwgMzYpCkJ0blJvdy5Qb3NpdGlvbiAgICAgICAgICAgPSBVRGltMi5u'
+_payload=_payload..'ZXcoMCwgMTAsIDAsIDI5NikKQnRuUm93LkJhY2tncm91bmRUcmFuc3BhcmVuY3kgPSAxCkJ0blJv'
+_payload=_payload..'dy5QYXJlbnQgICAgICAgICAgICAgPSBUMQoKZG8KICAgIGxvY2FsIGwgPSBJbnN0YW5jZS5uZXco'
+_payload=_payload..'IlVJTGlzdExheW91dCIpCiAgICBsLkZpbGxEaXJlY3Rpb24gICAgICA9IEVudW0uRmlsbERpcmVj'
+_payload=_payload..'dGlvbi5Ib3Jpem9udGFsCiAgICBsLlZlcnRpY2FsQWxpZ25tZW50ICA9IEVudW0uVmVydGljYWxB'
+_payload=_payload..'bGlnbm1lbnQuQ2VudGVyCiAgICBsLlBhZGRpbmcgICAgICAgICAgICA9IFVEaW0ubmV3KDAsIDcp'
+_payload=_payload..'CiAgICBsLlBhcmVudCAgICAgICAgICAgICA9IEJ0blJvdwplbmQKCmxvY2FsIGZ1bmN0aW9uIG1h'
+_payload=_payload..'a2VFeGVjQnRuKHRleHQsIGJnLCB3KQogICAgbG9jYWwgYiA9IGJ0bihCdG5Sb3csIHsKICAgICAg'
+_payload=_payload..'ICBTaXplICAgICAgICAgICAgID0gVURpbTIubmV3KDAsIHcsIDAsIDMyKSwKICAgICAgICBCYWNr'
+_payload=_payload..'Z3JvdW5kQ29sb3IzID0gYmcsCiAgICAgICAgVGV4dCAgICAgICAgICAgICA9IHRleHQsCiAgICAg'
+_payload=_payload..'ICAgVGV4dENvbG9yMyAgICAgICA9IEMuV0hJVEUsCiAgICAgICAgVGV4dFNpemUgICAgICAgICA9'
+_payload=_payload..'IDEyLAogICAgICAgIEZvbnQgICAgICAgICAgICAgPSBHQk9MLAogICAgfSkKICAgIHJuZChiLCA2'
+_payload=_payload..'KQogICAgcmV0dXJuIGIKZW5kCgpsb2NhbCBFeGVjQnRuICA9IG1ha2VFeGVjQnRuKCIgIEV4ZWN1'
+_payload=_payload..'dGUiLCBDLkFDQ0VOVCwgMTIwKQpsb2NhbCBDbGVhckJ0biA9IG1ha2VFeGVjQnRuKCJDbGVhciIs'
+_payload=_payload..'ICAgICBDLkRJTSwgICAgNzIpCmxvY2FsIENvcHlCdG4gID0gbWFrZUV4ZWNCdG4oIkNvcHkiLCAg'
+_payload=_payload..'ICAgIEMuRElNLCAgICA2NikKbG9jYWwgVVJMQnRuICAgPSBtYWtlRXhlY0J0bigiRnJvbSBVUkwi'
+_payload=_payload..'LCAgQy5ESU0sICAgIDgyKQpDbGVhckJ0bi5UZXh0Q29sb3IzID0gQy5ESU1UWFQKQ29weUJ0bi5U'
+_payload=_payload..'ZXh0Q29sb3IzICA9IEMuRElNVFhUClVSTEJ0bi5UZXh0Q29sb3IzICAgPSBDLkRJTVRYVAoKbG9j'
+_payload=_payload..'YWwgZXhlY01vZGUgICAgPSAiY2xpZW50Igpsb2NhbCBleGVjU3ViTW9kZSA9ICJscyIKbG9jYWwg'
+_payload=_payload..'ZXhlY0NvZGVUeXBlPSAibm9ybWFsIgoKbG9jYWwgZnVuY3Rpb24gc2V0U3RhdHVzKG1zZywgY29s'
+_payload=_payload..'KQogICAgRXhlY1N0YXR1cy5UZXh0ICAgICAgID0gbXNnCiAgICBFeGVjU3RhdHVzLlRleHRDb2xv'
+_payload=_payload..'cjMgPSBjb2wgb3IgQy5ESU1UWFQKZW5kCgpsb2NhbCBmdW5jdGlvbiBhcHBseU1vZGUobSkKICAg'
+_payload=_payload..'IGV4ZWNNb2RlID0gbQogICAgaWYgbSA9PSAic2VydmVyIiB0aGVuCiAgICAgICAgdHcoU2VydmVy'
+_payload=_payload..'VGFiLCB7QmFja2dyb3VuZENvbG9yMyA9IEMuQkxVRSwgICBUZXh0Q29sb3IzID0gQy5XSElURSAg'
+_payload=_payload..'fSkKICAgICAgICB0dyhDbGllbnRUYWIsIHtCYWNrZ3JvdW5kQ29sb3IzID0gQy5ESU0sICAgIFRl'
+_payload=_payload..'eHRDb2xvcjMgPSBDLkRJTVRYVCB9KQogICAgICAgIFN1YkJhci5WaXNpYmxlID0gdHJ1ZQogICAg'
+_payload=_payload..'ICAgIEV4ZWNCdG4uQmFja2dyb3VuZENvbG9yMyA9IEMuQkxVRQogICAgICAgIEV4ZWNIaW50LlRl'
+_payload=_payload..'eHQgPSBleGVjU3ViTW9kZSA9PSAibHMiCiAgICAgICAgICAgIGFuZCAiU2VydmVyIFNpZGUgIOKG'
+_payload=_payload..'kiAgbG9hZHN0cmluZyhjb2RlKSgpICBbZnVsbCBzZXJ2ZXIgcGVybXNdIgogICAgICAgICAgICBv'
+_payload=_payload..'ciAgIlNlcnZlciBTaWRlICDihpIgIHJlcXVpcmUoYXNzZXRJZCkgIFtudW1lcmljIElEXSIKICAg'
+_payload=_payload..'IGVsc2UKICAgICAgICB0dyhDbGllbnRUYWIsIHtCYWNrZ3JvdW5kQ29sb3IzID0gQy5BQ0NFTlQs'
+_payload=_payload..'IFRleHRDb2xvcjMgPSBDLldISVRFICB9KQogICAgICAgIHR3KFNlcnZlclRhYiwge0JhY2tncm91'
+_payload=_payload..'bmRDb2xvcjMgPSBDLkRJTSwgICAgVGV4dENvbG9yMyA9IEMuRElNVFhUIH0pCiAgICAgICAgU3Vi'
+_payload=_payload..'QmFyLlZpc2libGUgPSBmYWxzZQogICAgICAgIEV4ZWNCdG4uQmFja2dyb3VuZENvbG9yMyA9IEMu'
+_payload=_payload..'QUNDRU5UCiAgICAgICAgRXhlY0hpbnQuVGV4dCA9ICJDbGllbnQgU2lkZSAg4oaSICBsb2Fkc3Ry'
+_payload=_payload..'aW5nKGNvZGUpKCkgIFt5b3VyIGNsaWVudF0iCiAgICBlbmQKZW5kCgpsb2NhbCBmdW5jdGlvbiBh'
+_payload=_payload..'cHBseVN1Yk1vZGUocykKICAgIGV4ZWNTdWJNb2RlID0gcwogICAgaWYgcyA9PSAibHMiIHRoZW4K'
+_payload=_payload..'ICAgICAgICB0dyhTdWJMUywgIHtCYWNrZ3JvdW5kQ29sb3IzID0gQy5CTFVFLCBUZXh0Q29sb3Iz'
+_payload=_payload..'ID0gQy5XSElURSAgfSkKICAgICAgICB0dyhTdWJSZXEsIHtCYWNrZ3JvdW5kQ29sb3IzID0gQy5E'
+_payload=_payload..'SU0sICBUZXh0Q29sb3IzID0gQy5ESU1UWFQgfSkKICAgIGVsc2UKICAgICAgICB0dyhTdWJSZXEs'
+_payload=_payload..'IHtCYWNrZ3JvdW5kQ29sb3IzID0gQy5CTFVFLCBUZXh0Q29sb3IzID0gQy5XSElURSAgfSkKICAg'
+_payload=_payload..'ICAgICB0dyhTdWJMUywgIHtCYWNrZ3JvdW5kQ29sb3IzID0gQy5ESU0sICBUZXh0Q29sb3IzID0g'
+_payload=_payload..'Qy5ESU1UWFQgfSkKICAgIGVuZAogICAgaWYgZXhlY01vZGUgPT0gInNlcnZlciIgdGhlbgogICAg'
+_payload=_payload..'ICAgIEV4ZWNIaW50LlRleHQgPSBzID09ICJscyIKICAgICAgICAgICAgYW5kICJTZXJ2ZXIgU2lk'
+_payload=_payload..'ZSAg4oaSICBsb2Fkc3RyaW5nKGNvZGUpKCkgIFtmdWxsIHNlcnZlciBwZXJtc10iCiAgICAgICAg'
+_payload=_payload..'ICAgIG9yICAiU2VydmVyIFNpZGUgIOKGkiAgcmVxdWlyZShhc3NldElkKSAgW251bWVyaWMgSURd'
+_payload=_payload..'IgogICAgZW5kCmVuZAoKbG9jYWwgZnVuY3Rpb24gYXBwbHlDb2RlVHlwZSh0KQogICAgZXhlY0Nv'
+_payload=_payload..'ZGVUeXBlID0gdAogICAgbG9jYWwgbmFtZXMgPSB7Ik5vcm1hbCIsICJVUkwiLCAiQmFzZTY0In0K'
+_payload=_payload..'ICAgIGZvciBpLCBiIGluIGNvZGVUeXBlQnRucyBkbwogICAgICAgIGxvY2FsIGFjdGl2ZSA9IG5h'
+_payload=_payload..'bWVzW2ldOmxvd2VyKCkgPT0gdAogICAgICAgIHR3KGIsIHtCYWNrZ3JvdW5kQ29sb3IzID0gYWN0'
+_payload=_payload..'aXZlIGFuZCBDLkFDQ0VOVCBvciBDLkRJTSwKICAgICAgICAgICAgICAgVGV4dENvbG9yMyAgICAg'
+_payload=_payload..'ICA9IGFjdGl2ZSBhbmQgQy5XSElURSAgb3IgQy5ESU1UWFR9KQogICAgZW5kCmVuZAoKYXBwbHlN'
+_payload=_payload..'b2RlKCJjbGllbnQiKQphcHBseVN1Yk1vZGUoImxzIikKYXBwbHlDb2RlVHlwZSgibm9ybWFsIikK'
+_payload=_payload..'CkNsaWVudFRhYi5Nb3VzZUJ1dHRvbjFDbGljazpDb25uZWN0KGZ1bmN0aW9uKCkgYXBwbHlNb2Rl'
+_payload=_payload..'KCJjbGllbnQiKSBlbmQpClNlcnZlclRhYi5Nb3VzZUJ1dHRvbjFDbGljazpDb25uZWN0KGZ1bmN0'
+_payload=_payload..'aW9uKCkgYXBwbHlNb2RlKCJzZXJ2ZXIiKSBlbmQpClN1YkxTLk1vdXNlQnV0dG9uMUNsaWNrOkNv'
+_payload=_payload..'bm5lY3QoZnVuY3Rpb24oKSAgICAgYXBwbHlTdWJNb2RlKCJscyIpICBlbmQpClN1YlJlcS5Nb3Vz'
+_payload=_payload..'ZUJ1dHRvbjFDbGljazpDb25uZWN0KGZ1bmN0aW9uKCkgICAgYXBwbHlTdWJNb2RlKCJyZXEiKSBl'
+_payload=_payload..'bmQpCmNvZGVUeXBlQnRuc1sxXS5Nb3VzZUJ1dHRvbjFDbGljazpDb25uZWN0KGZ1bmN0aW9uKCkg'
+_payload=_payload..'YXBwbHlDb2RlVHlwZSgibm9ybWFsIikgZW5kKQpjb2RlVHlwZUJ0bnNbMl0uTW91c2VCdXR0b24x'
+_payload=_payload..'Q2xpY2s6Q29ubmVjdChmdW5jdGlvbigpIGFwcGx5Q29kZVR5cGUoInVybCIpICAgIGVuZCkKY29k'
+_payload=_payload..'ZVR5cGVCdG5zWzNdLk1vdXNlQnV0dG9uMUNsaWNrOkNvbm5lY3QoZnVuY3Rpb24oKSBhcHBseUNv'
+_payload=_payload..'ZGVUeXBlKCJiYXNlNjQiKSBlbmQpCgpFeGVjQnRuLk1vdXNlQnV0dG9uMUNsaWNrOkNvbm5lY3Qo'
+_payload=_payload..'ZnVuY3Rpb24oKQogICAgbG9jYWwgcmF3ID0gQ29kZUJveC5UZXh0CiAgICBpZiByYXcgPT0gIiIg'
+_payload=_payload..'b3IgcmF3Om1hdGNoKCJeJXMqJCIpIHRoZW4KICAgICAgICBzZXRTdGF0dXMoIk5vdGhpbmcgdG8g'
+_payload=_payload..'ZXhlY3V0ZS4iLCBDLllFTExPVykKICAgICAgICByZXR1cm4KICAgIGVuZAogICAgc2V0U3RhdHVz'
+_payload=_payload..'KCJFeGVjdXRpbmcuLi4iLCBDLllFTExPVykKCiAgICBpZiBleGVjTW9kZSA9PSAiY2xpZW50IiB0'
+_payload=_payload..'aGVuCiAgICAgICAgbG9jYWwgY29kZSA9IHJhdwogICAgICAgIGlmIGV4ZWNDb2RlVHlwZSA9PSAi'
+_payload=_payload..'dXJsIiB0aGVuCiAgICAgICAgICAgIGxvY2FsIG9rMiwgc3JjID0gcGNhbGwoZnVuY3Rpb24oKSBy'
+_payload=_payload..'ZXR1cm4gZ2FtZTpIdHRwR2V0KHJhdywgdHJ1ZSkgZW5kKQogICAgICAgICAgICBpZiBub3Qgb2sy'
+_payload=_payload..'IHRoZW4gc2V0U3RhdHVzKCJIVFRQIGVycm9yOiAiIC4uIHRvc3RyaW5nKHNyYyk6c3ViKDEsNzAp'
+_payload=_payload..'LCBDLlJFRCkgcmV0dXJuIGVuZAogICAgICAgICAgICBjb2RlID0gc3JjCiAgICAgICAgZWxzZWlm'
+_payload=_payload..'IGV4ZWNDb2RlVHlwZSA9PSAiYmFzZTY0IiB0aGVuCiAgICAgICAgICAgIGxvY2FsIG9rMiwgZGVj'
+_payload=_payload..'ID0gcGNhbGwoYjY0ZGVjb2RlLCByYXcpCiAgICAgICAgICAgIGlmIG5vdCBvazIgdGhlbiBzZXRT'
+_payload=_payload..'dGF0dXMoIkJhc2U2NCBkZWNvZGUgZmFpbGVkLiIsIEMuUkVEKSByZXR1cm4gZW5kCiAgICAgICAg'
+_payload=_payload..'ICAgIGNvZGUgPSBkZWMKICAgICAgICBlbmQKICAgICAgICBsb2NhbCBmbiwgY29tcEVyciA9IGxv'
+_payload=_payload..'YWRzdHJpbmcoY29kZSkKICAgICAgICBpZiBub3QgZm4gdGhlbiBzZXRTdGF0dXMoIkNvbXBpbGU6'
+_payload=_payload..'ICIgLi4gdG9zdHJpbmcoY29tcEVycik6c3ViKDEsNzApLCBDLlJFRCkgcmV0dXJuIGVuZAogICAg'
+_payload=_payload..'ICAgIGxvY2FsIG9rMiwgcnVuRXJyID0gcGNhbGwoZm4pCiAgICAgICAgaWYgb2syIHRoZW4gc2V0'
+_payload=_payload..'U3RhdHVzKCJFeGVjdXRlZCBvbiBjbGllbnQuIiwgQy5HUkVFTikKICAgICAgICBlbHNlICAgICAg'
+_payload=_payload..'ICAgc2V0U3RhdHVzKCJSdW50aW1lOiAiIC4uIHRvc3RyaW5nKHJ1bkVycik6c3ViKDEsNzApLCBD'
+_payload=_payload..'LlJFRCkgZW5kCgogICAgZWxzZQogICAgICAgIGxvY2FsIGFjdGlvbiwgcGF5bG9hZCA9IG5pbCwg'
+_payload=_payload..'e30KICAgICAgICBpZiBleGVjU3ViTW9kZSA9PSAicmVxIiB0aGVuCiAgICAgICAgICAgIGFjdGlv'
+_payload=_payload..'biA9ICJyZXEiIDsgcGF5bG9hZC5pZCA9IHJhdwogICAgICAgIGVsc2VpZiBleGVjQ29kZVR5cGUg'
+_payload=_payload..'PT0gInVybCIgdGhlbgogICAgICAgICAgICBhY3Rpb24gPSAibHNfdXJsIiA7IHBheWxvYWQudXJs'
+_payload=_payload..'ID0gcmF3CiAgICAgICAgZWxzZQogICAgICAgICAgICBsb2NhbCBjb2RlID0gcmF3CiAgICAgICAg'
+_payload=_payload..'ICAgIGlmIGV4ZWNDb2RlVHlwZSA9PSAiYmFzZTY0IiB0aGVuCiAgICAgICAgICAgICAgICBsb2Nh'
+_payload=_payload..'bCBvazIsIGRlYyA9IHBjYWxsKGI2NGRlY29kZSwgcmF3KQogICAgICAgICAgICAgICAgaWYgbm90'
+_payload=_payload..'IG9rMiB0aGVuIHNldFN0YXR1cygiQmFzZTY0IGRlY29kZSBmYWlsZWQuIiwgQy5SRUQpIHJldHVy'
+_payload=_payload..'biBlbmQKICAgICAgICAgICAgICAgIGNvZGUgPSBkZWMKICAgICAgICAgICAgZW5kCiAgICAgICAg'
+_payload=_payload..'ICAgIGFjdGlvbiA9ICJscyIgOyBwYXlsb2FkLmNvZGUgPSBjb2RlCiAgICAgICAgZW5kCiAgICAg'
+_payload=_payload..'ICAgbG9jYWwgcmVzID0gY2FsbEJyaWRnZShhY3Rpb24sIHBheWxvYWQpCiAgICAgICAgaWYgcmVz'
+_payload=_payload..'Lm9rIHRoZW4gc2V0U3RhdHVzKHRvc3RyaW5nKHJlcy5tc2cpLCBDLkdSRUVOKQogICAgICAgIGVs'
+_payload=_payload..'c2UgICAgICAgICAgIHNldFN0YXR1cyh0b3N0cmluZyhyZXMubXNnKTpzdWIoMSw4MCksIEMuUkVE'
+_payload=_payload..'KSBlbmQKICAgIGVuZAplbmQpCgpDbGVhckJ0bi5Nb3VzZUJ1dHRvbjFDbGljazpDb25uZWN0KGZ1'
+_payload=_payload..'bmN0aW9uKCkKICAgIENvZGVCb3guVGV4dCA9ICIiCiAgICBzZXRTdGF0dXMoIkNsZWFyZWQuIiwg'
+_payload=_payload..'Qy5ESU1UWFQpCmVuZCkKCkNvcHlCdG4uTW91c2VCdXR0b24xQ2xpY2s6Q29ubmVjdChmdW5jdGlv'
+_payload=_payload..'bigpCiAgICBpZiBzZXRjbGlwYm9hcmQgdGhlbgogICAgICAgIHNldGNsaXBib2FyZChDb2RlQm94'
+_payload=_payload..'LlRleHQpCiAgICAgICAgc2V0U3RhdHVzKCJDb3BpZWQgdG8gY2xpcGJvYXJkLiIsIEMuUFVSUExF'
+_payload=_payload..'KQogICAgZWxzZQogICAgICAgIHNldFN0YXR1cygic2V0Y2xpcGJvYXJkIG5vdCBhdmFpbGFibGUu'
+_payload=_payload..'IiwgQy5ZRUxMT1cpCiAgICBlbmQKZW5kKQoKVVJMQnRuLk1vdXNlQnV0dG9uMUNsaWNrOkNvbm5l'
+_payload=_payload..'Y3QoZnVuY3Rpb24oKQogICAgYXBwbHlDb2RlVHlwZSgidXJsIikKICAgIENvZGVCb3guVGV4dCA9'
+_payload=_payload..'ICIiCiAgICBzZXRTdGF0dXMoIlBhc3RlIGEgcmF3IHNjcmlwdCBVUkwgYW5kIHByZXNzIEV4ZWN1'
+_payload=_payload..'dGUuIiwgQy5ZRUxMT1cpCmVuZCkKCmhvb2tIb3ZlcihFeGVjQnRuLCAgQy5BQ0NFTlQsICAgICAg'
+_payload=_payload..'ICAgICAgICAgICAgICBDLkFDQ0hPVikKaG9va0hvdmVyKENsZWFyQnRuLCBDLkRJTSwgICAgQ29s'
+_payload=_payload..'b3IzLmZyb21SR0IoNDAsIDQwLCA1NCkpCmhvb2tIb3ZlcihDb3B5QnRuLCAgQy5ESU0sICAgIENv'
+_payload=_payload..'bG9yMy5mcm9tUkdCKDQwLCA0MCwgNTQpKQpob29rSG92ZXIoVVJMQnRuLCAgIEMuRElNLCAgICBD'
+_payload=_payload..'b2xvcjMuZnJvbVJHQig0MCwgNDAsIDU0KSkKCi0tIOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKV'
+_payload=_payload..'kOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKV'
+_payload=_payload..'kOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKV'
+_payload=_payload..'kOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkAotLSBUQUIgMiDigJMgREVPQkZVU0NB'
+_payload=_payload..'VEUKLS0g4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ'
+_payload=_payload..'4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ'
+_payload=_payload..'4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ4pWQ'
+_payload=_payload..'4pWQ4pWQ4pWQCmxvY2FsIFQyID0gbWFrZVRhYkZyYW1lKCkKCmxibChUMiwge1NpemU9VURpbTIu'
+_payload=_payload..'bmV3KDEsLTIwLDAsMTQpLFBvc2l0aW9uPVVEaW0yLm5ldygwLDEwLDAsNiksCiAgICBUZXh0PSJP'
+_payload=_payload..'YmZ1c2NhdGVkIElucHV0OiIsVGV4dENvbG9yMz1DLkRJTVRYVCxUZXh0U2l6ZT0xMSxGb250PUdC'
+_payload=_payload..'T0wsCiAgICBUZXh0WEFsaWdubWVudD1FbnVtLlRleHRYQWxpZ25tZW50LkxlZnR9KQoKbG9jYWwg'
+_payload=_payload..'RF9JblNjcm9sbCA9IG1ha2VTY3JvbGxGcmFtZShUMiwgVURpbTIubmV3KDAsMTAsMCwyNCksIFVE'
+_payload=_payload..'aW0yLm5ldygxLC0yMCwwLDEwOCkpCmxvY2FsIERfSW5Cb3ggICAgPSBtYWtlQ29kZUJveChEX0lu'
+_payload=_payload..'U2Nyb2xsLCAiLS0gUGFzdGUgb2JmdXNjYXRlZCBzY3JpcHQgaGVyZS4uLiIpCgpsb2NhbCBEX0N0'
+_payload=_payload..'cmxSb3cgPSBJbnN0YW5jZS5uZXcoIkZyYW1lIikKRF9DdHJsUm93LlNpemUgICAgICAgICAgICAg'
+_payload=_payload..'ICA9IFVEaW0yLm5ldygxLC0yMCwwLDMwKQpEX0N0cmxSb3cuUG9zaXRpb24gICAgICAgICAgID0g'
+_payload=_payload..'VURpbTIubmV3KDAsMTAsMCwxMzgpCkRfQ3RybFJvdy5CYWNrZ3JvdW5kVHJhbnNwYXJlbmN5ID0g'
+_payload=_payload..'MQpEX0N0cmxSb3cuUGFyZW50ICAgICAgICAgICAgID0gVDIKZG8KICAgIGxvY2FsIGw9SW5zdGFu'
+_payload=_payload..'Y2UubmV3KCJVSUxpc3RMYXlvdXQiKSBsLkZpbGxEaXJlY3Rpb249RW51bS5GaWxsRGlyZWN0aW9u'
+_payload=_payload..'Lkhvcml6b250YWwKICAgIGwuVmVydGljYWxBbGlnbm1lbnQ9RW51bS5WZXJ0aWNhbEFsaWdubWVu'
+_payload=_payload..'dC5DZW50ZXIgbC5QYWRkaW5nPVVEaW0ubmV3KDAsOCkgbC5QYXJlbnQ9RF9DdHJsUm93CmVuZAoK'
+_payload=_payload..'bG9jYWwgRF9EZXRlY3RCdG4gPSBidG4oRF9DdHJsUm93LCB7U2l6ZT1VRGltMi5uZXcoMCwxMTAs'
+_payload=_payload..'MCwyOCksQmFja2dyb3VuZENvbG9yMz1DLkRJTSwKICAgIFRleHQ9IkRldGVjdCBUeXBlIixUZXh0'
+_payload=_payload..'Q29sb3IzPUMuV0hJVEUsVGV4dFNpemU9MTEsRm9udD1HQk9MfSkgOyBybmQoRF9EZXRlY3RCdG4s'
+_payload=_payload..'NikKbG9jYWwgRF9EZW9iZkJ0biAgPSBidG4oRF9DdHJsUm93LCB7U2l6ZT1VRGltMi5uZXcoMCwx'
+_payload=_payload..'MjAsMCwyOCksQmFja2dyb3VuZENvbG9yMz1DLkFDQ0VOVCwKICAgIFRleHQ9IkRlb2JmdXNjYXRl'
+_payload=_payload..'IixUZXh0Q29sb3IzPUMuV0hJVEUsVGV4dFNpemU9MTEsRm9udD1HQk9MfSkgOyBybmQoRF9EZW9i'
+_payload=_payload..'ZkJ0biw2KQpsb2NhbCBEX1R5cGVMYmwgICA9IGxibChEX0N0cmxSb3csIHtTaXplPVVEaW0yLm5l'
+_payload=_payload..'dygwLDIxMCwwLDI4KSxUZXh0PSJUeXBlOiDigJQiLAogICAgVGV4dENvbG9yMz1DLllFTExPVyxU'
+_payload=_payload..'ZXh0U2l6ZT0xMSxGb250PUdOUk0sVGV4dFhBbGlnbm1lbnQ9RW51bS5UZXh0WEFsaWdubWVudC5M'
+_payload=_payload..'ZWZ0fSkKCmxvY2FsIERfU3RlcHNMYmwgPSBsYmwoVDIsIHtTaXplPVVEaW0yLm5ldygxLC0yMCww'
+_payload=_payload..'LDE0KSxQb3NpdGlvbj1VRGltMi5uZXcoMCwxMCwwLDE3NCksCiAgICBUZXh0PSJTdGVwczog4oCU'
+_payload=_payload..'IixUZXh0Q29sb3IzPUNvbG9yMy5mcm9tUkdCKDgwLDU1LDE1NSksVGV4dFNpemU9MTAsRm9udD1H'
+_payload=_payload..'TlJNLAogICAgVGV4dFhBbGlnbm1lbnQ9RW51bS5UZXh0WEFsaWdubWVudC5MZWZ0fSkKCmxibChU'
+_payload=_payload..'Miwge1NpemU9VURpbTIubmV3KDEsLTIwLDAsMTQpLFBvc2l0aW9uPVVEaW0yLm5ldygwLDEwLDAs'
+_payload=_payload..'MTkyKSwKICAgIFRleHQ9IkRlb2JmdXNjYXRlZCBPdXRwdXQ6IixUZXh0Q29sb3IzPUMuRElNVFhU'
+_payload=_payload..'LFRleHRTaXplPTExLEZvbnQ9R0JPTCwKICAgIFRleHRYQWxpZ25tZW50PUVudW0uVGV4dFhBbGln'
+_payload=_payload..'bm1lbnQuTGVmdH0pCgpsb2NhbCBEX091dFNjcm9sbCA9IG1ha2VTY3JvbGxGcmFtZShUMiwgVURp'
+_payload=_payload..'bTIubmV3KDAsMTAsMCwyMTApLCBVRGltMi5uZXcoMSwtMjAsMCw5NikpCmxvY2FsIERfT3V0Qm94'
+_payload=_payload..'ICAgID0gbWFrZUNvZGVCb3goRF9PdXRTY3JvbGwsICItLSBPdXRwdXQgYXBwZWFycyBoZXJlLi4u'
+_payload=_payload..'IikKRF9PdXRCb3guVGV4dEVkaXRhYmxlID0gZmFsc2UKCmxvY2FsIERfQnRtUm93ID0gSW5zdGFu'
+_payload=_payload..'Y2UubmV3KCJGcmFtZSIpCkRfQnRtUm93LlNpemUgICAgICAgICAgICAgICA9IFVEaW0yLm5ldygx'
+_payload=_payload..'LC0yMCwwLDI2KQpEX0J0bVJvdy5Qb3NpdGlvbiAgICAgICAgICAgPSBVRGltMi5uZXcoMCwxMCww'
+_payload=_payload..'LDMxMSkKRF9CdG1Sb3cuQmFja2dyb3VuZFRyYW5zcGFyZW5jeSA9IDEKRF9CdG1Sb3cuUGFyZW50'
+_payload=_payload..'ICAgICAgICAgICAgID0gVDIKZG8KICAgIGxvY2FsIGw9SW5zdGFuY2UubmV3KCJVSUxpc3RMYXlv'
+_payload=_payload..'dXQiKSBsLkZpbGxEaXJlY3Rpb249RW51bS5GaWxsRGlyZWN0aW9uLkhvcml6b250YWwKICAgIGwu'
+_payload=_payload..'VmVydGljYWxBbGlnbm1lbnQ9RW51bS5WZXJ0aWNhbEFsaWdubWVudC5DZW50ZXIgbC5QYWRkaW5n'
+_payload=_payload..'PVVEaW0ubmV3KDAsOCkgbC5QYXJlbnQ9RF9CdG1Sb3cKZW5kCgpsb2NhbCBEX0NvcHlCdG4gPSBi'
+_payload=_payload..'dG4oRF9CdG1Sb3cse1NpemU9VURpbTIubmV3KDAsMTEwLDAsMjQpLEJhY2tncm91bmRDb2xvcjM9'
+_payload=_payload..'Qy5ESU0sCiAgICBUZXh0PSJDb3B5IE91dHB1dCIsVGV4dENvbG9yMz1DLkRJTVRYVCxUZXh0U2l6'
+_payload=_payload..'ZT0xMSxGb250PUdCT0x9KSA7IHJuZChEX0NvcHlCdG4sNSkKbG9jYWwgRF9FeGVjQnRuID0gYnRu'
+_payload=_payload..'KERfQnRtUm93LHtTaXplPVVEaW0yLm5ldygwLDE0MCwwLDI0KSxCYWNrZ3JvdW5kQ29sb3IzPUMu'
+_payload=_payload..'QUNDRU5ULAogICAgVGV4dD0iRXhlY3V0ZSBPdXRwdXQiLFRleHRDb2xvcjM9Qy5XSElURSxUZXh0'
+_payload=_payload..'U2l6ZT0xMSxGb250PUdCT0x9KSA7IHJuZChEX0V4ZWNCdG4sNSkKCkRfRGV0ZWN0QnRuLk1vdXNl'
+_payload=_payload..'QnV0dG9uMUNsaWNrOkNvbm5lY3QoZnVuY3Rpb24oKQogICAgbG9jYWwgcyA9IERfSW5Cb3guVGV4'
+_payload=_payload..'dAogICAgaWYgcyA9PSAiIiB0aGVuIHJldHVybiBlbmQKICAgIERfVHlwZUxibC5UZXh0ID0gIlR5'
+_payload=_payload..'cGU6ICIgLi4gZGV0ZWN0T2JmVHlwZShzKQplbmQpCkRfRGVvYmZCdG4uTW91c2VCdXR0b24xQ2xp'
+_payload=_payload..'Y2s6Q29ubmVjdChmdW5jdGlvbigpCiAgICBsb2NhbCBzID0gRF9JbkJveC5UZXh0CiAgICBpZiBz'
+_payload=_payload..'ID09ICIiIG9yIHM6bWF0Y2goIl4lcyokIikgdGhlbiByZXR1cm4gZW5kCiAgICBEX1R5cGVMYmwu'
+_payload=_payload..'VGV4dCA9ICJUeXBlOiAiIC4uIGRldGVjdE9iZlR5cGUocykKICAgIGxvY2FsIG91dCwgc3RlcHMg'
+_payload=_payload..'PSBkZW9iZnVzY2F0ZShzKQogICAgRF9PdXRCb3guVGV4dCAgPSBvdXQKICAgIERfU3RlcHNMYmwu'
+_payload=_payload..'VGV4dCA9ICJTdGVwczogIiAuLiBzdGVwcwplbmQpCkRfQ29weUJ0bi5Nb3VzZUJ1dHRvbjFDbGlj'
+_payload=_payload..'azpDb25uZWN0KGZ1bmN0aW9uKCkKICAgIGlmIHNldGNsaXBib2FyZCBhbmQgRF9PdXRCb3guVGV4'
+_payload=_payload..'dCB+PSAiIiB0aGVuCiAgICAgICAgc2V0Y2xpcGJvYXJkKERfT3V0Qm94LlRleHQpCiAgICAgICAg'
+_payload=_payload..'RF9UeXBlTGJsLlRleHQgPSAiQ29waWVkISIKICAgICAgICB0YXNrLmRlbGF5KDEuNSwgZnVuY3Rp'
+_payload=_payload..'b24oKSBEX1R5cGVMYmwuVGV4dCA9ICJUeXBlOiDigJQiIGVuZCkKICAgIGVuZAplbmQpCkRfRXhl'
+_payload=_payload..'Y0J0bi5Nb3VzZUJ1dHRvbjFDbGljazpDb25uZWN0KGZ1bmN0aW9uKCkKICAgIGxvY2FsIGNvZGUg'
+_payload=_payload..'PSBEX091dEJveC5UZXh0CiAgICBpZiBjb2RlID09ICIiIHRoZW4gcmV0dXJuIGVuZAogICAgbG9j'
+_payload=_payload..'YWwgZm4sIGUgPSBsb2Fkc3RyaW5nKGNvZGUpCiAgICBpZiBub3QgZm4gdGhlbiBEX1R5cGVMYmwu'
+_payload=_payload..'VGV4dCA9ICJDb21waWxlIGVycm9yLiIgcmV0dXJuIGVuZAogICAgbG9jYWwgb2syLCBlMiA9IHBj'
+_payload=_payload..'YWxsKGZuKQogICAgRF9UeXBlTGJsLlRleHQgPSBvazIgYW5kICJFeGVjdXRlZCEiIG9yICJFcnJv'
+_payload=_payload..'cjogIiAuLiB0b3N0cmluZyhlMik6c3ViKDEsNDApCmVuZCkKCmhvb2tIb3ZlcihEX0Rlb2JmQnRu'
+_payload=_payload..'LCAgQy5BQ0NFTlQsIEMuQUNDSE9WKQpob29rSG92ZXIoRF9EZXRlY3RCdG4sIEMuRElNLCAgICBD'
+_payload=_payload..'b2xvcjMuZnJvbVJHQig0MCw0MCw1NCkpCmhvb2tIb3ZlcihEX0NvcHlCdG4sICAgQy5ESU0sICAg'
+_payload=_payload..'IENvbG9yMy5mcm9tUkdCKDQwLDQwLDU0KSkKaG9va0hvdmVyKERfRXhlY0J0biwgICBDLkFDQ0VO'
+_payload=_payload..'VCwgQy5BQ0NIT1YpCgotLSDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDi'
+_payload=_payload..'lZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDi'
+_payload=_payload..'lZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDi'
+_payload=_payload..'lZDilZDilZDilZDilZDilZDilZAKLS0gVEFCIDMg4oCTIEFOVEktTUFMV0FSRQotLSDilZDilZDi'
+_payload=_payload..'lZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDi'
+_payload=_payload..'lZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDi'
+_payload=_payload..'lZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZAKbG9j'
+_payload=_payload..'YWwgVDMgPSBtYWtlVGFiRnJhbWUoKQoKbG9jYWwgTV9CdG5Sb3cgPSBJbnN0YW5jZS5uZXcoIkZy'
+_payload=_payload..'YW1lIikKTV9CdG5Sb3cuU2l6ZSAgICAgICAgICAgICAgID0gVURpbTIubmV3KDEsLTIwLDAsMzQp'
+_payload=_payload..'Ck1fQnRuUm93LlBvc2l0aW9uICAgICAgICAgICA9IFVEaW0yLm5ldygwLDEwLDAsOCkKTV9CdG5S'
+_payload=_payload..'b3cuQmFja2dyb3VuZFRyYW5zcGFyZW5jeSA9IDEKTV9CdG5Sb3cuUGFyZW50ICAgICAgICAgICAg'
+_payload=_payload..'ID0gVDMKZG8KICAgIGxvY2FsIGw9SW5zdGFuY2UubmV3KCJVSUxpc3RMYXlvdXQiKSBsLkZpbGxE'
+_payload=_payload..'aXJlY3Rpb249RW51bS5GaWxsRGlyZWN0aW9uLkhvcml6b250YWwKICAgIGwuVmVydGljYWxBbGln'
+_payload=_payload..'bm1lbnQ9RW51bS5WZXJ0aWNhbEFsaWdubWVudC5DZW50ZXIgbC5QYWRkaW5nPVVEaW0ubmV3KDAs'
+_payload=_payload..'OCkgbC5QYXJlbnQ9TV9CdG5Sb3cKZW5kCgpsb2NhbCBmdW5jdGlvbiBtYWxCdG4odGV4dCxiZyx3'
+_payload=_payload..'KQogICAgbG9jYWwgYj1idG4oTV9CdG5Sb3cse1NpemU9VURpbTIubmV3KDAsdywwLDMwKSxCYWNr'
+_payload=_payload..'Z3JvdW5kQ29sb3IzPWJnLFRleHQ9dGV4dCxUZXh0Q29sb3IzPUMuV0hJVEUsVGV4dFNpemU9MTEs'
+_payload=_payload..'Rm9udD1HQk9MfSkKICAgIHJuZChiLDYpIHJldHVybiBiCmVuZApsb2NhbCBNX1NjYW5CdG4gICAg'
+_payload=_payload..'PSBtYWxCdG4oIiAgU2NhbiBHYW1lIiwgICAgQy5CTFVFLCAgIDEyMCkKbG9jYWwgTV9LaWxsQWxs'
+_payload=_payload..'ICAgID0gbWFsQnRuKCJLaWxsIEFsbCIsICAgICAgIEMuUkVELCAgICA4MCkKbG9jYWwgTV9CbG9j'
+_payload=_payload..'a1JtdCAgID0gbWFsQnRuKCJCbG9jayBSZW1vdGVzIiwgIEMuT1JBTkdFLCAxMTApCgpsb2NhbCBN'
+_payload=_payload..'X1N0YXR1c0xibCA9IGxibChUMyx7U2l6ZT1VRGltMi5uZXcoMSwtMjAsMCwxNSksUG9zaXRpb249'
+_payload=_payload..'VURpbTIubmV3KDAsMTAsMCw0OCksCiAgICBUZXh0PSJQcmVzcyBTY2FuIHRvIGRldGVjdCB0aHJl'
+_payload=_payload..'YXRzLiIsVGV4dENvbG9yMz1DLkRJTVRYVCxUZXh0U2l6ZT0xMCxGb250PUdOUk0sCiAgICBUZXh0'
+_payload=_payload..'WEFsaWdubWVudD1FbnVtLlRleHRYQWxpZ25tZW50LkxlZnR9KQoKbG9jYWwgTV9TY3JvbGwgPSBJ'
+_payload=_payload..'bnN0YW5jZS5uZXcoIlNjcm9sbGluZ0ZyYW1lIikKTV9TY3JvbGwuU2l6ZSAgICAgICAgICAgICAg'
+_payload=_payload..'ICA9IFVEaW0yLm5ldygxLC0yMCwwLDI0NCkKTV9TY3JvbGwuUG9zaXRpb24gICAgICAgICAgICA9'
+_payload=_payload..'IFVEaW0yLm5ldygwLDEwLDAsNjgpCk1fU2Nyb2xsLkJhY2tncm91bmRDb2xvcjMgICAgPSBDLlBB'
+_payload=_payload..'TkVMCk1fU2Nyb2xsLkJvcmRlclNpemVQaXhlbCAgICAgPSAwCk1fU2Nyb2xsLlNjcm9sbEJhclRo'
+_payload=_payload..'aWNrbmVzcyAgPSA0Ck1fU2Nyb2xsLlNjcm9sbEJhckltYWdlQ29sb3IzID0gQy5BQ0NFTlQKTV9T'
+_payload=_payload..'Y3JvbGwuQ2FudmFzU2l6ZSAgICAgICAgICA9IFVEaW0yLm5ldygwLDAsMCwwKQpNX1Njcm9sbC5B'
+_payload=_payload..'dXRvbWF0aWNDYW52YXNTaXplID0gRW51bS5BdXRvbWF0aWNTaXplLlkKTV9TY3JvbGwuUGFyZW50'
+_payload=_payload..'ICAgICAgICAgICAgICA9IFQzCnJuZChNX1Njcm9sbCw3KSBzdHIoTV9TY3JvbGwsQ29sb3IzLmZy'
+_payload=_payload..'b21SR0IoMzUsNSw4NSksMSkKCmRvCiAgICBsb2NhbCBsPUluc3RhbmNlLm5ldygiVUlMaXN0TGF5'
+_payload=_payload..'b3V0IikgbC5QYWRkaW5nPVVEaW0ubmV3KDAsMikgbC5Tb3J0T3JkZXI9RW51bS5Tb3J0T3JkZXIu'
+_payload=_payload..'TGF5b3V0T3JkZXIgbC5QYXJlbnQ9TV9TY3JvbGwKICAgIGxvY2FsIHA9SW5zdGFuY2UubmV3KCJV'
+_payload=_payload..'SVBhZGRpbmciKSBwLlBhZGRpbmdUb3A9VURpbS5uZXcoMCw0KSBwLlBhZGRpbmdMZWZ0PVVEaW0u'
+_payload=_payload..'bmV3KDAsNCkgcC5QYWRkaW5nUmlnaHQ9VURpbS5uZXcoMCw0KSBwLlBhcmVudD1NX1Njcm9sbApl'
+_payload=_payload..'bmQKCmxvY2FsIE1fQXV0b1JvdyA9IEluc3RhbmNlLm5ldygiRnJhbWUiKQpNX0F1dG9Sb3cuU2l6'
+_payload=_payload..'ZSAgICAgICAgICAgICAgID0gVURpbTIubmV3KDEsLTIwLDAsMjIpCk1fQXV0b1Jvdy5Qb3NpdGlv'
+_payload=_payload..'biAgICAgICAgICAgPSBVRGltMi5uZXcoMCwxMCwwLDMxOCkKTV9BdXRvUm93LkJhY2tncm91bmRU'
+_payload=_payload..'cmFuc3BhcmVuY3kgPSAxCk1fQXV0b1Jvdy5QYXJlbnQgICAgICAgICAgICAgPSBUMwpkbwogICAg'
+_payload=_payload..'bG9jYWwgbD1JbnN0YW5jZS5uZXcoIlVJTGlzdExheW91dCIpIGwuRmlsbERpcmVjdGlvbj1FbnVt'
+_payload=_payload..'LkZpbGxEaXJlY3Rpb24uSG9yaXpvbnRhbAogICAgbC5WZXJ0aWNhbEFsaWdubWVudD1FbnVtLlZl'
+_payload=_payload..'cnRpY2FsQWxpZ25tZW50LkNlbnRlciBsLlBhZGRpbmc9VURpbS5uZXcoMCw4KSBsLlBhcmVudD1N'
+_payload=_payload..'X0F1dG9Sb3cKZW5kCmxvY2FsIGF1dG9Nb25PbiA9IGZhbHNlCmxvY2FsIE1fQXV0b0J0biA9IGJ0'
+_payload=_payload..'bihNX0F1dG9Sb3cse1NpemU9VURpbTIubmV3KDAsMTMwLDAsMjApLEJhY2tncm91bmRDb2xvcjM9'
+_payload=_payload..'Qy5ESU0sCiAgICBUZXh0PSJBdXRvLU1vbml0b3I6IE9GRiIsVGV4dENvbG9yMz1DLkRJTVRYVCxU'
+_payload=_payload..'ZXh0U2l6ZT0xMCxGb250PUdCT0x9KSA7IHJuZChNX0F1dG9CdG4sNCkKbGJsKE1fQXV0b1Jvdyx7'
+_payload=_payload..'U2l6ZT1VRGltMi5uZXcoMCwyNjAsMCwyMCksVGV4dD0iU2NhbnMgZXZlcnkgMzBzIGFuZCBraWxs'
+_payload=_payload..'cyBuZXcgdGhyZWF0cyIsCiAgICBUZXh0Q29sb3IzPUNvbG9yMy5mcm9tUkdCKDYwLDYwLDg1KSxU'
+_payload=_payload..'ZXh0U2l6ZT05LEZvbnQ9R05STSxUZXh0WEFsaWdubWVudD1FbnVtLlRleHRYQWxpZ25tZW50Lkxl'
+_payload=_payload..'ZnR9KQoKbG9jYWwgY3VycmVudEZpbmRpbmdzID0ge30KCmxvY2FsIGZ1bmN0aW9uIGNsZWFyRmlu'
+_payload=_payload..'ZGluZ3MoKQogICAgY3VycmVudEZpbmRpbmdzID0ge30KICAgIGZvciBfLCBjIGluIE1fU2Nyb2xs'
+_payload=_payload..'OkdldENoaWxkcmVuKCkgZG8KICAgICAgICBpZiBjOklzQSgiRnJhbWUiKSB0aGVuIGM6RGVzdHJv'
+_payload=_payload..'eSgpIGVuZAogICAgZW5kCmVuZAoKbG9jYWwgZnVuY3Rpb24gYWRkRmluZGluZ1JvdyhmaW5kaW5n'
+_payload=_payload..'LCBpKQogICAgbG9jYWwgcm93ID0gSW5zdGFuY2UubmV3KCJGcmFtZSIpCiAgICByb3cuU2l6ZSAg'
+_payload=_payload..'ICAgICAgICAgICA9IFVEaW0yLm5ldygxLDAsMCw0MCkKICAgIHJvdy5CYWNrZ3JvdW5kQ29sb3Iz'
+_payload=_payload..'ID0gQy5QQU5FTDIKICAgIHJvdy5Cb3JkZXJTaXplUGl4ZWwgID0gMAogICAgcm93LkxheW91dE9y'
+_payload=_payload..'ZGVyICAgICAgPSBpCiAgICByb3cuUGFyZW50ICAgICAgICAgICA9IE1fU2Nyb2xsCiAgICBybmQo'
+_payload=_payload..'cm93LDUpCgogICAgbG9jYWwga2luZENvbCA9IGZpbmRpbmcua2luZDpmaW5kKCJTY3JpcHQiKSBh'
+_payload=_payload..'bmQgQy5PUkFOR0Ugb3IgQy5SRUQKICAgIGxvY2FsIGJhZGdlID0gYnRuKHJvdyx7U2l6ZT1VRGlt'
+_payload=_payload..'Mi5uZXcoMCw2OCwwLDIwKSxQb3NpdGlvbj1VRGltMi5uZXcoMCw2LDAuNSwtMTApLAogICAgICAg'
+_payload=_payload..'IEJhY2tncm91bmRDb2xvcjM9a2luZENvbCxUZXh0PWZpbmRpbmcua2luZDpzdWIoMSwxMCksVGV4'
+_payload=_payload..'dENvbG9yMz1DLldISVRFLFRleHRTaXplPTksRm9udD1HQk9MfSkKICAgIHJuZChiYWRnZSw0KQoK'
+_payload=_payload..'ICAgIGxibChyb3cse1NpemU9VURpbTIubmV3KDEsLTIxMCwwLDE0KSxQb3NpdGlvbj1VRGltMi5u'
+_payload=_payload..'ZXcoMCw4MiwwLDQpLAogICAgICAgIFRleHQ9ZmluZGluZy5wYXRoOnN1YigtNDgpLFRleHRDb2xv'
+_payload=_payload..'cjM9Qy5XSElURSxUZXh0U2l6ZT0xMCxGb250PUdDT0QsCiAgICAgICAgVGV4dFhBbGlnbm1lbnQ9'
+_payload=_payload..'RW51bS5UZXh0WEFsaWdubWVudC5MZWZ0LFRleHRUcnVuY2F0ZT1FbnVtLlRleHRUcnVuY2F0ZS5B'
+_payload=_payload..'dEVuZH0pCiAgICBsYmwocm93LHtTaXplPVVEaW0yLm5ldygxLC0yMTAsMCwxMiksUG9zaXRpb249'
+_payload=_payload..'VURpbTIubmV3KDAsODIsMCwyMCksCiAgICAgICAgVGV4dD1maW5kaW5nLmRldGFpbCxUZXh0Q29s'
+_payload=_payload..'b3IzPUMuRElNVFhULFRleHRTaXplPTksRm9udD1HTlJNLAogICAgICAgIFRleHRYQWxpZ25tZW50'
+_payload=_payload..'PUVudW0uVGV4dFhBbGlnbm1lbnQuTGVmdCxUZXh0VHJ1bmNhdGU9RW51bS5UZXh0VHJ1bmNhdGUu'
+_payload=_payload..'QXRFbmR9KQoKICAgIGxvY2FsIGtpbGxCdG4gPSBidG4ocm93LHtTaXplPVVEaW0yLm5ldygwLDUw'
+_payload=_payload..'LDAsMjQpLFBvc2l0aW9uPVVEaW0yLm5ldygxLC0xMTIsMC41LC0xMiksCiAgICAgICAgQmFja2dy'
+_payload=_payload..'b3VuZENvbG9yMz1DLlJFRCxUZXh0PSJLaWxsIixUZXh0Q29sb3IzPUMuV0hJVEUsVGV4dFNpemU9'
+_payload=_payload..'MTAsRm9udD1HQk9MfSkgOyBybmQoa2lsbEJ0biw1KQogICAgbG9jYWwgYmxvY2tCdG4gPSBidG4o'
+_payload=_payload..'cm93LHtTaXplPVVEaW0yLm5ldygwLDU0LDAsMjQpLFBvc2l0aW9uPVVEaW0yLm5ldygxLC01NCww'
+_payload=_payload..'LjUsLTEyKSwKICAgICAgICBCYWNrZ3JvdW5kQ29sb3IzPUMuT1JBTkdFLFRleHQ9IkJsb2NrIixU'
+_payload=_payload..'ZXh0Q29sb3IzPUMuV0hJVEUsVGV4dFNpemU9MTAsRm9udD1HQk9MfSkgOyBybmQoYmxvY2tCdG4s'
+_payload=_payload..'NSkKICAgIGJsb2NrQnRuLlZpc2libGUgPSBmaW5kaW5nLmtpbmQ6ZmluZCgiUmVtb3RlIikgfj0g'
+_payload=_payload..'bmlsCgogICAga2lsbEJ0bi5Nb3VzZUJ1dHRvbjFDbGljazpDb25uZWN0KGZ1bmN0aW9uKCkKICAg'
+_payload=_payload..'ICAgICBsb2NhbCByZXMgPSBjYWxsQnJpZGdlKCJraWxsIiwge3BhdGg9ZmluZGluZy5wYXRofSkK'
+_payload=_payload..'ICAgICAgICBNX1N0YXR1c0xibC5UZXh0ICAgICAgID0gcmVzLm9rIGFuZCAiS2lsbGVkOiAiLi5m'
+_payload=_payload..'aW5kaW5nLnBhdGg6c3ViKC01MCkgb3IgIkZhaWxlZDogIi4udG9zdHJpbmcocmVzLm1zZykKICAg'
+_payload=_payload..'ICAgICBNX1N0YXR1c0xibC5UZXh0Q29sb3IzID0gcmVzLm9rIGFuZCBDLkdSRUVOIG9yIEMuUkVE'
+_payload=_payload..'CiAgICAgICAgaWYgcmVzLm9rIHRoZW4gcm93OkRlc3Ryb3koKSBlbmQKICAgIGVuZCkKICAgIGJs'
+_payload=_payload..'b2NrQnRuLk1vdXNlQnV0dG9uMUNsaWNrOkNvbm5lY3QoZnVuY3Rpb24oKQogICAgICAgIGxvY2Fs'
+_payload=_payload..'IHJlcyA9IGNhbGxCcmlkZ2UoImJsb2NrX3JlbW90ZSIsIHtwYXRoPWZpbmRpbmcucGF0aH0pCiAg'
+_payload=_payload..'ICAgICAgTV9TdGF0dXNMYmwuVGV4dCAgICAgICA9IHRvc3RyaW5nKHJlcy5tc2cpCiAgICAgICAg'
+_payload=_payload..'TV9TdGF0dXNMYmwuVGV4dENvbG9yMyA9IHJlcy5vayBhbmQgQy5HUkVFTiBvciBDLlJFRAogICAg'
+_payload=_payload..'ZW5kKQplbmQKCmxvY2FsIGZ1bmN0aW9uIHJ1blNjYW4oKQogICAgTV9TdGF0dXNMYmwuVGV4dCAg'
+_payload=_payload..'ICAgICA9ICJTY2FubmluZy4uLiIKICAgIE1fU3RhdHVzTGJsLlRleHRDb2xvcjMgPSBDLllFTExP'
+_payload=_payload..'VwogICAgY2xlYXJGaW5kaW5ncygpCiAgICBsb2NhbCByZXMgPSBjYWxsQnJpZGdlKCJzY2FuIikK'
+_payload=_payload..'ICAgIGlmIG5vdCByZXMub2sgdGhlbgogICAgICAgIE1fU3RhdHVzTGJsLlRleHQgICAgICAgPSAi'
+_payload=_payload..'U2NhbiBmYWlsZWQ6ICIgLi4gdG9zdHJpbmcocmVzLm1zZykKICAgICAgICBNX1N0YXR1c0xibC5U'
+_payload=_payload..'ZXh0Q29sb3IzID0gQy5SRUQKICAgICAgICByZXR1cm4KICAgIGVuZAogICAgbG9jYWwgZGF0YSA9'
+_payload=_payload..'IHJlcy5kYXRhIG9yIHt9CiAgICBpZiAjZGF0YSA9PSAwIHRoZW4KICAgICAgICBNX1N0YXR1c0xi'
+_payload=_payload..'bC5UZXh0ICAgICAgID0gIkNsZWFuISBObyB0aHJlYXRzIGZvdW5kLiIKICAgICAgICBNX1N0YXR1'
+_payload=_payload..'c0xibC5UZXh0Q29sb3IzID0gQy5HUkVFTgogICAgICAgIHJldHVybgogICAgZW5kCiAgICBmb3Ig'
+_payload=_payload..'aSwgbGluZSBpbiBkYXRhIGRvCiAgICAgICAgbG9jYWwga2luZCwgcGF0aCwgZGV0YWlsID0gbGlu'
+_payload=_payload..'ZTptYXRjaCgiXiguLSl8KC4tKXwoLiopIikKICAgICAgICBsb2NhbCBmID0ge2tpbmQ9a2luZCBv'
+_payload=_payload..'ciI/IiwgcGF0aD1wYXRoIG9yIj8iLCBkZXRhaWw9ZGV0YWlsIG9yIj8ifQogICAgICAgIGN1cnJl'
+_payload=_payload..'bnRGaW5kaW5nc1tpXSA9IGYKICAgICAgICBhZGRGaW5kaW5nUm93KGYsIGkpCiAgICBlbmQKICAg'
+_payload=_payload..'IE1fU3RhdHVzTGJsLlRleHQgICAgICAgPSB0b3N0cmluZyhyZXMubXNnKSAuLiAiIOKAkyByZXZp'
+_payload=_payload..'ZXcgYmVsb3cuIgogICAgTV9TdGF0dXNMYmwuVGV4dENvbG9yMyA9IEMuT1JBTkdFCmVuZAoKTV9T'
+_payload=_payload..'Y2FuQnRuLk1vdXNlQnV0dG9uMUNsaWNrOkNvbm5lY3QoZnVuY3Rpb24oKSB0YXNrLnNwYXduKHJ1'
+_payload=_payload..'blNjYW4pIGVuZCkKTV9LaWxsQWxsLk1vdXNlQnV0dG9uMUNsaWNrOkNvbm5lY3QoZnVuY3Rpb24o'
+_payload=_payload..'KQogICAgTV9TdGF0dXNMYmwuVGV4dCA9ICJLaWxsaW5nIGFsbC4uLiIgTV9TdGF0dXNMYmwuVGV4'
+_payload=_payload..'dENvbG9yMyA9IEMuWUVMTE9XCiAgICBsb2NhbCByZXMgPSBjYWxsQnJpZGdlKCJraWxsX2FsbCIp'
+_payload=_payload..'CiAgICBNX1N0YXR1c0xibC5UZXh0ID0gdG9zdHJpbmcocmVzLm1zZykgTV9TdGF0dXNMYmwuVGV4'
+_payload=_payload..'dENvbG9yMyA9IHJlcy5vayBhbmQgQy5HUkVFTiBvciBDLlJFRAogICAgaWYgcmVzLm9rIHRoZW4g'
+_payload=_payload..'Y2xlYXJGaW5kaW5ncygpIGVuZAplbmQpCk1fQmxvY2tSbXQuTW91c2VCdXR0b24xQ2xpY2s6Q29u'
+_payload=_payload..'bmVjdChmdW5jdGlvbigpCiAgICBsb2NhbCBuID0gMAogICAgZm9yIF8sIGYgaW4gY3VycmVudEZp'
+_payload=_payload..'bmRpbmdzIGRvCiAgICAgICAgaWYgZi5raW5kOmZpbmQoIlJlbW90ZSIpIHRoZW4KICAgICAgICAg'
+_payload=_payload..'ICAgbG9jYWwgciA9IGNhbGxCcmlkZ2UoImJsb2NrX3JlbW90ZSIsIHtwYXRoPWYucGF0aH0pCiAg'
+_payload=_payload..'ICAgICAgICAgIGlmIHIub2sgdGhlbiBuID0gbiArIDEgZW5kCiAgICAgICAgZW5kCiAgICBlbmQK'
+_payload=_payload..'ICAgIE1fU3RhdHVzTGJsLlRleHQgPSAiQmxvY2tlZCAiIC4uIG4gLi4gIiByZW1vdGUocykuIiBN'
+_payload=_payload..'X1N0YXR1c0xibC5UZXh0Q29sb3IzID0gQy5HUkVFTgplbmQpCk1fQXV0b0J0bi5Nb3VzZUJ1dHRv'
+_payload=_payload..'bjFDbGljazpDb25uZWN0KGZ1bmN0aW9uKCkKICAgIGF1dG9Nb25PbiA9IG5vdCBhdXRvTW9uT24K'
+_payload=_payload..'ICAgIGlmIGF1dG9Nb25PbiB0aGVuCiAgICAgICAgdHcoTV9BdXRvQnRuLCB7QmFja2dyb3VuZENv'
+_payload=_payload..'bG9yMyA9IEMuR1JFRU59KSBNX0F1dG9CdG4uVGV4dCA9ICJBdXRvLU1vbml0b3I6IE9OIiBNX0F1'
+_payload=_payload..'dG9CdG4uVGV4dENvbG9yMyA9IEMuQkcKICAgICAgICB0YXNrLnNwYXduKGZ1bmN0aW9uKCkKICAg'
+_payload=_payload..'ICAgICAgICAgd2hpbGUgYXV0b01vbk9uIGRvIHRhc2sud2FpdCgzMCkgaWYgYXV0b01vbk9uIHRo'
+_payload=_payload..'ZW4gdGFzay5zcGF3bihydW5TY2FuKSBlbmQgZW5kCiAgICAgICAgZW5kKQogICAgZWxzZQogICAg'
+_payload=_payload..'ICAgIHR3KE1fQXV0b0J0biwge0JhY2tncm91bmRDb2xvcjMgPSBDLkRJTX0pIE1fQXV0b0J0bi5U'
+_payload=_payload..'ZXh0ID0gIkF1dG8tTW9uaXRvcjogT0ZGIiBNX0F1dG9CdG4uVGV4dENvbG9yMyA9IEMuRElNVFhU'
+_payload=_payload..'IGF1dG9Nb25PbiA9IGZhbHNlCiAgICBlbmQKZW5kKQoKaG9va0hvdmVyKE1fU2NhbkJ0biwgIEMu'
+_payload=_payload..'QkxVRSwgICBDLkJMVUVIT1YpCmhvb2tIb3ZlcihNX0tpbGxBbGwsICBDLlJFRCwgICAgQ29sb3Iz'
+_payload=_payload..'LmZyb21SR0IoMjU1LDgwLDgwKSkKaG9va0hvdmVyKE1fQmxvY2tSbXQsIEMuT1JBTkdFLCBDb2xv'
+_payload=_payload..'cjMuZnJvbVJHQigyNTUsMTUwLDUwKSkKCi0tIOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKV'
+_payload=_payload..'kOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKV'
+_payload=_payload..'kOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKV'
+_payload=_payload..'kOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkOKVkAotLSBUQUIgNCDigJMgVU5DIC8gU1VOQyAv'
+_payload=_payload..'IE1ZUklBRAotLSDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDi'
+_payload=_payload..'lZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDi'
+_payload=_payload..'lZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDilZDi'
+_payload=_payload..'lZDilZDilZDilZDilZAKbG9jYWwgVDQgPSBtYWtlVGFiRnJhbWUoKQoKbG9jYWwgVV9Ub3BSb3cg'
+_payload=_payload..'PSBJbnN0YW5jZS5uZXcoIkZyYW1lIikKVV9Ub3BSb3cuU2l6ZSAgICAgICAgICAgICAgID0gVURp'
+_payload=_payload..'bTIubmV3KDEsLTIwLDAsMjYpClVfVG9wUm93LlBvc2l0aW9uICAgICAgICAgICA9IFVEaW0yLm5l'
+_payload=_payload..'dygwLDEwLDAsNCkKVV9Ub3BSb3cuQmFja2dyb3VuZFRyYW5zcGFyZW5jeSA9IDEKVV9Ub3BSb3cu'
+_payload=_payload..'UGFyZW50ICAgICAgICAgICAgID0gVDQKZG8KICAgIGxvY2FsIGw9SW5zdGFuY2UubmV3KCJVSUxp'
+_payload=_payload..'c3RMYXlvdXQiKSBsLkZpbGxEaXJlY3Rpb249RW51bS5GaWxsRGlyZWN0aW9uLkhvcml6b250YWwK'
+_payload=_payload..'ICAgIGwuVmVydGljYWxBbGlnbm1lbnQ9RW51bS5WZXJ0aWNhbEFsaWdubWVudC5DZW50ZXIgbC5Q'
+_payload=_payload..'YWRkaW5nPVVEaW0ubmV3KDAsOCkgbC5QYXJlbnQ9VV9Ub3BSb3cKZW5kCgpsb2NhbCBVX0V4ZWNO'
+_payload=_payload..'YW1lID0gbGJsKFVfVG9wUm93LHtTaXplPVVEaW0yLm5ldygwLDIxMCwxLDApLFRleHQ9IkV4ZWN1'
+_payload=_payload..'dG9yOiBkZXRlY3RpbmcuLi4iLAogICAgVGV4dENvbG9yMz1DLlBVUlBMRSxUZXh0U2l6ZT0xMCxG'
+_payload=_payload..'b250PUdCT0wsVGV4dFhBbGlnbm1lbnQ9RW51bS5UZXh0WEFsaWdubWVudC5MZWZ0fSkKbG9jYWwg'
+_payload=_payload..'VV9Db3VudExibCA9IGxibChVX1RvcFJvdyx7U2l6ZT1VRGltMi5uZXcoMCwxNjAsMSwwKSxUZXh0'
+_payload=_payload..'PSIiLAogICAgVGV4dENvbG9yMz1DLkRJTVRYVCxUZXh0U2l6ZT05LEZvbnQ9R05STSxUZXh0WEFs'
+_payload=_payload..'aWdubWVudD1FbnVtLlRleHRYQWxpZ25tZW50LkxlZnR9KQpsb2NhbCBVX1JlZnJlc2ggID0gYnRu'
+_payload=_payload..'KFVfVG9wUm93LHtTaXplPVVEaW0yLm5ldygwLDY4LDAsMjIpLEJhY2tncm91bmRDb2xvcjM9Qy5B'
+_payload=_payload..'Q0NFTlQsCiAgICBUZXh0PSJSZWZyZXNoIixUZXh0Q29sb3IzPUMuV0hJVEUsVGV4dFNpemU9MTAs'
+_payload=_payload..'Rm9udD1HQk9MfSkgOyBybmQoVV9SZWZyZXNoLDUpCgpsb2NhbCBVX1N1YkJhciA9IEluc3RhbmNl'
+_payload=_payload..'Lm5ldygiRnJhbWUiKQpVX1N1YkJhci5TaXplICAgICAgICAgICAgID0gVURpbTIubmV3KDEsLTIw'
+_payload=_payload..'LDAsMjgpClVfU3ViQmFyLlBvc2l0aW9uICAgICAgICAgPSBVRGltMi5uZXcoMCwxMCwwLDM0KQpV'
+_payload=_payload..'X1N1YkJhci5CYWNrZ3JvdW5kQ29sb3IzID0gQy5QQU5FTApVX1N1YkJhci5Cb3JkZXJTaXplUGl4'
+_payload=_payload..'ZWwgID0gMApVX1N1YkJhci5QYXJlbnQgICAgICAgICAgID0gVDQKcm5kKFVfU3ViQmFyLDcpCmRv'
+_payload=_payload..'CiAgICBsb2NhbCBsPUluc3RhbmNlLm5ldygiVUlMaXN0TGF5b3V0IikgbC5GaWxsRGlyZWN0aW9u'
+_payload=_payload..'PUVudW0uRmlsbERpcmVjdGlvbi5Ib3Jpem9udGFsCiAgICBsLkhvcml6b250YWxBbGlnbm1lbnQ9'
+_payload=_payload..'RW51bS5Ib3Jpem9udGFsQWxpZ25tZW50LkNlbnRlciBsLlZlcnRpY2FsQWxpZ25tZW50PUVudW0u'
+_payload=_payload..'VmVydGljYWxBbGlnbm1lbnQuQ2VudGVyCiAgICBsLlBhZGRpbmc9VURpbS5uZXcoMCw0KSBsLlBh'
+_payload=_payload..'cmVudD1VX1N1YkJhcgplbmQKCmxvY2FsIENIRUNLX1RBQlMgPSB7CiAgICB7IlVOQyAoMTAwKSIs'
+_payload=_payload..'ICAgIFVOQ19MSVNULCAgICBDLkJMVUUsICAgQy5CTFVFSE9WIH0sCiAgICB7IlNVTkMgKDEwMCki'
+_payload=_payload..'LCAgIFNVTkNfTElTVCwgICBDLkFDQ0VOVCwgQy5BQ0NIT1YgIH0sCiAgICB7Ik15cmlhZCAoMjUw'
+_payload=_payload..'KSIsIE1ZUklBRF9MSVNULCBDLk9SQU5HRSwgQ29sb3IzLmZyb21SR0IoMjU1LDE1NSw1NSl9LAp9'
+_payload=_payload..'CmxvY2FsIFVfU3ViQnRucyA9IHt9CmZvciBfLCBjdCBpbiBDSEVDS19UQUJTIGRvCiAgICBsb2Nh'
+_payload=_payload..'bCBiID0gYnRuKFVfU3ViQmFyLHtTaXplPVVEaW0yLm5ldygwLDE0NCwxLC02KSxCYWNrZ3JvdW5k'
+_payload=_payload..'Q29sb3IzPUMuRElNLAogICAgICAgIFRleHQ9Y3RbMV0sVGV4dENvbG9yMz1DLkRJTVRYVCxUZXh0'
+_payload=_payload..'U2l6ZT0xMCxGb250PUdCT0x9KSA7IHJuZChiLDUpCiAgICB0YWJsZS5pbnNlcnQoVV9TdWJCdG5z'
+_payload=_payload..'LCBiKQplbmQKCmxvY2FsIFVfTGlzdCA9IEluc3RhbmNlLm5ldygiU2Nyb2xsaW5nRnJhbWUiKQpV'
+_payload=_payload..'X0xpc3QuU2l6ZSAgICAgICAgICAgICAgICA9IFVEaW0yLm5ldygxLC0yMCwwLDI3MCkKVV9MaXN0'
+_payload=_payload..'LlBvc2l0aW9uICAgICAgICAgICAgPSBVRGltMi5uZXcoMCwxMCwwLDY4KQpVX0xpc3QuQmFja2dy'
+_payload=_payload..'b3VuZENvbG9yMyAgICA9IEMuUEFORUwKVV9MaXN0LkJvcmRlclNpemVQaXhlbCAgICAgPSAwClVf'
+_payload=_payload..'TGlzdC5TY3JvbGxCYXJUaGlja25lc3MgID0gNApVX0xpc3QuU2Nyb2xsQmFySW1hZ2VDb2xvcjMg'
+_payload=_payload..'PSBDLkFDQ0VOVApVX0xpc3QuQ2FudmFzU2l6ZSAgICAgICAgICA9IFVEaW0yLm5ldygwLDAsMCww'
+_payload=_payload..'KQpVX0xpc3QuQXV0b21hdGljQ2FudmFzU2l6ZSA9IEVudW0uQXV0b21hdGljU2l6ZS5ZClVfTGlz'
+_payload=_payload..'dC5QYXJlbnQgICAgICAgICAgICAgID0gVDQKcm5kKFVfTGlzdCw3KSBzdHIoVV9MaXN0LENvbG9y'
+_payload=_payload..'My5mcm9tUkdCKDMwLDUsNzApLDEpCmRvCiAgICBsb2NhbCBsPUluc3RhbmNlLm5ldygiVUlMaXN0'
+_payload=_payload..'TGF5b3V0IikgbC5QYWRkaW5nPVVEaW0ubmV3KDAsMSkgbC5Tb3J0T3JkZXI9RW51bS5Tb3J0T3Jk'
+_payload=_payload..'ZXIuTGF5b3V0T3JkZXIgbC5QYXJlbnQ9VV9MaXN0CiAgICBsb2NhbCBwPUluc3RhbmNlLm5ldygi'
+_payload=_payload..'VUlQYWRkaW5nIikgcC5QYWRkaW5nVG9wPVVEaW0ubmV3KDAsMykgcC5QYWRkaW5nTGVmdD1VRGlt'
+_payload=_payload..'Lm5ldygwLDQpIHAuUGFkZGluZ1JpZ2h0PVVEaW0ubmV3KDAsNCkgcC5QYXJlbnQ9VV9MaXN0CmVu'
+_payload=_payload..'ZAoKbG9jYWwgQ0FUX0NPTE9SUyA9IHsKICAgIENsb3N1cmU9IjUsMTQwLDIwMCIsICAgQ3J5cHQ9'
+_payload=_payload..'IjE0MCw1MCwyMDAiLCAgICBEZWJ1Zz0iMTgwLDEwMCwwIiwKICAgIERyYXdpbmc9IjIwMCw4MCwx'
+_payload=_payload..'NTAiLCAgRmlsZVN5c3RlbT0iMCwxNjAsODAiLCBJbnB1dD0iMTYwLDE2MCwwIiwKICAgIEluc3Rh'
+_payload=_payload..'bmNlPSIwLDEyMCwxNjAiLCAgTWV0YXRhYmxlPSIxNjAsNjAsMCIsICBNaXNjPSI4MCw4MCwxMjAi'
+_payload=_payload..'LAogICAgU2NyaXB0cz0iMTAwLDAsMTYwIiwgICBTaWduYWw9IjAsMTYwLDEyMCIsICAgIFRocmVh'
+_payload=_payload..'ZD0iMTYwLDEwMCwwIiwKICAgIEhUVFA9IjAsMTAwLDIwMCIsICAgICAgQ2FjaGU9IjEwMCwxNDAs'
+_payload=_payload..'MCIsICAgICBXZWJTb2NrZXQ9IjAsMTYwLDIwMCIsCiAgICBDb25zb2xlPSI2MCwxMTAsNjAiLAog'
+_payload=_payload..'ICAgU2NyaXB0RW52PSIwLDExMCwxODAiLCBTY3JpcHRTdGF0ZT0iMTAwLDYwLDAiLFNjcmlwdExp'
+_payload=_payload..'ZmU9IjEyMCwwLDEyMCIsCiAgICBTY3JpcHRWYXI9IjAsMTQwLDEwMCIsIFNjcmlwdEZpbmQ9IjE2'
+_payload=_payload..'MCw4MCwwIiwgU2NyaXB0SGllcj0iMCw4MCwxNjAiLAogICAgU2NyaXB0SUQ9IjE0MCwwLDgwIiwg'
+_payload=_payload..'ICBTY3JpcHRNb2Q9IjgwLDEzMCwwIiwgIFNjcmlwdENyeXB0PSIwLDEwMCwxNDAiLAogICAgU2Ny'
+_payload=_payload..'aXB0U2FuZGJveD0iOTAsMCwxNjAiLAogICAgTXlyRHJhdz0iMjAwLDgwLDE1MCIsICBNeXJNZW09'
+_payload=_payload..'IjE2MCw0MCw0MCIsICAgIE15ck5ldD0iMCwxMTAsMjAwIiwKICAgIE15ckFudGk9IjE2MCwyMCwy'
+_payload=_payload..'MCIsICAgTXlyU3B5PSIxNDAsMTAwLDAiLCAgICBNeXJCeXRlPSI2MCw2MCwxODAiLAogICAgTXly'
+_payload=_payload..'VUk9IjAsMTQwLDEyMCIsICAgICBNeXJQaHlzPSI4MCwxMjAsMCIsICAgIE15clJlcD0iMCw5MCwx'
+_payload=_payload..'NjAiLAogICAgTXlyR2FtZT0iMTIwLDYwLDAiLCAgICBNeXJEYmc9IjE2MCw4MCwwIiwgICAgIE15'
+_payload=_payload..'ckV2dD0iODAsMCwxNDAiLAogICAgTXlyRXhlYz0iMTAwLDMwLDIwMCIsICBNeXJMaWM9IjAsMTIw'
+_payload=_payload..'LDgwIiwgICAgIE15ckluc3Q9IjAsODAsMTIwIiwKfQoKbG9jYWwgZnVuY3Rpb24gY2F0Q29sb3Io'
+_payload=_payload..'Y2F0KQogICAgbG9jYWwgcmdiID0gQ0FUX0NPTE9SU1tjYXRdCiAgICBpZiBub3QgcmdiIHRoZW4g'
+_payload=_payload..'cmV0dXJuIEMuRElNIGVuZAogICAgbG9jYWwgciwgZywgYiA9IHJnYjptYXRjaCgiKCVkKyksKCVk'
+_payload=_payload..'KyksKCVkKykiKQogICAgcmV0dXJuIENvbG9yMy5mcm9tUkdCKHRvbnVtYmVyKHIpLCB0b251bWJl'
+_payload=_payload..'cihnKSwgdG9udW1iZXIoYikpCmVuZAoKbG9jYWwgYWN0aXZlQ2hlY2tUYWIgPSAwCgpsb2NhbCBm'
+_payload=_payload..'dW5jdGlvbiBidWlsZENoZWNrTGlzdChsaXN0RGF0YSwgYWNjZW50Q29sKQogICAgZm9yIF8sIGMg'
+_payload=_payload..'aW4gVV9MaXN0OkdldENoaWxkcmVuKCkgZG8KICAgICAgICBpZiBjOklzQSgiRnJhbWUiKSB0aGVu'
+_payload=_payload..'IGM6RGVzdHJveSgpIGVuZAogICAgZW5kCiAgICBVX0xpc3QuQ2FudmFzUG9zaXRpb24gPSBWZWN0'
+_payload=_payload..'b3IyLm5ldygwLCAwKQoKICAgIGxvY2FsIGV4ZWNOYW1lID0gIlVua25vd24gRXhlY3V0b3IiCiAg'
+_payload=_payload..'ICBpZiBpZGVudGlmeWV4ZWN1dG9yIHRoZW4KICAgICAgICBsb2NhbCBvazIsIG4gPSBwY2FsbChp'
+_payload=_payload..'ZGVudGlmeWV4ZWN1dG9yKQogICAgICAgIGlmIG9rMiB0aGVuIGV4ZWNOYW1lID0gdG9zdHJpbmco'
+_payload=_payload..'bikgZW5kCiAgICBlbHNlaWYgZ2V0ZXhlY3V0b3JuYW1lIHRoZW4KICAgICAgICBsb2NhbCBvazIs'
+_payload=_payload..'IG4gPSBwY2FsbChnZXRleGVjdXRvcm5hbWUpCiAgICAgICAgaWYgb2syIHRoZW4gZXhlY05hbWUg'
+_payload=_payload..'PSB0b3N0cmluZyhuKSBlbmQKICAgIGVuZAogICAgVV9FeGVjTmFtZS5UZXh0ID0gIkV4ZWN1dG9y'
+_payload=_payload..'OiAiIC4uIGV4ZWNOYW1lCgogICAgbG9jYWwgdG90YWwsIHN1cHBvcnRlZCA9IDAsIDAKICAgIGZv'
+_payload=_payload..'ciBpLCBlbnRyeSBpbiBsaXN0RGF0YSBkbwogICAgICAgIGxvY2FsIG5hbWUsIGNhdCA9IGVudHJ5'
+_payload=_payload..'WzFdLCBlbnRyeVsyXQogICAgICAgIHRvdGFsID0gdG90YWwgKyAxCiAgICAgICAgbG9jYWwgYXZh'
+_payload=_payload..'aWwgPSBoYXNVTkMobmFtZSkKICAgICAgICBpZiBhdmFpbCB0aGVuIHN1cHBvcnRlZCA9IHN1cHBv'
+_payload=_payload..'cnRlZCArIDEgZW5kCgogICAgICAgIGxvY2FsIHJvdyA9IEluc3RhbmNlLm5ldygiRnJhbWUiKQog'
+_payload=_payload..'ICAgICAgIHJvdy5TaXplICAgICAgICAgICAgID0gVURpbTIubmV3KDEsIDAsIDAsIDIyKQogICAg'
+_payload=_payload..'ICAgIHJvdy5CYWNrZ3JvdW5kQ29sb3IzID0gYXZhaWwgYW5kIENvbG9yMy5mcm9tUkdCKDEyLDI2'
+_payload=_payload..'LDEyKSBvciBDb2xvcjMuZnJvbVJHQigyMiwxMCwxMCkKICAgICAgICByb3cuQm9yZGVyU2l6ZVBp'
+_payload=_payload..'eGVsICA9IDAKICAgICAgICByb3cuTGF5b3V0T3JkZXIgICAgICA9IGkKICAgICAgICByb3cuUGFy'
+_payload=_payload..'ZW50ICAgICAgICAgICA9IFVfTGlzdAogICAgICAgIHJuZChyb3csIDQpCgogICAgICAgIGxibChy'
+_payload=_payload..'b3cse1NpemU9VURpbTIubmV3KDAsMTgsMSwwKSxQb3NpdGlvbj1VRGltMi5uZXcoMCw0LDAsMCks'
+_payload=_payload..'CiAgICAgICAgICAgIFRleHQ9YXZhaWwgYW5kICLil48iIG9yICLil4siLAogICAgICAgICAgICBU'
+_payload=_payload..'ZXh0Q29sb3IzPWF2YWlsIGFuZCBDLkdSRUVOIG9yIENvbG9yMy5mcm9tUkdCKDEwMCwzMCwzMCks'
+_payload=_payload..'CiAgICAgICAgICAgIFRleHRTaXplPTEyLEZvbnQ9R0JPTCxUZXh0WEFsaWdubWVudD1FbnVtLlRl'
+_payload=_payload..'eHRYQWxpZ25tZW50LkNlbnRlcn0pCgogICAgICAgIGxvY2FsIGNhdEJhZGdlID0gYnRuKHJvdyx7'
+_payload=_payload..'U2l6ZT1VRGltMi5uZXcoMCw3NiwwLDE0KSxQb3NpdGlvbj1VRGltMi5uZXcoMCwyNCwwLjUsLTcp'
+_payload=_payload..'LAogICAgICAgICAgICBCYWNrZ3JvdW5kQ29sb3IzPWNhdENvbG9yKGNhdCksVGV4dD1jYXQsVGV4'
+_payload=_payload..'dENvbG9yMz1DLldISVRFLFRleHRTaXplPTcsRm9udD1HQk9MfSkKICAgICAgICBybmQoY2F0QmFk'
+_payload=_payload..'Z2UsMykgY2F0QmFkZ2UuQXV0b0J1dHRvbkNvbG9yPWZhbHNlCgogICAgICAgIGxibChyb3cse1Np'
+_payload=_payload..'emU9VURpbTIubmV3KDEsLTE3NSwxLDApLFBvc2l0aW9uPVVEaW0yLm5ldygwLDEwNiwwLDApLFRl'
+_payload=_payload..'eHQ9bmFtZSwKICAgICAgICAgICAgVGV4dENvbG9yMz1hdmFpbCBhbmQgQ29sb3IzLmZyb21SR0Io'
+_payload=_payload..'MTg1LDI0NSwxODUpIG9yIENvbG9yMy5mcm9tUkdCKDE2MCw3NSw3NSksCiAgICAgICAgICAgIFRl'
+_payload=_payload..'eHRTaXplPTEwLEZvbnQ9R0NPRCxUZXh0WEFsaWdubWVudD1FbnVtLlRleHRYQWxpZ25tZW50Lkxl'
+_payload=_payload..'ZnR9KQoKICAgICAgICBsYmwocm93LHtTaXplPVVEaW0yLm5ldygwLDY1LDEsMCksUG9zaXRpb249'
+_payload=_payload..'VURpbTIubmV3KDEsLTY3LDAsMCksCiAgICAgICAgICAgIFRleHQ9YXZhaWwgYW5kICJTVVBQT1JU'
+_payload=_payload..'RUQiIG9yICJNSVNTSU5HIiwKICAgICAgICAgICAgVGV4dENvbG9yMz1hdmFpbCBhbmQgQy5HUkVF'
+_payload=_payload..'TiBvciBDb2xvcjMuZnJvbVJHQigxMTUsMzUsMzUpLAogICAgICAgICAgICBUZXh0U2l6ZT04LEZv'
+_payload=_payload..'bnQ9R0JPTCxUZXh0WEFsaWdubWVudD1FbnVtLlRleHRYQWxpZ25tZW50LlJpZ2h0fSkKICAgIGVu'
+_payload=_payload..'ZAoKICAgIGxvY2FsIHBjdCA9IHRvdGFsID4gMCBhbmQgc3VwcG9ydGVkL3RvdGFsIG9yIDAKICAg'
+_payload=_payload..'IFVfQ291bnRMYmwuVGV4dCAgICAgICA9ICJTdXBwb3J0ZWQ6ICIgLi4gc3VwcG9ydGVkIC4uICIv'
+_payload=_payload..'IiAuLiB0b3RhbCAuLiAiICAoIiAuLiBtYXRoLmZsb29yKHBjdCoxMDApIC4uICIlKSIKICAgIFVf'
+_payload=_payload..'Q291bnRMYmwuVGV4dENvbG9yMyA9IHBjdCA+IDAuNyBhbmQgQy5HUkVFTiBvciBwY3QgPiAwLjQg'
+_payload=_payload..'YW5kIEMuWUVMTE9XIG9yIEMuUkVECmVuZAoKbG9jYWwgZnVuY3Rpb24gc3dpdGNoQ2hlY2tUYWIo'
+_payload=_payload..'aSkKICAgIGlmIGFjdGl2ZUNoZWNrVGFiID09IGkgdGhlbiByZXR1cm4gZW5kCiAgICBhY3RpdmVD'
+_payload=_payload..'aGVja1RhYiA9IGkKICAgIGxvY2FsIGN0ID0gQ0hFQ0tfVEFCU1tpXQogICAgZm9yIGosIGIgaW4g'
+_payload=_payload..'VV9TdWJCdG5zIGRvCiAgICAgICAgbG9jYWwgYWN0aXZlID0gaiA9PSBpCiAgICAgICAgdHcoYiwg'
+_payload=_payload..'e0JhY2tncm91bmRDb2xvcjMgPSBhY3RpdmUgYW5kIGN0WzNdIG9yIEMuRElNLAogICAgICAgICAg'
+_payload=_payload..'ICAgICBUZXh0Q29sb3IzICAgICAgID0gYWN0aXZlIGFuZCBDLldISVRFIG9yIEMuRElNVFhUfSkK'
+_payload=_payload..'ICAgIGVuZAogICAgdGFzay5zcGF3bihidWlsZENoZWNrTGlzdCwgY3RbMl0sIGN0WzNdKQplbmQK'
+_payload=_payload..'CmZvciBpLCBiIGluIFVfU3ViQnRucyBkbwogICAgbG9jYWwgY3QgPSBDSEVDS19UQUJTW2ldCiAg'
+_payload=_payload..'ICBiLk1vdXNlRW50ZXI6Q29ubmVjdChmdW5jdGlvbigpIGlmIGFjdGl2ZUNoZWNrVGFiIH49IGkg'
+_payload=_payload..'dGhlbiB0dyhiLHtCYWNrZ3JvdW5kQ29sb3IzPUNvbG9yMy5mcm9tUkdCKDQwLDQwLDU0KX0pIGVu'
+_payload=_payload..'ZCBlbmQpCiAgICBiLk1vdXNlTGVhdmU6Q29ubmVjdChmdW5jdGlvbigpIGlmIGFjdGl2ZUNoZWNr'
+_payload=_payload..'VGFiIH49IGkgdGhlbiB0dyhiLHtCYWNrZ3JvdW5kQ29sb3IzPUMuRElNfSkgZW5kIGVuZCkKICAg'
+_payload=_payload..'IGIuTW91c2VCdXR0b24xQ2xpY2s6Q29ubmVjdChmdW5jdGlvbigpIHN3aXRjaENoZWNrVGFiKGkp'
+_payload=_payload..'IGVuZCkKZW5kClVfUmVmcmVzaC5Nb3VzZUJ1dHRvbjFDbGljazpDb25uZWN0KGZ1bmN0aW9uKCkK'
+_payload=_payload..'ICAgIGxvY2FsIGkgPSBhY3RpdmVDaGVja1RhYiA+IDAgYW5kIGFjdGl2ZUNoZWNrVGFiIG9yIDEK'
+_payload=_payload..'ICAgIHRhc2suc3Bhd24oYnVpbGRDaGVja0xpc3QsIENIRUNLX1RBQlNbaV1bMl0sIENIRUNLX1RB'
+_payload=_payload..'QlNbaV1bM10pCmVuZCkKaG9va0hvdmVyKFVfUmVmcmVzaCwgQy5BQ0NFTlQsIEMuQUNDSE9WKQoK'
+_payload=_payload..'LS0g4pSA4pSAIFRhYiBzd2l0Y2hpbmcg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSACnRhYkZyYW1lcyA9IHtUMSwgVDIsIFQz'
+_payload=_payload..'LCBUNH0KbG9jYWwgYWN0aXZlVGFiID0gMAoKbG9jYWwgZnVuY3Rpb24gc3dpdGNoVGFiKGkpCiAg'
+_payload=_payload..'ICBpZiBhY3RpdmVUYWIgPT0gaSB0aGVuIHJldHVybiBlbmQKICAgIGFjdGl2ZVRhYiA9IGkKICAg'
+_payload=_payload..'IGZvciBqLCBmIGluIHRhYkZyYW1lcyBkbwogICAgICAgIGYuVmlzaWJsZSA9IGogPT0gaQogICAg'
+_payload=_payload..'ZW5kCiAgICBmb3IgaiwgYiBpbiB0YWJCdG5zIGRvCiAgICAgICAgbG9jYWwgYWN0aXZlID0gaiA9'
+_payload=_payload..'PSBpCiAgICAgICAgdHcoYiwge0JhY2tncm91bmRDb2xvcjMgPSBhY3RpdmUgYW5kIEMuQUNDRU5U'
+_payload=_payload..'IG9yIEMuRElNLAogICAgICAgICAgICAgICBUZXh0Q29sb3IzICAgICAgID0gYWN0aXZlIGFuZCBD'
+_payload=_payload..'LldISVRFICBvciBDLkRJTVRYVH0pCiAgICBlbmQKICAgIGlmIGkgPT0gNCBhbmQgYWN0aXZlQ2hl'
+_payload=_payload..'Y2tUYWIgPT0gMCB0aGVuCiAgICAgICAgc3dpdGNoQ2hlY2tUYWIoMSkKICAgIGVuZAplbmQKCmZv'
+_payload=_payload..'ciBpLCBiIGluIHRhYkJ0bnMgZG8KICAgIGIuTW91c2VCdXR0b24xQ2xpY2s6Q29ubmVjdChmdW5j'
+_payload=_payload..'dGlvbigpIHN3aXRjaFRhYihpKSBlbmQpCmVuZApzd2l0Y2hUYWIoMSkKCi0tIOKUgOKUgCBTZXJ2'
+_payload=_payload..'ZXIgcGluZyDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi'
+_payload=_payload..'lIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDi'
+_payload=_payload..'lIDilIDilIDilIDilIDilIDilIDilIAKdGFzay5zcGF3bihmdW5jdGlvbigpCiAgICBsb2NhbCBy'
+_payload=_payload..'ZXMgPSBjYWxsQnJpZGdlKCJwaW5nIikKICAgIGlmIHJlcy5vayB0aGVuCiAgICAgICAgRG90TGJs'
+_payload=_payload..'LlRleHQgICAgICAgPSAi4pePIFNlcnZlciBjb25uZWN0ZWQiCiAgICAgICAgRG90TGJsLlRleHRD'
+_payload=_payload..'b2xvcjMgPSBDLkdSRUVOCiAgICBlbHNlCiAgICAgICAgRG90TGJsLlRleHQgICAgICAgPSAi4peP'
+_payload=_payload..'IFNlcnZlciBvZmZsaW5lICAoY2xpZW50IG1vZGUgb25seSkiCiAgICAgICAgRG90TGJsLlRleHRD'
+_payload=_payload..'b2xvcjMgPSBDLlJFRAogICAgZW5kCmVuZCkKCi0tIOKUgOKUgCBXaW5kb3cgY29udHJvbHMg4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA'
+_payload=_payload..'4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA'
+_payload=_payload..'CmxvY2FsIG1pbmltaXNlZCA9IGZhbHNlCgpNaW5CdG4uTW91c2VCdXR0b24xQ2xpY2s6Q29ubmVj'
+_payload=_payload..'dChmdW5jdGlvbigpCiAgICBtaW5pbWlzZWQgPSBub3QgbWluaW1pc2VkCiAgICBpZiBtaW5pbWlz'
+_payload=_payload..'ZWQgdGhlbgogICAgICAgIHR3cyhXaW4sIHtTaXplID0gVURpbTIubmV3KDAsIFdJTl9XLCAwLCA0'
+_payload=_payload..'MCl9KQogICAgICAgIE1pbkJ0bi5UZXh0ID0gIuKWoSIKICAgIGVsc2UKICAgICAgICB0d3MoV2lu'
+_payload=_payload..'LCB7U2l6ZSA9IFVEaW0yLm5ldygwLCBXSU5fVywgMCwgV0lOX0gpfSkKICAgICAgICBNaW5CdG4u'
+_payload=_payload..'VGV4dCA9ICLigJQiCiAgICBlbmQKZW5kKQoKQ2xvc2VCdG4uTW91c2VCdXR0b24xQ2xpY2s6Q29u'
+_payload=_payload..'bmVjdChmdW5jdGlvbigpCiAgICB0d3MoV2luLCB7U2l6ZSA9IFVEaW0yLm5ldygwLCAwLCAwLCAw'
+_payload=_payload..'KX0pCiAgICB0YXNrLmRlbGF5KDAuMjUsIGZ1bmN0aW9uKCkgU0c6RGVzdHJveSgpIGVuZCkKZW5k'
+_payload=_payload..'KQoKaG9va0hvdmVyKE1pbkJ0biwgICBDLkRJTSwgICAgICAgICAgICAgICAgICAgICBDb2xvcjMu'
+_payload=_payload..'ZnJvbVJHQig0Miw0Miw1NikpCmhvb2tIb3ZlcihDbG9zZUJ0biwgQ29sb3IzLmZyb21SR0IoMTk1'
+_payload=_payload..'LDM2LDUyKSwgIENvbG9yMy5mcm9tUkdCKDIzMCw1NSw3MikpCgotLSDilIDilIAgRHJhZyAgKG1v'
+_payload=_payload..'dXNlICsgdG91Y2gpIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKU'
+_payload=_payload..'gOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgAps'
+_payload=_payload..'b2NhbCBkcmFnZ2luZywgZHJhZ1N0YXJ0LCB3aW5TdGFydCA9IGZhbHNlLCBuaWwsIG5pbAoKVEJh'
+_payload=_payload..'ci5JbnB1dEJlZ2FuOkNvbm5lY3QoZnVuY3Rpb24oaW5wKQogICAgbG9jYWwgdCA9IGlucC5Vc2Vy'
+_payload=_payload..'SW5wdXRUeXBlCiAgICBpZiB0ID09IEVudW0uVXNlcklucHV0VHlwZS5Nb3VzZUJ1dHRvbjEgb3Ig'
+_payload=_payload..'dCA9PSBFbnVtLlVzZXJJbnB1dFR5cGUuVG91Y2ggdGhlbgogICAgICAgIGRyYWdnaW5nICA9IHRy'
+_payload=_payload..'dWUKICAgICAgICBkcmFnU3RhcnQgPSBpbnAuUG9zaXRpb24KICAgICAgICB3aW5TdGFydCAgPSBX'
+_payload=_payload..'aW4uUG9zaXRpb24KICAgICAgICBpbnAuQ2hhbmdlZDpDb25uZWN0KGZ1bmN0aW9uKCkKICAgICAg'
+_payload=_payload..'ICAgICAgaWYgaW5wLlVzZXJJbnB1dFN0YXRlID09IEVudW0uVXNlcklucHV0U3RhdGUuRW5kIHRo'
+_payload=_payload..'ZW4KICAgICAgICAgICAgICAgIGRyYWdnaW5nID0gZmFsc2UKICAgICAgICAgICAgZW5kCiAgICAg'
+_payload=_payload..'ICAgZW5kKQogICAgZW5kCmVuZCkKClVJUy5JbnB1dENoYW5nZWQ6Q29ubmVjdChmdW5jdGlvbihp'
+_payload=_payload..'bnApCiAgICBpZiBub3QgZHJhZ2dpbmcgdGhlbiByZXR1cm4gZW5kCiAgICBsb2NhbCB0ID0gaW5w'
+_payload=_payload..'LlVzZXJJbnB1dFR5cGUKICAgIGlmIHQgPT0gRW51bS5Vc2VySW5wdXRUeXBlLk1vdXNlTW92ZW1l'
+_payload=_payload..'bnQgb3IgdCA9PSBFbnVtLlVzZXJJbnB1dFR5cGUuVG91Y2ggdGhlbgogICAgICAgIGxvY2FsIGQg'
+_payload=_payload..'PSBpbnAuUG9zaXRpb24gLSBkcmFnU3RhcnQKICAgICAgICBXaW4uUG9zaXRpb24gPSBVRGltMi5u'
+_payload=_payload..'ZXcoCiAgICAgICAgICAgIHdpblN0YXJ0LlguU2NhbGUsIHdpblN0YXJ0LlguT2Zmc2V0ICsgZC5Y'
+_payload=_payload..'LAogICAgICAgICAgICB3aW5TdGFydC5ZLlNjYWxlLCB3aW5TdGFydC5ZLk9mZnNldCArIGQuWQog'
+_payload=_payload..'ICAgICAgICkKICAgIGVuZAplbmQpCgpVSVMuSW5wdXRFbmRlZDpDb25uZWN0KGZ1bmN0aW9uKGlu'
+_payload=_payload..'cCkKICAgIGxvY2FsIHQgPSBpbnAuVXNlcklucHV0VHlwZQogICAgaWYgdCA9PSBFbnVtLlVzZXJJ'
+_payload=_payload..'bnB1dFR5cGUuTW91c2VCdXR0b24xIG9yIHQgPT0gRW51bS5Vc2VySW5wdXRUeXBlLlRvdWNoIHRo'
+_payload=_payload..'ZW4KICAgICAgICBkcmFnZ2luZyA9IGZhbHNlCiAgICBlbmQKZW5kKQoKd2FybigiW1NTIEV4ZWN1'
+_payload=_payload..'dG9yXSBHVUkgbG9hZGVkIHN1Y2Nlc3NmdWxseS4iKQoKZW5kKSAtLSBlbmQgcGNhbGwKCmlmIG5v'
+_payload=_payload..'dCBvayB0aGVuCiAgICB3YXJuKCJbU1MgRXhlY3V0b3JdIFNUQVJUVVAgRVJST1I6ICIgLi4gdG9z'
+_payload=_payload..'dHJpbmcoZXJyKSkKZW5kCg=='
 
-local U_SubBar = Instance.new("Frame")
-U_SubBar.Size             = UDim2.new(1,-20,0,28)
-U_SubBar.Position         = UDim2.new(0,10,0,34)
-U_SubBar.BackgroundColor3 = C.PANEL
-U_SubBar.BorderSizePixel  = 0
-U_SubBar.Parent           = T4
-rnd(U_SubBar,7)
-do
-    local l=Instance.new("UIListLayout") l.FillDirection=Enum.FillDirection.Horizontal
-    l.HorizontalAlignment=Enum.HorizontalAlignment.Center l.VerticalAlignment=Enum.VerticalAlignment.Center
-    l.Padding=UDim.new(0,4) l.Parent=U_SubBar
-end
-
-local CHECK_TABS = {
-    {"UNC (100)",    UNC_LIST,    C.BLUE,   C.BLUEHOV },
-    {"SUNC (100)",   SUNC_LIST,   C.ACCENT, C.ACCHOV  },
-    {"Myriad (250)", MYRIAD_LIST, C.ORANGE, Color3.fromRGB(255,155,55)},
-}
-local U_SubBtns = {}
-for _, ct in CHECK_TABS do
-    local b = btn(U_SubBar,{Size=UDim2.new(0,144,1,-6),BackgroundColor3=C.DIM,
-        Text=ct[1],TextColor3=C.DIMTXT,TextSize=10,Font=GBOL}) ; rnd(b,5)
-    table.insert(U_SubBtns, b)
-end
-
-local U_List = Instance.new("ScrollingFrame")
-U_List.Size                = UDim2.new(1,-20,0,270)
-U_List.Position            = UDim2.new(0,10,0,68)
-U_List.BackgroundColor3    = C.PANEL
-U_List.BorderSizePixel     = 0
-U_List.ScrollBarThickness  = 4
-U_List.ScrollBarImageColor3 = C.ACCENT
-U_List.CanvasSize          = UDim2.new(0,0,0,0)
-U_List.AutomaticCanvasSize = Enum.AutomaticSize.Y
-U_List.Parent              = T4
-rnd(U_List,7) str(U_List,Color3.fromRGB(30,5,70),1)
-do
-    local l=Instance.new("UIListLayout") l.Padding=UDim.new(0,1) l.SortOrder=Enum.SortOrder.LayoutOrder l.Parent=U_List
-    local p=Instance.new("UIPadding") p.PaddingTop=UDim.new(0,3) p.PaddingLeft=UDim.new(0,4) p.PaddingRight=UDim.new(0,4) p.Parent=U_List
-end
-
-local CAT_COLORS = {
-    Closure="5,140,200",   Crypt="140,50,200",    Debug="180,100,0",
-    Drawing="200,80,150",  FileSystem="0,160,80", Input="160,160,0",
-    Instance="0,120,160",  Metatable="160,60,0",  Misc="80,80,120",
-    Scripts="100,0,160",   Signal="0,160,120",    Thread="160,100,0",
-    HTTP="0,100,200",      Cache="100,140,0",     WebSocket="0,160,200",
-    Console="60,110,60",
-    ScriptEnv="0,110,180", ScriptState="100,60,0",ScriptLife="120,0,120",
-    ScriptVar="0,140,100", ScriptFind="160,80,0", ScriptHier="0,80,160",
-    ScriptID="140,0,80",   ScriptMod="80,130,0",  ScriptCrypt="0,100,140",
-    ScriptSandbox="90,0,160",
-    MyrDraw="200,80,150",  MyrMem="160,40,40",    MyrNet="0,110,200",
-    MyrAnti="160,20,20",   MyrSpy="140,100,0",    MyrByte="60,60,180",
-    MyrUI="0,140,120",     MyrPhys="80,120,0",    MyrRep="0,90,160",
-    MyrGame="120,60,0",    MyrDbg="160,80,0",     MyrEvt="80,0,140",
-    MyrExec="100,30,200",  MyrLic="0,120,80",     MyrInst="0,80,120",
-}
-
-local function catColor(cat)
-    local rgb = CAT_COLORS[cat]
-    if not rgb then return C.DIM end
-    local r, g, b = rgb:match("(%d+),(%d+),(%d+)")
-    return Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b))
-end
-
-local activeCheckTab = 0
-
-local function buildCheckList(listData, accentCol)
-    for _, c in U_List:GetChildren() do
-        if c:IsA("Frame") then c:Destroy() end
-    end
-    U_List.CanvasPosition = Vector2.new(0, 0)
-
-    local execName = "Unknown Executor"
-    if identifyexecutor then
-        local ok2, n = pcall(identifyexecutor)
-        if ok2 then execName = tostring(n) end
-    elseif getexecutorname then
-        local ok2, n = pcall(getexecutorname)
-        if ok2 then execName = tostring(n) end
-    end
-    U_ExecName.Text = "Executor: " .. execName
-
-    local total, supported = 0, 0
-    for i, entry in listData do
-        local name, cat = entry[1], entry[2]
-        total = total + 1
-        local avail = hasUNC(name)
-        if avail then supported = supported + 1 end
-
-        local row = Instance.new("Frame")
-        row.Size             = UDim2.new(1, 0, 0, 22)
-        row.BackgroundColor3 = avail and Color3.fromRGB(12,26,12) or Color3.fromRGB(22,10,10)
-        row.BorderSizePixel  = 0
-        row.LayoutOrder      = i
-        row.Parent           = U_List
-        rnd(row, 4)
-
-        lbl(row,{Size=UDim2.new(0,18,1,0),Position=UDim2.new(0,4,0,0),
-            Text=avail and "●" or "○",
-            TextColor3=avail and C.GREEN or Color3.fromRGB(100,30,30),
-            TextSize=12,Font=GBOL,TextXAlignment=Enum.TextXAlignment.Center})
-
-        local catBadge = btn(row,{Size=UDim2.new(0,76,0,14),Position=UDim2.new(0,24,0.5,-7),
-            BackgroundColor3=catColor(cat),Text=cat,TextColor3=C.WHITE,TextSize=7,Font=GBOL})
-        rnd(catBadge,3) catBadge.AutoButtonColor=false
-
-        lbl(row,{Size=UDim2.new(1,-175,1,0),Position=UDim2.new(0,106,0,0),Text=name,
-            TextColor3=avail and Color3.fromRGB(185,245,185) or Color3.fromRGB(160,75,75),
-            TextSize=10,Font=GCOD,TextXAlignment=Enum.TextXAlignment.Left})
-
-        lbl(row,{Size=UDim2.new(0,65,1,0),Position=UDim2.new(1,-67,0,0),
-            Text=avail and "SUPPORTED" or "MISSING",
-            TextColor3=avail and C.GREEN or Color3.fromRGB(115,35,35),
-            TextSize=8,Font=GBOL,TextXAlignment=Enum.TextXAlignment.Right})
-    end
-
-    local pct = total > 0 and supported/total or 0
-    U_CountLbl.Text       = "Supported: " .. supported .. "/" .. total .. "  (" .. math.floor(pct*100) .. "%)"
-    U_CountLbl.TextColor3 = pct > 0.7 and C.GREEN or pct > 0.4 and C.YELLOW or C.RED
-end
-
-local function switchCheckTab(i)
-    if activeCheckTab == i then return end
-    activeCheckTab = i
-    local ct = CHECK_TABS[i]
-    for j, b in U_SubBtns do
-        local active = j == i
-        tw(b, {BackgroundColor3 = active and ct[3] or C.DIM,
-               TextColor3       = active and C.WHITE or C.DIMTXT})
-    end
-    task.spawn(buildCheckList, ct[2], ct[3])
-end
-
-for i, b in U_SubBtns do
-    local ct = CHECK_TABS[i]
-    b.MouseEnter:Connect(function() if activeCheckTab ~= i then tw(b,{BackgroundColor3=Color3.fromRGB(40,40,54)}) end end)
-    b.MouseLeave:Connect(function() if activeCheckTab ~= i then tw(b,{BackgroundColor3=C.DIM}) end end)
-    b.MouseButton1Click:Connect(function() switchCheckTab(i) end)
-end
-U_Refresh.MouseButton1Click:Connect(function()
-    local i = activeCheckTab > 0 and activeCheckTab or 1
-    task.spawn(buildCheckList, CHECK_TABS[i][2], CHECK_TABS[i][3])
-end)
-hookHover(U_Refresh, C.ACCENT, C.ACCHOV)
-
--- ── Tab switching ─────────────────────────────────────────
-tabFrames = {T1, T2, T3, T4}
-local activeTab = 0
-
-local function switchTab(i)
-    if activeTab == i then return end
-    activeTab = i
-    for j, f in tabFrames do
-        f.Visible = j == i
-    end
-    for j, b in tabBtns do
-        local active = j == i
-        tw(b, {BackgroundColor3 = active and C.ACCENT or C.DIM,
-               TextColor3       = active and C.WHITE  or C.DIMTXT})
-    end
-    if i == 4 and activeCheckTab == 0 then
-        switchCheckTab(1)
-    end
-end
-
-for i, b in tabBtns do
-    b.MouseButton1Click:Connect(function() switchTab(i) end)
-end
-switchTab(1)
-
--- ── Server ping ───────────────────────────────────────────
-task.spawn(function()
-    local res = callBridge("ping")
-    if res.ok then
-        DotLbl.Text       = "● Server connected"
-        DotLbl.TextColor3 = C.GREEN
-    else
-        DotLbl.Text       = "● Server offline  (client mode only)"
-        DotLbl.TextColor3 = C.RED
-    end
-end)
-
--- ── Window controls ───────────────────────────────────────
-local minimised = false
-
-MinBtn.MouseButton1Click:Connect(function()
-    minimised = not minimised
-    if minimised then
-        tws(Win, {Size = UDim2.new(0, WIN_W, 0, 40)})
-        MinBtn.Text = "□"
-    else
-        tws(Win, {Size = UDim2.new(0, WIN_W, 0, WIN_H)})
-        MinBtn.Text = "—"
-    end
-end)
-
-CloseBtn.MouseButton1Click:Connect(function()
-    tws(Win, {Size = UDim2.new(0, 0, 0, 0)})
-    task.delay(0.25, function() SG:Destroy() end)
-end)
-
-hookHover(MinBtn,   C.DIM,                     Color3.fromRGB(42,42,56))
-hookHover(CloseBtn, Color3.fromRGB(195,36,52),  Color3.fromRGB(230,55,72))
-
--- ── Drag  (mouse + touch) ─────────────────────────────────
-local dragging, dragStart, winStart = false, nil, nil
-
-TBar.InputBegan:Connect(function(inp)
-    local t = inp.UserInputType
-    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
-        dragging  = true
-        dragStart = inp.Position
-        winStart  = Win.Position
-        inp.Changed:Connect(function()
-            if inp.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-UIS.InputChanged:Connect(function(inp)
-    if not dragging then return end
-    local t = inp.UserInputType
-    if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then
-        local d = inp.Position - dragStart
-        Win.Position = UDim2.new(
-            winStart.X.Scale, winStart.X.Offset + d.X,
-            winStart.Y.Scale, winStart.Y.Offset + d.Y
-        )
-    end
-end)
-
-UIS.InputEnded:Connect(function(inp)
-    local t = inp.UserInputType
-    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
-
-warn("[SS Executor] GUI loaded successfully.")
-
-end) -- end pcall
-
-if not ok then
-    warn("[SS Executor] STARTUP ERROR: " .. tostring(err))
+local _fn,_er=_ld(_dec(_payload))
+if not _fn then
+    warn(string.char(91,83,83,32,69,120,101,99,117,116,111,114,93,32,79,98,102,32,100,101,99,111,100,101,32,101,114,114,111,114,58,32).._er)
+else
+    _fn()
 end
