@@ -1,15 +1,9 @@
 -- ═══════════════════════════════════════════════════════════════════════
 --  SPELLING BEE  —  NerdZone  |  Hook Script  (PC + Mobile Delta)
 --  Game:  "Spelling Bee [🐰 SPRING]"  by NerdZone
---  UI:    Rayfield  (sirius.menu/rayfield)
---
---  How it works:
---    1. Hooks every RemoteEvent in ReplicatedStorage — when the server
---       sends a word to the client, we capture it instantly.
---    2. Hooks game.__namecall so any FireServer/InvokeServer for an
---       answer remote is always replaced with the correct word.
---    3. Fires the answer remote directly (fastest method, zero misspelling).
 -- ═══════════════════════════════════════════════════════════════════════
+
+local function main()
 
 -- ── Services ──────────────────────────────────────────────────────────
 local Players     = game:GetService("Players")
@@ -24,34 +18,31 @@ local PGui        = LP:WaitForChild("PlayerGui")
 -- ── Platform ───────────────────────────────────────────────────────────
 local isMobile = UIS.TouchEnabled
 
--- ── Early notification (instant feedback before Rayfield HTTP loads) ───
+-- ── Early notification ─────────────────────────────────────────────────
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title    = "Spelling Bee  |  NerdZone",
-        Text     = "Loading" .. (isMobile and " (mobile)" or "") .. "…",
+        Text     = "Loading" .. (isMobile and " (mobile)..." or "..."),
         Duration = 4,
     })
 end)
 
--- ── Load Rayfield (pcall so a network failure gives visible feedback) ──
-local Rayfield
-do
-    local ok, result = pcall(function()
-        return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+-- ── Load Rayfield ──────────────────────────────────────────────────────
+local ok, result = pcall(function()
+    return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+end)
+if not ok or not result then
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title    = "SpellingBee | Error",
+            Text     = "Rayfield failed: " .. tostring(result):sub(1, 80),
+            Duration = 10,
+        })
     end)
-    if not ok or not result then
-        pcall(function()
-            StarterGui:SetCore("SendNotification", {
-                Title    = "SpellingBee  |  Error",
-                Text     = "Rayfield failed: " .. tostring(result):sub(1, 80),
-                Duration = 10,
-            })
-        end)
-        warn("[SpellingBee] Rayfield load error: " .. tostring(result))
-        return
-    end
-    Rayfield = result
+    warn("[SpellingBee] Rayfield error: " .. tostring(result))
+    return
 end
+local Rayfield = result
 
 -- ── State ─────────────────────────────────────────────────────────────
 local botEnabled   = true
@@ -62,36 +53,42 @@ local antiAFK      = false
 local infJump      = false
 local walkSpd      = 16
 local jumpPwr      = 50
-
-local WordLabel    -- assigned after Rayfield window is built
+local WordLabel    -- set after UI builds
 
 -- ═══════════════════════════════════════════════════════════════════════
---  HOOK HELPERS
+--  HELPERS
 -- ═══════════════════════════════════════════════════════════════════════
 
 local function looksLikeWord(s)
     return type(s) == "string"
-        and s:match("^%a+$")
         and #s >= 3
         and #s <= 30
+        and s:match("^%a+$") ~= nil
+end
+
+-- Answer remote keywords (intentionally excludes "word" — too broad)
+local ANSWER_KEYS = {"submit","answer","spell","type","guess","check"}
+
+local function isAnswerRemote(name)
+    local n = name:lower()
+    for _, k in ipairs(ANSWER_KEYS) do
+        if n:find(k, 1, true) then return true end
+    end
+    return false
 end
 
 local function findAnswerRemote()
-    if answerRemote then return answerRemote end
-    for _, r in RS:GetDescendants() do
-        if r:IsA("RemoteEvent") then
-            local n = r.Name:lower()
-            if n:find("submit") or n:find("answer") or n:find("spell")
-            or n:find("type")  or n:find("guess")  or n:find("word") then
-                answerRemote = r
-                return r
-            end
+    if answerRemote and answerRemote.Parent then return answerRemote end
+    answerRemote = nil  -- was destroyed; search again
+    for _, r in ipairs(RS:GetDescendants()) do
+        if r:IsA("RemoteEvent") and isAnswerRemote(r.Name) then
+            answerRemote = r
+            return r
         end
     end
     return nil
 end
 
--- Direct remote fire — no typing, works on both PC and mobile.
 local function fireAnswer(word)
     local r = findAnswerRemote()
     if r then
@@ -101,9 +98,8 @@ local function fireAnswer(word)
     return false
 end
 
--- TextBox fallback — works on PC and mobile (Delta mobile supports CaptureFocus).
 local function boxSubmit(word)
-    for _, obj in PGui:GetDescendants() do
+    for _, obj in ipairs(PGui:GetDescendants()) do
         if obj:IsA("TextBox") and obj.TextEditable and obj.Visible then
             obj.Text = word
             obj:CaptureFocus()
@@ -117,99 +113,94 @@ end
 
 local function submitAnswer(word)
     if word == "" then return end
-    local ok = fireAnswer(word)
-    if not ok then boxSubmit(word) end
+    if not fireAnswer(word) then boxSubmit(word) end
 end
 
--- ═══════════════════════════════════════════════════════════════════════
---  HOOK 1 — RemoteEvent.OnClientEvent
--- ═══════════════════════════════════════════════════════════════════════
-local function hookIncoming()
-    for _, remote in RS:GetDescendants() do
-        if remote:IsA("RemoteEvent") then
-            remote.OnClientEvent:Connect(function(...)
-                for _, v in ipairs({...}) do
-                    if looksLikeWord(v) then
-                        local w = v:lower()
-                        currentWord = w
-                        if WordLabel then WordLabel:Set("Word: " .. w) end
-                        if botEnabled then
-                            task.delay(submitDelay, function() submitAnswer(w) end)
-                        end
-                        return
-                    elseif type(v) == "table" then
-                        for _, tv in pairs(v) do
-                            if looksLikeWord(tv) then
-                                local w2 = tostring(tv):lower()
-                                currentWord = w2
-                                if WordLabel then WordLabel:Set("Word: " .. w2) end
-                                if botEnabled then
-                                    task.delay(submitDelay, function() submitAnswer(w2) end)
-                                end
-                                return
-                            end
-                        end
-                    end
-                end
-            end)
-        end
+local function onWordFound(w)
+    w = w:lower()
+    if w == currentWord then return end  -- already processing this word
+    currentWord = w
+    if WordLabel then WordLabel:Set("Word: " .. w) end
+    if botEnabled then
+        task.delay(submitDelay, function() submitAnswer(w) end)
     end
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
---  HOOK 2 — __namecall (hookmetamethod)
---  Delta mobile supports hookmetamethod, newcclosure, getnamecallmethod.
+--  HOOK 1 — RemoteEvent.OnClientEvent  (instant, deduplicated)
 -- ═══════════════════════════════════════════════════════════════════════
-local namecallHook
+local _hooked = {}  -- remote → true; prevents duplicate connections
 
-local function installNamecallHook()
-    if not hookmetamethod    then return false end
-    if not newcclosure       then return false end
-    if not getnamecallmethod then return false end
-
-    local ok, err = pcall(function()
-        namecallHook = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-            local method = getnamecallmethod()
-
-            if method == "FireServer" or method == "InvokeServer" then
-                if self:IsA("RemoteEvent") or self:IsA("RemoteFunction") then
-                    local name = self.Name:lower()
-                    if name:find("submit") or name:find("answer") or name:find("spell")
-                    or name:find("type")  or name:find("guess") then
-                        if self:IsA("RemoteEvent") and not answerRemote then
-                            answerRemote = self
-                        end
-                        if botEnabled and currentWord ~= "" then
-                            return namecallHook(self, currentWord)
-                        end
+local function hookOne(remote)
+    if _hooked[remote] then return end
+    _hooked[remote] = true
+    remote.OnClientEvent:Connect(function(...)
+        for _, v in ipairs({...}) do
+            if looksLikeWord(v) then
+                onWordFound(v)
+                return
+            elseif type(v) == "table" then
+                for _, tv in pairs(v) do
+                    if looksLikeWord(tv) then
+                        onWordFound(tv)
+                        return
                     end
                 end
             end
-
-            return namecallHook(self, ...)
-        end))
+        end
     end)
+end
 
-    return ok
+local function hookIncoming()
+    for _, r in ipairs(RS:GetDescendants()) do
+        if r:IsA("RemoteEvent") then hookOne(r) end
+    end
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
---  HOOK 3 — Screen label poll (last-resort for UI-only games)
+--  HOOK 2 — __namecall  (forces correct word on any answer submission)
+-- ═══════════════════════════════════════════════════════════════════════
+local namecallHook
+local function installNamecallHook()
+    if not hookmetamethod or not newcclosure or not getnamecallmethod then
+        return false
+    end
+    local ok2 = pcall(function()
+        namecallHook = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if (method == "FireServer" or method == "InvokeServer")
+            and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction"))
+            and isAnswerRemote(self.Name) then
+                if self:IsA("RemoteEvent") and not answerRemote then
+                    answerRemote = self
+                end
+                if botEnabled and currentWord ~= "" then
+                    return namecallHook(self, currentWord)
+                end
+            end
+            return namecallHook(self, ...)
+        end))
+    end)
+    return ok2
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  HOOK 3 — Screen-label poll  (last resort for UI-only games)
 -- ═══════════════════════════════════════════════════════════════════════
 local function findWordLabel()
-    local priority = {"Word","CurrentWord","SpellWord","WordToSpell","TargetWord","Prompt","Question"}
-    for _, name in priority do
+    local names = {"Word","CurrentWord","SpellWord","WordToSpell","TargetWord","Prompt","Question"}
+    for _, name in ipairs(names) do
         local obj = PGui:FindFirstChild(name, true)
-        if obj and obj:IsA("TextLabel") and obj.Text ~= "" and obj.Visible then
+        if obj and obj:IsA("TextLabel") and obj.Visible and obj.Text ~= "" then
             return obj
         end
     end
-    local best, bestScore = nil, -1
-    for _, obj in PGui:GetDescendants() do
+    local best, bestLen = nil, -1
+    for _, obj in ipairs(PGui:GetDescendants()) do
         if obj:IsA("TextLabel") and obj.Visible and obj.Text ~= "" then
             local t = obj.Text
-            if t:match("^%a+$") and #t >= 3 and #t <= 30 then
-                if #t > bestScore then best = obj; bestScore = #t end
+            if t:match("^%a+$") and #t >= 3 and #t <= 30 and #t > bestLen then
+                best = obj; bestLen = #t
             end
         end
     end
@@ -232,7 +223,7 @@ local Window = Rayfield:CreateWindow({
         FolderName = "NerdZone",
         FileName   = "SpellingBee",
     },
-    Discord  = { Enabled = false },
+    Discord   = { Enabled = false },
     KeySystem = false,
 })
 
@@ -244,11 +235,11 @@ local MiscTab   = Window:CreateTab("Misc",   "settings")
 BotTab:CreateSection("Hook Status")
 
 local HookLabel = BotTab:CreateLabel(
-    "Hook: installing…", "shield", Color3.fromRGB(255, 200, 60), true)
+    "Hook: hooking now...", "shield", Color3.fromRGB(255, 200, 60), true)
 WordLabel = BotTab:CreateLabel(
-    "Word: —", "book-open", Color3.fromRGB(100, 210, 255), true)
+    "Word: waiting...", "book-open", Color3.fromRGB(100, 210, 255), true)
 BotTab:CreateLabel(
-    isMobile and "Platform: Mobile (Delta)" or "Platform: PC",
+    isMobile and "Platform: iPad / Mobile (Delta)" or "Platform: PC",
     "smartphone", Color3.fromRGB(160, 160, 160), true)
 
 BotTab:CreateSection("Auto Submit")
@@ -279,10 +270,10 @@ BotTab:CreateInput({
     RemoveTextAfterFocusLost = false,
     Flag                     = "ManualWord",
     Callback                 = function(text)
-        local w = text:lower():match("^%s*(.-)%s*$")
-        if w ~= "" then
+        local w = text:lower():match("^%s*(.-)%s*$") or ""
+        if looksLikeWord(w) then
             currentWord = w
-            WordLabel:Set("Word: " .. w)
+            if WordLabel then WordLabel:Set("Word: " .. w) end
         end
     end,
 })
@@ -304,19 +295,25 @@ BotTab:CreateButton({
     Callback = function()
         answerRemote = nil
         hookIncoming()
-        Rayfield:Notify({ Title="Re-scanned", Content="Hooks re-applied.", Duration=2, Image="refresh-cw" })
+        Rayfield:Notify({ Title="Re-scanned", Content="Hooks refreshed.", Duration=2, Image="refresh-cw" })
     end,
 })
 
 -- ── PLAYER TAB ────────────────────────────────────────────────────────
 PlayerTab:CreateSection("Movement")
 
+local function getHumanoid()
+    local char = LP.Character
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
 PlayerTab:CreateSlider({
     Name = "Walk Speed", Range = {1,300}, Increment = 1,
     Suffix = "", CurrentValue = 16, Flag = "WalkSpd",
     Callback = function(v)
         walkSpd = v
-        pcall(function() LP.Character.Humanoid.WalkSpeed = v end)
+        local hum = getHumanoid()
+        if hum then pcall(function() hum.WalkSpeed = v end) end
     end,
 })
 
@@ -325,7 +322,11 @@ PlayerTab:CreateSlider({
     Suffix = "", CurrentValue = 50, Flag = "JumpPwr",
     Callback = function(v)
         jumpPwr = v
-        pcall(function() LP.Character.Humanoid.JumpPower = v end)
+        local hum = getHumanoid()
+        if hum then pcall(function()
+            hum.JumpPower  = v
+            hum.JumpHeight = v * 0.36  -- cover both Humanoid v1 and v2
+        end) end
     end,
 })
 
@@ -339,7 +340,8 @@ PlayerTab:CreateSection("Character")
 PlayerTab:CreateButton({
     Name = "Reset Character",
     Callback = function()
-        pcall(function() LP.Character.Humanoid.Health = 0 end)
+        local hum = getHumanoid()
+        if hum then pcall(function() hum.Health = 0 end) end
     end,
 })
 
@@ -352,83 +354,81 @@ MiscTab:CreateToggle({
 })
 
 MiscTab:CreateSection("Info")
-MiscTab:CreateLabel("Script: NerdZone Hub",          "zap",       Color3.fromRGB(100,180,255), true)
-MiscTab:CreateLabel("UI: Rayfield Library",           "layout",    Color3.fromRGB(160,160,160), true)
-MiscTab:CreateLabel("Game: Spelling Bee by NerdZone", "bee",       Color3.fromRGB(255,220,60),  true)
-MiscTab:CreateLabel("Supports: Delta PC + Mobile",    "check",     Color3.fromRGB(100,220,100), true)
+MiscTab:CreateLabel("Script: NerdZone Hub",          "zap",    Color3.fromRGB(100,180,255), true)
+MiscTab:CreateLabel("UI: Rayfield Library",           "layout", Color3.fromRGB(160,160,160), true)
+MiscTab:CreateLabel("Game: Spelling Bee by NerdZone", "bee",    Color3.fromRGB(255,220,60),  true)
+MiscTab:CreateLabel("Supports: Delta PC + Mobile",    "check",  Color3.fromRGB(100,220,100), true)
 
 -- ═══════════════════════════════════════════════════════════════════════
---  INSTALL HOOKS
+--  INSTALL HOOKS — immediately, no delay
 -- ═══════════════════════════════════════════════════════════════════════
-task.spawn(function()
-    task.wait(1)   -- let RS populate
+hookIncoming()  -- hook all existing remotes right now
 
-    hookIncoming()
+local hook2ok = installNamecallHook()
 
-    local hook2ok = installNamecallHook()
+if hook2ok then
+    HookLabel:Set("Hook: ACTIVE  (__namecall + events)", "shield-check")
+else
+    HookLabel:Set("Hook: partial  (events only — no __namecall)", "shield-alert")
+end
 
-    if hook2ok then
-        HookLabel:Set("Hook: ACTIVE  (__namecall + OnClientEvent)", "shield-check")
-    else
-        HookLabel:Set("Hook: partial  (OnClientEvent only)", "shield-alert")
+-- Catch remotes that appear after load (game lazy-loads them)
+RS.DescendantAdded:Connect(function(obj)
+    if obj:IsA("RemoteEvent") then
+        task.wait()  -- one frame so the remote is fully parented
+        hookOne(obj)
     end
-
-    RS.DescendantAdded:Connect(function(obj)
-        if obj:IsA("RemoteEvent") then
-            task.wait(0.1)
-            hookIncoming()
-        end
-    end)
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════
 --  BACKGROUND LOOPS
 -- ═══════════════════════════════════════════════════════════════════════
 
--- Infinite jump — UIS.JumpRequest fires from both PC keys and mobile jump button
+-- Infinite jump (works from mobile jump button via UIS.JumpRequest)
 UIS.JumpRequest:Connect(function()
     if infJump then
-        pcall(function()
-            LP.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-        end)
+        local hum = getHumanoid()
+        if hum then
+            pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+        end
     end
 end)
 
--- Anti-AFK — VirtualUser:CaptureController works on PC and mobile Delta
+-- Anti-AFK — fires once per minute (3600 heartbeats ≈ 60s)
 local _afkTick = 0
 RunService.Heartbeat:Connect(function()
     if antiAFK then
         _afkTick += 1
-        if _afkTick >= 120 then
+        if _afkTick >= 3600 then
             _afkTick = 0
             pcall(function() VirtualUser:CaptureController() end)
         end
     end
 end)
 
--- Re-apply speed on respawn
+-- Re-apply speed/jump on respawn
 LP.CharacterAdded:Connect(function(char)
     task.wait(0.5)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
     pcall(function()
-        char.Humanoid.WalkSpeed = walkSpd
-        char.Humanoid.JumpPower = jumpPwr
+        hum.WalkSpeed  = walkSpd
+        hum.JumpPower  = jumpPwr
+        hum.JumpHeight = jumpPwr * 0.36
     end)
 end)
 
--- Fallback screen-poll (UI-only games / words shown as labels only)
+-- Fallback screen poll (for UI-only games with no remotes)
 task.spawn(function()
-    local lastSeen = ""
     while true do
         task.wait(0.5)
         if botEnabled then
             local lbl = findWordLabel()
             if lbl then
-                local w = lbl.Text:lower():match("^%s*(.-)%s*$")
-                if w and w ~= "" and w:match("^%a+$") and w ~= lastSeen then
-                    lastSeen = w
-                    currentWord = w
-                    if WordLabel then WordLabel:Set("Word: " .. w) end
-                    task.delay(submitDelay, function() submitAnswer(w) end)
+                local raw = lbl.Text
+                local w = raw:lower():match("^%s*(.-)%s*$")
+                if w and looksLikeWord(w) then
+                    onWordFound(w)
                 end
             end
         end
@@ -440,7 +440,11 @@ Rayfield:LoadConfiguration()
 
 Rayfield:Notify({
     Title    = "NerdZone  |  Spelling Bee",
-    Content  = "Ready  •  " .. (isMobile and "Mobile" or "PC") .. "  •  Auto-Bot ON",
+    Content  = "Ready  |  " .. (isMobile and "iPad/Mobile" or "PC") .. "  |  Auto-Bot ON",
     Duration = 5,
     Image    = "shield",
 })
+
+end  -- main()
+
+main()
