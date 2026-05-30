@@ -23,6 +23,20 @@ end
 
 notify("Spelling Bee  |  NerdZone", "Loading" .. (isMobile and " (iPad)..." or "..."), 3)
 
+-- ── Load Rayfield (tries 3 CDNs in order) ─────────────────────────────
+local Rayfield
+local URLS = {
+    "https://cdn.jsdelivr.net/gh/SiriusXT/Rayfield@main/lib/main.lua",
+    "https://sirius.menu/rayfield",
+    "https://raw.githubusercontent.com/SiriusXT/Rayfield/main/lib/main.lua",
+}
+for _, url in ipairs(URLS) do
+    local ok, res = pcall(function()
+        return loadstring(game:HttpGet(url, true))()
+    end)
+    if ok and res then Rayfield = res; break end
+end
+
 -- ── State ─────────────────────────────────────────────────────────────
 local botEnabled   = true
 local submitDelay  = 0.05
@@ -206,6 +220,107 @@ end
 -- ═══════════════════════════════════════════════════════════════════════
 --  NATIVE GUI
 -- ═══════════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════
+--  UI — Rayfield if loaded, otherwise native fallback
+-- ═══════════════════════════════════════════════════════════════════════
+
+if Rayfield then
+    -- ── RAYFIELD UI ───────────────────────────────────────────────────
+    local Window = Rayfield:CreateWindow({
+        Name            = "Spelling Bee  |  NerdZone",
+        Icon            = "pencil",
+        LoadingTitle    = "NerdZone Hub",
+        LoadingSubtitle = "Spelling Bee Script",
+        Theme           = "Default",
+        DisableRayfieldPrompts = false,
+        DisableBuildWarnings   = true,
+        ConfigurationSaving = { Enabled=true, FolderName="NerdZone", FileName="SpellingBee" },
+        Discord   = { Enabled = false },
+        KeySystem = false,
+    })
+
+    local BotTab    = Window:CreateTab("Bot",    "bot")
+    local PlayerTab = Window:CreateTab("Player", "user")
+    local MiscTab   = Window:CreateTab("Misc",   "settings")
+
+    BotTab:CreateSection("Hook Status")
+    hookLblRef = { Text = "" }
+    local _hl = BotTab:CreateLabel("Hook: connecting...", "shield", Color3.fromRGB(255,200,60), true)
+    hookLblRef = { Set = function(_, t) _hl:Set(t) end }
+    local _wl = BotTab:CreateLabel("Word: waiting...", "book-open", Color3.fromRGB(100,210,255), true)
+    wordLblRef = { Text = "" }
+    -- wrap so onWordFound can set .Text
+    local _wlProxy = setmetatable({}, {
+        __newindex = function(_, k, v)
+            if k == "Text" then _wl:Set(v) end
+        end
+    })
+    wordLblRef = _wlProxy
+    BotTab:CreateLabel(isMobile and "Platform: iPad / Mobile (Delta)" or "Platform: PC",
+        "smartphone", Color3.fromRGB(160,160,160), true)
+
+    BotTab:CreateSection("Auto Submit")
+    BotTab:CreateToggle({ Name="Auto-Bot  (submit on word capture)", CurrentValue=true, Flag="BotOn",
+        Callback=function(v) botEnabled=v end })
+    BotTab:CreateSlider({ Name="Submit Delay  (0 = instant, 100 = 1s)", Range={0,200}, Increment=5,
+        Suffix="ms", CurrentValue=50, Flag="SubDelay", Callback=function(v) submitDelay=v/1000 end })
+
+    BotTab:CreateSection("Manual")
+    BotTab:CreateButton({ Name="Submit Current Word Now", Callback=function()
+        if currentWord=="" then
+            Rayfield:Notify({Title="No Word",Content="No word captured yet.",Duration=3,Image="alert-circle"})
+            return
+        end
+        submitAnswer(currentWord)
+        Rayfield:Notify({Title="Submitted",Content=currentWord,Duration=2,Image="check"})
+    end })
+    BotTab:CreateButton({ Name="Re-scan Remotes", Callback=function()
+        answerRemote=nil; hookIncoming(); hookStringValues(RS); hookStringValues(WS)
+        Rayfield:Notify({Title="Re-scanned",Content="Hooks refreshed.",Duration=2,Image="refresh-cw"})
+    end })
+
+    PlayerTab:CreateSection("Movement")
+    PlayerTab:CreateSlider({ Name="Walk Speed", Range={1,300}, Increment=1, Suffix="", CurrentValue=16, Flag="WalkSpd",
+        Callback=function(v) walkSpd=v; local h=getHumanoid(); if h then pcall(function() h.WalkSpeed=v end) end end })
+    PlayerTab:CreateSlider({ Name="Jump Power", Range={1,300}, Increment=1, Suffix="", CurrentValue=50, Flag="JumpPwr",
+        Callback=function(v) jumpPwr=v; local h=getHumanoid()
+            if h then pcall(function() h.JumpPower=v; h.JumpHeight=v*0.36 end) end end })
+    PlayerTab:CreateToggle({ Name="Infinite Jump", CurrentValue=false, Flag="InfJump",
+        Callback=function(v) infJump=v end })
+    PlayerTab:CreateSection("Character")
+    PlayerTab:CreateButton({ Name="Reset Character", Callback=function()
+        local h=getHumanoid(); if h then pcall(function() h.Health=0 end) end end })
+
+    MiscTab:CreateSection("Utilities")
+    MiscTab:CreateToggle({ Name="Anti-AFK", CurrentValue=false, Flag="AntiAFK",
+        Callback=function(v) antiAFK=v end })
+    MiscTab:CreateSection("Info")
+    MiscTab:CreateLabel("Script: NerdZone Hub",          "zap",    Color3.fromRGB(100,180,255), true)
+    MiscTab:CreateLabel("UI: Rayfield Library",           "layout", Color3.fromRGB(160,160,160), true)
+    MiscTab:CreateLabel("Game: Spelling Bee by NerdZone", "bee",    Color3.fromRGB(255,220,60),  true)
+
+    -- install hooks
+    hookIncoming(); hookStringValues(RS); hookStringValues(WS)
+    local hook2ok = installNamecallHook()
+    local hookTxt = hook2ok and "Hook: ACTIVE  (__namecall + events)" or "Hook: partial  (events only)"
+    _hl:Set(hookTxt)
+
+    RS.DescendantAdded:Connect(function(obj)
+        if obj:IsA("RemoteEvent") then task.wait(); hookOne(obj)
+        elseif obj:IsA("StringValue") and shouldWatchSV(obj.Name) then watchStringValue(obj) end
+    end)
+    WS.DescendantAdded:Connect(function(obj)
+        if obj:IsA("StringValue") and shouldWatchSV(obj.Name) then watchStringValue(obj) end
+    end)
+
+    Rayfield:LoadConfiguration()
+    Rayfield:Notify({ Title="NerdZone  |  Spelling Bee",
+        Content="Ready  |  "..(isMobile and "iPad/Mobile" or "PC").."  |  Auto-Bot ON",
+        Duration=5, Image="shield" })
+
+else
+-- ── NATIVE FALLBACK (when all Rayfield CDNs fail) ─────────────────────
+
 local old = PGui:FindFirstChild("__SpellingBeeHub__")
 if old then old:Destroy() end
 
@@ -395,22 +510,14 @@ btn("💀  Reset Character", Color3.fromRGB(155,40,40), function()
     local h=getHumanoid(); if h then pcall(function() h.Health=0 end) end
 end)
 
--- ═══════════════════════════════════════════════════════════════════════
---  START HOOKS — immediately
--- ═══════════════════════════════════════════════════════════════════════
-hookIncoming()
-hookStringValues(RS)
-hookStringValues(WS)
-
+-- native hooks + status
+hookIncoming(); hookStringValues(RS); hookStringValues(WS)
 local hook2ok = installNamecallHook()
 if hook2ok then
-    hookLblRef.Text = "Hook: ACTIVE  (__namecall + events)"
-    hookLblRef.TextColor3 = Color3.fromRGB(70,215,110)
+    hookLblRef.Text="Hook: ACTIVE  (__namecall + events)"; hookLblRef.TextColor3=Color3.fromRGB(70,215,110)
 else
-    hookLblRef.Text = "Hook: partial  (events only)"
-    hookLblRef.TextColor3 = Color3.fromRGB(255,175,55)
+    hookLblRef.Text="Hook: partial  (events only)"; hookLblRef.TextColor3=Color3.fromRGB(255,175,55)
 end
-
 RS.DescendantAdded:Connect(function(obj)
     if obj:IsA("RemoteEvent") then task.wait(); hookOne(obj)
     elseif obj:IsA("StringValue") and shouldWatchSV(obj.Name) then watchStringValue(obj) end
@@ -418,10 +525,11 @@ end)
 WS.DescendantAdded:Connect(function(obj)
     if obj:IsA("StringValue") and shouldWatchSV(obj.Name) then watchStringValue(obj) end
 end)
+notify("Spelling Bee  |  NerdZone", "Ready  |  " .. (isMobile and "iPad" or "PC") .. "  |  Bot ON", 4)
 
--- ═══════════════════════════════════════════════════════════════════════
---  BACKGROUND LOOPS
--- ═══════════════════════════════════════════════════════════════════════
+end -- end Rayfield else (native fallback)
+
+-- ── Background loops (always run) ────────────────────────────────────
 UIS.JumpRequest:Connect(function()
     if infJump then
         local h=getHumanoid()
@@ -443,9 +551,8 @@ LP.CharacterAdded:Connect(function(char)
     pcall(function() h.WalkSpeed=walkSpd; h.JumpPower=jumpPwr; h.JumpHeight=jumpPwr*0.36 end)
 end)
 
--- Poll PlayerGui + workspace for word labels every 0.5s
 task.spawn(function()
-    while ScreenGui.Parent do
+    while true do
         task.wait(0.5)
         if botEnabled then
             local w = scanLabels(PGui) or scanLabels(WS)
@@ -453,5 +560,3 @@ task.spawn(function()
         end
     end
 end)
-
-notify("Spelling Bee  |  NerdZone", "Ready  |  " .. (isMobile and "iPad" or "PC") .. "  |  Bot ON", 4)
