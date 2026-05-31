@@ -75,7 +75,7 @@ local UI_BL = {
 
 local function looksLikeWord(s)
     if type(s) ~= "string" then return false end
-    if #s < 2 or #s > 32 then return false end
+    if #s < 2 or #s > 50 then return false end  -- 45 = longest English word
     if not s:match("^%a+$") then return false end
     return not UI_BL[s:lower()]
 end
