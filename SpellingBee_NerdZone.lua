@@ -1,6 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════════════
 --  Preppy Hub  |  Spelling Bee  v2.2
 --  Delta iOS/iPad + PC  —  pure native GUI, no HTTP dependency
+--  Auto-detects game from PlaceId
 -- ═══════════════════════════════════════════════════════════════════════
 
 local Players     = game:GetService("Players")
@@ -15,13 +16,29 @@ local LP          = Players.LocalPlayer
 local PGui        = LP:WaitForChild("PlayerGui")
 local isMobile    = UIS.TouchEnabled
 
+-- ── Game detection (from PlaceId) ──────────────────────────────────────
+-- Place IDs sourced from the PreppyHub game map
+local KNOWN_GAMES = {
+    [74779072921656]  = "NerdZone Spelling Bee",
+    [17590362521]     = "Spelling Bee",
+    [83091000527113]  = "Spelling Bee",
+    [17707569217]     = "Spelling Bee",
+    [91692552632068]  = "Scary Spelling Bee",
+    [133419989757748] = "Bean Cans Spelling Bee",
+    [70718852079605]  = "Spelling Bee",
+    [115840692772844] = "Spelling Bee",
+    [135159688166294] = "Spelling Bee",
+}
+local GAME_NAME = KNOWN_GAMES[game.PlaceId] or "Spelling Bee"
+local IS_KNOWN  = KNOWN_GAMES[game.PlaceId] ~= nil
+
 local function notify(title, text, dur)
     pcall(function()
         StarterGui:SetCore("SendNotification", {Title=title, Text=text, Duration=dur or 4})
     end)
 end
 
-notify("Preppy Hub  |  Spelling Bee", "Loading...", 3)
+notify("Preppy Hub  |  " .. GAME_NAME, IS_KNOWN and "Game detected!" or "Unknown game — universal mode", 3)
 
 -- ── State ─────────────────────────────────────────────────────────────
 local botEnabled   = true
@@ -349,13 +366,13 @@ Instance.new("UICorner",stripe).CornerRadius=UDim.new(1,0)
 
 local titleLbl=Instance.new("TextLabel",BAR)
 titleLbl.Size=UDim2.new(1,-90,0,20); titleLbl.Position=UDim2.new(0,22,0,8)
-titleLbl.BackgroundTransparency=1; titleLbl.Text="Preppy Hub  |  Spelling Bee"
+titleLbl.BackgroundTransparency=1; titleLbl.Text="Preppy Hub  |  " .. GAME_NAME
 titleLbl.TextColor3=WHITE; titleLbl.Font=Enum.Font.GothamBold
 titleLbl.TextSize=13; titleLbl.TextXAlignment=Enum.TextXAlignment.Left
 
 local verLbl=Instance.new("TextLabel",BAR)
 verLbl.Size=UDim2.new(1,-90,0,14); verLbl.Position=UDim2.new(0,22,0,30)
-verLbl.BackgroundTransparency=1; verLbl.Text="Version 2.2  •  " .. (isMobile and "iPad" or "PC")
+verLbl.BackgroundTransparency=1; verLbl.Text="Version 2.2  •  " .. (isMobile and "iPad" or "PC") .. (IS_KNOWN and "" or "  •  Universal")
 verLbl.TextColor3=LGRAY; verLbl.Font=Enum.Font.Gotham
 verLbl.TextSize=10; verLbl.TextXAlignment=Enum.TextXAlignment.Left
 
@@ -624,7 +641,7 @@ LP.CharacterAdded:Connect(function(char)
     end
 end)
 
-notify("Preppy Hub  |  Spelling Bee",
+notify("Preppy Hub  |  " .. GAME_NAME,
     "Ready  |  " .. (isMobile and "iPad" or "PC") .. "  |  Auto Type ON", 4)
 if not _h2ok then
     notify("Preppy Hub", "Partial hook (events only — __namecall unavailable)", 4)
