@@ -184,7 +184,7 @@ end
 submitAnswer = function(word)
     if word == "" then return end
     if fireAnswer(word) or boxSubmit(word) then
-        wordsTyped += 1; updateStats()
+        wordsTyped = wordsTyped + 1; updateStats()
     end
 end
 
@@ -336,7 +336,7 @@ end)
 local _afkT = 0
 RunService.Heartbeat:Connect(function()
     if antiAFK then
-        _afkT += 1
+        _afkT = _afkT + 1
         if _afkT >= 3600 then _afkT = 0; pcall(function() VirtualUser:CaptureController() end) end
     end
 end)
