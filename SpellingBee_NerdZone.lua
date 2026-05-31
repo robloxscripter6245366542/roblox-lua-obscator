@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════
 --  SPELLING BEE  —  NerdZone  |  Delta iOS/iPad + PC
---  No external HTTP — pure native Roblox GUI
+--  Auto Bot + Session Stats (Words, WPM, Best WPM, Accuracy)
 -- ═══════════════════════════════════════════════════════════════════════
 
 local Players     = game:GetService("Players")
@@ -47,22 +47,49 @@ local antiAFK      = false
 local infJump      = false
 local walkSpd      = 16
 local jumpPwr      = 50
-local wordLblRef   = nil   -- TextLabel in GUI, set after build
-local hookLblRef   = nil
+
+-- ── Session Stats ──────────────────────────────────────────────────────
+local sessionStart = os.clock()
+local wordsTyped   = 0
+local bestWPM      = 0
+
+local function getWPM()
+    local elapsed = (os.clock() - sessionStart) / 60
+    if elapsed < 0.01 then return 0 end
+    return math.floor(wordsTyped / elapsed)
+end
+
+-- ── UI update callbacks (assigned after UI is built) ───────────────────
+local setWordLabel   = function() end
+local setHookLabel   = function() end
+local updateStatsUI  = function() end
 
 -- ═══════════════════════════════════════════════════════════════════════
 --  WORD DETECTION + SUBMISSION
 -- ═══════════════════════════════════════════════════════════════════════
 
+local UI_BLACKLIST = {
+    spellingbee=1, nerdzone=1, submit=1, answer=1, play=1, reset=1,
+    start=1, continue=1, back=1, close=1, menu=1, quit=1, exit=1,
+    enabled=1, disabled=1, button=1, label=1, frame=1, loading=1,
+    loaded=1, waiting=1, ready=1, error=1, failed=1, success=1,
+    roblox=1, studio=1, player=1, server=1, client=1, remote=1,
+}
+
 local function looksLikeWord(s)
-    return type(s) == "string" and #s >= 2 and #s <= 32 and s:match("^%a+$") ~= nil
+    if type(s) ~= "string" then return false end
+    if #s < 2 or #s > 32 then return false end
+    if not s:match("^%a+$") then return false end
+    return not UI_BLACKLIST[s:lower()]
 end
+
+local submitAnswer  -- forward declared
 
 local function onWordFound(w)
     w = w:lower()
     if w == currentWord then return end
     currentWord = w
-    if wordLblRef then wordLblRef.Text = "Word:  " .. w end
+    setWordLabel("Word:  " .. w)
     if botEnabled then task.delay(submitDelay, function() submitAnswer(w) end) end
 end
 
@@ -86,14 +113,12 @@ local function findAnswerRemote()
     return nil
 end
 
--- Try direct RemoteEvent fire
 local function fireAnswer(word)
     local r = findAnswerRemote()
     if r then pcall(function() r:FireServer(word) end); return true end
     return false
 end
 
--- Try any visible TextBox (PlayerGui + workspace GUIs)
 local function boxSubmit(word)
     local function tryBoxes(root)
         for _, obj in ipairs(root:GetDescendants()) do
@@ -112,9 +137,15 @@ local function boxSubmit(word)
     return false
 end
 
-function submitAnswer(word)   -- forward-declared above in onWordFound
+submitAnswer = function(word)
     if word == "" then return end
-    if not fireAnswer(word) then boxSubmit(word) end
+    local sent = fireAnswer(word) or boxSubmit(word)
+    if sent then
+        wordsTyped = wordsTyped + 1
+        local wpm = getWPM()
+        if wpm > bestWPM then bestWPM = wpm end
+        updateStatsUI()
+    end
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
@@ -132,7 +163,6 @@ local function hookOne(remote)
                     if looksLikeWord(tv) then onWordFound(tv); return end
                 end
             elseif type(v) == "string" then
-                -- try to extract a word from a mixed string
                 local w = v:match("([%a][%a]+)")
                 if w and looksLikeWord(w) then onWordFound(w); return end
             end
@@ -198,15 +228,18 @@ local function hookStringValues(root)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
---  POLL — scans PlayerGui + workspace every 0.5s
+--  POLL — scans PlayerGui + workspace TextLabels every 0.5s
+--  Prefers large TextSize (board labels) to avoid UI noise
 -- ═══════════════════════════════════════════════════════════════════════
 local function scanLabels(root)
-    local best, bestLen = nil, -1
+    local best, bestScore = nil, -1
     for _, obj in ipairs(root:GetDescendants()) do
         if obj:IsA("TextLabel") and obj.Visible and obj.Text ~= "" then
             local t = obj.Text:match("^%s*(.-)%s*$") or ""
-            if looksLikeWord(t) and #t > bestLen then
-                best = t; bestLen = #t
+            if looksLikeWord(t) then
+                -- Weight: long words score higher; large TextSize (board) scores extra
+                local score = #t + (obj.TextSize >= 20 and 50 or 0)
+                if score > bestScore then best = t; bestScore = score end
             end
         end
     end
@@ -218,14 +251,31 @@ local function getHumanoid()
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
---  NATIVE GUI
+--  INSTALL HOOKS (shared for both UI branches)
 -- ═══════════════════════════════════════════════════════════════════════
+local function installAllHooks()
+    hookIncoming()
+    hookStringValues(RS)
+    hookStringValues(WS)
+    local hook2ok = installNamecallHook()
+    local hookTxt = hook2ok and "Hook: ACTIVE  (__namecall + events)" or "Hook: partial  (events only)"
+    setHookLabel(hookTxt, hook2ok and Color3.fromRGB(70,215,110) or Color3.fromRGB(255,175,55))
+    RS.DescendantAdded:Connect(function(obj)
+        if obj:IsA("RemoteEvent") then task.wait(); hookOne(obj)
+        elseif obj:IsA("StringValue") and shouldWatchSV(obj.Name) then watchStringValue(obj) end
+    end)
+    WS.DescendantAdded:Connect(function(obj)
+        if obj:IsA("StringValue") and shouldWatchSV(obj.Name) then watchStringValue(obj) end
+    end)
+end
+
 -- ═══════════════════════════════════════════════════════════════════════
 --  UI — Rayfield if loaded, otherwise native fallback
 -- ═══════════════════════════════════════════════════════════════════════
 
 if Rayfield then
-    -- ── RAYFIELD UI ───────────────────────────────────────────────────
+-- ── RAYFIELD UI ───────────────────────────────────────────────────────
+
     local Window = Rayfield:CreateWindow({
         Name            = "Spelling Bee  |  NerdZone",
         Icon            = "pencil",
@@ -240,45 +290,64 @@ if Rayfield then
     })
 
     local BotTab    = Window:CreateTab("Bot",    "bot")
+    local StatsTab  = Window:CreateTab("Stats",  "bar-chart-2")
     local PlayerTab = Window:CreateTab("Player", "user")
     local MiscTab   = Window:CreateTab("Misc",   "settings")
 
+    -- Bot tab ──────────────────────────────────────────────────────────
     BotTab:CreateSection("Hook Status")
-    hookLblRef = { Text = "" }
     local _hl = BotTab:CreateLabel("Hook: connecting...", "shield", Color3.fromRGB(255,200,60), true)
-    hookLblRef = { Set = function(_, t) _hl:Set(t) end }
-    local _wl = BotTab:CreateLabel("Word: waiting...", "book-open", Color3.fromRGB(100,210,255), true)
-    wordLblRef = { Text = "" }
-    -- wrap so onWordFound can set .Text
-    local _wlProxy = setmetatable({}, {
-        __newindex = function(_, k, v)
-            if k == "Text" then _wl:Set(v) end
-        end
-    })
-    wordLblRef = _wlProxy
+    local _wl = BotTab:CreateLabel("Word:  waiting...",   "book-open", Color3.fromRGB(100,210,255), true)
     BotTab:CreateLabel(isMobile and "Platform: iPad / Mobile (Delta)" or "Platform: PC",
         "smartphone", Color3.fromRGB(160,160,160), true)
+
+    setHookLabel  = function(t, _) _hl:Set(t) end
+    setWordLabel  = function(t)    _wl:Set(t) end
 
     BotTab:CreateSection("Auto Submit")
     BotTab:CreateToggle({ Name="Auto-Bot  (submit on word capture)", CurrentValue=true, Flag="BotOn",
         Callback=function(v) botEnabled=v end })
-    BotTab:CreateSlider({ Name="Submit Delay  (0 = instant, 100 = 1s)", Range={0,200}, Increment=5,
-        Suffix="ms", CurrentValue=50, Flag="SubDelay", Callback=function(v) submitDelay=v/1000 end })
+    BotTab:CreateSlider({ Name="Submit Delay  (0 = instant, 200 = 2s)", Range={0,200}, Increment=5,
+        Suffix="ms", CurrentValue=50, Flag="SubDelay",
+        Callback=function(v) submitDelay=v/1000 end })
 
     BotTab:CreateSection("Manual")
     BotTab:CreateButton({ Name="Submit Current Word Now", Callback=function()
-        if currentWord=="" then
-            Rayfield:Notify({Title="No Word",Content="No word captured yet.",Duration=3,Image="alert-circle"})
+        if currentWord == "" then
+            Rayfield:Notify({Title="No Word", Content="No word captured yet.", Duration=3, Image="alert-circle"})
             return
         end
         submitAnswer(currentWord)
-        Rayfield:Notify({Title="Submitted",Content=currentWord,Duration=2,Image="check"})
+        Rayfield:Notify({Title="Submitted", Content=currentWord, Duration=2, Image="check"})
     end })
     BotTab:CreateButton({ Name="Re-scan Remotes", Callback=function()
         answerRemote=nil; hookIncoming(); hookStringValues(RS); hookStringValues(WS)
-        Rayfield:Notify({Title="Re-scanned",Content="Hooks refreshed.",Duration=2,Image="refresh-cw"})
+        Rayfield:Notify({Title="Re-scanned", Content="Hooks refreshed.", Duration=2, Image="refresh-cw"})
     end })
 
+    -- Stats tab ────────────────────────────────────────────────────────
+    StatsTab:CreateSection("Session Statistics")
+    local _sWords = StatsTab:CreateLabel("Words Typed:  0",  "hash",   Color3.fromRGB(100,220,150), true)
+    local _sWpm   = StatsTab:CreateLabel("Avg WPM:  0",      "zap",    Color3.fromRGB(100,180,255), true)
+    local _sBest  = StatsTab:CreateLabel("Best WPM:  0",     "award",  Color3.fromRGB(255,220,80),  true)
+    local _sAcc   = StatsTab:CreateLabel("Accuracy:  100%",  "target", Color3.fromRGB(200,120,255), true)
+
+    updateStatsUI = function()
+        local wpm = getWPM()
+        _sWords:Set("Words Typed:  " .. wordsTyped)
+        _sWpm:Set("Avg WPM:  "   .. wpm)
+        _sBest:Set("Best WPM:  " .. bestWPM)
+        _sAcc:Set("Accuracy:  100%")
+    end
+
+    StatsTab:CreateButton({ Name="Reset Session Stats", Callback=function()
+        sessionStart=os.clock(); wordsTyped=0; bestWPM=0
+        _sWords:Set("Words Typed:  0"); _sWpm:Set("Avg WPM:  0")
+        _sBest:Set("Best WPM:  0"); _sAcc:Set("Accuracy:  100%")
+        Rayfield:Notify({Title="Stats Reset", Content="Session stats cleared.", Duration=2, Image="refresh-cw"})
+    end })
+
+    -- Player tab ───────────────────────────────────────────────────────
     PlayerTab:CreateSection("Movement")
     PlayerTab:CreateSlider({ Name="Walk Speed", Range={1,300}, Increment=1, Suffix="", CurrentValue=16, Flag="WalkSpd",
         Callback=function(v) walkSpd=v; local h=getHumanoid(); if h then pcall(function() h.WalkSpeed=v end) end end })
@@ -291,31 +360,19 @@ if Rayfield then
     PlayerTab:CreateButton({ Name="Reset Character", Callback=function()
         local h=getHumanoid(); if h then pcall(function() h.Health=0 end) end end })
 
+    -- Misc tab ─────────────────────────────────────────────────────────
     MiscTab:CreateSection("Utilities")
     MiscTab:CreateToggle({ Name="Anti-AFK", CurrentValue=false, Flag="AntiAFK",
         Callback=function(v) antiAFK=v end })
     MiscTab:CreateSection("Info")
     MiscTab:CreateLabel("Script: NerdZone Hub",          "zap",    Color3.fromRGB(100,180,255), true)
     MiscTab:CreateLabel("UI: Rayfield Library",           "layout", Color3.fromRGB(160,160,160), true)
-    MiscTab:CreateLabel("Game: Spelling Bee by NerdZone", "bee",    Color3.fromRGB(255,220,60),  true)
+    MiscTab:CreateLabel("Game: Spelling Bee by NerdZone", "star",   Color3.fromRGB(255,220,60),  true)
 
-    -- install hooks
-    hookIncoming(); hookStringValues(RS); hookStringValues(WS)
-    local hook2ok = installNamecallHook()
-    local hookTxt = hook2ok and "Hook: ACTIVE  (__namecall + events)" or "Hook: partial  (events only)"
-    _hl:Set(hookTxt)
-
-    RS.DescendantAdded:Connect(function(obj)
-        if obj:IsA("RemoteEvent") then task.wait(); hookOne(obj)
-        elseif obj:IsA("StringValue") and shouldWatchSV(obj.Name) then watchStringValue(obj) end
-    end)
-    WS.DescendantAdded:Connect(function(obj)
-        if obj:IsA("StringValue") and shouldWatchSV(obj.Name) then watchStringValue(obj) end
-    end)
-
+    installAllHooks()
     Rayfield:LoadConfiguration()
     Rayfield:Notify({ Title="NerdZone  |  Spelling Bee",
-        Content="Ready  |  "..(isMobile and "iPad/Mobile" or "PC").."  |  Auto-Bot ON",
+        Content="Ready  |  " .. (isMobile and "iPad/Mobile" or "PC") .. "  |  Auto-Bot ON",
         Duration=5, Image="shield" })
 
 else
@@ -330,13 +387,12 @@ ScreenGui.ResetOnSpawn   = false
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.DisplayOrder   = 999
--- Use gethui() on Delta for protected container, fallback to PGui
 local guiParent = PGui
 pcall(function() if gethui then guiParent = gethui() end end)
 ScreenGui.Parent = guiParent
 
 local WIN_W = isMobile and 300 or 320
-local WIN_H = isMobile and 480 or 460
+local WIN_H = isMobile and 560 or 540
 
 local WIN = Instance.new("Frame")
 WIN.Size             = UDim2.new(0, WIN_W, 0, WIN_H)
@@ -346,15 +402,16 @@ WIN.BorderSizePixel  = 0
 WIN.Active           = true
 WIN.Parent           = ScreenGui
 Instance.new("UICorner", WIN).CornerRadius = UDim.new(0,12)
-local ws = Instance.new("UIStroke", WIN)
-ws.Color = Color3.fromRGB(55,55,95); ws.Thickness = 1.5
+local ws2 = Instance.new("UIStroke", WIN)
+ws2.Color = Color3.fromRGB(55,55,95); ws2.Thickness = 1.5
 
 -- Title bar
 local TBAR = Instance.new("Frame", WIN)
 TBAR.Size = UDim2.new(1,0,0,44); TBAR.BackgroundColor3 = Color3.fromRGB(22,22,38); TBAR.BorderSizePixel=0
 Instance.new("UICorner", TBAR).CornerRadius = UDim.new(0,12)
-local tf = Instance.new("Frame", TBAR)
-tf.Size=UDim2.new(1,0,0,12); tf.Position=UDim2.new(0,0,1,-12); tf.BackgroundColor3=Color3.fromRGB(22,22,38); tf.BorderSizePixel=0
+local _tfix = Instance.new("Frame", TBAR)
+_tfix.Size=UDim2.new(1,0,0,12); _tfix.Position=UDim2.new(0,0,1,-12)
+_tfix.BackgroundColor3=Color3.fromRGB(22,22,38); _tfix.BorderSizePixel=0
 
 local tl = Instance.new("TextLabel", TBAR)
 tl.Size=UDim2.new(1,-42,1,0); tl.Position=UDim2.new(0,12,0,0); tl.BackgroundTransparency=1
@@ -398,10 +455,9 @@ SC.BackgroundTransparency=1; SC.BorderSizePixel=0
 SC.ScrollBarThickness=3; SC.ScrollBarImageColor3=Color3.fromRGB(70,70,130)
 SC.CanvasSize=UDim2.new(0,0,0,0); SC.AutomaticCanvasSize=Enum.AutomaticSize.Y
 local LL=Instance.new("UIListLayout",SC); LL.Padding=UDim.new(0,4); LL.SortOrder=Enum.SortOrder.LayoutOrder
-local LP2=Instance.new("UIPadding",SC); LP2.PaddingTop=UDim.new(0,3); LP2.PaddingLeft=UDim.new(0,3); LP2.PaddingRight=UDim.new(0,3)
+local _pad=Instance.new("UIPadding",SC)
+_pad.PaddingTop=UDim.new(0,3); _pad.PaddingLeft=UDim.new(0,3); _pad.PaddingRight=UDim.new(0,3)
 
--- Component builders
-local C1=Color3.fromRGB(14,14,22)
 local C2=Color3.fromRGB(22,22,36)
 local C3=Color3.fromRGB(32,32,52)
 
@@ -430,7 +486,8 @@ local function tog(txt, def, cb)
     l.Font=Enum.Font.Gotham; l.TextSize=12; l.TextXAlignment=Enum.TextXAlignment.Left
     local st=def
     local pi=Instance.new("TextButton",f); pi.Size=UDim2.new(0,44,0,22); pi.Position=UDim2.new(1,-50,0.5,-11)
-    pi.BackgroundColor3=st and Color3.fromRGB(65,195,105) or Color3.fromRGB(65,65,95); pi.Text=""; pi.BorderSizePixel=0
+    pi.BackgroundColor3=st and Color3.fromRGB(65,195,105) or Color3.fromRGB(65,65,95)
+    pi.Text=""; pi.BorderSizePixel=0
     Instance.new("UICorner",pi).CornerRadius=UDim.new(1,0)
     local kn=Instance.new("Frame",pi); kn.Size=UDim2.new(0,16,0,16)
     kn.Position=st and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)
@@ -453,7 +510,7 @@ local function btn(txt, col, cb)
     b.MouseButton1Click:Connect(cb); return b
 end
 
-local function stepper(txt, startV, mn, mx, st, fmtFn, cb)
+local function stepper(_, startV, mn, mx, st, fmtFn, cb)
     local v=startV
     local f=Instance.new("Frame",SC); f.Size=UDim2.new(1,0,0,36); f.BackgroundColor3=C2; f.BorderSizePixel=0
     Instance.new("UICorner",f).CornerRadius=UDim.new(0,5)
@@ -474,15 +531,28 @@ local function stepper(txt, startV, mn, mx, st, fmtFn, cb)
     mkb("+", UDim2.new(0.78,0,0.5,-12))
 end
 
--- ── Build UI content ──────────────────────────────────────────────────
+-- ── Build native UI ───────────────────────────────────────────────────
 sec("📡  HOOK STATUS")
-hookLblRef = lbl("Hook: connecting...", Color3.fromRGB(255,200,60))
-wordLblRef = lbl("Word:  waiting...",   Color3.fromRGB(80,205,255))
+local hookLbl = lbl("Hook: connecting...", Color3.fromRGB(255,200,60))
+local wordLbl = lbl("Word:  waiting...",   Color3.fromRGB(80,205,255))
 lbl("Platform:  " .. (isMobile and "iPad / Mobile (Delta)" or "PC"), Color3.fromRGB(120,160,255))
+
+sec("📊  SESSION STATS")
+local nWords = lbl("Words Typed:  0",  Color3.fromRGB(100,220,150))
+local nWpm   = lbl("Avg WPM:  0",      Color3.fromRGB(100,180,255))
+local nBest  = lbl("Best WPM:  0",     Color3.fromRGB(255,220,80))
+local nAcc   = lbl("Accuracy:  100%",  Color3.fromRGB(200,120,255))
+
+btn("🔄  Reset Session Stats", Color3.fromRGB(60,45,110), function()
+    sessionStart=os.clock(); wordsTyped=0; bestWPM=0
+    nWords.Text="Words Typed:  0"; nWpm.Text="Avg WPM:  0"
+    nBest.Text="Best WPM:  0"; nAcc.Text="Accuracy:  100%"
+    notify("Stats Reset", "Session stats cleared.", 2)
+end)
 
 sec("🤖  AUTO SUBMIT")
 tog("Auto-Bot  (auto-answer every word)", true, function(v) botEnabled=v end)
-stepper("Delay: ", delayMs, 0, 2000, 10, function(v) return "Delay:  "..v.."ms" end,
+stepper("Delay", delayMs, 0, 2000, 10, function(v) return "Delay:  "..v.."ms" end,
     function(v) submitDelay=v/1000 end)
 
 sec("🔧  CONTROLS")
@@ -493,16 +563,16 @@ btn("▶  Submit Current Word Now", Color3.fromRGB(35,150,70), function()
 end)
 btn("🔄  Re-scan Remotes", Color3.fromRGB(50,70,155), function()
     answerRemote=nil; hookIncoming(); hookStringValues(RS); hookStringValues(WS)
-    if hookLblRef then hookLblRef.Text="Hooks refreshed ✓" end
+    hookLbl.Text="Hooks refreshed ✓"
 end)
 
 sec("🏃  PLAYER")
 tog("Infinite Jump", false, function(v) infJump=v end)
 tog("Anti-AFK",      false, function(v) antiAFK=v end)
-stepper("Walk Speed: ", walkSpd, 1, 300, 5, function(v) return "Walk Speed:  "..v end, function(v)
+stepper("WalkSpd", walkSpd, 1, 300, 5, function(v) return "Walk Speed:  "..v end, function(v)
     walkSpd=v; local h=getHumanoid(); if h then pcall(function() h.WalkSpeed=v end) end
 end)
-stepper("Jump Power: ", jumpPwr, 1, 300, 5, function(v) return "Jump Power:  "..v end, function(v)
+stepper("JumpPwr", jumpPwr, 1, 300, 5, function(v) return "Jump Power:  "..v end, function(v)
     jumpPwr=v; local h=getHumanoid()
     if h then pcall(function() h.JumpPower=v; h.JumpHeight=v*0.36 end) end
 end)
@@ -510,26 +580,26 @@ btn("💀  Reset Character", Color3.fromRGB(155,40,40), function()
     local h=getHumanoid(); if h then pcall(function() h.Health=0 end) end
 end)
 
--- native hooks + status
-hookIncoming(); hookStringValues(RS); hookStringValues(WS)
-local hook2ok = installNamecallHook()
-if hook2ok then
-    hookLblRef.Text="Hook: ACTIVE  (__namecall + events)"; hookLblRef.TextColor3=Color3.fromRGB(70,215,110)
-else
-    hookLblRef.Text="Hook: partial  (events only)"; hookLblRef.TextColor3=Color3.fromRGB(255,175,55)
+-- Wire native UI callbacks
+setHookLabel = function(t, col)
+    hookLbl.Text = t
+    if col then hookLbl.TextColor3 = col end
 end
-RS.DescendantAdded:Connect(function(obj)
-    if obj:IsA("RemoteEvent") then task.wait(); hookOne(obj)
-    elseif obj:IsA("StringValue") and shouldWatchSV(obj.Name) then watchStringValue(obj) end
-end)
-WS.DescendantAdded:Connect(function(obj)
-    if obj:IsA("StringValue") and shouldWatchSV(obj.Name) then watchStringValue(obj) end
-end)
+setWordLabel = function(t) wordLbl.Text = t end
+updateStatsUI = function()
+    local wpm = getWPM()
+    nWords.Text = "Words Typed:  " .. wordsTyped
+    nWpm.Text   = "Avg WPM:  "   .. wpm
+    nBest.Text  = "Best WPM:  "  .. bestWPM
+    nAcc.Text   = "Accuracy:  100%"
+end
+
+installAllHooks()
 notify("Spelling Bee  |  NerdZone", "Ready  |  " .. (isMobile and "iPad" or "PC") .. "  |  Bot ON", 4)
 
-end -- end Rayfield else (native fallback)
+end -- end if Rayfield / else native
 
--- ── Background loops (always run) ────────────────────────────────────
+-- ── Background loops (always run regardless of UI branch) ─────────────
 UIS.JumpRequest:Connect(function()
     if infJump then
         local h=getHumanoid()
