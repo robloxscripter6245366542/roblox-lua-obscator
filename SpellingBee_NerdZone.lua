@@ -29,6 +29,7 @@ local function notify(t,m,d)
 end
 notify("Preppy Hub | "..GAME_NAME,IS_KNOWN and "Game detected!" or "Universal mode",3)
 
+-- ── state ──────────────────────────────────────────────────────────────
 local botEnabled=true
 local submitDelay=0.05
 local currentWord=""
@@ -45,20 +46,21 @@ local function getWPM()
     return m<0.01 and 0 or math.floor(wordsTyped/m)
 end
 
-local nWord,nWords,nWpm,nBest,nMist,nAcc
+local nWord,nWords,nWpm,nBest,nMist,nAcc,statusDot,statusLbl
 
 local function updateStats()
     if not nWords then return end
     local wpm=getWPM()
     if wpm>bestWPM then bestWPM=wpm end
     local acc=wordsTyped==0 and 100 or math.floor(((wordsTyped-mistakes)/wordsTyped)*100)
-    nWords.Text="Words Typed\n"..wordsTyped
-    nWpm.Text="Avg WPM\n"..wpm
-    nBest.Text="Best WPM\n"..bestWPM
-    nMist.Text="Mistakes\n"..mistakes
-    nAcc.Text="Accuracy\n"..acc.."%"
+    nWords.Text=tostring(wordsTyped)
+    nWpm.Text=tostring(wpm)
+    nBest.Text=tostring(bestWPM)
+    nMist.Text=tostring(mistakes)
+    nAcc.Text=acc.."%"
 end
 
+-- ── word detection ──────────────────────────────────────────────────────
 local UI_BL={spellingbee=1,nerdzone=1,preppyhub=1,preppy=1,hub=1,submit=1,answer=1,play=1,reset=1,start=1,continue=1,back=1,close=1,menu=1,quit=1,exit=1,enabled=1,disabled=1,loading=1,loaded=1,waiting=1,ready=1,error=1,failed=1,roblox=1,studio=1,player=1,server=1,client=1,remote=1}
 
 local function looksLikeWord(s)
@@ -149,6 +151,7 @@ submitAnswer=function(word)
     end
 end
 
+-- ── hooks ───────────────────────────────────────────────────────────────
 local _hooked={}
 local function hookOne(remote)
     if _hooked[remote] then return end;_hooked[remote]=true
@@ -253,7 +256,6 @@ local function getHumanoid()
     local c=LP.Character;return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- install hooks before gui
 hookIncoming()
 for _,root in ipairs(SCAN_ROOTS) do pcall(function()hookSVs(root)end) end
 local _h2ok=installNamecallHook()
@@ -298,9 +300,13 @@ task.spawn(function()
     end
 end)
 
--- GUI
+-- ═══════════════════════════════════════════════════════════════════════
+--  PREPPY HUB GUI
+-- ═══════════════════════════════════════════════════════════════════════
+
 local old=PGui:FindFirstChild("__PrepSpellHub__")
 if old then old:Destroy() end
+
 local SG=Instance.new("ScreenGui")
 SG.Name="__PrepSpellHub__";SG.ResetOnSpawn=false
 SG.IgnoreGuiInset=true;SG.DisplayOrder=999
@@ -309,61 +315,95 @@ local guiParent=PGui
 pcall(function()if gethui then guiParent=gethui() end end)
 SG.Parent=guiParent
 
-local PINK=Color3.fromRGB(232,90,160)
-local PINK2=Color3.fromRGB(255,130,190)
-local DARK=Color3.fromRGB(16,16,24)
-local CARD=Color3.fromRGB(26,26,40)
-local CARD2=Color3.fromRGB(34,34,54)
-local WHITE=Color3.fromRGB(255,255,255)
-local LGRAY=Color3.fromRGB(190,185,210)
-local GREEN=Color3.fromRGB(65,200,110)
-local GRAY=Color3.fromRGB(60,60,88)
+-- colour palette
+local C={
+    BG    =Color3.fromRGB(13, 13, 20),
+    PANEL =Color3.fromRGB(22, 22, 34),
+    CARD  =Color3.fromRGB(30, 30, 46),
+    CARD2 =Color3.fromRGB(38, 38, 58),
+    PINK  =Color3.fromRGB(236, 72, 153),
+    PINK2 =Color3.fromRGB(251,113,180),
+    PINK3 =Color3.fromRGB(253,164,202),
+    WHITE =Color3.fromRGB(255,255,255),
+    OFFWH =Color3.fromRGB(220,215,235),
+    MUTED =Color3.fromRGB(148,140,170),
+    GREEN =Color3.fromRGB(52, 211,153),
+    RED   =Color3.fromRGB(239, 68, 68),
+    GOLD  =Color3.fromRGB(251,191, 36),
+    GRAY  =Color3.fromRGB(55,  55, 78),
+    STROKE=Color3.fromRGB(60,  45, 80),
+}
 
-local W=isMobile and 310 or 330
-local H=isMobile and 530 or 510
+local W=isMobile and 318 or 340
+local TI15=TweenInfo.new(0.15)
+local TI3 =TweenInfo.new(0.3,Enum.EasingStyle.Quart)
 
+local function corner(p,r)Instance.new("UICorner",p).CornerRadius=UDim.new(0,r or 10)end
+local function stroke(p,col,t)local s=Instance.new("UIStroke",p);s.Color=col;s.Thickness=t or 1;return s end
+local function pad(p,x,y)local d=Instance.new("UIPadding",p);d.PaddingLeft=UDim.new(0,x);d.PaddingRight=UDim.new(0,x);d.PaddingTop=UDim.new(0,y);d.PaddingBottom=UDim.new(0,y)end
+
+-- ── main window ────────────────────────────────────────────────────────
 local WIN=Instance.new("Frame")
-WIN.Size=UDim2.new(0,W,0,H)
-WIN.Position=isMobile and UDim2.new(0.5,-W/2,0,50) or UDim2.new(0.5,-W/2,0.5,-H/2)
-WIN.BackgroundColor3=DARK;WIN.BorderSizePixel=0;WIN.Active=true;WIN.Parent=SG
-Instance.new("UICorner",WIN).CornerRadius=UDim.new(0,14)
-local _ws=Instance.new("UIStroke",WIN);_ws.Color=PINK;_ws.Thickness=1.5
+WIN.Name="Win";WIN.Size=UDim2.new(0,W,0,0)
+WIN.AutomaticSize=Enum.AutomaticSize.Y
+WIN.Position=isMobile and UDim2.new(0.5,-W/2,0,44) or UDim2.new(0.5,-W/2,0.5,-260)
+WIN.BackgroundColor3=C.BG;WIN.BorderSizePixel=0;WIN.Active=true;WIN.Parent=SG
+corner(WIN,16);stroke(WIN,C.STROKE,1.5)
 
-local BAR=Instance.new("Frame",WIN)
-BAR.Size=UDim2.new(1,0,0,52);BAR.BackgroundColor3=CARD;BAR.BorderSizePixel=0
-Instance.new("UICorner",BAR).CornerRadius=UDim.new(0,14)
-local _bfix=Instance.new("Frame",BAR)
-_bfix.Size=UDim2.new(1,0,0,14);_bfix.Position=UDim2.new(0,0,1,-14)
-_bfix.BackgroundColor3=CARD;_bfix.BorderSizePixel=0
+-- ── header ─────────────────────────────────────────────────────────────
+local HDR=Instance.new("Frame",WIN)
+HDR.Size=UDim2.new(1,0,0,64);HDR.BackgroundColor3=C.PANEL;HDR.BorderSizePixel=0
+corner(HDR,16)
+-- bottom cover so only top corners round
+local hfix=Instance.new("Frame",HDR);hfix.Size=UDim2.new(1,0,0,16)
+hfix.Position=UDim2.new(0,0,1,-16);hfix.BackgroundColor3=C.PANEL;hfix.BorderSizePixel=0
 
-local stripe=Instance.new("Frame",BAR)
-stripe.Size=UDim2.new(0,4,0,28);stripe.Position=UDim2.new(0,12,0.5,-14)
-stripe.BackgroundColor3=PINK;stripe.BorderSizePixel=0
-Instance.new("UICorner",stripe).CornerRadius=UDim.new(1,0)
+-- pink left accent bar
+local acc=Instance.new("Frame",HDR)
+acc.Size=UDim2.new(0,3,0,34);acc.Position=UDim2.new(0,14,0.5,-17)
+acc.BackgroundColor3=C.PINK;acc.BorderSizePixel=0;corner(acc,4)
 
-local titleLbl=Instance.new("TextLabel",BAR)
-titleLbl.Size=UDim2.new(1,-90,0,20);titleLbl.Position=UDim2.new(0,22,0,8)
-titleLbl.BackgroundTransparency=1;titleLbl.Text="Preppy Hub  |  "..GAME_NAME
-titleLbl.TextColor3=WHITE;titleLbl.Font=Enum.Font.GothamBold
-titleLbl.TextSize=13;titleLbl.TextXAlignment=Enum.TextXAlignment.Left
+-- logo / title block
+local logoF=Instance.new("Frame",HDR)
+logoF.Size=UDim2.new(0,26,0,26);logoF.Position=UDim2.new(0,24,0.5,-13)
+logoF.BackgroundColor3=C.PINK;logoF.BorderSizePixel=0;corner(logoF,7)
+local logoTxt=Instance.new("TextLabel",logoF)
+logoTxt.Size=UDim2.new(1,0,1,0);logoTxt.BackgroundTransparency=1
+logoTxt.Text="P";logoTxt.TextColor3=C.WHITE
+logoTxt.Font=Enum.Font.GothamBold;logoTxt.TextSize=14
 
-local verLbl=Instance.new("TextLabel",BAR)
-verLbl.Size=UDim2.new(1,-90,0,14);verLbl.Position=UDim2.new(0,22,0,30)
-verLbl.BackgroundTransparency=1
-verLbl.Text="v2.3  •  "..(isMobile and "iPad" or "PC")..(IS_KNOWN and "" or "  •  Universal")
-verLbl.TextColor3=LGRAY;verLbl.Font=Enum.Font.Gotham
-verLbl.TextSize=10;verLbl.TextXAlignment=Enum.TextXAlignment.Left
+local hubName=Instance.new("TextLabel",HDR)
+hubName.Size=UDim2.new(0,160,0,18);hubName.Position=UDim2.new(0,56,0,13)
+hubName.BackgroundTransparency=1;hubName.Text="Preppy Hub"
+hubName.TextColor3=C.WHITE;hubName.Font=Enum.Font.GothamBold
+hubName.TextSize=15;hubName.TextXAlignment=Enum.TextXAlignment.Left
 
-local closeBtn=Instance.new("TextButton",BAR)
-closeBtn.Size=UDim2.new(0,26,0,26);closeBtn.Position=UDim2.new(1,-36,0.5,-13)
-closeBtn.BackgroundColor3=Color3.fromRGB(180,40,80);closeBtn.Text="✕"
-closeBtn.TextColor3=WHITE;closeBtn.Font=Enum.Font.GothamBold;closeBtn.TextSize=12
-closeBtn.BorderSizePixel=0
-Instance.new("UICorner",closeBtn).CornerRadius=UDim.new(1,0)
+local gameLbl=Instance.new("TextLabel",HDR)
+gameLbl.Size=UDim2.new(0,200,0,13);gameLbl.Position=UDim2.new(0,56,0,33)
+gameLbl.BackgroundTransparency=1;gameLbl.Text=GAME_NAME.."  •  v2.3"
+gameLbl.TextColor3=C.MUTED;gameLbl.Font=Enum.Font.Gotham
+gameLbl.TextSize=10;gameLbl.TextXAlignment=Enum.TextXAlignment.Left
+
+-- version badge
+local badgeF=Instance.new("Frame",HDR)
+badgeF.Size=UDim2.new(0,44,0,18);badgeF.Position=UDim2.new(1,-86,0.5,-9)
+badgeF.BackgroundColor3=Color3.fromRGB(80,20,60);badgeF.BorderSizePixel=0;corner(badgeF,5)
+local badgeTxt=Instance.new("TextLabel",badgeF)
+badgeTxt.Size=UDim2.new(1,0,1,0);badgeTxt.BackgroundTransparency=1
+badgeTxt.Text=isMobile and "iPad" or "PC"
+badgeTxt.TextColor3=C.PINK3;badgeTxt.Font=Enum.Font.GothamBold;badgeTxt.TextSize=9
+
+-- close button
+local closeBtn=Instance.new("TextButton",HDR)
+closeBtn.Size=UDim2.new(0,28,0,28);closeBtn.Position=UDim2.new(1,-40,0.5,-14)
+closeBtn.BackgroundColor3=C.RED;closeBtn.Text="✕"
+closeBtn.TextColor3=C.WHITE;closeBtn.Font=Enum.Font.GothamBold;closeBtn.TextSize=12
+closeBtn.BorderSizePixel=0;corner(closeBtn,8)
 closeBtn.MouseButton1Click:Connect(function()SG:Destroy()end)
 
+-- drag
 local _d,_dx,_dy,_wx,_wy=false,0,0,0,0
-BAR.InputBegan:Connect(function(i)
+HDR.InputBegan:Connect(function(i)
     local t=i.UserInputType
     if t==Enum.UserInputType.MouseButton1 or t==Enum.UserInputType.Touch then
         if _d and t==Enum.UserInputType.Touch then return end
@@ -382,194 +422,334 @@ UIS.InputEnded:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then _d=false end
 end)
 
-local SC=Instance.new("ScrollingFrame",WIN)
-SC.Size=UDim2.new(1,-8,1,-58);SC.Position=UDim2.new(0,4,0,54)
-SC.BackgroundTransparency=1;SC.BorderSizePixel=0
-SC.ScrollBarThickness=3;SC.ScrollBarImageColor3=PINK
-SC.CanvasSize=UDim2.new(0,0,0,0);SC.AutomaticCanvasSize=Enum.AutomaticSize.Y
-local _ll=Instance.new("UIListLayout",SC);_ll.Padding=UDim.new(0,6);_ll.SortOrder=Enum.SortOrder.LayoutOrder
-local _pd=Instance.new("UIPadding",SC)
-_pd.PaddingTop=UDim.new(0,6);_pd.PaddingLeft=UDim.new(0,4);_pd.PaddingRight=UDim.new(0,4)
+-- ── body list ──────────────────────────────────────────────────────────
+local BODY=Instance.new("Frame",WIN)
+BODY.Size=UDim2.new(1,0,0,0);BODY.Position=UDim2.new(0,0,0,64)
+BODY.AutomaticSize=Enum.AutomaticSize.Y
+BODY.BackgroundTransparency=1;BODY.BorderSizePixel=0
+local bList=Instance.new("UIListLayout",BODY)
+bList.Padding=UDim.new(0,0);bList.SortOrder=Enum.SortOrder.LayoutOrder
+pad(BODY,12,10)
 
-local function secHdr(txt)
-    local f=Instance.new("Frame",SC);f.Size=UDim2.new(1,0,0,18);f.BackgroundTransparency=1;f.BorderSizePixel=0
+local function divider()
+    local f=Instance.new("Frame",BODY);f.Size=UDim2.new(1,0,0,1)
+    f.BackgroundColor3=C.STROKE;f.BorderSizePixel=0
+end
+
+local function sectionLabel(txt)
+    local f=Instance.new("Frame",BODY);f.Size=UDim2.new(1,0,0,26)
+    f.BackgroundTransparency=1;f.BorderSizePixel=0
     local l=Instance.new("TextLabel",f);l.Size=UDim2.new(1,0,1,0)
     l.BackgroundTransparency=1;l.Text=txt:upper()
-    l.TextColor3=PINK;l.Font=Enum.Font.GothamBold;l.TextSize=9
+    l.TextColor3=C.PINK;l.Font=Enum.Font.GothamBold;l.TextSize=9
     l.TextXAlignment=Enum.TextXAlignment.Left
 end
 
-local function card(h)
-    local f=Instance.new("Frame",SC);f.Size=UDim2.new(1,0,0,h)
-    f.BackgroundColor3=CARD;f.BorderSizePixel=0
-    Instance.new("UICorner",f).CornerRadius=UDim.new(0,8)
-    return f
-end
+-- ── CURRENT WORD banner ────────────────────────────────────────────────
+local wordBanner=Instance.new("Frame",BODY)
+wordBanner.Size=UDim2.new(1,0,0,70);wordBanner.BackgroundColor3=C.PANEL
+wordBanner.BorderSizePixel=0;corner(wordBanner,12)
+stroke(wordBanner,C.STROKE,1)
 
-local function bigBtn(txt,col,cb)
-    local b=Instance.new("TextButton",SC);b.Size=UDim2.new(1,0,0,38)
-    b.BackgroundColor3=col;b.Text=txt;b.TextColor3=WHITE
-    b.Font=Enum.Font.GothamBold;b.TextSize=13;b.BorderSizePixel=0
-    Instance.new("UICorner",b).CornerRadius=UDim.new(0,8)
-    b.MouseButton1Click:Connect(cb);return b
-end
+-- gradient-like top pink line
+local wTop=Instance.new("Frame",wordBanner)
+wTop.Size=UDim2.new(1,0,0,3);wTop.BackgroundColor3=C.PINK;wTop.BorderSizePixel=0
+local wTopGrad=Instance.new("UIGradient",wTop)
+wTopGrad.Color=ColorSequence.new{
+    ColorSequenceKeypoint.new(0,C.PINK),
+    ColorSequenceKeypoint.new(1,C.PINK2)
+}
 
--- word display
-local wordCard=card(56)
-local wTL=Instance.new("TextLabel",wordCard)
-wTL.Size=UDim2.new(1,0,0,16);wTL.Position=UDim2.new(0,12,0,6)
-wTL.BackgroundTransparency=1;wTL.Text="CURRENT WORD"
-wTL.TextColor3=PINK;wTL.Font=Enum.Font.GothamBold;wTL.TextSize=9
-wTL.TextXAlignment=Enum.TextXAlignment.Left
+local wordEyebrow=Instance.new("TextLabel",wordBanner)
+wordEyebrow.Size=UDim2.new(1,-16,0,14);wordEyebrow.Position=UDim2.new(0,14,0,10)
+wordEyebrow.BackgroundTransparency=1;wordEyebrow.Text="CURRENT WORD"
+wordEyebrow.TextColor3=C.PINK;wordEyebrow.Font=Enum.Font.GothamBold
+wordEyebrow.TextSize=8;wordEyebrow.TextXAlignment=Enum.TextXAlignment.Left
 
-nWord=Instance.new("TextLabel",wordCard)
-nWord.Size=UDim2.new(1,-16,0,28);nWord.Position=UDim2.new(0,12,0,22)
+nWord=Instance.new("TextLabel",wordBanner)
+nWord.Size=UDim2.new(1,-100,0,32);nWord.Position=UDim2.new(0,14,0,26)
 nWord.BackgroundTransparency=1;nWord.Text="—"
-nWord.TextColor3=WHITE;nWord.Font=Enum.Font.GothamBold
-nWord.TextSize=20;nWord.TextXAlignment=Enum.TextXAlignment.Left
+nWord.TextColor3=C.WHITE;nWord.Font=Enum.Font.GothamBold
+nWord.TextSize=26;nWord.TextXAlignment=Enum.TextXAlignment.Left
 
--- auto type toggle
-secHdr("Controls")
-local togCard=card(52)
+-- live status pill (top-right of word banner)
+local stPill=Instance.new("Frame",wordBanner)
+stPill.Size=UDim2.new(0,72,0,22);stPill.Position=UDim2.new(1,-82,0,10)
+stPill.BackgroundColor3=Color3.fromRGB(20,55,35);stPill.BorderSizePixel=0;corner(stPill,6)
 
-local togTitle=Instance.new("TextLabel",togCard)
-togTitle.Size=UDim2.new(0.5,0,1,0);togTitle.Position=UDim2.new(0,14,0,0)
-togTitle.BackgroundTransparency=1;togTitle.Text="Auto Type"
-togTitle.TextColor3=WHITE;togTitle.Font=Enum.Font.GothamBold
-togTitle.TextSize=14;togTitle.TextXAlignment=Enum.TextXAlignment.Left
+statusDot=Instance.new("Frame",stPill)
+statusDot.Size=UDim2.new(0,7,0,7);statusDot.Position=UDim2.new(0,8,0.5,-3.5)
+statusDot.BackgroundColor3=C.GREEN;statusDot.BorderSizePixel=0;corner(statusDot,4)
 
-local togSub=Instance.new("TextLabel",togCard)
-togSub.Size=UDim2.new(0.5,0,0,14);togSub.Position=UDim2.new(0,14,1,-20)
-togSub.BackgroundTransparency=1;togSub.Text="Auto-answers each word"
-togSub.TextColor3=LGRAY;togSub.Font=Enum.Font.Gotham;togSub.TextSize=9
-togSub.TextXAlignment=Enum.TextXAlignment.Left
+statusLbl=Instance.new("TextLabel",stPill)
+statusLbl.Size=UDim2.new(1,-20,1,0);statusLbl.Position=UDim2.new(0,20,0,0)
+statusLbl.BackgroundTransparency=1;statusLbl.Text="Active"
+statusLbl.TextColor3=C.GREEN;statusLbl.Font=Enum.Font.GothamBold;statusLbl.TextSize=9
+statusLbl.TextXAlignment=Enum.TextXAlignment.Left
+
+-- last word small label
+local lastLbl=Instance.new("TextLabel",wordBanner)
+lastLbl.Size=UDim2.new(1,-16,0,12);lastLbl.Position=UDim2.new(0,14,1,-18)
+lastLbl.BackgroundTransparency=1;lastLbl.Text="Waiting for word..."
+lastLbl.TextColor3=C.MUTED;lastLbl.Font=Enum.Font.Gotham;lastLbl.TextSize=9
+lastLbl.TextXAlignment=Enum.TextXAlignment.Left
+
+-- update word display to also refresh lastLbl
+local _origOnWord=onWordFound
+onWordFound=function(w)
+    w=w:lower()
+    if w==currentWord then return end
+    currentWord=w
+    if nWord then
+        nWord.Text=w:upper()
+        lastLbl.Text="Last: "..w:upper().."  •  "..(botEnabled and "Submitting..." or "Bot off")
+    end
+    if botEnabled then task.delay(submitDelay,function()submitAnswer(w)end) end
+end
+
+-- spacer
+local sp1=Instance.new("Frame",BODY);sp1.Size=UDim2.new(1,0,0,8);sp1.BackgroundTransparency=1
+
+-- ── AUTO TYPE TOGGLE ───────────────────────────────────────────────────
+sectionLabel("Bot Controls")
+
+local togRow0=Instance.new("Frame",BODY)
+togRow0.Size=UDim2.new(1,0,0,54);togRow0.BackgroundColor3=C.PANEL
+togRow0.BorderSizePixel=0;corner(togRow0,12);stroke(togRow0,C.STROKE,1)
+
+local togIcon=Instance.new("Frame",togRow0)
+togIcon.Size=UDim2.new(0,34,0,34);togIcon.Position=UDim2.new(0,12,0.5,-17)
+togIcon.BackgroundColor3=Color3.fromRGB(60,20,50);togIcon.BorderSizePixel=0;corner(togIcon,9)
+local togIconL=Instance.new("TextLabel",togIcon)
+togIconL.Size=UDim2.new(1,0,1,0);togIconL.BackgroundTransparency=1
+togIconL.Text="⌨";togIconL.TextColor3=C.PINK;togIconL.Font=Enum.Font.Gotham;togIconL.TextSize=17
+
+local togTitleL=Instance.new("TextLabel",togRow0)
+togTitleL.Size=UDim2.new(0,120,0,18);togTitleL.Position=UDim2.new(0,54,0,9)
+togTitleL.BackgroundTransparency=1;togTitleL.Text="Auto Type"
+togTitleL.TextColor3=C.WHITE;togTitleL.Font=Enum.Font.GothamBold
+togTitleL.TextSize=13;togTitleL.TextXAlignment=Enum.TextXAlignment.Left
+
+local togSubL=Instance.new("TextLabel",togRow0)
+togSubL.Size=UDim2.new(0,140,0,12);togSubL.Position=UDim2.new(0,54,0,29)
+togSubL.BackgroundTransparency=1;togSubL.Text="Auto-answers each round"
+togSubL.TextColor3=C.MUTED;togSubL.Font=Enum.Font.Gotham
+togSubL.TextSize=9;togSubL.TextXAlignment=Enum.TextXAlignment.Left
 
 local togSt=true
-local togPill=Instance.new("TextButton",togCard)
-togPill.Size=UDim2.new(0,52,0,26);togPill.Position=UDim2.new(1,-64,0.5,-13)
-togPill.BackgroundColor3=PINK;togPill.Text="";togPill.BorderSizePixel=0
-Instance.new("UICorner",togPill).CornerRadius=UDim.new(1,0)
+local togPill=Instance.new("TextButton",togRow0)
+togPill.Size=UDim2.new(0,50,0,26);togPill.Position=UDim2.new(1,-62,0.5,-13)
+togPill.BackgroundColor3=C.PINK;togPill.Text="";togPill.BorderSizePixel=0;corner(togPill,13)
 
 local togKnob=Instance.new("Frame",togPill)
 togKnob.Size=UDim2.new(0,20,0,20);togKnob.Position=UDim2.new(1,-22,0.5,-10)
-togKnob.BackgroundColor3=WHITE;togKnob.BorderSizePixel=0
-Instance.new("UICorner",togKnob).CornerRadius=UDim.new(1,0)
+togKnob.BackgroundColor3=C.WHITE;togKnob.BorderSizePixel=0;corner(togKnob,10)
 
-local togSL=Instance.new("TextLabel",togPill)
-togSL.Size=UDim2.new(1,0,0,10);togSL.Position=UDim2.new(0,4,0.5,-5)
-togSL.BackgroundTransparency=1;togSL.Text="ON"
-togSL.TextColor3=WHITE;togSL.Font=Enum.Font.GothamBold;togSL.TextSize=8
-togSL.TextXAlignment=Enum.TextXAlignment.Left
-
-local TI=TweenInfo.new(0.15)
 togPill.MouseButton1Click:Connect(function()
     togSt=not togSt;botEnabled=togSt
-    TW:Create(togPill,TI,{BackgroundColor3=togSt and PINK or GRAY}):Play()
-    TW:Create(togKnob,TI,{Position=togSt and UDim2.new(1,-22,0.5,-10) or UDim2.new(0,2,0.5,-10)}):Play()
-    togSL.Text=togSt and "ON" or ""
+    TW:Create(togPill,TI15,{BackgroundColor3=togSt and C.PINK or C.GRAY}):Play()
+    TW:Create(togKnob,TI15,{Position=togSt and UDim2.new(1,-22,0.5,-10) or UDim2.new(0,2,0.5,-10)}):Play()
+    if statusDot then
+        TW:Create(statusDot,TI15,{BackgroundColor3=togSt and C.GREEN or C.GRAY}):Play()
+        TW:Create(statusLbl,TI15,{TextColor3=togSt and C.GREEN or C.MUTED}):Play()
+        statusLbl.Text=togSt and "Active" or "Paused"
+        local pillBg=Color3.fromRGB(togSt and 20 or 40,togSt and 55 or 40,togSt and 35 or 40)
+        TW:Create(stPill,TI15,{BackgroundColor3=pillBg}):Play()
+    end
 end)
 
-local delCard=card(42)
-local delV=50
-local delLbl=Instance.new("TextLabel",delCard)
-delLbl.Size=UDim2.new(0.6,0,1,0);delLbl.Position=UDim2.new(0,14,0,0)
-delLbl.BackgroundTransparency=1;delLbl.Text="Submit Delay:  50ms"
-delLbl.TextColor3=LGRAY;delLbl.Font=Enum.Font.Gotham;delLbl.TextSize=12
-delLbl.TextXAlignment=Enum.TextXAlignment.Left
+local sp2=Instance.new("Frame",BODY);sp2.Size=UDim2.new(1,0,0,6);sp2.BackgroundTransparency=1
 
-local function delBtnMk(sign,xp)
-    local b=Instance.new("TextButton",delCard)
-    b.Size=UDim2.new(0,28,0,22);b.Position=xp
-    b.BackgroundColor3=CARD2;b.Text=sign;b.TextColor3=WHITE
-    b.Font=Enum.Font.GothamBold;b.TextSize=14;b.BorderSizePixel=0
-    Instance.new("UICorner",b).CornerRadius=UDim.new(0,5)
+-- delay row
+local delRow=Instance.new("Frame",BODY)
+delRow.Size=UDim2.new(1,0,0,44);delRow.BackgroundColor3=C.PANEL
+delRow.BorderSizePixel=0;corner(delRow,12);stroke(delRow,C.STROKE,1)
+
+local delLblL=Instance.new("TextLabel",delRow)
+delLblL.Size=UDim2.new(0.55,0,1,0);delLblL.Position=UDim2.new(0,14,0,0)
+delLblL.BackgroundTransparency=1;delLblL.Text="Submit Delay"
+delLblL.TextColor3=C.OFFWH;delLblL.Font=Enum.Font.GothamBold;delLblL.TextSize=12
+delLblL.TextXAlignment=Enum.TextXAlignment.Left
+
+local delVal=Instance.new("TextLabel",delRow)
+delVal.Size=UDim2.new(0,36,0,22);delVal.Position=UDim2.new(1,-120,0.5,-11)
+delVal.BackgroundColor3=C.CARD2;delVal.BorderSizePixel=0;corner(delVal,6)
+delVal.Text="50ms";delVal.TextColor3=C.PINK2;delVal.Font=Enum.Font.GothamBold;delVal.TextSize=11
+
+local dV=50
+local function mkDelBtn(sign,xPos)
+    local b=Instance.new("TextButton",delRow)
+    b.Size=UDim2.new(0,28,0,26);b.Position=xPos
+    b.BackgroundColor3=C.CARD2;b.Text=sign;b.TextColor3=C.WHITE
+    b.Font=Enum.Font.GothamBold;b.TextSize=15;b.BorderSizePixel=0;corner(b,7)
     b.MouseButton1Click:Connect(function()
-        delV=math.clamp(delV+(sign=="-" and -10 or 10),0,2000)
-        delLbl.Text="Submit Delay:  "..delV.."ms";submitDelay=delV/1000
+        dV=math.clamp(dV+(sign=="-" and -10 or 10),0,2000)
+        delVal.Text=dV.."ms";submitDelay=dV/1000
     end)
 end
-delBtnMk("-",UDim2.new(0.64,0,0.5,-11))
-delBtnMk("+",UDim2.new(0.82,0,0.5,-11))
+mkDelBtn("-",UDim2.new(1,-86,0.5,-13))
+mkDelBtn("+",UDim2.new(1,-52,0.5,-13))
 
--- stats grid
-secHdr("Session Stats")
-local gridFrame=Instance.new("Frame",SC)
-gridFrame.Size=UDim2.new(1,0,0,0);gridFrame.AutomaticSize=Enum.AutomaticSize.Y
-gridFrame.BackgroundTransparency=1;gridFrame.BorderSizePixel=0
-local gridLL=Instance.new("UIGridLayout",gridFrame)
-gridLL.CellSize=UDim2.new(0.5,-4,0,52);gridLL.CellPadding=UDim2.new(0,6,0,6)
-gridLL.SortOrder=Enum.SortOrder.LayoutOrder
+local sp3=Instance.new("Frame",BODY);sp3.Size=UDim2.new(1,0,0,10);sp3.BackgroundTransparency=1
+divider()
+local sp4=Instance.new("Frame",BODY);sp4.Size=UDim2.new(1,0,0,10);sp4.BackgroundTransparency=1
 
-local function statCell(label,color)
-    local f=Instance.new("Frame",gridFrame);f.BackgroundColor3=CARD;f.BorderSizePixel=0
-    Instance.new("UICorner",f).CornerRadius=UDim.new(0,8)
-    local bar=Instance.new("Frame",f);bar.Size=UDim2.new(1,0,0,3)
-    bar.BackgroundColor3=color;bar.BorderSizePixel=0
-    Instance.new("UICorner",bar).CornerRadius=UDim.new(0,8)
-    local fix=Instance.new("Frame",bar);fix.Size=UDim2.new(1,0,0.5,0);fix.Position=UDim2.new(0,0,0.5,0)
-    fix.BackgroundColor3=color;fix.BorderSizePixel=0
-    local val=Instance.new("TextLabel",f)
-    val.Size=UDim2.new(1,-8,1,-4);val.Position=UDim2.new(0,8,0,4)
-    val.BackgroundTransparency=1;val.Text=label.."\n0"
-    val.TextColor3=WHITE;val.Font=Enum.Font.GothamBold;val.TextSize=12
-    val.TextXAlignment=Enum.TextXAlignment.Left;val.TextYAlignment=Enum.TextYAlignment.Center
-    val.TextWrapped=true;val.LineHeight=1.3
-    return val
+-- ── STATS GRID ─────────────────────────────────────────────────────────
+sectionLabel("Session Stats")
+local sp5=Instance.new("Frame",BODY);sp5.Size=UDim2.new(1,0,0,4);sp5.BackgroundTransparency=1
+
+local statsOuter=Instance.new("Frame",BODY)
+statsOuter.Size=UDim2.new(1,0,0,0);statsOuter.AutomaticSize=Enum.AutomaticSize.Y
+statsOuter.BackgroundTransparency=1;statsOuter.BorderSizePixel=0
+
+local statsGrid=Instance.new("UIGridLayout",statsOuter)
+statsGrid.CellSize=UDim2.new(0.5,-4,0,58);statsGrid.CellPadding=UDim2.new(0,8,0,8)
+statsGrid.SortOrder=Enum.SortOrder.LayoutOrder
+
+local STAT_DEFS={
+    {"Words","0",C.PINK,   "⌨"},
+    {"Avg WPM","0",C.PINK2, "⚡"},
+    {"Best WPM","0",C.GOLD, "🏆"},
+    {"Mistakes","0",C.RED,  "✗"},
+    {"Accuracy","100%",C.GREEN,"✓"},
+}
+
+local statRefs={}
+for _,d in ipairs(STAT_DEFS) do
+    local label,init,col,icon=d[1],d[2],d[3],d[4]
+    local f=Instance.new("Frame",statsOuter);f.BackgroundColor3=C.PANEL;f.BorderSizePixel=0;corner(f,12)
+    stroke(f,C.STROKE,1)
+
+    -- top colour strip
+    local strip=Instance.new("Frame",f);strip.Size=UDim2.new(1,0,0,3)
+    strip.BackgroundColor3=col;strip.BorderSizePixel=0;corner(strip,3)
+    local stripFix=Instance.new("Frame",strip);stripFix.Size=UDim2.new(1,0,0.5,0);stripFix.Position=UDim2.new(0,0,0.5,0)
+    stripFix.BackgroundColor3=col;stripFix.BorderSizePixel=0
+
+    local iconL=Instance.new("TextLabel",f)
+    iconL.Size=UDim2.new(0,18,0,14);iconL.Position=UDim2.new(0,10,0,10)
+    iconL.BackgroundTransparency=1;iconL.Text=icon
+    iconL.TextColor3=col;iconL.Font=Enum.Font.Gotham;iconL.TextSize=12
+
+    local valL=Instance.new("TextLabel",f)
+    valL.Size=UDim2.new(1,-10,0,24);valL.Position=UDim2.new(0,10,0,24)
+    valL.BackgroundTransparency=1;valL.Text=init
+    valL.TextColor3=C.WHITE;valL.Font=Enum.Font.GothamBold;valL.TextSize=20
+    valL.TextXAlignment=Enum.TextXAlignment.Left
+
+    local nameL=Instance.new("TextLabel",f)
+    nameL.Size=UDim2.new(1,-10,0,12);nameL.Position=UDim2.new(0,10,1,-16)
+    nameL.BackgroundTransparency=1;nameL.Text=label:upper()
+    nameL.TextColor3=C.MUTED;nameL.Font=Enum.Font.GothamBold;nameL.TextSize=8
+    nameL.TextXAlignment=Enum.TextXAlignment.Left
+
+    statRefs[#statRefs+1]=valL
 end
 
-nWords=statCell("Words Typed",PINK)
-nWpm=statCell("Avg WPM",PINK2)
-nBest=statCell("Best WPM",Color3.fromRGB(255,200,60))
-nMist=statCell("Mistakes",Color3.fromRGB(220,70,70))
-nAcc=statCell("Accuracy",GREEN)
-nWords.Text="Words Typed\n0";nWpm.Text="Avg WPM\n0"
-nBest.Text="Best WPM\n0";nMist.Text="Mistakes\n0";nAcc.Text="Accuracy\n100%"
+nWords=statRefs[1];nWpm=statRefs[2];nBest=statRefs[3];nMist=statRefs[4];nAcc=statRefs[5]
 
-secHdr("Actions")
-bigBtn("▶  Submit Word Now",PINK,function()
+-- override updateStats to use raw value labels
+local function updateStats2()
+    local wpm=getWPM()
+    if wpm>bestWPM then bestWPM=wpm end
+    local acc=wordsTyped==0 and 100 or math.floor(((wordsTyped-mistakes)/wordsTyped)*100)
+    nWords.Text=tostring(wordsTyped)
+    nWpm.Text=tostring(wpm)
+    nBest.Text=tostring(bestWPM)
+    nMist.Text=tostring(mistakes)
+    nAcc.Text=acc.."%"
+end
+updateStats=updateStats2
+
+local sp6=Instance.new("Frame",BODY);sp6.Size=UDim2.new(1,0,0,10);sp6.BackgroundTransparency=1
+divider()
+local sp7=Instance.new("Frame",BODY);sp7.Size=UDim2.new(1,0,0,10);sp7.BackgroundTransparency=1
+
+-- ── ACTION BUTTONS ─────────────────────────────────────────────────────
+sectionLabel("Actions")
+local sp8=Instance.new("Frame",BODY);sp8.Size=UDim2.new(1,0,0,4);sp8.BackgroundTransparency=1
+
+local function actionBtn(txt,col,textCol,cb)
+    local b=Instance.new("TextButton",BODY)
+    b.Size=UDim2.new(1,0,0,42);b.BackgroundColor3=col
+    b.Text=txt;b.TextColor3=textCol or C.WHITE
+    b.Font=Enum.Font.GothamBold;b.TextSize=13;b.BorderSizePixel=0;corner(b,12)
+    b.MouseButton1Click:Connect(cb)
+    local sp=Instance.new("Frame",BODY);sp.Size=UDim2.new(1,0,0,6);sp.BackgroundTransparency=1
+    return b
+end
+
+actionBtn("▶  Submit Word Now",C.PINK,C.WHITE,function()
     if currentWord=="" then notify("No word","Nothing captured yet.",3);return end
     submitAnswer(currentWord);notify("Submitted!",currentWord:upper(),2)
 end)
-bigBtn("🔄  Re-scan Remotes",CARD2,function()
+
+actionBtn("🔄  Re-scan All Remotes",C.CARD2,C.OFFWH,function()
     answerRemote=nil;hookIncoming()
     for _,root in ipairs(SCAN_ROOTS) do pcall(function()hookSVs(root)end) end
     notify("Re-scanned","Hooks refreshed.",2)
 end)
-bigBtn("📊  Reset Stats",CARD2,function()
+
+actionBtn("📊  Reset Session Stats",C.CARD2,C.OFFWH,function()
     sessionStart=os.clock();wordsTyped=0;bestWPM=0;mistakes=0;updateStats()
-    notify("Stats Reset","Session cleared.",2)
+    notify("Reset","Stats cleared.",2)
 end)
 
-secHdr("Player")
-local function togRow(txt,def,cb)
-    local f=Instance.new("Frame",SC);f.Size=UDim2.new(1,0,0,40)
-    f.BackgroundColor3=CARD;f.BorderSizePixel=0
-    Instance.new("UICorner",f).CornerRadius=UDim.new(0,8)
-    local l=Instance.new("TextLabel",f);l.Size=UDim2.new(1,-60,1,0);l.Position=UDim2.new(0,12,0,0)
-    l.BackgroundTransparency=1;l.Text=txt;l.TextColor3=LGRAY
-    l.Font=Enum.Font.Gotham;l.TextSize=12;l.TextXAlignment=Enum.TextXAlignment.Left
+divider()
+local sp9=Instance.new("Frame",BODY);sp9.Size=UDim2.new(1,0,0,10);sp9.BackgroundTransparency=1
+
+-- ── PLAYER ─────────────────────────────────────────────────────────────
+sectionLabel("Player")
+local sp10=Instance.new("Frame",BODY);sp10.Size=UDim2.new(1,0,0,4);sp10.BackgroundTransparency=1
+
+local function playerTog(txt,sub,icon,def,cb)
+    local f=Instance.new("Frame",BODY)
+    f.Size=UDim2.new(1,0,0,52);f.BackgroundColor3=C.PANEL;f.BorderSizePixel=0
+    corner(f,12);stroke(f,C.STROKE,1)
+
+    local ic=Instance.new("Frame",f);ic.Size=UDim2.new(0,32,0,32);ic.Position=UDim2.new(0,12,0.5,-16)
+    ic.BackgroundColor3=C.CARD2;ic.BorderSizePixel=0;corner(ic,8)
+    local icL=Instance.new("TextLabel",ic);icL.Size=UDim2.new(1,0,1,0);icL.BackgroundTransparency=1
+    icL.Text=icon;icL.TextColor3=C.MUTED;icL.Font=Enum.Font.Gotham;icL.TextSize=16
+
+    local tL=Instance.new("TextLabel",f);tL.Size=UDim2.new(0.55,0,0,18);tL.Position=UDim2.new(0,52,0,9)
+    tL.BackgroundTransparency=1;tL.Text=txt
+    tL.TextColor3=C.WHITE;tL.Font=Enum.Font.GothamBold;tL.TextSize=12;tL.TextXAlignment=Enum.TextXAlignment.Left
+    local sL=Instance.new("TextLabel",f);sL.Size=UDim2.new(0.55,0,0,12);sL.Position=UDim2.new(0,52,0,29)
+    sL.BackgroundTransparency=1;sL.Text=sub
+    sL.TextColor3=C.MUTED;sL.Font=Enum.Font.Gotham;sL.TextSize=9;sL.TextXAlignment=Enum.TextXAlignment.Left
+
     local st=def
-    local pi=Instance.new("TextButton",f)
-    pi.Size=UDim2.new(0,44,0,22);pi.Position=UDim2.new(1,-52,0.5,-11)
-    pi.BackgroundColor3=st and GREEN or GRAY;pi.Text="";pi.BorderSizePixel=0
-    Instance.new("UICorner",pi).CornerRadius=UDim.new(1,0)
-    local kn=Instance.new("Frame",pi);kn.Size=UDim2.new(0,16,0,16)
-    kn.Position=st and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,3,0.5,-8)
-    kn.BackgroundColor3=WHITE;kn.BorderSizePixel=0
-    Instance.new("UICorner",kn).CornerRadius=UDim.new(1,0)
-    pi.MouseButton1Click:Connect(function()
+    local pill=Instance.new("TextButton",f);pill.Size=UDim2.new(0,44,0,24);pill.Position=UDim2.new(1,-56,0.5,-12)
+    pill.BackgroundColor3=st and C.GREEN or C.GRAY;pill.Text="";pill.BorderSizePixel=0;corner(pill,12)
+    local kn=Instance.new("Frame",pill);kn.Size=UDim2.new(0,18,0,18)
+    kn.Position=st and UDim2.new(1,-20,0.5,-9) or UDim2.new(0,3,0.5,-9)
+    kn.BackgroundColor3=C.WHITE;kn.BorderSizePixel=0;corner(kn,9)
+    pill.MouseButton1Click:Connect(function()
         st=not st
-        TW:Create(pi,TI,{BackgroundColor3=st and GREEN or GRAY}):Play()
-        TW:Create(kn,TI,{Position=st and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,3,0.5,-8)}):Play()
+        TW:Create(pill,TI15,{BackgroundColor3=st and C.GREEN or C.GRAY}):Play()
+        TW:Create(kn,TI15,{Position=st and UDim2.new(1,-20,0.5,-9) or UDim2.new(0,3,0.5,-9)}):Play()
         cb(st)
     end)
+
+    local spf=Instance.new("Frame",BODY);spf.Size=UDim2.new(1,0,0,6);spf.BackgroundTransparency=1
 end
 
-togRow("Infinite Jump",false,function(v)infJump=v end)
-togRow("Anti-AFK",false,function(v)antiAFK=v end)
-bigBtn("💀  Reset Character",Color3.fromRGB(155,40,40),function()
+playerTog("Infinite Jump","Hold jump to fly","↑",false,function(v)infJump=v end)
+playerTog("Anti-AFK","Prevents auto-kick","⏱",false,function(v)antiAFK=v end)
+
+actionBtn("💀  Reset Character",Color3.fromRGB(100,20,20),C.OFFWH,function()
     local h=getHumanoid();if h then pcall(function()h.Health=0 end) end
 end)
 
-notify("Preppy Hub | "..GAME_NAME,"Ready  •  Auto Type ON  •  "..(isMobile and "iPad" or "PC"),4)
-if not _h2ok then notify("Preppy Hub","Events only — __namecall unavailable",4) end
+-- footer
+local footerF=Instance.new("Frame",BODY);footerF.Size=UDim2.new(1,0,0,28);footerF.BackgroundTransparency=1
+local footerL=Instance.new("TextLabel",footerF)
+footerL.Size=UDim2.new(1,0,1,0);footerL.BackgroundTransparency=1
+footerL.Text="Preppy Hub  •  Spelling Bee  •  "..(IS_KNOWN and "Known game" or "Universal")
+footerL.TextColor3=C.GRAY;footerL.Font=Enum.Font.Gotham;footerL.TextSize=9
+
+local sp_end=Instance.new("Frame",BODY);sp_end.Size=UDim2.new(1,0,0,6);sp_end.BackgroundTransparency=1
+
+notify("Preppy Hub | "..GAME_NAME,"Ready  •  Auto Type ON",4)
+if not _h2ok then notify("Preppy Hub","__namecall unavailable — event hooks only",4) end
