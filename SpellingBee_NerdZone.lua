@@ -75,7 +75,7 @@ local UI_BL = {
 
 local function looksLikeWord(s)
     if type(s) ~= "string" then return false end
-    if #s < 2 or #s > 50 then return false end  -- 45 = longest English word
+    if #s < 2 or #s > 100 then return false end  -- covers any real word
     if not s:match("^%a+$") then return false end
     return not UI_BL[s:lower()]
 end
@@ -90,22 +90,50 @@ local function onWordFound(w)
     if botEnabled then task.delay(submitDelay, function() submitAnswer(w) end) end
 end
 
-local ANSWER_KEYS = {"submit","answer","spell","type","guess","check","input"}
+-- Broad keyword list — covers NerdZone Spelling Bee, Scary Spelling Bee,
+-- Bean Cans Spelling Bee and any other spelling/word game
+local ANSWER_KEYS = {
+    "submit","answer","spell","type","guess","check","input",
+    "word","attempt","confirm","enter","send","fire","respond",
+    "bean","can","scary","horror","spook","round","solve",
+}
 local function isAnswerRemote(name)
     local n = name:lower()
     for _, k in ipairs(ANSWER_KEYS) do if n:find(k,1,true) then return true end end
     return false
 end
 
+-- Search every container for a matching answer remote
 local function findAnswerRemote()
     if answerRemote and answerRemote.Parent then return answerRemote end
     answerRemote = nil
-    for _, r in ipairs(RS:GetDescendants()) do
-        if r:IsA("RemoteEvent") and isAnswerRemote(r.Name) then
-            answerRemote = r; return r
-        end
+    for _, root in ipairs(SCAN_ROOTS) do
+        local ok, r = pcall(function()
+            for _, obj in ipairs(root:GetDescendants()) do
+                if obj:IsA("RemoteEvent") and isAnswerRemote(obj.Name) then
+                    return obj
+                end
+            end
+        end)
+        if ok and r then answerRemote = r; return r end
     end
     return nil
+end
+
+-- Last-resort: fire every RemoteEvent in RS + WS with the word.
+-- Used when no named answer remote is found (unknown game structure).
+local function fireAllRemotes(word)
+    local fired = false
+    local function blast(root)
+        for _, r in ipairs(root:GetDescendants()) do
+            if r:IsA("RemoteEvent") then
+                pcall(function() r:FireServer(word) end)
+                fired = true
+            end
+        end
+    end
+    blast(RS); blast(WS)
+    return fired
 end
 
 -- Genius-level static typing: 40 ms per character, no randomness
@@ -125,11 +153,14 @@ local function humanTypeBox(box, word)
 end
 
 local function fireAnswer(word)
+    task.wait(#word * CHAR_MS)  -- typing time delay regardless of path
     local r = findAnswerRemote()
-    if not r then return false end
-    task.wait(#word * CHAR_MS)  -- same timing as if typed
-    pcall(function() r:FireServer(word) end)
-    return true
+    if r then
+        pcall(function() r:FireServer(word) end)
+        return true
+    end
+    -- No named remote found — broadcast to all (unknown game fallback)
+    return fireAllRemotes(word)
 end
 
 local function boxSubmit(word)
@@ -174,9 +205,14 @@ local function hookOne(remote)
     end)
 end
 
+-- Hook every RemoteEvent across all game containers
 local function hookIncoming()
-    for _, r in ipairs(RS:GetDescendants()) do
-        if r:IsA("RemoteEvent") then hookOne(r) end
+    for _, root in ipairs(SCAN_ROOTS) do
+        pcall(function()
+            for _, r in ipairs(root:GetDescendants()) do
+                if r:IsA("RemoteEvent") then hookOne(r) end
+            end
+        end)
     end
 end
 
@@ -187,10 +223,16 @@ local function installNamecallHook()
         namecallHook = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             local m = getnamecallmethod()
             if (m=="FireServer" or m=="InvokeServer")
-            and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction"))
-            and isAnswerRemote(self.Name) then
-                if self:IsA("RemoteEvent") and not answerRemote then answerRemote=self end
-                if botEnabled and currentWord~="" then return namecallHook(self, currentWord) end
+            and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
+                local args = {...}
+                -- Learn: if anyone fires a remote with a word-like string, it's likely the answer remote
+                if self:IsA("RemoteEvent") and #args >= 1 and looksLikeWord(args[1]) then
+                    answerRemote = self
+                end
+                -- Override: if it's a known answer remote and bot is on, inject our word
+                if isAnswerRemote(self.Name) and botEnabled and currentWord ~= "" then
+                    return namecallHook(self, currentWord)
+                end
             end
             return namecallHook(self, ...)
         end))
@@ -205,7 +247,11 @@ local function watchSV(sv)
     if looksLikeWord(sv.Value) then onWordFound(sv.Value) end
 end
 
-local SV_KEYS = {"word","spell","current","target","prompt","letter","round"}
+-- Intentionally broad — catches any StringValue whose name hints at a word/prompt
+local SV_KEYS = {
+    "word","spell","current","target","prompt","letter","round",
+    "question","answer","display","show","text","challenge","bean","scary",
+}
 local function isSVKey(name)
     local n = name:lower()
     for _, k in ipairs(SV_KEYS) do if n:find(k,1,true) then return true end end
@@ -217,6 +263,17 @@ local function hookSVs(root)
         if obj:IsA("StringValue") and isSVKey(obj.Name) then watchSV(obj) end
     end
 end
+
+-- All game containers to scan — covers every service that can hold remotes/values
+local SCAN_ROOTS = {
+    RS,
+    WS,
+    game:GetService("ReplicatedFirst"),
+    PGui,
+    LP,
+}
+pcall(function() table.insert(SCAN_ROOTS, LP.Backpack) end)
+pcall(function() table.insert(SCAN_ROOTS, LP.Character) end)
 
 local function scanLabels(root)
     local best, score = nil, -1
@@ -541,15 +598,30 @@ local _sp=Instance.new("Frame",SC); _sp.Size=UDim2.new(1,0,0,8); _sp.BackgroundT
 --  INSTALL HOOKS
 -- ═══════════════════════════════════════════════════════════════════════
 
-hookIncoming(); hookSVs(RS); hookSVs(WS)
+-- Hook every root once
+hookIncoming()
+for _, root in ipairs(SCAN_ROOTS) do
+    pcall(function() hookSVs(root) end)
+end
 local _h2ok = installNamecallHook()
 
-RS.DescendantAdded:Connect(function(obj)
-    if obj:IsA("RemoteEvent") then task.wait(); hookOne(obj)
-    elseif obj:IsA("StringValue") and isSVKey(obj.Name) then watchSV(obj) end
+-- Auto-hook anything that appears anywhere in the game after load
+-- (covers late-replicated remotes in Scary Spelling Bee, Bean Cans, etc.)
+game.DescendantAdded:Connect(function(obj)
+    if obj:IsA("RemoteEvent") then
+        task.wait()
+        hookOne(obj)
+    elseif obj:IsA("StringValue") and isSVKey(obj.Name) then
+        watchSV(obj)
+    end
 end)
-WS.DescendantAdded:Connect(function(obj)
-    if obj:IsA("StringValue") and isSVKey(obj.Name) then watchSV(obj) end
+
+-- Re-hook character remotes whenever the player respawns
+LP.CharacterAdded:Connect(function(char)
+    task.wait(1)
+    for _, r in ipairs(char:GetDescendants()) do
+        if r:IsA("RemoteEvent") then hookOne(r) end
+    end
 end)
 
 notify("Preppy Hub  |  Spelling Bee",
