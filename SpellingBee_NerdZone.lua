@@ -201,58 +201,122 @@ end
 
 -- ═══════════════════════════════════════════════════════════════════════
 --  HOOKS
+--  Technique sourced from repo's src/tabs/05_remotespy.lua +
+--  src/core/02_bridge.lua  (ChildAdded live-watch pattern)
 -- ═══════════════════════════════════════════════════════════════════════
 
+-- Scan all args (any depth) for a word-like value; return it or nil
+local function extractWord(args)
+    for _, v in ipairs(args) do
+        if looksLikeWord(v) then return v end
+        if type(v) == "table" then
+            for _, tv in pairs(v) do
+                if looksLikeWord(tv) then return tv end
+            end
+        end
+        if type(v) == "string" then
+            local w = v:match("([%a][%a]+)")
+            if w and looksLikeWord(w) then return w end
+        end
+    end
+end
+
+-- Hook one RemoteEvent for incoming server→client words (OnClientEvent)
 local _hooked = {}
 local function hookOne(remote)
     if _hooked[remote] then return end
     _hooked[remote] = true
     remote.OnClientEvent:Connect(function(...)
-        for _, v in ipairs({...}) do
-            if looksLikeWord(v) then onWordFound(v); return
-            elseif type(v) == "table" then
-                for _, tv in pairs(v) do
-                    if looksLikeWord(tv) then onWordFound(tv); return end
-                end
-            elseif type(v) == "string" then
-                local w = v:match("([%a][%a]+)")
-                if w and looksLikeWord(w) then onWordFound(w); return end
-            end
-        end
+        local w = extractWord({...})
+        if w then task.spawn(onWordFound, w) end
     end)
 end
 
--- Hook every RemoteEvent across all game containers
+-- Also hook RemoteFunction.OnClientInvoke for games that use RF to deliver words
+local _hookedRF = {}
+local function hookOneRF(rf)
+    if _hookedRF[rf] then return end
+    _hookedRF[rf] = true
+    rf.OnClientInvoke = function(...)
+        local w = extractWord({...})
+        if w then task.spawn(onWordFound, w) end
+    end
+end
+
+-- Hook every RE + RF across all game containers
 local function hookIncoming()
     for _, root in ipairs(SCAN_ROOTS) do
         pcall(function()
             for _, r in ipairs(root:GetDescendants()) do
-                if r:IsA("RemoteEvent") then hookOne(r) end
+                if r:IsA("RemoteEvent")    then hookOne(r)
+                elseif r:IsA("RemoteFunction") then hookOneRF(r) end
             end
         end)
     end
 end
 
-local namecallHook
+-- ── __namecall hook (from 05_remotespy.lua pattern) ────────────────────
+-- Uses `local _old; _old =` so the upvalue is valid inside the closure.
+-- Intercepts FireServer + InvokeServer outgoing calls to:
+--   1. Learn which remote the game uses for answers
+--   2. Inject our word when the player would have fired manually
 local function installNamecallHook()
     if not hookmetamethod or not newcclosure or not getnamecallmethod then return false end
-    return pcall(function()
-        namecallHook = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+    local ok = pcall(function()
+        local _old; _old = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             local m = getnamecallmethod()
-            if (m=="FireServer" or m=="InvokeServer")
-            and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
-                local args = {...}
-                -- Learn: if anyone fires a remote with a word-like string, it's likely the answer remote
-                if self:IsA("RemoteEvent") and #args >= 1 and looksLikeWord(args[1]) then
-                    answerRemote = self
-                end
-                -- Override: if it's a known answer remote and bot is on, inject our word
-                if isAnswerRemote(self.Name) and botEnabled and currentWord ~= "" then
-                    return namecallHook(self, currentWord)
+
+            -- Only care about outgoing remote calls
+            if m == "FireServer" or m == "InvokeServer" then
+                local isRE = pcall(function() return self:IsA("RemoteEvent") end)
+                local isRF = pcall(function() return self:IsA("RemoteFunction") end)
+
+                if isRE or isRF then
+                    -- Clean name (matches remotespy's tostring trick)
+                    local rname = tostring(self):match("^(.+) %(") or tostring(self)
+
+                    -- Learn: any outgoing call whose first arg looks like a word
+                    -- is almost certainly the answer submission remote
+                    local args = {...}
+                    local learnedWord = extractWord(args)
+                    if learnedWord and self:IsA("RemoteEvent") then
+                        answerRemote = self
+                    end
+
+                    -- Override: known answer remote + bot on → inject our word
+                    if isAnswerRemote(rname) and botEnabled and currentWord ~= "" then
+                        if self:IsA("RemoteEvent") then
+                            answerRemote = self
+                            return _old(self, currentWord)
+                        end
+                    end
                 end
             end
-            return namecallHook(self, ...)
+
+            return _old(self, ...)
         end))
+    end)
+    return ok
+end
+
+-- ── Live remote watcher (from src/core/02_bridge.lua pattern) ──────────
+-- Watches ChildAdded at the top level of each container AND DescendantAdded
+-- on the whole game for anything deeper. Covers late-replicated remotes.
+local function startLiveWatch()
+    -- Per-container top-level watch
+    for _, root in ipairs(SCAN_ROOTS) do
+        pcall(function()
+            root.ChildAdded:Connect(function(ch)
+                if ch:IsA("RemoteEvent")    then task.wait(); hookOne(ch)
+                elseif ch:IsA("RemoteFunction") then task.wait(); hookOneRF(ch) end
+            end)
+        end)
+    end
+    -- Deep watch for everything else anywhere in the game
+    game.DescendantAdded:Connect(function(obj)
+        if obj:IsA("RemoteEvent")    then task.wait(); hookOne(obj)
+        elseif obj:IsA("RemoteFunction") then task.wait(); hookOneRF(obj)
+        elseif obj:IsA("StringValue") and isSVKey(obj.Name) then watchSV(obj) end
     end)
 end
 
@@ -615,29 +679,24 @@ local _sp=Instance.new("Frame",SC); _sp.Size=UDim2.new(1,0,0,8); _sp.BackgroundT
 --  INSTALL HOOKS
 -- ═══════════════════════════════════════════════════════════════════════
 
--- Hook every root once
+-- Hook every known remote + StringValue right now
 hookIncoming()
 for _, root in ipairs(SCAN_ROOTS) do
     pcall(function() hookSVs(root) end)
 end
+
+-- Install __namecall intercept (remotespy technique)
 local _h2ok = installNamecallHook()
 
--- Auto-hook anything that appears anywhere in the game after load
--- (covers late-replicated remotes in Scary Spelling Bee, Bean Cans, etc.)
-game.DescendantAdded:Connect(function(obj)
-    if obj:IsA("RemoteEvent") then
-        task.wait()
-        hookOne(obj)
-    elseif obj:IsA("StringValue") and isSVKey(obj.Name) then
-        watchSV(obj)
-    end
-end)
+-- Start live watchers (ChildAdded per-root + game.DescendantAdded)
+startLiveWatch()
 
--- Re-hook character remotes whenever the player respawns
+-- Re-hook character remotes on respawn
 LP.CharacterAdded:Connect(function(char)
     task.wait(1)
     for _, r in ipairs(char:GetDescendants()) do
-        if r:IsA("RemoteEvent") then hookOne(r) end
+        if r:IsA("RemoteEvent")    then hookOne(r)
+        elseif r:IsA("RemoteFunction") then hookOneRF(r) end
     end
 end)
 
