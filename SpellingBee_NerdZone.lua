@@ -108,26 +108,26 @@ local function findAnswerRemote()
     return nil
 end
 
--- Simulate human typing into a TextBox, one character at a time
--- Longer words type slower per-char (60–130ms) so it looks natural
+-- Genius-level static typing: 40 ms per character, no randomness
+-- ~250 WPM burst speed — world-class typist territory
+local CHAR_MS = 0.040
+
 local function humanTypeBox(box, word)
     box.Text = ""
     box:CaptureFocus()
-    task.wait(0.05 + math.random() * 0.06)
+    task.wait(0.035)
     for i = 1, #word do
         box.Text = word:sub(1, i)
-        task.wait(0.055 + math.random() * 0.075)  -- 55–130 ms per char
+        task.wait(CHAR_MS)
     end
-    task.wait(0.04 + math.random() * 0.06)
+    task.wait(0.035)
     box:ReleaseFocus(true)
 end
 
 local function fireAnswer(word)
     local r = findAnswerRemote()
     if not r then return false end
-    -- mimic typing time even for direct remote: short word = fast, long = slower
-    local typingTime = #word * (0.055 + math.random() * 0.075)
-    task.wait(typingTime)
+    task.wait(#word * CHAR_MS)  -- same timing as if typed
     pcall(function() r:FireServer(word) end)
     return true
 end
