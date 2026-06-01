@@ -1,6 +1,6 @@
 -- ════════════════════════════════════════════════════════════════════════
---  Murder Mystery 2  |  Script Hub  |  v1.0
---  Self-contained — paste into Delta, or loadstring(game:HttpGet(URL))()
+--  Murder Mystery 2  |  Script Hub  |  v2.0  |  Delta Full Power
+--  Uses: hookmetamethod, newcclosure, getnamecallmethod, Drawing, gethui
 -- ════════════════════════════════════════════════════════════════════════
 local Players     = game:GetService("Players")
 local UIS         = game:GetService("UserInputService")
@@ -10,13 +10,12 @@ local TW          = game:GetService("TweenService")
 local RunService  = game:GetService("RunService")
 local StarterGui  = game:GetService("StarterGui")
 local VirtualUser = game:GetService("VirtualUser")
+local Camera      = WS.CurrentCamera
 local LP          = Players.LocalPlayer
 local PGui        = LP:WaitForChild("PlayerGui")
 
 local function notify(t,m,d)
-    pcall(function()
-        StarterGui:SetCore("SendNotification",{Title=t,Text=m,Duration=d or 4})
-    end)
+    pcall(function() StarterGui:SetCore("SendNotification",{Title=t,Text=m,Duration=d or 4}) end)
 end
 
 -- ── Character helpers ─────────────────────────────────────────────────────
@@ -24,7 +23,13 @@ local function getChar() return LP.Character end
 local function getHRP()  local c=getChar();return c and c:FindFirstChild("HumanoidRootPart") end
 local function getHum()  local c=getChar();return c and c:FindFirstChildOfClass("Humanoid") end
 
--- ── Colors (shared between logic and GUI) ─────────────────────────────────
+-- ── Delta capability flags ────────────────────────────────────────────────
+local HAS_HOOK    = (hookmetamethod ~= nil)
+local HAS_DRAWING = (Drawing ~= nil)
+local HAS_GETHUI  = (gethui ~= nil)
+local HAS_CLIP    = (setclipboard ~= nil)
+
+-- ── Colors ────────────────────────────────────────────────────────────────
 local C = {
     BG     = Color3.fromRGB(22,  22,  32),
     SIDE   = Color3.fromRGB(16,  16,  24),
@@ -38,6 +43,7 @@ local C = {
     GREEN  = Color3.fromRGB(52,  211, 153),
     RED    = Color3.fromRGB(239, 68,  68),
     YELLOW = Color3.fromRGB(255, 200, 50),
+    ORANGE = Color3.fromRGB(251, 146, 60),
     PURPLE = Color3.fromRGB(167, 105, 255),
     GRAY   = Color3.fromRGB(55,  58,  75),
     BORDER = Color3.fromRGB(46,  48,  66),
@@ -51,122 +57,352 @@ local ROLE_COLOR = {
     Unknown  = C.MUTED,
 }
 
--- ── Role detection ─────────────────────────────────────────────────────────
+-- Drawing color helpers
+local function rgb(c3) return {c3.R, c3.G, c3.B} end
+local function toDrawColor(c3) return Color3.new(c3.R, c3.G, c3.B) end
+
+-- ════════════════════════════════════════════════════════════════════════
+--  ROLE ENGINE  (tool-check + __namecall sniff)
+-- ════════════════════════════════════════════════════════════════════════
+local snoopedRoles = {}   -- [player] = "Murderer"/"Sheriff" — from remote sniff
+local myRole = "Unknown"
+
 local function getRole(player)
+    if snoopedRoles[player] then return snoopedRoles[player] end
     local char = player.Character
     local bp   = player:FindFirstChildOfClass("Backpack")
-    local function hasItem(root, ...)
+    local function has(root,...)
         if not root then return false end
-        for _, name in ipairs({...}) do
-            if root:FindFirstChild(name) then return true end
-        end
+        for _,n in ipairs({...}) do if root:FindFirstChild(n) then return true end end
         return false
     end
-    if char and hasItem(char,"Knife","MM2Knife","ClassicKnife") then return "Murderer" end
-    if bp   and hasItem(bp,  "Knife","MM2Knife","ClassicKnife") then return "Murderer" end
-    if char and hasItem(char,"Sheriff Gun","Revolver","ClassicRevolver","Gun") then return "Sheriff" end
-    if bp   and hasItem(bp,  "Sheriff Gun","Revolver","ClassicRevolver","Gun") then return "Sheriff" end
+    if char and has(char,"Knife","MM2Knife","ClassicKnife","Knife_SE","VIPKnife") then return "Murderer" end
+    if bp   and has(bp,  "Knife","MM2Knife","ClassicKnife","Knife_SE","VIPKnife") then return "Murderer" end
+    if char and has(char,"Sheriff Gun","Revolver","ClassicRevolver","Gun","SheriffGun") then return "Sheriff" end
+    if bp   and has(bp,  "Sheriff Gun","Revolver","ClassicRevolver","Gun","SheriffGun") then return "Sheriff" end
     if char then return "Innocent" end
     return "Unknown"
 end
 
--- ── ESP ────────────────────────────────────────────────────────────────────
-local espEnabled     = false
-local coinEspEnabled = false
-local espHL = {}
+-- ── __namecall hook (Delta full power) ────────────────────────────────────
+local remoteLog = {}      -- recent remote traffic for the log tab
+local MAX_LOG = 60
 
-local function removeESP(p)
+local function logRemote(name, args)
+    if #remoteLog >= MAX_LOG then table.remove(remoteLog, 1) end
+    local argStr = ""
+    for i,v in ipairs(args) do
+        argStr = argStr .. (i>1 and ", " or "") .. tostring(v):sub(1,24)
+    end
+    table.insert(remoteLog, {name=name, args=argStr, time=os.clock()})
+end
+
+local function sniffArgs(args)
+    for _,v in ipairs(args) do
+        if type(v)=="string" then
+            local low=v:lower()
+            if low=="murderer" then return "Murderer"
+            elseif low=="sheriff" then return "Sheriff"
+            elseif low=="innocent" then return "Innocent"
+            end
+        end
+        if type(v)=="number" then
+            if v==1 then return "Murderer"
+            elseif v==2 then return "Sheriff"
+            elseif v==3 then return "Innocent"
+            end
+        end
+    end
+end
+
+local _namecallHook = nil
+if HAS_HOOK then
+    pcall(function()
+        local _old; _old = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+            local m = getnamecallmethod()
+            if m == "FireServer" or m == "InvokeServer" then
+                local ok, isRE = pcall(function() return self:IsA("RemoteEvent") end)
+                local ok2, isRF = pcall(function() return self:IsA("RemoteFunction") end)
+                if ok and (isRE or isRF) then
+                    local name = tostring(self.Name)
+                    local args = {...}
+                    logRemote(name, args)
+                    -- sniff role assignments
+                    local low = name:lower()
+                    if low:find("role") or low:find("assign") or low:find("setplayer") or low:find("character") then
+                        local r = sniffArgs(args)
+                        if r then snoopedRoles[LP] = r; myRole = r end
+                    end
+                end
+            elseif m == "FireClient" or m == "InvokeClient" then
+                local ok, isRE = pcall(function() return self:IsA("RemoteEvent") end)
+                local ok2, isRF = pcall(function() return self:IsA("RemoteFunction") end)
+                if (ok and isRE) or (ok2 and isRF) then
+                    local name = tostring(self.Name)
+                    local args = {...}
+                    logRemote("[S→C] "..name, args)
+                    local low = name:lower()
+                    if low:find("role") or low:find("assign") or low:find("murder") or low:find("sheriff") then
+                        -- server telling us roles
+                        for i,v in ipairs(args) do
+                            if type(v)=="Instance" then
+                                pcall(function()
+                                    if v:IsA("Player") then
+                                        local r = sniffArgs({args[i+1], args[i+2]})
+                                        if r then snoopedRoles[v] = r end
+                                    end
+                                end)
+                            end
+                        end
+                    end
+                end
+            end
+            return _old(self, ...)
+        end))
+        _namecallHook = true
+    end)
+end
+
+-- ════════════════════════════════════════════════════════════════════════
+--  ESP  (Drawing-based when available, Highlight fallback)
+-- ════════════════════════════════════════════════════════════════════════
+local espEnabled  = false
+local espBoxes    = false   -- 2D box ESP via Drawing
+local espNames    = true    -- name labels
+local espDist     = true    -- distance
+local espTracers  = false   -- tracers to feet
+
+local espHL = {}            -- Highlight instances (fallback)
+local drawObjects = {}      -- [player] = {box={}, name, dist, tracer}
+
+local coinEspEnabled = false
+local coinHL = {}
+
+local function worldToViewport(pos)
+    local vp, onScreen = Camera:WorldToViewportPoint(pos)
+    return Vector2.new(vp.X, vp.Y), onScreen, vp.Z
+end
+
+local function removeDrawESP(p)
+    if drawObjects[p] then
+        for _, obj in pairs(drawObjects[p]) do
+            pcall(function() obj.Visible = false; obj:Remove() end)
+        end
+        drawObjects[p] = nil
+    end
+end
+
+local function removeHL(p)
     if espHL[p] then pcall(function() espHL[p]:Destroy() end); espHL[p]=nil end
 end
 
-local function applyESP(p)
+local function removeAllESP(p)
+    removeDrawESP(p); removeHL(p)
+end
+
+local function applyHL(p)
     if not espEnabled or p==LP then return end
-    local char = p.Character
-    if not char then return end
-    removeESP(p)
+    local char = p.Character; if not char then return end
+    removeHL(p)
     local hl = Instance.new("Highlight")
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    hl.FillTransparency = 0.55
+    hl.FillTransparency = 0.6
     hl.OutlineTransparency = 0
     local col = ROLE_COLOR[getRole(p)]
-    hl.FillColor    = col
-    hl.OutlineColor = col
-    hl.Adornee = char
-    hl.Parent  = char
-    espHL[p]   = hl
+    hl.FillColor = col; hl.OutlineColor = col
+    hl.Adornee = char; hl.Parent = char
+    espHL[p] = hl
 end
 
-local function refreshESP()
+local function initDrawESP(p)
+    if not HAS_DRAWING then return end
+    removeDrawESP(p)
+    local d = {}
+    -- box (4 lines)
+    d.box = {}
+    for i=1,4 do
+        local l = Drawing.new("Line")
+        l.Thickness = 1.5; l.Visible = false
+        d.box[i] = l
+    end
+    -- name
+    d.name = Drawing.new("Text")
+    d.name.Size = 13; d.name.Center = true
+    d.name.Outline = true; d.name.Visible = false
+    d.name.Font = Drawing.Fonts.UI
+    -- dist
+    d.dist = Drawing.new("Text")
+    d.dist.Size = 11; d.dist.Center = true
+    d.dist.Outline = true; d.dist.Visible = false
+    d.dist.Font = Drawing.Fonts.UI
+    -- tracer
+    d.tracer = Drawing.new("Line")
+    d.tracer.Thickness = 1; d.tracer.Visible = false
+    drawObjects[p] = d
+end
+
+local function updateDrawESP()
+    if not HAS_DRAWING then return end
+    local vsx = Camera.ViewportSize.X
+    local vsy = Camera.ViewportSize.Y
+
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LP then
-            if espEnabled then applyESP(p) else removeESP(p) end
+        if p == LP then
+            if drawObjects[p] then removeDrawESP(p) end
+        else
+            local d = drawObjects[p]
+            if not d then
+                if espEnabled then initDrawESP(p); d = drawObjects[p] end
+            end
+            if not d then
+                -- skip this player
+            else
+            local char = p.Character
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+            local head = char and char:FindFirstChild("Head")
+
+            if not espEnabled or not char or not hrp then
+                for _,obj in pairs(d) do
+                    if type(obj)=="table" then for _,l in ipairs(obj) do pcall(function() l.Visible=false end) end
+                    else pcall(function() obj.Visible=false end) end
+                end
+            else
+                local role  = getRole(p)
+                local col   = ROLE_COLOR[role]
+                local drawCol = toDrawColor(col)
+
+                local rootPos = hrp.Position
+                local screen, onScreen, depth = worldToViewport(rootPos)
+                local headPos = head and head.Position or (rootPos + Vector3.new(0,2.5,0))
+                local topScreen = worldToViewport(headPos + Vector3.new(0,0.6,0))
+                local botScreen = worldToViewport(rootPos - Vector3.new(0,3,0))
+
+                local dist = math.floor((getHRP() and (getHRP().Position - rootPos).Magnitude) or 0)
+
+                if onScreen and depth > 0 then
+                    -- box
+                    if espBoxes then
+                        local h = math.abs(topScreen.Y - botScreen.Y)
+                        local w = h * 0.45
+                        local cx = screen.X
+                        local top_y = topScreen.Y
+                        local bot_y = botScreen.Y
+                        local x1,y1 = cx-w, top_y
+                        local x2,y2 = cx+w, bot_y
+                        local pts = {
+                            {Vector2.new(x1,y1), Vector2.new(x2,y1)},
+                            {Vector2.new(x2,y1), Vector2.new(x2,y2)},
+                            {Vector2.new(x2,y2), Vector2.new(x1,y2)},
+                            {Vector2.new(x1,y2), Vector2.new(x1,y1)},
+                        }
+                        for i,ln in ipairs(d.box) do
+                            ln.From  = pts[i][1]; ln.To = pts[i][2]
+                            ln.Color = drawCol;   ln.Visible = true
+                        end
+                    else
+                        for _,l in ipairs(d.box) do l.Visible=false end
+                    end
+                    -- name
+                    if espNames then
+                        d.name.Text     = p.Name .. (role~="Unknown" and " ["..role:sub(1,3).."]" or "")
+                        d.name.Color    = drawCol
+                        d.name.Position = Vector2.new(screen.X, topScreen.Y - 16)
+                        d.name.Visible  = true
+                    else d.name.Visible = false end
+                    -- dist
+                    if espDist then
+                        d.dist.Text     = dist.."m"
+                        d.dist.Color    = Color3.new(1,1,1)
+                        d.dist.Position = Vector2.new(screen.X, botScreen.Y + 2)
+                        d.dist.Visible  = true
+                    else d.dist.Visible = false end
+                    -- tracer
+                    if espTracers then
+                        d.tracer.From   = Vector2.new(vsx/2, vsy)
+                        d.tracer.To     = Vector2.new(screen.X, botScreen.Y)
+                        d.tracer.Color  = drawCol
+                        d.tracer.Visible = true
+                    else d.tracer.Visible = false end
+                else
+                    for _,obj in pairs(d) do
+                        if type(obj)=="table" then for _,l in ipairs(obj) do pcall(function() l.Visible=false end) end
+                        else pcall(function() obj.Visible=false end) end
+                    end
+                end
+            end
+            end -- if not d else
         end
     end
 end
 
-local coinHL = {}
+local function refreshHL()
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=LP then
+            if espEnabled and not HAS_DRAWING then applyHL(p) else removeHL(p) end
+        end
+    end
+end
+
 local function refreshCoinESP()
-    for _, hl in pairs(coinHL) do pcall(function() hl:Destroy() end) end
-    coinHL = {}
+    for _,hl in pairs(coinHL) do pcall(function() hl:Destroy() end) end; coinHL={}
     if not coinEspEnabled then return end
-    for _, obj in ipairs(WS:GetDescendants()) do
-        local n = obj.Name:lower()
+    for _,obj in ipairs(WS:GetDescendants()) do
+        local n=obj.Name:lower()
         if obj:IsA("BasePart") and (n=="coin" or n=="goldcoin" or n=="mm2coin") then
-            local hl = Instance.new("Highlight")
-            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-            hl.FillColor    = C.YELLOW
-            hl.OutlineColor = Color3.fromRGB(255,230,100)
-            hl.FillTransparency = 0.3
-            hl.Adornee = obj
-            hl.Parent  = obj
-            coinHL[obj] = hl
+            local hl=Instance.new("Highlight")
+            hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+            hl.FillColor=C.YELLOW; hl.OutlineColor=Color3.fromRGB(255,230,80)
+            hl.FillTransparency=0.25; hl.Adornee=obj; hl.Parent=obj
+            coinHL[obj]=hl
         end
     end
 end
 
--- ── Auto-farm coins ────────────────────────────────────────────────────────
-local coinFarm = false
+-- ESP heartbeat
+RunService.RenderStepped:Connect(function()
+    if espEnabled and HAS_DRAWING then
+        updateDrawESP()
+    end
+end)
+
+-- ════════════════════════════════════════════════════════════════════════
+--  COIN FARM
+-- ════════════════════════════════════════════════════════════════════════
+local coinFarm=false
 task.spawn(function()
     while true do
         task.wait(0.08)
         if coinFarm then
-            local hrp = getHRP()
+            local hrp=getHRP()
             if hrp then
-                local best, bd = nil, math.huge
-                for _, obj in ipairs(WS:GetDescendants()) do
-                    local n = obj.Name:lower()
+                local best,bd=nil,math.huge
+                for _,obj in ipairs(WS:GetDescendants()) do
+                    local n=obj.Name:lower()
                     if obj:IsA("BasePart") and (n=="coin" or n=="goldcoin" or n=="mm2coin") then
-                        local d = (hrp.Position-obj.Position).Magnitude
+                        local d=(hrp.Position-obj.Position).Magnitude
                         if d<bd then bd=d;best=obj end
                     end
                 end
-                if best and bd>3 then
-                    hrp.CFrame = CFrame.new(best.Position+Vector3.new(0,3.5,0))
-                end
-            else
-                task.wait(1)
-            end
-        else
-            task.wait(0.5)
-        end
+                if best and bd>3 then hrp.CFrame=CFrame.new(best.Position+Vector3.new(0,3.5,0)) end
+            else task.wait(1) end
+        else task.wait(0.5) end
     end
 end)
 
--- ── Speed / Jump ───────────────────────────────────────────────────────────
-local speedVal  = 16
-local jumpVal   = 50
+-- ════════════════════════════════════════════════════════════════════════
+--  MOVEMENT
+-- ════════════════════════════════════════════════════════════════════════
+local speedVal=16; local jumpVal=50
 local function applyMove()
-    local h = getHum()
-    if h then h.WalkSpeed=speedVal; h.JumpPower=jumpVal end
+    local h=getHum(); if h then h.WalkSpeed=speedVal; h.JumpPower=jumpVal end
 end
 
 -- ── Fly ────────────────────────────────────────────────────────────────────
-local flyEnabled = false
-local flyConn    = nil
+local flyEnabled=false; local flyConn=nil
 local function toggleFly(v)
-    flyEnabled = v
-    if flyConn then flyConn:Disconnect(); flyConn=nil end
-    local hrp = getHRP()
+    flyEnabled=v
+    if flyConn then flyConn:Disconnect();flyConn=nil end
+    local hrp=getHRP()
     if not v then
         if hrp then
             local bv=hrp:FindFirstChild("_FlyBV"); if bv then bv:Destroy() end
@@ -182,12 +418,11 @@ local function toggleFly(v)
     bg.MaxTorque=Vector3.new(1e5,1e5,1e5); bg.P=9e3
     local h=getHum(); if h then pcall(function()h:ChangeState(Enum.HumanoidStateType.Flying)end) end
     flyConn=RunService.Heartbeat:Connect(function()
-        local hrp2=getHRP()
-        local bv2=hrp2 and hrp2:FindFirstChild("_FlyBV")
-        local bg2=hrp2 and hrp2:FindFirstChild("_FlyBG")
+        local h2=getHRP()
+        local bv2=h2 and h2:FindFirstChild("_FlyBV")
+        local bg2=h2 and h2:FindFirstChild("_FlyBG")
         if not bv2 or not bg2 then flyConn:Disconnect();flyConn=nil;return end
-        local cam=WS.CurrentCamera
-        local dir=Vector3.zero
+        local cam=WS.CurrentCamera; local dir=Vector3.zero
         local spd=UIS:IsKeyDown(Enum.KeyCode.LeftShift) and 100 or 50
         if UIS:IsKeyDown(Enum.KeyCode.W)     then dir=dir+cam.CFrame.LookVector end
         if UIS:IsKeyDown(Enum.KeyCode.S)     then dir=dir-cam.CFrame.LookVector end
@@ -201,8 +436,7 @@ local function toggleFly(v)
 end
 
 -- ── Noclip ─────────────────────────────────────────────────────────────────
-local noclipEnabled=false
-local noclipConn=nil
+local noclipEnabled=false; local noclipConn=nil
 local function toggleNoclip(v)
     noclipEnabled=v
     if noclipConn then noclipConn:Disconnect();noclipConn=nil end
@@ -217,13 +451,10 @@ local function toggleNoclip(v)
     end)
 end
 
--- ── Infinite jump ──────────────────────────────────────────────────────────
+-- ── Inf jump ───────────────────────────────────────────────────────────────
 local infJump=false
 UIS.JumpRequest:Connect(function()
-    if infJump then
-        local h=getHum()
-        if h then pcall(function()h:ChangeState(Enum.HumanoidStateType.Jumping)end) end
-    end
+    if infJump then local h=getHum(); if h then pcall(function()h:ChangeState(Enum.HumanoidStateType.Jumping)end) end end
 end)
 
 -- ── Anti-AFK ──────────────────────────────────────────────────────────────
@@ -232,7 +463,7 @@ RunService.Heartbeat:Connect(function()
     if antiAFK then afkT=afkT+1; if afkT>=3600 then afkT=0;pcall(function()VirtualUser:CaptureController()end) end end
 end)
 
--- ── Kill Aura (Murderer only) ──────────────────────────────────────────────
+-- ── Kill Aura ─────────────────────────────────────────────────────────────
 local killAura=false; local kaConn=nil
 local function toggleKillAura(v)
     killAura=v
@@ -259,10 +490,27 @@ local function toggleKillAura(v)
     end)
 end
 
--- re-apply movement on respawn
 LP.CharacterAdded:Connect(function()
     task.wait(0.5); applyMove()
     if flyEnabled then task.wait(0.5); toggleFly(true) end
+    -- re-init drawing ESP for existing players
+    if espEnabled and HAS_DRAWING then
+        for _,p in ipairs(Players:GetPlayers()) do
+            if p~=LP then initDrawESP(p) end
+        end
+    end
+end)
+
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function()
+        task.wait(1)
+        if espEnabled then
+            if HAS_DRAWING then initDrawESP(p) else applyHL(p) end
+        end
+    end)
+end)
+Players.PlayerRemoving:Connect(function(p)
+    removeAllESP(p); snoopedRoles[p]=nil
 end)
 
 -- ════════════════════════════════════════════════════════════════════════
@@ -274,59 +522,58 @@ local SG=Instance.new("ScreenGui")
 SG.Name="__MM2Hub__"; SG.ResetOnSpawn=false
 SG.IgnoreGuiInset=true; SG.DisplayOrder=999
 SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
-local guiParent=PGui; pcall(function() if gethui then guiParent=gethui() end end)
+local guiParent=PGui
+pcall(function() if HAS_GETHUI then guiParent=gethui() end end)
 SG.Parent=guiParent
 
 local TI15=TweenInfo.new(0.15,Enum.EasingStyle.Quad)
 local TI25=TweenInfo.new(0.25,Enum.EasingStyle.Quart,Enum.EasingDirection.Out)
-local TI3 =TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 local function corner(p,r) local c=Instance.new("UICorner",p);c.CornerRadius=UDim.new(0,r or 8);return c end
 local function stroke(p,col,t) local s=Instance.new("UIStroke",p);s.Color=col;s.Thickness=t or 1;return s end
 local function pad(p,x,y) local d=Instance.new("UIPadding",p);d.PaddingLeft=UDim.new(0,x);d.PaddingRight=UDim.new(0,x);d.PaddingTop=UDim.new(0,y or x);d.PaddingBottom=UDim.new(0,y or x) end
 
--- ── Main window ────────────────────────────────────────────────────────────
+-- Main window
 local WIN=Instance.new("Frame",SG)
-WIN.Name="Win"; WIN.Size=UDim2.new(0,580,0,440)
-WIN.Position=UDim2.new(0.5,-290,0.5,-220)
+WIN.Name="Win"; WIN.Size=UDim2.new(0,590,0,450)
+WIN.Position=UDim2.new(0.5,-295,0.5,-225)
 WIN.BackgroundColor3=C.BG; WIN.BorderSizePixel=0; WIN.Active=true
 WIN.ClipsDescendants=true
 corner(WIN,14); stroke(WIN,C.BORDER,1.5)
 
--- soft drop shadow
-local shadow=Instance.new("ImageLabel",WIN)
-shadow.Size=UDim2.new(1,46,1,46); shadow.Position=UDim2.new(0,-23,0,-23)
-shadow.BackgroundTransparency=1; shadow.ZIndex=0
-shadow.Image="rbxassetid://5554236805"
-shadow.ImageColor3=C.DARK; shadow.ImageTransparency=0.55
-shadow.ScaleType=Enum.ScaleType.Slice; shadow.SliceCenter=Rect.new(23,23,277,277)
+-- shadow
+local sh=Instance.new("ImageLabel",WIN)
+sh.Size=UDim2.new(1,50,1,50); sh.Position=UDim2.new(0,-25,0,-25)
+sh.BackgroundTransparency=1; sh.ZIndex=0
+sh.Image="rbxassetid://5554236805"
+sh.ImageColor3=C.DARK; sh.ImageTransparency=0.5
+sh.ScaleType=Enum.ScaleType.Slice; sh.SliceCenter=Rect.new(23,23,277,277)
 
--- ── Top bar ────────────────────────────────────────────────────────────────
+-- Top bar
 local TOP=Instance.new("Frame",WIN)
 TOP.Size=UDim2.new(1,0,0,54); TOP.BackgroundColor3=C.SIDE; TOP.BorderSizePixel=0
 
--- left accent bar
 local accentBar=Instance.new("Frame",TOP)
 accentBar.Size=UDim2.new(0,4,0,30); accentBar.Position=UDim2.new(0,16,0.5,-15)
 accentBar.BackgroundColor3=C.BLUE; accentBar.BorderSizePixel=0; corner(accentBar,2)
 
 local titleLbl=Instance.new("TextLabel",TOP)
-titleLbl.Size=UDim2.new(0,220,0,20); titleLbl.Position=UDim2.new(0,28,0.5,-18)
+titleLbl.Size=UDim2.new(0,230,0,20); titleLbl.Position=UDim2.new(0,28,0.5,-18)
 titleLbl.BackgroundTransparency=1; titleLbl.Text="Murder Mystery 2"
 titleLbl.TextColor3=C.WHITE; titleLbl.Font=Enum.Font.GothamBold; titleLbl.TextSize=15
 titleLbl.TextXAlignment=Enum.TextXAlignment.Left
 
 local subLbl=Instance.new("TextLabel",TOP)
-subLbl.Size=UDim2.new(0,240,0,13); subLbl.Position=UDim2.new(0,28,0.5,5)
-subLbl.BackgroundTransparency=1; subLbl.Text="Script Hub  •  v1.0  •  Delta Ready"
+subLbl.Size=UDim2.new(0,280,0,13); subLbl.Position=UDim2.new(0,28,0.5,5)
+subLbl.BackgroundTransparency=1
+subLbl.Text="v2.0  •  Delta  •  "..(HAS_HOOK and "Hook ✓" or "Hook ✗").."  "..(HAS_DRAWING and "Draw ✓" or "Draw ✗")
 subLbl.TextColor3=C.MUTED; subLbl.Font=Enum.Font.Gotham; subLbl.TextSize=10
 subLbl.TextXAlignment=Enum.TextXAlignment.Left
 
--- role pill in header
+-- role pill
 local rolePill=Instance.new("Frame",TOP)
-rolePill.Size=UDim2.new(0,106,0,28); rolePill.Position=UDim2.new(1,-178,0.5,-14)
-rolePill.BackgroundColor3=C.PANEL; rolePill.BorderSizePixel=0; corner(rolePill,8)
-stroke(rolePill,C.BORDER,1)
+rolePill.Size=UDim2.new(0,108,0,28); rolePill.Position=UDim2.new(1,-182,0.5,-14)
+rolePill.BackgroundColor3=C.PANEL; rolePill.BorderSizePixel=0; corner(rolePill,8); stroke(rolePill,C.BORDER,1)
 local roleDot=Instance.new("Frame",rolePill)
 roleDot.Size=UDim2.new(0,8,0,8); roleDot.Position=UDim2.new(0,9,0.5,-4)
 roleDot.BackgroundColor3=C.MUTED; roleDot.BorderSizePixel=0; corner(roleDot,4)
@@ -336,19 +583,21 @@ roleTxt.BackgroundTransparency=1; roleTxt.Text="Unknown"
 roleTxt.TextColor3=C.MUTED; roleTxt.Font=Enum.Font.GothamBold; roleTxt.TextSize=10
 roleTxt.TextXAlignment=Enum.TextXAlignment.Left
 
--- minimize
 local minBtn=Instance.new("TextButton",TOP)
 minBtn.Size=UDim2.new(0,26,0,26); minBtn.Position=UDim2.new(1,-66,0.5,-13)
 minBtn.BackgroundColor3=C.CARD; minBtn.Text="─"; minBtn.TextColor3=C.MUTED
 minBtn.Font=Enum.Font.GothamBold; minBtn.TextSize=12; minBtn.BorderSizePixel=0; corner(minBtn,7)
 
--- close
 local closeBtn=Instance.new("TextButton",TOP)
 closeBtn.Size=UDim2.new(0,26,0,26); closeBtn.Position=UDim2.new(1,-34,0.5,-13)
 closeBtn.BackgroundColor3=Color3.fromRGB(200,55,55); closeBtn.Text="✕"
 closeBtn.TextColor3=C.WHITE; closeBtn.Font=Enum.Font.GothamBold; closeBtn.TextSize=12
 closeBtn.BorderSizePixel=0; corner(closeBtn,7)
-closeBtn.MouseButton1Click:Connect(function() SG:Destroy() end)
+closeBtn.MouseButton1Click:Connect(function()
+    -- clean up Drawing objects
+    for _,p in ipairs(Players:GetPlayers()) do removeAllESP(p) end
+    SG:Destroy()
+end)
 
 -- drag
 local _d,_dx,_dy,_wx,_wy=false,0,0,0,0
@@ -367,7 +616,7 @@ UIS.InputEnded:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then _d=false end
 end)
 
--- ── Body ───────────────────────────────────────────────────────────────────
+-- Body
 local MAIN=Instance.new("Frame",WIN)
 MAIN.Size=UDim2.new(1,0,1,-54); MAIN.Position=UDim2.new(0,0,0,54)
 MAIN.BackgroundTransparency=1; MAIN.BorderSizePixel=0
@@ -375,24 +624,17 @@ MAIN.BackgroundTransparency=1; MAIN.BorderSizePixel=0
 local _mini=false
 minBtn.MouseButton1Click:Connect(function()
     _mini=not _mini; MAIN.Visible=not _mini
-    TW:Create(WIN,TI25,{Size=_mini and UDim2.new(0,580,0,54) or UDim2.new(0,580,0,440)}):Play()
+    TW:Create(WIN,TI25,{Size=_mini and UDim2.new(0,590,0,54) or UDim2.new(0,590,0,450)}):Play()
 end)
 
--- sidebar
+-- Sidebar
 local SIDE=Instance.new("Frame",MAIN)
 SIDE.Size=UDim2.new(0,148,1,0); SIDE.BackgroundColor3=C.SIDE; SIDE.BorderSizePixel=0
 local sideList=Instance.new("UIListLayout",SIDE)
 sideList.Padding=UDim.new(0,3); sideList.SortOrder=Enum.SortOrder.LayoutOrder
 pad(SIDE,8,10)
 
--- sidebar bottom label
-local verLbl=Instance.new("TextLabel",SIDE)
-verLbl.Size=UDim2.new(1,-16,0,16)
-verLbl.BackgroundTransparency=1; verLbl.Text="MM2 Hub • Delta"
-verLbl.TextColor3=Color3.fromRGB(55,58,80); verLbl.Font=Enum.Font.Gotham; verLbl.TextSize=9
-verLbl.TextXAlignment=Enum.TextXAlignment.Center
-
--- content scroll
+-- Content
 local CONT=Instance.new("ScrollingFrame",MAIN)
 CONT.Size=UDim2.new(1,-148,1,0); CONT.Position=UDim2.new(0,148,0,0)
 CONT.BackgroundColor3=C.BG; CONT.BorderSizePixel=0
@@ -402,36 +644,29 @@ local contList=Instance.new("UIListLayout",CONT)
 contList.Padding=UDim.new(0,8); contList.SortOrder=Enum.SortOrder.LayoutOrder
 pad(CONT,14,14)
 
--- ── Tab factory ───────────────────────────────────────────────────────────
+-- ── Tab factory ────────────────────────────────────────────────────────────
 local tabs={}; local activeTab=nil
-
 local function makeTab(name,icon)
     local btn=Instance.new("TextButton",SIDE)
     btn.LayoutOrder=#tabs+1; btn.Size=UDim2.new(1,0,0,38)
     btn.BackgroundColor3=C.SIDE; btn.Text=""; btn.BorderSizePixel=0; corner(btn,8)
-
     local icL=Instance.new("TextLabel",btn)
     icL.Size=UDim2.new(0,22,1,0); icL.Position=UDim2.new(0,10,0,0)
     icL.BackgroundTransparency=1; icL.Text=icon; icL.TextColor3=C.MUTED
     icL.Font=Enum.Font.Gotham; icL.TextSize=15
-
     local nmL=Instance.new("TextLabel",btn)
     nmL.Size=UDim2.new(1,-38,1,0); nmL.Position=UDim2.new(0,36,0,0)
     nmL.BackgroundTransparency=1; nmL.Text=name; nmL.TextColor3=C.MUTED
     nmL.Font=Enum.Font.GothamBold; nmL.TextSize=12; nmL.TextXAlignment=Enum.TextXAlignment.Left
-
     local bar=Instance.new("Frame",btn)
     bar.Size=UDim2.new(0,3,0,22); bar.Position=UDim2.new(0,0,0.5,-11)
     bar.BackgroundColor3=C.BLUE; bar.BorderSizePixel=0; corner(bar,2); bar.Visible=false
-
     local frame=Instance.new("Frame",CONT)
     frame.Size=UDim2.new(1,0,0,0); frame.AutomaticSize=Enum.AutomaticSize.Y
     frame.BackgroundTransparency=1; frame.BorderSizePixel=0; frame.Visible=false
     local fl=Instance.new("UIListLayout",frame)
     fl.Padding=UDim.new(0,8); fl.SortOrder=Enum.SortOrder.LayoutOrder
-
     tabs[name]={btn=btn,frame=frame,bar=bar,icL=icL,nmL=nmL}
-
     btn.MouseButton1Click:Connect(function()
         if activeTab then
             local a=tabs[activeTab]
@@ -453,15 +688,15 @@ local tabESP    = makeTab("ESP",     "👁")
 local tabFarmT  = makeTab("Farm",    "🪙")
 local tabPlayer = makeTab("Player",  "👤")
 local tabRoles  = makeTab("Roles",   "🔪")
+local tabRemote = makeTab("Remotes", "📡")
 local tabMisc   = makeTab("Misc",    "⚙")
 
--- ── UI component helpers ───────────────────────────────────────────────────
+-- ── UI helpers ─────────────────────────────────────────────────────────────
 local function secLabel(parent,txt)
     local f=Instance.new("Frame",parent); f.Size=UDim2.new(1,0,0,20); f.BackgroundTransparency=1
     local l=Instance.new("TextLabel",f); l.Size=UDim2.new(1,0,1,0)
-    l.BackgroundTransparency=1; l.Text=txt:upper()
-    l.TextColor3=C.BLUE; l.Font=Enum.Font.GothamBold; l.TextSize=9
-    l.TextXAlignment=Enum.TextXAlignment.Left
+    l.BackgroundTransparency=1; l.Text=txt:upper(); l.TextColor3=C.BLUE
+    l.Font=Enum.Font.GothamBold; l.TextSize=9; l.TextXAlignment=Enum.TextXAlignment.Left
 end
 
 local function makeToggle(parent,title,sub,default,cb)
@@ -532,16 +767,33 @@ end
 -- ════════════════════════════════════════════════════════════════════════
 --  TAB: ESP
 -- ════════════════════════════════════════════════════════════════════════
-secLabel(tabESP,"Player ESP")
-makeToggle(tabESP,"Player Highlight","See players through walls with role color",false,function(v)
-    espEnabled=v; refreshESP()
-    if v then notify("ESP","Player ESP ON — roles color-coded",2) end
+secLabel(tabESP,"Player ESP  "..(HAS_DRAWING and "(Drawing)" or "(Highlight)"))
+makeToggle(tabESP,"Enable ESP","See all players with role color through walls",false,function(v)
+    espEnabled=v
+    if v then
+        if HAS_DRAWING then
+            for _,p in ipairs(Players:GetPlayers()) do if p~=LP then initDrawESP(p) end end
+        else refreshHL() end
+        notify("ESP","Player ESP ON",2)
+    else
+        for _,p in ipairs(Players:GetPlayers()) do removeAllESP(p) end
+    end
 end)
-makeToggle(tabESP,"Coin ESP","Highlight all coins on the map in gold",false,function(v)
+
+if HAS_DRAWING then
+    makeToggle(tabESP,"Boxes","2D bounding boxes around players",false,function(v) espBoxes=v end)
+    makeToggle(tabESP,"Names","Player name + role above head",true,function(v) espNames=v end)
+    makeToggle(tabESP,"Distance","Show meters to each player",true,function(v) espDist=v end)
+    makeToggle(tabESP,"Tracers","Line from bottom-center to each player",false,function(v) espTracers=v end)
+end
+
+secLabel(tabESP,"Coin ESP")
+makeToggle(tabESP,"Coin Highlight","Gold highlight on every coin on the map",false,function(v)
     coinEspEnabled=v; refreshCoinESP()
 end)
-secLabel(tabESP,"Color Legend")
+makeBtn(tabESP,"Refresh Coin ESP",C.CARD,function() refreshCoinESP(); notify("ESP","Coin ESP refreshed",2) end)
 
+secLabel(tabESP,"Legend")
 local function legendRow(parent,lbl,col)
     local f=Instance.new("Frame",parent); f.Size=UDim2.new(1,0,0,32)
     f.BackgroundColor3=C.PANEL; f.BorderSizePixel=0; corner(f,8); stroke(f,C.BORDER,1)
@@ -551,7 +803,6 @@ local function legendRow(parent,lbl,col)
     l.BackgroundTransparency=1; l.Text=lbl; l.TextColor3=C.OFFWH
     l.Font=Enum.Font.GothamBold; l.TextSize=11; l.TextXAlignment=Enum.TextXAlignment.Left
 end
-
 legendRow(tabESP,"Murderer  —  Red",    C.RED)
 legendRow(tabESP,"Sheriff   —  Yellow", C.YELLOW)
 legendRow(tabESP,"Innocent  —  Green",  C.GREEN)
@@ -560,43 +811,34 @@ legendRow(tabESP,"Innocent  —  Green",  C.GREEN)
 --  TAB: FARM
 -- ════════════════════════════════════════════════════════════════════════
 secLabel(tabFarmT,"Coin Farm")
-makeToggle(tabFarmT,"Auto Collect Coins","Teleports to every coin on the map",false,function(v)
-    coinFarm=v
-    if v then notify("Farm","Auto coin farm started",2) end
+makeToggle(tabFarmT,"Auto Collect Coins","Teleports to nearest coin continuously",false,function(v)
+    coinFarm=v; if v then notify("Farm","Auto farm ON",2) end
 end)
-
-makeBtn(tabFarmT,"Collect ALL Coins Now",C.BLUE,function()
+makeBtn(tabFarmT,"Collect ALL Now",C.BLUE,function()
     local hrp=getHRP(); if not hrp then notify("Error","No character",2);return end
     local count=0
     for _,obj in ipairs(WS:GetDescendants()) do
         local n=obj.Name:lower()
         if obj:IsA("BasePart") and (n=="coin" or n=="goldcoin" or n=="mm2coin") then
-            hrp.CFrame=CFrame.new(obj.Position+Vector3.new(0,3.5,0)); task.wait(0.05); count=count+1
+            hrp.CFrame=CFrame.new(obj.Position+Vector3.new(0,3.5,0)); task.wait(0.04); count=count+1
         end
     end
     notify("Farm","Collected "..count.." coins!",3)
 end)
-
 secLabel(tabFarmT,"Auto Grab")
-makeToggle(tabFarmT,"Auto Pick Up Gun","Teleports to dropped sheriff gun",false,function(v)
+makeToggle(tabFarmT,"Auto Pick Up Gun","TP to any dropped sheriff gun",false,function(v)
     if not v then return end
     game.DescendantAdded:Connect(function(obj)
-        if not v then return end
-        if obj:IsA("Tool") then
-            local n=obj.Name:lower()
-            if n:find("gun") or n:find("sheriff") or n:find("revolver") then
-                if obj.Parent==WS or (obj.Parent and obj.Parent~=LP and not obj.Parent:IsA("Player")) then
-                    task.wait(0.1)
-                    local hrp=getHRP(); local handle=obj:FindFirstChild("Handle")
-                    if hrp and handle then hrp.CFrame=CFrame.new(handle.Position+Vector3.new(0,3,0)) end
-                end
+        if not v or not obj:IsA("Tool") then return end
+        local n=obj.Name:lower()
+        if n:find("gun") or n:find("sheriff") or n:find("revolver") then
+            if obj.Parent~=LP and obj.Parent~=LP:FindFirstChildOfClass("Backpack") then
+                task.wait(0.1)
+                local hrp=getHRP(); local h=obj:FindFirstChild("Handle")
+                if hrp and h then hrp.CFrame=CFrame.new(h.Position+Vector3.new(0,3,0)) end
             end
         end
     end)
-end)
-
-makeBtn(tabFarmT,"Re-scan Coin ESP",C.CARD,function()
-    if coinEspEnabled then refreshCoinESP();notify("ESP","Coin ESP refreshed",2) end
 end)
 
 -- ════════════════════════════════════════════════════════════════════════
@@ -605,21 +847,18 @@ end)
 secLabel(tabPlayer,"Movement")
 makeSlider(tabPlayer,"Walk Speed",16,120,16,function(v) speedVal=v;applyMove() end)
 makeSlider(tabPlayer,"Jump Power",50,250,50,function(v) jumpVal=v;applyMove() end)
-
 secLabel(tabPlayer,"Abilities")
-makeToggle(tabPlayer,"Fly","WASD to fly • Space=up • E=down • Shift=fast",false,function(v)
-    toggleFly(v)
-    if v then notify("Fly","Fly ON — WASD+Space+E, Shift=fast",3) end
+makeToggle(tabPlayer,"Fly","WASD+Space+E • Shift = fast",false,function(v)
+    toggleFly(v); if v then notify("Fly","ON — WASD+Space+E, Shift=fast",3) end
 end)
-makeToggle(tabPlayer,"Noclip","Walk through walls and all objects",false,toggleNoclip)
-makeToggle(tabPlayer,"Infinite Jump","Spam jump infinitely in mid-air",false,function(v) infJump=v end)
-makeToggle(tabPlayer,"Anti-AFK","Prevents auto-kick from inactivity",false,function(v) antiAFK=v end)
-
+makeToggle(tabPlayer,"Noclip","Walk through all objects",false,toggleNoclip)
+makeToggle(tabPlayer,"Infinite Jump","Jump infinitely in mid-air",false,function(v) infJump=v end)
+makeToggle(tabPlayer,"Anti-AFK","Prevents auto-kick",false,function(v) antiAFK=v end)
 secLabel(tabPlayer,"Actions")
 makeBtn(tabPlayer,"Reset Character",Color3.fromRGB(130,28,28),function()
     local h=getHum(); if h then pcall(function() h.Health=0 end) end
 end)
-makeBtn(tabPlayer,"Teleport to Spawn",C.CARD,function()
+makeBtn(tabPlayer,"TP to Spawn",C.CARD,function()
     local hrp=getHRP(); if not hrp then return end
     for _,obj in ipairs(WS:GetDescendants()) do
         if obj:IsA("SpawnLocation") then
@@ -633,10 +872,10 @@ end)
 -- ════════════════════════════════════════════════════════════════════════
 --  TAB: ROLES
 -- ════════════════════════════════════════════════════════════════════════
-secLabel(tabRoles,"Live Roles  (refresh to update)")
+secLabel(tabRoles,"Live Roles")
 
 local rolesFrame=Instance.new("ScrollingFrame",tabRoles)
-rolesFrame.Size=UDim2.new(1,0,0,210); rolesFrame.BackgroundColor3=C.PANEL
+rolesFrame.Size=UDim2.new(1,0,0,200); rolesFrame.BackgroundColor3=C.PANEL
 rolesFrame.BorderSizePixel=0; rolesFrame.ScrollBarThickness=3
 rolesFrame.ScrollBarImageColor3=C.BLUE; rolesFrame.CanvasSize=UDim2.new(0,0,0,0)
 rolesFrame.AutomaticCanvasSize=Enum.AutomaticSize.Y
@@ -652,18 +891,14 @@ local function rebuildRoles()
         local role=getRole(p); local col=ROLE_COLOR[role]
         local row=Instance.new("Frame",rolesFrame)
         row.Size=UDim2.new(1,0,0,34); row.BackgroundColor3=C.CARD; row.BorderSizePixel=0; corner(row,7)
-
         local dot=Instance.new("Frame",row); dot.Size=UDim2.new(0,9,0,9); dot.Position=UDim2.new(0,9,0.5,-4.5)
         dot.BackgroundColor3=col; dot.BorderSizePixel=0; corner(dot,5)
-
-        local nL=Instance.new("TextLabel",row); nL.Size=UDim2.new(0.48,0,1,0); nL.Position=UDim2.new(0,24,0,0)
+        local nL=Instance.new("TextLabel",row); nL.Size=UDim2.new(0.44,0,1,0); nL.Position=UDim2.new(0,24,0,0)
         nL.BackgroundTransparency=1; nL.Text=p.Name; nL.Font=Enum.Font.GothamBold; nL.TextSize=11
         nL.TextColor3=p==LP and C.BLUE or C.WHITE; nL.TextXAlignment=Enum.TextXAlignment.Left
-
-        local rL=Instance.new("TextLabel",row); rL.Size=UDim2.new(0.32,0,1,0); rL.Position=UDim2.new(0.46,0,0,0)
+        local rL=Instance.new("TextLabel",row); rL.Size=UDim2.new(0.3,0,1,0); rL.Position=UDim2.new(0.46,0,0,0)
         rL.BackgroundTransparency=1; rL.Text=role; rL.Font=Enum.Font.GothamBold; rL.TextSize=10
         rL.TextColor3=col; rL.TextXAlignment=Enum.TextXAlignment.Left
-
         if p~=LP then
             local tpBtn=Instance.new("TextButton",row)
             tpBtn.Size=UDim2.new(0,28,0,22); tpBtn.Position=UDim2.new(1,-32,0.5,-11)
@@ -671,10 +906,7 @@ local function rebuildRoles()
             tpBtn.Font=Enum.Font.GothamBold; tpBtn.TextSize=9; tpBtn.BorderSizePixel=0; corner(tpBtn,5)
             tpBtn.MouseButton1Click:Connect(function()
                 local hrp=getHRP(); local pHRP=p.Character and p.Character:FindFirstChild("HumanoidRootPart")
-                if hrp and pHRP then
-                    hrp.CFrame=pHRP.CFrame*CFrame.new(0,0,-3)
-                    notify("TP","Teleported to "..p.Name,2)
-                end
+                if hrp and pHRP then hrp.CFrame=pHRP.CFrame*CFrame.new(0,0,-3); notify("TP",p.Name,2) end
             end)
         end
         playerRows[p.Name]=row
@@ -682,26 +914,106 @@ local function rebuildRoles()
 end
 rebuildRoles()
 
-makeBtn(tabRoles,"Refresh Role List",C.CARD,function() rebuildRoles();notify("Roles","List updated",2) end)
-
+makeBtn(tabRoles,"Refresh",C.CARD,function() rebuildRoles();notify("Roles","Updated",2) end)
+makeBtn(tabRoles,"Clear Snooped Roles",C.GRAY,function()
+    for k in pairs(snoopedRoles) do snoopedRoles[k]=nil end
+    notify("Roles","Snooped roles cleared",2)
+end)
 secLabel(tabRoles,"Kill Aura")
-makeToggle(tabRoles,"Kill Aura","Auto-hits players nearby (Murderer only)",false,function(v)
-    toggleKillAura(v)
-    if v then notify("Aura","Kill Aura ON — you must be Murderer",3) end
+makeToggle(tabRoles,"Kill Aura","Auto-fires kill remotes nearby (Murderer only)",false,function(v)
+    toggleKillAura(v); if v then notify("Aura","Kill Aura ON",3) end
+end)
+
+-- ════════════════════════════════════════════════════════════════════════
+--  TAB: REMOTES  (Delta __namecall log)
+-- ════════════════════════════════════════════════════════════════════════
+secLabel(tabRemote,"Remote Spy  "..(HAS_HOOK and "(Live via hookmetamethod)" or "(hookmetamethod unavailable)"))
+
+if not HAS_HOOK then
+    local warn=Instance.new("Frame",tabRemote); warn.Size=UDim2.new(1,0,0,44)
+    warn.BackgroundColor3=Color3.fromRGB(80,30,10); warn.BorderSizePixel=0; corner(warn,8)
+    local wL=Instance.new("TextLabel",warn); wL.Size=UDim2.new(1,-16,1,0); wL.Position=UDim2.new(0,10,0,0)
+    wL.BackgroundTransparency=1; wL.Text="hookmetamethod not available in this executor"
+    wL.TextColor3=C.ORANGE; wL.Font=Enum.Font.GothamBold; wL.TextSize=11
+    wL.TextXAlignment=Enum.TextXAlignment.Left; wL.TextWrapped=true
+end
+
+local logScroll=Instance.new("ScrollingFrame",tabRemote)
+logScroll.Size=UDim2.new(1,0,0,240); logScroll.BackgroundColor3=C.DARK
+logScroll.BorderSizePixel=0; logScroll.ScrollBarThickness=3
+logScroll.ScrollBarImageColor3=C.BLUE; logScroll.CanvasSize=UDim2.new(0,0,0,0)
+logScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
+corner(logScroll,8); stroke(logScroll,C.BORDER,1)
+local logList=Instance.new("UIListLayout",logScroll)
+logList.Padding=UDim.new(0,1); logList.SortOrder=Enum.SortOrder.LayoutOrder
+pad(logScroll,6,4)
+
+local logRows={}
+local function refreshLog()
+    for _,r in ipairs(logRows) do r:Destroy() end; logRows={}
+    for i=#remoteLog,math.max(1,#remoteLog-30),-1 do
+        local entry=remoteLog[i]
+        local row=Instance.new("Frame",logScroll)
+        row.Size=UDim2.new(1,0,0,0); row.AutomaticSize=Enum.AutomaticSize.Y
+        row.BackgroundColor3=i%2==0 and C.PANEL or C.CARD; row.BorderSizePixel=0; corner(row,4)
+        pad(row,6,3)
+        local fl=Instance.new("UIListLayout",row); fl.SortOrder=Enum.SortOrder.LayoutOrder
+        local nL=Instance.new("TextLabel",row); nL.Size=UDim2.new(1,0,0,14)
+        nL.BackgroundTransparency=1; nL.Text=entry.name
+        nL.TextColor3=C.BLUE; nL.Font=Enum.Font.GothamBold; nL.TextSize=10
+        nL.TextXAlignment=Enum.TextXAlignment.Left
+        if entry.args~="" then
+            local aL=Instance.new("TextLabel",row); aL.Size=UDim2.new(1,0,0,12)
+            aL.BackgroundTransparency=1; aL.Text=entry.args
+            aL.TextColor3=C.MUTED; aL.Font=Enum.Font.Gotham; aL.TextSize=9
+            aL.TextXAlignment=Enum.TextXAlignment.Left
+        end
+        table.insert(logRows,row)
+    end
+end
+
+makeBtn(tabRemote,"Refresh Log",C.CARD,function() refreshLog() end)
+makeBtn(tabRemote,"Clear Log",C.GRAY,function()
+    for k in ipairs(remoteLog) do remoteLog[k]=nil end
+    remoteLog={}; refreshLog()
 end)
 
 -- ════════════════════════════════════════════════════════════════════════
 --  TAB: MISC
 -- ════════════════════════════════════════════════════════════════════════
-secLabel(tabMisc,"Game Info")
+secLabel(tabMisc,"Delta Capabilities")
 
+local capsCard=Instance.new("Frame",tabMisc)
+capsCard.Size=UDim2.new(1,0,0,0); capsCard.AutomaticSize=Enum.AutomaticSize.Y
+capsCard.BackgroundColor3=C.PANEL; capsCard.BorderSizePixel=0; corner(capsCard,8); stroke(capsCard,C.BORDER,1)
+pad(capsCard,12,8)
+local capsList=Instance.new("UIListLayout",capsCard); capsList.Padding=UDim.new(0,2); capsList.SortOrder=Enum.SortOrder.LayoutOrder
+
+local function capRow(lbl,ok)
+    local r=Instance.new("Frame",capsCard); r.Size=UDim2.new(1,0,0,20); r.BackgroundTransparency=1
+    local l=Instance.new("TextLabel",r); l.Size=UDim2.new(0.75,0,1,0)
+    l.BackgroundTransparency=1; l.Text=lbl; l.TextColor3=C.OFFWH
+    l.Font=Enum.Font.GothamBold; l.TextSize=11; l.TextXAlignment=Enum.TextXAlignment.Left
+    local v=Instance.new("TextLabel",r); v.Size=UDim2.new(0.25,0,1,0); v.Position=UDim2.new(0.75,0,0,0)
+    v.BackgroundTransparency=1; v.Text=ok and "✓ YES" or "✗ NO"
+    v.TextColor3=ok and C.GREEN or C.RED; v.Font=Enum.Font.GothamBold; v.TextSize=11
+    v.TextXAlignment=Enum.TextXAlignment.Right
+end
+capRow("hookmetamethod",    HAS_HOOK)
+capRow("Drawing API",       HAS_DRAWING)
+capRow("gethui()",          HAS_GETHUI)
+capRow("setclipboard()",    HAS_CLIP)
+capRow("newcclosure()",     newcclosure~=nil)
+capRow("getnamecallmethod", getnamecallmethod~=nil)
+
+secLabel(tabMisc,"Game Info")
 local infoCard=Instance.new("Frame",tabMisc)
 infoCard.Size=UDim2.new(1,0,0,0); infoCard.AutomaticSize=Enum.AutomaticSize.Y
 infoCard.BackgroundColor3=C.PANEL; infoCard.BorderSizePixel=0; corner(infoCard,8); stroke(infoCard,C.BORDER,1)
-pad(infoCard,12,10)
+pad(infoCard,12,8)
 local ifl=Instance.new("UIListLayout",infoCard); ifl.Padding=UDim.new(0,3); ifl.SortOrder=Enum.SortOrder.LayoutOrder
 
-local myRoleInfoLbl
+local myRoleInfoLbl; local playerCountLbl
 local function infoRow(parent,lbl,val,col)
     local row=Instance.new("Frame",parent); row.Size=UDim2.new(1,0,0,22); row.BackgroundTransparency=1
     local lL=Instance.new("TextLabel",row); lL.Size=UDim2.new(0.5,0,1,0)
@@ -712,18 +1024,10 @@ local function infoRow(parent,lbl,val,col)
     vL.Font=Enum.Font.GothamBold; vL.TextSize=11; vL.TextXAlignment=Enum.TextXAlignment.Right
     return vL
 end
-
 infoRow(infoCard,"Game","Murder Mystery 2",C.WHITE)
 infoRow(infoCard,"Place ID",tostring(game.PlaceId),C.BLUE)
-local playerCountLbl = infoRow(infoCard,"Players",tostring(#Players:GetPlayers()),C.WHITE)
-myRoleInfoLbl        = infoRow(infoCard,"Your Role","Unknown",C.MUTED)
-
-secLabel(tabMisc,"Keybind")
-local kbCard=Instance.new("Frame",tabMisc); kbCard.Size=UDim2.new(1,0,0,36)
-kbCard.BackgroundColor3=C.PANEL; kbCard.BorderSizePixel=0; corner(kbCard,8); stroke(kbCard,C.BORDER,1)
-local kbL=Instance.new("TextLabel",kbCard); kbL.Size=UDim2.new(1,-16,1,0); kbL.Position=UDim2.new(0,14,0,0)
-kbL.BackgroundTransparency=1; kbL.Text="Insert  /  ]  →  Toggle GUI"
-kbL.TextColor3=C.OFFWH; kbL.Font=Enum.Font.GothamBold; kbL.TextSize=11; kbL.TextXAlignment=Enum.TextXAlignment.Left
+playerCountLbl = infoRow(infoCard,"Players",tostring(#Players:GetPlayers()),C.WHITE)
+myRoleInfoLbl  = infoRow(infoCard,"Your Role","Unknown",C.MUTED)
 
 secLabel(tabMisc,"Server")
 makeBtn(tabMisc,"Rejoin Server",C.CARD,function()
@@ -731,8 +1035,8 @@ makeBtn(tabMisc,"Rejoin Server",C.CARD,function()
 end)
 makeBtn(tabMisc,"Copy Server ID",C.CARD,function()
     local id=game.JobId
-    pcall(function() if setclipboard then setclipboard(id) end end)
-    notify("Copied","Server ID copied",2)
+    if HAS_CLIP then pcall(function() setclipboard(id) end) end
+    notify("Copied",id:sub(1,16).."...",3)
 end)
 
 -- ── Periodic updates ───────────────────────────────────────────────────────
@@ -741,23 +1045,13 @@ task.spawn(function()
         task.wait(1.5)
         local role=getRole(LP); local col=ROLE_COLOR[role]
         roleDot.BackgroundColor3=col; roleTxt.Text=role; roleTxt.TextColor3=col
-        TW:Create(rolePill,TI15,{BackgroundColor3=C.PANEL}):Play()
         if myRoleInfoLbl then myRoleInfoLbl.Text=role; myRoleInfoLbl.TextColor3=col end
         if playerCountLbl then playerCountLbl.Text=tostring(#Players:GetPlayers()) end
-        if espEnabled then refreshESP() end
+        if not HAS_DRAWING and espEnabled then refreshHL() end
     end
 end)
 
--- ── ESPconnections ─────────────────────────────────────────────────────────
-Players.PlayerAdded:Connect(function(p)
-    p.CharacterAdded:Connect(function() task.wait(1); if espEnabled then applyESP(p) end end)
-end)
-Players.PlayerRemoving:Connect(function(p) removeESP(p) end)
-for _,p in ipairs(Players:GetPlayers()) do
-    if p~=LP then p.CharacterAdded:Connect(function() task.wait(1); if espEnabled then applyESP(p) end end) end
-end
-
--- ── Keybind: Insert / ] ────────────────────────────────────────────────────
+-- ── Keybind ────────────────────────────────────────────────────────────────
 UIS.InputBegan:Connect(function(i,gpe)
     if gpe then return end
     if i.KeyCode==Enum.KeyCode.Insert or i.KeyCode==Enum.KeyCode.RightBracket then
@@ -765,7 +1059,10 @@ UIS.InputBegan:Connect(function(i,gpe)
     end
 end)
 
--- activate ESP tab by default
 tabs["ESP"].btn.MouseButton1Click:Fire()
 
-notify("MM2 Hub","Loaded! Insert / ] to toggle GUI",4)
+local caps={}
+if HAS_HOOK    then table.insert(caps,"Hook") end
+if HAS_DRAWING then table.insert(caps,"Draw") end
+if HAS_GETHUI  then table.insert(caps,"GUI+") end
+notify("MM2 Hub v2.0","Delta: "..(#caps>0 and table.concat(caps," | ") or "basic mode").." | ] to toggle",5)
