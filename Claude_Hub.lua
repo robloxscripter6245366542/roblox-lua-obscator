@@ -194,32 +194,46 @@ local function Scr(parent,sz,pos)
 end
 local function notify(t,m,d) pcall(function() SG:SetCore("SendNotification",{Title=t,Text=m,Duration=d or 3}) end) end
 
--- ── require runner (uses every loader the executor supports) ──────────────────────
--- opt may be a string ("plain"/"call") OR a table {mode=, method=, arg=}
---   require(id)                      → mode "plain"
---   require(id)()                    → mode "call"
---   require(id).<method>(<arg>)      → method set, e.g. require(133...).woawsoc00l("name")
+-- ── require runner (handles every call shape these scripts use) ───────────────────
+-- opt may be a string ("plain"/"call") OR a table {mode=, method=, colon=, args={...}}
+--   require(id)                              → plain
+--   require(id)()                            → mode "call"
+--   require(id)(a,b)                         → args set, no method
+--   require(id).Method(a,b)                  → method set
+--   require(id):Method(a,b)                  → method set + colon=true
+-- arg tokens: "@me"/"@user" → LocalPlayer.Name ; "@id" → UserId ; else literal
 local function resolveArg(a)
-    if a=="@me"   then return LP.Name end
-    if a=="@user" then return LP.Name end
-    if a=="@id"   then return LP.UserId end
+    if a=="@me" or a=="@user" then return LP.Name end
+    if a=="@id" then return LP.UserId end
     return a
+end
+local function buildArgs(opt)
+    local out={}
+    if opt.args then for i,a in ipairs(opt.args) do out[i]=resolveArg(a) end end
+    return out, (opt.args and #opt.args or 0)
 end
 local function runRequire(name,id,opt)
     if not ENV.HAS_REQ then notify("Claude Hub","require() unavailable on "..ENV.name,4); return end
     if not id then notify("Claude Hub","No asset ID",3); return end
     if type(opt)=="string" then opt={mode=opt} end
     opt = opt or {}
+    -- legacy single-arg support
+    if opt.arg~=nil and not opt.args then opt.args={opt.arg} end
     notify("Claude Hub","Loading "..name.."…",2)
     task.spawn(function()
+        local args,n = buildArgs(opt)
         local ok2,res=pcall(function()
             local m=require(id)
             if opt.method then
                 local fn=m[opt.method]
                 if type(fn)~="function" then error("method '"..opt.method.."' not found") end
-                if opt.arg~=nil then return fn(resolveArg(opt.arg)) else return fn() end
-            elseif opt.mode=="call" then return m()
-            else return m end
+                if opt.colon then return fn(m,table.unpack(args,1,n)) end
+                return fn(table.unpack(args,1,n))
+            elseif opt.mode=="call" or n>0 then
+                return m(table.unpack(args,1,n))
+            else
+                return m
+            end
         end)
         if ok2 then notify("Claude Hub",name.." loaded ✓",3)
         else notify("Load Failed",name..": "..tostring(res):sub(1,50),5) end
@@ -315,17 +329,22 @@ local function SectionHdr(parent,txt)
     h.TextXAlignment=Enum.TextXAlignment.Left; return h
 end
 -- build a readable call signature string for an entry
+local function fmtArg(a)
+    if a=="@me" or a=="@user" then return "game.Players.LocalPlayer.Name" end
+    if a=="@id" then return "game.Players.LocalPlayer.UserId" end
+    if type(a)=="string" then return '"'..a..'"' end
+    return tostring(a)
+end
 local function callSig(s)
+    local parts={}
+    local arglist = s.args or (s.arg~=nil and {s.arg}) or nil
+    if arglist then for _,a in ipairs(arglist) do parts[#parts+1]=fmtArg(a) end end
+    local argstr=table.concat(parts,", ")
     if s.method then
-        local a=""
-        if s.arg~=nil then
-            if type(s.arg)=="string" and s.arg:sub(1,1)~="@" then a='"'..s.arg..'"'
-            elseif s.arg=="@me" or s.arg=="@user" then a='"'..LP.Name..'"'
-            else a=tostring(resolveArg(s.arg)) end
-        end
-        return "require("..tostring(s.id)..")."..s.method.."("..a..")"
-    elseif s.mode=="call" then
-        return "require("..tostring(s.id)..")()"
+        local sep = s.colon and ":" or "."
+        return "require("..tostring(s.id)..")"..sep..s.method.."("..argstr..")"
+    elseif #parts>0 or s.mode=="call" then
+        return "require("..tostring(s.id)..")("..argstr..")"
     end
     return "require("..tostring(s.id)..")"
 end
@@ -338,7 +357,7 @@ local function ScriptCard(parent,s)
     local sig=Lbl(card,callSig(s),UDim2.new(1,-96,0,13),UDim2.new(0,0,0,36),C.ACC2,10,FN)
     sig.Font=Enum.Font.RobotoMono; sig.TextTruncate=Enum.TextTruncate.AtEnd
     Btn(card,"Run",UDim2.new(0,80,0,34),UDim2.new(1,-84,0.5,-17),C.ACCENT,function()
-        runRequire(s.name,s.id,{mode=s.mode,method=s.method,arg=s.arg})
+        runRequire(s.name,s.id,{mode=s.mode,method=s.method,colon=s.colon,args=s.args,arg=s.arg})
     end)
     if ENV.HAS_CLIP then
         Btn(card,"Copy",UDim2.new(0,52,0,18),UDim2.new(1,-84,0,6),C.PANEL,function()
@@ -400,14 +419,75 @@ do
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  FEATURED — exact method-call format examples
---  pattern:  require(ID).method("arg")     e.g. require(133...).woawsoc00l("name")
+--  MONSTER MORPHS — require(ID).MorphMonster(LocalPlayer.Name, "<morph>")
+--  Each card finds your username and morphs your character into the monster.
 -- ═══════════════════════════════════════════════════════════════════════════════
-local FEATURED = {
-    {name="Featured Loader",  by="example", id=133464960745567, method="woawsoc00l", arg="name"},
-    {name="Loader (your key)",by="example", id=133464960745567, method="woawsoc00l", arg="@me", note="passes your username"},
-    {name="Plain require",    by="example", id=133464960745567},
-    {name="Call return",      by="example", id=133464960745567, mode="call"},
+local function morph(id, label, key)
+    return {name=label, id=id, method="MorphMonster", args={"@me", key}}
+end
+local MORPHS = {
+    morph(75834950186546, "Locust",                "locust"),
+    morph(75834950186546, "Siren Head",            "sirenhead"),
+    morph(75834950186546, "Siren Head 2",          "sirenhead2"),
+    morph(75834950186546, "Cartoon Cat",           "cartoon cat"),
+    morph(75834950186546, "Phen",                  "phen"),
+    morph(75834950186546, "Guilt",                 "guilt"),
+    morph(75834950186546, "Country Road Creature", "country road creature"),
+    morph(75834950186546, "Dark Siren Head",       "dark siren head"),
+    morph(77055143496081, "Shin Sonic",            "shin sonic"),
+    morph(77055143496081, "Small Shin",            "small shin"),
+    morph(77055143496081, "Sonic.EYX",             "sonic.eyx"),
+    morph(125056408682835,"Cartoon Cat (v2)",      "cartoon cat"),
+    morph(125056408682835,"Cartoon Mouse",         "cartoon mouse"),
+    morph(125056408682835,"Cartoon Dog",           "cartoon dog"),
+    morph(83656983108761, "Anxious Dog",           "anxious dog"),
+    morph(83656983108761, "Bridge Worm",           "bridgeworm"),
+    morph(135567062529977,"Hush",                  "hush"),
+    morph(135567062529977,"Long Horse",            "long horse"),
+    morph(119819780800418,"Organator",             "organator"),
+    morph(88521859208314, "Death Angel",           "death angel"),
+    morph(88521859208314, "Horror",                "horror"),
+    morph(88521859208314, "Aka Manto",             "aka manto"),
+    morph(87513953915554, "Bon the Rabbit",        "bontherabbit"),
+    morph(87513953915554, "Pumpkin Rabbit",        "pumpkinrabbit"),
+    morph(73755486018996, "Prototype",             "Prototype"),
+    morph(92610899059557, "CatNap",                "catnap"),
+    morph(138108464845575,"Huggy Wuggy",           "huggy wuggy"),
+    morph(81801397159119, "Spider Queen",          "spider queen"),
+    morph(109044049581210,"SCP-096 Reskin",        "scp096reskin"),
+    morph(122588279096344,"Phen (v2)",             "phen"),
+    morph(95084162409898, "The Extra Slide",       "the extra slide"),
+    morph(71349190736743, "Traffic Light Head",    "trafficlight head"),
+    morph(87137179673747, "Siren Head (v2)",       "sirenhead"),
+    morph(120865255781665,"Suitborn",              "suitborn"),
+    morph(125375466492613,"Richard Boderman",      "richard boderman"),
+    morph(130962958730541,"Adult Mimic",           "adultmimic"),
+}
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  LOADERS — misc require loaders that take your username
+-- ═══════════════════════════════════════════════════════════════════════════════
+local LOADERS = {
+    {name="Loader A",          id=77842202241216,  method="load",            args={"@me"}},
+    {name="Loader B",          id=90312411619068,  method="load",            args={"@me"}},
+    {name="Loader C",          id=90079465185110,  method="load",            args={"@me"}},
+    {name="Loader D",          id=71205239813237,  method="Load",            args={"@me"}},
+    {name="Loader E (colon)",  id=134034440311399, method="load", colon=true,args={"@me"}},
+    {name="Test Loader",       id=89532600142550,  method="Test",            args={"@me"}},
+    {name="American Demo",     id=111697793579923, method="americandemo",    args={"@me"}},
+    {name="c00lgui6",          id=116847923485060, method="c00lgui6",        args={"@me"}},
+    {name="Loader F (colon)",  id=137870571533698, method="load", colon=true,args={"@me"}},
+    {name="Loader G",          id=124675875890869, method="load",            args={"@me"}},
+    {name="Loader H",          id=73888902428931,  method="load",            args={"@me"}},
+    {name="Direct Loader",     id=94673163261524,                            args={"@me"}},
+    {name="Blu Dude",          id=74432860446268,  method="bluudude",        args={"@me"}},
+    {name="Jason",             id=93565035610376,  method="jason",           args={"@me"}},
+    {name="Sukuna",            id=89529616632600,                            args={"@me","Sukuna"}},
+    {name="Loader I",          id=14268224146,     method="load",            args={"@me"}},
+    {name="Player Loader",     id=5375399205,      method="Player",          args={"@me"}},
+    {name="John",              id=80147538511861,  method="john",            args={"@me"}},
+    {name="Immortality Lord",  id=6088383746,      method="inmportalitylord",args={"@me"}},
+    {name="MC",                id=15581949972,     method="mc",              args={"@me"}},
 }
 
 -- ═══════════════════════════════════════════════════════════════════════════════
@@ -426,7 +506,8 @@ local function gen(list, method, arg)
 end
 
 local CAT = {
- {icon="⭐", name="Featured", custom=FEATURED},
+ {icon="👹", name="Morphs",  custom=MORPHS},
+ {icon="⭐", name="Loaders", custom=LOADERS},
 
  {icon="🌐", name="Universal", method="Load", arg="@me", list={
     "Infinite Yield","Dark Dex Explorer","Hydroxide Remote Spy","Simple Spy","Remote Spy v3",
