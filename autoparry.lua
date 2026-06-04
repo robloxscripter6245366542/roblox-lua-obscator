@@ -271,7 +271,7 @@ task.spawn(function()
     local attempts = 0
     while not cachedBlockFn do
         findBlockFn()
-        attempts += 1
+        attempts = attempts + 1
         if attempts == 4 and not cachedBlockFn then
             notify("Block fn","Not found yet — enter a round",5)
         end
