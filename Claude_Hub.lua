@@ -737,9 +737,122 @@ do
 
     do
         local w=Frm(P,UDim2.new(1,0,0,48),nil,C.PANEL); corner(w,8); pad(w,6,6,10,10)
-        Lbl(w,"If SS_Executor.lua is running (ReplicatedStorage."..BRIDGE_NAME.."),\nactions run on the SERVER. With NO backdoor, they automatically\nfall back to running CLIENT-SIDE — so this tab always works.",
+        Lbl(w,"If SS_Executor.lua is running (ReplicatedStorage."..BRIDGE_NAME.."),\nactions run on the SERVER. With NO backdoor, they fall back to the\nclient — or use the Remotes tab to fire the game's own remotes (FE).",
             UDim2.new(1,0,1,0),nil,C.GREEN,10,FN)
     end
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  TAB — REMOTES  (FE fallback: no backdoor → hop on the game's own remotes)
+--  Scans every RemoteEvent / RemoteFunction and lets you fire it with args.
+-- ═══════════════════════════════════════════════════════════════════════════════
+do
+    local P=newTab("📡","Remotes")
+    SectionHdr(P,"■ FIRE GAME REMOTES  (works in FE — no backdoor needed)")
+    do
+        local note=Frm(P,UDim2.new(1,0,0,44),nil,C.PANEL); corner(note,8); pad(note,6,6,10,10)
+        Lbl(note,"No backdoor? Hop on the game's existing remotes. Set args below\n(comma-separated). Tokens: @me = your name, @id = UserId.",
+            UDim2.new(1,0,1,0),nil,C.MUTED,10,FN)
+    end
+
+    -- shared args input
+    local _,argBox=Inp(P,'args  e.g.  @me, "Knife", 100   (blank = none)',UDim2.new(1,0,0,36))
+
+    -- parse the args string into a real argument list
+    local function parseArgs()
+        local txt=argBox.Text
+        if txt=="" then return {},0 end
+        local list={}; local i=0
+        for raw in string.gmatch(txt..",", "%s*(.-)%s*,") do
+            i=i+1
+            if raw=="@me" or raw=="@user" then list[i]=LP.Name
+            elseif raw=="@id" then list[i]=LP.UserId
+            elseif raw=="true" then list[i]=true
+            elseif raw=="false" then list[i]=false
+            elseif tonumber(raw) then list[i]=tonumber(raw)
+            else
+                -- strip surrounding quotes if present
+                local s=raw:match('^"(.*)"$') or raw:match("^'(.*)'$") or raw
+                list[i]=s
+            end
+        end
+        return list,i
+    end
+
+    -- output console
+    local conWrap=Frm(P,UDim2.new(1,0,0,88),nil,C.DARK); corner(conWrap,8); stroke(conWrap,C.BORDER,1)
+    local _,conScr=Scr(conWrap,UDim2.new(1,-6,1,-6),UDim2.new(0,3,0,3)); listV(conScr,1); pad(conScr,4,4,6,6)
+    local function rout(line,col)
+        local l=Instance.new("TextLabel")
+        l.Size=UDim2.new(1,0,0,14); l.BackgroundTransparency=1; l.Text=line
+        l.TextColor3=col or C.TEXT; l.TextSize=11; l.Font=Enum.Font.RobotoMono
+        l.TextXAlignment=Enum.TextXAlignment.Left; l.TextWrapped=true
+        l.AutomaticSize=Enum.AutomaticSize.Y; l.Parent=conScr
+    end
+
+    -- fire one remote
+    local function fire(remote)
+        local args,n=parseArgs()
+        rout("→ "..remote.ClassName..":"..remote.Name.." ("..n.." args)",C.MUTED)
+        task.spawn(function()
+            local ok2,res=pcall(function()
+                if remote:IsA("RemoteEvent") then
+                    remote:FireServer(table.unpack(args,1,n)); return "fired"
+                else
+                    return remote:InvokeServer(table.unpack(args,1,n))
+                end
+            end)
+            if ok2 then rout("✓ "..remote.Name.." → "..tostring(res):sub(1,60),C.GREEN)
+            else rout("✗ "..tostring(res):sub(1,60),C.RED) end
+        end)
+    end
+
+    -- search + list
+    SectionHdr(P,"■ DISCOVERED REMOTES")
+    local searchReg=CardSearch(P,"Search remotes…")
+    local listHost=Instance.new("Frame")
+    listHost.Size=UDim2.new(1,0,0,0); listHost.BackgroundTransparency=1
+    listHost.AutomaticSize=Enum.AutomaticSize.Y; listHost.Parent=P
+    listV(listHost,5)
+
+    local function scanRemotes()
+        for _,c in ipairs(listHost:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
+        local found={}
+        for _,o in ipairs(game:GetDescendants()) do
+            if o:IsA("RemoteEvent") or o:IsA("RemoteFunction") then
+                table.insert(found,o)
+                if #found>=400 then break end
+            end
+        end
+        rout("scanned — "..#found.." remotes found",C.ACC2)
+        for _,r in ipairs(found) do
+            local isFn=r:IsA("RemoteFunction")
+            local card=Frm(listHost,UDim2.new(1,0,0,46),nil,C.CARD); corner(card,9); stroke(card,C.BORDER,1); pad(card,5,5,10,8)
+            -- type badge
+            local badge=Frm(card,UDim2.new(0,30,0,16),UDim2.new(0,0,0,0),isFn and C.PINK or C.ACCENT); corner(badge,5)
+            Lbl(badge,isFn and "FN" or "EV",UDim2.new(1,0,1,0),nil,C.WHITE,9,FB).TextXAlignment=Enum.TextXAlignment.Center
+            Lbl(card,r.Name,UDim2.new(1,-150,0,16),UDim2.new(0,36,0,0),C.WHITE,12,FB)
+            local path=r:GetFullName()
+            Lbl(card,path,UDim2.new(1,-150,0,13),UDim2.new(0,0,0,20),C.MUTED,9,FN).TextTruncate=Enum.TextTruncate.AtEnd
+            Btn(card,isFn and "Invoke" or "Fire",UDim2.new(0,70,0,28),UDim2.new(1,-74,0.5,-14),C.ACCENT,function() fire(r) end)
+            searchReg(card, (r.Name.." "..path):lower())
+        end
+    end
+
+    Btn(P,"⟳  Scan / Refresh Remotes",UDim2.new(1,0,0,36),nil,C.ACCENT,scanRemotes)
+    if ENV.HAS_CLIP then
+        Btn(P,"Copy All Remote Paths",UDim2.new(1,0,0,32),nil,C.PANEL,function()
+            local lines={}
+            for _,o in ipairs(game:GetDescendants()) do
+                if o:IsA("RemoteEvent") or o:IsA("RemoteFunction") then
+                    table.insert(lines,o.ClassName.."  "..o:GetFullName())
+                end
+            end
+            ENV.setClip(table.concat(lines,"\n")); notify("Claude Hub","Copied "..#lines.." remotes",3)
+        end)
+    end
+    rout("Ready. Hit Scan to list the game's remotes.",C.MUTED)
+    task.defer(scanRemotes)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
