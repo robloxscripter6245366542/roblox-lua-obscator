@@ -2043,13 +2043,291 @@ end)
 -- ═══════════════════════════════════════════════════════════════════════════════
 do
     local P=newTab("📂","Scripts")
-    -- saved scripts: {name=string, code=string, builtIn=bool}
     local SAVED={
-        {name="WalkSpeed 200",  code='game.Players.LocalPlayer.Character.Humanoid.WalkSpeed=200', builtIn=true},
-        {name="Infinite Jump",  code='game:GetService("UserInputService").JumpRequest:Connect(function() game.Players.LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end)', builtIn=true},
-        {name="Noclip",         code='game:GetService("RunService").Stepped:Connect(function() game.Players.LocalPlayer.Character:FindFirstChildOfClass("HumanoidRootPart").CanCollide=false end)', builtIn=true},
-        {name="Print Name",     code='print(game.Players.LocalPlayer.Name)', builtIn=true},
-        {name="Infinite Yield", code='loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source",true))()', builtIn=true},
+        -- ── Universal Utility ──────────────────────────────────────────────────
+        {name="Infinite Jump", builtIn=true, code=[[
+game:GetService("UserInputService").JumpRequest:Connect(function()
+    local c=game.Players.LocalPlayer.Character
+    local h=c and c:FindFirstChildOfClass("Humanoid")
+    if h and h:GetState()~=Enum.HumanoidStateType.Dead then
+        h:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+print("[CHub] Infinite Jump ON")
+]]},
+        {name="Fly (F = toggle)", builtIn=true, code=[[
+local lp=game.Players.LocalPlayer
+local uis=game:GetService("UserInputService")
+local rs=game:GetService("RunService")
+local flying=false; local bv,bg; local spd=80
+local function toggle()
+    flying=not flying
+    local char=lp.Character; if not char then return end
+    local hrp=char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+    if flying then
+        bv=Instance.new("BodyVelocity",hrp); bv.MaxForce=Vector3.new(1e5,1e5,1e5); bv.Velocity=Vector3.zero
+        bg=Instance.new("BodyGyro",hrp); bg.MaxTorque=Vector3.new(1e5,1e5,1e5); bg.D=100
+    else
+        if bv then bv:Destroy() end; if bg then bg:Destroy() end
+    end
+    print("[CHub] Fly: "..tostring(flying))
+end
+rs.Heartbeat:Connect(function()
+    if not flying or not bv or not bg then return end
+    local cam=workspace.CurrentCamera; local d=Vector3.zero
+    if uis:IsKeyDown(Enum.KeyCode.W) then d=d+cam.CFrame.LookVector end
+    if uis:IsKeyDown(Enum.KeyCode.S) then d=d-cam.CFrame.LookVector end
+    if uis:IsKeyDown(Enum.KeyCode.A) then d=d-cam.CFrame.RightVector end
+    if uis:IsKeyDown(Enum.KeyCode.D) then d=d+cam.CFrame.RightVector end
+    if uis:IsKeyDown(Enum.KeyCode.Space) then d=d+Vector3.new(0,1,0) end
+    if uis:IsKeyDown(Enum.KeyCode.LeftShift) then d=d-Vector3.new(0,1,0) end
+    bv.Velocity=d*spd; bg.CFrame=cam.CFrame
+end)
+uis.InputBegan:Connect(function(i,g) if not g and i.KeyCode==Enum.KeyCode.F then toggle() end end)
+print("[CHub] Fly loaded — press F")
+]]},
+        {name="Noclip (N = toggle)", builtIn=true, code=[[
+local uis=game:GetService("UserInputService")
+local rs=game:GetService("RunService")
+local on=false; local conn
+uis.InputBegan:Connect(function(i,g)
+    if g then return end
+    if i.KeyCode==Enum.KeyCode.N then
+        on=not on
+        if on then
+            conn=rs.Stepped:Connect(function()
+                local c=game.Players.LocalPlayer.Character
+                if c then for _,p in pairs(c:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide=false end
+                end end
+            end)
+        elseif conn then conn:Disconnect(); conn=nil end
+        print("[CHub] Noclip: "..tostring(on))
+    end
+end)
+print("[CHub] Noclip loaded — press N")
+]]},
+        {name="Player ESP", builtIn=true, code=[[
+local players=game:GetService("Players")
+local rs=game:GetService("RunService")
+local lp=players.LocalPlayer; local tags={}
+local function makeTag(p)
+    if p==lp then return end
+    local function attach()
+        local c=p.Character; if not c then return end
+        local hrp=c:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+        local old=hrp:FindFirstChild("_ESP_"); if old then old:Destroy() end
+        local bb=Instance.new("BillboardGui",hrp); bb.Name="_ESP_"
+        bb.Size=UDim2.new(0,0,0,44); bb.StudsOffset=Vector3.new(0,3.2,0); bb.AlwaysOnTop=true
+        local nl=Instance.new("TextLabel",bb); nl.Size=UDim2.new(1,0,0,22); nl.BackgroundTransparency=1
+        nl.Text=p.Name; nl.TextColor3=Color3.fromRGB(255,80,80); nl.TextStrokeTransparency=0
+        nl.Font=Enum.Font.GothamBold; nl.TextSize=14
+        local dl=Instance.new("TextLabel",bb); dl.Size=UDim2.new(1,0,0,16); dl.Position=UDim2.new(0,0,0,24)
+        dl.BackgroundTransparency=1; dl.TextColor3=Color3.fromRGB(220,220,220); dl.TextStrokeTransparency=0
+        dl.Font=Enum.Font.Gotham; dl.TextSize=11
+        tags[p]=bb
+        rs.Heartbeat:Connect(function()
+            if not hrp or not hrp.Parent then return end
+            local mc=lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+            dl.Text=mc and math.floor((hrp.Position-mc.Position).Magnitude).."m" or ""
+        end)
+    end
+    attach(); p.CharacterAdded:Connect(attach)
+end
+for _,p in pairs(players:GetPlayers()) do makeTag(p) end
+players.PlayerAdded:Connect(makeTag)
+players.PlayerRemoving:Connect(function(p) if tags[p] then tags[p]:Destroy(); tags[p]=nil end end)
+print("[CHub] ESP ON — "..#players:GetPlayers().." players")
+]]},
+        {name="Soft Aimbot (hold RMB)", builtIn=true, code=[[
+local players=game:GetService("Players")
+local uis=game:GetService("UserInputService")
+local rs=game:GetService("RunService")
+local lp=players.LocalPlayer; local cam=workspace.CurrentCamera
+rs.RenderStepped:Connect(function()
+    if not uis:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
+    local best,bestD=nil,math.huge
+    for _,p in pairs(players:GetPlayers()) do
+        if p~=lp and p.Character then
+            local h=p.Character:FindFirstChild("Head")
+            if h then
+                local pos,vis=cam:WorldToScreenPoint(h.Position)
+                if vis then
+                    local d=(Vector2.new(pos.X,pos.Y)-Vector2.new(cam.ViewportSize.X/2,cam.ViewportSize.Y/2)).Magnitude
+                    if d<bestD then best=h; bestD=d end
+                end
+            end
+        end
+    end
+    if best then cam.CFrame=CFrame.lookAt(cam.CFrame.Position,best.Position) end
+end)
+print("[CHub] Aimbot ON — hold Right Click")
+]]},
+        {name="Speed + Jump GUI", builtIn=true, code=[[
+local lp=game.Players.LocalPlayer
+local sg=lp:WaitForChild("PlayerGui")
+local old=sg:FindFirstChild("__CHub_Speed__"); if old then old:Destroy() end
+local s=Instance.new("ScreenGui",sg); s.Name="__CHub_Speed__"; s.ResetOnSpawn=false; s.IgnoreGuiInset=true
+local f=Instance.new("Frame",s); f.Size=UDim2.new(0,200,0,72)
+f.Position=UDim2.new(0.5,-100,1,-88); f.BackgroundColor3=Color3.fromRGB(20,22,34); f.BorderSizePixel=0
+Instance.new("UICorner",f).CornerRadius=UDim.new(0,12)
+local function row(yo,label,default,maxV,apply)
+    local lbl=Instance.new("TextLabel",f); lbl.Size=UDim2.new(0,62,0,24); lbl.Position=UDim2.new(0,8,0,yo)
+    lbl.BackgroundTransparency=1; lbl.Text=label; lbl.TextColor3=Color3.fromRGB(190,198,222)
+    lbl.Font=Enum.Font.Gotham; lbl.TextSize=12; lbl.TextXAlignment=Enum.TextXAlignment.Left
+    local tr=Instance.new("Frame",f); tr.Size=UDim2.new(1,-80,0,10); tr.Position=UDim2.new(0,72,0,yo+7)
+    tr.BackgroundColor3=Color3.fromRGB(36,41,60); tr.BorderSizePixel=0; Instance.new("UICorner",tr).CornerRadius=UDim.new(1,0)
+    local fi=Instance.new("Frame",tr); fi.Size=UDim2.new(default/maxV,0,1,0); fi.BackgroundColor3=Color3.fromRGB(74,152,245)
+    fi.BorderSizePixel=0; Instance.new("UICorner",fi).CornerRadius=UDim.new(1,0)
+    local tb=Instance.new("TextButton",tr); tb.Size=UDim2.new(1,0,1,0); tb.BackgroundTransparency=1; tb.Text=""
+    local drag=false
+    tb.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=true end end)
+    tb.InputEnded:Connect(function() drag=false end)
+    game:GetService("UserInputService").InputChanged:Connect(function(i)
+        if not drag then return end
+        local r=math.clamp((i.Position.X-tr.AbsolutePosition.X)/tr.AbsoluteSize.X,0,1)
+        fi.Size=UDim2.new(r,0,1,0); apply(math.floor(r*maxV))
+    end)
+    apply(default)
+end
+local function getHum() local c=lp.Character; return c and c:FindFirstChildOfClass("Humanoid") end
+row(4,"Speed",16,500,function(v) local h=getHum(); if h then h.WalkSpeed=v end end)
+row(40,"Jump",50,500,function(v) local h=getHum(); if h then h.JumpPower=v; h.UseJumpPower=true end end)
+print("[CHub] Speed+Jump GUI loaded")
+]]},
+        {name="Fullbright", builtIn=true, code=[[
+local lighting=game:GetService("Lighting")
+lighting.Brightness=2; lighting.ClockTime=14; lighting.FogEnd=1e6
+lighting.GlobalShadows=false; lighting.Ambient=Color3.fromRGB(178,178,178)
+lighting.OutdoorAmbient=Color3.fromRGB(178,178,178)
+for _,e in pairs(lighting:GetChildren()) do
+    if e:IsA("BlurEffect") or e:IsA("ColorCorrectionEffect") or e:IsA("SunRaysEffect") then e.Enabled=false end
+end
+print("[CHub] Fullbright ON")
+]]},
+        {name="Freecam (V = toggle)", builtIn=true, code=[[
+local uis=game:GetService("UserInputService")
+local rs=game:GetService("RunService")
+local cam=workspace.CurrentCamera; local on=false; local spd=1
+local orig; local conn
+local function toggle()
+    on=not on
+    if on then
+        orig=cam.CameraType; cam.CameraType=Enum.CameraType.Scriptable
+        conn=rs.RenderStepped:Connect(function(dt)
+            local d=Vector3.zero; local s=spd*(uis:IsKeyDown(Enum.KeyCode.LeftShift) and 3 or 1)
+            if uis:IsKeyDown(Enum.KeyCode.W) then d=d+cam.CFrame.LookVector end
+            if uis:IsKeyDown(Enum.KeyCode.S) then d=d-cam.CFrame.LookVector end
+            if uis:IsKeyDown(Enum.KeyCode.A) then d=d-cam.CFrame.RightVector end
+            if uis:IsKeyDown(Enum.KeyCode.D) then d=d+cam.CFrame.RightVector end
+            if uis:IsKeyDown(Enum.KeyCode.E) then d=d+Vector3.new(0,1,0) end
+            if uis:IsKeyDown(Enum.KeyCode.Q) then d=d-Vector3.new(0,1,0) end
+            cam.CFrame=cam.CFrame*CFrame.new(d*s*dt*60)
+        end)
+    else
+        if conn then conn:Disconnect(); conn=nil end
+        cam.CameraType=orig or Enum.CameraType.Custom
+    end
+    print("[CHub] Freecam: "..tostring(on))
+end
+uis.InputBegan:Connect(function(i,g) if not g and i.KeyCode==Enum.KeyCode.V then toggle() end end)
+print("[CHub] Freecam loaded — press V")
+]]},
+        {name="Anti-AFK", builtIn=true, code=[[
+game.Players.LocalPlayer.Idled:Connect(function()
+    local vu=game:GetService("VirtualUser")
+    if vu then pcall(function() vu:Button2Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame) end) end
+end)
+print("[CHub] Anti-AFK ON")
+]]},
+        {name="Remove Fog", builtIn=true, code=[[
+local l=game:GetService("Lighting")
+l.FogEnd=1e6; l.FogStart=0; l.FogColor=Color3.fromRGB(191,191,191)
+print("[CHub] Fog removed")
+]]},
+        {name="Hitbox Expander", builtIn=true, code=[[
+local players=game:GetService("Players")
+local lp=players.LocalPlayer
+for _,p in pairs(players:GetPlayers()) do
+    if p~=lp and p.Character then
+        local hrp=p.Character:FindFirstChild("HumanoidRootPart")
+        if hrp then hrp.Size=Vector3.new(8,8,8); hrp.Transparency=0.8 end
+    end
+end
+players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function(c)
+        local hrp=c:WaitForChild("HumanoidRootPart",5)
+        if hrp then hrp.Size=Vector3.new(8,8,8); hrp.Transparency=0.8 end
+    end)
+end)
+print("[CHub] Hitbox Expander ON (8x8x8)")
+]]},
+        {name="Click Teleport (T = toggle)", builtIn=true, code=[[
+local uis=game:GetService("UserInputService")
+local on=false
+uis.InputBegan:Connect(function(i,g)
+    if g then return end
+    if i.KeyCode==Enum.KeyCode.T then on=not on; print("[CHub] Click-TP: "..tostring(on)) end
+end)
+uis.InputBegan:Connect(function(i,g)
+    if g or not on then return end
+    if i.UserInputType==Enum.UserInputType.MouseButton1 then
+        local lp=game.Players.LocalPlayer; local c=lp.Character
+        local hrp=c and c:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+        local hit=game:GetService("UserInputService"):GetMouseLocation()
+        local ray=workspace.CurrentCamera:ScreenPointToRay(hit.X,hit.Y)
+        local result=workspace:Raycast(ray.Origin,ray.Direction*500)
+        if result then hrp.CFrame=CFrame.new(result.Position+Vector3.new(0,3,0)) end
+    end
+end)
+print("[CHub] Click-TP loaded — press T then click")
+]]},
+        {name="Spin (hold H)", builtIn=true, code=[[
+local rs=game:GetService("RunService")
+local uis=game:GetService("UserInputService")
+rs.Heartbeat:Connect(function()
+    if not uis:IsKeyDown(Enum.KeyCode.H) then return end
+    local c=game.Players.LocalPlayer.Character
+    local hrp=c and c:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+    hrp.CFrame=hrp.CFrame*CFrame.Angles(0,math.rad(12),0)
+end)
+print("[CHub] Spin loaded — hold H")
+]]},
+        {name="Godmode (max health)", builtIn=true, code=[[
+local lp=game.Players.LocalPlayer
+local function applyGod(c)
+    local hum=c:WaitForChild("Humanoid",5); if not hum then return end
+    hum.MaxHealth=math.huge; hum.Health=math.huge
+end
+if lp.Character then applyGod(lp.Character) end
+lp.CharacterAdded:Connect(applyGod)
+print("[CHub] Godmode ON")
+]]},
+        {name="Kill Aura (K = toggle)", builtIn=true, code=[[
+local players=game:GetService("Players")
+local rs=game:GetService("RunService")
+local uis=game:GetService("UserInputService")
+local lp=players.LocalPlayer; local on=false
+uis.InputBegan:Connect(function(i,g) if not g and i.KeyCode==Enum.KeyCode.K then on=not on; print("[CHub] KillAura: "..tostring(on)) end end)
+rs.Heartbeat:Connect(function()
+    if not on then return end
+    local c=lp.Character; local hrp=c and c:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+    for _,p in pairs(players:GetPlayers()) do
+        if p~=lp and p.Character then
+            local ph=p.Character:FindFirstChild("HumanoidRootPart")
+            if ph and (hrp.Position-ph.Position).Magnitude<8 then
+                local hum=p.Character:FindFirstChildOfClass("Humanoid")
+                if hum then hum.Health=0 end
+            end
+        end
+    end
+end)
+print("[CHub] Kill Aura — press K to toggle, walks into range")
+]]},
+        -- ── Popular game scripts (HttpGet, no require) ─────────────────────────
+        {name="Infinite Yield (Universal Admin)", builtIn=true, code='loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source",true))()'},
+        {name="Hydroxide (Remote Spy)", builtIn=true, code='loadstring(game:HttpGet("https://raw.githubusercontent.com/Upbolt/Hydroxide/trunk/init.lua",true))()'},
+        {name="Dex Explorer", builtIn=true, code='loadstring(game:HttpGet("https://raw.githubusercontent.com/Babyhamsta/RBLX_Scripts/main/Universal/BypassedDarkDexV3.lua",true))()'},
     }
     -- load persisted scripts from files if available
     if readfile and listfiles then
