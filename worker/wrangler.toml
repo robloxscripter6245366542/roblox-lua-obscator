@@ -1,0 +1,13 @@
+name = "claude-hub-proxy"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# After creating a KV namespace in the Cloudflare dashboard,
+# replace "YOUR_KV_NAMESPACE_ID" with the real ID from the KV page.
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+id      = "YOUR_KV_NAMESPACE_ID"
+
+# Add your Anthropic key as a secret (never put it here in plaintext):
+#   wrangler secret put ANTHROPIC_KEY
+# It will prompt you to paste the key securely.

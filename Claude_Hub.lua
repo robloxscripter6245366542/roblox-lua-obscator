@@ -292,15 +292,15 @@ local SGI=Instance.new("ScreenGui")
 SGI.Name="__CLAUDE_HUB__"; SGI.ResetOnSpawn=false
 SGI.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; SGI.IgnoreGuiInset=true; SGI.Parent=GUI_ROOT
 
--- ── Floating draggable logo button (Delta-style right-side icon) ─────────────────
+-- ── Floating draggable logo button (top-center, Delta-style) ────────────────────────
 -- Always visible; click to show/hide the hub. Drag anywhere.
 local FLOAT_SIZE = 52
-local FLOAT=Frm(SGI,UDim2.new(0,FLOAT_SIZE,0,FLOAT_SIZE),UDim2.new(1,-FLOAT_SIZE-12,0.5,-FLOAT_SIZE/2),C.ACCENT,"FLOAT")
-corner(FLOAT,FLOAT_SIZE/2)
+local FLOAT=Frm(SGI,UDim2.new(0,FLOAT_SIZE,0,FLOAT_SIZE),UDim2.new(0.5,-FLOAT_SIZE/2,0,8),C.DARK,"FLOAT")
+corner(FLOAT,12)
+stroke(FLOAT,C.ACCENT,2)
 do
-    local fStk=stroke(FLOAT,C.ACC2,1); fStk.Transparency=0.5
-    local fInner=Frm(FLOAT,UDim2.new(0,FLOAT_SIZE-8,0,FLOAT_SIZE-8),UDim2.new(0,4,0,4),C.SIDE); corner(fInner,(FLOAT_SIZE-8)/2)
-    local fL=Lbl(fInner,"✳",UDim2.new(1,0,1,0),nil,C.CLAY,24,FB); fL.TextXAlignment=Enum.TextXAlignment.Center
+    local fInner=Frm(FLOAT,UDim2.new(0,FLOAT_SIZE-8,0,FLOAT_SIZE-8),UDim2.new(0,4,0,4),C.PANEL); corner(fInner,9)
+    local fL=Lbl(fInner,"✳",UDim2.new(1,0,1,0),nil,C.ACCENT,22,FB); fL.TextXAlignment=Enum.TextXAlignment.Center
     -- spin the ✳
     task.spawn(function()
         while FLOAT and FLOAT.Parent do fL.Rotation=(fL.Rotation+1.5)%360; task.wait(0.03) end
@@ -387,21 +387,14 @@ end
 topBtn(-38,"✕",C.RED,function() tw(WIN,{Size=UDim2.new(0,672,0,0)},TweenInfo.new(0.18)); task.delay(0.2,function() SGI:Destroy() end) end)
 topBtn(-72,"—",C.ACCENT,function() minimized=not minimized; tw(WIN,{Size=UDim2.new(0,672,0,minimized and 48 or 488)},TS2) end)
 
--- ── sidebar (search box + scrollable tab list) ───────────────────────────────────
-local SIDEbg=Frm(WIN,UDim2.new(0,176,1,-48),UDim2.new(0,0,0,48),C.SIDE,"SIDEBG")
-local searchWrap=Frm(SIDEbg,UDim2.new(1,-16,0,32),UDim2.new(0,8,0,8),C.PANEL,"Search"); corner(searchWrap,8); stroke(searchWrap,C.BORDER,1); pad(searchWrap,3,3,10,8)
-local searchBox=Instance.new("TextBox")
-searchBox.Size=UDim2.new(1,0,1,0); searchBox.BackgroundTransparency=1
-searchBox.PlaceholderText="Search tabs…"; searchBox.PlaceholderColor3=C.MUTED; searchBox.Text=""
-searchBox.TextColor3=C.WHITE; searchBox.TextSize=12; searchBox.Font=FN
-searchBox.TextXAlignment=Enum.TextXAlignment.Left; searchBox.ClearTextOnFocus=false; searchBox.Parent=searchWrap
+-- ── right icon sidebar (Delta-style: 54px, icon-only buttons) ──────────────────────
+local SIDEbg=Frm(WIN,UDim2.new(0,54,1,-48),UDim2.new(1,-54,0,48),C.SIDE,"SIDEBG")
+Frm(SIDEbg,UDim2.new(0,1,1,0),UDim2.new(0,0,0,0),C.BORDER)   -- left hairline divider
 local SIDE=Instance.new("ScrollingFrame")
-SIDE.Size=UDim2.new(1,0,1,-48); SIDE.Position=UDim2.new(0,0,0,48); SIDE.BackgroundTransparency=1; SIDE.BorderSizePixel=0
-SIDE.ScrollBarThickness=2; SIDE.ScrollBarImageColor3=C.BORDER; SIDE.ScrollBarImageTransparency=0.3
-SIDE.CanvasSize=UDim2.new(0,0,0,0); SIDE.AutomaticCanvasSize=Enum.AutomaticSize.Y; SIDE.Parent=SIDEbg
-pad(SIDE,6,8,8,6); listV(SIDE,3)
-local BODY=Frm(WIN,UDim2.new(1,-176,1,-48),UDim2.new(0,176,0,48),C.BG,"BODY")
-Frm(WIN,UDim2.new(0,1,1,-48),UDim2.new(0,176,0,48),C.BORDER)
+SIDE.Size=UDim2.new(1,0,1,0); SIDE.Position=UDim2.new(0,0,0,4); SIDE.BackgroundTransparency=1; SIDE.BorderSizePixel=0
+SIDE.ScrollBarThickness=0; SIDE.CanvasSize=UDim2.new(0,0,0,0); SIDE.AutomaticCanvasSize=Enum.AutomaticSize.Y; SIDE.Parent=SIDEbg
+pad(SIDE,4,4,4,4); listV(SIDE,4)
+local BODY=Frm(WIN,UDim2.new(1,-54,1,-48),UDim2.new(0,0,0,48),C.BG,"BODY")
 
 -- ── Tabs ───────────────────────────────────────────────────────────────────────
 local pages,pageScroll,tabBtns={},{},{}; local curPage=1
@@ -409,46 +402,37 @@ local function showPage(n)
     for i,f in pairs(pages) do f.Visible=(i==n) end
     for i,b in pairs(tabBtns) do
         if i==n then
-            tw(b.bg,{BackgroundColor3=C.CARD}); tw(b.bar,{BackgroundColor3=C.ACCENT,Size=UDim2.new(0,3,0.55,0)})
-            tw(b.ico,{TextColor3=C.ACCENT}); tw(b.lbl,{TextColor3=C.WHITE})
-            tw(b.stk,{Transparency=0})
+            tw(b.bg,{BackgroundColor3=C.CARD})
+            tw(b.ico,{TextColor3=C.ACCENT})
+            tw(b.bar,{BackgroundColor3=C.ACCENT,Size=UDim2.new(0,3,0.6,0)})
         else
-            tw(b.bg,{BackgroundColor3=C.SIDE}); tw(b.bar,{BackgroundColor3=C.SIDE,Size=UDim2.new(0,3,0,0)})
-            tw(b.ico,{TextColor3=C.MUTED}); tw(b.lbl,{TextColor3=C.MUTED})
-            tw(b.stk,{Transparency=1})
+            tw(b.bg,{BackgroundColor3=C.SIDE})
+            tw(b.ico,{TextColor3=C.MUTED})
+            tw(b.bar,{BackgroundColor3=C.SIDE,Size=UDim2.new(0,3,0,0)})
         end
     end
-    -- subtle slide-in of the active page content (Rayfield-style)
     local sc=pageScroll[n]
     if sc then sc.Position=UDim2.new(0,8,0,16); tw(sc,{Position=UDim2.new(0,8,0,5)},TS2) end
     curPage=n
 end
 local function newTab(icon,name)
     local n=#pages+1
-    local bg=Frm(SIDE,UDim2.new(1,0,0,40),nil,C.SIDE,"T"..n); corner(bg,9)
-    local stk=stroke(bg,C.BORDER,1); stk.Transparency=1
-    local bar=Frm(bg,UDim2.new(0,3,0,0),UDim2.new(0,0,0.225,0),C.SIDE); corner(bar,2)
-    local ico=Lbl(bg,icon,UDim2.new(0,26,1,0),UDim2.new(0,10,0,0),C.MUTED,14,FB)
-    local lbl=Lbl(bg,name,UDim2.new(1,-44,1,0),UDim2.new(0,40,0,0),C.MUTED,12,FC)
-    local tb=Instance.new("TextButton")
-    tb.Size=UDim2.new(1,0,1,0); tb.BackgroundTransparency=1; tb.Text=""; tb.Parent=bg
+    -- icon-only pill button (Delta right-sidebar style)
+    local bg=Frm(SIDE,UDim2.new(1,-8,0,44),nil,C.SIDE,"T"..n); corner(bg,11)
+    -- left accent bar (shows when selected)
+    local bar=Frm(bg,UDim2.new(0,3,0,0),UDim2.new(0,0,0.2,0),C.SIDE); corner(bar,2)
+    local ico=Lbl(bg,icon,UDim2.new(1,0,1,0),nil,C.MUTED,17,FB); ico.TextXAlignment=Enum.TextXAlignment.Center
+    local tb=Instance.new("TextButton"); tb.Size=UDim2.new(1,0,1,0); tb.BackgroundTransparency=1; tb.Text=""; tb.Parent=bg
     tb.MouseButton1Click:Connect(function() showPage(n) end)
-    tb.MouseEnter:Connect(function() if curPage~=n then tw(bg,{BackgroundColor3=C.PANEL}) end end)
-    tb.MouseLeave:Connect(function() if curPage~=n then tw(bg,{BackgroundColor3=C.SIDE}) end end)
-    tabBtns[n]={bg=bg,bar=bar,ico=ico,lbl=lbl,stk=stk,name=name}
+    tb.MouseEnter:Connect(function() if curPage~=n then tw(bg,{BackgroundColor3=C.PANEL}); tw(ico,{TextColor3=C.TEXT}) end end)
+    tb.MouseLeave:Connect(function() if curPage~=n then tw(bg,{BackgroundColor3=C.SIDE}); tw(ico,{TextColor3=C.MUTED}) end end)
+    tabBtns[n]={bg=bg,bar=bar,ico=ico,name=name}
     local page=Frm(BODY,UDim2.new(1,0,1,0),nil,C.BG,"P"..n); page.Visible=false; pages[n]=page
     local _,scroller=Scr(page,UDim2.new(1,-16,1,-10),UDim2.new(0,8,0,5))
     listV(scroller,7); pad(scroller,8,8,4,4)
     pageScroll[n]=scroller
     return scroller
 end
--- live tab search filter
-searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-    local q=searchBox.Text:lower()
-    for _,b in pairs(tabBtns) do
-        b.bg.Visible = (q=="") or (string.find(b.name:lower(),q,1,true)~=nil)
-    end
-end)
 local function SectionHdr(parent,txt)
     local h=Lbl(parent,txt,UDim2.new(1,0,0,18),nil,C.MUTED,11,FB)
     h.TextXAlignment=Enum.TextXAlignment.Left; return h
@@ -1252,11 +1236,20 @@ do
     local P=newTab("✳","Claude AI")
     pad(P,4,4,2,2)
 
-    -- ── Usage limit — free shared API, keep it fair ────────────────────────────
-    local SESSION_LIMIT = 20   -- max AI requests this session
-    local usedThisSession = 0
+    -- Paste your Cloudflare Worker URL here to enable real Claude (Haiku) tier.
+    -- Leave empty to use Free tier (pollinations.ai, unlimited, no setup needed).
+    local AI_PROXY_URL = ""   -- e.g. "https://claude-hub.yourname.workers.dev"
 
-    -- ── Context Claude is given about this game/session ────────────────────────
+    -- "free" = pollinations.ai, no limit at all
+    -- "claude" = real Anthropic Haiku via proxy: 20 msgs → wait 30 min → 10 more
+    local modelMode = "free"
+
+    -- Claude tier rate-limit state (mirrors what the server tells us)
+    local claudeRemaining   = nil  -- number of messages left (nil = unknown)
+    local rateLimitWaitMins = nil  -- non-nil when server says we're rate-limited
+    local rateLimitAt       = 0    -- os.clock() when rate limit was received
+
+    -- ── Context injected into every AI call ───────────────────────────────────
     local function buildContext()
         local M = ENV.mem or {}
         return "Game: "..tostring(game.Name).." (PlaceId "..tostring(game.PlaceId)
@@ -1276,40 +1269,73 @@ do
         .."reply with EXACTLY: ACTION:morph:<name>  or  ACTION:speed:<n>  or  ACTION:jump:<n>  "
         .."or  ACTION:lua:<code>  — the hub will execute it. Context: "..buildContext()
 
-    -- ── Call real AI via pollinations.ai (free, no API key) ───────────────────
-    -- Uses GET: https://text.pollinations.ai/{prompt}?model=openai&system={sys}
-    local function callClaudeAI(userMsg, onSuccess, onFail)
+    -- ── Claude tier: call Anthropic via Cloudflare Worker proxy ──────────────
+    local function callViaProxy(userMsg, onSuccess, onFail)
         task.spawn(function()
             local HS = game:GetService("HttpService")
-            local sysEnc  = HS:UrlEncode(AI_SYSTEM)
-            local msgEnc  = HS:UrlEncode(userMsg:sub(1,300))
-            local url = "https://text.pollinations.ai/"..msgEnc
-                .."?model=openai&system="..sysEnc.."&seed="..tostring(math.random(1,99999))
+            local bodyJson = HS:JSONEncode({
+                msg = userMsg:sub(1,600),
+                sys = AI_SYSTEM:sub(1,1000),
+                uid = tostring(LP.UserId),
+            })
+            local ok2, resp
+            if ENV.httpReq then
+                ok2, resp = pcall(function()
+                    return ENV.httpReq({
+                        Url = AI_PROXY_URL,
+                        Method = "POST",
+                        Body = bodyJson,
+                        Headers = { ["Content-Type"] = "application/json" },
+                    })
+                end)
+            end
+            if not ok2 or not resp then
+                ok2, resp = pcall(function()
+                    return { Body = game:HttpGet(AI_PROXY_URL.."?q="..HS:UrlEncode(userMsg:sub(1,200)), true) }
+                end)
+            end
+            if not ok2 or not resp or not resp.Body then onFail("network error"); return end
+            local dOk, data = pcall(function() return HS:JSONDecode(resp.Body) end)
+            if not dOk or not data then onFail("bad response"); return end
+            if data.error == "rate_limit" then
+                onFail("RATE_LIMIT:"..(data.wait_mins or 30)..":"..tostring(data.message or ""))
+            elseif data.error then
+                onFail(tostring(data.message or data.error))
+            elseif data.reply then
+                onSuccess(data.reply, data.remaining)
+            else
+                onFail("empty reply")
+            end
+        end)
+    end
 
+    -- ── Free tier: pollinations.ai — no key, no limit ─────────────────────────
+    local function callPollinationsAI(userMsg, onSuccess, onFail)
+        task.spawn(function()
+            local HS = game:GetService("HttpService")
+            local url = "https://text.pollinations.ai/"..HS:UrlEncode(userMsg:sub(1,300))
+                .."?model=openai&system="..HS:UrlEncode(AI_SYSTEM:sub(1,500))
+                .."&seed="..tostring(math.random(1,99999))
             local ok2, body
-            -- Try executor request() first (supports full headers)
             if ENV.httpReq then
                 ok2, body = pcall(function()
-                    local r = ENV.httpReq({Url=url, Method="GET",
-                        Headers={["User-Agent"]="ClaudeHub/1.0"}})
+                    local r = ENV.httpReq({Url=url,Method="GET",Headers={["User-Agent"]="ClaudeHub/1.0"}})
                     if r and r.Body and #r.Body > 0 then return r.Body end
                     error("empty")
                 end)
             end
-            -- Fallback: game:HttpGet
             if not ok2 or not body then
                 ok2, body = pcall(function() return game:HttpGet(url, true) end)
             end
-
             if ok2 and body and #tostring(body) > 2 then
-                onSuccess(tostring(body):gsub("^%s+",""):gsub("%s+$",""))
+                onSuccess(tostring(body):gsub("^%s+",""):gsub("%s+$",""), nil)
             else
                 onFail(tostring(body):sub(1,80))
             end
         end)
     end
 
-    -- ── Offline action engine (never counts against limit) ─────────────────────
+    -- ── Offline action engine (never uses any quota) ───────────────────────────
     local function has(s,...) for _,w in ipairs({...}) do if string.find(s,w,1,true) then return true end end end
     local function num(s) return tonumber(string.match(s,"%-?%d+%.?%d*")) end
 
@@ -1328,27 +1354,22 @@ do
         end
     end
 
-    -- Returns action result string if we handled it locally, nil if should go to AI
     local function tryLocalAction(raw)
         local q=raw:lower()
-        -- morph
         if has(q,"morph","turn into","become","transform") then
             local m=findMorph(q)
             if m then runRequire(m.name,m.id,{method=m.method,args=m.args}); return "Morphing you into <b>"..m.name.."</b>. "..callSig(m) end
         end
-        -- walkspeed
         if has(q,"walkspeed","walk speed") or (has(q,"speed") and num(q)) then
             local n=num(q) or 80
             local h=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
             if h then h.WalkSpeed=n; return "WalkSpeed set to <b>"..n.."</b>." end
         end
-        -- jump
         if has(q,"jumppower","jump power","jump high") or (has(q,"jump") and num(q)) then
             local n=num(q) or 120
             local h=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
             if h then h.JumpPower=n; h.UseJumpPower=true; return "JumpPower set to <b>"..n.."</b>." end
         end
-        -- fire remote
         if has(q,"fire ","invoke ") then
             local target=raw:match("[Ff]ire%s+(.+)") or raw:match("[Ii]nvoke%s+(.+)")
             if target and ENV.mem then
@@ -1367,7 +1388,6 @@ do
                 end
             end
         end
-        -- run lua
         if has(q,"run ","execute ","exec ","lua ","do ") then
             local code=raw:match("[Rr]un%s+(.+)") or raw:match("[Ee]xec%w*%s+(.+)")
                      or raw:match("[Ll]ua%s+(.+)") or raw:match("[Dd]o%s+(.+)")
@@ -1378,10 +1398,9 @@ do
                 return ok2 and "Ran: <b>"..code:sub(1,50).."</b> ✓" or "Error: "..tostring(e2):sub(1,70)
             end
         end
-        return nil  -- hand off to real AI
+        return nil
     end
 
-    -- Handle AI ACTION: directives returned by the AI
     local function handleAIAction(text)
         local action, payload = text:match("^ACTION:(%w+):(.+)$")
         if not action then return text end
@@ -1406,33 +1425,66 @@ do
     end
 
     -- ── Chat UI ────────────────────────────────────────────────────────────────
-    -- Header bar with Claude logo tile
-    local hdr=Frm(P,UDim2.new(1,0,0,42),nil,C.PANEL); corner(hdr,10); stroke(hdr,C.BORDER,1); pad(hdr,0,0,10,10)
-    -- Claude logo (official cream tile + spinning ✳)
+    -- Header: logo + title + model switcher chips + usage counter
+    local hdr=Frm(P,UDim2.new(1,0,0,56),nil,C.PANEL); corner(hdr,10); stroke(hdr,C.BORDER,1); pad(hdr,0,0,10,10)
     local cLogo=Frm(hdr,UDim2.new(0,28,0,28),UDim2.new(0,0,0.5,-14),C.CREAM); corner(cLogo,8)
     stroke(cLogo,C.CLAY,1).Transparency=0.4
     local cMark=Lbl(cLogo,"✳",UDim2.new(1,0,1,0),nil,C.CLAY,18,FB); cMark.TextXAlignment=Enum.TextXAlignment.Center
     task.spawn(function() while cLogo and cLogo.Parent do cMark.Rotation=(cMark.Rotation+2)%360; task.wait(0.03) end end)
-    Lbl(hdr,"Claude",UDim2.new(0,52,0,18),UDim2.new(0,34,0,4),C.WHITE,14,FB)
-    Lbl(hdr,"by Anthropic  ·  free tier",UDim2.new(0,120,0,14),UDim2.new(0,34,0,22),C.MUTED,10,FN)
-    -- usage counter (right side)
-    local usageLbl=Lbl(hdr,"0 / "..SESSION_LIMIT.." used",UDim2.new(0,90,1,0),UDim2.new(1,-90,0,0),C.MUTED,10,FN)
+    Lbl(hdr,"Claude",UDim2.new(0,52,0,18),UDim2.new(0,34,0,2),C.WHITE,14,FB)
+    local subLbl=Lbl(hdr,"by Anthropic  ·  Free  ·  Unlimited ∞",UDim2.new(0,200,0,14),UDim2.new(0,34,0,22),C.MUTED,10,FN)
+    -- right side: usage label
+    local usageLbl=Lbl(hdr,"",UDim2.new(0,90,0,14),UDim2.new(1,-90,0,22),C.MUTED,10,FN)
     usageLbl.TextXAlignment=Enum.TextXAlignment.Right
+    -- model switcher chips: [Free ∞] [Claude ✦]
+    local switchRow=Frm(hdr,UDim2.new(0,160,0,24),UDim2.new(1,-164,0,2),C.BG); switchRow.BackgroundTransparency=1
+    local sh2=Instance.new("UIListLayout"); sh2.FillDirection=Enum.FillDirection.Horizontal; sh2.Padding=UDim.new(0,4); sh2.Parent=switchRow; sh2.VerticalAlignment=Enum.VerticalAlignment.Center
+    local freeChip=Frm(switchRow,UDim2.new(0,74,1,0),nil,C.ACCENT); corner(freeChip,12)
+    local freeL=Lbl(freeChip,"Free ∞",UDim2.new(1,0,1,0),nil,C.WHITE,11,FB); freeL.TextXAlignment=Enum.TextXAlignment.Center
+    local freeBtn=Instance.new("TextButton"); freeBtn.Size=UDim2.new(1,0,1,0); freeBtn.BackgroundTransparency=1; freeBtn.Text=""; freeBtn.Parent=freeChip
+    local cChip=Frm(switchRow,UDim2.new(0,80,1,0),nil,C.PANEL); corner(cChip,12); stroke(cChip,C.BORDER,1)
+    local cChipL=Lbl(cChip,"Claude ✦",UDim2.new(1,0,1,0),nil,C.MUTED,11,FB); cChipL.TextXAlignment=Enum.TextXAlignment.Center
+    local cBtn=Instance.new("TextButton"); cBtn.Size=UDim2.new(1,0,1,0); cBtn.BackgroundTransparency=1; cBtn.Text=""; cBtn.Parent=cChip
+
+    -- refreshModeUI updates chips + subtitle + usage label to reflect current state
+    local function refreshModeUI()
+        if modelMode == "free" then
+            tw(freeChip,{BackgroundColor3=C.ACCENT}); freeL.TextColor3=C.WHITE
+            tw(cChip,{BackgroundColor3=C.PANEL}); cChipL.TextColor3=C.MUTED
+            subLbl.Text="by Anthropic  ·  Free  ·  Unlimited ∞"
+            usageLbl.Text=""
+        else
+            tw(freeChip,{BackgroundColor3=C.PANEL}); freeL.TextColor3=C.MUTED
+            tw(cChip,{BackgroundColor3=C.ACCENT}); cChipL.TextColor3=C.WHITE
+            subLbl.Text="by Anthropic  ·  Claude Haiku"
+            if rateLimitWaitMins ~= nil then
+                local elapsed = os.clock() - rateLimitAt
+                local mLeft = math.max(1, math.ceil(((rateLimitWaitMins*60) - elapsed)/60))
+                usageLbl.Text="wait "..mLeft.."m"
+                usageLbl.TextColor3=C.RED
+            elseif claudeRemaining ~= nil then
+                usageLbl.Text=claudeRemaining.." msgs left"
+                usageLbl.TextColor3=claudeRemaining<=3 and C.YELLOW or C.MUTED
+            else
+                usageLbl.Text="20 msgs / 30min refill"
+                usageLbl.TextColor3=C.MUTED
+            end
+        end
+    end
 
     -- chat log
-    local logBg=Frm(P,UDim2.new(1,0,1,-92),UDim2.new(0,0,0,0),C.DARK); corner(logBg,10); stroke(logBg,C.BORDER,1)
+    local logBg=Frm(P,UDim2.new(1,0,1,-100),UDim2.new(0,0,0,0),C.DARK); corner(logBg,10); stroke(logBg,C.BORDER,1)
     local _,chat=Scr(logBg,UDim2.new(1,-8,1,-8),UDim2.new(0,4,0,4)); listV(chat,7); pad(chat,8,8,8,8)
 
     local function bubble(text, fromUser, isSystem)
         local holder=Frm(chat,UDim2.new(1,0,0,0),nil,C.DARK); holder.BackgroundTransparency=1
         holder.AutomaticSize=Enum.AutomaticSize.Y
-        local bgCol = fromUser and C.ACCENT or (isSystem and C.PANEL or C.CARD)
+        local bgCol=fromUser and C.ACCENT or (isSystem and C.PANEL or C.CARD)
         local b=Frm(holder,UDim2.new(0.86,0,0,0),nil,bgCol)
         b.AutomaticSize=Enum.AutomaticSize.Y; corner(b,10)
         if not fromUser then stroke(b,C.BORDER,1) end
         b.Position=fromUser and UDim2.new(0.14,0,0,0) or UDim2.new(0,0,0,0)
         pad(b,8,8,12,12)
-        -- Claude avatar dot for AI messages
         if not fromUser and not isSystem then
             local dot=Frm(holder,UDim2.new(0,18,0,18),UDim2.new(0,0,0,6),C.CREAM); corner(dot,9)
             stroke(dot,C.CLAY,1).Transparency=0.5
@@ -1448,47 +1500,83 @@ do
         return t
     end
 
+    -- ── Model chip click handlers (defined after bubble so they can use it) ────
+    freeBtn.MouseButton1Click:Connect(function()
+        modelMode="free"; refreshModeUI()
+    end)
+    cBtn.MouseButton1Click:Connect(function()
+        if AI_PROXY_URL=="" then
+            bubble("To unlock real Claude (Haiku), deploy the free proxy:\n"
+                .."1. cloudflare.com → Workers → paste worker/worker.js\n"
+                .."2. Secret: ANTHROPIC_KEY = your key from console.anthropic.com\n"
+                .."3. KV Namespace binding: RATE_LIMITS\n"
+                .."4. Set AI_PROXY_URL in Claude_Hub.lua to your Worker URL.\n"
+                .."Free tier has zero limits — no setup needed.", false, true)
+        else
+            modelMode="claude"; refreshModeUI()
+        end
+    end)
+
     -- ── Send logic ─────────────────────────────────────────────────────────────
     local function send(raw)
-        raw=raw:match("^%s*(.-)%s*$")  -- trim
+        raw=raw:match("^%s*(.-)%s*$")
         if raw=="" then return end
-
         bubble(raw, true)
 
-        -- 1. Try offline action first (morph / speed / fire / lua)
-        local localReply = tryLocalAction(raw)
-        if localReply then
-            task.delay(0.1, function() bubble(localReply, false) end)
-            return
-        end
+        -- offline actions never touch any quota
+        local localReply=tryLocalAction(raw)
+        if localReply then task.delay(0.1,function() bubble(localReply,false) end); return end
 
-        -- 2. Usage limit check
-        if usedThisSession >= SESSION_LIMIT then
-            bubble("Session limit reached ("..SESSION_LIMIT.." messages). Restart the hub for a new session.", false, true)
-            return
-        end
-
-        -- 3. Call real AI
-        usedThisSession = usedThisSession + 1
-        usageLbl.Text = usedThisSession.." / "..SESSION_LIMIT.." used"
-        if usedThisSession >= SESSION_LIMIT then
-            usageLbl.TextColor3 = C.YELLOW
-        end
-
-        local typingL = bubble("✳  thinking…", false)
-        callClaudeAI(raw,
-            function(reply)
-                -- parse ACTION: directives the AI may return
-                local processed = handleAIAction(reply)
-                typingL.Text = processed
-            end,
-            function(err)
-                -- AI failed — fall back to basic offline response
-                typingL.Text = "Couldn't reach AI ("..tostring(err):sub(1,50)..").\nTip: hub actions (morph, speed, run code) work offline."
-                usedThisSession = usedThisSession - 1  -- don't count failed requests
-                usageLbl.Text = usedThisSession.." / "..SESSION_LIMIT.." used"
+        -- Claude tier: check if currently rate-limited with time remaining
+        if modelMode=="claude" and rateLimitWaitMins~=nil then
+            local elapsed=os.clock()-rateLimitAt
+            local secsLeft=math.max(0,(rateLimitWaitMins*60)-elapsed)
+            if secsLeft>0 then
+                local mLeft=math.ceil(secsLeft/60)
+                bubble("You've used all your Claude messages.\nWait "..mLeft.." more minute"
+                    ..(mLeft==1 and "" or "s").." to get 10 more.\n(Or tap <b>Free ∞</b> above for unlimited messages.)",false,true)
+                return
+            else
+                -- cooldown expired
+                rateLimitWaitMins=nil; claudeRemaining=nil; refreshModeUI()
             end
-        )
+        end
+
+        local typingL=bubble("✳  thinking…",false)
+
+        if modelMode=="free" then
+            -- Free tier: pollinations.ai, completely unlimited
+            callPollinationsAI(raw,
+                function(reply)
+                    typingL.Text=handleAIAction(reply)
+                end,
+                function(err)
+                    typingL.Text="Free AI unavailable ("..tostring(err):sub(1,50)..").\nHub actions (morph, speed, run) still work offline."
+                end
+            )
+        else
+            -- Claude tier: proxy required
+            if AI_PROXY_URL=="" then
+                typingL.Text="Paste your Cloudflare Worker URL into AI_PROXY_URL to use Claude tier.\nSwitching back to Free…"
+                modelMode="free"; refreshModeUI(); return
+            end
+            callViaProxy(raw,
+                function(reply, remaining)
+                    typingL.Text=handleAIAction(reply)
+                    if remaining~=nil then claudeRemaining=remaining; refreshModeUI() end
+                end,
+                function(err)
+                    if err:sub(1,10)=="RATE_LIMIT" then
+                        rateLimitWaitMins=tonumber(err:match("RATE_LIMIT:(%d+)")) or 30
+                        rateLimitAt=os.clock()
+                        claudeRemaining=0; refreshModeUI()
+                        typingL.Text="You've used all 20 Claude messages.\nWait "..rateLimitWaitMins.." minutes to get 10 more.\n(Or tap <b>Free ∞</b> for unlimited messages.)"
+                    else
+                        typingL.Text="Claude unavailable ("..tostring(err):sub(1,50)..").\nTry Free tier or check your Worker URL."
+                    end
+                end
+            )
+        end
     end
 
     -- input row
@@ -1503,10 +1591,102 @@ do
     Btn(inRow,"Send",UDim2.new(0,76,1,0),UDim2.new(1,-76,0,0),C.ACCENT,doSend)
     tbx.FocusLost:Connect(function(enter) if enter then doSend() end end)
 
+    refreshModeUI()
+
     -- welcome bubble
-    bubble("Hi "..LP.DisplayName.."! I'm <b>Claude</b>, made by Anthropic — running live via free AI (no API key). "
-        .."I have "..SESSION_LIMIT.." messages per session. Ask me anything, or say:\n"
-        .."• <b>morph into [name]</b>\n• <b>walkspeed 200</b>\n• <b>run print('hi')</b>\n• <b>fire [remote]</b>", false)
+    bubble("Hi <b>"..LP.DisplayName.."</b>! I'm Claude — made by Anthropic.\n"
+        .."• <b>Free ∞</b> (default) — unlimited messages, no setup\n"
+        .."• <b>Claude ✦</b> — real Haiku: 20 msgs, wait 30 min → 10 more\n"
+        .."Try: <b>morph [name]</b>  ·  <b>speed 200</b>  ·  <b>run print('hi')</b>  ·  <b>fire [remote]</b>",false)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  TAB — CLAUDE CONSOLE  (live Roblox + executor output log)
+-- ═══════════════════════════════════════════════════════════════════════════════
+do
+    local P=newTab("🖥","Console")
+    local LogService=game:GetService("LogService")
+
+    -- Header: title + type filter chips + search
+    local hdrRow=Frm(P,UDim2.new(1,0,0,38),nil,C.BG); hdrRow.BackgroundTransparency=1
+    local hh=Instance.new("UIListLayout"); hh.FillDirection=Enum.FillDirection.Horizontal; hh.Padding=UDim.new(0,6); hh.Parent=hdrRow; hh.VerticalAlignment=Enum.VerticalAlignment.Center
+    Lbl(hdrRow,"Claude Console",UDim2.new(0,110,1,0),nil,C.WHITE,14,FB)
+
+    -- filter state: "all" | "print" | "warn" | "error"
+    local filterMode="all"
+    local filterChips={}
+    local function makeChip(label, mode)
+        local chip=Frm(hdrRow,UDim2.new(0,52,0,26),nil,mode=="all" and C.ACCENT or C.PANEL); corner(chip,13)
+        local cl=Lbl(chip,label,UDim2.new(1,0,1,0),nil,mode=="all" and C.WHITE or C.MUTED,11,FB); cl.TextXAlignment=Enum.TextXAlignment.Center
+        local cb=Instance.new("TextButton"); cb.Size=UDim2.new(1,0,1,0); cb.BackgroundTransparency=1; cb.Text=""; cb.Parent=chip
+        filterChips[mode]={chip=chip,lbl=cl}
+        return chip, cb
+    end
+    local allChip,allBtn=makeChip("All","all")
+    local pChip,pBtn=makeChip("Print","print")
+    local wChip,wBtn=makeChip("Warn","warn")
+    local eChip,eBtn=makeChip("Error","error")
+
+    -- log entries list: {frame=, text=, mtype=}
+    local logEntries={}
+    local logBg=Frm(P,UDim2.new(1,0,1,-88),UDim2.new(0,0,0,0),C.DARK); corner(logBg,10); stroke(logBg,C.BORDER,1)
+    local _,logScroll=Scr(logBg,UDim2.new(1,-6,1,-6),UDim2.new(0,3,0,3)); listV(logScroll,1); pad(logScroll,4,4,6,4)
+
+    local function applyFilter()
+        for _,e in ipairs(logEntries) do
+            e.frame.Visible = (filterMode=="all") or (e.mtype==filterMode)
+        end
+    end
+
+    local function setFilter(mode)
+        filterMode=mode
+        for m,c in pairs(filterChips) do
+            local active=(m==mode)
+            tw(c.chip,{BackgroundColor3=active and C.ACCENT or C.PANEL})
+            c.lbl.TextColor3=active and C.WHITE or C.MUTED
+        end
+        applyFilter()
+    end
+
+    allBtn.MouseButton1Click:Connect(function() setFilter("all") end)
+    pBtn.MouseButton1Click:Connect(function() setFilter("print") end)
+    wBtn.MouseButton1Click:Connect(function() setFilter("warn") end)
+    eBtn.MouseButton1Click:Connect(function() setFilter("error") end)
+
+    local function addLog(msg, msgType)
+        local mtype="print"
+        local col=C.TEXT
+        if msgType==Enum.MessageType.MessageWarning then mtype="warn"; col=C.YELLOW
+        elseif msgType==Enum.MessageType.MessageError then mtype="error"; col=C.RED
+        end
+        local row=Frm(logScroll,UDim2.new(1,0,0,0),nil,C.DARK); row.BackgroundTransparency=1
+        row.AutomaticSize=Enum.AutomaticSize.Y
+        -- type dot
+        local dot=Frm(row,UDim2.new(0,6,0,6),UDim2.new(0,0,0,5),col); corner(dot,3)
+        local t=Instance.new("TextLabel")
+        t.Size=UDim2.new(1,-12,0,0); t.Position=UDim2.new(0,10,0,0)
+        t.AutomaticSize=Enum.AutomaticSize.Y; t.BackgroundTransparency=1
+        t.Text=tostring(msg):sub(1,300); t.TextColor3=col; t.TextSize=11; t.Font=FN
+        t.TextWrapped=true; t.TextXAlignment=Enum.TextXAlignment.Left; t.RichText=false; t.Parent=row
+        table.insert(logEntries,{frame=row,text=tostring(msg):lower(),mtype=mtype})
+        row.Visible=(filterMode=="all" or filterMode==mtype)
+        task.defer(function() logScroll.CanvasPosition=Vector2.new(0,1e6) end)
+    end
+
+    -- load existing log history
+    pcall(function()
+        for _,e in ipairs(LogService:GetLogHistory()) do
+            addLog(e.message, e.messageType)
+        end
+    end)
+    LogService.MessageOut:Connect(addLog)
+
+    -- bottom bar: CLEAR button
+    local botRow=Frm(P,UDim2.new(1,0,0,36),UDim2.new(0,0,1,-40),C.BG); botRow.BackgroundTransparency=1
+    Btn(botRow,"CLEAR",UDim2.new(1,0,1,0),nil,C.PANEL,function()
+        for _,e in ipairs(logEntries) do pcall(function() e.frame:Destroy() end) end
+        logEntries={}
+    end)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
@@ -2021,8 +2201,23 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════════
 do
     local P=newTab("⚙","Settings")
-    -- search bar
-    local sWrap=Frm(P,UDim2.new(1,0,0,40),nil,C.CARD); corner(sWrap,10); stroke(sWrap,C.BORDER,1); pad(sWrap,4,4,12,10)
+
+    -- top row: Enabled/Disabled/All filter chips + search bar
+    local topRow=Frm(P,UDim2.new(1,0,0,40),nil,C.BG); topRow.BackgroundTransparency=1
+    local th=Instance.new("UIListLayout"); th.FillDirection=Enum.FillDirection.Horizontal; th.Padding=UDim.new(0,6); th.Parent=topRow; th.VerticalAlignment=Enum.VerticalAlignment.Center
+    -- filter chips
+    local chipW=UDim2.new(0,76,1,0)
+    local enChip=Frm(topRow,chipW,nil,C.PANEL); corner(enChip,10)
+    local enL=Lbl(enChip,"Enabled",UDim2.new(1,0,1,0),nil,C.MUTED,11,FB); enL.TextXAlignment=Enum.TextXAlignment.Center
+    local enBtn=Instance.new("TextButton"); enBtn.Size=UDim2.new(1,0,1,0); enBtn.BackgroundTransparency=1; enBtn.Text=""; enBtn.Parent=enChip
+    local disChip=Frm(topRow,chipW,nil,C.PANEL); corner(disChip,10)
+    local disL=Lbl(disChip,"Disabled",UDim2.new(1,0,1,0),nil,C.MUTED,11,FB); disL.TextXAlignment=Enum.TextXAlignment.Center
+    local disBtn=Instance.new("TextButton"); disBtn.Size=UDim2.new(1,0,1,0); disBtn.BackgroundTransparency=1; disBtn.Text=""; disBtn.Parent=disChip
+    local allChipS=Frm(topRow,chipW,nil,C.ACCENT); corner(allChipS,10)
+    local allLS=Lbl(allChipS,"All",UDim2.new(1,0,1,0),nil,C.WHITE,11,FB); allLS.TextXAlignment=Enum.TextXAlignment.Center
+    local allBtnS=Instance.new("TextButton"); allBtnS.Size=UDim2.new(1,0,1,0); allBtnS.BackgroundTransparency=1; allBtnS.Text=""; allBtnS.Parent=allChipS
+    -- search bar (fills rest)
+    local sWrap=Frm(topRow,UDim2.new(1,-246,1,0),nil,C.CARD); corner(sWrap,10); stroke(sWrap,C.BORDER,1); pad(sWrap,4,4,12,10)
     Lbl(sWrap,"🔍",UDim2.new(0,18,1,0),UDim2.new(0,0,0,0),C.MUTED,13,FN)
     local sTbx=Instance.new("TextBox")
     sTbx.Size=UDim2.new(1,-22,1,0); sTbx.Position=UDim2.new(0,22,0,0); sTbx.BackgroundTransparency=1
@@ -2030,7 +2225,32 @@ do
     sTbx.Text=""; sTbx.TextColor3=C.WHITE; sTbx.TextSize=13; sTbx.Font=FN
     sTbx.TextXAlignment=Enum.TextXAlignment.Left; sTbx.ClearTextOnFocus=false; sTbx.Parent=sWrap
 
-    local settingItems={}  -- {row=, text=}
+    -- settingItems: {row=, text=, isToggle=, stateRef=}
+    local settingItems={}
+    local settingsFilter="all"  -- "all" | "enabled" | "disabled"
+    local toggleStates={}  -- row -> bool
+
+    local function applySettingsFilter()
+        local q=sTbx.Text:lower()
+        for _,it in ipairs(settingItems) do
+            local matchText=(q=="" or string.find(it.text,q,1,true)~=nil)
+            local matchFilter=true
+            if settingsFilter=="enabled" and it.isToggle then matchFilter=(toggleStates[it.row]==true)
+            elseif settingsFilter=="disabled" and it.isToggle then matchFilter=(toggleStates[it.row]==false) end
+            it.row.Visible=matchText and matchFilter
+        end
+    end
+
+    local function setSettingsChip(mode)
+        settingsFilter=mode
+        tw(enChip,{BackgroundColor3=mode=="enabled" and C.ACCENT or C.PANEL}); enL.TextColor3=mode=="enabled" and C.WHITE or C.MUTED
+        tw(disChip,{BackgroundColor3=mode=="disabled" and C.ACCENT or C.PANEL}); disL.TextColor3=mode=="disabled" and C.WHITE or C.MUTED
+        tw(allChipS,{BackgroundColor3=mode=="all" and C.ACCENT or C.PANEL}); allLS.TextColor3=mode=="all" and C.WHITE or C.MUTED
+        applySettingsFilter()
+    end
+    enBtn.MouseButton1Click:Connect(function() setSettingsChip("enabled") end)
+    disBtn.MouseButton1Click:Connect(function() setSettingsChip("disabled") end)
+    allBtnS.MouseButton1Click:Connect(function() setSettingsChip("all") end)
 
     -- Toggle row helper (Delta card style)
     local function ToggleRow(label, desc, default, onChange)
@@ -2038,18 +2258,18 @@ do
         Lbl(row,label,UDim2.new(1,-72,0,22),UDim2.new(0,0,0,8),C.WHITE,14,FB)
         Lbl(row,desc,UDim2.new(1,-72,0,18),UDim2.new(0,0,0,32),C.MUTED,11,FN)
         local state=default
-        -- track
+        toggleStates[row]=state
         local track=Frm(row,UDim2.new(0,48,0,26),UDim2.new(1,-48,0.5,-13),state and C.ACCENT or C.PANEL); corner(track,13)
-        -- thumb
         local thumb=Frm(track,UDim2.new(0,20,0,20),UDim2.new(0,state and 25 or 3,0.5,-10),C.WHITE); corner(thumb,10)
         local btn=Instance.new("TextButton"); btn.Size=UDim2.new(1,0,1,0); btn.BackgroundTransparency=1; btn.Text=""; btn.Parent=track
         btn.MouseButton1Click:Connect(function()
-            state=not state
+            state=not state; toggleStates[row]=state
             tw(track,{BackgroundColor3=state and C.ACCENT or C.PANEL})
             tw(thumb,{Position=UDim2.new(0,state and 25 or 3,0.5,-10)})
             if onChange then pcall(onChange,state) end
+            applySettingsFilter()
         end)
-        table.insert(settingItems,{row=row,text=(label.." "..desc):lower()})
+        table.insert(settingItems,{row=row,text=(label.." "..desc):lower(),isToggle=true})
         return row
     end
 
@@ -2064,7 +2284,7 @@ do
         ab.MouseButton1Click:Connect(function() if onClick then pcall(onClick) end end)
         ab.MouseEnter:Connect(function() tw(abtn,{BackgroundColor3=C.ACC2}) end)
         ab.MouseLeave:Connect(function() tw(abtn,{BackgroundColor3=C.ACCENT}) end)
-        table.insert(settingItems,{row=row,text=(label.." "..desc):lower()})
+        table.insert(settingItems,{row=row,text=(label.." "..desc):lower(),isToggle=false})
         return row
     end
 
@@ -2090,7 +2310,7 @@ do
             end)
         end
         makeArrow(dnBt,-step); makeArrow(upBt,step)
-        table.insert(settingItems,{row=row,text=(label.." "..desc):lower()})
+        table.insert(settingItems,{row=row,text=(label.." "..desc):lower(),isToggle=false})
         return row
     end
 
@@ -2184,13 +2404,8 @@ do
             UDim2.new(1,0,0,16),UDim2.new(0,0,0,46),C.MUTED,11,FN)
     end
 
-    -- live search filter
-    sTbx:GetPropertyChangedSignal("Text"):Connect(function()
-        local q=sTbx.Text:lower()
-        for _,it in ipairs(settingItems) do
-            it.row.Visible = (q=="" or string.find(it.text,q,1,true)~=nil)
-        end
-    end)
+    -- live search + filter chip update
+    sTbx:GetPropertyChangedSignal("Text"):Connect(applySettingsFilter)
 end
 
 showPage(1)
