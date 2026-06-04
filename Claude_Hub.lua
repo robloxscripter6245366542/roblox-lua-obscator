@@ -1128,6 +1128,300 @@ for _,t in ipairs(CAT) do
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
+--  TAB — CLAUDE AI  (fully local assistant, NO API — rule/intent engine)
+--  Understands plain requests and actually performs them using the hub + the
+--  game memory it auto-scanned into ENV.mem.
+-- ═══════════════════════════════════════════════════════════════════════════════
+do
+    local P=newTab("🤖","Claude AI")
+    pad(P,4,4,2,2)
+
+    -- chat log
+    local logBg=Frm(P,UDim2.new(1,0,1,-86),UDim2.new(0,0,0,0),C.DARK); corner(logBg,10); stroke(logBg,C.BORDER,1)
+    local _,chat=Scr(logBg,UDim2.new(1,-8,1,-8),UDim2.new(0,4,0,4)); listV(chat,7); pad(chat,8,8,8,8)
+
+    local function bubble(text,fromUser)
+        local holder=Frm(chat,UDim2.new(1,0,0,0),nil,C.DARK); holder.BackgroundTransparency=1
+        holder.AutomaticSize=Enum.AutomaticSize.Y
+        local b=Frm(holder,UDim2.new(0.82,0,0,0),nil,fromUser and C.ACCENT or C.CARD)
+        b.AutomaticSize=Enum.AutomaticSize.Y; corner(b,10)
+        if not fromUser then stroke(b,C.BORDER,1) end
+        b.Position=fromUser and UDim2.new(0.18,0,0,0) or UDim2.new(0,0,0,0)
+        pad(b,7,7,11,11)
+        local t=Instance.new("TextLabel")
+        t.Size=UDim2.new(1,0,0,0); t.AutomaticSize=Enum.AutomaticSize.Y; t.BackgroundTransparency=1
+        t.Text=text; t.TextColor3=fromUser and C.WHITE or C.TEXT; t.TextSize=13; t.Font=FN
+        t.TextWrapped=true; t.TextXAlignment=fromUser and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+        t.RichText=true; t.Parent=b
+        task.defer(function() chat.CanvasPosition=Vector2.new(0,1e6) end)
+        return t
+    end
+
+    -- ── local AI engine (intent matching, no network) ──────────────────────────
+    local function has(s,...) for _,w in ipairs({...}) do if string.find(s,w,1,true) then return true end end return false end
+    local function num(s) return tonumber(string.match(s,"%-?%d+%.?%d*")) end
+
+    -- find a morph by fuzzy name
+    local function findMorph(q)
+        local best,bestKey
+        for _,m in ipairs(MORPHS) do
+            local key=(m.args and m.args[2] or ""):lower()
+            local nm=m.name:lower()
+            if key~="" and (string.find(q,key,1,true) or string.find(q,nm,1,true)) then
+                return m
+            end
+        end
+        -- partial word match
+        for w in q:gmatch("%a+") do
+            if #w>=3 then
+                for _,m in ipairs(MORPHS) do
+                    local key=(m.args and m.args[2] or ""):lower()
+                    if string.find(key,w,1,true) or string.find(m.name:lower(),w,1,true) then return m end
+                end
+            end
+        end
+        return nil
+    end
+
+    local function think(raw)
+        local q=raw:lower()
+        -- greetings
+        if has(q,"hello","hi ","hey","yo ","sup") or q=="hi" or q=="hey" then
+            return "Hey "..LP.DisplayName.."! I'm Claude, your built-in assistant — fully offline, no API. Tell me what to do: morph, speed, fly, fire a remote, run Lua, or ask about this game."
+        end
+        if has(q,"who are you","what are you","your name") then
+            return "I'm <b>Claude</b>, the AI baked into this hub. I run locally on "..ENV.name..", with no internet calls. I can read this game's memory and operate the hub for you."
+        end
+        if has(q,"help","what can you do","commands") then
+            return "I can:\n• <b>morph me into &lt;name&gt;</b> — e.g. \"morph into siren head\"\n• <b>walkspeed &lt;n&gt;</b> / <b>jump &lt;n&gt;</b>\n• <b>find remote &lt;name&gt;</b> / <b>fire &lt;name&gt;</b>\n• <b>run &lt;lua&gt;</b> — execute code\n• <b>read &lt;path&gt;</b> — read a value\n• <b>memory</b> / <b>executor</b> / <b>how many remotes</b>"
+        end
+        -- executor / memory questions (uses ENV + auto-scanned ENV.mem)
+        if has(q,"executor","exploit","what are you running","what exploit") then
+            return "You're on <b>"..ENV.name.."</b> with "..ENV.score.."/"..ENV.total.." capabilities detected. require="..tostring(ENV.HAS_REQ)..", hookmetamethod="..tostring(ENV.caps.hookmetamethod)..", Drawing="..tostring(ENV.caps.Drawing).."."
+        end
+        if has(q,"how many remote","remotes are","count remote","remote count") then
+            local n=ENV.mem and #ENV.mem.remotes or 0
+            return "I found <b>"..n.."</b> remotes in this game (including hidden/nil-parented ones). Open the Remotes tab to fire any of them, or say \"fire &lt;name&gt;\"."
+        end
+        if has(q,"memory","what do you know","know everything","scan") then
+            local M=ENV.mem or {}
+            return "Memory I auto-read on load:\n• "..(#(M.remotes or {})).." remotes\n• "..tostring(M.vcount or 0).." game values\n• "..tostring(M.gcount or 0).." globals\n• GC: "..tostring((M.gc or {}).fns or 0).." funcs / "..tostring((M.gc or {}).tabs or 0).." tables"
+        end
+        if has(q,"my name","who am i","username") then
+            return "You're <b>"..LP.DisplayName.."</b> (@"..LP.Name..", UserId "..LP.UserId..", "..LP.AccountAge.." days old)."
+        end
+        if has(q,"how many morph","list morph","what morph") then
+            return "There are <b>"..#MORPHS.."</b> morphs loaded. Try \"morph into catnap\", \"...huggy wuggy\", \"...siren head\", \"...cartoon cat\"."
+        end
+        -- ACTION: morph
+        if has(q,"morph","turn into","become","transform") then
+            local m=findMorph(q)
+            if m then
+                runRequire(m.name,m.id,{method=m.method,args=m.args})
+                return "Morphing you into <b>"..m.name.."</b> now. "..callSig(m)
+            end
+            return "Which morph? I have "..#MORPHS.." — e.g. siren head, cartoon cat, catnap, huggy wuggy, spider queen, death angel…"
+        end
+        -- ACTION: walkspeed
+        if has(q,"walkspeed","walk speed","speed","run fast","fast") then
+            local n=num(q) or 80
+            local h=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+            if h then h.WalkSpeed=n; return "Set your WalkSpeed to <b>"..n.."</b>." end
+            return "I couldn't find your Humanoid — are you spawned in?"
+        end
+        -- ACTION: jump
+        if has(q,"jump power","jumppower","jump high","jump") then
+            local n=num(q) or 120
+            local h=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+            if h then h.JumpPower=n; h.UseJumpPower=true; return "Set your JumpPower to <b>"..n.."</b>." end
+            return "No Humanoid found."
+        end
+        -- ACTION: read a value
+        if has(q,"read ","value of","what is the value") then
+            local path=raw:match("[Rr]ead%s+(.+)") or raw:match("value of%s+(.+)")
+            if path then
+                local ok2,res=pcall(function()
+                    local o=game; for part in path:gmatch("[^%.%s]+") do o=o[part] end; return o
+                end)
+                if ok2 then
+                    if typeof(res)=="Instance" and res:IsA("ValueBase") then res=res.Value end
+                    return "<b>"..path.."</b> = "..tostring(res).."  ["..typeof(res).."]"
+                end
+                return "Couldn't read that path: "..tostring(res):sub(1,60)
+            end
+        end
+        -- ACTION: find / fire remote
+        if has(q,"fire ","find remote","search remote","invoke ") then
+            local target=raw:match("[Ff]ire%s+(.+)") or raw:match("remote%s+(.+)") or raw:match("[Ii]nvoke%s+(.+)")
+            if target and ENV.mem then
+                target=target:lower()
+                local hits={}
+                for _,r in ipairs(ENV.mem.remotes) do
+                    if string.find(r.name:lower(),target,1,true) then table.insert(hits,r) end
+                end
+                if #hits==0 then return "No remote matching \""..target.."\". I know "..#ENV.mem.remotes.." remotes — try the Remotes tab to browse." end
+                local first=hits[1]
+                local ok2=false
+                pcall(function()
+                    local o=game; for part in first.path:gmatch("[^%.]+") do o=o[part] end
+                    if o and o:IsA("RemoteEvent") then o:FireServer(LP.Name); ok2=true
+                    elseif o and o:IsA("RemoteFunction") then o:InvokeServer(LP.Name); ok2=true end
+                end)
+                return (ok2 and "Fired " or "Found ("..#hits.." match) but couldn't fire ")..("<b>"..first.name.."</b>\n"..first.path)..(ok2 and " with your name." or " — open Remotes tab to set args.")
+            end
+        end
+        -- ACTION: run lua
+        if has(q,"run ","execute ","exec ","lua ","do ") then
+            local code=raw:match("[Rr]un%s+(.+)") or raw:match("[Ee]xec%w*%s+(.+)") or raw:match("[Ll]ua%s+(.+)") or raw:match("[Dd]o%s+(.+)")
+            if code then
+                local fn,ce=loadstring(code)
+                if not fn then return "Compile error: "..tostring(ce):sub(1,70) end
+                local ok2,e2=pcall(fn)
+                return ok2 and "Executed: <b>"..code:sub(1,60).."</b> ✓" or "Runtime error: "..tostring(e2):sub(1,70)
+            end
+        end
+        if has(q,"thank","thanks","ty ") then return "Anytime. 🤖" end
+        if has(q,"joke","funny") then return "Why did the exploiter get kicked? They couldn't handle the <b>remote</b> rejection. 😏" end
+        -- fallback
+        return "I'm local-only, so I work on keywords. Try:\n• \"morph into catnap\"\n• \"walkspeed 120\"\n• \"fire &lt;remote name&gt;\"\n• \"read Players.LocalPlayer.leaderstats.Cash\"\n• \"run print('hi')\"\n• \"how many remotes\" / \"memory\" / \"executor\""
+    end
+
+    -- input row
+    local inRow=Frm(P,UDim2.new(1,0,0,40),UDim2.new(0,0,1,-44),C.BG)
+    local box=Frm(inRow,UDim2.new(1,-86,1,0),UDim2.new(0,0,0,0),C.CARD); corner(box,9); stroke(box,C.BORDER,1); pad(box,4,4,12,12)
+    local tbx=Instance.new("TextBox")
+    tbx.Size=UDim2.new(1,0,1,0); tbx.BackgroundTransparency=1; tbx.PlaceholderText="Ask Claude…  (e.g. morph into siren head)"
+    tbx.PlaceholderColor3=C.MUTED; tbx.Text=""; tbx.TextColor3=C.WHITE; tbx.TextSize=13; tbx.Font=FN
+    tbx.TextXAlignment=Enum.TextXAlignment.Left; tbx.ClearTextOnFocus=false; tbx.Parent=box
+    local function send()
+        local q=tbx.Text
+        if q=="" then return end
+        tbx.Text=""
+        bubble(q,true)
+        task.spawn(function()
+            task.wait(0.15)
+            local typing=bubble("…",false)
+            local reply=think(q)
+            task.wait(0.25)
+            typing.Text=reply
+            typing.Parent.Parent:Destroy()  -- remove the temporary holder
+            bubble(reply,false)
+        end)
+    end
+    Btn(inRow,"Send",UDim2.new(0,80,1,0),UDim2.new(1,-80,0,0),C.ACCENT,send)
+    tbx.FocusLost:Connect(function(enter) if enter then send() end end)
+
+    -- greeting
+    bubble("Hi "..LP.DisplayName.."! I'm <b>Claude</b> — your built-in, fully-offline assistant (no API). I've already read this game's memory. Ask me to morph you, change your speed, fire a remote, run Lua, or anything about this game. Type <b>help</b> to see commands.",false)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  TAB — UNC / sUNC  (executor function checker — run the 100-function test)
+-- ═══════════════════════════════════════════════════════════════════════════════
+do
+    local P=newTab("✅","UNC")
+
+    -- resolve a possibly-dotted global name from the executor environment
+    local function lookup(name)
+        local parts={}; for p in name:gmatch("[^%.]+") do parts[#parts+1]=p end
+        local root
+        pcall(function() root=(getgenv and getgenv()[parts[1]]); if root==nil then root=getfenv(0)[parts[1]] end end)
+        if root==nil then return nil end
+        local cur=root
+        for i=2,#parts do if type(cur)~="table" then return nil end; cur=cur[parts[i]] end
+        return cur
+    end
+
+    -- UNC — 100 core functions
+    local UNC={
+        "cache.invalidate","cache.iscached","cache.replace","cloneref","compareinstances",
+        "checkcaller","clonefunction","getcallingscript","getscriptclosure","hookfunction",
+        "hookmetamethod","getrawmetatable","setrawmetatable","isreadonly","setreadonly",
+        "getnamecallmethod","newcclosure","iscclosure","islclosure","isexecutorclosure",
+        "getfunctionhash","getgc","getgenv","getrenv","getreg","filtergc","getconnections",
+        "firesignal","getcustomasset","gethiddenproperty","sethiddenproperty","gethui",
+        "getinstances","getnilinstances","isscriptable","setscriptable","getthreadidentity",
+        "setthreadidentity","fireclickdetector","firetouchinterest","fireproximityprompt",
+        "isrbxactive","mouse1click","mouse1press","mouse1release","mouse2click","mouse2press",
+        "mouse2release","mousemoveabs","mousemoverel","mousescroll","keypress","keyrelease",
+        "iskeydown","WebSocket","request","crypt.base64encode","crypt.base64decode",
+        "crypt.encrypt","crypt.decrypt","crypt.generatebytes","crypt.generatekey","crypt.hash",
+        "base64.encode","base64.decode","getclipboard","setclipboard","queue_on_teleport",
+        "readfile","writefile","appendfile","loadfile","listfiles","isfile","isfolder",
+        "makefolder","delfolder","delfile","loadstring","identifyexecutor","getexecutorname",
+        "setfpscap","getfpscap","getrunningscripts","getloadedmodules","getscripts",
+        "getscriptbytecode","getscripthash","getsenv","getcallbackvalue","getactors",
+        "run_on_actor","getthreads","setrenderproperty","getrenderproperty","cleardrawcache",
+        "Drawing.new","Drawing.Fonts","isnetworkowner","replicatesignal","gethiddenproperty2",
+    }
+    -- sUNC — secure/stricter extras
+    local SUNC={
+        "checkcaller","clonefunction","getcallingscript","getscriptclosure","hookfunction",
+        "hookmetamethod","newcclosure","isexecutorclosure","getfunctionhash","getfflag",
+        "isluau","getgc","filtergc","getrawmetatable","setrawmetatable","isreadonly",
+        "setreadonly","getnamecallmethod","getsenv","getmenv","getcallbackvalue",
+        "getscriptbytecode","getscripthash","decompile","getproto","getprotos","getconstant",
+        "getconstants","getupvalue","getupvalues","setupvalue","setconstant","getstack",
+        "setstack","getinfo","islclosure","iscclosure","getfenv","setfenv","getreg","getgc",
+        "validlevel","gethui","cloneref","compareinstances","getcustomasset","setscriptable",
+    }
+
+    local sumBar=Frm(P,UDim2.new(1,0,0,52),nil,C.PANEL); corner(sumBar,10); stroke(sumBar,C.BORDER,1); pad(sumBar,8,8,12,12)
+    local sumTitle=Lbl(sumBar,"Run a test to check your executor",UDim2.new(1,0,0,18),nil,C.WHITE,14,FB)
+    local sumSub=Lbl(sumBar,ENV.name.." · UNC measures executor function coverage",UDim2.new(1,0,0,16),UDim2.new(0,0,0,24),C.MUTED,11,FN)
+    -- progress bar
+    local pbBg=Frm(P,UDim2.new(1,0,0,8),nil,C.DARK); corner(pbBg,4)
+    local pbFill=Frm(pbBg,UDim2.new(0,0,1,0),nil,C.GREEN); corner(pbFill,4)
+
+    local searchReg=CardSearch(P,"Search functions…")
+    local resHost=Instance.new("Frame")
+    resHost.Size=UDim2.new(1,0,0,0); resHost.BackgroundTransparency=1; resHost.AutomaticSize=Enum.AutomaticSize.Y; resHost.Parent=P
+    listV(resHost,3)
+    local lastResults={}
+
+    local function runTest(list,label)
+        for _,c in ipairs(resHost:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
+        lastResults={}
+        local pass=0
+        for _,name in ipairs(list) do
+            local v=lookup(name)
+            local ok2 = (type(v)=="function") or (type(v)=="table")
+            if ok2 then pass=pass+1 end
+            table.insert(lastResults,(ok2 and "[PASS] " or "[FAIL] ")..name)
+            local row=Frm(resHost,UDim2.new(1,0,0,24),nil,C.CARD); corner(row,6); pad(row,0,0,10,8)
+            Lbl(row,name,UDim2.new(1,-60,1,0),nil,ok2 and C.TEXT or C.MUTED,11,FN).TextTruncate=Enum.TextTruncate.AtEnd
+            local tag=Lbl(row,ok2 and "✓ pass" or "✗ fail",UDim2.new(0,56,1,0),UDim2.new(1,-56,0,0),ok2 and C.GREEN or C.RED,11,FB)
+            tag.TextXAlignment=Enum.TextXAlignment.Right
+            searchReg(row,name:lower())
+        end
+        local total=#list; local pct=math.floor(pass/total*100+0.5)
+        sumTitle.Text=label..":  "..pass.."/"..total.."  ("..pct.."%)"
+        sumSub.Text=ENV.name.." · "..(total-pass).." missing"
+        local col = pct>=90 and C.GREEN or (pct>=60 and C.YELLOW or C.RED)
+        pbFill.BackgroundColor3=col
+        tw(pbFill,{Size=UDim2.new(pct/100,0,1,0)},TS2)
+        sumTitle.TextColor3=col
+        notify("Claude Hub",label.." "..pct.."% ("..pass.."/"..total..")",4)
+    end
+
+    local rowBtns=Frm(P,UDim2.new(1,0,0,38),nil,C.BG)
+    local hh=Instance.new("UIListLayout"); hh.FillDirection=Enum.FillDirection.Horizontal; hh.Padding=UDim.new(0,6); hh.Parent=rowBtns
+    Btn(rowBtns,"▶  Run UNC (100)",UDim2.new(0.5,-3,1,0),nil,C.ACCENT,function() runTest(UNC,"UNC") end)
+    Btn(rowBtns,"▶  Run sUNC",UDim2.new(0.5,-3,1,0),nil,C.PANEL,function() runTest(SUNC,"sUNC") end)
+    if ENV.HAS_CLIP then
+        Btn(P,"Copy Results",UDim2.new(1,0,0,32),nil,C.PANEL,function()
+            if #lastResults==0 then notify("Claude Hub","Run a test first",2); return end
+            ENV.setClip(table.concat(lastResults,"\n")); notify("Claude Hub","Results copied!",2)
+        end)
+    end
+    do
+        local w=Frm(P,UDim2.new(1,0,0,34),nil,C.PANEL); corner(w,8); pad(w,6,6,10,10)
+        Lbl(w,"Existence check across "..#UNC.." UNC + "..#SUNC.." sUNC functions.\nHigher % = more capable executor.",UDim2.new(1,0,1,0),nil,C.MUTED,10,FN)
+    end
+    task.defer(function() runTest(UNC,"UNC") end)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
 --  TAB — ENVIRONMENT  (full executor scan)
 -- ═══════════════════════════════════════════════════════════════════════════════
 do
