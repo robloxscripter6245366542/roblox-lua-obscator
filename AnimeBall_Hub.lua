@@ -291,10 +291,18 @@ local function parryViaVirtualUser()
 end
 
 -- ── RemoteFunction invoke ────────────────────────────────────────────────
-local function parryViaBlockRemote()
+-- Uses actual ball direction for Y so it works from any angle
+local function parryViaBlockRemote(ball)
     local remote = findBlockRemote()
     if not remote then return false end
-    pcall(function() remote:InvokeServer(cam.CFrame.LookVector.Y) end)
+    local y = 0
+    if ball then
+        local hrp = getHRP()
+        if hrp then y = (ball.Position - hrp.Position).Unit.Y end
+    else
+        y = cam.CFrame.LookVector.Y
+    end
+    pcall(function() remote:InvokeServer(y) end)
     return true
 end
 
@@ -349,14 +357,14 @@ local parryThreshold = 22    -- outer trigger radius (studs)
 local lastParryTime  = 0
 local parryInCooldown = false
 
--- Adaptive cooldown based on distance:
---   Far (>14st)  → fire early, 0.05s CD
---   Mid (8–14st) → normal,    0.12s CD
---   Close (<8st) → delay fire, 0.22s CD (avoids clash on lag spike)
+-- Adaptive cooldown:
+--   Close (<5st)  → 0.08s — rapid-fire for clash scenarios
+--   Mid   (5-12)  → 0.12s
+--   Far   (>12st) → 0.20s
 local function getAdaptiveCooldown(dist)
-    if dist > 14 then return 0.05
-    elseif dist > 8 then return 0.12
-    else return 0.22 end
+    if dist < 5  then return 0.08
+    elseif dist < 12 then return 0.12
+    else return 0.20 end
 end
 
 -- Velocity-based prediction: returns estimated time-to-impact
@@ -383,38 +391,52 @@ local function executeParry(ball)
         local fn = findBlockFn()
         if type(fn)=="function" then fn() end
     end)
-    parryViaBlockRemote()
+    parryViaBlockRemote(ball)
     parryConnections(ball)
 end
 
--- Burst parry: fires 3 rapid attempts so one lands inside the server window
--- regardless of ping. Spread: 0ms, 60ms, 120ms.
--- Server sees them at: ping, ping+60, ping+120 — one always hits.
 local parryBurstActive = false
 local lastParryBall    = nil
 
 local function doParry(ball)
-    if parryBurstActive then return end
-    if ball == lastParryBall then return end  -- already fired for this ball
     local hrp  = getHRP()
     local dist = hrp and (ball.Position - hrp.Position).Magnitude or 0
-    local cd   = getAdaptiveCooldown(dist)
-    if (tick() - lastParryTime) < cd then return end
-    lastParryTime  = tick()
-    parryBurstActive = true
-    lastParryBall  = ball
+    local closeRange = dist < 5  -- clash zone
 
-    executeParry(ball)
-    task.delay(0.06, function()
-        if ball and ball.Parent then executeParry(ball) end
-    end)
-    task.delay(0.12, function()
-        if ball and ball.Parent then
-            executeParry(ball)
-            parryViaVirtualUser()  -- VirtualUser as final safety net
+    -- Close range bypasses burst lock and lastParryBall so it keeps hammering
+    if not closeRange then
+        if parryBurstActive then return end
+        if ball == lastParryBall then return end
+    end
+
+    local cd = getAdaptiveCooldown(dist)
+    if (tick() - lastParryTime) < cd then return end
+    lastParryTime = tick()
+
+    if closeRange then
+        -- Dense 7-shot burst over 130ms — guarantees a hit in any clash window
+        executeParry(ball)
+        for _, t in ipairs({0.02, 0.04, 0.06, 0.08, 0.10, 0.13}) do
+            task.delay(t, function()
+                if ball and ball.Parent then executeParry(ball) end
+            end)
         end
-        parryBurstActive = false
-    end)
+    else
+        parryBurstActive = true
+        lastParryBall = ball
+        -- Normal 3-shot burst: 0ms, 60ms, 120ms
+        executeParry(ball)
+        task.delay(0.06, function()
+            if ball and ball.Parent then executeParry(ball) end
+        end)
+        task.delay(0.12, function()
+            if ball and ball.Parent then
+                executeParry(ball)
+                parryViaVirtualUser()
+            end
+            parryBurstActive = false
+        end)
+    end
 end
 
 -- AUTO DODGE ──────────────────────────────────────────────────────────────
@@ -769,20 +791,19 @@ ac(RS.Heartbeat:Connect(function()
     end
 
     -- Auto Parry — ping-compensated TTI trigger
-    -- High ping  → fire early (window += ping) so server gets click in time
-    -- Low ping   → fire at exact moment (window ≈ base only)
     if autoParryOn and ball then
         local dist = (ball.Position - hrp.Position).Magnitude
         local shouldParry = false
-        if ballVelAvg > 0 then
+        if dist < 5 then
+            -- Clash zone: fire every cooldown cycle, no TTI check
+            shouldParry = true
+        elseif ballVelAvg > 0 then
             local tti  = dist / ballVelAvg
             local ping = getPing()
-            -- Base window per distance band + ping compensation
-            local base = dist < 8 and 0.13 or dist < 15 and 0.18 or 0.22
-            local window = base + ping   -- e.g. 300ms ping → fires 300ms earlier
+            local base = dist < 12 and 0.18 or 0.22
+            local window = base + ping
             shouldParry = tti < window
         else
-            -- No velocity yet (ball just spawned) — use distance fallback
             shouldParry = dist < parryThreshold
         end
         if shouldParry then doParry(ball) end
