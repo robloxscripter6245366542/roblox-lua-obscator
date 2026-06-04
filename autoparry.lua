@@ -1,10 +1,11 @@
--- autoparry.lua  — no GUI, just works
+-- autoparry.lua  v3 — no GUI, fires on every ball, never misses
 local ok,err = pcall(function()
 
 local Players = game:GetService("Players")
 local RS      = game:GetService("RunService")
 local UIS     = game:GetService("UserInputService")
 local SG      = game:GetService("StarterGui")
+local VU      = game:GetService("VirtualUser")
 local cam     = workspace.CurrentCamera
 local LP      = Players.LocalPlayer
 local PGui    = LP:WaitForChild("PlayerGui",15)
@@ -12,60 +13,100 @@ local PGui    = LP:WaitForChild("PlayerGui",15)
 local function notify(t,m)
     pcall(function() SG:SetCore("SendNotification",{Title=t,Text=m,Duration=3}) end)
 end
+local function getChar() return LP.Character end
+local function getHRP()  local c=getChar(); return c and c:FindFirstChild("HumanoidRootPart") end
 
--- ── Capability flags ────────────────────────────────────────────────────────
-local HAS_GC    = type(getgc)           == "function"
-local HAS_CONNS = type(getconnections)  == "function"
-local HAS_ENV   = type(getsenv)         == "function"
+-- ─────────────────────────────────────────────────────────────────────────────
+--  CAPABILITY FLAGS
+-- ─────────────────────────────────────────────────────────────────────────────
+local HAS_GC    = type(getgc)          == "function"
+local HAS_CONNS = type(getconnections) == "function"
+local HAS_ENV   = type(getsenv)        == "function"
 local HAS_UV    = (type(debug)=="table" and type(debug.getupvalues)=="function" and debug.getupvalues)
-               or (type(getupvalues)=="function" and getupvalues)
-               or nil
+               or (type(getupvalues)=="function" and getupvalues) or nil
 
--- ── Ball detection ──────────────────────────────────────────────────────────
-local BALL_NAMES = {"ball","blade","projectile","orb","sphere","anime","shot",
-                    "animeball","animeorb","energy","magic","fire","slash","wave"}
+-- ─────────────────────────────────────────────────────────────────────────────
+--  BALL DETECTION  — wide net, name + shape + size, plus periodic scan fallback
+-- ─────────────────────────────────────────────────────────────────────────────
+local BALL_NAMES = {
+    "ball","blade","projectile","orb","sphere","anime","shot","animeball",
+    "animeorb","energy","magic","fire","slash","wave","bullet","hitbox",
+    "attack","weapon","sword","deflect","bounce","laser","beam"
+}
 
-local ballCache  = nil
-local hookedBalls = {}
+local ballCache = nil
 
-local function isBall(v)
-    if not v:IsA("BasePart") or v.Anchored then return false end
-    local n = v.Name:lower()
-    for _,k in ipairs(BALL_NAMES) do if n:find(k,1,true) then return true end end
+local function isPlayerPart(v)
+    for _,p in pairs(Players:GetPlayers()) do
+        if p.Character and v:IsDescendantOf(p.Character) then return true end
+    end
     return false
 end
 
+local function isBall(v)
+    if not v:IsA("BasePart") then return false end
+    if v.Anchored then return false end
+    if isPlayerPart(v) then return false end
+    -- Name match
+    local n = v.Name:lower()
+    for _,k in ipairs(BALL_NAMES) do
+        if n:find(k,1,true) then return true end
+    end
+    -- Sphere-shaped small part (most ball games use this)
+    if v.Shape == Enum.PartType.Ball and v.Size.Magnitude < 10 then return true end
+    -- Small fast-moving unanchored part
+    if v.Size.Magnitude < 4 and not v.CanCollide then return true end
+    return false
+end
+
+-- Event-driven primary detection
 workspace.DescendantAdded:Connect(function(v)
-    if isBall(v) and v.CanTouch then ballCache = v end
+    if isBall(v) then ballCache = v end
 end)
 workspace.DescendantRemoving:Connect(function(v)
-    if v == ballCache then ballCache = nil; hookedBalls[v] = nil end
+    if v == ballCache then ballCache = nil end
 end)
+
+-- One-time startup scan
 for _,v in pairs(workspace:GetDescendants()) do
-    if isBall(v) and v.CanTouch then ballCache = v; break end
+    if isBall(v) then ballCache = v; break end
+end
+
+-- Periodic scan fallback every 0.5s in case DescendantAdded missed it
+local scanT = 0
+local function scanForBall()
+    if (tick()-scanT) < 0.5 then return end; scanT=tick()
+    if ballCache and ballCache.Parent then return end
+    for _,v in pairs(workspace:GetDescendants()) do
+        if isBall(v) then ballCache=v; return end
+    end
+    ballCache = nil
 end
 
 local function findBall()
+    scanForBall()
     if ballCache and ballCache.Parent then return ballCache end
     ballCache = nil; return nil
 end
 
--- ── Character helpers ───────────────────────────────────────────────────────
-local function getChar() return LP.Character end
-local function getHRP()  local c=getChar(); return c and c:FindFirstChild("HumanoidRootPart") end
-
--- ── Block function cache ────────────────────────────────────────────────────
+-- ─────────────────────────────────────────────────────────────────────────────
+--  BLOCK FUNCTION FINDER  — all 4 strategies, retried every 3s until found
+-- ─────────────────────────────────────────────────────────────────────────────
 local cachedBlockFn     = nil
 local cachedBlockRemote = nil
 local cachedBlockBtn    = nil
 
 LP.CharacterAdded:Connect(function()
-    cachedBlockFn = nil; cachedBlockRemote = nil; cachedBlockBtn = nil
+    cachedBlockFn=nil; cachedBlockRemote=nil; cachedBlockBtn=nil
+    task.delay(1, function()
+        -- Re-find after spawn (sword controller re-runs)
+        cachedBlockFn = nil
+    end)
 end)
 
 local function upSearch(fn)
     if not HAS_UV or type(fn)~="function" then return nil end
-    local ok2,uvs = pcall(HAS_UV, fn)
+    local ok2,uvs = pcall(HAS_UV,fn)
     if not (ok2 and uvs) then return nil end
     for _,uv in pairs(uvs) do
         if type(uv)=="table" and type(uv.Block)=="function" then return uv.Block end
@@ -75,54 +116,47 @@ end
 local function findBlockFn()
     if cachedBlockFn then return cachedBlockFn end
 
-    -- 1: TouchTapInWorld upvalues → v_u_1.Block
+    -- Strategy 1: TouchTapInWorld connection upvalues → v_u_1.Block
     if HAS_CONNS then
         local ok2,conns = pcall(getconnections, UIS.TouchTapInWorld)
         if ok2 and conns then
             for _,c in ipairs(conns) do
                 local fn; pcall(function() fn=c.Function end)
                 local b = upSearch(fn)
-                if b then cachedBlockFn=b; print("[AP] Found via TTI upvalues"); return b end
+                if b then cachedBlockFn=b; print("[AP] Block via TTI upvalues ✓"); return b end
             end
         end
     end
 
-    -- 2: Block button event connections
+    -- Strategy 2: Block HUD button connections
     if HAS_CONNS then
-        local btn
-        pcall(function()
-            btn = PGui:FindFirstChild("HUD",true)
-            if btn then btn = btn:FindFirstChild("Actions",true) end
-            if btn then btn = btn:FindFirstChild("MainButtons",true) end
-            if btn then btn = btn:FindFirstChild("Block") end
-        end)
-        if not btn then
+        local btn = cachedBlockBtn
+        if not (btn and btn.Parent) then
             for _,v in pairs(PGui:GetDescendants()) do
-                if v.Name=="Block" and (v:IsA("TextButton") or v:IsA("ImageButton")) then btn=v; break end
+                if v.Name=="Block" and (v:IsA("TextButton") or v:IsA("ImageButton") or v:IsA("GuiButton")) then
+                    btn=v; cachedBlockBtn=btn; break
+                end
             end
         end
         if btn then
-            cachedBlockBtn = btn
-            for _,ev in ipairs({"Activated","MouseButton1Click","MouseButton1Down","InputBegan"}) do
+            for _,ev in ipairs({"Activated","MouseButton1Click","MouseButton1Down","InputBegan","Touched"}) do
                 local ok2,conns = pcall(function() return getconnections(btn[ev]) end)
                 if ok2 and conns then
                     for _,c in ipairs(conns) do
                         local fn; pcall(function() fn=c.Function end)
-                        local b = upSearch(fn) or fn
-                        if type(b)=="function" then
-                            cachedBlockFn=b; print("[AP] Found via btn "..ev); return b
-                        end
+                        local b = upSearch(fn) or (type(fn)=="function" and fn or nil)
+                        if b then cachedBlockFn=b; print("[AP] Block via btn "..ev.." ✓"); return b end
                     end
                 end
             end
         end
     end
 
-    -- 3: getsenv SwordController (tries both paths)
+    -- Strategy 3: getsenv SwordController
     if HAS_ENV then
         for _,pathFn in ipairs({
-            function() return LP:WaitForChild("PlayerScripts",1):WaitForChild("Scripts",1):WaitForChild("SwordController",1) end,
-            function() return game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts",1):WaitForChild("Scripts",1):WaitForChild("SwordController",1) end,
+            function() return LP:FindFirstChild("PlayerScripts") and LP.PlayerScripts:FindFirstChild("Scripts") and LP.PlayerScripts.Scripts:FindFirstChild("SwordController") end,
+            function() return game:GetService("StarterPlayer"):FindFirstChild("StarterPlayerScripts") and game:GetService("StarterPlayer").StarterPlayerScripts:FindFirstChild("Scripts") and game:GetService("StarterPlayer").StarterPlayerScripts.Scripts:FindFirstChild("SwordController") end,
         }) do
             local sc; pcall(function() sc=pathFn() end)
             if sc then
@@ -130,7 +164,7 @@ local function findBlockFn()
                 if ok2 and env then
                     for _,v in pairs(env) do
                         if type(v)=="table" and type(v.Block)=="function" then
-                            cachedBlockFn=v.Block; print("[AP] Found via getsenv"); return v.Block
+                            cachedBlockFn=v.Block; print("[AP] Block via getsenv ✓"); return v.Block
                         end
                     end
                 end
@@ -138,14 +172,14 @@ local function findBlockFn()
         end
     end
 
-    -- 4: getgc table shape scan
+    -- Strategy 4: getgc table shape match
     if HAS_GC then
         local ok2,gc = pcall(getgc,false)
         if ok2 and gc then
             for _,v in ipairs(gc) do
                 if type(v)=="table" and type(v.Block)=="function"
                 and type(v.ShowShield)=="function" then
-                    cachedBlockFn=v.Block; print("[AP] Found via getgc"); return v.Block
+                    cachedBlockFn=v.Block; print("[AP] Block via getgc ✓"); return v.Block
                 end
             end
         end
@@ -154,174 +188,216 @@ local function findBlockFn()
     return nil
 end
 
--- ── Block remote ────────────────────────────────────────────────────────────
+-- Retry finding block fn every 3s until found
+local function keepFindingBlockFn()
+    if cachedBlockFn then return end
+    task.spawn(function()
+        while not cachedBlockFn do
+            findBlockFn()
+            task.wait(3)
+        end
+        notify("Auto Parry","Block fn found — active!",3)
+        print("[AP] Block fn locked in ✓")
+    end)
+end
+
+-- ─────────────────────────────────────────────────────────────────────────────
+--  BLOCK REMOTE
+-- ─────────────────────────────────────────────────────────────────────────────
 local function findBlockRemote()
     if cachedBlockRemote and cachedBlockRemote.Parent then return cachedBlockRemote end
     for _,v in pairs(game:GetService("ReplicatedStorage"):GetDescendants()) do
-        if v:IsA("RemoteFunction") and v.Name=="Block" then cachedBlockRemote=v; return v end
+        if v:IsA("RemoteFunction") and v.Name=="Block" then
+            cachedBlockRemote=v; return v
+        end
     end
 end
 
--- ── Single parry attempt ────────────────────────────────────────────────────
-local function executeParry(ball)
-    -- A: real Block() function
+-- ─────────────────────────────────────────────────────────────────────────────
+--  VIRTUALUSER fallback — tap the Block button on screen
+-- ─────────────────────────────────────────────────────────────────────────────
+local function vuTap()
+    local btn = cachedBlockBtn
+    if not (btn and btn.Parent) then
+        for _,v in pairs(PGui:GetDescendants()) do
+            if v.Name=="Block" and (v:IsA("TextButton") or v:IsA("ImageButton") or v:IsA("GuiButton")) then
+                btn=v; cachedBlockBtn=btn; break
+            end
+        end
+    end
+    if not btn then return end
+    pcall(function()
+        local pos = btn.AbsolutePosition + btn.AbsoluteSize*0.5
+        VU:Button1Down(pos, cam.CFrame)
+        task.wait(0.04)
+        VU:Button1Up(pos, cam.CFrame)
+    end)
+end
+
+-- ─────────────────────────────────────────────────────────────────────────────
+--  SINGLE PARRY SHOT — fires every available method once
+-- ─────────────────────────────────────────────────────────────────────────────
+local function fireParry(ball)
+    -- A: real v_u_1.Block()
     pcall(function()
         local fn = findBlockFn()
         if type(fn)=="function" then fn() end
     end)
-    -- B: RemoteFunction (any angle)
+    -- B: RemoteFunction with real angle
     pcall(function()
         local r = findBlockRemote(); if not r then return end
         local hrp = getHRP()
         local y = (hrp and ball) and (ball.Position-hrp.Position).Unit.Y or 0
         r:InvokeServer(y)
     end)
-    -- C: fire ball.Touched connections on HRP
+    -- C: VirtualUser tap
+    vuTap()
+    -- D: fire ball.Touched connections on player
     pcall(function()
         if not HAS_CONNS or not ball then return end
-        local hrp = getHRP(); if not hrp then return end
-        local ok2,conns = pcall(getconnections, ball.Touched)
+        local hrp=getHRP(); if not hrp then return end
+        local ok2,conns=pcall(getconnections,ball.Touched)
         if ok2 and conns then
             for _,c in ipairs(conns) do
                 local fn; pcall(function() fn=c.Function end)
-                if type(fn)=="function" then pcall(fn, hrp) end
+                if type(fn)=="function" then pcall(fn,hrp) end
             end
         end
     end)
 end
 
--- ── Ping cache ──────────────────────────────────────────────────────────────
-local cachedPing=0.10; local pingT=0
+-- ─────────────────────────────────────────────────────────────────────────────
+--  PING CACHE
+-- ─────────────────────────────────────────────────────────────────────────────
+local ping=0.10; local pingT=0
 local function getPing()
-    if (tick()-pingT)<1 then return cachedPing end; pingT=tick()
+    if (tick()-pingT)<1 then return ping end; pingT=tick()
     pcall(function()
-        cachedPing=math.clamp(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()/1000,0.03,0.6)
+        ping=math.clamp(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()/1000,0.03,0.6)
     end)
-    return cachedPing
+    return ping
 end
 
--- ── VirtualUser fallback ────────────────────────────────────────────────────
-local VU = game:GetService("VirtualUser")
-local function vuTap()
-    local btn = cachedBlockBtn
-    if not btn then
-        for _,v in pairs(PGui:GetDescendants()) do
-            if v.Name=="Block" and (v:IsA("TextButton") or v:IsA("ImageButton")) then btn=v; cachedBlockBtn=btn; break end
-        end
-    end
-    if not btn then return end
-    local pos = btn.AbsolutePosition + btn.AbsoluteSize*0.5
-    pcall(function() VU:Button1Down(pos,cam.CFrame); task.wait(0.04); VU:Button1Up(pos,cam.CFrame) end)
-end
+-- ─────────────────────────────────────────────────────────────────────────────
+--  PARRY THROTTLE — prevents duplicate bursts per ball
+-- ─────────────────────────────────────────────────────────────────────────────
+local lastParryTime = 0
+local lastBurstBall = nil
+local burstActive   = false
 
--- ── Parry burst ─────────────────────────────────────────────────────────────
-local lastParryTime    = 0
-local parryBurstActive = false
-local lastParryBall    = nil
-
-local function doParry(ball)
-    local hrp  = getHRP()
-    local dist = hrp and (ball.Position-hrp.Position).Magnitude or 0
+local function doParry(ball, dist)
     local closeRange = dist < 8
 
     if not closeRange then
-        if parryBurstActive then return end
-        if ball == lastParryBall then return end
+        if burstActive then return end
+        if ball == lastBurstBall then return end
     end
 
-    local cd = closeRange and 0.06 or dist < 14 and 0.12 or 0.20
+    local cd = closeRange and 0.05 or dist < 16 and 0.10 or 0.18
     if (tick()-lastParryTime) < cd then return end
     lastParryTime = tick()
 
     if closeRange then
-        -- 10-shot burst over 200ms for clashes
-        executeParry(ball)
+        -- Dense 10-shot burst — covers any server window even on 300ms ping
+        fireParry(ball)
         for _,t in ipairs({0.02,0.04,0.06,0.08,0.10,0.12,0.14,0.16,0.18,0.20}) do
-            task.delay(t, function() if ball.Parent then executeParry(ball) end end)
+            task.delay(t, function() if ball and ball.Parent then fireParry(ball) end end)
         end
     else
-        parryBurstActive = true; lastParryBall = ball
-        executeParry(ball)
-        task.delay(0.06, function() if ball.Parent then executeParry(ball) end end)
-        task.delay(0.12, function()
-            if ball.Parent then executeParry(ball); vuTap() end
-            parryBurstActive = false
+        burstActive=true; lastBurstBall=ball
+        fireParry(ball)
+        task.delay(0.06, function() if ball and ball.Parent then fireParry(ball) end end)
+        task.delay(0.14, function()
+            if ball and ball.Parent then fireParry(ball) end
+            burstActive=false
         end)
     end
 end
 
 workspace.DescendantRemoving:Connect(function(v)
-    if v==ballCache then parryBurstActive=false; lastParryBall=nil end
+    if v==ballCache then
+        ballCache=nil; burstActive=false; lastBurstBall=nil
+    end
 end)
 
--- ── Ball.Touched hook ────────────────────────────────────────────────────────
+-- ─────────────────────────────────────────────────────────────────────────────
+--  BALL.TOUCHED hook — fires at exact collision moment (never miss backup)
+-- ─────────────────────────────────────────────────────────────────────────────
+local hookedBalls = {}
 local function hookBall(ball)
     if hookedBalls[ball] then return end; hookedBalls[ball]=true
     ball.Touched:Connect(function(hit)
         local char=getChar()
-        if char and (hit==char or hit:IsDescendantOf(char)) then
-            executeParry(ball)
-            task.delay(0.03, function() if ball.Parent then executeParry(ball) end end)
-            task.delay(0.07, function() if ball.Parent then executeParry(ball) end end)
+        if not char then return end
+        if hit==char or hit:IsDescendantOf(char) then
+            fireParry(ball)
+            task.delay(0.04, function() if ball.Parent then fireParry(ball) end end)
+            task.delay(0.09, function() if ball.Parent then fireParry(ball) end end)
         end
     end)
 end
 
--- ── Velocity tracking ───────────────────────────────────────────────────────
-local velSamples={}; local velSampleT=0; local velAvg=0; local lastPos=nil
+-- ─────────────────────────────────────────────────────────────────────────────
+--  VELOCITY TRACKING
+-- ─────────────────────────────────────────────────────────────────────────────
+local velSamples={}; local velT=0; local velAvg=0; local lastPos=nil
 
 local function updateVel(ball)
-    if not ball then velAvg=0; return end
-    local now=tick(); local dt=now-velSampleT
-    if dt>0 and dt<0.5 and lastPos then
+    if not ball then velAvg=0; lastPos=nil; return end
+    local now=tick(); local dt=now-velT
+    if dt>0.005 and dt<0.5 and lastPos then
         local spd=(ball.Position-lastPos).Magnitude/dt
-        table.insert(velSamples,spd)
-        if #velSamples>8 then table.remove(velSamples,1) end
-        local s=0; for _,v in ipairs(velSamples) do s=s+v end; velAvg=s/#velSamples
+        if spd>1 then
+            table.insert(velSamples,spd)
+            if #velSamples>10 then table.remove(velSamples,1) end
+            local s=0; for _,v in ipairs(velSamples) do s=s+v end
+            velAvg=s/#velSamples
+        end
     end
-    lastPos=ball.Position; velSampleT=now
+    lastPos=ball.Position; velT=now
 end
 
--- ── Pre-warm block fn on ball spawn ────────────────────────────────────────
-workspace.DescendantAdded:Connect(function(v)
-    if isBall(v) and v.CanTouch then
-        ballCache=v
-        task.delay(0.05, findBlockFn)
-    end
-end)
-
--- ── Main loop ───────────────────────────────────────────────────────────────
-local loopT=0
+-- ─────────────────────────────────────────────────────────────────────────────
+--  MAIN LOOP  — 60 Hz
+-- ─────────────────────────────────────────────────────────────────────────────
+local loopT = 0
 RS.Heartbeat:Connect(function()
-    local now=tick()
-    if (now-loopT)<0.016 then return end; loopT=now
+    local now = tick()
+    if (now-loopT) < 0.016 then return end; loopT=now
 
-    local ball=findBall()
-    local hrp=getHRP(); if not hrp then return end
+    local ball = findBall()
+    local hrp  = getHRP(); if not hrp then return end
 
     updateVel(ball)
     if ball then hookBall(ball) end
 
     if ball then
-        local dist=(ball.Position-hrp.Position).Magnitude
-        local should=false
-        if dist<8 then
-            should=true
-        elseif velAvg>0 then
-            local tti=dist/velAvg
-            local base=dist<14 and 0.18 or 0.22
-            should=tti<(base+getPing())
+        local dist = (ball.Position-hrp.Position).Magnitude
+        local fire = false
+
+        if dist < 8 then
+            -- Clash zone: always fire
+            fire = true
+        elseif velAvg > 2 then
+            -- TTI-based with ping compensation
+            local tti  = dist / velAvg
+            local base = dist < 16 and 0.18 or 0.25
+            fire = tti < (base + getPing())
         else
-            should=dist<25
+            -- No velocity data yet: use wide distance threshold
+            fire = dist < 35
         end
-        if should then doParry(ball) end
+
+        if fire then doParry(ball, dist) end
     end
 end)
 
--- Pre-warm immediately
-task.delay(0.2, findBlockFn)
-notify("Auto Parry","Active — never miss",3)
-print("[AutoParry] Running. Block fn found:", cachedBlockFn~=nil)
+-- ─────────────────────────────────────────────────────────────────────────────
+--  START
+-- ─────────────────────────────────────────────────────────────────────────────
+task.spawn(keepFindingBlockFn)
+notify("Auto Parry","Running — join a round",3)
+print("[AP] Started. HAS_GC="..tostring(HAS_GC).." HAS_CONNS="..tostring(HAS_CONNS).." HAS_ENV="..tostring(HAS_ENV))
 
 end)
-if not ok then warn("[AutoParry] Error: "..tostring(err)) end
+if not ok then warn("[AutoParry] CRASH: "..tostring(err)) end
