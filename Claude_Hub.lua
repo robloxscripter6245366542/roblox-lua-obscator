@@ -1448,44 +1448,92 @@ do
         return cur
     end
 
-    -- UNC — 100 core functions (standard UNC list)
+    -- UNC — standard 100 + Delta-specific missing functions
+    -- (functions Delta is missing are included so they correctly show as FAIL)
     local UNC={
+        -- core instance / closure
         "cache.invalidate","cache.iscached","cache.replace","cloneref","compareinstances",
         "checkcaller","clonefunction","getcallingscript","getscriptclosure","hookfunction",
         "hookmetamethod","getrawmetatable","setrawmetatable","isreadonly","setreadonly",
         "getnamecallmethod","newcclosure","iscclosure","islclosure","isexecutorclosure",
-        "getfunctionhash","getgc","getgenv","getrenv","getreg","filtergc","getconnections",
-        "firesignal","getcustomasset","gethiddenproperty","sethiddenproperty","gethui",
-        "getinstances","getnilinstances","isscriptable","setscriptable","getthreadidentity",
-        "setthreadidentity","fireclickdetector","firetouchinterest","fireproximityprompt",
-        "isrbxactive","mouse1click","mouse1press","mouse1release","mouse2click","mouse2press",
-        "mouse2release","mousemoveabs","mousemoverel","mousescroll","keypress","keyrelease",
-        "iskeydown","WebSocket","request","crypt.base64encode","crypt.base64decode",
+        "isnewcclosure",          -- ← Delta: MISSING
+        "isourthread",            -- ← Delta: MISSING
+        "getfunctionhash","getgc","getgenv","getrenv","getreg","filtergc",
+        -- connections / signals
+        "getconnections",
+        "firesignal","replicatesignal",
+        -- instance utilities
+        "getcustomasset","gethiddenproperty","sethiddenproperty","gethui",
+        "getinstances","getnilinstances","isscriptable","setscriptable",
+        "makewritable",           -- ← Delta: MISSING
+        -- thread identity
+        "getthreadidentity","setthreadidentity",
+        "getscriptthread",        -- ← Delta: MISSING
+        -- fire* helpers
+        "fireclickdetector","firetouchinterest","fireproximityprompt",
+        -- misc checks
+        "isrbxactive","isnetworkowner",
+        -- input
+        "mouse1click","mouse1press","mouse1release","mouse2click","mouse2press",
+        "mouse2release","mousemoveabs","mousemoverel","mousescroll",
+        "keypress","keyrelease","keytap","iskeydown",  -- keytap: Delta PASSES
+        -- network
+        "WebSocket","request",
+        "httpget",                -- ← Delta: exists but ARGUMENT MISMATCH ⚠
+        -- crypto — Delta PASSES most, MISSING hmac + random
+        "crypt.base64encode","crypt.base64decode",
         "crypt.encrypt","crypt.decrypt","crypt.generatebytes","crypt.generatekey","crypt.hash",
-        "base64.encode","base64.decode","getclipboard","setclipboard","queue_on_teleport",
+        "crypt.hmac",             -- ← Delta: MISSING
+        "crypt.random",           -- ← Delta: MISSING
+        -- base64 aliases
+        "base64.encode","base64.decode",
+        -- clipboard
+        "getclipboard","setclipboard",
+        -- teleport
+        "queue_on_teleport",
+        -- filesystem
         "readfile","writefile","appendfile","loadfile","listfiles","isfile","isfolder",
-        "makefolder","delfolder","delfile","loadstring","identifyexecutor","getexecutorname",
-        "setfpscap","getfpscap","getrunningscripts","getloadedmodules","getscripts",
-        "getscriptbytecode","getscripthash","getsenv","getcallbackvalue","getactors",
-        "run_on_actor","getthreads","setrenderproperty","getrenderproperty","cleardrawcache",
-        "Drawing.new","Drawing.Fonts","isnetworkowner","replicatesignal",
+        "makefolder","delfolder","delfile",
+        -- execution
+        "loadstring",
+        "dofile",                 -- ← Delta: exists but WRONG RETURN VALUE ⚠
+        "messagebox",             -- ← Delta: exists but WRONG RETURN TYPE ⚠
+        -- executor info
+        "identifyexecutor","getexecutorname",
+        -- fps / render
+        "setfpscap","getfpscap","setrenderproperty","getrenderproperty","cleardrawcache",
+        -- scripts
+        "getrunningscripts","getloadedmodules","getscripts",
+        "getscriptbytecode","getscripthash","getsenv","getcallbackvalue",
+        -- actors
+        "getactors","run_on_actor","getthreads",
+        -- Drawing
+        "Drawing.new","Drawing.Fonts",
+        -- rconsole — Delta: exist but TIMEOUT ⚠
+        "rconsolecreate","rconsolesettitle","rconsoleprint","rconsoleclear","rconsoleerror",
+        -- debug — Delta: MISSING
+        "debug.getcallstack","debug.getsafeenv","debug.setsafeenv","debug.setname",
+        -- fflag
+        "getfflagtype",           -- ← Delta: MISSING
     }
-    -- sUNC — secure/stricter extras (no duplicates)
+    -- sUNC — secure/stricter extras
     local SUNC={
         "checkcaller","clonefunction","getcallingscript","getscriptclosure","hookfunction",
-        "hookmetamethod","newcclosure","isexecutorclosure","getfunctionhash","getfflag",
-        "isluau","getgc","filtergc","getrawmetatable","setrawmetatable","isreadonly",
-        "setreadonly","getnamecallmethod","getsenv","getmenv","getcallbackvalue",
+        "hookmetamethod","newcclosure","isexecutorclosure","isnewcclosure","getfunctionhash",
+        "getfflag","isluau","getgc","filtergc","getrawmetatable","setrawmetatable",
+        "isreadonly","setreadonly","getnamecallmethod","getsenv","getmenv","getcallbackvalue",
         "getscriptbytecode","getscripthash","decompile","getproto","getprotos","getconstant",
         "getconstants","getupvalue","getupvalues","setupvalue","setconstant","getstack",
         "setstack","getinfo","islclosure","iscclosure","getfenv","setfenv","getreg",
         "validlevel","gethui","cloneref","compareinstances","getcustomasset","setscriptable",
+        "debug.getcallstack","debug.getsafeenv","debug.setsafeenv","debug.setname",
+        "getscriptthread","isourthread","makewritable","getfflagtype",
     }
-    -- Behavioral tests — existence isn't enough, test that the function actually works.
-    -- Delta has several functions that exist but behave incorrectly.
+    -- Behavioral tests — existence alone isn't enough for these functions.
+    -- ⚠ badge shown when a function exists but fails the behavioral test.
     local BTESTS = {
         ["firesignal"] = function()
-            -- Must actually fire connected callbacks synchronously
+            -- Delta: firesignal exists but does NOT fire connected callbacks
             local fired = false
             local be = Instance.new("BindableEvent")
             be.Event:Connect(function() fired = true end)
@@ -1494,7 +1542,7 @@ do
             return fired
         end,
         ["replicatesignal"] = function()
-            -- Must not error with a valid RemoteEvent
+            -- Delta: replicatesignal exists but throws "invalid argument" error
             local re = Instance.new("RemoteEvent")
             local ok2 = pcall(replicatesignal, re)
             pcall(function() re:Destroy() end)
@@ -1509,12 +1557,11 @@ do
             return ok2 and type(t) == "table" and #t > 0
         end,
         ["gethiddenproperty"] = function()
-            -- Must return value + bool (2 return values, no error)
+            -- Must return (value, bool) — 2 return values
             local ok2, val, isHid = pcall(gethiddenproperty, workspace, "StreamingEnabled")
             return ok2 and isHid ~= nil
         end,
         ["sethiddenproperty"] = function()
-            -- Must not error when restoring a property to its current value
             local ok2, cur = pcall(gethiddenproperty, workspace, "StreamingEnabled")
             if not ok2 then return false end
             return pcall(sethiddenproperty, workspace, "StreamingEnabled", cur)
@@ -1522,6 +1569,30 @@ do
         ["isrbxactive"] = function()
             local ok2, v = pcall(isrbxactive)
             return ok2 and type(v) == "boolean"
+        end,
+        ["dofile"] = function()
+            -- Delta: dofile exists but returns wrong type. Correct: error on missing file.
+            local ok2, result = pcall(dofile, "__ch_test_nonexistent__.lua")
+            -- Correct: errors cleanly (file not found). Wrong: returns a table/userdata.
+            if ok2 then return type(result) ~= "table" and type(result) ~= "userdata" end
+            -- Errored cleanly — check the message contains "file" or "not found"
+            local msg = tostring(result):lower()
+            return msg:find("file") ~= nil or msg:find("not found") ~= nil or msg:find("open") ~= nil
+        end,
+        ["messagebox"] = function()
+            -- Delta: messagebox exists but returns wrong type. Must return number (button index).
+            -- We can't show a real dialog in test mode, so just verify the return type signature.
+            -- Calling with nil args should either error or return a number/nil.
+            local ok2, result = pcall(messagebox, "", "", 0)
+            if not ok2 then return false end  -- errored = wrong
+            return type(result) == "number" or type(result) == "nil"
+        end,
+        ["httpget"] = function()
+            -- Delta: httpget has argument mismatch (may expect different args than game:HttpGet)
+            -- Test: call httpget with a simple URL and check it returns a string body
+            if not httpget then return false end
+            local ok2, result = pcall(httpget, "https://httpbin.org/get", true)
+            return ok2 and type(result) == "string" and #result > 0
         end,
     }
 
@@ -1576,7 +1647,7 @@ do
 
     local rowBtns=Frm(P,UDim2.new(1,0,0,38),nil,C.BG)
     local hh=Instance.new("UIListLayout"); hh.FillDirection=Enum.FillDirection.Horizontal; hh.Padding=UDim.new(0,6); hh.Parent=rowBtns
-    Btn(rowBtns,"▶  Run UNC (100)",UDim2.new(0.5,-3,1,0),nil,C.ACCENT,function() runTest(UNC,"UNC") end)
+    Btn(rowBtns,"▶  Run UNC ("..#UNC..")",UDim2.new(0.5,-3,1,0),nil,C.ACCENT,function() runTest(UNC,"UNC") end)
     Btn(rowBtns,"▶  Run sUNC",UDim2.new(0.5,-3,1,0),nil,C.PANEL,function() runTest(SUNC,"sUNC") end)
     if ENV.HAS_CLIP then
         Btn(P,"Copy Results",UDim2.new(1,0,0,32),nil,C.PANEL,function()
