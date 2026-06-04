@@ -1373,7 +1373,7 @@ do
         return cur
     end
 
-    -- UNC — 100 core functions
+    -- UNC — 100 core functions (standard UNC list)
     local UNC={
         "cache.invalidate","cache.iscached","cache.replace","cloneref","compareinstances",
         "checkcaller","clonefunction","getcallingscript","getscriptclosure","hookfunction",
@@ -1393,9 +1393,9 @@ do
         "setfpscap","getfpscap","getrunningscripts","getloadedmodules","getscripts",
         "getscriptbytecode","getscripthash","getsenv","getcallbackvalue","getactors",
         "run_on_actor","getthreads","setrenderproperty","getrenderproperty","cleardrawcache",
-        "Drawing.new","Drawing.Fonts","isnetworkowner","replicatesignal","gethiddenproperty2",
+        "Drawing.new","Drawing.Fonts","isnetworkowner","replicatesignal",
     }
-    -- sUNC — secure/stricter extras
+    -- sUNC — secure/stricter extras (no duplicates)
     local SUNC={
         "checkcaller","clonefunction","getcallingscript","getscriptclosure","hookfunction",
         "hookmetamethod","newcclosure","isexecutorclosure","getfunctionhash","getfflag",
@@ -1403,8 +1403,51 @@ do
         "setreadonly","getnamecallmethod","getsenv","getmenv","getcallbackvalue",
         "getscriptbytecode","getscripthash","decompile","getproto","getprotos","getconstant",
         "getconstants","getupvalue","getupvalues","setupvalue","setconstant","getstack",
-        "setstack","getinfo","islclosure","iscclosure","getfenv","setfenv","getreg","getgc",
+        "setstack","getinfo","islclosure","iscclosure","getfenv","setfenv","getreg",
         "validlevel","gethui","cloneref","compareinstances","getcustomasset","setscriptable",
+    }
+    -- Behavioral tests — existence isn't enough, test that the function actually works.
+    -- Delta has several functions that exist but behave incorrectly.
+    local BTESTS = {
+        ["firesignal"] = function()
+            -- Must actually fire connected callbacks synchronously
+            local fired = false
+            local be = Instance.new("BindableEvent")
+            be.Event:Connect(function() fired = true end)
+            pcall(firesignal, be.Event)
+            pcall(function() be:Destroy() end)
+            return fired
+        end,
+        ["replicatesignal"] = function()
+            -- Must not error with a valid RemoteEvent
+            local re = Instance.new("RemoteEvent")
+            local ok2 = pcall(replicatesignal, re)
+            pcall(function() re:Destroy() end)
+            return ok2
+        end,
+        ["getconnections"] = function()
+            -- Must return a non-empty table when a connection exists
+            local be = Instance.new("BindableEvent")
+            local conn = be.Event:Connect(function() end)
+            local ok2, t = pcall(getconnections, be.Event)
+            pcall(function() conn:Disconnect(); be:Destroy() end)
+            return ok2 and type(t) == "table" and #t > 0
+        end,
+        ["gethiddenproperty"] = function()
+            -- Must return value + bool (2 return values, no error)
+            local ok2, val, isHid = pcall(gethiddenproperty, workspace, "StreamingEnabled")
+            return ok2 and isHid ~= nil
+        end,
+        ["sethiddenproperty"] = function()
+            -- Must not error when restoring a property to its current value
+            local ok2, cur = pcall(gethiddenproperty, workspace, "StreamingEnabled")
+            if not ok2 then return false end
+            return pcall(sethiddenproperty, workspace, "StreamingEnabled", cur)
+        end,
+        ["isrbxactive"] = function()
+            local ok2, v = pcall(isrbxactive)
+            return ok2 and type(v) == "boolean"
+        end,
     }
 
     local sumBar=Frm(P,UDim2.new(1,0,0,52),nil,C.PANEL); corner(sumBar,10); stroke(sumBar,C.BORDER,1); pad(sumBar,8,8,12,12)
@@ -1426,18 +1469,29 @@ do
         local pass=0
         for _,name in ipairs(list) do
             local v=lookup(name)
-            local ok2 = (type(v)=="function") or (type(v)=="table")
+            local exists=(type(v)=="function") or (type(v)=="table")
+            local ok2
+            if exists and BTESTS[name] then
+                -- behavioral test: exists isn't enough, check it actually works
+                local bOk,bResult=pcall(BTESTS[name])
+                ok2 = bOk and bResult
+            else
+                ok2 = exists
+            end
             if ok2 then pass=pass+1 end
-            table.insert(lastResults,(ok2 and "[PASS] " or "[FAIL] ")..name)
+            -- ⚠ suffix when function exists but behavioral test failed (Delta partial support)
+            local dispName = name..(exists and not ok2 and " ⚠" or "")
+            table.insert(lastResults,(ok2 and "[PASS] " or "[FAIL] ")..dispName)
             local row=Frm(resHost,UDim2.new(1,0,0,24),nil,C.CARD); corner(row,6); pad(row,0,0,10,8)
-            Lbl(row,name,UDim2.new(1,-60,1,0),nil,ok2 and C.TEXT or C.MUTED,11,FN).TextTruncate=Enum.TextTruncate.AtEnd
-            local tag=Lbl(row,ok2 and "✓ pass" or "✗ fail",UDim2.new(0,56,1,0),UDim2.new(1,-56,0,0),ok2 and C.GREEN or C.RED,11,FB)
+            local nc=ok2 and C.TEXT or (exists and C.YELLOW or C.MUTED)
+            Lbl(row,dispName,UDim2.new(1,-60,1,0),nil,nc,11,FN).TextTruncate=Enum.TextTruncate.AtEnd
+            local tag=Lbl(row,ok2 and "✓ pass" or (exists and "⚠ bad" or "✗ fail"),UDim2.new(0,56,1,0),UDim2.new(1,-56,0,0),ok2 and C.GREEN or (exists and C.YELLOW or C.RED),11,FB)
             tag.TextXAlignment=Enum.TextXAlignment.Right
             searchReg(row,name:lower())
         end
         local total=#list; local pct=math.floor(pass/total*100+0.5)
         sumTitle.Text=label..":  "..pass.."/"..total.."  ("..pct.."%)"
-        sumSub.Text=ENV.name.." · "..(total-pass).." missing"
+        sumSub.Text=ENV.name.." · "..(total-pass).." missing/bad"
         local col = pct>=90 and C.GREEN or (pct>=60 and C.YELLOW or C.RED)
         pbFill.BackgroundColor3=col
         tw(pbFill,{Size=UDim2.new(pct/100,0,1,0)},TS2)
@@ -1457,7 +1511,7 @@ do
     end
     do
         local w=Frm(P,UDim2.new(1,0,0,34),nil,C.PANEL); corner(w,8); pad(w,6,6,10,10)
-        Lbl(w,"Existence check across "..#UNC.." UNC + "..#SUNC.." sUNC functions.\nHigher % = more capable executor.",UDim2.new(1,0,1,0),nil,C.MUTED,10,FN)
+        Lbl(w,#UNC.." UNC + "..#SUNC.." sUNC functions tested. ⚠ = exists but fails behavioral test.\nHigher % = more capable executor.",UDim2.new(1,0,1,0),nil,C.MUTED,10,FN)
     end
     task.defer(function() runTest(UNC,"UNC") end)
 end
