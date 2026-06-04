@@ -83,10 +83,19 @@ end
 
 -- Event-driven ball cache: listen for new parts so we never scan per-frame
 ac(workspace.DescendantAdded:Connect(function(v)
-    if isBallPart(v) and v.CanTouch then ballCache = v end
+    if isBallPart(v) and v.CanTouch then
+        ballCache = v
+        -- Pre-warm block function lookup the moment a ball spawns so it's
+        -- already cached when the parry window arrives
+        task.delay(0.05, function() findBlockFn() end)
+    end
 end))
 ac(workspace.DescendantRemoving:Connect(function(v)
-    if v == ballCache then ballCache = nil end
+    if v == ballCache then
+        ballCache = nil
+        parryBurstActive = false
+        lastParryBall = nil
+    end
 end))
 
 -- One-time initial scan at startup only
@@ -353,47 +362,59 @@ end
 -- Velocity-based prediction: returns estimated time-to-impact
 local lastBallPos2 = nil
 local lastBallTime = 0
-local function timeToImpact(ball, hrp)
-    if not ball or not hrp then return math.huge end
+
+-- Ping cache (updated every 1 second, not every frame)
+local cachedPing    = 0.10  -- default 100ms
+local pingCacheTick = 0
+local function getPing()
     local now = tick()
-    local vel
-    if lastBallPos2 then
-        local dt = now - lastBallTime
-        if dt > 0 then
-            vel = (ball.Position - lastBallPos2).Magnitude / dt
-        end
-    end
-    lastBallPos2 = ball.Position
-    lastBallTime = now
-    local dist = (ball.Position - hrp.Position).Magnitude
-    if vel and vel > 0 then return dist / vel else return math.huge end
+    if (now - pingCacheTick) < 1.0 then return cachedPing end
+    pingCacheTick = now
+    pcall(function()
+        local p = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+        cachedPing = math.clamp(p / 1000, 0.03, 0.6)
+    end)
+    return cachedPing
 end
 
-local function doParry(ball)
-    if parryInCooldown then return end
-    local now   = tick()
-    local hrp   = getHRP()
-    local dist  = hrp and (ball.Position - hrp.Position).Magnitude or 0
-    local cd    = getAdaptiveCooldown(dist)
-    if (now - lastParryTime) < cd then return end
-    lastParryTime = now
-    parryInCooldown = true
-
-    -- Priority order (most game-accurate → most generic):
-    -- A: Call v_u_1.Block() directly (getconnections/getgc strategy)
-    local hitA = false
+-- Single parry execution (all methods tried once)
+local function executeParry(ball)
     pcall(function()
         local fn = findBlockFn()
-        if type(fn)=="function" then fn(); hitA=true end
+        if type(fn)=="function" then fn() end
     end)
-    -- B: InvokeServer Block RemoteFunction with correct Y param
-    local hitB = parryViaBlockRemote()
-    -- C: VirtualUser on PlayerGui.HUD.Actions.MainButtons.Block
-    if not (hitA or hitB) then parryViaVirtualUser() end
-    -- D: getconnections on ball.Touched (supplement, not replace)
+    parryViaBlockRemote()
     parryConnections(ball)
+end
 
-    task.delay(cd, function() parryInCooldown = false end)
+-- Burst parry: fires 3 rapid attempts so one lands inside the server window
+-- regardless of ping. Spread: 0ms, 60ms, 120ms.
+-- Server sees them at: ping, ping+60, ping+120 — one always hits.
+local parryBurstActive = false
+local lastParryBall    = nil
+
+local function doParry(ball)
+    if parryBurstActive then return end
+    if ball == lastParryBall then return end  -- already fired for this ball
+    local hrp  = getHRP()
+    local dist = hrp and (ball.Position - hrp.Position).Magnitude or 0
+    local cd   = getAdaptiveCooldown(dist)
+    if (tick() - lastParryTime) < cd then return end
+    lastParryTime  = tick()
+    parryBurstActive = true
+    lastParryBall  = ball
+
+    executeParry(ball)
+    task.delay(0.06, function()
+        if ball and ball.Parent then executeParry(ball) end
+    end)
+    task.delay(0.12, function()
+        if ball and ball.Parent then
+            executeParry(ball)
+            parryViaVirtualUser()  -- VirtualUser as final safety net
+        end
+        parryBurstActive = false
+    end)
 end
 
 -- AUTO DODGE ──────────────────────────────────────────────────────────────
@@ -712,7 +733,7 @@ local PARRY_WINDOW = 0.30  -- seconds before impact to trigger parry
 local loopTick = 0
 ac(RS.Heartbeat:Connect(function()
     local now = tick()
-    if (now - loopTick) < 0.05 then return end  -- 20 Hz cap
+    if (now - loopTick) < 0.033 then return end  -- 30 Hz cap
     loopTick = now
 
     local ball = findBall()
@@ -747,21 +768,21 @@ ac(RS.Heartbeat:Connect(function()
         end
     end
 
-    -- Auto Parry — velocity-predicted TTI-based trigger
+    -- Auto Parry — ping-compensated TTI trigger
+    -- High ping  → fire early (window += ping) so server gets click in time
+    -- Low ping   → fire at exact moment (window ≈ base only)
     if autoParryOn and ball then
         local dist = (ball.Position - hrp.Position).Magnitude
         local shouldParry = false
         if ballVelAvg > 0 then
-            local tti = dist / ballVelAvg
-            -- Far ball: trigger slightly early to account for latency
-            -- Close ball: strict timing to avoid clash on lag spike
-            local window = PARRY_WINDOW
-            if dist < 8 then window = 0.18  -- very close — tight window, avoid extra clicks
-            elseif dist < 15 then window = 0.25
-            else window = 0.35 end  -- far — fire earlier
+            local tti  = dist / ballVelAvg
+            local ping = getPing()
+            -- Base window per distance band + ping compensation
+            local base = dist < 8 and 0.13 or dist < 15 and 0.18 or 0.22
+            local window = base + ping   -- e.g. 300ms ping → fires 300ms earlier
             shouldParry = tti < window
         else
-            -- No velocity data yet — fall back to distance threshold
+            -- No velocity yet (ball just spawned) — use distance fallback
             shouldParry = dist < parryThreshold
         end
         if shouldParry then doParry(ball) end
