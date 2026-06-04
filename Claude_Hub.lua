@@ -273,57 +273,114 @@ shd.Size=UDim2.new(1,46,1,46); shd.Position=UDim2.new(0,-23,0,-23); shd.Backgrou
 shd.Image="rbxassetid://6014261993"; shd.ImageColor3=Color3.fromRGB(217,119,66); shd.ImageTransparency=0.55
 shd.ScaleType=Enum.ScaleType.Slice; shd.SliceCenter=Rect.new(49,49,450,450); shd.Parent=WIN
 
+local minimized=false
 local TBAR=Frm(WIN,UDim2.new(1,0,0,48),nil,C.SIDE,"TBAR"); grad(TBAR,C.SIDE,C.PANEL,90)
-local function dot(xoff,col) local d=Frm(TBAR,UDim2.new(0,13,0,13),UDim2.new(0,xoff,0.5,-6.5),col); corner(d,7); return d end
-local dotC=dot(13,C.RED); local dotM=dot(31,C.YELLOW); local dotG=dot(49,C.GREEN)
-local titleL=Lbl(TBAR,"🤖  Claude Hub",UDim2.new(1,-280,1,0),UDim2.new(0,76,0,0),C.WHITE,16,FB)
-titleL.TextXAlignment=Enum.TextXAlignment.Center
--- executor chip
-local chipBg=Frm(TBAR,UDim2.new(0,230,0,28),UDim2.new(1,-240,0.5,-14),C.CARD); corner(chipBg,14); stroke(chipBg,C.ACCENT,1)
-Lbl(chipBg,"⚡ "..ENV.name.."   ·   "..ENV.score.."/"..ENV.total.." APIs",UDim2.new(1,0,1,0),nil,C.ACC2,11,FB).TextXAlignment=Enum.TextXAlignment.Center
+Frm(TBAR,UDim2.new(1,0,0,1),UDim2.new(0,0,1,-1),C.BORDER)        -- bottom hairline
+-- logo (animated: spinning gradient + gentle pulse + breathing glyph)
+local logo=Frm(TBAR,UDim2.new(0,28,0,28),UDim2.new(0,14,0.5,-14),C.ACCENT,"Logo"); corner(logo,8)
+local logoGrad=grad(logo,C.ACCENT,C.ACC2,45)
+local logoStk=stroke(logo,C.ACC2,1); logoStk.Transparency=0.4
+local logoL=Lbl(logo,"C",UDim2.new(1,0,1,0),nil,C.WHITE,16,FB); logoL.TextXAlignment=Enum.TextXAlignment.Center
+Lbl(TBAR,"Claude Hub",UDim2.new(0,160,1,0),UDim2.new(0,52,0,0),C.WHITE,15,FB)
+-- drive logo animation continuously
+task.spawn(function()
+    local t=0
+    while logo and logo.Parent do
+        t=(t+0.04)%1
+        logoGrad.Rotation=(logoGrad.Rotation+4)%360            -- spin the gradient
+        local pulse=0.5+0.5*math.sin(t*math.pi*2)              -- 0..1 breathing
+        logoStk.Transparency=0.25+0.45*pulse                   -- glow in/out
+        local s=27+math.floor(2*pulse)                          -- subtle size pulse
+        logo.Size=UDim2.new(0,s,0,s); logo.Position=UDim2.new(0,14+((28-s)/2),0.5,-s/2)
+        task.wait(0.03)
+    end
+end)
+-- bounce the glyph on hover of the whole title bar logo
+do
+    local hb=Instance.new("TextButton"); hb.Size=UDim2.new(1,0,1,0); hb.BackgroundTransparency=1; hb.Text=""; hb.Parent=logo
+    hb.MouseButton1Click:Connect(function()
+        logoL.Rotation=0; tw(logoL,{Rotation=360},TweenInfo.new(0.5,Enum.EasingStyle.Back))
+        task.delay(0.5,function() logoL.Rotation=0 end)
+    end)
+end
+-- executor chip (live dot + name + score)
+local chipBg=Frm(TBAR,UDim2.new(0,210,0,28),UDim2.new(1,-300,0.5,-14),C.CARD,"Chip"); corner(chipBg,9); stroke(chipBg,C.BORDER,1)
+local cdot=Frm(chipBg,UDim2.new(0,7,0,7),UDim2.new(0,11,0.5,-3.5),C.GREEN); corner(cdot,4)
+Lbl(chipBg,ENV.name.."   ·   "..ENV.score.."/"..ENV.total.." APIs",UDim2.new(1,-26,1,0),UDim2.new(0,24,0,0),C.ACC2,11,FB)
+-- window control buttons (minimize / close)
+local function topBtn(xoff,glyph,hoverCol,cb)
+    local b=Frm(TBAR,UDim2.new(0,28,0,28),UDim2.new(1,xoff,0.5,-14),C.PANEL,"TB"); corner(b,8); stroke(b,C.BORDER,1)
+    local l=Lbl(b,glyph,UDim2.new(1,0,1,0),nil,C.TEXT,15,FB); l.TextXAlignment=Enum.TextXAlignment.Center
+    local btn=Instance.new("TextButton"); btn.Size=UDim2.new(1,0,1,0); btn.BackgroundTransparency=1; btn.Text=""; btn.Parent=b
+    btn.MouseEnter:Connect(function() tw(b,{BackgroundColor3=hoverCol}); tw(l,{TextColor3=C.WHITE}) end)
+    btn.MouseLeave:Connect(function() tw(b,{BackgroundColor3=C.PANEL}); tw(l,{TextColor3=C.TEXT}) end)
+    btn.MouseButton1Click:Connect(cb)
+end
+topBtn(-38,"✕",C.RED,function() tw(WIN,{Size=UDim2.new(0,672,0,0)},TweenInfo.new(0.18)); task.delay(0.2,function() SGI:Destroy() end) end)
+topBtn(-72,"—",C.ACCENT,function() minimized=not minimized; tw(WIN,{Size=UDim2.new(0,672,0,minimized and 48 or 488)},TS2) end)
 
--- scrollable sidebar (many tabs)
-local SIDEbg=Frm(WIN,UDim2.new(0,170,1,-48),UDim2.new(0,0,0,48),C.SIDE,"SIDEBG")
+-- ── sidebar (search box + scrollable tab list) ───────────────────────────────────
+local SIDEbg=Frm(WIN,UDim2.new(0,176,1,-48),UDim2.new(0,0,0,48),C.SIDE,"SIDEBG")
+local searchWrap=Frm(SIDEbg,UDim2.new(1,-16,0,32),UDim2.new(0,8,0,8),C.PANEL,"Search"); corner(searchWrap,8); stroke(searchWrap,C.BORDER,1); pad(searchWrap,3,3,10,8)
+local searchBox=Instance.new("TextBox")
+searchBox.Size=UDim2.new(1,0,1,0); searchBox.BackgroundTransparency=1
+searchBox.PlaceholderText="Search tabs…"; searchBox.PlaceholderColor3=C.MUTED; searchBox.Text=""
+searchBox.TextColor3=C.WHITE; searchBox.TextSize=12; searchBox.Font=FN
+searchBox.TextXAlignment=Enum.TextXAlignment.Left; searchBox.ClearTextOnFocus=false; searchBox.Parent=searchWrap
 local SIDE=Instance.new("ScrollingFrame")
-SIDE.Size=UDim2.new(1,0,1,0); SIDE.BackgroundTransparency=1; SIDE.BorderSizePixel=0
-SIDE.ScrollBarThickness=2; SIDE.ScrollBarImageColor3=C.ACCENT
+SIDE.Size=UDim2.new(1,0,1,-48); SIDE.Position=UDim2.new(0,0,0,48); SIDE.BackgroundTransparency=1; SIDE.BorderSizePixel=0
+SIDE.ScrollBarThickness=2; SIDE.ScrollBarImageColor3=C.BORDER; SIDE.ScrollBarImageTransparency=0.3
 SIDE.CanvasSize=UDim2.new(0,0,0,0); SIDE.AutomaticCanvasSize=Enum.AutomaticSize.Y; SIDE.Parent=SIDEbg
-pad(SIDE,8,8,6,6); listV(SIDE,3)
-local BODY=Frm(WIN,UDim2.new(1,-170,1,-48),UDim2.new(0,170,0,48),C.BG,"BODY")
-Frm(WIN,UDim2.new(0,1,1,-48),UDim2.new(0,170,0,48),C.BORDER)
+pad(SIDE,6,8,8,6); listV(SIDE,3)
+local BODY=Frm(WIN,UDim2.new(1,-176,1,-48),UDim2.new(0,176,0,48),C.BG,"BODY")
+Frm(WIN,UDim2.new(0,1,1,-48),UDim2.new(0,176,0,48),C.BORDER)
 
 -- ── Tabs ───────────────────────────────────────────────────────────────────────
-local pages,tabBtns={},{}; local curPage=1
+local pages,pageScroll,tabBtns={},{},{}; local curPage=1
 local function showPage(n)
     for i,f in pairs(pages) do f.Visible=(i==n) end
     for i,b in pairs(tabBtns) do
         if i==n then
-            tw(b.bg,{BackgroundColor3=C.CARD}); tw(b.bar,{BackgroundColor3=C.ACCENT})
+            tw(b.bg,{BackgroundColor3=C.CARD}); tw(b.bar,{BackgroundColor3=C.ACCENT,Size=UDim2.new(0,3,0.55,0)})
             tw(b.ico,{TextColor3=C.ACCENT}); tw(b.lbl,{TextColor3=C.WHITE})
+            tw(b.stk,{Transparency=0})
         else
-            tw(b.bg,{BackgroundColor3=C.SIDE}); tw(b.bar,{BackgroundColor3=C.SIDE})
+            tw(b.bg,{BackgroundColor3=C.SIDE}); tw(b.bar,{BackgroundColor3=C.SIDE,Size=UDim2.new(0,3,0,0)})
             tw(b.ico,{TextColor3=C.MUTED}); tw(b.lbl,{TextColor3=C.MUTED})
+            tw(b.stk,{Transparency=1})
         end
     end
+    -- subtle slide-in of the active page content (Rayfield-style)
+    local sc=pageScroll[n]
+    if sc then sc.Position=UDim2.new(0,8,0,16); tw(sc,{Position=UDim2.new(0,8,0,5)},TS2) end
     curPage=n
 end
 local function newTab(icon,name)
     local n=#pages+1
     local bg=Frm(SIDE,UDim2.new(1,0,0,40),nil,C.SIDE,"T"..n); corner(bg,9)
-    local bar=Frm(bg,UDim2.new(0,3,0.55,0),UDim2.new(0,0,0.225,0),C.SIDE); corner(bar,2)
-    local ico=Lbl(bg,icon,UDim2.new(0,26,1,0),UDim2.new(0,8,0,0),C.MUTED,14,FB)
-    local lbl=Lbl(bg,name,UDim2.new(1,-40,1,0),UDim2.new(0,36,0,0),C.MUTED,12,FC)
+    local stk=stroke(bg,C.BORDER,1); stk.Transparency=1
+    local bar=Frm(bg,UDim2.new(0,3,0,0),UDim2.new(0,0,0.225,0),C.SIDE); corner(bar,2)
+    local ico=Lbl(bg,icon,UDim2.new(0,26,1,0),UDim2.new(0,10,0,0),C.MUTED,14,FB)
+    local lbl=Lbl(bg,name,UDim2.new(1,-44,1,0),UDim2.new(0,40,0,0),C.MUTED,12,FC)
     local tb=Instance.new("TextButton")
     tb.Size=UDim2.new(1,0,1,0); tb.BackgroundTransparency=1; tb.Text=""; tb.Parent=bg
     tb.MouseButton1Click:Connect(function() showPage(n) end)
-    tb.MouseEnter:Connect(function() if curPage~=n then tw(bg,{BackgroundColor3=C.CARD}) end end)
+    tb.MouseEnter:Connect(function() if curPage~=n then tw(bg,{BackgroundColor3=C.PANEL}) end end)
     tb.MouseLeave:Connect(function() if curPage~=n then tw(bg,{BackgroundColor3=C.SIDE}) end end)
-    tabBtns[n]={bg=bg,bar=bar,ico=ico,lbl=lbl}
+    tabBtns[n]={bg=bg,bar=bar,ico=ico,lbl=lbl,stk=stk,name=name}
     local page=Frm(BODY,UDim2.new(1,0,1,0),nil,C.BG,"P"..n); page.Visible=false; pages[n]=page
     local _,scroller=Scr(page,UDim2.new(1,-16,1,-10),UDim2.new(0,8,0,5))
-    listV(scroller,6); pad(scroller,6,6,4,4)
+    listV(scroller,7); pad(scroller,8,8,4,4)
+    pageScroll[n]=scroller
     return scroller
 end
+-- live tab search filter
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    local q=searchBox.Text:lower()
+    for _,b in pairs(tabBtns) do
+        b.bg.Visible = (q=="") or (string.find(b.name:lower(),q,1,true)~=nil)
+    end
+end)
 local function SectionHdr(parent,txt)
     local h=Lbl(parent,txt,UDim2.new(1,0,0,18),nil,C.MUTED,11,FB)
     h.TextXAlignment=Enum.TextXAlignment.Left; return h
@@ -349,7 +406,7 @@ local function callSig(s)
     return "require("..tostring(s.id)..")"
 end
 local function ScriptCard(parent,s)
-    local card=Frm(parent,UDim2.new(1,0,0,60),nil,C.CARD); corner(card,10); pad(card,6,6,12,8)
+    local card=Frm(parent,UDim2.new(1,0,0,60),nil,C.CARD); corner(card,10); stroke(card,C.BORDER,1); pad(card,6,6,12,8)
     Lbl(card,s.name,UDim2.new(1,-96,0,18),nil,C.WHITE,13,FB)
     Lbl(card,(s.by and ("by "..s.by.."  ·  ") or "").."id "..tostring(s.id),
         UDim2.new(1,-96,0,14),UDim2.new(0,0,0,19),C.MUTED,11,FN)
@@ -380,13 +437,6 @@ do
     end)
     UIS.InputEnded:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end end)
 end
-local minimized=false
-local function clickable(d,cb)
-    local b=Instance.new("TextButton"); b.Size=UDim2.new(1,0,1,0); b.BackgroundTransparency=1; b.Text=""; b.Parent=d
-    b.MouseButton1Click:Connect(cb)
-end
-clickable(dotC,function() tw(WIN,{Size=UDim2.new(0,672,0,0)},TweenInfo.new(0.18)); task.delay(0.2,function() SGI:Destroy() end) end)
-clickable(dotM,function() minimized=not minimized; tw(WIN,{Size=UDim2.new(0,672,0,minimized and 48 or 488)},TS2) end)
 UIS.InputBegan:Connect(function(inp,gp)
     if gp then return end
     if inp.KeyCode==Enum.KeyCode.Insert or inp.KeyCode==Enum.KeyCode.RightBracket then SGI.Enabled=not SGI.Enabled end
