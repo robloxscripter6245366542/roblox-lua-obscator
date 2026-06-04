@@ -2197,6 +2197,199 @@ do
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
+--  TAB — SCRIPT HUB  (live ScriptBlox API — real scripts, search, execute)
+-- ═══════════════════════════════════════════════════════════════════════════════
+do
+    local P=newTab("🌐","Script Hub")
+    local HS=game:GetService("HttpService")
+    local SB_BASE="https://scriptblox.com/api/script/"
+
+    -- state
+    local currentQuery=""
+    local currentPage=1
+    local totalPages=1
+    local isLoading=false
+    local cardFrames={}  -- for cleanup
+
+    -- ── HTTP helper (uses ENV.httpReq if available, falls back to HttpGet) ────
+    local function sbGet(url, onDone, onFail)
+        task.spawn(function()
+            local ok2, body
+            if ENV.httpReq then
+                ok2, body = pcall(function()
+                    local r=ENV.httpReq({Url=url,Method="GET",Headers={["User-Agent"]="ClaudeHub/1.0"}})
+                    if r and r.Body and #r.Body>2 then return r.Body end
+                    error("empty")
+                end)
+            end
+            if not ok2 or not body then
+                ok2, body = pcall(function() return game:HttpGet(url,true) end)
+            end
+            if ok2 and body and #tostring(body)>2 then
+                local dok, data = pcall(function() return HS:JSONDecode(body) end)
+                if dok and data then onDone(data)
+                else onFail("JSON parse error") end
+            else
+                onFail(tostring(body):sub(1,60))
+            end
+        end)
+    end
+
+    -- ── Search bar row ─────────────────────────────────────────────────────────
+    local topRow=Frm(P,UDim2.new(1,0,0,40),nil,C.BG); topRow.BackgroundTransparency=1
+    local th=Instance.new("UIListLayout"); th.FillDirection=Enum.FillDirection.Horizontal; th.Padding=UDim.new(0,6); th.Parent=topRow; th.VerticalAlignment=Enum.VerticalAlignment.Center
+    local sWrap=Frm(topRow,UDim2.new(1,-86,1,0),nil,C.CARD); corner(sWrap,10); stroke(sWrap,C.BORDER,1); pad(sWrap,4,4,12,10)
+    Lbl(sWrap,"🔍",UDim2.new(0,18,1,0),UDim2.new(0,0,0,0),C.MUTED,13,FN)
+    local sTbx=Instance.new("TextBox")
+    sTbx.Size=UDim2.new(1,-22,1,0); sTbx.Position=UDim2.new(0,22,0,0); sTbx.BackgroundTransparency=1
+    sTbx.PlaceholderText="Search scripts on ScriptBlox…"; sTbx.PlaceholderColor3=C.MUTED
+    sTbx.Text=""; sTbx.TextColor3=C.WHITE; sTbx.TextSize=13; sTbx.Font=FN
+    sTbx.TextXAlignment=Enum.TextXAlignment.Left; sTbx.ClearTextOnFocus=false; sTbx.Parent=sWrap
+    local srchBtn=Frm(topRow,UDim2.new(0,78,1,0),nil,C.ACCENT); corner(srchBtn,10)
+    Lbl(srchBtn,"SEARCH",UDim2.new(1,0,1,0),nil,C.WHITE,12,FB).TextXAlignment=Enum.TextXAlignment.Center
+    local srchBtnClick=Instance.new("TextButton"); srchBtnClick.Size=UDim2.new(1,0,1,0); srchBtnClick.BackgroundTransparency=1; srchBtnClick.Text=""; srchBtnClick.Parent=srchBtn
+
+    -- status label (shows "Loading…" / page info / errors)
+    local statusL=Lbl(P,"Tap SEARCH or browse trending scripts below",UDim2.new(1,0,0,16),nil,C.MUTED,10,FN)
+
+    -- card list host
+    local listHost=Instance.new("Frame"); listHost.Size=UDim2.new(1,0,0,0)
+    listHost.BackgroundTransparency=1; listHost.AutomaticSize=Enum.AutomaticSize.Y; listHost.Parent=P
+    listV(listHost,6)
+
+    -- ── Render a page of script results ────────────────────────────────────────
+    local function clearCards()
+        for _,f in ipairs(cardFrames) do pcall(function() f:Destroy() end) end
+        cardFrames={}
+    end
+
+    local function renderScripts(scripts)
+        clearCards()
+        for _,s in ipairs(scripts) do
+            local title=tostring(s.title or "Untitled"):sub(1,48)
+            local gameName=tostring((s.game and s.game.name) or "Universal"):sub(1,30)
+            local isVerified=(s.verified==true)
+            local needsKey=(s.key==true)
+            local isPatched=(s.isPatched==true)
+            local views=tostring(s.views or 0)
+            local execCode=tostring(s.script or "")
+
+            -- card frame
+            local card=Frm(listHost,UDim2.new(1,0,0,66),nil,C.CARD); corner(card,12); stroke(card,C.BORDER,1); pad(card,0,0,14,12)
+            table.insert(cardFrames,card)
+
+            -- game name (small muted text)
+            local gL=Lbl(card,gameName,UDim2.new(1,-180,0,14),UDim2.new(0,0,0,4),C.MUTED,10,FN)
+            gL.TextTruncate=Enum.TextTruncate.AtEnd
+
+            -- script title (bold)
+            local tL=Lbl(card,title,UDim2.new(1,-180,0,20),UDim2.new(0,0,0,20),C.WHITE,13,FB)
+            tL.TextTruncate=Enum.TextTruncate.AtEnd
+
+            -- badges row
+            local badgeX=0
+            local function badge(lbl,col)
+                local bg=Frm(card,UDim2.new(0,0,0,18),UDim2.new(0,badgeX,0,44),col); corner(bg,9)
+                bg.AutomaticSize=Enum.AutomaticSize.X
+                local bl=Lbl(bg,lbl,UDim2.new(0,0,1,0),nil,C.WHITE,9,FB); bl.AutomaticSize=Enum.AutomaticSize.X
+                pad(bg,0,0,6,6); badgeX=badgeX+bl.TextBounds.X+16
+            end
+            if isVerified  then badge("✓ Verified",C.GREEN) end
+            if needsKey    then badge("🔑 Key",C.YELLOW) end
+            if isPatched   then badge("✗ Patched",C.RED) end
+            -- views
+            Lbl(card,"👁 "..views,UDim2.new(0,60,0,16),UDim2.new(0,badgeX+4,0,46),C.MUTED,10,FN)
+
+            -- EXECUTE button (right side)
+            local exeF=Frm(card,UDim2.new(0,90,0,32),UDim2.new(1,-94,0.5,-16),C.PANEL); corner(exeF,9); stroke(exeF,C.ACCENT,1)
+            Lbl(exeF,"EXECUTE",UDim2.new(1,0,1,0),nil,C.ACCENT,11,FB).TextXAlignment=Enum.TextXAlignment.Center
+            local eb=Instance.new("TextButton"); eb.Size=UDim2.new(1,0,1,0); eb.BackgroundTransparency=1; eb.Text=""; eb.Parent=exeF
+            local captCode=execCode
+            eb.MouseButton1Click:Connect(function()
+                if captCode=="" then notify("Script Hub","No execute code for this script",3); return end
+                local fn,ce=loadstring(captCode)
+                if not fn then notify("Script Hub","Compile error: "..tostring(ce):sub(1,60),5); return end
+                local ok3,e2=pcall(fn)
+                if not ok3 then notify("Script Hub","Error: "..tostring(e2):sub(1,60),5) end
+            end)
+            eb.MouseEnter:Connect(function() tw(exeF,{BackgroundColor3=C.ACCENT}) end)
+            eb.MouseLeave:Connect(function() tw(exeF,{BackgroundColor3=C.PANEL}) end)
+        end
+    end
+
+    -- pagination row
+    local pageRow=Frm(P,UDim2.new(1,0,0,36),nil,C.BG); pageRow.BackgroundTransparency=1
+    local ph=Instance.new("UIListLayout"); ph.FillDirection=Enum.FillDirection.Horizontal; ph.Padding=UDim.new(0,6); ph.Parent=pageRow; ph.VerticalAlignment=Enum.VerticalAlignment.Center; ph.HorizontalAlignment=Enum.HorizontalAlignment.Center
+    local prevF=Frm(pageRow,UDim2.new(0,78,1,0),nil,C.PANEL); corner(prevF,8)
+    Lbl(prevF,"‹ Prev",UDim2.new(1,0,1,0),nil,C.TEXT,12,FB).TextXAlignment=Enum.TextXAlignment.Center
+    local prevBtn=Instance.new("TextButton"); prevBtn.Size=UDim2.new(1,0,1,0); prevBtn.BackgroundTransparency=1; prevBtn.Text=""; prevBtn.Parent=prevF
+    local pageNumL=Lbl(pageRow,"1 / 1",UDim2.new(0,70,1,0),nil,C.TEXT,12,FC); pageNumL.TextXAlignment=Enum.TextXAlignment.Center
+    local nextF=Frm(pageRow,UDim2.new(0,78,1,0),nil,C.PANEL); corner(nextF,8)
+    Lbl(nextF,"Next ›",UDim2.new(1,0,1,0),nil,C.TEXT,12,FB).TextXAlignment=Enum.TextXAlignment.Center
+    local nextBtn=Instance.new("TextButton"); nextBtn.Size=UDim2.new(1,0,1,0); nextBtn.BackgroundTransparency=1; nextBtn.Text=""; nextBtn.Parent=nextF
+
+    -- ── Fetch function ──────────────────────────────────────────────────────────
+    local function fetchPage(query, page)
+        if isLoading then return end
+        isLoading=true
+        statusL.Text="Loading page "..page.."…"
+        statusL.TextColor3=C.MUTED
+        clearCards()
+        local url
+        if query=="" then
+            url=SB_BASE.."fetch?page="..page.."&max=20"
+        else
+            url=SB_BASE.."search?q="..HS:UrlEncode(query).."&max=20&page="..page
+        end
+        sbGet(url,
+            function(data)
+                isLoading=false
+                local res=data.result or {}
+                local scripts=res.scripts or {}
+                totalPages=tonumber(res.totalPages) or 1
+                currentPage=page
+                pageNumL.Text=page.." / "..totalPages
+                tw(prevF,{BackgroundColor3=page>1 and C.PANEL or C.DARK})
+                tw(nextF,{BackgroundColor3=page<totalPages and C.PANEL or C.DARK})
+                if #scripts==0 then
+                    statusL.Text="No scripts found."
+                    statusL.TextColor3=C.RED
+                else
+                    statusL.Text=#scripts.." scripts  ·  page "..page.." of "..totalPages
+                    statusL.TextColor3=C.MUTED
+                    renderScripts(scripts)
+                end
+            end,
+            function(err)
+                isLoading=false
+                statusL.Text="Failed to load: "..err:sub(1,60)
+                statusL.TextColor3=C.RED
+            end
+        )
+    end
+
+    -- button wiring
+    local function doSearch()
+        currentQuery=sTbx.Text:match("^%s*(.-)%s*$")
+        fetchPage(currentQuery, 1)
+    end
+    srchBtnClick.MouseButton1Click:Connect(doSearch)
+    srchBtnClick.MouseEnter:Connect(function() tw(srchBtn,{BackgroundColor3=C.ACC2}) end)
+    srchBtnClick.MouseLeave:Connect(function() tw(srchBtn,{BackgroundColor3=C.ACCENT}) end)
+    sTbx.FocusLost:Connect(function(enter) if enter then doSearch() end end)
+
+    prevBtn.MouseButton1Click:Connect(function()
+        if currentPage>1 and not isLoading then fetchPage(currentQuery,currentPage-1) end
+    end)
+    nextBtn.MouseButton1Click:Connect(function()
+        if currentPage<totalPages and not isLoading then fetchPage(currentQuery,currentPage+1) end
+    end)
+
+    -- auto-load trending scripts on first open
+    task.defer(function() fetchPage("",1) end)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
 --  TAB — SETTINGS  (Delta-style: search, toggle rows, click-here actions)
 -- ═══════════════════════════════════════════════════════════════════════════════
 do
