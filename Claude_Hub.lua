@@ -512,6 +512,83 @@ do
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
+--  TAB — EXECUTE  (paste any Lua, run it with loadstring)
+-- ═══════════════════════════════════════════════════════════════════════════════
+do
+    local P=newTab("▶","Execute")
+    SectionHdr(P,"■ SCRIPT EDITOR  ·  loadstring")
+
+    -- big multiline code editor
+    local edWrap=Frm(P,UDim2.new(1,0,0,210),nil,C.DARK); corner(edWrap,10); stroke(edWrap,C.BORDER,1); pad(edWrap,8,8,10,10)
+    local editor=Instance.new("TextBox")
+    editor.Size=UDim2.new(1,0,1,0); editor.BackgroundTransparency=1
+    editor.MultiLine=true; editor.ClearTextOnFocus=false; editor.TextWrapped=false
+    editor.TextXAlignment=Enum.TextXAlignment.Left; editor.TextYAlignment=Enum.TextYAlignment.Top
+    editor.PlaceholderText='-- paste Lua here\nprint("hello from "..game.Players.LocalPlayer.Name)'
+    editor.PlaceholderColor3=C.MUTED; editor.Text=""; editor.TextColor3=C.WHITE
+    editor.TextSize=13; editor.Font=Enum.Font.RobotoMono; editor.Parent=edWrap
+
+    -- output console
+    local conWrap=Frm(P,UDim2.new(1,0,0,96),nil,C.DARK); corner(conWrap,8); stroke(conWrap,C.BORDER,1)
+    local _,conScr=Scr(conWrap,UDim2.new(1,-6,1,-6),UDim2.new(0,3,0,3)); listV(conScr,1); pad(conScr,4,4,6,6)
+    local function eout(line,col)
+        local l=Instance.new("TextLabel")
+        l.Size=UDim2.new(1,0,0,14); l.BackgroundTransparency=1; l.Text=line
+        l.TextColor3=col or C.TEXT; l.TextSize=11; l.Font=Enum.Font.RobotoMono
+        l.TextXAlignment=Enum.TextXAlignment.Left; l.TextWrapped=true
+        l.AutomaticSize=Enum.AutomaticSize.Y; l.Parent=conScr
+    end
+
+    local function execute()
+        local code=editor.Text
+        if code=="" then notify("Claude Hub","Editor is empty",2); return end
+        eout("→ executing ("..#code.." chars)…",C.MUTED)
+        local fn,ce=loadstring(code)
+        if not fn then eout("✗ compile: "..tostring(ce),C.RED); return end
+        task.spawn(function()
+            local ok2,e2=pcall(fn)
+            if ok2 then eout("✓ executed OK",C.GREEN)
+            else eout("✗ runtime: "..tostring(e2),C.RED) end
+        end)
+    end
+
+    -- action row
+    local row=Frm(P,UDim2.new(1,0,0,38),nil,C.BG)
+    local h=Instance.new("UIListLayout"); h.FillDirection=Enum.FillDirection.Horizontal; h.Padding=UDim.new(0,6); h.Parent=row
+    Btn(row,"▶  Execute",UDim2.new(0,150,1,0),nil,C.ACCENT,execute)
+    Btn(row,"Clear Editor",UDim2.new(0,110,1,0),nil,C.PANEL,function() editor.Text="" end)
+    Btn(row,"Clear Output",UDim2.new(0,110,1,0),nil,C.PANEL,function()
+        for _,c in ipairs(conScr:GetChildren()) do if c:IsA("TextLabel") then c:Destroy() end end
+    end)
+    if ENV.HAS_CLIP then
+        Btn(row,"Paste",UDim2.new(0,80,1,0),nil,C.PANEL,function()
+            local gc=(getclipboard or (ENV and nil))
+            if getclipboard then local ok2,t=pcall(getclipboard); if ok2 and t then editor.Text=tostring(t) end
+            else notify("Claude Hub","getclipboard not available",3) end
+        end)
+    end
+
+    SectionHdr(P,"■ QUICK SNIPPETS")
+    local snips={
+        {t="Print your name", c='print(game.Players.LocalPlayer.Name)'},
+        {t="List players",    c='for _,p in ipairs(game:GetService("Players"):GetPlayers()) do print(p.Name) end'},
+        {t="WalkSpeed 100",   c='game.Players.LocalPlayer.Character.Humanoid.WalkSpeed=100'},
+        {t="Infinite Yield",  c='loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()'},
+    }
+    for _,sn in ipairs(snips) do
+        local card=Frm(P,UDim2.new(1,0,0,32),nil,C.CARD); corner(card,8); stroke(card,C.BORDER,1); pad(card,0,0,10,6)
+        Lbl(card,sn.t,UDim2.new(1,-150,1,0),nil,C.TEXT,12,FC)
+        Btn(card,"Load",UDim2.new(0,60,0,22),UDim2.new(1,-138,0.5,-11),C.PANEL,function() editor.Text=sn.c end)
+        Btn(card,"Run",UDim2.new(0,60,0,22),UDim2.new(1,-72,0.5,-11),C.ACCENT,function() editor.Text=sn.c; execute() end)
+    end
+
+    eout("Ready. Paste Lua above and hit Execute.",C.MUTED)
+    if not loadstring then
+        eout("⚠ loadstring not available on "..ENV.name,C.YELLOW)
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
 --  TAB — SERVER  (server-side execution via SS_ExecBridge)
 -- ═══════════════════════════════════════════════════════════════════════════════
 do
