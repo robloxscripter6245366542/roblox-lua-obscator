@@ -280,7 +280,10 @@ local function callBridge(action,payload)
 end
 
 -- ── GUI shell ─────────────────────────────────────────────────────────────────────
-local GUI_ROOT = ENV.HAS_GHUI and gethui() or PGui
+-- Parent to PlayerGui — renders reliably on every Delta build.
+-- (gethui() is skipped: some Delta builds return a container that never shows.)
+local GUI_ROOT = PGui
+if typeof(GUI_ROOT)~="Instance" then GUI_ROOT = LP:WaitForChild("PlayerGui") end
 local old=GUI_ROOT:FindFirstChild("__CLAUDE_HUB__"); if old then old:Destroy() end
 local SGI=Instance.new("ScreenGui")
 SGI.Name="__CLAUDE_HUB__"; SGI.ResetOnSpawn=false

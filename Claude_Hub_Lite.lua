@@ -6,7 +6,7 @@ local TS=game:GetService("TweenService")
 local SG=game:GetService("StarterGui")
 local LP=Players.LocalPlayer
 local PG=LP:WaitForChild("PlayerGui",10)
-local GUIP=(gethui and gethui()) or PG
+local GUIP=PG   -- PlayerGui renders on every Delta build (gethui can be invisible)
 
 local C={BG=Color3.fromRGB(15,13,20),SIDE=Color3.fromRGB(10,9,14),CARD=Color3.fromRGB(32,28,42),
 DARK=Color3.fromRGB(7,6,10),BORDER=Color3.fromRGB(46,40,60),ACC=Color3.fromRGB(217,119,66),
