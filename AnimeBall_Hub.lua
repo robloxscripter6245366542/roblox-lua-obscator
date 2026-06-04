@@ -70,7 +70,6 @@ local BALL_NAMES = {
     "animeball","animeorb","energy","magic","fire","slash","wave"
 }
 local ballCache = nil
-local ballCacheTime = 0
 
 local function isBallPart(v)
     if not v:IsA("BasePart") then return false end
@@ -82,42 +81,23 @@ local function isBallPart(v)
     return false
 end
 
--- Method 1: workspace scan
-local function findBallWorkspace()
-    for _,v in pairs(workspace:GetDescendants()) do
-        if isBallPart(v) and v.CanTouch then return v end
-    end
-end
+-- Event-driven ball cache: listen for new parts so we never scan per-frame
+ac(workspace.DescendantAdded:Connect(function(v)
+    if isBallPart(v) and v.CanTouch then ballCache = v end
+end))
+ac(workspace.DescendantRemoving:Connect(function(v)
+    if v == ballCache then ballCache = nil end
+end))
 
--- Method 2: getgc scan (finds instances GC knows about even if parented oddly)
-local function findBallGC()
-    if not CAPS.getgc then return nil end
-    local ok2,gc = pcall(getgc, true)
-    if not ok2 then return nil end
-    for _,v in ipairs(gc) do
-        if typeof(v)=="Instance" and isBallPart(v) then return v end
-    end
-end
-
--- Method 3: getinstances scan
-local function findBallInstances()
-    if not CAPS.getinstances then return nil end
-    local ok2,all = pcall(getinstances)
-    if not ok2 then return nil end
-    for _,v in ipairs(all) do
-        if isBallPart(v) then return v end
-    end
+-- One-time initial scan at startup only
+for _,v in pairs(workspace:GetDescendants()) do
+    if isBallPart(v) and v.CanTouch then ballCache = v; break end
 end
 
 local function findBall()
-    local now = tick()
-    if ballCache and ballCache.Parent and (now - ballCacheTime) < 0.1 then
-        return ballCache
-    end
-    local b = findBallWorkspace() or findBallGC() or findBallInstances()
-    ballCache = b
-    ballCacheTime = now
-    return b
+    if ballCache and ballCache.Parent then return ballCache end
+    ballCache = nil
+    return nil
 end
 
 -- ════════════════════════════════════════════════════════════════════════
@@ -489,7 +469,9 @@ local function esp(on)
             nl.Text=p.Name; nl.TextColor3=Color3.fromRGB(255,90,90); nl.TextStrokeTransparency=0; nl.Font=Enum.Font.GothamBold; nl.TextSize=14
             local dl=Instance.new("TextLabel",bb); dl.Size=UDim2.new(1,0,0,16); dl.Position=UDim2.new(0,0,0,22); dl.BackgroundTransparency=1
             dl.TextColor3=Color3.fromRGB(220,220,220); dl.TextStrokeTransparency=0; dl.Font=Enum.Font.Gotham; dl.TextSize=11
+            local espT=0
             ac(RS.Heartbeat:Connect(function()
+                local t2=tick(); if (t2-espT)<0.2 then return end; espT=t2
                 local myhrp=getHRP()
                 if not (hrp and hrp.Parent) then return end
                 dl.Text = myhrp and (math.floor((hrp.Position-myhrp.Position).Magnitude).."m") or ""
@@ -517,7 +499,9 @@ local function ballGlow(on)
         end
         return
     end
+    local glowT=0
     glowConn = ac(RS.Heartbeat:Connect(function()
+        local t2=tick(); if (t2-glowT)<0.5 then return end; glowT=t2
         local ball = findBall(); if not ball then return end
         if not ball:FindFirstChild("__ABGlow__") then
             local pl=Instance.new("PointLight",ball); pl.Name="__ABGlow__"
@@ -545,7 +529,9 @@ local function ballTrail(on)
         end
         return
     end
+    local trailT=0
     trailConn = ac(RS.Heartbeat:Connect(function()
+        local t2=tick(); if (t2-trailT)<0.5 then return end; trailT=t2
         local ball = findBall(); if not ball then return end
         if not ball:FindFirstChild("__ABTrail__") then
             local a0=Instance.new("Attachment",ball); a0.Name="__TrA0__"; a0.Position=Vector3.new(0,0.5,0)
@@ -583,11 +569,13 @@ local function aimbot(on)
         local best, bd = nil, math.huge
         for _,p in pairs(Players:GetPlayers()) do
             if p~=LP and p.Character then
-                local h=p.Character:FindFirstChild("Head"); if not h then return end
-                local pos,vis=cam:WorldToScreenPoint(h.Position)
-                if vis then
-                    local d=(Vector2.new(pos.X,pos.Y)-cam.ViewportSize*0.5).Magnitude
-                    if d<bd then best=h; bd=d end
+                local h=p.Character:FindFirstChild("Head")
+                if h then
+                    local pos,vis=cam:WorldToScreenPoint(h.Position)
+                    if vis then
+                        local d=(Vector2.new(pos.X,pos.Y)-cam.ViewportSize*0.5).Magnitude
+                        if d<bd then best=h; bd=d end
+                    end
                 end
             end
         end
@@ -721,7 +709,12 @@ end
 -- This removes dependence on fixed stud threshold
 local PARRY_WINDOW = 0.30  -- seconds before impact to trigger parry
 
+local loopTick = 0
 ac(RS.Heartbeat:Connect(function()
+    local now = tick()
+    if (now - loopTick) < 0.05 then return end  -- 20 Hz cap
+    loopTick = now
+
     local ball = findBall()
     local hrp  = getHRP()
     if not hrp then return end
