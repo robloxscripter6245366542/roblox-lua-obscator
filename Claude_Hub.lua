@@ -336,7 +336,7 @@ do
     fBtn.MouseLeave:Connect(function() tw(FLOAT,{BackgroundColor3=C.ACCENT}) end)
 end
 
-local WIN=Frm(SGI,UDim2.new(0,672,0,488),UDim2.new(0.5,-336,0.5,-244),C.BG,"WIN")
+local WIN=Frm(SGI,UDim2.new(0,760,0,540),UDim2.new(0.5,-380,0.5,-270),C.BG,"WIN")
 corner(WIN,14); stroke(WIN,C.BORDER,1); WIN.ClipsDescendants=true
 local shd=Instance.new("ImageLabel")
 shd.Size=UDim2.new(1,46,1,46); shd.Position=UDim2.new(0,-23,0,-23); shd.BackgroundTransparency=1
@@ -384,17 +384,24 @@ local function topBtn(xoff,glyph,hoverCol,cb)
     btn.MouseLeave:Connect(function() tw(b,{BackgroundColor3=C.PANEL}); tw(l,{TextColor3=C.TEXT}) end)
     btn.MouseButton1Click:Connect(cb)
 end
-topBtn(-38,"✕",C.RED,function() tw(WIN,{Size=UDim2.new(0,672,0,0)},TweenInfo.new(0.18)); task.delay(0.2,function() SGI:Destroy() end) end)
-topBtn(-72,"—",C.ACCENT,function() minimized=not minimized; tw(WIN,{Size=UDim2.new(0,672,0,minimized and 48 or 488)},TS2) end)
+topBtn(-38,"✕",C.RED,function() tw(WIN,{Size=UDim2.new(0,760,0,0)},TweenInfo.new(0.18)); task.delay(0.2,function() SGI:Destroy() end) end)
+topBtn(-72,"—",C.ACCENT,function() minimized=not minimized; tw(WIN,{Size=UDim2.new(0,760,0,minimized and 48 or 540)},TS2) end)
 
--- ── right icon sidebar (Delta-style: 54px, icon-only buttons) ──────────────────────
-local SIDEbg=Frm(WIN,UDim2.new(0,54,1,-48),UDim2.new(1,-54,0,48),C.SIDE,"SIDEBG")
-Frm(SIDEbg,UDim2.new(0,1,1,0),UDim2.new(0,0,0,0),C.BORDER)   -- left hairline divider
+-- ── left sidebar (Fluent-style: 160px, icon + label) ──────────────────────────────
+local SIDEbg=Frm(WIN,UDim2.new(0,160,1,-48),UDim2.new(0,0,0,48),C.SIDE,"SIDEBG")
+Frm(SIDEbg,UDim2.new(0,1,1,0),UDim2.new(1,-1,0,0),C.BORDER)   -- right hairline divider
+-- small logo tile at top of sidebar
+do
+    local sLogo=Frm(SIDEbg,UDim2.new(1,-16,0,40),UDim2.new(0,8,0,8),C.PANEL,"SL"); corner(sLogo,10); stroke(sLogo,C.BORDER,1)
+    local sIcon=Lbl(sLogo,"✳",UDim2.new(0,24,1,0),UDim2.new(0,6,0,0),C.ACCENT,18,FB); sIcon.TextXAlignment=Enum.TextXAlignment.Center
+    local sName=Lbl(sLogo,"Claude Hub",UDim2.new(1,-34,1,0),UDim2.new(0,32,0,0),C.WHITE,12,FB); sName.TextXAlignment=Enum.TextXAlignment.Left
+    task.spawn(function() while sIcon and sIcon.Parent do sIcon.Rotation=(sIcon.Rotation+1.8)%360; task.wait(0.04) end end)
+end
 local SIDE=Instance.new("ScrollingFrame")
-SIDE.Size=UDim2.new(1,0,1,0); SIDE.Position=UDim2.new(0,0,0,4); SIDE.BackgroundTransparency=1; SIDE.BorderSizePixel=0
+SIDE.Size=UDim2.new(1,0,1,-58); SIDE.Position=UDim2.new(0,0,0,58); SIDE.BackgroundTransparency=1; SIDE.BorderSizePixel=0
 SIDE.ScrollBarThickness=0; SIDE.CanvasSize=UDim2.new(0,0,0,0); SIDE.AutomaticCanvasSize=Enum.AutomaticSize.Y; SIDE.Parent=SIDEbg
-pad(SIDE,4,4,4,4); listV(SIDE,4)
-local BODY=Frm(WIN,UDim2.new(1,-54,1,-48),UDim2.new(0,0,0,48),C.BG,"BODY")
+pad(SIDE,6,6,6,6); listV(SIDE,4)
+local BODY=Frm(WIN,UDim2.new(1,-160,1,-48),UDim2.new(0,160,0,48),C.BG,"BODY")
 
 -- ── Tabs ───────────────────────────────────────────────────────────────────────
 local pages,pageScroll,tabBtns={},{},{}; local curPage=1
@@ -404,10 +411,12 @@ local function showPage(n)
         if i==n then
             tw(b.bg,{BackgroundColor3=C.CARD})
             tw(b.ico,{TextColor3=C.ACCENT})
-            tw(b.bar,{BackgroundColor3=C.ACCENT,Size=UDim2.new(0,3,0.6,0)})
+            tw(b.lbl,{TextColor3=C.WHITE})
+            tw(b.bar,{BackgroundColor3=C.ACCENT,Size=UDim2.new(0,3,0.65,0)})
         else
             tw(b.bg,{BackgroundColor3=C.SIDE})
             tw(b.ico,{TextColor3=C.MUTED})
+            tw(b.lbl,{TextColor3=C.MUTED})
             tw(b.bar,{BackgroundColor3=C.SIDE,Size=UDim2.new(0,3,0,0)})
         end
     end
@@ -417,16 +426,19 @@ local function showPage(n)
 end
 local function newTab(icon,name)
     local n=#pages+1
-    -- icon-only pill button (Delta right-sidebar style)
-    local bg=Frm(SIDE,UDim2.new(1,-8,0,44),nil,C.SIDE,"T"..n); corner(bg,11)
+    -- Fluent-style: left sidebar, icon + text label
+    local bg=Frm(SIDE,UDim2.new(1,-8,0,38),nil,C.SIDE,"T"..n); corner(bg,9)
     -- left accent bar (shows when selected)
-    local bar=Frm(bg,UDim2.new(0,3,0,0),UDim2.new(0,0,0.2,0),C.SIDE); corner(bar,2)
-    local ico=Lbl(bg,icon,UDim2.new(1,0,1,0),nil,C.MUTED,17,FB); ico.TextXAlignment=Enum.TextXAlignment.Center
+    local bar=Frm(bg,UDim2.new(0,3,0.18,0),UDim2.new(0,0,0.33,0),C.SIDE); corner(bar,2)
+    -- icon
+    local ico=Lbl(bg,icon,UDim2.new(0,28,1,0),UDim2.new(0,8,0,0),C.MUTED,15,FB); ico.TextXAlignment=Enum.TextXAlignment.Center
+    -- text label (visible since sidebar is 160px)
+    local lbl=Lbl(bg,name,UDim2.new(1,-42,1,0),UDim2.new(0,38,0,0),C.MUTED,12,FB); lbl.TextXAlignment=Enum.TextXAlignment.Left
     local tb=Instance.new("TextButton"); tb.Size=UDim2.new(1,0,1,0); tb.BackgroundTransparency=1; tb.Text=""; tb.Parent=bg
     tb.MouseButton1Click:Connect(function() showPage(n) end)
-    tb.MouseEnter:Connect(function() if curPage~=n then tw(bg,{BackgroundColor3=C.PANEL}); tw(ico,{TextColor3=C.TEXT}) end end)
-    tb.MouseLeave:Connect(function() if curPage~=n then tw(bg,{BackgroundColor3=C.SIDE}); tw(ico,{TextColor3=C.MUTED}) end end)
-    tabBtns[n]={bg=bg,bar=bar,ico=ico,name=name}
+    tb.MouseEnter:Connect(function() if curPage~=n then tw(bg,{BackgroundColor3=C.PANEL}); tw(ico,{TextColor3=C.TEXT}); tw(lbl,{TextColor3=C.TEXT}) end end)
+    tb.MouseLeave:Connect(function() if curPage~=n then tw(bg,{BackgroundColor3=C.SIDE}); tw(ico,{TextColor3=C.MUTED}); tw(lbl,{TextColor3=C.MUTED}) end end)
+    tabBtns[n]={bg=bg,bar=bar,ico=ico,lbl=lbl,name=name}
     local page=Frm(BODY,UDim2.new(1,0,1,0),nil,C.BG,"P"..n); page.Visible=false; pages[n]=page
     local _,scroller=Scr(page,UDim2.new(1,-16,1,-10),UDim2.new(0,8,0,5))
     listV(scroller,7); pad(scroller,8,8,4,4)
@@ -3453,89 +3465,120 @@ end
 showPage(1)
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  INTRO SPLASH — animated welcome with your avatar + OK button → main hub
+--  INTRO SPLASH — Fluent-style two-panel welcome dialog
 -- ═══════════════════════════════════════════════════════════════════════════════
 do
-    WIN.Visible=false   -- hide hub until the user presses OK
+    WIN.Visible=false
 
-    local INTRO=Frm(SGI,UDim2.new(0,420,0,440),UDim2.new(0.5,-210,0.5,-220),C.BG,"INTRO")
-    corner(INTRO,18); stroke(INTRO,C.BORDER,1); INTRO.ClipsDescendants=true
-    grad(INTRO,C.BG,C.SIDE,90)
-    -- shadow
+    -- outer dialog  (600 × 360, centered)
+    local INTRO=Frm(SGI,UDim2.new(0,600,0,360),UDim2.new(0.5,-300,0.5,-180),C.BG,"INTRO")
+    corner(INTRO,16); stroke(INTRO,C.BORDER,1); INTRO.ClipsDescendants=true
+    -- acrylic drop-shadow
     local ishd=Instance.new("ImageLabel")
-    ishd.Size=UDim2.new(1,60,1,60); ishd.Position=UDim2.new(0,-30,0,-30); ishd.BackgroundTransparency=1
-    ishd.Image="rbxassetid://6014261993"; ishd.ImageColor3=C.ACCENT; ishd.ImageTransparency=0.65
+    ishd.Size=UDim2.new(1,80,1,80); ishd.Position=UDim2.new(0,-40,0,-40); ishd.BackgroundTransparency=1
+    ishd.Image="rbxassetid://6014261993"; ishd.ImageColor3=C.ACCENT; ishd.ImageTransparency=0.7
     ishd.ScaleType=Enum.ScaleType.Slice; ishd.SliceCenter=Rect.new(49,49,450,450); ishd.Parent=INTRO
 
-    -- avatar ring + profile picture
-    local ring=Frm(INTRO,UDim2.new(0,128,0,128),UDim2.new(0.5,-64,0,46),C.CREAM,"Ring"); corner(ring,64)
+    -- ── LEFT panel (avatar + glow) ──────────────────────────────────────────
+    local leftW = 200
+    local lp2=Frm(INTRO,UDim2.new(0,leftW,1,0),UDim2.new(0,0,0,0),C.SIDE,"LP2")
+    grad(lp2,C.SIDE,C.PANEL,0)
+    -- glow circle behind avatar
+    local glow=Instance.new("ImageLabel")
+    glow.Size=UDim2.new(0,180,0,180); glow.Position=UDim2.new(0.5,-90,0.5,-90)
+    glow.BackgroundTransparency=1; glow.Image="rbxassetid://5028857472"
+    glow.ImageColor3=C.ACCENT; glow.ImageTransparency=0.7; glow.Parent=lp2
+    -- avatar ring
+    local ring=Frm(lp2,UDim2.new(0,110,0,110),UDim2.new(0.5,-55,0.5,-70),C.CREAM,"Ring"); corner(ring,55)
     local ringStk=stroke(ring,C.CLAY,2); ringStk.Transparency=0.2
     local pfp=Instance.new("ImageLabel")
-    pfp.Size=UDim2.new(0,116,0,116); pfp.Position=UDim2.new(0.5,-58,0.5,-58); pfp.BackgroundColor3=C.CARD
-    pfp.BorderSizePixel=0; pfp.Image=""; pfp.Parent=ring; corner(pfp,58)
+    pfp.Size=UDim2.new(0,100,0,100); pfp.Position=UDim2.new(0.5,-50,0.5,-50)
+    pfp.BackgroundColor3=C.CARD; pfp.BorderSizePixel=0; pfp.Image=""; pfp.Parent=ring; corner(pfp,50)
     task.spawn(function()
         local ok2,url=pcall(function()
             return Players:GetUserThumbnailAsync(LP.UserId,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size150x150)
         end)
         if ok2 and url then pfp.Image=url end
     end)
+    -- name below avatar
+    local nameL=Lbl(lp2,LP.DisplayName,UDim2.new(1,-8,0,18),UDim2.new(0,4,0.5,54),C.WHITE,14,FB)
+    nameL.TextXAlignment=Enum.TextXAlignment.Center; nameL.TextTransparency=1
+    local roleL=Lbl(lp2,"Player",UDim2.new(1,-8,0,14),UDim2.new(0,4,0.5,76),C.MUTED,11,FN)
+    roleL.TextXAlignment=Enum.TextXAlignment.Center; roleL.TextTransparency=1
+    -- right divider line
+    Frm(lp2,UDim2.new(0,1,0.7,0),UDim2.new(1,-1,0.15,0),C.BORDER)
 
-    -- texts (start hidden, fade/slide in)
-    local hi=Lbl(INTRO,"Welcome, "..LP.DisplayName,UDim2.new(1,-40,0,28),UDim2.new(0,20,0,196),C.WHITE,22,FB)
-    hi.TextXAlignment=Enum.TextXAlignment.Center; hi.TextTransparency=1
-    local sub=Lbl(INTRO,"Claude Hub  ·  "..ENV.name.."  ·  "..ENV.score.."/"..ENV.total.." APIs",
-        UDim2.new(1,-40,0,20),UDim2.new(0,20,0,228),C.ACC2,13,FC)
-    sub.TextXAlignment=Enum.TextXAlignment.Center; sub.TextTransparency=1
-    local tag=Lbl(INTRO,"The most advanced universal require hub.\nFE-ready · undetectable remote finder · memory reader.",
-        UDim2.new(1,-50,0,34),UDim2.new(0,25,0,252),C.MUTED,11,FN)
-    tag.TextXAlignment=Enum.TextXAlignment.Center; tag.TextTransparency=1
+    -- ── RIGHT panel (info + load bar + launch button) ───────────────────────
+    local rp=Frm(INTRO,UDim2.new(1,-leftW,1,0),UDim2.new(0,leftW,0,0),C.BG,"RP")
+    pad(rp,0,0,28,24)
+    -- hub logo row
+    local hLogo=Frm(rp,UDim2.new(0,34,0,34),UDim2.new(0,0,0,22),C.CREAM,"HL"); corner(hLogo,10)
+    stroke(hLogo,C.CLAY,1).Transparency=0.4
+    local hIco=Lbl(hLogo,"✳",UDim2.new(1,0,1,0),nil,C.CLAY,20,FB); hIco.TextXAlignment=Enum.TextXAlignment.Center
+    task.spawn(function() while hIco and hIco.Parent do hIco.Rotation=(hIco.Rotation+2.5)%360; task.wait(0.03) end end)
+    local hTitle=Lbl(rp,"Claude Hub",UDim2.new(1,-44,0,22),UDim2.new(0,42,0,24),C.WHITE,20,FB); hTitle.TextTransparency=1
+    local hSub=Lbl(rp,"Universal Script Hub",UDim2.new(1,-44,0,16),UDim2.new(0,42,0,48),C.ACC2,12,FC); hSub.TextTransparency=1
+    -- divider
+    local div1=Frm(rp,UDim2.new(1,0,0,1),UDim2.new(0,0,0,76),C.BORDER)
+    -- info rows
+    local function infoRow(icon,txt,yOff,delay)
+        local r=Frm(rp,UDim2.new(1,0,0,26),UDim2.new(0,0,0,yOff),C.BG)
+        local iL=Lbl(r,icon,UDim2.new(0,22,1,0),UDim2.new(0,0,0,0),C.ACCENT,14,FB); iL.TextXAlignment=Enum.TextXAlignment.Center; iL.TextTransparency=1
+        local tL=Lbl(r,txt,UDim2.new(1,-26,1,0),UDim2.new(0,26,0,0),C.TEXT,12,FN); tL.TextTransparency=1
+        task.delay(delay,function() tw(iL,{TextTransparency=0},TS2); tw(tL,{TextTransparency=0},TS2) end)
+    end
+    infoRow("▶",ENV.name.." detected — executor ready",86,0.5)
+    infoRow("⚡",ENV.score.."/"..ENV.total.." APIs available",116,0.65)
+    infoRow("🔒","FE-ready · remote finder · memory reader",146,0.8)
+    -- progress bar
+    local barBg=Frm(rp,UDim2.new(1,0,0,4),UDim2.new(0,0,0,186),C.DARK); corner(barBg,2)
+    local barFill=Frm(barBg,UDim2.new(0,0,1,0),nil,C.ACCENT); corner(barFill,2); grad(barFill,C.ACCENT,C.ACC2,0)
+    -- launch button (hidden until load done)
+    local launchBtn=Frm(rp,UDim2.new(1,0,0,40),UDim2.new(0,0,1,-56),C.ACCENT,"Launch"); corner(launchBtn,10)
+    grad(launchBtn,C.ACCENT,C.ACC2,30); stroke(launchBtn,C.ACC2,1)
+    local launchL=Lbl(launchBtn,"Launch  →",UDim2.new(1,0,1,0),nil,C.WHITE,14,FB)
+    launchL.TextXAlignment=Enum.TextXAlignment.Center; launchL.TextTransparency=1
+    launchBtn.BackgroundTransparency=1
+    local lClick=Instance.new("TextButton"); lClick.Size=UDim2.new(1,0,1,0); lClick.BackgroundTransparency=1; lClick.Text=""; lClick.Parent=launchBtn
 
-    -- animated loading bar
-    local barBg=Frm(INTRO,UDim2.new(1,-80,0,6),UDim2.new(0,40,0,300),C.DARK); corner(barBg,3)
-    local barFill=Frm(barBg,UDim2.new(0,0,1,0),nil,C.ACCENT); corner(barFill,3); grad(barFill,C.ACCENT,C.ACC2,0)
-
-    -- OK button (hidden until load completes)
-    local okBtn=Frm(INTRO,UDim2.new(0,160,0,42),UDim2.new(0.5,-80,1,-66),C.ACCENT,"OK"); corner(okBtn,10); grad(okBtn,C.ACCENT,C.ACC2,30)
-    local okStk=stroke(okBtn,C.ACC2,1)
-    local okL=Lbl(okBtn,"OK  →",UDim2.new(1,0,1,0),nil,C.WHITE,15,FB); okL.TextXAlignment=Enum.TextXAlignment.Center
-    okBtn.BackgroundTransparency=1; okL.TextTransparency=1; okStk.Transparency=1
-    local okClick=Instance.new("TextButton"); okClick.Size=UDim2.new(1,0,1,0); okClick.BackgroundTransparency=1; okClick.Text=""; okClick.Parent=okBtn
-
-    -- entrance animation
-    INTRO.Size=UDim2.new(0,420,0,0)
-    tw(INTRO,{Size=UDim2.new(0,420,0,440)},TweenInfo.new(0.45,Enum.EasingStyle.Back))
-    ring.Size=UDim2.new(0,0,0,0); ring.Position=UDim2.new(0.5,0,0,110)
-    task.delay(0.25,function()
-        tw(ring,{Size=UDim2.new(0,128,0,128),Position=UDim2.new(0.5,-64,0,46)},TweenInfo.new(0.5,Enum.EasingStyle.Back))
+    -- entrance animation: dialog scales up from 0
+    INTRO.Size=UDim2.new(0,600,0,0); INTRO.Position=UDim2.new(0.5,-300,0.5,-10)
+    tw(INTRO,{Size=UDim2.new(0,600,0,360),Position=UDim2.new(0.5,-300,0.5,-180)},TweenInfo.new(0.4,Enum.EasingStyle.Back))
+    -- avatar ring pop
+    ring.Size=UDim2.new(0,0,0,0); ring.Position=UDim2.new(0.5,0,0.5,-15)
+    task.delay(0.2,function()
+        tw(ring,{Size=UDim2.new(0,110,0,110),Position=UDim2.new(0.5,-55,0.5,-70)},TweenInfo.new(0.5,Enum.EasingStyle.Back))
     end)
-    task.delay(0.5,function() tw(hi,{TextTransparency=0},TS2) end)
-    task.delay(0.65,function() tw(sub,{TextTransparency=0},TS2) end)
-    task.delay(0.8,function() tw(tag,{TextTransparency=0},TS2) end)
-    -- spin the avatar ring stroke softly
+    task.delay(0.35,function() tw(nameL,{TextTransparency=0},TS2) end)
+    task.delay(0.45,function() tw(roleL,{TextTransparency=0},TS2) end)
+    task.delay(0.3,function() tw(hTitle,{TextTransparency=0},TS2) end)
+    task.delay(0.4,function() tw(hSub,{TextTransparency=0},TS2) end)
+    -- soft glow pulse on ring
     task.spawn(function()
         while ring and ring.Parent do
-            ringStk.Transparency=0.15+0.25*(0.5+0.5*math.sin(os.clock()*2))
+            ringStk.Transparency=0.1+0.3*(0.5+0.5*math.sin(os.clock()*2))
+            glow.ImageTransparency=0.6+0.2*(0.5+0.5*math.sin(os.clock()*1.4))
             task.wait(0.03)
         end
     end)
-    -- fill the loading bar, then reveal OK
-    task.delay(0.5,function()
-        tw(barFill,{Size=UDim2.new(1,0,1,0)},TweenInfo.new(1.1,Enum.EasingStyle.Quad))
-        task.delay(1.15,function()
-            tw(okBtn,{BackgroundTransparency=0},TS2); tw(okL,{TextTransparency=0},TS2); tw(okStk,{Transparency=0},TS2)
+    -- fill bar → reveal launch button
+    task.delay(0.4,function()
+        tw(barFill,{Size=UDim2.new(1,0,1,0)},TweenInfo.new(1.2,Enum.EasingStyle.Quad))
+        task.delay(1.3,function()
+            tw(launchBtn,{BackgroundTransparency=0},TS2)
+            tw(launchL,{TextTransparency=0},TS2)
         end)
     end)
-    okClick.MouseEnter:Connect(function() tw(okBtn,{Size=UDim2.new(0,168,0,44),Position=UDim2.new(0.5,-84,1,-67)}) end)
-    okClick.MouseLeave:Connect(function() tw(okBtn,{Size=UDim2.new(0,160,0,42),Position=UDim2.new(0.5,-80,1,-66)}) end)
-    okClick.MouseButton1Click:Connect(function()
-        -- intro out → hub in
-        tw(INTRO,{Size=UDim2.new(0,420,0,0),Position=UDim2.new(0.5,-210,0.5,0)},TweenInfo.new(0.3,Enum.EasingStyle.Quad))
+    lClick.MouseEnter:Connect(function() tw(launchBtn,{BackgroundColor3=C.ACC2}) end)
+    lClick.MouseLeave:Connect(function() tw(launchBtn,{BackgroundColor3=C.ACCENT}) end)
+    lClick.MouseButton1Click:Connect(function()
+        tw(INTRO,{Size=UDim2.new(0,600,0,0),Position=UDim2.new(0.5,-300,0.5,0)},TweenInfo.new(0.28,Enum.EasingStyle.Quad))
         task.delay(0.3,function()
             INTRO:Destroy()
             WIN.Visible=true
-            WIN.Size=UDim2.new(0,672,0,0)
-            tw(WIN,{Size=UDim2.new(0,672,0,488)},TweenInfo.new(0.4,Enum.EasingStyle.Back))
-            notify("🤖 Claude Hub","Ready on "..ENV.name.." — press ] to toggle",4)
+            WIN.Size=UDim2.new(0,760,0,0)
+            tw(WIN,{Size=UDim2.new(0,760,0,540)},TweenInfo.new(0.4,Enum.EasingStyle.Back))
+            notify("Claude Hub","Ready on "..ENV.name.." — press ] to toggle",4)
         end)
     end)
 end
