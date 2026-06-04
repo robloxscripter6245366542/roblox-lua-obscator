@@ -63,22 +63,32 @@ local function getBall()
 end
 
 -- ── BLOCK FUNCTION ─────────────────────────────────────────────────────────
+-- From SwordController decompile:
+--   v_u_1.Block() calls v_u_21.Block:Invoke(cam.CFrame.LookVector.Y)
+--   v_u_1 has: Block, ShowShield, GetSwordAnim, LastBlock, Init, Start, Server
+--   Cooldown stored in v_u_1.LastBlock — set to nil to bypass it
 local blockFn     = nil
-local blockRemote = nil
+local blockRemote = nil  -- v_u_21.Block RemoteFunction
 local blockBtn    = nil
+local swordCtrl   = nil  -- v_u_1 table (for LastBlock cooldown bypass)
 
 LP.CharacterAdded:Connect(function()
     task.wait(2)
-    blockFn = nil
+    blockFn = nil; swordCtrl = nil
     notify("Respawned", "Re-finding Block fn", 3)
 end)
 
+-- upSearch: finds v_u_1 table in upvalues, returns both table and Block fn
 local function upSearch(fn)
     if not getUV or type(fn)~="function" then return nil end
     local ok, uvs = pcall(getUV, fn)
     if not ok then return nil end
     for _, uv in pairs(uvs or {}) do
-        if type(uv)=="table" and type(uv.Block)=="function" then return uv.Block end
+        if type(uv)=="table" and type(uv.Block)=="function"
+        and type(uv.ShowShield)=="function" then
+            swordCtrl = uv
+            return uv.Block
+        end
     end
 end
 
@@ -132,8 +142,12 @@ local function findBlockFn()
                 local ok, env = pcall(getsenv, sc)
                 if ok and env then
                     for _, v in pairs(env) do
-                        if type(v)=="table" and type(v.Block)=="function" then
-                            blockFn=v.Block; notify("Block fn","via getsenv",3); return v.Block
+                        if type(v)=="table" and type(v.Block)=="function"
+                        and type(v.ShowShield)=="function" then
+                            swordCtrl = v
+                            blockFn = v.Block
+                            notify("Block fn","via getsenv",3)
+                            return v.Block
                         end
                     end
                 end
@@ -141,13 +155,19 @@ local function findBlockFn()
         end
     end
 
-    -- 4: getgc shape scan {Block, ShowShield}
+    -- 4: getgc — confirmed signature: Block + ShowShield + GetSwordAnim (all in v_u_1)
     if HAS_GC then
         local ok, gc = pcall(getgc, false)
         if ok and gc then
             for _, v in ipairs(gc) do
-                if type(v)=="table" and type(v.Block)=="function" and type(v.ShowShield)=="function" then
-                    blockFn=v.Block; notify("Block fn","via getgc",3); return v.Block
+                if type(v)=="table"
+                and type(v.Block)=="function"
+                and type(v.ShowShield)=="function"
+                and type(v.GetSwordAnim)=="function" then
+                    swordCtrl = v
+                    blockFn = v.Block
+                    notify("Block fn","via getgc (SwordCtrl)",3)
+                    return v.Block
                 end
             end
         end
@@ -169,11 +189,33 @@ task.spawn(function()
 end)
 
 -- ── BLOCK REMOTE ───────────────────────────────────────────────────────────
+-- From decompile: v_u_21.Block:Invoke(cam.CFrame.LookVector.Y)
+-- v_u_21 = framework:Fetch("SwordService") → lives in ReplicatedStorage.Storage
 local function findRemote()
     if blockRemote and blockRemote.Parent then return blockRemote end
-    for _, v in pairs(game:GetService("ReplicatedStorage"):GetDescendants()) do
+    local RS = game:GetService("ReplicatedStorage")
+    -- Priority: Storage.SwordService.Block (most likely path from decompile)
+    local stor = RS:FindFirstChild("Storage")
+    if stor then
+        -- Check SwordService subfolder first
+        local svc = stor:FindFirstChild("SwordService")
+        if svc then
+            local b = svc:FindFirstChild("Block")
+            if b and b:IsA("RemoteFunction") then
+                blockRemote=b; notify("Remote","SwordService.Block",3); return b
+            end
+        end
+        -- Scan all of Storage for any RemoteFunction named Block
+        for _, v in pairs(stor:GetDescendants()) do
+            if v:IsA("RemoteFunction") and v.Name=="Block" then
+                blockRemote=v; notify("Remote",v:GetFullName(),3); return v
+            end
+        end
+    end
+    -- Fallback: scan all of ReplicatedStorage
+    for _, v in pairs(RS:GetDescendants()) do
         if (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) and v.Name=="Block" then
-            blockRemote=v; notify("Remote","Found: "..v:GetFullName(),3); return v
+            blockRemote=v; notify("Remote",v:GetFullName(),3); return v
         end
     end
 end
@@ -190,17 +232,26 @@ end
 
 -- ── FIRE ALL PARRY METHODS ─────────────────────────────────────────────────
 local function fireBlock(ball)
-    -- 1. Direct Block() function
+    -- Correct argument from decompile: cam.CFrame.LookVector.Y
+    local lookY = cam.CFrame.LookVector.Y
+
+    -- 1. Direct Block() via v_u_1.Block() + cooldown bypass
     pcall(function()
         local fn = findBlockFn()
-        if type(fn)=="function" then fn() end
+        if type(fn)=="function" then
+            -- Reset LastBlock so the game's cooldown check passes every time
+            if swordCtrl then swordCtrl.LastBlock = nil end
+            fn()
+        end
     end)
-    -- 2. Remote (handles both RemoteEvent and RemoteFunction)
+    -- 2. RemoteFunction: v_u_21.Block:InvokeServer(cam.CFrame.LookVector.Y)
     pcall(function()
         local r = findRemote(); if not r then return end
-        local hrp = getHRP()
-        local y = (hrp and ball) and (ball.Position-hrp.Position).Unit.Y or 0
-        if r:IsA("RemoteEvent") then r:FireServer(y) else r:InvokeServer(y) end
+        if r:IsA("RemoteFunction") then
+            r:InvokeServer(lookY)
+        else
+            r:FireServer(lookY)
+        end
     end)
     -- 3. VirtualUser button tap
     pcall(function()
