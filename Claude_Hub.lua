@@ -118,23 +118,26 @@ pcall(function()
     SG:SetCore("SendNotification",{Title="🤖 Claude Hub",Text=ENV.name.." detected — "..ENV.score.."/"..ENV.total.." APIs",Duration=3})
 end)
 
--- ── Palette ─────────────────────────────────────────────────────────────────────
+-- ── Palette (Delta-inspired navy + Claude clay logo) ─────────────────────────────
 local C = {
-    BG     = Color3.fromRGB(15, 13, 20),
-    SIDE   = Color3.fromRGB(10,  9, 14),
-    PANEL  = Color3.fromRGB(23, 20, 30),
-    CARD   = Color3.fromRGB(32, 28, 42),
-    DARK   = Color3.fromRGB( 7,  6, 10),
-    BORDER = Color3.fromRGB(46, 40, 60),
-    ACCENT = Color3.fromRGB(217,119, 66),   -- Claude clay/orange
-    ACC2   = Color3.fromRGB(235,150,100),
-    GREEN  = Color3.fromRGB(52,211,153),
-    RED    = Color3.fromRGB(244, 63, 94),
-    YELLOW = Color3.fromRGB(251,191, 36),
-    PINK   = Color3.fromRGB(236, 72,153),
-    WHITE  = Color3.fromRGB(245,242,236),
-    TEXT   = Color3.fromRGB(196,190,200),
-    MUTED  = Color3.fromRGB(108,100,120),
+    BG     = Color3.fromRGB(20, 22, 34),    -- dark navy
+    SIDE   = Color3.fromRGB(14, 16, 26),    -- sidebar navy
+    PANEL  = Color3.fromRGB(28, 32, 48),    -- panel
+    CARD   = Color3.fromRGB(36, 41, 60),    -- card
+    DARK   = Color3.fromRGB(12, 13, 22),    -- input dark
+    BORDER = Color3.fromRGB(50, 58, 84),    -- border
+    ACCENT = Color3.fromRGB(74, 152, 245),  -- Delta blue
+    ACC2   = Color3.fromRGB(120, 185, 255), -- lighter blue
+    GREEN  = Color3.fromRGB(52, 211, 153),
+    RED    = Color3.fromRGB(244,  63,  94),
+    YELLOW = Color3.fromRGB(251, 191,  36),
+    PINK   = Color3.fromRGB(236,  72, 153),
+    WHITE  = Color3.fromRGB(242, 246, 255),
+    TEXT   = Color3.fromRGB(190, 198, 222),
+    MUTED  = Color3.fromRGB(100, 112, 150),
+    -- Claude branding (logo only)
+    CLAY   = Color3.fromRGB(217, 119,  66),
+    CREAM  = Color3.fromRGB(240, 236, 228),
 }
 local TF  = TweenInfo.new(0.16,Enum.EasingStyle.Quad,Enum.EasingDirection.Out)
 local TS2 = TweenInfo.new(0.28,Enum.EasingStyle.Quad,Enum.EasingDirection.Out)
@@ -289,23 +292,64 @@ local SGI=Instance.new("ScreenGui")
 SGI.Name="__CLAUDE_HUB__"; SGI.ResetOnSpawn=false
 SGI.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; SGI.IgnoreGuiInset=true; SGI.Parent=GUI_ROOT
 
+-- ── Floating draggable logo button (Delta-style right-side icon) ─────────────────
+-- Always visible; click to show/hide the hub. Drag anywhere.
+local FLOAT_SIZE = 52
+local FLOAT=Frm(SGI,UDim2.new(0,FLOAT_SIZE,0,FLOAT_SIZE),UDim2.new(1,-FLOAT_SIZE-12,0.5,-FLOAT_SIZE/2),C.ACCENT,"FLOAT")
+corner(FLOAT,FLOAT_SIZE/2)
+do
+    local fStk=stroke(FLOAT,C.ACC2,1); fStk.Transparency=0.5
+    local fInner=Frm(FLOAT,UDim2.new(0,FLOAT_SIZE-8,0,FLOAT_SIZE-8),UDim2.new(0,4,0,4),C.SIDE); corner(fInner,(FLOAT_SIZE-8)/2)
+    local fL=Lbl(fInner,"✳",UDim2.new(1,0,1,0),nil,C.CLAY,24,FB); fL.TextXAlignment=Enum.TextXAlignment.Center
+    -- spin the ✳
+    task.spawn(function()
+        while FLOAT and FLOAT.Parent do fL.Rotation=(fL.Rotation+1.5)%360; task.wait(0.03) end
+    end)
+    -- drag
+    local fDrag,fStart,fWP,fActive
+    FLOAT.InputBegan:Connect(function(inp)
+        if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
+            fDrag=true; fStart=inp.Position; fWP=FLOAT.Position; fActive=inp
+            inp.Changed:Connect(function() if inp.UserInputState==Enum.UserInputState.End then fDrag=false end end)
+        end
+    end)
+    UIS.InputChanged:Connect(function(inp)
+        if fDrag and (inp==fActive or inp.UserInputType==Enum.UserInputType.MouseMovement) then
+            local d=inp.Position-fStart
+            FLOAT.Position=UDim2.new(fWP.X.Scale,fWP.X.Offset+d.X,fWP.Y.Scale,fWP.Y.Offset+d.Y)
+        end
+    end)
+    UIS.InputEnded:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then fDrag=false end end)
+    -- click to toggle hub
+    local fBtn=Instance.new("TextButton"); fBtn.Size=UDim2.new(1,0,1,0); fBtn.BackgroundTransparency=1; fBtn.Text=""; fBtn.Parent=FLOAT
+    fBtn.MouseButton1Click:Connect(function()
+        if fDrag then return end
+        -- toggle WIN + TBAR visibility (FLOAT stays always visible)
+        -- WIN may not exist yet when this closure is called — guard with pcall
+        pcall(function()
+            local w=SGI:FindFirstChild("WIN")
+            if w then w.Visible = not w.Visible end
+        end)
+    end)
+    -- pulse glow on hover
+    fBtn.MouseEnter:Connect(function() tw(FLOAT,{BackgroundColor3=C.ACC2}) end)
+    fBtn.MouseLeave:Connect(function() tw(FLOAT,{BackgroundColor3=C.ACCENT}) end)
+end
+
 local WIN=Frm(SGI,UDim2.new(0,672,0,488),UDim2.new(0.5,-336,0.5,-244),C.BG,"WIN")
 corner(WIN,14); stroke(WIN,C.BORDER,1); WIN.ClipsDescendants=true
 local shd=Instance.new("ImageLabel")
 shd.Size=UDim2.new(1,46,1,46); shd.Position=UDim2.new(0,-23,0,-23); shd.BackgroundTransparency=1
-shd.Image="rbxassetid://6014261993"; shd.ImageColor3=Color3.fromRGB(217,119,66); shd.ImageTransparency=0.55
+shd.Image="rbxassetid://6014261993"; shd.ImageColor3=C.ACCENT; shd.ImageTransparency=0.65
 shd.ScaleType=Enum.ScaleType.Slice; shd.SliceCenter=Rect.new(49,49,450,450); shd.Parent=WIN
 
 local minimized=false
 local TBAR=Frm(WIN,UDim2.new(1,0,0,48),nil,C.SIDE,"TBAR"); grad(TBAR,C.SIDE,C.PANEL,90)
 Frm(TBAR,UDim2.new(1,0,0,1),UDim2.new(0,0,1,-1),C.BORDER)        -- bottom hairline
--- Claude logo (cream tile + clay sunburst mark, gently spinning)
-local CLAUDE_CLAY  = Color3.fromRGB(217,119, 66)
-local CLAUDE_CREAM = Color3.fromRGB(240,236,228)
-local logo=Frm(TBAR,UDim2.new(0,30,0,30),UDim2.new(0,13,0.5,-15),CLAUDE_CREAM,"Logo"); corner(logo,9)
-local logoStk=stroke(logo,CLAUDE_CLAY,1); logoStk.Transparency=0.45
--- the Claude "sunburst" asterisk mark
-local logoL=Lbl(logo,"✳",UDim2.new(1,0,1,0),nil,CLAUDE_CLAY,21,FB); logoL.TextXAlignment=Enum.TextXAlignment.Center
+-- Claude logo tile in titlebar
+local logo=Frm(TBAR,UDim2.new(0,30,0,30),UDim2.new(0,13,0.5,-15),C.CREAM,"Logo"); corner(logo,9)
+local logoStk=stroke(logo,C.CLAY,1); logoStk.Transparency=0.45
+local logoL=Lbl(logo,"✳",UDim2.new(1,0,1,0),nil,C.CLAY,21,FB); logoL.TextXAlignment=Enum.TextXAlignment.Center
 Lbl(TBAR,"Claude Hub",UDim2.new(0,160,1,0),UDim2.new(0,54,0,0),C.WHITE,15,FB)
 -- drive logo animation continuously (spin the sunburst + soft glow pulse)
 task.spawn(function()
@@ -499,7 +543,9 @@ do
 end
 UIS.InputBegan:Connect(function(inp,gp)
     if gp then return end
-    if inp.KeyCode==Enum.KeyCode.Insert or inp.KeyCode==Enum.KeyCode.RightBracket then SGI.Enabled=not SGI.Enabled end
+    if inp.KeyCode==Enum.KeyCode.Insert or inp.KeyCode==Enum.KeyCode.RightBracket then
+        local w=SGI:FindFirstChild("WIN"); if w then w.Visible=not w.Visible end
+    end
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════════
@@ -555,9 +601,20 @@ do
     end
     chip("lua","Lua"); chip("require","require(ID)"); chip("url","URL")
 
+    -- tab bar (script1.lua + add button) — Delta-style
+    local tabBarWrap=Frm(P,UDim2.new(1,0,0,32),nil,C.DARK); corner(tabBarWrap,8)
+    stroke(tabBarWrap,C.BORDER,1)
+    local activeTabL=Lbl(tabBarWrap,"script1.lua",UDim2.new(0,90,1,0),UDim2.new(0,10,0,0),C.TEXT,12,FN)
+    local xTabBtn=Lbl(tabBarWrap,"✕",UDim2.new(0,18,1,0),UDim2.new(0,104,0,0),C.MUTED,11,FN)
+    local addTabL=Lbl(tabBarWrap,"+",UDim2.new(0,24,1,0),UDim2.new(0,126,0,0),C.MUTED,16,FB)
+    addTabL.TextXAlignment=Enum.TextXAlignment.Center
+    local menuBtn=Lbl(tabBarWrap,"⋮",UDim2.new(0,18,1,0),UDim2.new(1,-22,0,0),C.MUTED,14,FB)
+    menuBtn.TextXAlignment=Enum.TextXAlignment.Center
+
     -- big multiline editor / input
-    local edWrap=Frm(P,UDim2.new(1,0,0,196),nil,C.DARK); corner(edWrap,10); stroke(edWrap,C.BORDER,1); pad(edWrap,8,8,10,10)
+    local edWrap=Frm(P,UDim2.new(1,0,0,188),nil,C.DARK,"EdWrap"); corner(edWrap,10); stroke(edWrap,C.BORDER,1); pad(edWrap,8,8,10,10)
     local editor=Instance.new("TextBox")
+    editor.Name="__EXEC_EDITOR__"  -- tagged so Script Library can load into it
     editor.Size=UDim2.new(1,0,1,0); editor.BackgroundTransparency=1
     editor.MultiLine=true; editor.ClearTextOnFocus=false; editor.TextWrapped=false
     editor.TextXAlignment=Enum.TextXAlignment.Left; editor.TextYAlignment=Enum.TextYAlignment.Top
@@ -566,7 +623,7 @@ do
     editor.TextSize=13; editor.Font=Enum.Font.RobotoMono; editor.Parent=edWrap
 
     -- output console
-    local conWrap=Frm(P,UDim2.new(1,0,0,90),nil,C.DARK); corner(conWrap,8); stroke(conWrap,C.BORDER,1)
+    local conWrap=Frm(P,UDim2.new(1,0,0,80),nil,C.DARK); corner(conWrap,8); stroke(conWrap,C.BORDER,1)
     local _,conScr=Scr(conWrap,UDim2.new(1,-6,1,-6),UDim2.new(0,3,0,3)); listV(conScr,1); pad(conScr,4,4,6,6)
     local function eout(line,col)
         local l=Instance.new("TextLabel")
@@ -610,17 +667,35 @@ do
         end
     end
 
-    -- action row
-    local row=Frm(P,UDim2.new(1,0,0,38),nil,C.BG)
-    local h=Instance.new("UIListLayout"); h.FillDirection=Enum.FillDirection.Horizontal; h.Padding=UDim.new(0,6); h.Parent=row
-    Btn(row,"▶  Execute",UDim2.new(0,140,1,0),nil,C.ACCENT,execute)
-    Btn(row,"Clear",UDim2.new(0,80,1,0),nil,C.PANEL,function() editor.Text="" end)
-    Btn(row,"Clear Out",UDim2.new(0,90,1,0),nil,C.PANEL,function()
+    -- Delta-style bottom action bar: EXECUTE | CLEAR | EXECUTE CLIPBOARD
+    local actRow=Frm(P,UDim2.new(1,0,0,44),nil,C.BG)
+    local ah=Instance.new("UIListLayout"); ah.FillDirection=Enum.FillDirection.Horizontal; ah.Padding=UDim.new(0,8); ah.Parent=actRow
+
+    local function deltaBtn(parent, label, accent, cb)
+        local f=Frm(parent,UDim2.new(0,0,1,0),nil,C.CARD); f.AutomaticSize=Enum.AutomaticSize.X
+        corner(f,10); stroke(f,accent or C.BORDER,1)
+        pad(f,0,0,16,16)
+        local l=Lbl(f,label,UDim2.new(0,0,1,0),nil,accent or C.TEXT,13,FB)
+        l.AutomaticSize=Enum.AutomaticSize.X; l.TextXAlignment=Enum.TextXAlignment.Center
+        local b=Instance.new("TextButton"); b.Size=UDim2.new(1,0,1,0); b.BackgroundTransparency=1; b.Text=""; b.Parent=f
+        b.MouseButton1Click:Connect(function()
+            tw(f,{BackgroundColor3=accent or C.BORDER},TweenInfo.new(0.06))
+            task.delay(0.06,function() tw(f,{BackgroundColor3=C.CARD}) end)
+            if cb then pcall(cb) end
+        end)
+        return f
+    end
+
+    deltaBtn(actRow,"EXECUTE",C.ACCENT,execute)
+    deltaBtn(actRow,"CLEAR",C.MUTED,function()
+        editor.Text=""
         for _,c in ipairs(conScr:GetChildren()) do if c:IsA("TextLabel") then c:Destroy() end end
     end)
-    Btn(row,"Paste",UDim2.new(0,80,1,0),nil,C.PANEL,function()
-        if getclipboard then local ok2,t=pcall(getclipboard); if ok2 and t then editor.Text=tostring(t) end
-        else notify("Claude Hub","getclipboard not available",3) end
+    deltaBtn(actRow,"EXECUTE CLIPBOARD",C.ACC2,function()
+        local code=""
+        if getclipboard then pcall(function() code=getclipboard() end) end
+        if code~="" then editor.Text=code; execute()
+        else notify("Execute","No clipboard content",3) end
     end)
 
     SectionHdr(P,"■ QUICK SCRIPTS")
@@ -1635,38 +1710,338 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  TAB — INFO
+--  TAB — SCRIPT LIBRARY  (save, search, execute scripts — Delta-style)
 -- ═══════════════════════════════════════════════════════════════════════════════
 do
-    local P=newTab("ℹ","Info")
+    local P=newTab("📂","Scripts")
+    -- saved scripts: {name=string, code=string, builtIn=bool}
+    local SAVED={
+        {name="WalkSpeed 200",  code='game.Players.LocalPlayer.Character.Humanoid.WalkSpeed=200', builtIn=true},
+        {name="Infinite Jump",  code='game:GetService("UserInputService").JumpRequest:Connect(function() game.Players.LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end)', builtIn=true},
+        {name="Noclip",         code='game:GetService("RunService").Stepped:Connect(function() game.Players.LocalPlayer.Character:FindFirstChildOfClass("HumanoidRootPart").CanCollide=false end)', builtIn=true},
+        {name="Print Name",     code='print(game.Players.LocalPlayer.Name)', builtIn=true},
+        {name="Infinite Yield", code='loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source",true))()', builtIn=true},
+    }
+    -- load persisted scripts from files if available
+    if readfile and listfiles then
+        pcall(function()
+            if not isfolder("claudehub") then makefolder("claudehub") end
+            for _,f in ipairs(listfiles("claudehub")) do
+                if f:match("%.lua$") then
+                    local nm=f:match("([^/\\]+)%.lua$") or f
+                    local ok2,src=pcall(readfile,f)
+                    if ok2 and src and src~="" then
+                        table.insert(SAVED,{name=nm,code=src,builtIn=false,path=f})
+                    end
+                end
+            end
+        end)
+    end
+
+    -- search bar + Upload button
+    local topRow=Frm(P,UDim2.new(1,0,0,40),nil,C.BG)
+    local hh=Instance.new("UIListLayout"); hh.FillDirection=Enum.FillDirection.Horizontal; hh.Padding=UDim.new(0,6); hh.Parent=topRow
+    local sWrap=Frm(topRow,UDim2.new(1,-98,1,0),nil,C.CARD); corner(sWrap,10); stroke(sWrap,C.BORDER,1); pad(sWrap,4,4,12,10)
+    Lbl(sWrap,"🔍",UDim2.new(0,18,1,0),UDim2.new(0,0,0,0),C.MUTED,13,FN)
+    local sTbx=Instance.new("TextBox")
+    sTbx.Size=UDim2.new(1,-22,1,0); sTbx.Position=UDim2.new(0,22,0,0); sTbx.BackgroundTransparency=1
+    sTbx.PlaceholderText="Search for scripts…"; sTbx.PlaceholderColor3=C.MUTED
+    sTbx.Text=""; sTbx.TextColor3=C.WHITE; sTbx.TextSize=13; sTbx.Font=FN
+    sTbx.TextXAlignment=Enum.TextXAlignment.Left; sTbx.ClearTextOnFocus=false; sTbx.Parent=sWrap
+
+    -- Upload from clipboard
+    local uploadBtn=Frm(topRow,UDim2.new(0,86,1,0),nil,C.ACCENT); corner(uploadBtn,10)
+    Lbl(uploadBtn,"UPLOAD",UDim2.new(1,0,1,0),nil,C.WHITE,12,FB).TextXAlignment=Enum.TextXAlignment.Center
+    local upClick=Instance.new("TextButton"); upClick.Size=UDim2.new(1,0,1,0); upClick.BackgroundTransparency=1; upClick.Text=""; upClick.Parent=uploadBtn
+
+    -- script list host
+    local listHost=Instance.new("Frame"); listHost.Size=UDim2.new(1,0,0,0)
+    listHost.BackgroundTransparency=1; listHost.AutomaticSize=Enum.AutomaticSize.Y; listHost.Parent=P
+    listV(listHost,6)
+    local scriptItems={}   -- {card=, text=}
+
+    -- reference to Execute tab editor (set after Execute tab is defined)
+    -- We patch it in via _G._SS_EDITOR at runtime
+    local function execScript(code)
+        -- find the execute tab editor by name
+        local w=SGI:FindFirstChild("WIN")
+        if w then
+            local ed=w:FindFirstChild("__EXEC_EDITOR__",true)
+            if ed then ed.Text=code end
+        end
+        -- run directly
+        local fn,ce=loadstring(code)
+        if not fn then notify("Script Error",tostring(ce):sub(1,60),5); return end
+        local ok2,e2=pcall(fn)
+        if not ok2 then notify("Runtime Error",tostring(e2):sub(1,60),5) end
+    end
+
+    local function saveScript(name, code)
+        -- write to file if possible
+        if writefile then
+            pcall(function()
+                if not isfolder("claudehub") then makefolder("claudehub") end
+                writefile("claudehub/"..name:gsub("[^%w%s%-_]","").."_"..tostring(#SAVED)..".lua", code)
+            end)
+        end
+    end
+
+    local function rebuildList()
+        for _,c in ipairs(listHost:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
+        scriptItems={}
+        local q=sTbx.Text:lower()
+        for idx,s in ipairs(SAVED) do
+            local visible=(q=="" or string.find(s.name:lower(),q,1,true))
+            if visible then
+                -- Delta-style card: dark bg, bold name, built-in tag, DELETE+EXECUTE buttons
+                local card=Frm(listHost,UDim2.new(1,0,0,62),nil,C.CARD); corner(card,12); stroke(card,C.BORDER,1)
+                pad(card,0,0,16,12)
+                -- name
+                local nameL=Lbl(card,s.name,UDim2.new(1,-220,0,22),UDim2.new(0,0,0,8),C.WHITE,14,FB)
+                nameL.TextTruncate=Enum.TextTruncate.AtEnd
+                -- built-in badge
+                if s.builtIn then
+                    local badge=Frm(card,UDim2.new(0,72,0,22),UDim2.new(0,nameL.Size.X.Offset+4,0,8),C.ACCENT); corner(badge,11)
+                    Lbl(badge,"Built-In",UDim2.new(1,0,1,0),nil,C.WHITE,10,FB).TextXAlignment=Enum.TextXAlignment.Center
+                end
+                -- buttons row
+                local brow=Frm(card,UDim2.new(0,200,0,30),UDim2.new(1,-200,0.5,-15),C.BG); brow.BackgroundTransparency=1
+                local bh=Instance.new("UIListLayout"); bh.FillDirection=Enum.FillDirection.Horizontal; bh.Padding=UDim.new(0,8); bh.Parent=brow; bh.HorizontalAlignment=Enum.HorizontalAlignment.Right
+                -- DELETE button
+                if not s.builtIn then
+                    local del=Frm(brow,UDim2.new(0,84,0,30),nil,C.PANEL); corner(del,8); stroke(del,C.BORDER,1)
+                    Lbl(del,"DELETE",UDim2.new(1,0,1,0),nil,C.TEXT,11,FB).TextXAlignment=Enum.TextXAlignment.Center
+                    local db=Instance.new("TextButton"); db.Size=UDim2.new(1,0,1,0); db.BackgroundTransparency=1; db.Text=""; db.Parent=del
+                    local captIdx=idx
+                    db.MouseButton1Click:Connect(function()
+                        if SAVED[captIdx] then
+                            if SAVED[captIdx].path and delfile then pcall(delfile,SAVED[captIdx].path) end
+                            table.remove(SAVED,captIdx); rebuildList()
+                        end
+                    end)
+                    db.MouseEnter:Connect(function() tw(del,{BackgroundColor3=C.RED}) end)
+                    db.MouseLeave:Connect(function() tw(del,{BackgroundColor3=C.PANEL}) end)
+                end
+                -- EXECUTE button
+                local exe=Frm(brow,UDim2.new(0,84,0,30),nil,C.PANEL); corner(exe,8); stroke(exe,C.ACCENT,1)
+                Lbl(exe,"EXECUTE",UDim2.new(1,0,1,0),nil,C.ACCENT,11,FB).TextXAlignment=Enum.TextXAlignment.Center
+                local eb=Instance.new("TextButton"); eb.Size=UDim2.new(1,0,1,0); eb.BackgroundTransparency=1; eb.Text=""; eb.Parent=exe
+                local captCode=s.code
+                eb.MouseButton1Click:Connect(function() execScript(captCode) end)
+                eb.MouseEnter:Connect(function() tw(exe,{BackgroundColor3=C.ACCENT}) end)
+                eb.MouseLeave:Connect(function() tw(exe,{BackgroundColor3=C.PANEL}) end)
+
+                table.insert(scriptItems,{card=card,text=s.name:lower()})
+            end
+        end
+        local cnt=Frm(P,UDim2.new(1,0,0,0),nil,C.BG); cnt.BackgroundTransparency=1  -- spacer
+    end
+
+    sTbx:GetPropertyChangedSignal("Text"):Connect(rebuildList)
+
+    -- Upload: show popup to name + paste code
+    upClick.MouseButton1Click:Connect(function()
+        -- get code from clipboard or prompt
+        local code=""
+        if getclipboard then pcall(function() code=getclipboard() end) end
+        if code=="" then notify("Script Library","Copy your script first, then press UPLOAD",4); return end
+        -- ask for name via a quick input popup
+        local popBg=Frm(SGI,UDim2.new(0,320,0,120),UDim2.new(0.5,-160,0.5,-60),C.PANEL,"ScriptNamePop")
+        corner(popBg,12); stroke(popBg,C.BORDER,1); pad(popBg,12,12,16,16)
+        Lbl(popBg,"Script name:",UDim2.new(1,0,0,18),nil,C.WHITE,13,FB)
+        local _,ninp=Inp(popBg,"my_script",UDim2.new(1,0,0,32),UDim2.new(0,0,0,22))
+        Btn(popBg,"Save",UDim2.new(1,0,0,32),UDim2.new(0,0,1,-36),C.ACCENT,function()
+            local nm=ninp.Text~="" and ninp.Text or ("Script "..#SAVED+1)
+            table.insert(SAVED,{name=nm,code=code,builtIn=false})
+            saveScript(nm,code)
+            popBg:Destroy(); rebuildList()
+            notify("Script Library","Saved: "..nm,3)
+        end)
+        -- close on outside click
+        task.delay(5,function() if popBg and popBg.Parent then popBg:Destroy() end end)
+    end)
+    tw(uploadBtn,{BackgroundColor3=C.ACCENT})
+    upClick.MouseEnter:Connect(function() tw(uploadBtn,{BackgroundColor3=C.ACC2}) end)
+    upClick.MouseLeave:Connect(function() tw(uploadBtn,{BackgroundColor3=C.ACCENT}) end)
+
+    task.defer(rebuildList)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  TAB — SETTINGS  (Delta-style: search, toggle rows, click-here actions)
+-- ═══════════════════════════════════════════════════════════════════════════════
+do
+    local P=newTab("⚙","Settings")
+    -- search bar
+    local sWrap=Frm(P,UDim2.new(1,0,0,40),nil,C.CARD); corner(sWrap,10); stroke(sWrap,C.BORDER,1); pad(sWrap,4,4,12,10)
+    Lbl(sWrap,"🔍",UDim2.new(0,18,1,0),UDim2.new(0,0,0,0),C.MUTED,13,FN)
+    local sTbx=Instance.new("TextBox")
+    sTbx.Size=UDim2.new(1,-22,1,0); sTbx.Position=UDim2.new(0,22,0,0); sTbx.BackgroundTransparency=1
+    sTbx.PlaceholderText="Search for options…"; sTbx.PlaceholderColor3=C.MUTED
+    sTbx.Text=""; sTbx.TextColor3=C.WHITE; sTbx.TextSize=13; sTbx.Font=FN
+    sTbx.TextXAlignment=Enum.TextXAlignment.Left; sTbx.ClearTextOnFocus=false; sTbx.Parent=sWrap
+
+    local settingItems={}  -- {row=, text=}
+
+    -- Toggle row helper (Delta card style)
+    local function ToggleRow(label, desc, default, onChange)
+        local row=Frm(P,UDim2.new(1,0,0,62),nil,C.CARD); corner(row,12); stroke(row,C.BORDER,1); pad(row,0,0,16,16)
+        Lbl(row,label,UDim2.new(1,-72,0,22),UDim2.new(0,0,0,8),C.WHITE,14,FB)
+        Lbl(row,desc,UDim2.new(1,-72,0,18),UDim2.new(0,0,0,32),C.MUTED,11,FN)
+        local state=default
+        -- track
+        local track=Frm(row,UDim2.new(0,48,0,26),UDim2.new(1,-48,0.5,-13),state and C.ACCENT or C.PANEL); corner(track,13)
+        -- thumb
+        local thumb=Frm(track,UDim2.new(0,20,0,20),UDim2.new(0,state and 25 or 3,0.5,-10),C.WHITE); corner(thumb,10)
+        local btn=Instance.new("TextButton"); btn.Size=UDim2.new(1,0,1,0); btn.BackgroundTransparency=1; btn.Text=""; btn.Parent=track
+        btn.MouseButton1Click:Connect(function()
+            state=not state
+            tw(track,{BackgroundColor3=state and C.ACCENT or C.PANEL})
+            tw(thumb,{Position=UDim2.new(0,state and 25 or 3,0.5,-10)})
+            if onChange then pcall(onChange,state) end
+        end)
+        table.insert(settingItems,{row=row,text=(label.." "..desc):lower()})
+        return row
+    end
+
+    -- Click-here action row
+    local function ActionRow(label, desc, btnTxt, onClick)
+        local row=Frm(P,UDim2.new(1,0,0,62),nil,C.CARD); corner(row,12); stroke(row,C.BORDER,1); pad(row,0,0,16,16)
+        Lbl(row,label,UDim2.new(1,-120,0,22),UDim2.new(0,0,0,8),C.WHITE,14,FB)
+        Lbl(row,desc,UDim2.new(1,-120,0,18),UDim2.new(0,0,0,32),C.MUTED,11,FN)
+        local abtn=Frm(row,UDim2.new(0,100,0,30),UDim2.new(1,-100,0.5,-15),C.ACCENT); corner(abtn,8)
+        Lbl(abtn,btnTxt or "CLICK HERE",UDim2.new(1,0,1,0),nil,C.WHITE,11,FB).TextXAlignment=Enum.TextXAlignment.Center
+        local ab=Instance.new("TextButton"); ab.Size=UDim2.new(1,0,1,0); ab.BackgroundTransparency=1; ab.Text=""; ab.Parent=abtn
+        ab.MouseButton1Click:Connect(function() if onClick then pcall(onClick) end end)
+        ab.MouseEnter:Connect(function() tw(abtn,{BackgroundColor3=C.ACC2}) end)
+        ab.MouseLeave:Connect(function() tw(abtn,{BackgroundColor3=C.ACCENT}) end)
+        table.insert(settingItems,{row=row,text=(label.." "..desc):lower()})
+        return row
+    end
+
+    -- Stepper row (e.g. FPS cap)
+    local function StepperRow(label, desc, initial, min, max, step, onChange)
+        local row=Frm(P,UDim2.new(1,0,0,62),nil,C.CARD); corner(row,12); stroke(row,C.BORDER,1); pad(row,0,0,16,16)
+        Lbl(row,label,UDim2.new(1,-130,0,22),UDim2.new(0,0,0,8),C.WHITE,14,FB)
+        Lbl(row,desc,UDim2.new(1,-130,0,18),UDim2.new(0,0,0,32),C.MUTED,11,FN)
+        local val=initial
+        local valL=Lbl(row,tostring(val).." FPS",UDim2.new(0,70,0,30),UDim2.new(1,-128,0.5,-15),C.TEXT,12,FB)
+        valL.TextXAlignment=Enum.TextXAlignment.Center
+        -- stepper arrows
+        local dnBt=Frm(row,UDim2.new(0,24,0,24),UDim2.new(1,-54,0.5,-12),C.PANEL); corner(dnBt,6)
+        Lbl(dnBt,"‹",UDim2.new(1,0,1,0),nil,C.TEXT,14,FB).TextXAlignment=Enum.TextXAlignment.Center
+        local upBt=Frm(row,UDim2.new(0,24,0,24),UDim2.new(1,-28,0.5,-12),C.PANEL); corner(upBt,6)
+        Lbl(upBt,"›",UDim2.new(1,0,1,0),nil,C.TEXT,14,FB).TextXAlignment=Enum.TextXAlignment.Center
+        local function makeArrow(container, delta)
+            local b=Instance.new("TextButton"); b.Size=UDim2.new(1,0,1,0); b.BackgroundTransparency=1; b.Text=""; b.Parent=container
+            b.MouseButton1Click:Connect(function()
+                val=math.clamp(val+delta,min,max)
+                valL.Text=tostring(val).." FPS"
+                if onChange then pcall(onChange,val) end
+            end)
+        end
+        makeArrow(dnBt,-step); makeArrow(upBt,step)
+        table.insert(settingItems,{row=row,text=(label.." "..desc):lower()})
+        return row
+    end
+
+    -- ── Settings entries ─────────────────────────────────────────────────────
+    -- Anti-AFK
+    local antiAfkConn
+    ToggleRow("Anti AFK","Disable all idle timeout kicks from the source",true,function(on)
+        if antiAfkConn then pcall(function() antiAfkConn:Disconnect() end); antiAfkConn=nil end
+        if on then
+            antiAfkConn=Players.LocalPlayer.Idled:Connect(function()
+                local vjs=game:GetService("VirtualUser")
+                if vjs then pcall(function() vjs:Button2Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame) end) end
+            end)
+        end
+    end)
+
+    -- Auto Execute scripts tab
+    ToggleRow("Auto Execute","Toggle auto-execution of scripts in the autoexec folder",false,function(on)
+        if on and readfile and listfiles then
+            pcall(function()
+                if isfolder("autoexec") then
+                    for _,f in ipairs(listfiles("autoexec")) do
+                        if f:match("%.lua$") or f:match("%.txt$") then
+                            local ok2,src=pcall(readfile,f)
+                            if ok2 and src then
+                                local fn2,ce=loadstring(src)
+                                if fn2 then pcall(fn2) end
+                            end
+                        end
+                    end
+                    notify("Auto Execute","autoexec scripts ran",3)
+                end
+            end)
+        end
+    end)
+
+    -- FPS Cap
+    StepperRow("FPS Cap","Change the FPS cap for a smoother experience",60,30,240,30,function(v)
+        if setfpscap then pcall(setfpscap,v) end
+    end)
+
+    -- Small Server Hop
+    ActionRow("Small Server","Join a server with a low player count","CLICK HERE",function()
+        if queue_on_teleport then
+            local TS2=game:GetService("TeleportService")
+            notify("Server Hop","Finding empty server…",3)
+            task.spawn(function()
+                local ok2,servers=pcall(function()
+                    return game:GetService("HttpService"):GetAsync(
+                        "https://games.roproxy.com/v1/games/"..game.PlaceId.."/servers/Public?limit=100&sortOrder=Asc"
+                    )
+                end)
+                if ok2 and servers then
+                    local data=game:GetService("HttpService"):JSONDecode(servers)
+                    if data and data.data then
+                        for _,s in ipairs(data.data) do
+                            if s.playing and s.playing < 3 and s.id then
+                                pcall(TS2.TeleportToPlaceInstance,TS2,game.PlaceId,s.id,LP)
+                                return
+                            end
+                        end
+                    end
+                end
+                notify("Server Hop","No empty server found",4)
+            end)
+        else
+            notify("Server Hop","queue_on_teleport unavailable",4)
+        end
+    end)
+
+    -- Server Hop
+    ActionRow("Serverhop","Teleport to a new server","CLICK HERE",function()
+        local TS3=game:GetService("TeleportService")
+        pcall(TS3.TeleportToPlaceInstance,TS3,game.PlaceId,
+            ("0000000000000000000000"):gsub("0",tostring(math.random(0,9))),LP)
+    end)
+
+    -- Rejoin
+    ActionRow("Rejoin","Rejoins your current server","CLICK HERE",function()
+        local TS3=game:GetService("TeleportService")
+        pcall(TS3.TeleportToPlaceInstance,TS3,game.PlaceId,game.JobId,LP)
+    end)
+
+    -- Info block at bottom
     do
-        local b=Frm(P,UDim2.new(1,0,0,90),nil,C.PANEL); corner(b,10); pad(b,8,8,12,12)
-        Lbl(b,"🤖 Claude Hub",UDim2.new(1,0,0,24),nil,C.WHITE,18,FB)
-        Lbl(b,"Universal require() script hub.\nLoads scripts purely through require(ID) so it works\nacross any game and any executor.",
-            UDim2.new(1,0,0,54),UDim2.new(0,0,0,28),C.MUTED,12,FN)
+        local b=Frm(P,UDim2.new(1,0,0,76),nil,C.PANEL); corner(b,10); pad(b,8,8,12,12)
+        Lbl(b,"🤖 Claude Hub",UDim2.new(1,0,0,22),nil,C.WHITE,15,FB)
+        Lbl(b,ENV.name.."  ·  "..ENV.score.."/"..ENV.total.." APIs  ·  Toggle: [Insert] / [ ] ]",
+            UDim2.new(1,0,0,16),UDim2.new(0,0,0,26),C.MUTED,11,FN)
+        Lbl(b,"Executor: "..ENV.name.." on Roblox "..tostring(game.PlaceId),
+            UDim2.new(1,0,0,16),UDim2.new(0,0,0,46),C.MUTED,11,FN)
     end
-    SectionHdr(P,"■ SUPPORTED EXECUTORS")
-    for _,e in ipairs({"Delta","Xeno","Solara","Codex","Wave","Fluxus","Synapse X","KRNL","Script-Ware","SirHurt"}) do
-        local r=Frm(P,UDim2.new(1,0,0,26),nil,C.CARD); corner(r,6); pad(r,0,0,10,10)
-        Lbl(r,e,UDim2.new(0.7,0,1,0),nil,C.TEXT,12,FN)
-        local hit = (e==ENV.name)
-        local v=Lbl(r,hit and "◉ THIS ONE" or "○ supported",UDim2.new(0.3,0,1,0),UDim2.new(0.7,0,0,0),hit and C.ACCENT or C.GREEN,11,FB)
-        v.TextXAlignment=Enum.TextXAlignment.Right
-    end
-    SectionHdr(P,"■ KEYBINDS")
-    local function kb(lbl,val)
-        local r=Frm(P,UDim2.new(1,0,0,26),nil,C.CARD); corner(r,6); pad(r,0,0,10,10)
-        Lbl(r,lbl,UDim2.new(0.6,0,1,0),nil,C.TEXT,12,FN)
-        local v=Lbl(r,val,UDim2.new(0.4,0,1,0),UDim2.new(0.6,0,0,0),C.TEXT,11,FB)
-        v.TextXAlignment=Enum.TextXAlignment.Right
-    end
-    kb("Toggle GUI","[Insert] or [ ] ]")
-    kb("Close","Red dot")
-    kb("Minimize","Yellow dot")
-    do
-        local w=Frm(P,UDim2.new(1,0,0,52),nil,C.PANEL); corner(w,8); pad(w,6,6,10,10)
-        Lbl(w,"⚠ Category-tab IDs are PLACEHOLDERS. Replace with\nverified module IDs, or paste your own require(ID)\nin the Custom tab.",UDim2.new(1,0,1,0),nil,C.YELLOW,11,FN)
-    end
+
+    -- live search filter
+    sTbx:GetPropertyChangedSignal("Text"):Connect(function()
+        local q=sTbx.Text:lower()
+        for _,it in ipairs(settingItems) do
+            it.row.Visible = (q=="" or string.find(it.text,q,1,true)~=nil)
+        end
+    end)
 end
 
 showPage(1)
@@ -1683,12 +2058,12 @@ do
     -- shadow
     local ishd=Instance.new("ImageLabel")
     ishd.Size=UDim2.new(1,60,1,60); ishd.Position=UDim2.new(0,-30,0,-30); ishd.BackgroundTransparency=1
-    ishd.Image="rbxassetid://6014261993"; ishd.ImageColor3=Color3.fromRGB(217,119,66); ishd.ImageTransparency=0.45
+    ishd.Image="rbxassetid://6014261993"; ishd.ImageColor3=C.ACCENT; ishd.ImageTransparency=0.65
     ishd.ScaleType=Enum.ScaleType.Slice; ishd.SliceCenter=Rect.new(49,49,450,450); ishd.Parent=INTRO
 
     -- avatar ring + profile picture
-    local ring=Frm(INTRO,UDim2.new(0,128,0,128),UDim2.new(0.5,-64,0,46),CLAUDE_CREAM,"Ring"); corner(ring,64)
-    local ringStk=stroke(ring,CLAUDE_CLAY,2); ringStk.Transparency=0.2
+    local ring=Frm(INTRO,UDim2.new(0,128,0,128),UDim2.new(0.5,-64,0,46),C.CREAM,"Ring"); corner(ring,64)
+    local ringStk=stroke(ring,C.CLAY,2); ringStk.Transparency=0.2
     local pfp=Instance.new("ImageLabel")
     pfp.Size=UDim2.new(0,116,0,116); pfp.Position=UDim2.new(0.5,-58,0.5,-58); pfp.BackgroundColor3=C.CARD
     pfp.BorderSizePixel=0; pfp.Image=""; pfp.Parent=ring; corner(pfp,58)
