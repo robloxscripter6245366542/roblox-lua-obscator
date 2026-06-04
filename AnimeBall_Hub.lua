@@ -69,7 +69,8 @@ local BALL_NAMES = {
     "ball","blade","projectile","orb","sphere","anime","shot",
     "animeball","animeorb","energy","magic","fire","slash","wave"
 }
-local ballCache = nil
+local ballCache  = nil
+local hookedBalls = {}
 
 local function isBallPart(v)
     if not v:IsA("BasePart") then return false end
@@ -95,6 +96,7 @@ ac(workspace.DescendantRemoving:Connect(function(v)
         ballCache = nil
         parryBurstActive = false
         lastParryBall = nil
+        hookedBalls[v] = nil
     end
 end))
 
@@ -358,12 +360,12 @@ local lastParryTime  = 0
 local parryInCooldown = false
 
 -- Adaptive cooldown:
---   Close (<5st)  → 0.08s — rapid-fire for clash scenarios
---   Mid   (5-12)  → 0.12s
---   Far   (>12st) → 0.20s
+--   Close (<8st)  → 0.06s — rapid-fire for clash scenarios
+--   Mid   (8-14)  → 0.12s
+--   Far   (>14st) → 0.20s
 local function getAdaptiveCooldown(dist)
-    if dist < 5  then return 0.08
-    elseif dist < 12 then return 0.12
+    if dist < 8  then return 0.06
+    elseif dist < 14 then return 0.12
     else return 0.20 end
 end
 
@@ -401,7 +403,7 @@ local lastParryBall    = nil
 local function doParry(ball)
     local hrp  = getHRP()
     local dist = hrp and (ball.Position - hrp.Position).Magnitude or 0
-    local closeRange = dist < 5  -- clash zone
+    local closeRange = dist < 8  -- clash zone: bypass locks, dense burst
 
     -- Close range bypasses burst lock and lastParryBall so it keeps hammering
     if not closeRange then
@@ -414,9 +416,9 @@ local function doParry(ball)
     lastParryTime = tick()
 
     if closeRange then
-        -- Dense 7-shot burst over 130ms — guarantees a hit in any clash window
+        -- 10-shot burst over 200ms — covers any server acceptance window
         executeParry(ball)
-        for _, t in ipairs({0.02, 0.04, 0.06, 0.08, 0.10, 0.13}) do
+        for _, t in ipairs({0.02,0.04,0.06,0.08,0.10,0.12,0.14,0.16,0.18,0.20}) do
             task.delay(t, function()
                 if ball and ball.Parent then executeParry(ball) end
             end)
@@ -725,6 +727,18 @@ local function saveCfg()
 end
 loadCfg()
 
+-- Clear stale caches on respawn so new v_u_1 is found immediately
+ac(LP.CharacterAdded:Connect(function()
+    cachedBlockFn     = nil
+    cachedBlockButton = nil
+    cachedBlockRemote = nil
+    ballVelSamples    = {}
+    ballVelAvg        = 0
+    lastBallPos2      = nil
+    parryBurstActive  = false
+    lastParryBall     = nil
+end))
+
 -- ════════════════════════════════════════════════════════════════════════
 --  MAIN LOOP
 -- ════════════════════════════════════════════════════════════════════════
@@ -752,15 +766,35 @@ end
 -- This removes dependence on fixed stud threshold
 local PARRY_WINDOW = 0.30  -- seconds before impact to trigger parry
 
+-- Ball.Touched hook — fires parry at exact moment of contact (belt+suspenders)
+local function hookBallTouched(ball)
+    if hookedBalls[ball] then return end
+    hookedBalls[ball] = true
+    ac(ball.Touched:Connect(function(hit)
+        if not autoParryOn then return end
+        local char = getChar()
+        if not char then return end
+        if hit == char or hit:IsDescendantOf(char) then
+            -- Ball just physically hit us — fire 3 immediate shots
+            executeParry(ball)
+            task.delay(0.02, function() if ball.Parent then executeParry(ball) end end)
+            task.delay(0.05, function() if ball.Parent then executeParry(ball) end end)
+        end
+    end))
+end
+
 local loopTick = 0
 ac(RS.Heartbeat:Connect(function()
     local now = tick()
-    if (now - loopTick) < 0.033 then return end  -- 30 Hz cap
+    if (now - loopTick) < 0.016 then return end  -- 60 Hz cap
     loopTick = now
 
     local ball = findBall()
     local hrp  = getHRP()
     if not hrp then return end
+
+    -- Hook ball.Touched once per ball instance
+    if ball then hookBallTouched(ball) end
 
     updateBallVelocity(ball)
 
@@ -794,7 +828,7 @@ ac(RS.Heartbeat:Connect(function()
     if autoParryOn and ball then
         local dist = (ball.Position - hrp.Position).Magnitude
         local shouldParry = false
-        if dist < 5 then
+        if dist < 8 then
             -- Clash zone: fire every cooldown cycle, no TTI check
             shouldParry = true
         elseif ballVelAvg > 0 then
