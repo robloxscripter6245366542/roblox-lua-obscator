@@ -296,31 +296,32 @@ shd.ScaleType=Enum.ScaleType.Slice; shd.SliceCenter=Rect.new(49,49,450,450); shd
 local minimized=false
 local TBAR=Frm(WIN,UDim2.new(1,0,0,48),nil,C.SIDE,"TBAR"); grad(TBAR,C.SIDE,C.PANEL,90)
 Frm(TBAR,UDim2.new(1,0,0,1),UDim2.new(0,0,1,-1),C.BORDER)        -- bottom hairline
--- logo (animated: spinning gradient + gentle pulse + breathing glyph)
-local logo=Frm(TBAR,UDim2.new(0,28,0,28),UDim2.new(0,14,0.5,-14),C.ACCENT,"Logo"); corner(logo,8)
-local logoGrad=grad(logo,C.ACCENT,C.ACC2,45)
-local logoStk=stroke(logo,C.ACC2,1); logoStk.Transparency=0.4
-local logoL=Lbl(logo,"C",UDim2.new(1,0,1,0),nil,C.WHITE,16,FB); logoL.TextXAlignment=Enum.TextXAlignment.Center
-Lbl(TBAR,"Claude Hub",UDim2.new(0,160,1,0),UDim2.new(0,52,0,0),C.WHITE,15,FB)
--- drive logo animation continuously
+-- Claude logo (cream tile + clay sunburst mark, gently spinning)
+local CLAUDE_CLAY  = Color3.fromRGB(217,119, 66)
+local CLAUDE_CREAM = Color3.fromRGB(240,236,228)
+local logo=Frm(TBAR,UDim2.new(0,30,0,30),UDim2.new(0,13,0.5,-15),CLAUDE_CREAM,"Logo"); corner(logo,9)
+local logoStk=stroke(logo,CLAUDE_CLAY,1); logoStk.Transparency=0.45
+-- the Claude "sunburst" asterisk mark
+local logoL=Lbl(logo,"✳",UDim2.new(1,0,1,0),nil,CLAUDE_CLAY,21,FB); logoL.TextXAlignment=Enum.TextXAlignment.Center
+Lbl(TBAR,"Claude Hub",UDim2.new(0,160,1,0),UDim2.new(0,54,0,0),C.WHITE,15,FB)
+-- drive logo animation continuously (spin the sunburst + soft glow pulse)
 task.spawn(function()
     local t=0
     while logo and logo.Parent do
         t=(t+0.04)%1
-        logoGrad.Rotation=(logoGrad.Rotation+4)%360            -- spin the gradient
+        logoL.Rotation=(logoL.Rotation+2)%360                   -- slow sunburst spin
         local pulse=0.5+0.5*math.sin(t*math.pi*2)              -- 0..1 breathing
         logoStk.Transparency=0.25+0.45*pulse                   -- glow in/out
-        local s=27+math.floor(2*pulse)                          -- subtle size pulse
-        logo.Size=UDim2.new(0,s,0,s); logo.Position=UDim2.new(0,14+((28-s)/2),0.5,-s/2)
+        local s=29+math.floor(2*pulse)                          -- subtle size pulse
+        logo.Size=UDim2.new(0,s,0,s); logo.Position=UDim2.new(0,13+((30-s)/2),0.5,-s/2)
         task.wait(0.03)
     end
 end)
--- bounce the glyph on hover of the whole title bar logo
+-- click the logo for a fast spin flourish
 do
     local hb=Instance.new("TextButton"); hb.Size=UDim2.new(1,0,1,0); hb.BackgroundTransparency=1; hb.Text=""; hb.Parent=logo
     hb.MouseButton1Click:Connect(function()
-        logoL.Rotation=0; tw(logoL,{Rotation=360},TweenInfo.new(0.5,Enum.EasingStyle.Back))
-        task.delay(0.5,function() logoL.Rotation=0 end)
+        tw(logoL,{Rotation=logoL.Rotation+360},TweenInfo.new(0.6,Enum.EasingStyle.Back))
     end)
 end
 -- executor chip (live dot + name + score)
@@ -466,19 +467,32 @@ local function CardSearch(parent,placeholder)
     return function(card,text) table.insert(items,{card=card,text=tostring(text):lower()}); count.Text=#items.." total" end
 end
 
--- ── Drag / minimize / close / keybind ───────────────────────────────────────────
+-- ── Drag (mouse + touch, so it works on PC and iOS/mobile) ───────────────────────
 do
-    local dragging,startp,wp
+    local dragging,startp,wp,activeInput
+    local function isDragInput(inp)
+        return inp.UserInputType==Enum.UserInputType.MouseButton1
+            or inp.UserInputType==Enum.UserInputType.Touch
+    end
+    local function isMoveInput(inp)
+        return inp.UserInputType==Enum.UserInputType.MouseMovement
+            or inp.UserInputType==Enum.UserInputType.Touch
+    end
     TBAR.InputBegan:Connect(function(inp)
-        if inp.UserInputType==Enum.UserInputType.MouseButton1 then dragging=true; startp=inp.Position; wp=WIN.Position end
+        if isDragInput(inp) then
+            dragging=true; startp=inp.Position; wp=WIN.Position; activeInput=inp
+            inp.Changed:Connect(function()
+                if inp.UserInputState==Enum.UserInputState.End then dragging=false end
+            end)
+        end
     end)
     UIS.InputChanged:Connect(function(inp)
-        if dragging and inp.UserInputType==Enum.UserInputType.MouseMovement then
+        if dragging and isMoveInput(inp) and (inp==activeInput or inp.UserInputType==Enum.UserInputType.MouseMovement) then
             local d=inp.Position-startp
             WIN.Position=UDim2.new(wp.X.Scale,wp.X.Offset+d.X,wp.Y.Scale,wp.Y.Offset+d.Y)
         end
     end)
-    UIS.InputEnded:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end end)
+    UIS.InputEnded:Connect(function(inp) if isDragInput(inp) then dragging=false end end)
 end
 UIS.InputBegan:Connect(function(inp,gp)
     if gp then return end
@@ -815,43 +829,113 @@ do
     listHost.AutomaticSize=Enum.AutomaticSize.Y; listHost.Parent=P
     listV(listHost,5)
 
-    local function scanRemotes()
-        for _,c in ipairs(listHost:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
-        local found={}
-        for _,o in ipairs(game:GetDescendants()) do
-            if o:IsA("RemoteEvent") or o:IsA("RemoteFunction") then
-                table.insert(found,o)
-                if #found>=400 then break end
+    -- collect remotes from EVERYWHERE, including hidden/nil-parented ones that a
+    -- normal GetDescendants() misses. Read-only & passive — fires nothing, so it
+    -- leaves no trace and won't trip remote-call anti-cheat ("clean" discovery).
+    local function collectRemotes()
+        local set={}        -- [instance]=true  (dedupe)
+        local out={}
+        local function add(o)
+            if typeof(o)=="Instance" and not set[o]
+               and (o:IsA("RemoteEvent") or o:IsA("RemoteFunction")) then
+                set[o]=true; out[#out+1]=o
             end
         end
-        rout("scanned — "..#found.." remotes found",C.ACC2)
+        -- 1) visible tree
+        for _,o in ipairs(game:GetDescendants()) do add(o) end
+        -- 2) nil-parented / hidden remotes (executor-only)
+        if getnilinstances then
+            local ok2,nils=pcall(getnilinstances)
+            if ok2 and type(nils)=="table" then for _,o in ipairs(nils) do add(o) end end
+        end
+        -- 3) garbage-collector sweep — catches remotes referenced but not in the tree
+        if getgc then
+            local ok2,gc=pcall(getgc,true)
+            if ok2 and type(gc)=="table" then
+                for _,o in ipairs(gc) do pcall(add,o) end
+            end
+        end
+        return out
+    end
+
+    local function scanRemotes()
+        for _,c in ipairs(listHost:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
+        local found=collectRemotes()
+        local hidden=0
+        for _,r in ipairs(found) do if not r:IsDescendantOf(game) then hidden=hidden+1 end end
+        rout("clean scan — "..#found.." remotes ("..hidden.." hidden/nil)",C.ACC2)
         for _,r in ipairs(found) do
             local isFn=r:IsA("RemoteFunction")
-            local card=Frm(listHost,UDim2.new(1,0,0,46),nil,C.CARD); corner(card,9); stroke(card,C.BORDER,1); pad(card,5,5,10,8)
+            local isHidden = not r:IsDescendantOf(game)
+            local card=Frm(listHost,UDim2.new(1,0,0,46),nil,C.CARD); corner(card,9); stroke(card,isHidden and C.YELLOW or C.BORDER,1); pad(card,5,5,10,8)
             -- type badge
             local badge=Frm(card,UDim2.new(0,30,0,16),UDim2.new(0,0,0,0),isFn and C.PINK or C.ACCENT); corner(badge,5)
             Lbl(badge,isFn and "FN" or "EV",UDim2.new(1,0,1,0),nil,C.WHITE,9,FB).TextXAlignment=Enum.TextXAlignment.Center
-            Lbl(card,r.Name,UDim2.new(1,-150,0,16),UDim2.new(0,36,0,0),C.WHITE,12,FB)
-            local path=r:GetFullName()
+            -- hidden tag for nil-parented remotes
+            if isHidden then
+                local ht=Frm(card,UDim2.new(0,46,0,16),UDim2.new(0,34,0,0),C.YELLOW); corner(ht,5)
+                Lbl(ht,"HIDDEN",UDim2.new(1,0,1,0),nil,C.DARK,8,FB).TextXAlignment=Enum.TextXAlignment.Center
+                Lbl(card,r.Name,UDim2.new(1,-160,0,16),UDim2.new(0,84,0,0),C.WHITE,12,FB)
+            else
+                Lbl(card,r.Name,UDim2.new(1,-150,0,16),UDim2.new(0,36,0,0),C.WHITE,12,FB)
+            end
+            local okp,path=pcall(function() return r:GetFullName() end)
+            if not okp then path="(nil)."..r.Name end
             Lbl(card,path,UDim2.new(1,-150,0,13),UDim2.new(0,0,0,20),C.MUTED,9,FN).TextTruncate=Enum.TextTruncate.AtEnd
             Btn(card,isFn and "Invoke" or "Fire",UDim2.new(0,70,0,28),UDim2.new(1,-74,0.5,-14),C.ACCENT,function() fire(r) end)
             searchReg(card, (r.Name.." "..path):lower())
         end
     end
 
-    Btn(P,"⟳  Scan / Refresh Remotes",UDim2.new(1,0,0,36),nil,C.ACCENT,scanRemotes)
+    Btn(P,"⟳  Clean Scan  (incl. hidden / nil remotes)",UDim2.new(1,0,0,36),nil,C.ACCENT,scanRemotes)
     if ENV.HAS_CLIP then
         Btn(P,"Copy All Remote Paths",UDim2.new(1,0,0,32),nil,C.PANEL,function()
             local lines={}
-            for _,o in ipairs(game:GetDescendants()) do
-                if o:IsA("RemoteEvent") or o:IsA("RemoteFunction") then
-                    table.insert(lines,o.ClassName.."  "..o:GetFullName())
-                end
+            for _,o in ipairs(collectRemotes()) do
+                local okp,p=pcall(function() return o:GetFullName() end)
+                table.insert(lines,o.ClassName.."  "..(okp and p or o.Name))
             end
             ENV.setClip(table.concat(lines,"\n")); notify("Claude Hub","Copied "..#lines.." remotes",3)
         end)
     end
-    rout("Ready. Hit Scan to list the game's remotes.",C.MUTED)
+
+    -- ── Passive spy: the most undetectable discovery — just watch what the game
+    --    fires through __namecall. We never probe; we observe. Read-only hook. ──
+    SectionHdr(P,"■ PASSIVE SPY  (undetectable — observes live traffic)")
+    local seen={}   -- name -> true (dedupe live discoveries)
+    local spyOn=false
+    local spyRow=Frm(P,UDim2.new(1,0,0,38),nil,C.CARD); corner(spyRow,8); stroke(spyRow,C.BORDER,1); pad(spyRow,0,0,12,12)
+    Lbl(spyRow,"Watch live remote calls",UDim2.new(1,-54,1,0),nil,C.TEXT,12,FC)
+    local pill=Frm(spyRow,UDim2.new(0,44,0,24),UDim2.new(1,-44,0.5,-12),C.DARK); corner(pill,12); stroke(pill,C.BORDER)
+    local knob=Frm(pill,UDim2.new(0,18,0,18),UDim2.new(0,3,0.5,-9),C.MUTED); corner(knob,9)
+    local function setSpy(v)
+        spyOn=v
+        if v then tw(pill,{BackgroundColor3=C.ACCENT}); tw(knob,{Position=UDim2.new(0,23,0.5,-9),BackgroundColor3=C.WHITE})
+        else tw(pill,{BackgroundColor3=C.DARK}); tw(knob,{Position=UDim2.new(0,3,0.5,-9),BackgroundColor3=C.MUTED}) end
+    end
+    local sb=Instance.new("TextButton"); sb.Size=UDim2.new(1,0,1,0); sb.BackgroundTransparency=1; sb.Text=""; sb.Parent=spyRow
+    if ENV.caps.hookmetamethod and ENV.caps.getnamecallmethod and ENV.caps.newcclosure then
+        local _old; _old=hookmetamethod(game,"__namecall",newcclosure(function(self,...)
+            if spyOn then
+                local m=getnamecallmethod()
+                if m=="FireServer" or m=="InvokeServer" then
+                    pcall(function()
+                        if typeof(self)=="Instance" and not seen[self] then
+                            seen[self]=true
+                            rout("● live: "..self.ClassName..":"..self.Name.." ("..m..")",C.GREEN)
+                        end
+                    end)
+                end
+            end
+            return _old(self,...)
+        end))
+        sb.MouseButton1Click:Connect(function() setSpy(not spyOn) end)
+    else
+        sb.MouseButton1Click:Connect(function() notify("Claude Hub","hookmetamethod not available on "..ENV.name,4) end)
+        Lbl(P,"⚠ Passive spy needs hookmetamethod (not on "..ENV.name..")",UDim2.new(1,0,0,16),nil,C.YELLOW,10,FN)
+    end
+
+    rout("Ready. Clean Scan finds hidden remotes; Passive Spy watches live ones.",C.MUTED)
     task.defer(scanRemotes)
 end
 
@@ -1095,6 +1179,73 @@ do
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
+--  AUTO MEMORY READER — runs at startup, reads the game's memory automatically
+--  (no tab). Builds ENV.mem so the hub "already knows everything" on load.
+-- ═══════════════════════════════════════════════════════════════════════════════
+ENV.mem = {
+    globals   = {},   -- getgenv/_G keys -> type
+    remotes   = {},   -- {class,name,path}
+    values    = {},   -- ValueBase paths -> value
+    stats     = {},   -- leaderstats / data
+    gc        = {fns=0, tabs=0, other=0},
+    scanned   = false,
+}
+task.spawn(function()
+    local M = ENV.mem
+    -- 1) globals
+    pcall(function()
+        local src=(getgenv and getgenv()) or _G
+        for k,v in pairs(src) do M.globals[tostring(k)]=type(v) end
+    end)
+    -- 2) every ValueBase + remote in the whole game (deep)
+    pcall(function()
+        for _,o in ipairs(game:GetDescendants()) do
+            if o:IsA("ValueBase") then
+                local okp,p=pcall(function() return o:GetFullName() end)
+                M.values[okp and p or o.Name]=o.Value
+            elseif o:IsA("RemoteEvent") or o:IsA("RemoteFunction") then
+                local okp,p=pcall(function() return o:GetFullName() end)
+                M.remotes[#M.remotes+1]={class=o.ClassName,name=o.Name,path=okp and p or o.Name}
+            end
+        end
+    end)
+    -- 3) hidden / nil-parented remotes (executor memory)
+    if getnilinstances then
+        pcall(function()
+            for _,o in ipairs(getnilinstances()) do
+                if typeof(o)=="Instance" and (o:IsA("RemoteEvent") or o:IsA("RemoteFunction")) then
+                    M.remotes[#M.remotes+1]={class=o.ClassName,name=o.Name,path="(nil)."..o.Name,hidden=true}
+                end
+            end
+        end)
+    end
+    -- 4) your stats (leaderstats + common data folders)
+    pcall(function()
+        local ls=LP:FindFirstChild("leaderstats")
+        if ls then for _,v in ipairs(ls:GetChildren()) do if v:IsA("ValueBase") then M.stats[v.Name]=v.Value end end end
+        for _,fn in ipairs({"Data","PlayerData","Stats","Currency"}) do
+            local f=LP:FindFirstChild(fn)
+            if f then for _,v in ipairs(f:GetChildren()) do if v:IsA("ValueBase") then M.stats[fn.."."..v.Name]=v.Value end end end
+        end
+    end)
+    -- 5) GC sweep (functions/tables resident in memory)
+    if getgc then
+        pcall(function()
+            for _,o in ipairs(getgc(true)) do
+                local tp=type(o)
+                if tp=="function" then M.gc.fns=M.gc.fns+1
+                elseif tp=="table" then M.gc.tabs=M.gc.tabs+1
+                else M.gc.other=M.gc.other+1 end
+            end
+        end)
+    end
+    M.gcount=0; for _ in pairs(M.globals) do M.gcount=M.gcount+1 end
+    M.vcount=0; for _ in pairs(M.values)  do M.vcount=M.vcount+1 end
+    M.scanned=true
+    notify("🧠 Memory Read",#M.remotes.." remotes · "..M.vcount.." values · "..M.gcount.." globals",4)
+end)
+
+-- ═══════════════════════════════════════════════════════════════════════════════
 --  TAB — INFO
 -- ═══════════════════════════════════════════════════════════════════════════════
 do
@@ -1130,7 +1281,94 @@ do
 end
 
 showPage(1)
-notify("🤖 Claude Hub","Ready on "..ENV.name.." — press ] to toggle",4)
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  INTRO SPLASH — animated welcome with your avatar + OK button → main hub
+-- ═══════════════════════════════════════════════════════════════════════════════
+do
+    WIN.Visible=false   -- hide hub until the user presses OK
+
+    local INTRO=Frm(SGI,UDim2.new(0,420,0,440),UDim2.new(0.5,-210,0.5,-220),C.BG,"INTRO")
+    corner(INTRO,18); stroke(INTRO,C.BORDER,1); INTRO.ClipsDescendants=true
+    grad(INTRO,C.BG,C.SIDE,90)
+    -- shadow
+    local ishd=Instance.new("ImageLabel")
+    ishd.Size=UDim2.new(1,60,1,60); ishd.Position=UDim2.new(0,-30,0,-30); ishd.BackgroundTransparency=1
+    ishd.Image="rbxassetid://6014261993"; ishd.ImageColor3=Color3.fromRGB(217,119,66); ishd.ImageTransparency=0.45
+    ishd.ScaleType=Enum.ScaleType.Slice; ishd.SliceCenter=Rect.new(49,49,450,450); ishd.Parent=INTRO
+
+    -- avatar ring + profile picture
+    local ring=Frm(INTRO,UDim2.new(0,128,0,128),UDim2.new(0.5,-64,0,46),CLAUDE_CREAM,"Ring"); corner(ring,64)
+    local ringStk=stroke(ring,CLAUDE_CLAY,2); ringStk.Transparency=0.2
+    local pfp=Instance.new("ImageLabel")
+    pfp.Size=UDim2.new(0,116,0,116); pfp.Position=UDim2.new(0.5,-58,0.5,-58); pfp.BackgroundColor3=C.CARD
+    pfp.BorderSizePixel=0; pfp.Image=""; pfp.Parent=ring; corner(pfp,58)
+    task.spawn(function()
+        local ok2,url=pcall(function()
+            return Players:GetUserThumbnailAsync(LP.UserId,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size150x150)
+        end)
+        if ok2 and url then pfp.Image=url end
+    end)
+
+    -- texts (start hidden, fade/slide in)
+    local hi=Lbl(INTRO,"Welcome, "..LP.DisplayName,UDim2.new(1,-40,0,28),UDim2.new(0,20,0,196),C.WHITE,22,FB)
+    hi.TextXAlignment=Enum.TextXAlignment.Center; hi.TextTransparency=1
+    local sub=Lbl(INTRO,"Claude Hub  ·  "..ENV.name.."  ·  "..ENV.score.."/"..ENV.total.." APIs",
+        UDim2.new(1,-40,0,20),UDim2.new(0,20,0,228),C.ACC2,13,FC)
+    sub.TextXAlignment=Enum.TextXAlignment.Center; sub.TextTransparency=1
+    local tag=Lbl(INTRO,"The most advanced universal require hub.\nFE-ready · undetectable remote finder · memory reader.",
+        UDim2.new(1,-50,0,34),UDim2.new(0,25,0,252),C.MUTED,11,FN)
+    tag.TextXAlignment=Enum.TextXAlignment.Center; tag.TextTransparency=1
+
+    -- animated loading bar
+    local barBg=Frm(INTRO,UDim2.new(1,-80,0,6),UDim2.new(0,40,0,300),C.DARK); corner(barBg,3)
+    local barFill=Frm(barBg,UDim2.new(0,0,1,0),nil,C.ACCENT); corner(barFill,3); grad(barFill,C.ACCENT,C.ACC2,0)
+
+    -- OK button (hidden until load completes)
+    local okBtn=Frm(INTRO,UDim2.new(0,160,0,42),UDim2.new(0.5,-80,1,-66),C.ACCENT,"OK"); corner(okBtn,10); grad(okBtn,C.ACCENT,C.ACC2,30)
+    local okStk=stroke(okBtn,C.ACC2,1)
+    local okL=Lbl(okBtn,"OK  →",UDim2.new(1,0,1,0),nil,C.WHITE,15,FB); okL.TextXAlignment=Enum.TextXAlignment.Center
+    okBtn.BackgroundTransparency=1; okL.TextTransparency=1; okStk.Transparency=1
+    local okClick=Instance.new("TextButton"); okClick.Size=UDim2.new(1,0,1,0); okClick.BackgroundTransparency=1; okClick.Text=""; okClick.Parent=okBtn
+
+    -- entrance animation
+    INTRO.Size=UDim2.new(0,420,0,0)
+    tw(INTRO,{Size=UDim2.new(0,420,0,440)},TweenInfo.new(0.45,Enum.EasingStyle.Back))
+    ring.Size=UDim2.new(0,0,0,0); ring.Position=UDim2.new(0.5,0,0,110)
+    task.delay(0.25,function()
+        tw(ring,{Size=UDim2.new(0,128,0,128),Position=UDim2.new(0.5,-64,0,46)},TweenInfo.new(0.5,Enum.EasingStyle.Back))
+    end)
+    task.delay(0.5,function() tw(hi,{TextTransparency=0},TS2) end)
+    task.delay(0.65,function() tw(sub,{TextTransparency=0},TS2) end)
+    task.delay(0.8,function() tw(tag,{TextTransparency=0},TS2) end)
+    -- spin the avatar ring stroke softly
+    task.spawn(function()
+        while ring and ring.Parent do
+            ringStk.Transparency=0.15+0.25*(0.5+0.5*math.sin(os.clock()*2))
+            task.wait(0.03)
+        end
+    end)
+    -- fill the loading bar, then reveal OK
+    task.delay(0.5,function()
+        tw(barFill,{Size=UDim2.new(1,0,1,0)},TweenInfo.new(1.1,Enum.EasingStyle.Quad))
+        task.delay(1.15,function()
+            tw(okBtn,{BackgroundTransparency=0},TS2); tw(okL,{TextTransparency=0},TS2); tw(okStk,{Transparency=0},TS2)
+        end)
+    end)
+    okClick.MouseEnter:Connect(function() tw(okBtn,{Size=UDim2.new(0,168,0,44),Position=UDim2.new(0.5,-84,1,-67)}) end)
+    okClick.MouseLeave:Connect(function() tw(okBtn,{Size=UDim2.new(0,160,0,42),Position=UDim2.new(0.5,-80,1,-66)}) end)
+    okClick.MouseButton1Click:Connect(function()
+        -- intro out → hub in
+        tw(INTRO,{Size=UDim2.new(0,420,0,0),Position=UDim2.new(0.5,-210,0.5,0)},TweenInfo.new(0.3,Enum.EasingStyle.Quad))
+        task.delay(0.3,function()
+            INTRO:Destroy()
+            WIN.Visible=true
+            WIN.Size=UDim2.new(0,672,0,0)
+            tw(WIN,{Size=UDim2.new(0,672,0,488)},TweenInfo.new(0.4,Enum.EasingStyle.Back))
+            notify("🤖 Claude Hub","Ready on "..ENV.name.." — press ] to toggle",4)
+        end)
+    end)
+end
 
 end) -- pcall
 
