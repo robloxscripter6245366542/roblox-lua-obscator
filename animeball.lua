@@ -29,20 +29,21 @@ local HAS_FIRE  = type(firesignal)      == "function"
 local getUV     = (type(debug)=="table" and type(debug.getupvalues)=="function" and debug.getupvalues)
                or (type(getupvalues)=="function" and getupvalues) or nil
 
--- ── BALL DETECTION — workspace.Balls folder (confirmed from BallController) ─
--- The game stores all balls in workspace.Balls
+-- ── BALL DETECTION — workspace.balls folder (lowercase, confirmed from Dex) ─
+-- Ball objects are named "balls2" inside workspace.balls
 -- When ball.Target == LP.Name, it is aimed at us → parry now
-local ballsFolder = workspace:FindFirstChild("Balls")
+local ballsFolder = workspace:FindFirstChild("balls") or workspace:FindFirstChild("Balls")
 local currentBall = nil
 local watchedBalls = {}
 
 local function getBall()
     if currentBall and currentBall.Parent then return currentBall end
     currentBall = nil
-    -- Check workspace.Balls first
+    -- Check workspace.balls first
     if ballsFolder then
         for _, v in pairs(ballsFolder:GetChildren()) do
-            if v:IsA("BasePart") then currentBall = v; return v end
+            local p = getBallPart and getBallPart(v) or (v:IsA("BasePart") and v or nil)
+            if p then currentBall = p; return p end
         end
     end
     -- Fallback: BallController.CurrentBall via getgc
@@ -296,21 +297,35 @@ local function watchBall(ball)
 end
 
 -- ── BROAD FALLBACK — scan workspace when ball not in Balls folder ──────────
--- Ball names seen in Anime Ball / Blade Ball
+-- Ball names confirmed from Dex: "balls2" inside workspace.balls
+-- Also handle blue ball / yellow ball variants and generic names
 local BALL_NAMES = {
-    ["Anime Ball"]=true,["AnimeBall"]=true,["Ball"]=true,["blade"]=true,
-    ["BladeBall"]=true,["ball"]=true,["TheBall"]=true,
+    ["balls2"]=true,["Anime Ball"]=true,["AnimeBall"]=true,["Ball"]=true,
+    ["blade"]=true,["BladeBall"]=true,["ball"]=true,["TheBall"]=true,
+    ["blue ball"]=true,["yellow ball"]=true,["blue ball0"]=true,["yellow ball2"]=true,
 }
+local function getBallPart(obj)
+    -- obj might be a Model — find the primary or first BasePart inside it
+    if obj:IsA("BasePart") then return obj end
+    if obj:IsA("Model") then
+        return obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart", true)
+    end
+    return nil
+end
 local function scanWorkspace()
-    -- Try workspace.Balls first
+    -- Try workspace.balls first (lowercase, confirmed from Dex)
     if ballsFolder then
         for _, v in pairs(ballsFolder:GetChildren()) do
-            if v:IsA("BasePart") then return v end
+            local p = getBallPart(v)
+            if p then return p end
         end
     end
-    -- Broad workspace scan by name or shape
+    -- Broad workspace scan by name or sphere shape + moving
     for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BasePart") and (BALL_NAMES[v.Name] or v.Shape == Enum.PartType.Ball) then
+        if BALL_NAMES[v.Name] then
+            local p = getBallPart(v)
+            if p and p.AssemblyLinearVelocity.Magnitude > 5 then return p end
+        elseif v:IsA("BasePart") and v.Shape == Enum.PartType.Ball then
             if v.AssemblyLinearVelocity.Magnitude > 5 then return v end
         end
     end
@@ -321,13 +336,15 @@ end
 local pendingRemove = {}
 if ballsFolder then
     for _, v in pairs(ballsFolder:GetChildren()) do
-        if v:IsA("BasePart") then watchBall(v) end
+        local p = getBallPart(v)
+        if p then watchBall(p) end
     end
     ballsFolder.ChildAdded:Connect(function(v)
-        if v:IsA("BasePart") then
-            pendingRemove[v] = nil  -- cancel any pending clear
-            currentBall = v
-            watchBall(v)
+        local p = getBallPart(v)
+        if p then
+            pendingRemove[p] = nil
+            currentBall = p
+            watchBall(p)
         end
     end)
     -- Grace period: ball sometimes reparents during clash — wait 0.5s before clearing
