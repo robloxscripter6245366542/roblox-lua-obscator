@@ -60,8 +60,15 @@ local function isBall(v)
 end
 
 -- Event-driven primary detection
+local lastBallName = ""
 workspace.DescendantAdded:Connect(function(v)
-    if isBall(v) then ballCache = v end
+    if isBall(v) then
+        ballCache = v
+        if v.Name ~= lastBallName then
+            lastBallName = v.Name
+            print("[AP] Ball detected: "..v.Name.." ("..v.ClassName..")")
+        end
+    end
 end)
 workspace.DescendantRemoving:Connect(function(v)
     if v == ballCache then ballCache = nil end
@@ -188,15 +195,20 @@ local function findBlockFn()
     return nil
 end
 
--- Retry finding block fn every 3s until found
+-- Retry finding block fn every 3s until found, notify result
 local function keepFindingBlockFn()
     if cachedBlockFn then return end
     task.spawn(function()
+        local attempts = 0
         while not cachedBlockFn do
             findBlockFn()
+            attempts = attempts + 1
+            if attempts == 3 and not cachedBlockFn then
+                notify("Auto Parry","Block fn not found yet — stay in round",4)
+            end
             task.wait(3)
         end
-        notify("Auto Parry","Block fn found — active!",3)
+        notify("Auto Parry ✓","Block fn locked — parry active!",4)
         print("[AP] Block fn locked in ✓")
     end)
 end
@@ -393,11 +405,129 @@ RS.Heartbeat:Connect(function()
 end)
 
 -- ─────────────────────────────────────────────────────────────────────────────
+--  STARTUP CHECKS — notify which APIs are missing
+-- ─────────────────────────────────────────────────────────────────────────────
+local missing = {}
+if not HAS_GC    then table.insert(missing,"getgc") end
+if not HAS_CONNS then table.insert(missing,"getconnections") end
+if not HAS_ENV   then table.insert(missing,"getsenv") end
+if not HAS_UV    then table.insert(missing,"getupvalues") end
+if type(firesignal)~="function"     then table.insert(missing,"firesignal") end
+if type(hookmetamethod)~="function" then table.insert(missing,"hookmetamethod") end
+if type(hookfunction)~="function"   then table.insert(missing,"hookfunction") end
+if type(queue_on_teleport)~="function" then table.insert(missing,"queue_on_teleport") end
+if type(readfile)~="function"  then table.insert(missing,"readfile") end
+if type(writefile)~="function" then table.insert(missing,"writefile") end
+
+-- Show missing APIs in one notification (staggered so they don't stack)
+task.spawn(function()
+    if #missing == 0 then
+        notify("Auto Parry ✓","All APIs available — full power",4)
+        print("[AP] All APIs available")
+    else
+        -- Split into groups of 3 so text fits
+        local lines = {}
+        for i=1,#missing,3 do
+            table.insert(lines, table.concat({missing[i], missing[i+1] or "", missing[i+2] or ""}," "):gsub("%s+$",""))
+        end
+        notify("Auto Parry","Missing "..#missing.." APIs:",5)
+        task.wait(1)
+        for _,line in ipairs(lines) do
+            notify("Not Available",line,5)
+            task.wait(1.2)
+        end
+        -- Critical warning if getconnections missing (needed for Block fn strategy 1+2)
+        if not HAS_CONNS then
+            task.wait(0.5)
+            notify("⚠ Warning","getconnections missing — parry may be weaker",6)
+        end
+        if not HAS_GC then
+            task.wait(0.5)
+            notify("⚠ Warning","getgc missing — Block fn harder to find",6)
+        end
+    end
+    print("[AP] Missing APIs ("..#missing.."): "..table.concat(missing,", "))
+end)
+
+-- ─────────────────────────────────────────────────────────────────────────────
+--  DIAGNOSIS — after 10s, report everything that might stop parry from working
+-- ─────────────────────────────────────────────────────────────────────────────
+task.delay(10, function()
+    local problems = {}
+    if not cachedBlockFn    then table.insert(problems,"Block fn NOT found") end
+    if not findBall()       then table.insert(problems,"No ball detected") end
+    if not findBlockRemote() then table.insert(problems,"Block remote NOT found") end
+    if not cachedBlockBtn   then
+        -- try to find it now
+        for _,v in pairs(PGui:GetDescendants()) do
+            if v.Name=="Block" and (v:IsA("TextButton") or v:IsA("ImageButton") or v:IsA("GuiButton")) then
+                cachedBlockBtn=v; break
+            end
+        end
+        if not cachedBlockBtn then table.insert(problems,"Block button NOT found") end
+    end
+
+    if #problems == 0 then
+        notify("Auto Parry ✓","Everything ready — parry is active",4)
+        print("[AP] Diagnosis: all OK")
+    else
+        for i,p in ipairs(problems) do
+            task.delay((i-1)*1.5, function()
+                notify("Parry Issue",p,6)
+                print("[AP] PROBLEM: "..p)
+            end)
+        end
+        task.delay(#problems*1.5, function()
+            notify("Parry Tip","Join a round then re-run if issues persist",6)
+        end)
+    end
+end)
+
+-- ─────────────────────────────────────────────────────────────────────────────
 --  START
 -- ─────────────────────────────────────────────────────────────────────────────
 task.spawn(keepFindingBlockFn)
-notify("Auto Parry","Running — join a round",3)
-print("[AP] Started. HAS_GC="..tostring(HAS_GC).." HAS_CONNS="..tostring(HAS_CONNS).." HAS_ENV="..tostring(HAS_ENV))
+notify("Auto Parry","Started — join a round to activate",3)
+
+-- Fire one test parry after 1s to confirm methods work in lobby
+task.delay(1, function()
+    local fired = {}
+    -- Block fn
+    pcall(function()
+        local fn = findBlockFn()
+        if type(fn)=="function" then fn(); table.insert(fired,"BlockFn") end
+    end)
+    -- Remote
+    pcall(function()
+        local r = findBlockRemote()
+        if r then r:InvokeServer(0); table.insert(fired,"Remote") end
+    end)
+    -- VirtualUser
+    local btn = cachedBlockBtn
+    if not btn then
+        for _,v in pairs(PGui:GetDescendants()) do
+            if v.Name=="Block" and (v:IsA("TextButton") or v:IsA("ImageButton") or v:IsA("GuiButton")) then
+                btn=v; cachedBlockBtn=btn; break
+            end
+        end
+    end
+    if btn then
+        pcall(function()
+            local pos = btn.AbsolutePosition + btn.AbsoluteSize*0.5
+            VU:Button1Down(pos, cam.CFrame); task.wait(0.04); VU:Button1Up(pos, cam.CFrame)
+        end)
+        table.insert(fired,"VirtualUser")
+    end
+
+    if #fired > 0 then
+        notify("Auto Parry — Test","Fired: "..table.concat(fired,", "),4)
+        print("[AP] Test fire OK: "..table.concat(fired,", "))
+    else
+        notify("Auto Parry — Test","No methods fired yet (join a round first)",5)
+        print("[AP] Test fire: nothing fired — no sword in lobby")
+    end
+end)
+print("[AP] Started. GC="..tostring(HAS_GC).." CONNS="..tostring(HAS_CONNS).." ENV="..tostring(HAS_ENV).." UV="..tostring(HAS_UV~=nil))
 
 end)
 if not ok then warn("[AutoParry] CRASH: "..tostring(err)) end
