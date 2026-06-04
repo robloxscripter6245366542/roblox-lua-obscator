@@ -22,10 +22,12 @@ local function getChar() return LP.Character end
 local function getHRP()  local c=getChar(); return c and c:FindFirstChild("HumanoidRootPart") end
 
 -- ── UNC ────────────────────────────────────────────────────────────────────
-local HAS_GC    = type(getgc)           == "function"
-local HAS_CONNS = type(getconnections)  == "function"
-local HAS_ENV   = type(getsenv)         == "function"
-local HAS_FIRE  = type(firesignal)      == "function"
+local HAS_GC    = type(getgc)            == "function"
+local HAS_CONNS = type(getconnections)   == "function"
+local HAS_ENV   = type(getsenv)          == "function"
+local HAS_FIRE  = type(firesignal)       == "function"
+local HAS_HOOK  = type(hookmetamethod)   == "function"
+local HAS_NCM   = type(getnamecallmethod)== "function"
 local getUV     = (type(debug)=="table" and type(debug.getupvalues)=="function" and debug.getupvalues)
                or (type(getupvalues)=="function" and getupvalues) or nil
 
@@ -218,6 +220,27 @@ local function findRemote()
             blockRemote=v; notify("Remote",v:GetFullName(),3); return v
         end
     end
+end
+
+-- ── HOOKMETAMETHOD — auto-capture Block remote on first real parry ──────────
+-- The framework wraps v_u_21.Block so we can't find it by path scan alone.
+-- Intercept __namecall: the moment any RemoteFunction named "Block" is :Invoke()d
+-- (by the game's own SwordController), we capture it automatically.
+if HAS_HOOK and HAS_NCM then
+    pcall(function()
+        local orig = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if not blockRemote
+            and method == "InvokeServer"
+            and typeof(self) == "Instance"
+            and pcall(function() return self:IsA("RemoteFunction") end)
+            and self.Name == "Block" then
+                blockRemote = self
+                notify("Remote","Auto-hooked: "..self:GetFullName(),4)
+            end
+            return orig(self, ...)
+        end))
+    end)
 end
 
 -- ── PING ───────────────────────────────────────────────────────────────────
