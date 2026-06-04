@@ -121,60 +121,161 @@ local function findBall()
 end
 
 -- ════════════════════════════════════════════════════════════════════════
---  PARRY SYSTEM — Anime Ball specific (from SwordController decompile)
+--  PARRY SYSTEM — Anime Ball (from SwordController decompile)
 --
---  SwordController path: PlayerScripts.Scripts.SwordController
---  Block call:  v_u_21.Block:Invoke(cam.CFrame.LookVector.Y)
---    where v_u_21 = framework:Fetch("SwordService") → RemoteFunction "Block"
---  Block button: PlayerGui.HUD.Actions.MainButtons.Block
---  Cooldown:     v_u_1.LastBlock = { tick(), swordCooldown }
+--  Key facts confirmed from decompile:
+--    • v_u_1.Block() is the parry function (local table, NOT in getsenv globals)
+--    • It calls:  v_u_21.Block:Invoke(cam.CFrame.LookVector.Y)
+--    • TouchTapInWorld connection CLOSES OVER v_u_1 → use getupvalues
+--    • ConnectAction connects Block button → v_u_1.Block directly
+--    • Button path: PlayerGui.HUD.Actions.MainButtons.Block
+--    • Remote: RemoteFunction named "Block" in ReplicatedStorage (SwordService)
 -- ════════════════════════════════════════════════════════════════════════
 
--- ── Cache ────────────────────────────────────────────────────────────────
-local cachedSwordEnv    = nil   -- getsenv result for SwordController
-local cachedBlockRemote = nil   -- the Block RemoteFunction
-local cachedBlockButton = nil   -- PlayerGui.HUD.Actions.MainButtons.Block
-local parryHookClean    = nil
+local cachedBlockFn     = nil   -- the real v_u_1.Block function once found
+local cachedBlockRemote = nil   -- Block RemoteFunction
+local cachedBlockButton = nil   -- HUD.Actions.MainButtons.Block
+local hookedParry       = false
+local origNamecall      = nil
 
--- ── Method A: getsenv SwordController → call Block() directly ────────────
--- Most reliable: bypasses all anti-cheat since it runs the real game function
-local function getSwordEnv()
-    if cachedSwordEnv then return cachedSwordEnv end
-    if not CAPS.getsenv then return nil end
-    local ok2, ps = pcall(function() return LP:WaitForChild("PlayerScripts",3) end)
-    if not (ok2 and ps) then return nil end
-    local scripts = ps:FindFirstChild("Scripts")
-    if not scripts then return nil end
-    local sc = scripts:FindFirstChild("SwordController")
-    if not sc then return nil end
-    local ok3, env = pcall(getsenv, sc)
-    if not (ok3 and env) then return nil end
-    cachedSwordEnv = env
-    return env
-end
+-- ── Utility: safely get upvalues of a closure ────────────────────────────
+-- Tries debug.getupvalues, then global getupvalues (Delta exposes this)
+local getUV = (type(debug)=="table" and type(debug.getupvalues)=="function" and debug.getupvalues)
+           or (type(getupvalues)=="function" and getupvalues)
+           or nil
 
-local function parryViaSwordEnv()
-    local env = getSwordEnv()
-    if not env then return false end
-    -- The module returns v_u_1 table; it's stored as a return value
-    -- Try common keys: the table itself might be in a global or the Block fn directly
-    local blockFn = nil
-    for _,v in pairs(env) do
-        if type(v)=="table" and type(v.Block)=="function" then
-            blockFn = v.Block; break
+local function upvalueSearch(fn)
+    -- Scans all upvalues of fn recursively (1 level) for a table with .Block fn
+    if not getUV or type(fn)~="function" then return nil end
+    local ok2, uvs = pcall(getUV, fn)
+    if not (ok2 and uvs) then return nil end
+    for _,uv in pairs(uvs) do
+        if type(uv)=="table" and type(uv.Block)=="function" then
+            return uv.Block
         end
     end
-    if not blockFn then
-        -- Try direct function named Block
-        if type(env.Block)=="function" then blockFn = env.Block end
-    end
-    if blockFn then pcall(blockFn); return true end
-    return false
+    return nil
 end
 
--- ── Method B: Invoke the Block RemoteFunction with correct Y param ────────
--- game:GetService("ReplicatedStorage") → scan for RemoteFunction "Block"
--- Call: remote:InvokeServer(workspace.CurrentCamera.CFrame.LookVector.Y)
+-- ── Find the real Block function (4 strategies) ──────────────────────────
+local function findBlockFn()
+    if cachedBlockFn then return cachedBlockFn end
+
+    -- Strategy 1: getconnections(UIS.TouchTapInWorld)
+    -- SwordController.Start() connects TouchTapInWorld → anonymous fn that captures v_u_1
+    -- getupvalues on that fn → v_u_1 table → .Block
+    if CAPS.getconnections then
+        local ok2, conns = pcall(getconnections, UIS.TouchTapInWorld)
+        if ok2 and conns then
+            for _,conn in ipairs(conns) do
+                local fn; pcall(function() fn=conn.Function end)
+                if type(fn)=="function" then
+                    local blockFn = upvalueSearch(fn)
+                    if blockFn then
+                        print("[AnimeBallHub] Block fn found via TouchTapInWorld upvalues")
+                        cachedBlockFn = blockFn; return blockFn
+                    end
+                end
+            end
+        end
+    end
+
+    -- Strategy 2: getconnections on Block button events
+    -- ConnectAction(blockBtn, v_u_1.Block, ...) connects directly to v_u_1.Block
+    local function getBlockBtn()
+        if cachedBlockButton and cachedBlockButton.Parent then return cachedBlockButton end
+        local hud = PGui:FindFirstChild("HUD"); if not hud then return nil end
+        local act = hud:FindFirstChild("Actions"); if not act then return nil end
+        local mb  = act:FindFirstChild("MainButtons"); if not mb then return nil end
+        local btn = mb:FindFirstChild("Block")
+        if btn then cachedBlockButton=btn end
+        return btn
+    end
+    local btn = getBlockBtn()
+    if btn and CAPS.getconnections then
+        for _, evName in ipairs({"Activated","MouseButton1Click","MouseButton1Down","InputBegan","Touched"}) do
+            local ok3, conns = pcall(function() return getconnections(btn[evName]) end)
+            if ok3 and conns then
+                for _,conn in ipairs(conns) do
+                    local fn; pcall(function() fn=conn.Function end)
+                    if type(fn)=="function" then
+                        -- Could be v_u_1.Block directly, or a wrapper — check upvalues too
+                        local uv = upvalueSearch(fn)
+                        local chosen = uv or fn
+                        -- Verify it looks like Block (has no required args)
+                        print("[AnimeBallHub] Block fn found via button "..evName.." connection")
+                        cachedBlockFn = chosen; return chosen
+                    end
+                end
+            end
+        end
+    end
+
+    -- Strategy 3: getsenv — v_u_1 is a local so won't be in globals,
+    -- but Delta's getsenv may expose upvalue scope
+    if CAPS.getsenv then
+        local sc
+        -- Try both the running copy and the StarterPlayer template
+        local paths = {
+            function() return LP:WaitForChild("PlayerScripts",2):WaitForChild("Scripts",2):WaitForChild("SwordController",2) end,
+            function() return game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts",2):WaitForChild("Scripts",2):WaitForChild("SwordController",2) end,
+        }
+        for _,pathFn in ipairs(paths) do
+            pcall(function() sc = pathFn() end)
+            if sc then
+                local ok3,env = pcall(getsenv,sc)
+                if ok3 and env then
+                    for _,v in pairs(env) do
+                        if type(v)=="table" and type(v.Block)=="function" then
+                            print("[AnimeBallHub] Block fn found via getsenv")
+                            cachedBlockFn = v.Block; return v.Block
+                        end
+                    end
+                    -- Also check if getsenv exposed the return value
+                    local ret = rawget(env, 1) or env["\1"]  -- some executors store return in slot 1
+                    if type(ret)=="table" and type(ret.Block)=="function" then
+                        cachedBlockFn = ret.Block; return ret.Block
+                    end
+                end
+            end
+        end
+    end
+
+    -- Strategy 4: getgc scan — v_u_1 table will be in GC as a table with .Block fn
+    if CAPS.getgc then
+        local ok2, gc = pcall(getgc, false)  -- false = tables only
+        if ok2 and gc then
+            for _,v in ipairs(gc) do
+                if type(v)=="table" and type(v.Block)=="function"
+                and type(v.ShowShield)=="function" and type(v.GetSwordAnim)=="function" then
+                    print("[AnimeBallHub] Block fn found via getgc table scan")
+                    cachedBlockFn = v.Block; return v.Block
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+-- ── Block button finder (public, used by VirtualUser fallback) ────────────
+local function findExactButton()
+    if cachedBlockButton and cachedBlockButton.Parent then return cachedBlockButton end
+    local hud = PGui:FindFirstChild("HUD"); if not hud then return nil end
+    local act = hud:FindFirstChild("Actions"); if not act then return nil end
+    local mb  = act:FindFirstChild("MainButtons"); if not mb then return nil end
+    local btn = mb:FindFirstChild("Block")
+    if not btn then
+        -- scan entire PlayerGui for any element named "Block"
+        for _,v in pairs(PGui:GetDescendants()) do
+            if v.Name=="Block" then btn=v; break end
+        end
+    end
+    if btn then cachedBlockButton=btn end
+    return btn
+end
+
+-- ── Block RemoteFunction (SwordService.Block via framework:Fetch) ─────────
 local function findBlockRemote()
     if cachedBlockRemote and cachedBlockRemote.Parent then return cachedBlockRemote end
     local function scan(obj)
@@ -183,47 +284,13 @@ local function findBlockRemote()
             if v:IsA("RemoteFunction") and v.Name=="Block" then return v end
         end
     end
-    -- Anime Ball specific search order
-    cachedBlockRemote = scan(RS_STORAGE)
-        or scan(game:GetService("ReplicatedStorage"))
+    cachedBlockRemote = scan(RS_STORAGE) or scan(game:GetService("ReplicatedStorage"))
     return cachedBlockRemote
 end
 
-local function parryViaBlockRemote()
-    local remote = findBlockRemote()
-    if not remote then return false end
-    -- Pass camera LookVector.Y exactly as SwordController does
-    pcall(function()
-        remote:InvokeServer(cam.CFrame.LookVector.Y)
-    end)
-    return true
-end
-
--- ── Method C: VirtualUser on exact button path ────────────────────────────
--- PlayerGui → HUD → Actions → MainButtons → Block
-local function findExactButton()
-    if cachedBlockButton and cachedBlockButton.Parent then return cachedBlockButton end
-    local hud = PGui:FindFirstChild("HUD")
-    if not hud then return nil end
-    local actions = hud:FindFirstChild("Actions")
-    if not actions then return nil end
-    local mb = actions:FindFirstChild("MainButtons")
-    if not mb then return nil end
-    local btn = mb:FindFirstChild("Block")
-    if btn then cachedBlockButton = btn end
-    return btn
-end
-
-local function parryViaExactButton()
+-- ── VirtualUser button press ──────────────────────────────────────────────
+local function parryViaVirtualUser()
     local btn = findExactButton()
-    -- Fallback: search for any button named "Block" in PlayerGui
-    if not btn then
-        for _,v in pairs(PGui:GetDescendants()) do
-            if v.Name=="Block" and (v:IsA("TextButton") or v:IsA("ImageButton") or v:IsA("Frame")) then
-                btn=v; break
-            end
-        end
-    end
     if not btn then return false end
     local pos = btn.AbsolutePosition + btn.AbsoluteSize*0.5
     pcall(function()
@@ -234,35 +301,37 @@ local function parryViaExactButton()
     return true
 end
 
--- ── Method D: getconnections on ball.Touched ─────────────────────────────
+-- ── RemoteFunction invoke ────────────────────────────────────────────────
+local function parryViaBlockRemote()
+    local remote = findBlockRemote()
+    if not remote then return false end
+    pcall(function() remote:InvokeServer(cam.CFrame.LookVector.Y) end)
+    return true
+end
+
+-- ── ball.Touched getconnections ──────────────────────────────────────────
 local function parryConnections(ball)
     if not CAPS.getconnections or not ball then return false end
     local hrp = getHRP(); if not hrp then return false end
     local ok2,conns = pcall(getconnections, ball.Touched)
     if not ok2 then return false end
     for _,conn in ipairs(conns) do
-        local fn = rawget(conn,"Function")
-        if not fn then pcall(function() fn=conn.Function end) end
+        local fn; pcall(function() fn=conn.Function end)
         if type(fn)=="function" then pcall(fn, hrp) end
         if CAPS.firesignal then pcall(firesignal, ball.Touched, hrp) end
     end
     return true
 end
 
--- ── Method E: hookmetamethod intercept ───────────────────────────────────
-local hookedParry  = false
-local origNamecall = nil
+-- ── hookmetamethod (passthrough — ensures Block invoke always reaches server)
 local function installHook()
     if hookedParry or not CAPS.hookmetamethod then return end
     hookedParry = true
     pcall(function()
         origNamecall = hookmetamethod(game,"__namecall",function(self,...)
             local m = getnamecallmethod and getnamecallmethod() or ""
-            if (m=="InvokeServer" or m=="FireServer") and typeof(self)=="Instance" then
-                local n=self.Name:lower()
-                if n=="block" or n:find("parr") or n:find("deflect") then
-                    -- always let it pass — don't block the call
-                end
+            if (m=="InvokeServer") and typeof(self)=="Instance" and self.Name=="Block" then
+                -- Let the real call through unmodified
             end
             return origNamecall(self,...)
         end)
@@ -274,69 +343,9 @@ local function removeHook()
     hookedParry=false
 end
 
--- ── Sword action finder (legacy fallback) ────────────────────────────────
-local function findSwordAction()
-    -- getsenv-based sword module scan (fallback if SwordController path changed)
-    if not CAPS.getsenv then return nil end
-    local char = getChar(); if not char then return nil end
-    for _,s in pairs(char:GetDescendants()) do
-        if s:IsA("LocalScript") or s:IsA("Script") then
-            local ok2,env=pcall(getsenv,s)
-            if ok2 and env then
-                for k,v in pairs(env) do
-                    if type(v)=="table" and type(v.Block)=="function" then return v.Block end
-                end
-            end
-        end
-    end
-end
-
--- Method C: getconnections — fire the ball's Touched signal connections
-local function parryConnections(ball)
-    if not CAPS.getconnections or not ball then return false end
-    local hrp = getHRP()
-    if not hrp then return false end
-    local ok2,conns = pcall(getconnections, ball.Touched)
-    if not ok2 then return false end
-    for _,conn in ipairs(conns) do
-        local fn = rawget(conn,"Function") or (pcall(function() return conn.Function end) and conn.Function)
-        if type(fn)=="function" then
-            pcall(fn, hrp)
-        end
-        -- firesignal approach
-        if CAPS.firesignal then
-            pcall(firesignal, ball.Touched, hrp)
-        end
-    end
-    return true
-end
-
--- Method D: hookmetamethod to auto-succeed parry checks
-local hookedParry = false
-local origNamecall = nil
-local function installHook()
-    if hookedParry or not CAPS.hookmetamethod then return end
-    hookedParry = true
-    pcall(function()
-        origNamecall = hookmetamethod(game,"__namecall",function(self,...)
-            local m = getnamecallmethod and getnamecallmethod() or ""
-            -- if game is calling FireServer on a parry/deflect remote, let it pass
-            if m=="FireServer" or m=="InvokeServer" then
-                local n = (typeof(self)=="Instance") and self.Name:lower() or ""
-                if n:find("parr") or n:find("deflect") or n:find("block") or n:find("reflect") then
-                    -- succeed silently
-                end
-            end
-            return origNamecall(self,...)
-        end)
-    end)
-end
-
-local function removeHook()
-    if not hookedParry or not origNamecall then return end
-    pcall(function() hookmetamethod(game,"__namecall",origNamecall) end)
-    hookedParry = false
-end
+-- Public aliases used elsewhere in the file
+local getSwordEnv   = function() return cachedBlockFn and {Block=cachedBlockFn} or nil end
+local findSwordAction = function() return findBlockFn() end
 
 -- ════════════════════════════════════════════════════════════════════════
 --  FEATURE IMPLEMENTATIONS
@@ -391,21 +400,18 @@ local function doParry(ball)
     parryInCooldown = true
 
     -- Priority order (most game-accurate → most generic):
-    -- A: getsenv Block() — runs the real SwordController.Block function
-    local hitA = parryViaSwordEnv()
+    -- A: Call v_u_1.Block() directly (getconnections/getgc strategy)
+    local hitA = false
+    pcall(function()
+        local fn = findBlockFn()
+        if type(fn)=="function" then fn(); hitA=true end
+    end)
     -- B: InvokeServer Block RemoteFunction with correct Y param
     local hitB = parryViaBlockRemote()
     -- C: VirtualUser on PlayerGui.HUD.Actions.MainButtons.Block
-    if not (hitA or hitB) then parryViaExactButton() end
+    if not (hitA or hitB) then parryViaVirtualUser() end
     -- D: getconnections on ball.Touched (supplement, not replace)
     parryConnections(ball)
-    -- E: fallback legacy sword action scan
-    if not (hitA or hitB) then
-        pcall(function()
-            local fn = findSwordAction()
-            if type(fn)=="function" then fn() end
-        end)
-    end
 
     task.delay(cd, function() parryInCooldown = false end)
 end
