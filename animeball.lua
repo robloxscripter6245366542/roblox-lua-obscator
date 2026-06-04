@@ -191,30 +191,46 @@ task.spawn(function()
 end)
 
 -- ── BLOCK REMOTE ───────────────────────────────────────────────────────────
--- From decompile: v_u_21.Block:Invoke(cam.CFrame.LookVector.Y)
--- v_u_21 = framework:Fetch("SwordService") → lives in ReplicatedStorage.Storage
+-- Framework: NetRay (ReplicatedStorage.NetRay)
+-- All NetRay remotes live in ReplicatedStorage.NetRayRemotes folder
+-- v_u_21 = framework:Fetch("SwordService") → NetRay client wrapper
+-- v_u_21.Block:Invoke(Y) → NetRay's custom Invoke → RemoteFunction:InvokeServer(Y)
 local function findRemote()
     if blockRemote and blockRemote.Parent then return blockRemote end
     local RS = game:GetService("ReplicatedStorage")
-    -- Priority: Storage.SwordService.Block (most likely path from decompile)
-    local stor = RS:FindFirstChild("Storage")
-    if stor then
-        -- Check SwordService subfolder first
-        local svc = stor:FindFirstChild("SwordService")
+    -- Priority 1: NetRayRemotes folder (confirmed from NetRay framework decompile)
+    local netR = RS:FindFirstChild("NetRayRemotes")
+    if netR then
+        -- Try "Block" directly
+        local b = netR:FindFirstChild("Block")
+        if b and b:IsA("RemoteFunction") then
+            blockRemote=b; notify("Remote","NetRayRemotes.Block",3); return b
+        end
+        -- Try SwordService subfolder → Block
+        local svc = netR:FindFirstChild("SwordService")
         if svc then
-            local b = svc:FindFirstChild("Block")
-            if b and b:IsA("RemoteFunction") then
-                blockRemote=b; notify("Remote","SwordService.Block",3); return b
+            local b2 = svc:FindFirstChild("Block")
+            if b2 and b2:IsA("RemoteFunction") then
+                blockRemote=b2; notify("Remote","NetRayRemotes.SwordService.Block",3); return b2
             end
         end
-        -- Scan all of Storage for any RemoteFunction named Block
+        -- Scan all of NetRayRemotes for any RF named Block
+        for _, v in pairs(netR:GetDescendants()) do
+            if v:IsA("RemoteFunction") and v.Name=="Block" then
+                blockRemote=v; notify("Remote",v:GetFullName(),3); return v
+            end
+        end
+    end
+    -- Priority 2: Storage scan
+    local stor = RS:FindFirstChild("Storage")
+    if stor then
         for _, v in pairs(stor:GetDescendants()) do
             if v:IsA("RemoteFunction") and v.Name=="Block" then
                 blockRemote=v; notify("Remote",v:GetFullName(),3); return v
             end
         end
     end
-    -- Fallback: scan all of ReplicatedStorage
+    -- Fallback: full RS scan
     for _, v in pairs(RS:GetDescendants()) do
         if (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) and v.Name=="Block" then
             blockRemote=v; notify("Remote",v:GetFullName(),3); return v
@@ -222,21 +238,23 @@ local function findRemote()
     end
 end
 
--- ── HOOKMETAMETHOD — auto-capture Block remote on first real parry ──────────
--- The framework wraps v_u_21.Block so we can't find it by path scan alone.
--- Intercept __namecall: the moment any RemoteFunction named "Block" is :Invoke()d
--- (by the game's own SwordController), we capture it automatically.
+-- ── HOOKMETAMETHOD — auto-capture Block remote via NetRay's internal calls ──
+-- NetRay wraps RemoteFunctions — v_u_21.Block:Invoke(Y) calls InvokeServer internally.
+-- We intercept that internal InvokeServer call from NetRayRemotes to capture the remote.
 if HAS_HOOK and HAS_NCM then
     pcall(function()
         local orig = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             local method = getnamecallmethod()
-            if not blockRemote
-            and method == "InvokeServer"
-            and typeof(self) == "Instance"
-            and pcall(function() return self:IsA("RemoteFunction") end)
-            and self.Name == "Block" then
-                blockRemote = self
-                notify("Remote","Auto-hooked: "..self:GetFullName(),4)
+            if not blockRemote and method == "InvokeServer" then
+                local ok, isRF = pcall(function() return self:IsA("RemoteFunction") end)
+                if ok and isRF then
+                    local full = self:GetFullName()
+                    -- Capture if it's in NetRayRemotes or is named Block
+                    if full:find("NetRayRemotes") or self.Name == "Block" then
+                        blockRemote = self
+                        notify("Remote","Captured: "..full, 4)
+                    end
+                end
             end
             return orig(self, ...)
         end))
@@ -255,27 +273,28 @@ end
 
 -- ── FIRE ALL PARRY METHODS ─────────────────────────────────────────────────
 local function fireBlock(ball)
-    -- Correct argument from decompile: cam.CFrame.LookVector.Y
     local lookY = cam.CFrame.LookVector.Y
+    local usedBlockFn = false
 
-    -- 1. Direct Block() via v_u_1.Block() + cooldown bypass
+    -- 1. v_u_1.Block() — best method, handles NetRay internally + cooldown bypass
     pcall(function()
         local fn = findBlockFn()
         if type(fn)=="function" then
-            -- Reset LastBlock so the game's cooldown check passes every time
             if swordCtrl then swordCtrl.LastBlock = nil end
             fn()
+            usedBlockFn = true
         end
     end)
-    -- 2. RemoteFunction: v_u_21.Block:InvokeServer(cam.CFrame.LookVector.Y)
-    pcall(function()
-        local r = findRemote(); if not r then return end
-        if r:IsA("RemoteFunction") then
-            r:InvokeServer(lookY)
-        else
-            r:FireServer(lookY)
-        end
-    end)
+
+    -- 2. Raw NetRay remote — only when blockFn not available (avoid double-firing)
+    --    v_u_1.Block() already calls InvokeServer internally so we skip if it ran
+    if not usedBlockFn then
+        pcall(function()
+            local r = findRemote(); if not r then return end
+            if r:IsA("RemoteFunction") then r:InvokeServer(lookY)
+            else r:FireServer(lookY) end
+        end)
+    end
     -- 3. VirtualUser button tap
     pcall(function()
         local btn = findBtn(); if not btn then return end
