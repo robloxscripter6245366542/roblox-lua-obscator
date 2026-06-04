@@ -195,13 +195,31 @@ end
 local function notify(t,m,d) pcall(function() SG:SetCore("SendNotification",{Title=t,Text=m,Duration=d or 3}) end) end
 
 -- ── require runner (uses every loader the executor supports) ──────────────────────
-local function runRequire(name,id,mode)
+-- opt may be a string ("plain"/"call") OR a table {mode=, method=, arg=}
+--   require(id)                      → mode "plain"
+--   require(id)()                    → mode "call"
+--   require(id).<method>(<arg>)      → method set, e.g. require(133...).woawsoc00l("name")
+local function resolveArg(a)
+    if a=="@me"   then return LP.Name end
+    if a=="@user" then return LP.Name end
+    if a=="@id"   then return LP.UserId end
+    return a
+end
+local function runRequire(name,id,opt)
     if not ENV.HAS_REQ then notify("Claude Hub","require() unavailable on "..ENV.name,4); return end
     if not id then notify("Claude Hub","No asset ID",3); return end
+    if type(opt)=="string" then opt={mode=opt} end
+    opt = opt or {}
     notify("Claude Hub","Loading "..name.."…",2)
     task.spawn(function()
         local ok2,res=pcall(function()
-            if mode=="call" then return require(id)() else return require(id) end
+            local m=require(id)
+            if opt.method then
+                local fn=m[opt.method]
+                if type(fn)~="function" then error("method '"..opt.method.."' not found") end
+                if opt.arg~=nil then return fn(resolveArg(opt.arg)) else return fn() end
+            elseif opt.mode=="call" then return m()
+            else return m end
         end)
         if ok2 then notify("Claude Hub",name.." loaded ✓",3)
         else notify("Load Failed",name..": "..tostring(res):sub(1,50),5) end
@@ -296,18 +314,35 @@ local function SectionHdr(parent,txt)
     local h=Lbl(parent,txt,UDim2.new(1,0,0,18),nil,C.MUTED,11,FB)
     h.TextXAlignment=Enum.TextXAlignment.Left; return h
 end
+-- build a readable call signature string for an entry
+local function callSig(s)
+    if s.method then
+        local a=""
+        if s.arg~=nil then
+            if type(s.arg)=="string" and s.arg:sub(1,1)~="@" then a='"'..s.arg..'"'
+            elseif s.arg=="@me" or s.arg=="@user" then a='"'..LP.Name..'"'
+            else a=tostring(resolveArg(s.arg)) end
+        end
+        return "require("..tostring(s.id)..")."..s.method.."("..a..")"
+    elseif s.mode=="call" then
+        return "require("..tostring(s.id)..")()"
+    end
+    return "require("..tostring(s.id)..")"
+end
 local function ScriptCard(parent,s)
-    local card=Frm(parent,UDim2.new(1,0,0,56),nil,C.CARD); corner(card,10); pad(card,6,6,12,8)
+    local card=Frm(parent,UDim2.new(1,0,0,60),nil,C.CARD); corner(card,10); pad(card,6,6,12,8)
     Lbl(card,s.name,UDim2.new(1,-96,0,18),nil,C.WHITE,13,FB)
     Lbl(card,(s.by and ("by "..s.by.."  ·  ") or "").."id "..tostring(s.id),
-        UDim2.new(1,-96,0,14),UDim2.new(0,0,0,20),C.MUTED,11,FN)
-    if s.note then Lbl(card,s.note,UDim2.new(1,-96,0,12),UDim2.new(0,0,0,38),C.MUTED,10,FN) end
+        UDim2.new(1,-96,0,14),UDim2.new(0,0,0,19),C.MUTED,11,FN)
+    -- call signature (monospace)
+    local sig=Lbl(card,callSig(s),UDim2.new(1,-96,0,13),UDim2.new(0,0,0,36),C.ACC2,10,FN)
+    sig.Font=Enum.Font.RobotoMono; sig.TextTruncate=Enum.TextTruncate.AtEnd
     Btn(card,"Run",UDim2.new(0,80,0,34),UDim2.new(1,-84,0.5,-17),C.ACCENT,function()
-        runRequire(s.name,s.id,s.mode or "plain")
+        runRequire(s.name,s.id,{mode=s.mode,method=s.method,arg=s.arg})
     end)
     if ENV.HAS_CLIP then
-        Btn(card,"Copy ID",UDim2.new(0,52,0,18),UDim2.new(1,-84,0,6),C.PANEL,function()
-            ENV.setClip(tostring(s.id)); notify("Claude Hub","ID copied!",1)
+        Btn(card,"Copy",UDim2.new(0,52,0,18),UDim2.new(1,-84,0,6),C.PANEL,function()
+            ENV.setClip(callSig(s)); notify("Claude Hub","Call copied!",1)
         end)
     end
 end
@@ -365,90 +400,118 @@ do
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
---  Category tab data — every entry is require(ID).  Verify before trusting.
+--  FEATURED — exact method-call format examples
+--  pattern:  require(ID).method("arg")     e.g. require(133...).woawsoc00l("name")
 -- ═══════════════════════════════════════════════════════════════════════════════
-local TABS = {
- {icon="🌐", name="Universal", scripts={
-    {name="Infinite Yield",      by="EdgeIY", id=5747978845},
-    {name="Dark Dex (explorer)", by="Moon",   id=11588107797},
-    {name="Hydroxide",           by="Upbolt", id=6588975471, note="remote spy"},
-    {name="Simple Spy",          by="exx",    id=7560252703, note="remote logger"},
-    {name="Remote Spy v3",       by="74Q",    id=6592246360},
-    {name="Owl Hub",             by="Owl",    id=5042889335},
-    {name="CMD-X Admin",         by="CMD-X",  id=7621980194},
+local FEATURED = {
+    {name="Featured Loader",  by="example", id=133464960745567, method="woawsoc00l", arg="name"},
+    {name="Loader (your key)",by="example", id=133464960745567, method="woawsoc00l", arg="@me", note="passes your username"},
+    {name="Plain require",    by="example", id=133464960745567},
+    {name="Call return",      by="example", id=133464960745567, mode="call"},
+}
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  Bulk dataset — hundreds of entries, generated from name lists.
+--  Each entry loads via require(ID).method("@me")  matching the featured format.
+--  IDs are PLACEHOLDERS (deterministic) — replace with verified IDs.
+-- ═══════════════════════════════════════════════════════════════════════════════
+local _idBase = 130000000000000
+local function gen(list, method, arg)
+    local out={}
+    for _,nm in ipairs(list) do
+        _idBase = _idBase + 1357913   -- deterministic step
+        out[#out+1] = {name=nm, id=_idBase, method=method, arg=arg}
+    end
+    return out
+end
+
+local CAT = {
+ {icon="⭐", name="Featured", custom=FEATURED},
+
+ {icon="🌐", name="Universal", method="Load", arg="@me", list={
+    "Infinite Yield","Dark Dex Explorer","Hydroxide Remote Spy","Simple Spy","Remote Spy v3",
+    "Owl Hub","CMD-X Admin","Nameless Admin","Vynixu Admin","Basic Admin","Adonis Loader",
+    "Universal Fly","Universal Noclip","Universal ESP","Universal Aimbot","Universal Teleport",
+    "Anti-Kick","Anti-AFK","God Mode (FE)","Btools Giver","Click Teleport","Walk on Walls",
  }},
- {icon="🎯", name="Aimbot", scripts={
-    {name="Universal Aimbot",    by="UAS",    id=8194423072},
-    {name="Silent Aim",          by="silent", id=8194420774},
-    {name="Camlock",             by="cam",    id=8194425331},
-    {name="Hitbox Expander",     by="hb",     id=8194427711},
+ {icon="🎯", name="Aimbot", method="Aim", arg="@me", list={
+    "Universal Aimbot","Silent Aim","Camlock","Hitbox Expander","Aim Assist","Triggerbot",
+    "Prediction Aim","Closest-to-cursor","FOV Aimbot","Wallbang Aim","No-Recoil","No-Spread",
+    "Auto-Fire","Lock Head","Lock Torso","Smooth Aim","Snap Aim","Visibility Check",
  }},
- {icon="👁", name="ESP", scripts={
-    {name="Universal ESP",       by="esp",    id=8194418011},
-    {name="Chams (through walls)",by="chams", id=8194419220},
-    {name="Player Tracers",      by="trace",  id=8194420113},
-    {name="Name + Health ESP",   by="esp",    id=8194421005},
+ {icon="👁", name="ESP", method="ESP", arg="@me", list={
+    "Universal ESP","Box ESP","Chams","Skeleton ESP","Tracers","Name ESP","Health ESP",
+    "Distance ESP","Team ESP","Item ESP","Chest ESP","Vehicle ESP","NPC ESP","Headdot ESP",
+    "Snaplines","Glow Outline","X-Ray","Radar / Minimap",
  }},
- {icon="🔫", name="FPS Games", scripts={
-    {name="Arsenal Hub",         by="ars",    id=8194430011},
-    {name="Phantom Forces",      by="pf",     id=8194431022},
-    {name="Big Paintball",       by="bpb",    id=8194432033},
-    {name="Bad Business",        by="bb",     id=8194433044},
-    {name="Krunker-style FPS",   by="fps",    id=8194434055},
+ {icon="🔫", name="FPS Games", method="Run", arg="@me", list={
+    "Arsenal","Phantom Forces","Big Paintball","Bad Business","Counter Blox","Frontlines",
+    "BlackHawk Rescue","War Tycoon","Rogue Lineage Combat","Energy Assault","Krunker Clone",
+    "Zombie Strike","Aimblox","Strucid","Island Royale","Polyguns","Typical Colors 2",
+    "Hardline","Hexagon","Innovation Arctic",
  }},
- {icon="🏗", name="Tycoons", scripts={
-    {name="Universal Tycoon Auto",by="tyc",   id=8194440011},
-    {name="Retail Tycoon 2",     by="rt2",    id=8194441022},
-    {name="Restaurant Tycoon",   by="rest",   id=8194442033},
-    {name="Theme Park Tycoon",   by="tpt",    id=8194443044},
+ {icon="🏗", name="Tycoons", method="Auto", arg="@me", list={
+    "Retail Tycoon 2","Restaurant Tycoon 2","Theme Park Tycoon 2","Lumber Tycoon 2",
+    "Clone Tycoon 2","Miner's Haven","Cash Grab Simulator","Two Player Military",
+    "Super Hero Tycoon","Pizza Factory Tycoon","Snow Shoveling","Airport Tycoon",
+    "School Tycoon","Mansion Tycoon","Gym Tycoon","Car Factory Tycoon",
  }},
- {icon="🌱", name="Simulators", scripts={
-    {name="Pet Simulator 99",    by="ps99",   id=8194450011},
-    {name="Bee Swarm Sim",       by="bss",    id=8194451022},
-    {name="Blox Fruits",         by="bf",     id=8194452033},
-    {name="Anime Fighting Sim",  by="afs",    id=8194453044},
-    {name="Bubble Gum Sim",      by="bgs",    id=8194454055},
-    {name="Mining Simulator 2",  by="ms2",    id=8194455066},
+ {icon="🌱", name="Simulators", method="Auto", arg="@me", list={
+    "Pet Simulator 99","Pet Simulator X","Bee Swarm Simulator","Blox Fruits","Anime Fighting Sim",
+    "Bubble Gum Simulator","Mining Simulator 2","Saber Simulator","Strongman Simulator",
+    "Ninja Legends","Unboxing Simulator","Weight Lifting Sim","Fishing Simulator",
+    "Treasure Quest","Dragon Adventures","World // Zero","Anime Adventures","All Star Tower Defense",
+    "Sorcerer Fighting Sim","Speed Simulator X","Clicker Simulator","Tapping Legends",
  }},
- {icon="🔪", name="Murder/PvP", scripts={
-    {name="Murder Mystery 2",    by="mm2",    id=8194460011},
-    {name="Da Hood",             by="dh",     id=8194461022},
-    {name="Counter Blox",        by="cb",     id=8194462033},
-    {name="Knife Ability Test",  by="kat",    id=8194463044},
+ {icon="🔪", name="Murder/PvP", method="Run", arg="@me", list={
+    "Murder Mystery 2","Survive the Killer","Knife Ability Test","Da Hood","The Streets",
+    "Criminality","Dahood Modded","Rumble Quest","Blade Ball","Combat Warriors",
+    "Sword Fights on Heights","Bloxy Bingo PvP","Critical Strike","Boxing Beta","Untitled Boxing",
  }},
- {icon="🏃", name="Obby/Parkour", scripts={
-    {name="Universal Obby Auto", by="obby",   id=8194470011},
-    {name="Tower of Hell",       by="toh",    id=8194471022},
-    {name="Speed Run 4",         by="sr4",    id=8194472033},
+ {icon="🏃", name="Obby/Parkour", method="Auto", arg="@me", list={
+    "Tower of Hell","Speed Run 4","Mega Fun Obby","Escape Running Obby","Parkour",
+    "Flood Escape 2","Be a Parkour Ninja","Tower of Misery","Steep Steps","Obby But You're on a Bike",
+    "Rainbow Obby","Difficulty Chart Obby","Long Hard Obby","Wipeout Obby",
  }},
- {icon="🚗", name="Vehicle", scripts={
-    {name="Jailbreak Hub",       by="jb",     id=8194480011},
-    {name="Mad City",            by="mc",     id=8194481022},
-    {name="Vehicle Legends",     by="vl",     id=8194482033},
-    {name="Car Dealership Tycoon",by="cdt",   id=8194483044},
+ {icon="🚗", name="Vehicle", method="Run", arg="@me", list={
+    "Jailbreak","Mad City","Vehicle Legends","Car Dealership Tycoon","Driving Empire",
+    "Ultimate Driving","Greenville","Vehicle Simulator","Roblox Drift","Southwest Florida",
+    "Emergency Response LC","Car Crushers 2","A Dusty Trip","Pacifico 2",
  }},
- {icon="🎮", name="Misc Games", scripts={
-    {name="Adopt Me Hub",        by="am",     id=8194490011},
-    {name="Brookhaven RP",       by="bh",     id=8194491022},
-    {name="Doors Hub",           by="doors",  id=8194492033},
-    {name="Evade",               by="evade",  id=8194493044},
-    {name="Rivals",              by="riv",    id=8194494055},
+ {icon="🎮", name="RP / Social", method="Run", arg="@me", list={
+    "Adopt Me","Brookhaven RP","Bloxburg","Royale High","MeepCity","Livetopia",
+    "Berry Avenue","Roville","Bloxburg Auto-Build","Robloxian High School","World of Stands",
+    "Your Bizarre Adventure","Project Slayers","Demonfall","Anime Last Stand",
  }},
- {icon="🛠", name="Utility", scripts={
-    {name="FPS Booster",         by="fps",    id=8194500011},
-    {name="Anti-AFK",            by="afk",    id=8194501022},
-    {name="Server Hop",          by="hop",    id=8194502033},
-    {name="Player Logger",       by="log",    id=8194503044},
-    {name="Fly / Noclip Util",   by="util",   id=8194504055},
+ {icon="😱", name="Horror", method="Run", arg="@me", list={
+    "DOORS","Mimic","Apeirophobia","The Mimic Chapter","Pressure","Specter",
+    "Survive the Night","Alone in a Dark House","Zombie Attack","Eyes the Horror Game",
+    "Identity Fraud","Dead Silence","The Maze","Forsaken",
+ }},
+ {icon="🏆", name="Tower Defense", method="Auto", arg="@me", list={
+    "Tower Defense Simulator","All Star Tower Defense","Anime Vanguards","Toilet Tower Defense",
+    "Critical Legends TD","Ultimate Tower Defense","Kaiju Universe TD","Tower Battles",
+    "Anime World Tower Defense","Astd Hub","Plants vs Brainrots",
+ }},
+ {icon="⛏", name="Survival", method="Run", arg="@me", list={
+    "Booga Booga Reborn","Islands","Lumber Tycoon 2","The Wild West","Apocalypse Rising 2",
+    "Westbound","DeadRails","A Dusty Trip","Stranded","Hunt: Showdown clone","Frostbite",
+ }},
+ {icon="🛠", name="Utility", method="Use", arg="@me", list={
+    "FPS Booster","Anti-AFK","Server Hop","Player Logger","Fly + Noclip","Infinite Jump",
+    "Speed + Gravity","Walkspeed Changer","Hitbox Expander","No-Clip Toggle","Click TP",
+    "Freecam","Spectate","Chat Logger","Join-Log Webhook","Auto-Rejoin","Low-Graphics",
  }},
 }
-for _,t in ipairs(TABS) do
+
+for _,t in ipairs(CAT) do
     local P=newTab(t.icon,t.name)
-    SectionHdr(P,"■ "..string.upper(t.name).."  ·  require() scripts")
-    for _,s in ipairs(t.scripts) do ScriptCard(P,s) end
-    do
+    local scripts = t.custom or gen(t.list, t.method, t.arg)
+    SectionHdr(P,"■ "..string.upper(t.name).."  ·  "..#scripts.." require() scripts")
+    for _,s in ipairs(scripts) do ScriptCard(P,s) end
+    if not t.custom then
         local w=Frm(P,UDim2.new(1,0,0,26),nil,C.PANEL); corner(w,8); pad(w,0,0,10,10)
-        Lbl(w,"IDs are placeholders — paste verified IDs in Custom tab.",UDim2.new(1,0,1,0),nil,C.MUTED,10,FN)
+        Lbl(w,"IDs here are PLACEHOLDERS — paste verified IDs in Custom tab.",UDim2.new(1,0,1,0),nil,C.MUTED,10,FN)
     end
 end
 
