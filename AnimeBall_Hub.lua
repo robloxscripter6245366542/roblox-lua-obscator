@@ -62,15 +62,20 @@ notify("Anime Ball Hub","Loaded — "..capScore.."/13 APIs available",4)
 -- ════════════════════════════════════════════════════════════════════════
 
 -- Anime Ball specific: game uses ReplicatedStorage.Storage.Swords for deflect
-local RS_STORAGE = pcall(function() return game:GetService("ReplicatedStorage").Storage end) and game:GetService("ReplicatedStorage"):FindFirstChild("Storage")
+local RS_STORAGE    = game:GetService("ReplicatedStorage"):FindFirstChild("Storage")
 local SWORDS_FOLDER = RS_STORAGE and RS_STORAGE:FindFirstChild("Swords")
 
 local BALL_NAMES = {
     "ball","blade","projectile","orb","sphere","anime","shot",
     "animeball","animeorb","energy","magic","fire","slash","wave"
 }
-local ballCache  = nil
-local hookedBalls = {}
+local ballCache        = nil
+local hookedBalls      = {}
+local parryBurstActive = false   -- forward-declared so DescendantRemoving can reset them
+local lastParryBall    = nil
+local ballVelSamples   = {}
+local ballVelAvg       = 0
+local lastBallPos2     = nil
 
 local function isBallPart(v)
     if not v:IsA("BasePart") then return false end
@@ -369,8 +374,6 @@ local function getAdaptiveCooldown(dist)
     else return 0.20 end
 end
 
--- Velocity-based prediction: returns estimated time-to-impact
-local lastBallPos2 = nil
 local lastBallTime = 0
 
 -- Ping cache (updated every 1 second, not every frame)
@@ -396,9 +399,6 @@ local function executeParry(ball)
     parryViaBlockRemote(ball)
     parryConnections(ball)
 end
-
-local parryBurstActive = false
-local lastParryBall    = nil
 
 local function doParry(ball)
     local hrp  = getHRP()
@@ -665,9 +665,11 @@ end
 local function setSpeed(v) local h=getHum(); if h then h.WalkSpeed=v end end
 
 -- INF JUMP ────────────────────────────────────────────────────────────────
+local infJumpConn
 local function infJump(on)
+    if infJumpConn then infJumpConn:Disconnect(); infJumpConn=nil end
     if on then
-        ac(UIS.JumpRequest:Connect(function()
+        infJumpConn = ac(UIS.JumpRequest:Connect(function()
             local h=getHum(); if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
         end))
     end
@@ -743,9 +745,7 @@ end))
 --  MAIN LOOP
 -- ════════════════════════════════════════════════════════════════════════
 --  Velocity tracker for prediction
-local ballVelSamples = {}
 local ballVelSampleTime = 0
-local ballVelAvg = 0
 
 local function updateBallVelocity(ball)
     if not ball then ballVelAvg=0; return end
@@ -1384,19 +1384,16 @@ do
 
     secHeader(P,"INTROSPECTION",nextLo())
 
-    addButton(P,"Scan Ball (All Methods)","Print ball info to console",MU,function()
-        local b1=findBallWorkspace()
-        local b2=findBallGC()
-        local b3=findBallInstances()
-        local msg = "Workspace: "..(b1 and b1.Name or "nil")..
-                    "  GC: "..(b2 and b2.Name or "nil")..
-                    "  Instances: "..(b3 and b3.Name or "nil")
+    addButton(P,"Scan Ball","Print current cached ball info",MU,function()
+        local b = findBall()
+        local msg = b and (b.Name.." @ "..tostring(b.Position)) or "No ball found"
         notify("Ball Scan",msg,6)
         print("[AnimeBallHub] Ball scan:",msg)
+        if cachedBlockFn then print("[AnimeBallHub] Block fn: CACHED") else print("[AnimeBallHub] Block fn: not found yet") end
     end)
 
     addButton(P,"Scan Parry Remote","Find parry/deflect remote names",MU,function()
-        local r=findParryRemote()
+        local r = findBlockRemote()
         if r then notify("Parry Remote","Found: "..r:GetFullName(),5); print("[AnimeBallHub] Parry remote:",r:GetFullName())
         else notify("Parry Remote","Not found — try playing a round",4) end
     end)
