@@ -64,6 +64,22 @@ local function getBall()
     return nil
 end
 
+-- ── FRAMEWORK DIRECT CALL ──────────────────────────────────────────────────
+-- Exactly what SwordController does: framework:Fetch("SwordService").Block:Invoke(Y)
+-- RS.Framework is the game's framework module (visible in Dex)
+local swordSvcObj  = nil  -- v_u_21 = framework:Fetch("SwordService")
+local function getSwordSvc()
+    if swordSvcObj then return swordSvcObj end
+    pcall(function()
+        local fw = require(game:GetService("ReplicatedStorage").Framework)
+        local svc = fw:Fetch("SwordService")
+        if svc and type(svc.Block) ~= "nil" then
+            swordSvcObj = svc
+        end
+    end)
+    return swordSvcObj
+end
+
 -- ── BLOCK FUNCTION ─────────────────────────────────────────────────────────
 -- From SwordController decompile:
 --   v_u_1.Block() calls v_u_21.Block:Invoke(cam.CFrame.LookVector.Y)
@@ -301,18 +317,28 @@ local function fireBlock(ball)
     local lookY = cam.CFrame.LookVector.Y
     local usedBlockFn = false
 
-    -- 1. v_u_1.Block() — best method, handles NetRay internally + cooldown bypass
+    -- 1. framework:Fetch("SwordService").Block:Invoke(Y) — exact replica of game code
     pcall(function()
-        local fn = findBlockFn()
-        if type(fn)=="function" then
-            if swordCtrl then swordCtrl.LastBlock = nil end
-            fn()
+        local svc = getSwordSvc()
+        if svc and svc.Block then
+            svc.Block:Invoke(lookY)
             usedBlockFn = true
         end
     end)
 
-    -- 2. Raw NetRay remote — only when blockFn not available (avoid double-firing)
-    --    v_u_1.Block() already calls InvokeServer internally so we skip if it ran
+    -- 2. v_u_1.Block() via getgc — handles framework internally + cooldown bypass
+    if not usedBlockFn then
+        pcall(function()
+            local fn = findBlockFn()
+            if type(fn)=="function" then
+                if swordCtrl then swordCtrl.LastBlock = nil end
+                fn()
+                usedBlockFn = true
+            end
+        end)
+    end
+
+    -- 3. Raw remote — only when neither above worked
     if not usedBlockFn then
         pcall(function()
             local r = findRemote(); if not r then return end
