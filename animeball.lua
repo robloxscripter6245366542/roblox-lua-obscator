@@ -295,27 +295,59 @@ local function watchBall(ball)
     end)
 end
 
+-- ── BROAD FALLBACK — scan workspace when ball not in Balls folder ──────────
+-- Ball names seen in Anime Ball / Blade Ball
+local BALL_NAMES = {
+    ["Anime Ball"]=true,["AnimeBall"]=true,["Ball"]=true,["blade"]=true,
+    ["BladeBall"]=true,["ball"]=true,["TheBall"]=true,
+}
+local function scanWorkspace()
+    -- Try workspace.Balls first
+    if ballsFolder then
+        for _, v in pairs(ballsFolder:GetChildren()) do
+            if v:IsA("BasePart") then return v end
+        end
+    end
+    -- Broad workspace scan by name or shape
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("BasePart") and (BALL_NAMES[v.Name] or v.Shape == Enum.PartType.Ball) then
+            if v.AssemblyLinearVelocity.Magnitude > 5 then return v end
+        end
+    end
+    return nil
+end
+
 -- Watch existing balls
+local pendingRemove = {}
 if ballsFolder then
     for _, v in pairs(ballsFolder:GetChildren()) do
         if v:IsA("BasePart") then watchBall(v) end
     end
     ballsFolder.ChildAdded:Connect(function(v)
         if v:IsA("BasePart") then
+            pendingRemove[v] = nil  -- cancel any pending clear
             currentBall = v
             watchBall(v)
         end
     end)
+    -- Grace period: ball sometimes reparents during clash — wait 0.5s before clearing
     ballsFolder.ChildRemoved:Connect(function(v)
-        if v == currentBall then
-            currentBall = nil
-            watchedBalls[v] = nil
-            burstActive = false
-            burstBall = nil
-        end
+        if v ~= currentBall then return end
+        pendingRemove[v] = true
+        task.delay(0.5, function()
+            if not pendingRemove[v] then return end  -- cancelled by ChildAdded
+            pendingRemove[v] = nil
+            -- only clear if the ball is truly gone
+            if v.Parent == nil then
+                if currentBall == v then currentBall = nil end
+                watchedBalls[v] = nil
+                burstActive = false
+                burstBall = nil
+            end
+        end)
     end)
 else
-    notify("Warning","workspace.Balls not found — will scan instead",5)
+    notify("Warning","workspace.Balls not found — broad scan active",5)
 end
 
 -- ── MAIN LOOP — TTI check using game's own formula ─────────────────────────
@@ -324,14 +356,17 @@ RS.Heartbeat:Connect(function()
     local now = tick()
     if (now-loopT) < 0.016 then return end; loopT=now
 
-    local ball = getBall()
-    local hrp  = getHRP(); if not hrp then return end
+    -- If currentBall is gone, try broad scan immediately (no 0.5s gap)
+    local ball = (currentBall and currentBall.Parent) and currentBall or scanWorkspace()
+    if not currentBall and ball then
+        currentBall = ball
+        watchBall(ball)
+    end
 
-    if not ball then return end
-    if not ballsFolder then watchBall(ball) end
+    local hrp = getHRP(); if not hrp or not ball then return end
 
     local dist = (ball.Position - hrp.Position).Magnitude
-    local vel  = ball.AssemblyLinearVelocity.Magnitude  -- real velocity from game
+    local vel  = ball.AssemblyLinearVelocity.Magnitude
 
     -- Game's formula: (dist - 8) / vel <= 0.6 + ping
     -- Below 8 studs: always fire (close range clash)
