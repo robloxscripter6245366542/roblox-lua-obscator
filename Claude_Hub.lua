@@ -12,6 +12,7 @@ local UIS     = game:GetService("UserInputService")
 local TS      = game:GetService("TweenService")
 local WS      = game:GetService("Workspace")
 local SG      = game:GetService("StarterGui")
+local RS      = game:GetService("ReplicatedStorage")
 
 local LP   = Players.LocalPlayer
 local PGui = LP:WaitForChild("PlayerGui", 10)
@@ -259,6 +260,25 @@ local function runUrl(name,url)
     end)
 end
 
+-- ── Server-side bridge (pairs with SS_Executor.lua's SS_ExecBridge) ───────────────
+-- The bridge is a RemoteFunction in ReplicatedStorage. We invoke it with
+-- (action, payload) and get back { ok=bool, msg=string, data=table? }.
+local BRIDGE_NAME = "SS_ExecBridge"
+local function getBridge()
+    local b=RS:FindFirstChild(BRIDGE_NAME)
+    if b and b:IsA("RemoteFunction") then return b end
+    return nil
+end
+-- Synchronous bridge call; returns the response table (never throws).
+local function callBridge(action,payload)
+    local b=getBridge()
+    if not b then return {ok=false,msg="Bridge not found — is SS_Executor running? ("..BRIDGE_NAME..")"} end
+    local ok2,res=pcall(function() return b:InvokeServer(action,payload or {}) end)
+    if not ok2 then return {ok=false,msg="Invoke failed: "..tostring(res)} end
+    if type(res)~="table" then return {ok=false,msg="Unexpected response from bridge"} end
+    return res
+end
+
 -- ── GUI shell ─────────────────────────────────────────────────────────────────────
 local GUI_ROOT = ENV.HAS_GHUI and gethui() or PGui
 local old=GUI_ROOT:FindFirstChild("__CLAUDE_HUB__"); if old then old:Destroy() end
@@ -421,6 +441,29 @@ local function ScriptCard(parent,s)
             ENV.setClip(callSig(s)); notify("Claude Hub","Call copied!",1)
         end)
     end
+    return card
+end
+-- a search box that live-filters a set of cards by their entry name/key
+local function CardSearch(parent,placeholder)
+    local items={}    -- { {card=,text=}, ... }
+    local wrap=Frm(parent,UDim2.new(1,0,0,36),nil,C.PANEL,"CardSearch"); corner(wrap,8); stroke(wrap,C.BORDER,1); pad(wrap,3,3,10,8)
+    local ico=Lbl(wrap,"🔍",UDim2.new(0,18,1,0),UDim2.new(0,0,0,0),C.MUTED,13,FN)
+    local tbx=Instance.new("TextBox")
+    tbx.Size=UDim2.new(1,-22,1,0); tbx.Position=UDim2.new(0,22,0,0); tbx.BackgroundTransparency=1
+    tbx.PlaceholderText=placeholder or "Search…"; tbx.PlaceholderColor3=C.MUTED; tbx.Text=""
+    tbx.TextColor3=C.WHITE; tbx.TextSize=13; tbx.Font=FN
+    tbx.TextXAlignment=Enum.TextXAlignment.Left; tbx.ClearTextOnFocus=false; tbx.Parent=wrap
+    local count=Lbl(parent,"",UDim2.new(1,0,0,14),nil,C.MUTED,11,FN)
+    tbx:GetPropertyChangedSignal("Text"):Connect(function()
+        local q=tbx.Text:lower(); local shown=0
+        for _,it in ipairs(items) do
+            local vis=(q=="") or (string.find(it.text,q,1,true)~=nil)
+            it.card.Visible=vis
+            if vis then shown=shown+1 end
+        end
+        count.Text = q=="" and (#items.." total") or (shown.." match"..(shown==1 and "" or "es"))
+    end)
+    return function(card,text) table.insert(items,{card=card,text=tostring(text):lower()}); count.Text=#items.." total" end
 end
 
 -- ── Drag / minimize / close / keybind ───────────────────────────────────────────
@@ -465,6 +508,160 @@ do
     if not ENV.HAS_REQ then
         local w=Frm(P,UDim2.new(1,0,0,28),nil,Color3.fromRGB(60,30,40)); corner(w,8); pad(w,0,0,10,10)
         Lbl(w,"⚠ require() unavailable on "..ENV.name,UDim2.new(1,0,1,0),nil,C.YELLOW,11,FN)
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+--  TAB — SERVER  (server-side execution via SS_ExecBridge)
+-- ═══════════════════════════════════════════════════════════════════════════════
+do
+    local P=newTab("🖥","Server")
+
+    -- status banner
+    local ban=Frm(P,UDim2.new(1,0,0,46),nil,C.PANEL); corner(ban,10); stroke(ban,C.BORDER,1); pad(ban,0,0,12,12)
+    local sdot=Frm(ban,UDim2.new(0,9,0,9),UDim2.new(0,2,0.5,-4.5),C.RED); corner(sdot,5)
+    local statusL=Lbl(ban,"Bridge: checking…",UDim2.new(1,-20,1,0),UDim2.new(0,18,0,0),C.TEXT,12,FC)
+
+    -- output console
+    local function makeOut()
+        local box=Frm(P,UDim2.new(1,0,0,120),nil,C.DARK); corner(box,8); stroke(box,C.BORDER,1)
+        local _,sc=Scr(box,UDim2.new(1,-6,1,-6),UDim2.new(0,3,0,3)); listV(sc,1); pad(sc,4,4,6,6)
+        return sc
+    end
+    local outLog
+    local function out(line,col)
+        if not outLog then return end
+        local l=Instance.new("TextLabel")
+        l.Size=UDim2.new(1,0,0,14); l.BackgroundTransparency=1
+        l.Text=line; l.TextColor3=col or C.TEXT; l.TextSize=11
+        l.Font=Enum.Font.RobotoMono; l.TextXAlignment=Enum.TextXAlignment.Left
+        l.TextWrapped=true; l.AutomaticSize=Enum.AutomaticSize.Y; l.Parent=outLog
+    end
+    -- client-side fallbacks so every action still works with NO backdoor/bridge
+    local function clientFallback(action,payload)
+        payload=payload or {}
+        if action=="ls" then
+            local fn,ce=loadstring(payload.code or "")
+            if not fn then return {ok=false,msg="Compile: "..tostring(ce)} end
+            local ok2,e=pcall(fn)
+            return ok2 and {ok=true,msg="Client loadstring OK (no bridge — ran locally)"}
+                        or {ok=false,msg="Runtime: "..tostring(e)}
+        elseif action=="req" then
+            local ok2,e=pcall(require,tonumber(payload.id))
+            return ok2 and {ok=true,msg="Client require OK (no bridge — ran locally)"}
+                        or {ok=false,msg=tostring(e)}
+        elseif action=="ls_url" then
+            local body; local ok2=pcall(function() body=game:HttpGet(payload.url,true) end)
+            if not body and ENV.httpReq then local o,r=pcall(ENV.httpReq,{Url=payload.url,Method="GET"}); if o and r then body=r.Body end end
+            if not body then return {ok=false,msg="HTTP fetch failed"} end
+            local fn,ce=loadstring(body); if not fn then return {ok=false,msg="Compile: "..tostring(ce)} end
+            local ok3,e=pcall(fn)
+            return ok3 and {ok=true,msg="Client URL exec OK (no bridge — ran locally)"}
+                        or {ok=false,msg="Runtime: "..tostring(e)}
+        elseif action=="getplrs" then
+            local names={}
+            for _,p in ipairs(Players:GetPlayers()) do table.insert(names,p.Name.." ("..p.UserId..")") end
+            return {ok=true,msg=#names.." players (client view)",data=names}
+        elseif action=="get_scripts" then
+            local list={}
+            for _,o in ipairs(game:GetDescendants()) do
+                if o:IsA("LuaSourceContainer") then table.insert(list,o.ClassName.."|"..o:GetFullName()) end
+                if #list>=300 then break end
+            end
+            return {ok=true,msg=#list.." scripts (client view, capped 300)",data=list}
+        elseif action=="scan" then
+            local sus={"backdoor","exploit","inject","cmd","execute","admin_bypass","btools","spy","hack","bypass"}
+            local hits={}
+            for _,o in ipairs(game:GetDescendants()) do
+                if o:IsA("RemoteEvent") or o:IsA("RemoteFunction") then
+                    local nl=o.Name:lower()
+                    for _,kw in ipairs(sus) do if nl:find(kw,1,true) then table.insert(hits,o.ClassName.."|"..o:GetFullName()); break end end
+                end
+            end
+            return {ok=true,msg=#hits.." suspicious remote(s) (client scan — source not readable client-side)",data=hits}
+        end
+        return {ok=false,msg="'"..action.."' needs the server bridge (no client equivalent)"}
+    end
+    -- run an action: prefer the server bridge, fall back to client if no bridge
+    local function doBridge(action,payload,label)
+        out("→ "..(label or action).."…",C.MUTED)
+        task.spawn(function()
+            local r
+            if getBridge() then
+                r=callBridge(action,payload)
+            else
+                out("   no bridge — using client-side fallback",C.YELLOW)
+                r=clientFallback(action,payload)
+            end
+            out((r.ok and "✓ " or "✗ ")..tostring(r.msg), r.ok and C.GREEN or C.RED)
+            if r.data then for _,d in ipairs(r.data) do out("   "..tostring(d),C.TEXT) end end
+        end)
+    end
+
+    local function refreshStatus()
+        local b=getBridge()
+        if b then
+            sdot.BackgroundColor3=C.YELLOW; statusL.Text="Bridge found — ping to confirm (server mode)"
+        else
+            sdot.BackgroundColor3=C.ACCENT; statusL.Text="No bridge — client-side mode (still works)"
+        end
+    end
+    refreshStatus()
+
+    SectionHdr(P,"■ CONNECTION")
+    Btn(P,"⟳  Ping Bridge",UDim2.new(1,0,0,36),nil,C.ACCENT,function()
+        refreshStatus()
+        task.spawn(function()
+            local r=callBridge("ping")
+            if r.ok then
+                sdot.BackgroundColor3=C.GREEN; statusL.Text="Bridge ONLINE ✓ (pong)"
+                out("✓ pong — server bridge online",C.GREEN)
+            else
+                sdot.BackgroundColor3=C.RED; statusL.Text="Bridge offline"
+                out("✗ "..tostring(r.msg),C.RED)
+            end
+        end)
+    end)
+
+    SectionHdr(P,"■ SERVER LOADSTRING")
+    local _,codeBox=Inp(P,'Lua code  e.g.  print("hi from server")',UDim2.new(1,0,0,36))
+    Btn(P,"▶  Run on Server  (action: ls)",UDim2.new(1,0,0,36),nil,C.ACCENT,function()
+        if codeBox.Text=="" then notify("Claude Hub","Enter code",3); return end
+        doBridge("ls",{code=codeBox.Text},"server loadstring")
+    end)
+
+    SectionHdr(P,"■ SERVER REQUIRE / URL")
+    local _,sidBox=Inp(P,"Asset ID (server require)",UDim2.new(1,0,0,36))
+    Btn(P,"▶  require(ID) on Server  (action: req)",UDim2.new(1,0,0,36),nil,C.PANEL,function()
+        local id=tonumber(sidBox.Text); if not id then notify("Claude Hub","Numeric ID",3); return end
+        doBridge("req",{id=id},"server require")
+    end)
+    local _,surlBox=Inp(P,"URL (server loadstring)",UDim2.new(1,0,0,36))
+    Btn(P,"▶  loadstring(URL) on Server  (action: ls_url)",UDim2.new(1,0,0,36),nil,C.PANEL,function()
+        if surlBox.Text=="" then notify("Claude Hub","Enter a URL",3); return end
+        doBridge("ls_url",{url=surlBox.Text},"server URL exec")
+    end)
+
+    SectionHdr(P,"■ SERVER TOOLS")
+    local row1=Frm(P,UDim2.new(1,0,0,36),nil,C.BG)
+    local h1=Instance.new("UIListLayout"); h1.FillDirection=Enum.FillDirection.Horizontal
+    h1.Padding=UDim.new(0,6); h1.Parent=row1
+    Btn(row1,"Malware Scan",UDim2.new(0.5,-3,1,0),nil,C.PANEL,function() doBridge("scan",{},"scan") end)
+    Btn(row1,"List Players",UDim2.new(0.5,-3,1,0),nil,C.PANEL,function() doBridge("getplrs",{},"player list") end)
+    local row2=Frm(P,UDim2.new(1,0,0,36),nil,C.BG)
+    local h2=Instance.new("UIListLayout"); h2.FillDirection=Enum.FillDirection.Horizontal
+    h2.Padding=UDim.new(0,6); h2.Parent=row2
+    Btn(row2,"List Scripts",UDim2.new(0.5,-3,1,0),nil,C.PANEL,function() doBridge("get_scripts",{},"script list") end)
+    Btn(row2,"Kill All Malware",UDim2.new(0.5,-3,1,0),nil,C.RED,function() doBridge("kill_all",{},"kill all") end)
+
+    SectionHdr(P,"■ OUTPUT")
+    outLog=makeOut()
+    out("Server console ready. Ping the bridge to begin.",C.MUTED)
+
+    do
+        local w=Frm(P,UDim2.new(1,0,0,48),nil,C.PANEL); corner(w,8); pad(w,6,6,10,10)
+        Lbl(w,"If SS_Executor.lua is running (ReplicatedStorage."..BRIDGE_NAME.."),\nactions run on the SERVER. With NO backdoor, they automatically\nfall back to running CLIENT-SIDE — so this tab always works.",
+            UDim2.new(1,0,1,0),nil,C.GREEN,10,FN)
     end
 end
 
@@ -639,7 +836,17 @@ for _,t in ipairs(CAT) do
     local P=newTab(t.icon,t.name)
     local scripts = t.custom or gen(t.list, t.method, t.arg)
     SectionHdr(P,"■ "..string.upper(t.name).."  ·  "..#scripts.." require() scripts")
-    for _,s in ipairs(scripts) do ScriptCard(P,s) end
+    -- per-tab search box (e.g. search the morph you want to be)
+    local ph = (t.name=="Morphs") and "Search the morph you want to be…" or ("Search "..t.name.."…")
+    local register=CardSearch(P,ph)
+    for _,s in ipairs(scripts) do
+        local card=ScriptCard(P,s)
+        -- searchable text = display name + any string arguments (e.g. morph key)
+        local txt=s.name
+        if s.args then for _,a in ipairs(s.args) do if type(a)=="string" and a:sub(1,1)~="@" then txt=txt.." "..a end end end
+        if s.method then txt=txt.." "..s.method end
+        register(card,txt)
+    end
     if not t.custom then
         local w=Frm(P,UDim2.new(1,0,0,26),nil,C.PANEL); corner(w,8); pad(w,0,0,10,10)
         Lbl(w,"IDs here are PLACEHOLDERS — paste verified IDs in Custom tab.",UDim2.new(1,0,1,0),nil,C.MUTED,10,FN)
