@@ -198,30 +198,54 @@ end)
 local function findRemote()
     if blockRemote and blockRemote.Parent then return blockRemote end
     local RS = game:GetService("ReplicatedStorage")
-    -- Priority 1: NetRayRemotes folder (confirmed from NetRay framework decompile)
+
+    -- Priority 1: ReplicatedStorage.SwordService (confirmed direct RS child in Dex)
+    -- v_u_21 = framework:Fetch("SwordService") — SwordService is a direct RS child
+    -- RS.Framework is the game's custom framework (also seen in Dex)
+    local swordSvc = RS:FindFirstChild("SwordService")
+                  or (RS:FindFirstChild("Framework") and RS.Framework:FindFirstChild("SwordService"))
+    if swordSvc then
+        -- Could be a folder with Block inside, or itself a RemoteFunction
+        if swordSvc:IsA("RemoteFunction") then
+            blockRemote=swordSvc; notify("Remote","RS.SwordService (RF)",3); return swordSvc
+        end
+        local b = swordSvc:FindFirstChild("Block")
+        if b and b:IsA("RemoteFunction") then
+            blockRemote=b; notify("Remote","RS.SwordService.Block",3); return b
+        end
+        -- Scan all children of SwordService
+        for _, v in pairs(swordSvc:GetDescendants()) do
+            if v:IsA("RemoteFunction") then
+                blockRemote=v; notify("Remote",v:GetFullName(),3); return v
+            end
+        end
+    end
+
+    -- Priority 2: NetRayRemotes folder
     local netR = RS:FindFirstChild("NetRayRemotes")
     if netR then
-        -- Try "Block" directly
         local b = netR:FindFirstChild("Block")
         if b and b:IsA("RemoteFunction") then
             blockRemote=b; notify("Remote","NetRayRemotes.Block",3); return b
         end
-        -- Try SwordService subfolder → Block
-        local svc = netR:FindFirstChild("SwordService")
-        if svc then
-            local b2 = svc:FindFirstChild("Block")
+        local svc2 = netR:FindFirstChild("SwordService")
+        if svc2 then
+            local b2 = svc2:FindFirstChild("Block")
             if b2 and b2:IsA("RemoteFunction") then
-                blockRemote=b2; notify("Remote","NetRayRemotes.SwordService.Block",3); return b2
+                blockRemote=b2; notify("Remote",b2:GetFullName(),3); return b2
+            end
+            if svc2:IsA("RemoteFunction") then
+                blockRemote=svc2; notify("Remote",svc2:GetFullName(),3); return svc2
             end
         end
-        -- Scan all of NetRayRemotes for any RF named Block
         for _, v in pairs(netR:GetDescendants()) do
             if v:IsA("RemoteFunction") and v.Name=="Block" then
                 blockRemote=v; notify("Remote",v:GetFullName(),3); return v
             end
         end
     end
-    -- Priority 2: Storage scan
+
+    -- Priority 3: Storage scan for RF named Block
     local stor = RS:FindFirstChild("Storage")
     if stor then
         for _, v in pairs(stor:GetDescendants()) do
@@ -230,6 +254,7 @@ local function findRemote()
             end
         end
     end
+
     -- Fallback: full RS scan
     for _, v in pairs(RS:GetDescendants()) do
         if (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) and v.Name=="Block" then
