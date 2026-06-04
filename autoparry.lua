@@ -1,18 +1,66 @@
--- autoparry.lua  v3 — no GUI, fires on every ball, never misses
+-- autoparry.lua  v4 — no GUI, custom toast notifications, bulletproof startup
+print("[AP] Script starting...")
+
 local ok,err = pcall(function()
 
 local Players = game:GetService("Players")
 local RS      = game:GetService("RunService")
 local UIS     = game:GetService("UserInputService")
-local SG      = game:GetService("StarterGui")
-local VU      = game:GetService("VirtualUser")
+local VU      = pcall(game.GetService,game,"VirtualUser") and game:GetService("VirtualUser") or nil
 local cam     = workspace.CurrentCamera
 local LP      = Players.LocalPlayer
-local PGui    = LP:WaitForChild("PlayerGui",15)
-
-local function notify(t,m)
-    pcall(function() SG:SetCore("SendNotification",{Title=t,Text=m,Duration=3}) end)
+if not LP then
+    repeat task.wait() until Players.LocalPlayer
+    LP = Players.LocalPlayer
 end
+local PGui = LP:FindFirstChildOfClass("PlayerGui")
+if not PGui then
+    task.spawn(function()
+        repeat task.wait() until LP:FindFirstChildOfClass("PlayerGui")
+        PGui = LP:FindFirstChildOfClass("PlayerGui")
+    end)
+end
+
+-- ── Custom toast — works even if SetCore is disabled ─────────────────────────
+local toastGui
+local function notify(title, msg, dur)
+    dur = dur or 4
+    print("[AP] "..title..": "..msg)
+    pcall(function()
+        -- Try SetCore first
+        game:GetService("StarterGui"):SetCore("SendNotification",{Title=title,Text=msg,Duration=dur})
+    end)
+    -- Also show custom label on screen (always visible)
+    pcall(function()
+        local pg = LP:FindFirstChildOfClass("PlayerGui"); if not pg then return end
+        if not toastGui or not toastGui.Parent then
+            toastGui = Instance.new("ScreenGui", pg)
+            toastGui.Name = "__APToast__"
+            toastGui.ResetOnSpawn = false
+            toastGui.DisplayOrder = 999
+        end
+        local f = Instance.new("Frame", toastGui)
+        f.Size = UDim2.new(0,320,0,54)
+        f.Position = UDim2.new(0.5,-160,0,12)
+        f.BackgroundColor3 = Color3.fromRGB(18,14,10)
+        f.BorderSizePixel = 0
+        Instance.new("UICorner",f).CornerRadius = UDim.new(0,8)
+        local stroke = Instance.new("UIStroke",f)
+        stroke.Color = Color3.fromRGB(210,168,95); stroke.Thickness = 1.5
+        local tl = Instance.new("TextLabel",f)
+        tl.Size = UDim2.new(1,-12,0,22); tl.Position = UDim2.new(0,6,0,4)
+        tl.BackgroundTransparency = 1
+        tl.Text = title; tl.TextColor3 = Color3.fromRGB(210,168,95)
+        tl.Font = Enum.Font.GothamBold; tl.TextSize = 13; tl.TextXAlignment = Enum.TextXAlignment.Left
+        local ml = Instance.new("TextLabel",f)
+        ml.Size = UDim2.new(1,-12,0,18); ml.Position = UDim2.new(0,6,0,28)
+        ml.BackgroundTransparency = 1
+        ml.Text = msg; ml.TextColor3 = Color3.fromRGB(210,200,180)
+        ml.Font = Enum.Font.Gotham; ml.TextSize = 11; ml.TextXAlignment = Enum.TextXAlignment.Left
+        game:GetService("Debris"):AddItem(f, dur)
+    end)
+end
+
 local function getChar() return LP.Character end
 local function getHRP()  local c=getChar(); return c and c:FindFirstChild("HumanoidRootPart") end
 
@@ -139,7 +187,7 @@ local function findBlockFn()
     if HAS_CONNS then
         local btn = cachedBlockBtn
         if not (btn and btn.Parent) then
-            for _,v in pairs(PGui:GetDescendants()) do
+            for _,v in pairs((LP:FindFirstChildOfClass("PlayerGui") or {GetDescendants=function() return {} end}):GetDescendants()) do
                 if v.Name=="Block" and (v:IsA("TextButton") or v:IsA("ImageButton") or v:IsA("GuiButton")) then
                     btn=v; cachedBlockBtn=btn; break
                 end
@@ -229,11 +277,15 @@ end
 --  VIRTUALUSER fallback — tap the Block button on screen
 -- ─────────────────────────────────────────────────────────────────────────────
 local function vuTap()
+    if not VU then return end
     local btn = cachedBlockBtn
     if not (btn and btn.Parent) then
-        for _,v in pairs(PGui:GetDescendants()) do
-            if v.Name=="Block" and (v:IsA("TextButton") or v:IsA("ImageButton") or v:IsA("GuiButton")) then
-                btn=v; cachedBlockBtn=btn; break
+        local pg = LP:FindFirstChildOfClass("PlayerGui")
+        if pg then
+            for _,v in pairs(pg:GetDescendants()) do
+                if v.Name=="Block" and (v:IsA("TextButton") or v:IsA("ImageButton") or v:IsA("GuiButton")) then
+                    btn=v; cachedBlockBtn=btn; break
+                end
             end
         end
     end
@@ -459,7 +511,7 @@ task.delay(10, function()
     if not findBlockRemote() then table.insert(problems,"Block remote NOT found") end
     if not cachedBlockBtn   then
         -- try to find it now
-        for _,v in pairs(PGui:GetDescendants()) do
+        for _,v in pairs((LP:FindFirstChildOfClass("PlayerGui") or {GetDescendants=function() return {} end}):GetDescendants()) do
             if v.Name=="Block" and (v:IsA("TextButton") or v:IsA("ImageButton") or v:IsA("GuiButton")) then
                 cachedBlockBtn=v; break
             end
@@ -505,7 +557,7 @@ task.delay(1, function()
     -- VirtualUser
     local btn = cachedBlockBtn
     if not btn then
-        for _,v in pairs(PGui:GetDescendants()) do
+        for _,v in pairs((LP:FindFirstChildOfClass("PlayerGui") or {GetDescendants=function() return {} end}):GetDescendants()) do
             if v.Name=="Block" and (v:IsA("TextButton") or v:IsA("ImageButton") or v:IsA("GuiButton")) then
                 btn=v; cachedBlockBtn=btn; break
             end
