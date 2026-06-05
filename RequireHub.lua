@@ -211,6 +211,11 @@ local function doRun()
     local code = INP.Text:match("^%s*(.-)%s*$")
     if code == "" then return end
 
+    -- bare number → wrap as require(n)
+    if code:match("^%d+$") then
+        code = "require("..code..")"
+    end
+
     RBTN.Text="Running..."; RBTN.BackgroundColor3=C.YELLOW
     STAT.TextColor3=C.MUTED; STAT.Text=code
 
