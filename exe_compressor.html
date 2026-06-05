@@ -204,6 +204,10 @@ input[type=range] { flex: 1; accent-color: var(--acc1); height: 6px; cursor: poi
   margin-top: 14px; border: 1px solid var(--bord);
 }
 .note b { color: var(--tx2); }
+.ios-share-box { display:none; margin-top:8px; text-align:center; }
+.ios-share-box.show { display:block; }
+.ios-share-box a { display:inline-block; padding:14px 20px; background:var(--c2); border:1px solid var(--acc1); border-radius:10px; color:var(--acc1); font-size:13px; font-weight:700; text-decoration:none; -webkit-tap-highlight-color:transparent; }
+.ios-share-box a:active { opacity:.7; }
 </style>
 </head>
 <body>
@@ -278,8 +282,11 @@ input[type=range] { flex: 1; accent-color: var(--acc1); height: 6px; cursor: poi
   <!-- Download -->
   <button class="dl" id="dlBtn" onclick="download()">⬇&nbsp; Download Compressed File</button>
   <div class="ios-note" id="iosNote">
-    On iPad/iPhone: tap <b>Download</b> above, then tap <b>Save to Files</b><br>
-    or long-press → <b>Download Linked File</b>.
+    iPad: a new tab will open — tap the <b>Share</b> button (box with arrow) → <b>Save to Files</b>.<br>
+    If nothing opens, use the link below.
+  </div>
+  <div class="ios-share-box" id="iosShareBox">
+    <a id="iosShareUrl" href="#" target="_blank"></a>
   </div>
 
   <!-- Note -->
@@ -451,11 +458,24 @@ function lzmaCompress(buf, level) {
 function download() {
   if (!blob) return;
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = outName;
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 8000);
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  if (isIOS) {
+    // iOS Safari: open in new tab → tap Share → Save to Files
+    const w = window.open(url, "_blank");
+    if (!w) {
+      // Popup blocked — fall back: show the URL so user can long-press
+      document.getElementById("iosShareUrl").href = url;
+      document.getElementById("iosShareUrl").textContent = "⬇ Long-press here → Download Linked File";
+      document.getElementById("iosShareBox").classList.add("show");
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+  } else {
+    const a = document.createElement("a");
+    a.href = url; a.download = outName;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+  }
 }
 </script>
 </body>
