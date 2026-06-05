@@ -343,89 +343,121 @@ task.spawn(function()
     STATS.parryOk = true
 end)
 
+-- ══════════════════════════════════════════════════════════════════════════════
+--  EXECUTE PARRY — ALL 6 METHODS IN PARALLEL, COOLDOWN WIPED FIRST
+-- ══════════════════════════════════════════════════════════════════════════════
 local function executeParry(ball)
-    local lookY = cam.CFrame.LookVector.Y
-    local fired = false
     STATS.parryFired = STATS.parryFired + 1
+    local lookY = cam.CFrame.LookVector.Y
 
-    -- Method 1: framework:Fetch("SwordService").Block:Invoke(Y)
-    pcall(function()
-        local svc = getSwordSvc()
-        if svc and svc.Block then svc.Block:Invoke(lookY); fired=true end
+    -- Wipe cooldown state BEFORE anything fires
+    if swordCtrl then
+        pcall(function()
+            swordCtrl.LastBlock    = tick() - 99999
+            swordCtrl.LastParry    = tick() - 99999
+            swordCtrl.blockCooldown = 0
+        end)
+    end
+
+    -- All methods fire in their own thread simultaneously
+    task.spawn(function()  -- M1: framework:Fetch("SwordService").Block:Invoke
+        pcall(function()
+            local svc = getSwordSvc()
+            if svc and svc.Block then svc.Block:Invoke(lookY) end
+        end)
     end)
 
-    -- Method 2: v_u_1.Block() + LastBlock bypass
-    pcall(function()
-        local fn = findBlockFn()
-        if type(fn)=="function" then
-            if swordCtrl then swordCtrl.LastBlock = nil end
-            fn(); fired=true
-        end
+    task.spawn(function()  -- M2: v_u_1.Block() + repeated cooldown wipe
+        pcall(function()
+            local fn = findBlockFn()
+            if type(fn) ~= "function" then return end
+            if swordCtrl then swordCtrl.LastBlock = tick() - 99999 end
+            fn()
+            if swordCtrl then swordCtrl.LastBlock = tick() - 99999 end
+        end)
     end)
 
-    -- Method 3: Raw RemoteFunction (if above failed)
-    if not fired then
+    task.spawn(function()  -- M3: Raw RemoteFunction / RemoteEvent
         pcall(function()
             local r = findBlockRemote(); if not r then return end
             if r:IsA("RemoteFunction") then r:InvokeServer(lookY)
             else r:FireServer(lookY) end
         end)
-    end
+    end)
 
-    -- Method 4: VirtualUser
-    if VU then
+    task.spawn(function()  -- M4: VirtualUser button tap
+        if not VU then return end
         pcall(function()
             local btn = findBlockBtn(); if not btn then return end
-            local pos = btn.AbsolutePosition + btn.AbsoluteSize*0.5
+            local pos = btn.AbsolutePosition + btn.AbsoluteSize * 0.5
             VU:Button1Down(pos, cam.CFrame)
-            task.wait(0.04)
+            task.wait(0.03)
             VU:Button1Up(pos, cam.CFrame)
         end)
-    end
+    end)
 
-    -- Method 5: firesignal
-    if CAPS.firesignal and ball then
+    task.spawn(function()  -- M5: firesignal on ball.Touched
+        if not (CAPS.firesignal and ball) then return end
         pcall(function()
             local hrp = getHRP(); if hrp then firesignal(ball.Touched, hrp) end
         end)
-    end
+    end)
 
-    -- Method 6: getconnections
-    if CAPS.getconnections and ball then
+    task.spawn(function()  -- M6: getconnections → call each Touched handler
+        if not (CAPS.getconnections and ball) then return end
         pcall(function()
             local hrp = getHRP(); if not hrp then return end
             local ok2, conns = pcall(getconnections, ball.Touched)
             if ok2 and conns then
                 for _, c in ipairs(conns) do
                     local fn; pcall(function() fn = c.Function end)
-                    if type(fn)=="function" then pcall(fn, hrp) end
+                    if type(fn) == "function" then pcall(fn, hrp) end
                 end
             end
         end)
-    end
+    end)
 end
 
-ac(LP.CharacterAdded:Connect(function()
-    cachedBlockFn=nil; cachedBlockButton=nil; swordCtrl=nil; swordSvcObj=nil
-    ballVelSamples={}; ballVelAvg=0; lastBallPos2=nil
-    parryBurstActive=false; lastParryBall=nil
-    STATS.parryOk = false
-    task.wait(2); findBlockFn()
-    STATS.parryOk = cachedBlockFn ~= nil
-end))
-
 -- ── Ping ──────────────────────────────────────────────────────────────────────
-local cachedPing=0.10; local pingTick=0
+local cachedPing = 0.08; local pingTick = 0
 local function getPing()
     local now = tick()
-    if (now-pingTick) < 1 then return cachedPing end
+    if (now - pingTick) < 0.5 then return cachedPing end
     pingTick = now
     pcall(function()
         local p = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
-        cachedPing = math.clamp(p/1000, 0.03, 0.6)
+        cachedPing = math.clamp(p / 1000, 0.02, 0.6)
         STATS.ping  = math.floor(p)
     end)
     return cachedPing
+end
+
+-- ══════════════════════════════════════════════════════════════════════════════
+--  PHYSICS HELPERS — direction-aware TTI (10× more accurate than raw distance)
+-- ══════════════════════════════════════════════════════════════════════════════
+
+-- Approach speed: component of ball velocity pointing AT the player.
+-- Positive = approaching, negative = moving away.
+local function getApproachSpeed(ball, hrp)
+    if not (ball and hrp) then return 0 end
+    local vel = ball.AssemblyLinearVelocity
+    if vel.Magnitude < 1 then return 0 end
+    local toPlayer = (hrp.Position - ball.Position)
+    if toPlayer.Magnitude < 0.01 then return 0 end
+    return toPlayer.Unit:Dot(vel)   -- studs/s toward player
+end
+
+-- Predictive TTI: where will the ball BE when the server receives our packet?
+-- Uses actual approach speed instead of total speed, and starts from predicted
+-- future position (ball.pos + vel * ping). This is the real "time-to-contact."
+local function getPredictiveTTI(ball, hrp, ping)
+    if not (ball and hrp) then return 999 end
+    local vel        = ball.AssemblyLinearVelocity
+    local futurePos  = ball.Position + vel * ping          -- where ball is when server sees our parry
+    local futureDist = (futurePos - hrp.Position).Magnitude
+    local appSpeed   = getApproachSpeed(ball, hrp)
+    if appSpeed < 5 then return 999 end                    -- not approaching fast enough
+    return math.max(0, (futureDist - 4.0) / appSpeed)     -- 4.0 = player hitbox radius
 end
 
 -- ══════════════════════════════════════════════════════════════════════════════
@@ -435,68 +467,181 @@ local autoParryOn   = false
 local lastParryTime = 0
 local PARRY_WINDOW  = 0.30
 
-local function getAdaptiveCooldown(dist)
-    if dist < 8  then return 0.05
-    elseif dist < 14 then return 0.10
-    else return 0.18 end
+-- Adaptive cooldown so rapid re-fires never happen twice unnecessarily
+local function adaptiveCooldown(dist)
+    if dist < 6   then return 0.035
+    elseif dist < 12 then return 0.07
+    else return 0.13 end
 end
 
+-- ── doParry: tight micro-burst, distance-aware shot count / interval ──────────
 local function doParry(ball)
-    local hrp  = getHRP(); if not hrp then return end
+    local hrp = getHRP(); if not hrp then return end
     local dist = (ball.Position - hrp.Position).Magnitude
-    local close = dist < 8
+    local close = dist < 6
+
     if not close then
         if parryBurstActive then return end
         if ball == lastParryBall then return end
     end
-    local cd = getAdaptiveCooldown(dist)
-    if (tick()-lastParryTime) < cd then return end
+
+    local cd = adaptiveCooldown(dist)
+    if (tick() - lastParryTime) < cd then return end
     lastParryTime = tick()
-    if close then
-        executeParry(ball)
-        for _, t in ipairs({0.02,0.04,0.06,0.08,0.10,0.12,0.14,0.16,0.18,0.20}) do
-            task.delay(t, function() if ball and ball.Parent then executeParry(ball) end end)
+
+    if dist < 4 then
+        -- EMERGENCY: ball already inside hitbox — max-speed burst
+        for i = 0, 9 do
+            task.delay(i * 0.003, function()
+                if ball and ball.Parent then executeParry(ball) end
+            end)
         end
+    elseif close then
+        -- Close range: 20 shots at 5ms intervals (0–95ms window)
+        parryBurstActive = true; lastParryBall = ball
+        for i = 0, 19 do
+            task.delay(i * 0.005, function()
+                if ball and ball.Parent then executeParry(ball) end
+            end)
+        end
+        task.delay(0.10, function() parryBurstActive = false end)
+    elseif dist < 18 then
+        -- Mid range: 10 shots at 8ms intervals
+        parryBurstActive = true; lastParryBall = ball
+        for i = 0, 9 do
+            task.delay(i * 0.008, function()
+                if ball and ball.Parent then executeParry(ball) end
+            end)
+        end
+        task.delay(0.08, function() parryBurstActive = false end)
     else
-        parryBurstActive=true; lastParryBall=ball
-        executeParry(ball)
-        task.delay(0.07, function() if ball and ball.Parent then executeParry(ball) end end)
-        task.delay(0.14, function()
-            if ball and ball.Parent then executeParry(ball) end
-            parryBurstActive=false
-        end)
+        -- Far range: 6 shots at 12ms intervals
+        parryBurstActive = true; lastParryBall = ball
+        for i = 0, 5 do
+            task.delay(i * 0.012, function()
+                if ball and ball.Parent then executeParry(ball) end
+            end)
+        end
+        task.delay(0.06, function() parryBurstActive = false end)
     end
 end
 
+-- ── hookfunction wrap: patch Block fn itself for zero-overhead cooldown reset ─
+task.spawn(function()
+    while not cachedBlockFn do task.wait(0.5) end
+    if CAPS.hookfunction and CAPS.newcclosure then
+        pcall(function()
+            local orig = cachedBlockFn
+            hookfunction(orig, newcclosure(function(...)
+                if swordCtrl then
+                    swordCtrl.LastBlock    = tick() - 99999
+                    swordCtrl.blockCooldown = 0
+                end
+                return orig(...)
+            end))
+            notify("Block fn","hooked (instant-cooldown)",3)
+        end)
+    end
+end)
+
+-- ── hookBallTouched: fire immediately on physical contact + tight burst ────────
 local function hookBallTouched(ball)
     if hookedBalls[ball] then return end
     hookedBalls[ball] = true
     ac(ball.Touched:Connect(function(hit)
         if not autoParryOn then return end
         local c = getChar(); if not c then return end
-        if hit==c or hit:IsDescendantOf(c) then
-            executeParry(ball)
-            task.delay(0.02, function() if ball.Parent then executeParry(ball) end end)
-            task.delay(0.05, function() if ball.Parent then executeParry(ball) end end)
+        if hit == c or hit:IsDescendantOf(c) then
+            for i = 0, 4 do
+                task.delay(i * 0.004, function()
+                    if ball and ball.Parent then executeParry(ball) end
+                end)
+            end
         end
     end))
 end
 
+-- ── watchBall: TARGET ATTRIBUTE = #1 trigger (fires BEFORE ball moves) ────────
 local watchedBalls = {}
 local function watchBall(ball)
     if watchedBalls[ball] then return end
     watchedBalls[ball] = true
+
     pcall(function()
         ball:GetAttributeChangedSignal("Target"):Connect(function()
-            if ball:GetAttribute("Target")==LP.Name and autoParryOn then
-                doParry(ball)
-                task.delay(0.08, function() if ball.Parent then doParry(ball) end end)
-                task.delay(0.18, function() if ball.Parent then doParry(ball) end end)
+            if not autoParryOn then return end
+            if ball:GetAttribute("Target") ~= LP.Name then return end
+            -- Ball just got assigned to us — fire in parallel, maximum burst
+            -- This runs BEFORE the ball trajectory calculation server-side
+            for i = 0, 14 do
+                task.delay(i * 0.006, function()
+                    if ball and ball.Parent then executeParry(ball) end
+                end)
             end
+            lastParryBall = ball; parryBurstActive = true
+            task.delay(0.10, function() parryBurstActive = false end)
         end)
     end)
+
     hookBallTouched(ball)
 end
+
+-- ── Character.Touched emergency hook (catches what ball.Touched misses) ───────
+local function hookCharTouched(char)
+    if not char then return end
+    local hrp = char:WaitForChild("HumanoidRootPart", 5)
+    if not hrp then return end
+    char.Touched:Connect(function(hit)
+        if not autoParryOn then return end
+        local ball = findBall()
+        if not ball then return end
+        if hit == ball or (ballsFolder and hit:IsDescendantOf(ballsFolder)) or isBallLike(hit) then
+            for i = 0, 4 do
+                task.delay(i * 0.003, function() executeParry(hit) end)
+            end
+        end
+    end)
+end
+
+-- ── Velocity spike detector: catches instant kick / sudden acceleration ────────
+-- When ball speed jumps >70 st/s in one frame AND it's coming toward us → burst
+local lastSpikeSpeed = 0
+ac(RS.Heartbeat:Connect(function()
+    local ball = findBall()
+    if not ball then lastSpikeSpeed = 0; return end
+    local speed = ball.AssemblyLinearVelocity.Magnitude
+    local spike = speed - lastSpikeSpeed
+    if spike > 70 and autoParryOn then
+        local hrp = getHRP()
+        if hrp and getApproachSpeed(ball, hrp) > 30 then
+            doParry(ball)
+        end
+    end
+    lastSpikeSpeed = speed
+end))
+
+-- ── RenderStepped emergency: catch sub-4-stud contact before Heartbeat ────────
+ac(RS.RenderStepped:Connect(function()
+    if not autoParryOn then return end
+    local ball = findBall(); if not ball then return end
+    local hrp  = getHRP();  if not hrp  then return end
+    if (ball.Position - hrp.Position).Magnitude < 3.5 then
+        executeParry(ball)  -- ball inside hitbox right now
+    end
+end))
+
+ac(LP.CharacterAdded:Connect(function(char)
+    cachedBlockFn=nil; cachedBlockButton=nil; swordCtrl=nil; swordSvcObj=nil
+    ballVelSamples={}; ballVelAvg=0; lastBallPos2=nil; lastSpikeSpeed=0
+    parryBurstActive=false; lastParryBall=nil
+    STATS.parryOk = false
+    hookCharTouched(char)
+    task.wait(2); findBlockFn()
+    STATS.parryOk = cachedBlockFn ~= nil
+end))
+
+-- Hook character that already exists at script load
+if LP.Character then hookCharTouched(LP.Character) end
 
 -- ══════════════════════════════════════════════════════════════════════════════
 --  FEATURES
@@ -771,11 +916,11 @@ ac(RS.Heartbeat:Connect(function()
         -- live stats
         local dist=(ball.Position-hrp.Position).Magnitude
         local vel=ball.AssemblyLinearVelocity.Magnitude
-        STATS.ballDist=math.floor(dist)
-        STATS.ballSpeed=math.floor(vel>0 and vel or ballVelAvg)
-        if vel>2 then STATS.tti=math.floor(((dist-8)/vel)*100)/100
-        elseif ballVelAvg>0 then STATS.tti=math.floor((dist/ballVelAvg)*100)/100
-        else STATS.tti=99 end
+        STATS.ballDist  = math.floor(dist)
+        STATS.ballSpeed = math.floor(vel > 0 and vel or ballVelAvg)
+        -- Show predictive TTI (accounts for ping + direction)
+        local pTTI = getPredictiveTTI(ball, hrp, getPing())
+        STATS.tti = pTTI < 99 and (math.floor(pTTI * 100) / 100) or 99
 
         -- Ball ESP
         if ballEspOn then
@@ -803,17 +948,33 @@ ac(RS.Heartbeat:Connect(function()
             end
         end
 
-        -- Auto Parry
+        -- Auto Parry — predictive + direction-aware
         if autoParryOn then
-            local vel2=ball.AssemblyLinearVelocity.Magnitude
-            local fire=false
-            if dist<8 then fire=true
-            elseif vel2>2 then
-                local tti=(dist-8)/vel2
-                fire=tti<=(PARRY_WINDOW+getPing())
-            elseif ballVelAvg>0 then
-                fire=(dist/ballVelAvg)<=(PARRY_WINDOW+getPing())
-            else fire=dist<25 end
+            local fire = false
+            local ping  = getPing()
+            local appSpeed = getApproachSpeed(ball, hrp)
+
+            if dist < 4 then
+                -- Inside hitbox: always fire
+                fire = true
+            elseif dist < 8 then
+                -- Close zone: fire if approaching at any speed
+                fire = appSpeed > 0
+            elseif appSpeed > 5 then
+                -- Predictive TTI: accounts for where ball will be when server sees our parry
+                local pTTI = getPredictiveTTI(ball, hrp, ping)
+                fire = pTTI <= PARRY_WINDOW
+
+                -- Pre-emptive: very fast ball approaching → fire even earlier
+                if not fire and appSpeed > 120 and dist < 50 then
+                    fire = pTTI <= PARRY_WINDOW + 0.12
+                end
+            elseif ballVelAvg > 5 then
+                -- Fallback for laggy/slow velocity reads
+                local fallbackTTI = math.max(0, (dist - 4) / ballVelAvg)
+                fire = fallbackTTI <= (PARRY_WINDOW + ping)
+            end
+
             if fire then doParry(ball) end
         end
 
