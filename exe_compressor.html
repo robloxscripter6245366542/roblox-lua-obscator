@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>EXE Compressor</title>
+<script src="https://cdn.jsdelivr.net/npm/lzma@2.3.2/src/lzma_worker-min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:    #07080f;
+  --card:  #0f1018;
+  --c2:    #181923;
+  --bord:  #252636;
+  --acc1:  #7c4dff;
+  --acc2:  #448aff;
+  --acc3:  #1de9b6;
+  --red:   #ff5252;
+  --tx:    #e2e4f0;
+  --tx2:   #9fa8c0;
+  --tx3:   #555d7c;
+  --grn:   #69ff97;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--tx);
+  font-family: -apple-system, 'Segoe UI', sans-serif;
+  min-height: 100vh;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 16px 48px;
+}
+
+/* Header */
+.hdr { text-align: center; margin-bottom: 24px; }
+.hdr h1 {
+  font-size: 28px; font-weight: 800; letter-spacing: -.5px;
+  background: linear-gradient(135deg, var(--acc1), var(--acc2));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hdr p { color: var(--tx3); font-size: 13px; margin-top: 5px; }
+
+/* Card */
+.card {
+  background: var(--card);
+  border: 1px solid var(--bord);
+  border-radius: 20px;
+  width: 100%; max-width: 480px;
+  padding: 22px;
+  box-shadow: 0 12px 48px rgba(0,0,0,.65);
+}
+
+/* Pick file button */
+.pick-btn {
+  width: 100%;
+  padding: 36px 20px;
+  border-radius: 14px;
+  border: 2px dashed var(--bord);
+  background: var(--c2);
+  color: var(--tx2);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color .2s, background .2s;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+  overflow: hidden;
+}
+.pick-btn:active { background: rgba(124,77,255,.1); }
+.pick-btn.has-file {
+  border-color: var(--acc3);
+  background: rgba(29,233,182,.05);
+}
+.pick-icon { font-size: 36px; display: block; margin-bottom: 8px; }
+.pick-sub  { font-size: 12px; color: var(--tx3); margin-top: 4px; }
+.pick-btn input[type=file] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  font-size: 1px; /* force iOS to show file picker */
+}
+
+/* File info */
+.file-info {
+  display: none;
+  align-items: center; gap: 10px;
+  background: var(--c2); border-radius: 10px;
+  padding: 11px 14px; margin-top: 10px;
+  border: 1px solid var(--bord);
+}
+.file-info.show { display: flex; }
+.fi-name { flex: 1; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fi-size { font-size: 12px; color: var(--tx2); white-space: nowrap; }
+.fi-x    { font-size: 18px; color: var(--tx3); cursor: pointer; padding: 4px; flex-shrink: 0; }
+.fi-x:active { color: var(--red); }
+
+/* Section label */
+.slbl {
+  font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  color: var(--tx3); text-transform: uppercase;
+  margin: 18px 0 8px;
+}
+
+/* Mode pills */
+.modes { display: flex; gap: 8px; }
+.mode {
+  flex: 1; padding: 14px 8px; border-radius: 12px;
+  border: 1.5px solid var(--bord); background: var(--c2);
+  text-align: center; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color .2s, background .2s;
+}
+.mode.on { border-color: var(--acc1); background: rgba(124,77,255,.14); }
+.mode .mn { font-size: 14px; font-weight: 700; }
+.mode .mp { font-size: 11px; color: var(--acc3); margin-top: 3px; }
+.mode .md { font-size: 10px; color: var(--tx3); margin-top: 2px; }
+
+/* Level */
+.lvl-row { display: flex; align-items: center; gap: 10px; }
+.lvl-row span { font-size: 11px; color: var(--tx3); white-space: nowrap; }
+input[type=range] { flex: 1; accent-color: var(--acc1); height: 6px; cursor: pointer; }
+.lvl-val { font-size: 13px; font-weight: 700; color: var(--acc1); min-width: 20px; text-align: right; }
+
+/* Go button */
+.go {
+  width: 100%; padding: 16px; border-radius: 12px; margin-top: 20px;
+  background: linear-gradient(135deg, var(--acc1), var(--acc2));
+  color: #fff; font-size: 15px; font-weight: 800;
+  border: none; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity .2s;
+}
+.go:active   { opacity: .8; }
+.go:disabled { opacity: .3; cursor: default; }
+
+/* Progress */
+.prog { display: none; margin-top: 14px; }
+.prog.show { display: block; }
+.prog-bg {
+  background: var(--c2); border-radius: 99px; height: 8px;
+  overflow: hidden; border: 1px solid var(--bord);
+}
+.prog-fill {
+  height: 100%; border-radius: 99px; width: 0%;
+  background: linear-gradient(90deg, var(--acc1), var(--acc2));
+  transition: width .25s ease;
+}
+.prog-fill.ind { width: 40%; animation: slide 1.1s ease-in-out infinite; }
+@keyframes slide { 0% { transform: translateX(-150%); } 100% { transform: translateX(400%); } }
+.prog-lbl { font-size: 12px; color: var(--tx3); margin-top: 7px; text-align: center; }
+
+/* Stats */
+.stats { display: none; gap: 8px; margin-top: 14px; }
+.stats.show { display: flex; }
+.st {
+  flex: 1; background: var(--c2); border-radius: 10px;
+  padding: 11px 10px; border: 1px solid var(--bord); text-align: center;
+}
+.sv { font-size: 18px; font-weight: 800; }
+.sl { font-size: 10px; color: var(--tx3); margin-top: 3px; }
+.c1 { color: var(--acc1); } .c2 { color: var(--acc2); } .c3 { color: var(--grn); }
+
+/* Log */
+.log {
+  background: #020308; border-radius: 10px; padding: 12px 14px;
+  font-family: 'Menlo', 'Courier New', monospace; font-size: 11.5px;
+  line-height: 1.75; color: #7af0a0; height: 150px; overflow-y: auto;
+  border: 1px solid var(--bord); margin-top: 14px;
+  -webkit-overflow-scrolling: touch;
+}
+.le { color: #ff6b6b; } .li { color: #7af0a0; } .ld { color: var(--tx3); } .lb { color: #fff; font-weight: bold; }
+
+/* Download */
+.dl {
+  display: none; width: 100%; padding: 15px; border-radius: 12px;
+  margin-top: 12px; background: linear-gradient(135deg, #1de9b6, #00bcd4);
+  color: #000; font-size: 14px; font-weight: 800;
+  border: none; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.dl.show { display: block; }
+.dl:active { opacity: .8; }
+
+/* iOS download note */
+.ios-note {
+  display: none; font-size: 11px; color: var(--tx3); margin-top: 8px;
+  background: var(--c2); border-radius: 8px; padding: 9px 12px;
+  border: 1px solid var(--bord); line-height: 1.6; text-align: center;
+}
+.ios-note.show { display: block; }
+.ios-note b { color: var(--tx2); }
+
+/* Note */
+.note {
+  font-size: 11px; color: var(--tx3); line-height: 1.65;
+  background: var(--c2); border-radius: 10px; padding: 11px 14px;
+  margin-top: 14px; border: 1px solid var(--bord);
+}
+.note b { color: var(--tx2); }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>⚡ EXE Compressor</h1>
+  <p>Compress any file — runs in your browser</p>
+</div>
+
+<div class="card">
+
+  <!-- Pick file -->
+  <label class="pick-btn" id="pickBtn">
+    <span class="pick-icon" id="pickIcon">📦</span>
+    <span id="pickTitle">Tap to select file</span>
+    <span class="pick-sub" id="pickSub">.exe, .zip, .bin or any file</span>
+    <input type="file" id="fileInput">
+  </label>
+
+  <!-- File info -->
+  <div class="file-info" id="fileInfo">
+    <span>📄</span>
+    <span class="fi-name" id="fiName">—</span>
+    <span class="fi-size" id="fiSize">—</span>
+    <span class="fi-x" id="fiX">✕</span>
+  </div>
+
+  <!-- Mode -->
+  <div class="slbl">Compression Mode</div>
+  <div class="modes">
+    <div class="mode" id="mDeflate" onclick="setMode('deflate')">
+      <div class="mn">Deflate</div>
+      <div class="mp">~30–50% smaller</div>
+      <div class="md">Fast · instant</div>
+    </div>
+    <div class="mode on" id="mLzma" onclick="setMode('lzma')">
+      <div class="mn">LZMA</div>
+      <div class="mp">~60–88% smaller</div>
+      <div class="md">Max compression</div>
+    </div>
+  </div>
+
+  <!-- Level -->
+  <div class="slbl" id="lvlLbl">LZMA Level</div>
+  <div class="lvl-row">
+    <span>1</span>
+    <input type="range" id="lvlSlider" min="1" max="9" value="9"
+           oninput="document.getElementById('lvlVal').textContent=this.value">
+    <span>9</span>
+    <span class="lvl-val" id="lvlVal">9</span>
+  </div>
+
+  <!-- Go -->
+  <button class="go" id="goBtn" onclick="go()">▶&nbsp; Compress</button>
+
+  <!-- Progress -->
+  <div class="prog" id="progWrap">
+    <div class="prog-bg"><div class="prog-fill ind" id="progFill"></div></div>
+    <div class="prog-lbl" id="progLbl">Preparing…</div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats" id="statsRow">
+    <div class="st"><div class="sv c1" id="sOrig">—</div><div class="sl">Original</div></div>
+    <div class="st"><div class="sv c2" id="sComp">—</div><div class="sl">Compressed</div></div>
+    <div class="st"><div class="sv c3" id="sSaved">—</div><div class="sl">Saved</div></div>
+  </div>
+
+  <!-- Log -->
+  <div class="log" id="logBox"></div>
+
+  <!-- Download -->
+  <button class="dl" id="dlBtn" onclick="download()">⬇&nbsp; Download Compressed File</button>
+  <div class="ios-note" id="iosNote">
+    On iPad/iPhone: tap <b>Download</b> above, then tap <b>Save to Files</b><br>
+    or long-press → <b>Download Linked File</b>.
+  </div>
+
+  <!-- Note -->
+  <div class="note">
+    <b>Output:</b> LZMA → <code>.lzma</code> &nbsp;·&nbsp; Deflate → <code>.deflate</code><br>
+    To run the compressed exe on PC: open with <b>7-Zip</b> → extract → run the original exe.<br>
+    For a fully self-running compressed exe, use the desktop Python tool.
+  </div>
+
+</div>
+
+<script>
+let file = null, blob = null, outName = "", mode = "lzma";
+
+function human(b) {
+  const u = ["B","KB","MB","GB"]; let i = 0;
+  while (b >= 1024 && i < u.length-1) { b /= 1024; i++; }
+  return b.toFixed(1)+" "+u[i];
+}
+
+function log(t, c) {
+  const b = document.getElementById("logBox");
+  const d = document.createElement("div");
+  d.className = c || "li"; d.textContent = t;
+  b.appendChild(d); b.scrollTop = b.scrollHeight;
+}
+
+function prog(txt, pct) {
+  const w = document.getElementById("progWrap");
+  const f = document.getElementById("progFill");
+  const l = document.getElementById("progLbl");
+  w.classList.add("show"); l.textContent = txt;
+  if (pct == null) { f.classList.add("ind"); f.style.width="40%"; }
+  else { f.classList.remove("ind"); f.style.width=pct+"%"; }
+}
+
+function setMode(m) {
+  mode = m;
+  document.getElementById("mDeflate").classList.toggle("on", m==="deflate");
+  document.getElementById("mLzma").classList.toggle("on",    m==="lzma");
+  document.getElementById("lvlLbl").textContent = m==="lzma" ? "LZMA Level" : "Deflate Level";
+}
+
+// File input
+document.getElementById("fileInput").addEventListener("change", function() {
+  if (this.files[0]) setFile(this.files[0]);
+});
+document.getElementById("fiX").addEventListener("click", clearFile);
+
+function setFile(f) {
+  file = f; blob = null;
+  document.getElementById("fiName").textContent = f.name;
+  document.getElementById("fiSize").textContent = human(f.size);
+  document.getElementById("fileInfo").classList.add("show");
+  document.getElementById("pickIcon").textContent = "✅";
+  document.getElementById("pickTitle").textContent = f.name;
+  document.getElementById("pickSub").textContent = human(f.size);
+  document.getElementById("pickBtn").classList.add("has-file");
+  document.getElementById("dlBtn").classList.remove("show");
+  document.getElementById("statsRow").classList.remove("show");
+  document.getElementById("iosNote").classList.remove("show");
+  document.getElementById("logBox").innerHTML = "";
+  document.getElementById("progWrap").classList.remove("show");
+}
+
+function clearFile() {
+  file = null; blob = null;
+  document.getElementById("fileInfo").classList.remove("show");
+  document.getElementById("pickIcon").textContent = "📦";
+  document.getElementById("pickTitle").textContent = "Tap to select file";
+  document.getElementById("pickSub").textContent = ".exe, .zip, .bin or any file";
+  document.getElementById("pickBtn").classList.remove("has-file");
+  document.getElementById("dlBtn").classList.remove("show");
+  document.getElementById("statsRow").classList.remove("show");
+  document.getElementById("iosNote").classList.remove("show");
+  document.getElementById("logBox").innerHTML = "";
+  document.getElementById("progWrap").classList.remove("show");
+  document.getElementById("fileInput").value = "";
+}
+
+async function go() {
+  if (!file) { alert("Select a file first."); return; }
+  const btn = document.getElementById("goBtn");
+  const lvl = parseInt(document.getElementById("lvlSlider").value);
+  btn.disabled = true; blob = null;
+  document.getElementById("dlBtn").classList.remove("show");
+  document.getElementById("statsRow").classList.remove("show");
+  document.getElementById("iosNote").classList.remove("show");
+  document.getElementById("logBox").innerHTML = "";
+  const t0 = Date.now();
+
+  log(`Source : ${file.name}  (${human(file.size)})`, "lb");
+  log(`Mode   : ${mode.toUpperCase()}   Level: ${lvl}`, "ld");
+  log("─".repeat(44), "ld");
+
+  try {
+    const raw = await readBuf(file);
+    log(`Read ${human(raw.byteLength)} ✓`);
+    prog("Compressing…", null);
+
+    let out;
+    if (mode === "deflate") {
+      out = await deflateCompress(raw);
+      outName = stem(file.name) + "_compressed.deflate";
+    } else {
+      out = await lzmaCompress(raw, lvl);
+      outName = stem(file.name) + "_compressed.lzma";
+    }
+
+    const dt  = ((Date.now()-t0)/1000).toFixed(1);
+    const pct = (100*(1-out.byteLength/raw.byteLength)).toFixed(1);
+    log("─".repeat(44), "ld");
+    log(`✓ Done in ${dt}s`, "lb");
+    log(`  ${human(raw.byteLength)} → ${human(out.byteLength)}  (${pct}% smaller)`);
+    log(`  → ${outName}`, "ld");
+
+    blob = new Blob([out]);
+    document.getElementById("sOrig").textContent  = human(raw.byteLength);
+    document.getElementById("sComp").textContent  = human(out.byteLength);
+    document.getElementById("sSaved").textContent = pct+"%";
+    document.getElementById("statsRow").classList.add("show");
+    document.getElementById("dlBtn").classList.add("show");
+    document.getElementById("iosNote").classList.add("show");
+    prog("Complete!", 100);
+  } catch(e) {
+    log("✗ "+e.message, "le");
+    prog("Failed", 0);
+  }
+  btn.disabled = false;
+}
+
+function stem(name) { return name.replace(/\.[^.]+$/, ""); }
+
+function readBuf(f) {
+  return new Promise((ok,err) => {
+    const r = new FileReader();
+    r.onload = () => ok(r.result);
+    r.onerror = () => err(r.error);
+    r.readAsArrayBuffer(f);
+  });
+}
+
+async function deflateCompress(buf) {
+  const cs = new CompressionStream("deflate-raw");
+  const w = cs.writable.getWriter();
+  w.write(new Uint8Array(buf)); w.close();
+  const chunks = [], rdr = cs.readable.getReader();
+  let d, v;
+  while (({done:d,value:v} = await rdr.read()) && !d) chunks.push(v);
+  const sz = chunks.reduce((s,c)=>s+c.length,0);
+  const out = new Uint8Array(sz); let off=0;
+  for (const c of chunks) { out.set(c,off); off+=c.length; }
+  return out.buffer;
+}
+
+function lzmaCompress(buf, level) {
+  return new Promise((ok,err) => {
+    if (typeof LZMA === "undefined") { err(new Error("LZMA library not loaded")); return; }
+    const arr = new Uint8Array(buf);
+    LZMA.compress(arr, level, (res, e) => {
+      if (e) { err(new Error(e)); return; }
+      const out = new Uint8Array(res.length);
+      for (let i=0;i<res.length;i++) out[i]=res[i]&0xff;
+      ok(out.buffer);
+    }, p => prog(`LZMA compressing… ${Math.round(p*100)}%`, Math.round(p*100)));
+  });
+}
+
+function download() {
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = outName;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
+}
+</script>
+</body>
+</html>
