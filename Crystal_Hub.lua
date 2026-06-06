@@ -1,0 +1,585 @@
+-- ================================================================
+--   CRYSTAL HUB  ·  Premium Glass UI  ·  v2.0
+--   Ultra-transparent · Modular · Add your own tabs below
+--   No built-in scripts — everything is yours to build
+-- ================================================================
+-- LocalScript → StarterPlayerScripts  /  Executor inject
+
+local Players          = game:GetService("Players")
+local TweenService     = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local LP               = Players.LocalPlayer
+local PGui             = LP:WaitForChild("PlayerGui")
+
+-- ================================================================
+-- PERSISTENCE
+-- ================================================================
+local saved = { themeIdx = 1, notif = true }
+pcall(function()
+    local DS = game:GetService("DataStoreService"):GetDataStore("CrystalHub_v2")
+    local ok, dat = pcall(function() return DS:GetAsync(tostring(LP.UserId)) end)
+    if ok and type(dat)=="table" then for k,v in pairs(dat) do saved[k]=v end end
+    _G._CHSave = function() pcall(function() DS:SetAsync(tostring(LP.UserId),saved) end) end
+end)
+local function save() if _G._CHSave then _G._CHSave() end end
+
+-- ================================================================
+-- THEMES  (8 presets)
+-- ================================================================
+local THEMES = {
+    { name="Ocean",    A=Color3.fromRGB(56,149,255),  A2=Color3.fromRGB(100,180,255), BG=Color3.fromRGB(9,12,22),   SB=Color3.fromRGB(11,15,28),  CD=Color3.fromRGB(16,20,36),  IP=Color3.fromRGB(12,16,30),  T1=Color3.fromRGB(225,238,255), T2=Color3.fromRGB(140,175,230), T3=Color3.fromRGB(80,115,170)  },
+    { name="Violet",   A=Color3.fromRGB(150,90,255),  A2=Color3.fromRGB(190,140,255), BG=Color3.fromRGB(10,8,20),   SB=Color3.fromRGB(13,10,26),  CD=Color3.fromRGB(18,14,38),  IP=Color3.fromRGB(12,9,24),   T1=Color3.fromRGB(238,228,255), T2=Color3.fromRGB(175,145,235), T3=Color3.fromRGB(115,90,175)  },
+    { name="Rose",     A=Color3.fromRGB(255,90,140),  A2=Color3.fromRGB(255,150,185), BG=Color3.fromRGB(20,8,14),   SB=Color3.fromRGB(26,10,18),  CD=Color3.fromRGB(36,14,26),  IP=Color3.fromRGB(22,8,16),   T1=Color3.fromRGB(255,228,238), T2=Color3.fromRGB(230,160,190), T3=Color3.fromRGB(170,90,125)  },
+    { name="Emerald",  A=Color3.fromRGB(50,210,140),  A2=Color3.fromRGB(100,240,185), BG=Color3.fromRGB(7,16,14),   SB=Color3.fromRGB(9,20,17),   CD=Color3.fromRGB(13,28,24),  IP=Color3.fromRGB(8,16,14),   T1=Color3.fromRGB(220,250,240), T2=Color3.fromRGB(130,210,180), T3=Color3.fromRGB(75,155,125)  },
+    { name="Amber",    A=Color3.fromRGB(255,185,50),  A2=Color3.fromRGB(255,215,120), BG=Color3.fromRGB(18,14,6),   SB=Color3.fromRGB(22,17,7),   CD=Color3.fromRGB(30,24,10),  IP=Color3.fromRGB(20,15,6),   T1=Color3.fromRGB(255,248,225), T2=Color3.fromRGB(230,195,120), T3=Color3.fromRGB(165,130,65)  },
+    { name="Ice",      A=Color3.fromRGB(80,215,255),  A2=Color3.fromRGB(150,235,255), BG=Color3.fromRGB(8,14,20),   SB=Color3.fromRGB(10,17,25),  CD=Color3.fromRGB(14,22,34),  IP=Color3.fromRGB(9,14,21),   T1=Color3.fromRGB(215,245,255), T2=Color3.fromRGB(120,200,230), T3=Color3.fromRGB(70,145,175)  },
+    { name="Sunset",   A=Color3.fromRGB(255,120,70),  A2=Color3.fromRGB(255,175,130), BG=Color3.fromRGB(18,8,4),    SB=Color3.fromRGB(22,10,5),   CD=Color3.fromRGB(32,14,8),   IP=Color3.fromRGB(20,8,4),    T1=Color3.fromRGB(255,235,225), T2=Color3.fromRGB(235,170,140), T3=Color3.fromRGB(175,100,75)  },
+    { name="Graphite", A=Color3.fromRGB(160,170,195), A2=Color3.fromRGB(200,208,225), BG=Color3.fromRGB(14,14,16),  SB=Color3.fromRGB(18,18,20),  CD=Color3.fromRGB(24,24,28),  IP=Color3.fromRGB(16,16,18),  T1=Color3.fromRGB(235,235,245), T2=Color3.fromRGB(165,165,185), T3=Color3.fromRGB(105,105,125) },
+}
+
+-- Glass layer transparencies
+local TR = { win=0.10, sb=0.14, tbar=0.12, card=0.26, inp=0.36, btn=0.18, sbOn=0.14, sbOff=1 }
+
+local T = THEMES[math.clamp(saved.themeIdx or 1, 1, #THEMES)]
+
+-- ================================================================
+-- TWEEN INFOS
+-- ================================================================
+local TF  = TweenInfo.new(0.14, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local TM  = TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local TS  = TweenInfo.new(0.38, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local TSP = TweenInfo.new(0.38, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
+
+local function tw(i,t,p) TweenService:Create(i,t,p):Play() end
+
+-- ================================================================
+-- RECOLOR REGISTRY
+-- ================================================================
+local bgReg, txReg = {}, {}
+local allScrolls   = {}
+
+local function rBg(i,k) if i and k then table.insert(bgReg,{i=i,k=k}) end end
+local function rTx(i,k) if i and k then table.insert(txReg,{i=i,k=k}) end end
+
+local function applyTheme(th, anim)
+    for _,e in ipairs(bgReg) do
+        if e.i and e.i.Parent and th[e.k] then
+            if anim then tw(e.i, TM, {BackgroundColor3=th[e.k]})
+            else e.i.BackgroundColor3=th[e.k] end
+        end
+    end
+    for _,e in ipairs(txReg) do
+        if e.i and e.i.Parent and th[e.k] then e.i.TextColor3=th[e.k] end
+    end
+    for _,s in ipairs(allScrolls) do
+        if s and s.Parent then s.ScrollBarImageColor3=th.A end
+    end
+end
+
+-- ================================================================
+-- PRIMITIVES
+-- ================================================================
+local function corner(p,r) local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,r or 10);c.Parent=p;return c end
+local function stroke(p,col,tr,thick) local s=Instance.new("UIStroke");s.Color=col or Color3.new(1,1,1);s.Transparency=tr or 0.82;s.Thickness=thick or 1;s.Parent=p;return s end
+
+local function mkF(par,sz,pos,col,tr)
+    local f=Instance.new("Frame");f.Size=sz;f.Position=pos;f.BackgroundColor3=col;f.BackgroundTransparency=tr or 0;f.BorderSizePixel=0;f.Parent=par;return f
+end
+local function mkL(par,txt,fnt,fsz,col,pos,sz,xa,wrap)
+    local l=Instance.new("TextLabel");l.Text=txt;l.Font=fnt or Enum.Font.Gotham;l.TextSize=fsz or 13;l.TextColor3=col;l.BackgroundTransparency=1;l.Position=pos;l.Size=sz;l.TextXAlignment=xa or Enum.TextXAlignment.Left;l.TextWrapped=wrap or false;l.BorderSizePixel=0;l.Parent=par;return l
+end
+local function mkB(par,sz,pos,col,tr)
+    local b=Instance.new("TextButton");b.Text="";b.Size=sz;b.Position=pos;b.BackgroundColor3=col;b.BackgroundTransparency=tr or 0;b.BorderSizePixel=0;b.AutoButtonColor=false;b.Parent=par;return b
+end
+local function shine(p,h) -- glass top highlight
+    local s=mkF(p,UDim2.new(1,0,0,h or 1),UDim2.new(0,0,0,0),Color3.new(1,1,1),0.74);return s
+end
+local function glassCard(par,sz,pos)
+    local f=mkF(par,sz,pos,T.CD,TR.card);rBg(f,"CD");corner(f,10);stroke(f,Color3.new(1,1,1),0.84);shine(f);return f
+end
+
+-- ================================================================
+-- NOTIFICATION SYSTEM
+-- ================================================================
+local notifStack = {}
+local NW,NH,NGAP,NR,NB = 268,62,7,16,22
+local SG -- set later
+
+local function pushNotif(title,body,dur)
+    if not saved.notif then return end
+    dur=dur or 3.5
+    for _,n in ipairs(notifStack) do
+        n._y=n._y-(NH+NGAP)
+        tw(n.f, TM, {Position=UDim2.new(1,-(NW+NR),1,n._y)})
+    end
+    local y0=-(NH+NB)
+    local nf=mkF(SG,UDim2.new(0,NW,0,NH),UDim2.new(1,NW+NR,1,y0),T.CD,TR.card)
+    nf.ZIndex=50; corner(nf,11); stroke(nf,Color3.new(1,1,1),0.80); shine(nf)
+    rBg(nf,"CD")
+    -- accent strip
+    local strip=mkF(nf,UDim2.new(0,3,0,NH-12),UDim2.new(0,0,0,6),T.A,0);corner(strip,2)
+    rBg(strip,"A")
+    -- icon
+    local ico=mkF(nf,UDim2.new(0,30,0,30),UDim2.new(0,9,0.5,-15),T.A,0.72);corner(ico,8);rBg(ico,"A")
+    mkL(ico,"◆",Enum.Font.GothamBold,14,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center).ZIndex=51
+    -- texts
+    local tl=mkL(nf,title,Enum.Font.GothamBold,13,T.T1,UDim2.new(0,48,0,7),UDim2.new(1,-66,0,17));tl.ZIndex=51;rTx(tl,"T1")
+    local bl=mkL(nf,body,Enum.Font.Gotham,11,T.T2,UDim2.new(0,48,0,25),UDim2.new(1,-58,0,26),Enum.TextXAlignment.Left,true);bl.ZIndex=51;rTx(bl,"T2")
+    -- close
+    local xb=mkB(nf,UDim2.new(0,20,0,20),UDim2.new(1,-24,0,4),T.CD,1);xb.ZIndex=52
+    mkL(xb,"✕",Enum.Font.GothamBold,10,T.T3,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center).ZIndex=52;rTx(mkL(xb,"","",0,T.T3,UDim2.new(0,0,0,0),UDim2.new(0,0,0,0)),"T3")
+    local entry={f=nf,_y=y0}; table.insert(notifStack,1,entry)
+    tw(nf,TweenInfo.new(0.26,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.new(1,-(NW+NR),1,y0)})
+    local function dismiss()
+        for i,n in ipairs(notifStack) do if n==entry then table.remove(notifStack,i);break end end
+        for idx,n in ipairs(notifStack) do
+            n._y=-(NH+NB)-(idx-1)*(NH+NGAP)
+            tw(n.f,TM,{Position=UDim2.new(1,-(NW+NR),1,n._y)})
+        end
+        tw(nf,TM,{Position=UDim2.new(1,NW+NR,1,y0)})
+        task.delay(0.26,function() if nf.Parent then nf:Destroy() end end)
+    end
+    xb.MouseButton1Click:Connect(dismiss)
+    task.delay(dur,function() if nf and nf.Parent then dismiss() end end)
+end
+
+-- ================================================================
+-- SCREEN GUI + WINDOW
+-- ================================================================
+local old=PGui:FindFirstChild("CrystalHub"); if old then old:Destroy() end
+SG=Instance.new("ScreenGui")
+SG.Name="CrystalHub"; SG.ResetOnSpawn=false
+SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+SG.IgnoreGuiInset=true; SG.Parent=PGui
+
+local WIN_W,WIN_H=615,498
+local Window=mkF(SG,UDim2.new(0,WIN_W,0,WIN_H),UDim2.new(0.5,-WIN_W/2,0.5,-WIN_H/2),T.BG,TR.win)
+rBg(Window,"BG"); corner(Window,16); stroke(Window,Color3.new(1,1,1),0.78)
+Window.ClipsDescendants=true
+
+-- Multi-layer glass interior
+shine(Window,1)
+local winInner=mkF(Window,UDim2.new(1,-2,1,-2),UDim2.new(0,1,0,1),Color3.new(1,1,1),0.975)
+corner(winInner,15); winInner.ZIndex=0
+
+-- Bottom inner glow strip
+local bGlow=mkF(Window,UDim2.new(1,0,0,60),UDim2.new(0,0,1,-60),T.A,0.96)
+rBg(bGlow,"A")
+
+-- ================================================================
+-- TITLEBAR
+-- ================================================================
+local TB=mkF(Window,UDim2.new(1,0,0,46),UDim2.new(0,0,0,0),T.SB,TR.tbar)
+rBg(TB,"SB"); corner(TB,16); shine(TB)
+-- square off bottom corners of titlebar
+mkF(TB,UDim2.new(1,0,0,16),UDim2.new(0,0,1,-16),T.SB,TR.tbar); rBg(mkF(TB,UDim2.new(1,0,0,16),UDim2.new(0,0,1,-16),T.SB,TR.tbar),"SB")
+-- bottom divider
+mkF(TB,UDim2.new(1,0,0,1),UDim2.new(0,0,1,-1),Color3.new(1,1,1),0.83)
+
+-- logo gem
+local gem=mkF(TB,UDim2.new(0,22,0,22),UDim2.new(0,13,0.5,-11),T.A,0.22)
+rBg(gem,"A"); corner(gem,7); stroke(gem,T.A,0.55)
+mkL(gem,"◆",Enum.Font.GothamBold,12,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+
+local tTitle=mkL(TB,"Crystal Hub",Enum.Font.GothamBold,15,T.T1,UDim2.new(0,42,0,0),UDim2.new(0,110,1,0));rTx(tTitle,"T1")
+local tVer=mkL(TB,"v2.0",Enum.Font.Gotham,10,T.T3,UDim2.new(0,152,0,0),UDim2.new(0,32,1,0));rTx(tVer,"T3")
+
+-- macOS traffic lights
+local function trafficBtn(xOff,col,cb)
+    local b=mkB(TB,UDim2.new(0,13,0,13),UDim2.new(1,xOff,0.5,-6),col,0);corner(b,7)
+    b.MouseEnter:Connect(function() tw(b,TF,{BackgroundTransparency=0.3}) end)
+    b.MouseLeave:Connect(function() tw(b,TF,{BackgroundTransparency=0}) end)
+    b.MouseButton1Click:Connect(cb); return b
+end
+trafficBtn(-36,Color3.fromRGB(255,90,90),function()
+    tw(Window,TM,{Size=UDim2.new(0,0,0,0),Position=UDim2.new(0.5,0,0.5,0)})
+    task.delay(0.25,function() SG:Destroy() end)
+end)
+local minimized=false
+trafficBtn(-54,Color3.fromRGB(255,190,55),function()
+    minimized=not minimized
+    tw(Window,TM,{Size=minimized and UDim2.new(0,WIN_W,0,46) or UDim2.new(0,WIN_W,0,WIN_H)})
+end)
+trafficBtn(-72,Color3.fromRGB(50,205,115),function()
+    -- reserved for fullscreen
+end)
+
+-- ================================================================
+-- SIDEBAR
+-- ================================================================
+local SBW=168
+local Sidebar=mkF(Window,UDim2.new(0,SBW,1,-46),UDim2.new(0,0,0,46),T.SB,TR.sb)
+rBg(Sidebar,"SB")
+mkF(Sidebar,UDim2.new(0,SBW-16,1,0),UDim2.new(0,SBW-SBW,0,0),T.SB,TR.sb) -- fill right corner
+mkF(Sidebar,UDim2.new(0,1,1,0),UDim2.new(1,-1,0,0),Color3.new(1,1,1),0.84)
+
+local sbScroll=Instance.new("ScrollingFrame")
+sbScroll.Size=UDim2.new(1,0,1,-52);sbScroll.Position=UDim2.new(0,0,0,6)
+sbScroll.BackgroundTransparency=1;sbScroll.BorderSizePixel=0
+sbScroll.ScrollBarThickness=0;sbScroll.CanvasSize=UDim2.new(0,0,0,0)
+sbScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;sbScroll.Parent=Sidebar
+
+local sbLL=Instance.new("UIListLayout");sbLL.Padding=UDim.new(0,3);sbLL.Parent=sbScroll
+local sbLP=Instance.new("UIPadding");sbLP.PaddingLeft=UDim.new(0,8);sbLP.PaddingRight=UDim.new(0,8);sbLP.PaddingTop=UDim.new(0,6);sbLP.Parent=sbScroll
+
+-- user card
+local uCard=glassCard(Sidebar,UDim2.new(1,-16,0,42),UDim2.new(0,8,1,-50))
+local uAv=mkF(uCard,UDim2.new(0,28,0,28),UDim2.new(0,7,0.5,-14),T.A,0.68);corner(uAv,8);rBg(uAv,"A")
+mkL(uAv,string.sub(LP.Name,1,1):upper(),Enum.Font.GothamBold,14,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+local uName=mkL(uCard,LP.Name,Enum.Font.GothamBold,11,T.T1,UDim2.new(0,42,0,5),UDim2.new(1,-52,0,15));rTx(uName,"T1")
+uName.TextTruncate=Enum.TextTruncate.AtEnd
+local uStatus=mkL(uCard,"● online",Enum.Font.Gotham,9,Color3.fromRGB(80,230,120),UDim2.new(0,42,0,20),UDim2.new(1,-52,0,12))
+
+-- ================================================================
+-- CONTENT AREA
+-- ================================================================
+local Content=mkF(Window,UDim2.new(1,-SBW-3,1,-54),UDim2.new(0,SBW+1,0,52),T.BG,1)
+rBg(Content,"BG"); Content.ClipsDescendants=true
+
+-- ================================================================
+-- TAB SYSTEM
+-- ================================================================
+local pages,navBtns={},{}
+local activeTab,tabCount=1,0
+
+local function switchTab(idx)
+    activeTab=idx
+    for i,pg in ipairs(pages) do pg.Visible=(i==idx) end
+    for i,nb in ipairs(navBtns) do
+        local on=(i==idx)
+        tw(nb.bg,TM,{BackgroundTransparency=on and TR.sbOn or 1})
+        nb.bar.Visible=on
+        nb.lbl.Font=on and Enum.Font.GothamBold or Enum.Font.Gotham
+        nb.lbl.TextColor3=on and T.T1 or T.T2
+        tw(nb.icoBg,TM,{BackgroundTransparency=on and 0.50 or 0.82})
+    end
+end
+
+local function newPage(icon,name)
+    tabCount+=1; local idx=tabCount
+
+    -- sidebar button
+    local sbBtn=mkF(sbScroll,UDim2.new(1,0,0,38),UDim2.new(0,0,0,0),T.CD,1)
+    rBg(sbBtn,"CD"); corner(sbBtn,9)
+    local bar=mkF(sbBtn,UDim2.new(0,3,0,18),UDim2.new(0,0,0.5,-9),T.A,0)
+    bar.Visible=(idx==1); corner(bar,2); rBg(bar,"A")
+    local icoBg=mkF(sbBtn,UDim2.new(0,28,0,28),UDim2.new(0,5,0.5,-14),T.A,idx==1 and 0.50 or 0.82)
+    corner(icoBg,8); rBg(icoBg,"A")
+    mkL(icoBg,icon,Enum.Font.Gotham,14,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+    local nl=mkL(sbBtn,name,idx==1 and Enum.Font.GothamBold or Enum.Font.Gotham,12,
+        idx==1 and T.T1 or T.T2,UDim2.new(0,39,0,0),UDim2.new(1,-44,1,0))
+    rTx(nl,idx==1 and "T1" or "T2")
+    local hit=mkB(sbBtn,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.CD,1)
+    hit.MouseEnter:Connect(function() if activeTab~=idx then tw(sbBtn,TF,{BackgroundTransparency=0.88}) end end)
+    hit.MouseLeave:Connect(function() if activeTab~=idx then tw(sbBtn,TF,{BackgroundTransparency=1}) end end)
+    hit.MouseButton1Click:Connect(function() switchTab(idx) end)
+    table.insert(navBtns,{bg=sbBtn,bar=bar,lbl=nl,icoBg=icoBg})
+
+    -- page
+    local page=mkF(Content,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.BG,1)
+    page.Visible=(idx==1); page.ClipsDescendants=true
+
+    -- header
+    local hIcon=mkF(page,UDim2.new(0,26,0,26),UDim2.new(0,2,0,4),T.A,0.78);corner(hIcon,8);rBg(hIcon,"A")
+    mkL(hIcon,icon,Enum.Font.Gotham,13,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+    local hTitle=mkL(page,name,Enum.Font.GothamBold,17,T.T1,UDim2.new(0,34,0,5),UDim2.new(1,-38,0,22));rTx(hTitle,"T1")
+    mkF(page,UDim2.new(1,0,0,1),UDim2.new(0,0,0,34),Color3.new(1,1,1),0.86)
+
+    -- scroll
+    local scroll=Instance.new("ScrollingFrame")
+    scroll.Size=UDim2.new(1,0,1,-38);scroll.Position=UDim2.new(0,0,0,37)
+    scroll.BackgroundTransparency=1;scroll.BorderSizePixel=0
+    scroll.ScrollBarThickness=3;scroll.ScrollBarImageColor3=T.A
+    scroll.CanvasSize=UDim2.new(0,0,0,0);scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
+    scroll.ScrollingDirection=Enum.ScrollingDirection.Y;scroll.Parent=page
+    table.insert(allScrolls,scroll)
+
+    local ll=Instance.new("UIListLayout");ll.Padding=UDim.new(0,5);ll.Parent=scroll
+    local lp=Instance.new("UIPadding");lp.PaddingRight=UDim.new(0,6);lp.PaddingBottom=UDim.new(0,10);lp.Parent=scroll
+
+    table.insert(pages,page)
+    return page,scroll
+end
+
+-- ================================================================
+-- ELEMENT BUILDERS
+-- ================================================================
+
+local function addSection(scroll,txt)
+    local f=mkF(scroll,UDim2.new(1,0,0,22),UDim2.new(0,0,0,0),T.BG,1)
+    local lbl=mkL(f,txt:upper(),Enum.Font.GothamBold,9,T.T3,UDim2.new(0,2,0,3),UDim2.new(1,0,0,16))
+    rTx(lbl,"T3")
+    local tick=mkF(f,UDim2.new(0,18,0,1),UDim2.new(0,0,1,0),T.A,0.45);rBg(tick,"A")
+    return f
+end
+
+local function addLabel(scroll,txt)
+    local f=glassCard(scroll,UDim2.new(1,0,0,0),UDim2.new(0,0,0,0))
+    f.AutomaticSize=Enum.AutomaticSize.Y
+    local p=Instance.new("UIPadding");p.PaddingLeft=UDim.new(0,11);p.PaddingRight=UDim.new(0,11);p.PaddingTop=UDim.new(0,9);p.PaddingBottom=UDim.new(0,9);p.Parent=f
+    local l=mkL(f,txt,Enum.Font.Gotham,12,T.T2,UDim2.new(0,0,0,0),UDim2.new(1,0,0,0),Enum.TextXAlignment.Left,true)
+    l.AutomaticSize=Enum.AutomaticSize.Y;rTx(l,"T2");return f
+end
+
+local function addButton(scroll,label,desc,callback)
+    local f=glassCard(scroll,UDim2.new(1,0,0,60),UDim2.new(0,0,0,0))
+    mkL(f,label,Enum.Font.GothamBold,13,T.T1,UDim2.new(0,12,0,11),UDim2.new(1,-90,0,16)).TextTruncate=Enum.TextTruncate.AtEnd
+    if desc~="" then local d=mkL(f,desc,Enum.Font.Gotham,11,T.T3,UDim2.new(0,12,0,28),UDim2.new(1,-90,0,20),Enum.TextXAlignment.Left,true);rTx(d,"T3") end
+    local btn=mkF(f,UDim2.new(0,62,0,28),UDim2.new(1,-72,0.5,-14),T.A,TR.btn);corner(btn,8);rBg(btn,"A");stroke(btn,T.A,0.55);shine(btn)
+    local bl=mkL(btn,"Run",Enum.Font.GothamBold,12,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center);rTx(bl,"T1")
+    local hit=mkB(f,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.CD,1)
+    hit.MouseEnter:Connect(function() tw(f,TF,{BackgroundTransparency=TR.card-0.09});tw(btn,TF,{BackgroundTransparency=TR.btn-0.12}) end)
+    hit.MouseLeave:Connect(function() tw(f,TF,{BackgroundTransparency=TR.card});tw(btn,TF,{BackgroundTransparency=TR.btn}) end)
+    hit.MouseButton1Click:Connect(function()
+        pcall(callback);bl.Text="✓";tw(btn,TF,{BackgroundTransparency=0})
+        task.delay(1.4,function() bl.Text="Run";tw(btn,TM,{BackgroundTransparency=TR.btn}) end)
+    end)
+    return f
+end
+
+local function addToggle(scroll,label,desc,default,callback)
+    local state=default or false
+    local f=glassCard(scroll,UDim2.new(1,0,0,60),UDim2.new(0,0,0,0))
+    mkL(f,label,Enum.Font.GothamBold,13,T.T1,UDim2.new(0,12,0,11),UDim2.new(1,-78,0,16)).TextTruncate=Enum.TextTruncate.AtEnd
+    if desc~="" then local d=mkL(f,desc,Enum.Font.Gotham,11,T.T3,UDim2.new(0,12,0,28),UDim2.new(1,-78,0,20),Enum.TextXAlignment.Left,true);rTx(d,"T3") end
+    local track=mkF(f,UDim2.new(0,44,0,24),UDim2.new(1,-56,0.5,-12),state and T.A or T.IP,state and 0.1 or TR.inp)
+    rBg(track,state and "A" or "IP");corner(track,12)
+    local knob=mkF(track,UDim2.new(0,18,0,18),UDim2.new(0,state and 23 or 3,0.5,-9),Color3.new(1,1,1),0.05)
+    corner(knob,9);stroke(knob,Color3.new(0,0,0),0.65)
+    local hit=mkB(f,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.CD,1)
+    hit.MouseEnter:Connect(function() tw(f,TF,{BackgroundTransparency=TR.card-0.09}) end)
+    hit.MouseLeave:Connect(function() tw(f,TF,{BackgroundTransparency=TR.card}) end)
+    hit.MouseButton1Click:Connect(function()
+        state=not state;pcall(callback,state)
+        tw(track,TM,{BackgroundColor3=state and T.A or T.IP,BackgroundTransparency=state and 0.1 or TR.inp})
+        tw(knob,TSP,{Position=state and UDim2.new(0,23,0.5,-9) or UDim2.new(0,3,0.5,-9)})
+        rBg(track,state and "A" or "IP")
+    end)
+    local function setVal(v)
+        state=v;track.BackgroundColor3=v and T.A or T.IP;track.BackgroundTransparency=v and 0.1 or TR.inp
+        knob.Position=v and UDim2.new(0,23,0.5,-9) or UDim2.new(0,3,0.5,-9)
+    end
+    return f,function() return state end,setVal
+end
+
+local function addSlider(scroll,label,desc,min,max,default,callback)
+    local val=default or min
+    local f=glassCard(scroll,UDim2.new(1,0,0,66),UDim2.new(0,0,0,0))
+    mkL(f,label,Enum.Font.GothamBold,13,T.T1,UDim2.new(0,12,0,10),UDim2.new(1,-66,0,15)).TextTruncate=Enum.TextTruncate.AtEnd
+    local vl=mkL(f,tostring(val),Enum.Font.GothamBold,12,T.A,UDim2.new(1,-58,0,10),UDim2.new(0,50,0,15),Enum.TextXAlignment.Right);rTx(vl,"A")
+    if desc~="" then local d=mkL(f,desc,Enum.Font.Gotham,10,T.T3,UDim2.new(0,12,0,26),UDim2.new(1,-16,0,14),Enum.TextXAlignment.Left,true);rTx(d,"T3") end
+    local trk=mkF(f,UDim2.new(1,-20,0,4),UDim2.new(0,10,0,50),T.IP,TR.inp);rBg(trk,"IP");corner(trk,2)
+    local pct=(val-min)/math.max(max-min,1)
+    local fill=mkF(trk,UDim2.new(pct,0,1,0),UDim2.new(0,0,0,0),T.A,0.05);rBg(fill,"A");corner(fill,2)
+    local thumb=mkF(trk,UDim2.new(0,14,0,14),UDim2.new(pct,-7,0.5,-7),Color3.new(1,1,1),0.05);corner(thumb,7);stroke(thumb,T.A,0.50)
+    local dragging=false
+    local hitA=mkB(f,UDim2.new(1,-20,0,20),UDim2.new(0,10,0,42),T.CD,1)
+    local function setSlider(px)
+        local rel=math.clamp((px-trk.AbsolutePosition.X)/math.max(trk.AbsoluteSize.X,1),0,1)
+        val=math.floor(min+rel*(max-min)+0.5);pct=(val-min)/math.max(max-min,1)
+        vl.Text=tostring(val);tw(fill,TF,{Size=UDim2.new(pct,0,1,0)});tw(thumb,TF,{Position=UDim2.new(pct,-7,0.5,-7)})
+        pcall(callback,val)
+    end
+    hitA.InputBegan:Connect(function(inp)
+        if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
+            dragging=true;setSlider(inp.Position.X)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if dragging and (inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch) then
+            setSlider(inp.Position.X)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(inp)
+        if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then dragging=false end
+    end)
+    return f,function() return val end
+end
+
+local function addDropdown(scroll,label,opts,default,callback)
+    local sel=default or opts[1]; local open=false
+    local f=glassCard(scroll,UDim2.new(1,0,0,60),UDim2.new(0,0,0,0))
+    f.ClipsDescendants=false
+    mkL(f,label,Enum.Font.GothamBold,13,T.T1,UDim2.new(0,12,0,11),UDim2.new(1,-16,0,16)).TextTruncate=Enum.TextTruncate.AtEnd
+    local selF=mkF(f,UDim2.new(1,-20,0,26),UDim2.new(0,10,1,-34),T.IP,TR.inp);rBg(selF,"IP");corner(selF,7);stroke(selF,Color3.new(1,1,1),0.86)
+    local selLbl=mkL(selF,sel,Enum.Font.Gotham,12,T.T1,UDim2.new(0,9,0,0),UDim2.new(1,-26,1,0));rTx(selLbl,"T1")
+    mkL(selF,"▾",Enum.Font.GothamBold,10,T.T3,UDim2.new(1,-18,0,0),UDim2.new(0,14,1,0),Enum.TextXAlignment.Center)
+    local ddH=#opts*28+8
+    local dd=mkF(f,UDim2.new(1,-20,0,0),UDim2.new(0,10,1,-34+28),T.CD,TR.card-0.04)
+    rBg(dd,"CD");corner(dd,9);stroke(dd,Color3.new(1,1,1),0.80);dd.Visible=false;dd.ZIndex=40
+    local ddL=Instance.new("UIListLayout");ddL.Padding=UDim.new(0,2);ddL.Parent=dd
+    local ddP=Instance.new("UIPadding");ddP.PaddingLeft=UDim.new(0,4);ddP.PaddingRight=UDim.new(0,4);ddP.PaddingTop=UDim.new(0,4);ddP.Parent=dd
+    for _,opt in ipairs(opts) do
+        local ob=mkF(dd,UDim2.new(1,0,0,24),UDim2.new(0,0,0,0),T.IP,opt==sel and 0.50 or 1);corner(ob,6);ob.ZIndex=41
+        local ol=mkL(ob,opt,Enum.Font.Gotham,12,opt==sel and T.T1 or T.T2,UDim2.new(0,9,0,0),UDim2.new(1,-9,1,0));ol.ZIndex=41;rTx(ol,"T2")
+        local oh=mkB(ob,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.IP,1);oh.ZIndex=42
+        oh.MouseEnter:Connect(function() tw(ob,TF,{BackgroundTransparency=0.60}) end)
+        oh.MouseLeave:Connect(function() tw(ob,TF,{BackgroundTransparency=opt==sel and 0.50 or 1}) end)
+        oh.MouseButton1Click:Connect(function()
+            sel=opt;selLbl.Text=opt;pcall(callback,opt)
+            open=false;tw(dd,TM,{Size=UDim2.new(1,-20,0,0)});task.delay(0.24,function() dd.Visible=false end)
+        end)
+    end
+    local sh=mkB(selF,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.IP,1);sh.ZIndex=5
+    sh.MouseButton1Click:Connect(function()
+        open=not open;dd.Visible=true
+        tw(dd,TM,{Size=UDim2.new(1,-20,0,open and ddH or 0)})
+        if not open then task.delay(0.25,function() dd.Visible=false end) end
+    end)
+    return f,function() return sel end
+end
+
+local function addTextInput(scroll,label,placeholder,callback)
+    local f=glassCard(scroll,UDim2.new(1,0,0,62),UDim2.new(0,0,0,0))
+    mkL(f,label,Enum.Font.GothamBold,13,T.T1,UDim2.new(0,12,0,10),UDim2.new(1,-16,0,15)).TextTruncate=Enum.TextTruncate.AtEnd
+    local ibg=mkF(f,UDim2.new(1,-78,0,28),UDim2.new(0,10,1,-36),T.IP,TR.inp);rBg(ibg,"IP");corner(ibg,7);stroke(ibg,Color3.new(1,1,1),0.86);shine(ibg)
+    local p2=Instance.new("UIPadding");p2.PaddingLeft=UDim.new(0,9);p2.Parent=ibg
+    local box=Instance.new("TextBox");box.PlaceholderText=placeholder or "Type here...";box.Text=""
+    box.Font=Enum.Font.Gotham;box.TextSize=12;box.TextColor3=T.T1;box.PlaceholderColor3=T.T3
+    box.BackgroundTransparency=1;box.BorderSizePixel=0;box.Size=UDim2.new(1,0,1,0);box.ClearTextOnFocus=false;box.Parent=ibg
+    rTx(box,"T1")
+    local goF=mkF(f,UDim2.new(0,58,0,28),UDim2.new(1,-68,1,-36),T.A,TR.btn);rBg(goF,"A");corner(goF,7);shine(goF)
+    local gl=mkL(goF,"Go",Enum.Font.GothamBold,12,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center);rTx(gl,"T1")
+    local gh=mkB(goF,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.A,1)
+    local function fire() pcall(callback,box.Text);gl.Text="✓";tw(goF,TF,{BackgroundTransparency=0});task.delay(1.2,function() gl.Text="Go";tw(goF,TM,{BackgroundTransparency=TR.btn}) end) end
+    gh.MouseButton1Click:Connect(fire);box.FocusLost:Connect(function(e) if e then fire() end end)
+    box.Focused:Connect(function() tw(ibg,TF,{BackgroundTransparency=TR.inp-0.12}) end)
+    box.FocusLost:Connect(function() tw(ibg,TM,{BackgroundTransparency=TR.inp}) end)
+    return f,box
+end
+
+local function addKeybind(scroll,label,default,callback)
+    local cur=default or "None"; local listening=false
+    local f=glassCard(scroll,UDim2.new(1,0,0,52),UDim2.new(0,0,0,0))
+    mkL(f,label,Enum.Font.GothamBold,13,T.T1,UDim2.new(0,12,0,0),UDim2.new(1,-106,1,0)).TextTruncate=Enum.TextTruncate.AtEnd
+    local kbF=mkF(f,UDim2.new(0,84,0,28),UDim2.new(1,-94,0.5,-14),T.IP,TR.inp);rBg(kbF,"IP");corner(kbF,7);stroke(kbF,Color3.new(1,1,1),0.84)
+    local kbl=mkL(kbF,cur,Enum.Font.GothamBold,11,T.A,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center);rTx(kbl,"A")
+    local kbH=mkB(kbF,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.IP,1)
+    kbH.MouseButton1Click:Connect(function() listening=true;kbl.Text="...";tw(kbF,TF,{BackgroundTransparency=TR.inp-0.14}) end)
+    UserInputService.InputBegan:Connect(function(inp,gp)
+        if not listening or gp then return end
+        local k=inp.KeyCode.Name; if k=="Unknown" then return end
+        listening=false;cur=k;kbl.Text=k;tw(kbF,TM,{BackgroundTransparency=TR.inp});pcall(callback,k)
+    end)
+    return f,function() return cur end
+end
+
+-- ================================================================
+--  ╔═══════════════════════════════════════════╗
+--  ║  YOUR TABS START HERE                     ║
+--  ║                                           ║
+--  ║  local _, scroll = newPage("🎯","Combat") ║
+--  ║  addSection(scroll,"Aimbot")               ║
+--  ║  addToggle(scroll,"Silent Aim","",false,   ║
+--  ║      function(on) end)                    ║
+--  ╚═══════════════════════════════════════════╝
+-- ================================================================
+
+-- ──── HOME ────
+local _,homeScroll=newPage("⌂","Home")
+addSection(homeScroll,"Welcome")
+addLabel(homeScroll,"Crystal Hub  v2.0  by void.\nAdd your own tabs below the comment block.\nAll settings save automatically — themes persist between sessions.")
+addSection(homeScroll,"Quick Actions")
+addButton(homeScroll,"Reset Character","Reload your character.",function() LP:LoadCharacter() end)
+addButton(homeScroll,"Rejoin Server","Reconnect to this place.",function()
+    game:GetService("TeleportService"):Teleport(game.PlaceId,LP)
+end)
+addToggle(homeScroll,"Fullbright","Max ambient brightness.",false,function(on)
+    local L=game:GetService("Lighting")
+    L.Brightness=on and 10 or 1;L.FogEnd=on and 1e6 or 100000
+    L.GlobalShadows=not on;L.Ambient=on and Color3.fromRGB(180,180,180) or Color3.fromRGB(127,127,127)
+end)
+
+-- ──── SETTINGS ────
+local _,settingsScroll=newPage("⚙","Settings")
+
+addSection(settingsScroll,"Theme — saves automatically")
+
+local themeGrid=mkF(settingsScroll,UDim2.new(1,0,0,0),UDim2.new(0,0,0,0),T.BG,1)
+themeGrid.AutomaticSize=Enum.AutomaticSize.Y
+local tgG=Instance.new("UIGridLayout");tgG.CellSize=UDim2.new(0.5,-4,0,72);tgG.CellPadding=UDim2.new(0,6,0,6);tgG.Parent=themeGrid
+local tgPad=Instance.new("UIPadding");tgPad.PaddingBottom=UDim.new(0,4);tgPad.Parent=themeGrid
+
+local selDots={}
+for i,th in ipairs(THEMES) do
+    local tc=glassCard(themeGrid,UDim2.new(0,0,0,0),UDim2.new(0,0,0,0))
+    -- color strip
+    local strip=mkF(tc,UDim2.new(1,-12,0,26),UDim2.new(0,6,0,6),th.A,0.18);corner(strip,6)
+    for j=0,2 do local d=mkF(strip,UDim2.new(0,7,0,7),UDim2.new(0,5+j*11,0.5,-3),th.A,j*0.28);corner(d,4) end
+    local nl=mkL(tc,th.name,Enum.Font.GothamBold,10,T.T1,UDim2.new(0,8,0,36),UDim2.new(1,-26,0,14));rTx(nl,"T1")
+    local chk=mkL(tc,"✓",Enum.Font.GothamBold,11,th.A,UDim2.new(1,-20,0,36),UDim2.new(0,16,0,14),Enum.TextXAlignment.Center)
+    chk.Visible=(i==saved.themeIdx);selDots[i]=chk
+    local tH=mkB(tc,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.CD,1)
+    tH.MouseEnter:Connect(function() tw(tc,TF,{BackgroundTransparency=TR.card-0.09}) end)
+    tH.MouseLeave:Connect(function() tw(tc,TF,{BackgroundTransparency=TR.card}) end)
+    local ci=i
+    tH.MouseButton1Click:Connect(function()
+        saved.themeIdx=ci;T=THEMES[ci];save()
+        applyTheme(T,true)
+        for j,d in ipairs(selDots) do d.Visible=(j==ci) end
+        switchTab(activeTab)
+        pushNotif("Theme",T.name.." applied ✦",2.5)
+    end)
+end
+
+addSection(settingsScroll,"Notifications")
+addToggle(settingsScroll,"Toast Notifications","Show action popups.",true,function(on)
+    saved.notif=on;save()
+end)
+
+addSection(settingsScroll,"Info")
+addLabel(settingsScroll,"Crystal Hub  v2.0  ·  by void.\nPlayer: "..LP.Name.."  ·  Place: "..tostring(game.PlaceId).."\nTheme auto-saves to DataStore.")
+
+-- ================================================================
+-- DRAG
+-- ================================================================
+do
+    local drag,dragStart,startPos=false,nil,nil
+    local lastDragInput=nil
+    TB.InputBegan:Connect(function(inp)
+        if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
+            drag=true;dragStart=inp.Position;startPos=Window.Position
+            inp.Changed:Connect(function()
+                if inp.UserInputState==Enum.UserInputState.End then drag=false end
+            end)
+        end
+    end)
+    TB.InputChanged:Connect(function(inp)
+        if inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch then
+            lastDragInput=inp
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if inp==lastDragInput and drag and dragStart then
+            local d=inp.Position-dragStart
+            Window.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
+        end
+    end)
+end
+
+-- ================================================================
+-- TOGGLE VISIBILITY  (RShift / RightShift)
+-- ================================================================
+UserInputService.InputBegan:Connect(function(inp,gp)
+    if gp then return end
+    if inp.KeyCode==Enum.KeyCode.RightShift or inp.KeyCode==Enum.KeyCode.Insert then
+        Window.Visible=not Window.Visible
+    end
+end)
+
+-- ================================================================
+-- INIT  — entrance animation + theme + first notification
+-- ================================================================
+applyTheme(T,false)
+switchTab(1)
+
+Window.Size=UDim2.new(0,WIN_W*0.93,0,WIN_H*0.93)
+Window.BackgroundTransparency=1
+tw(Window,TweenInfo.new(0.48,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
+    Size=UDim2.new(0,WIN_W,0,WIN_H),
+    BackgroundTransparency=TR.win,
+})
+
+task.delay(0.55,function()
+    pushNotif("Crystal Hub","Loaded  ·  "..T.name.." theme  ✦",3.5)
+end)
