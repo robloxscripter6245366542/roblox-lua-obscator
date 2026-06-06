@@ -275,105 +275,7 @@ local Content=mkF(Window,UDim2.new(1,-SBW-3,1,-54),UDim2.new(0,SBW+1,0,52),T.BG,
 rBg(Content,"BG"); Content.ClipsDescendants=true
 
 -- ================================================================
--- CUSTOM DRAWN TAB ICONS
--- Each icon is drawn with Frame instances inside a 28×28 container
--- iconName: "home"|"scripts"|"settings"|"player"|"combat"|"visual"
---           |"misc"|"anim"|"esp"|"tools" — falls back to text
--- ================================================================
-local function drawTabIcon(parent,iconName)
-    -- parent is the 28×28 icoBg Frame; draw into it
-    local function dot(x,y,w,h,r)
-        local d=mkF(parent,UDim2.new(0,w,0,h),UDim2.new(0,x,0,y),T.T1,0.05);corner(d,r or 2);return d
-    end
-
-    if iconName=="home" then
-        -- roof: rotated diamond clipped to triangle
-        local clip=mkF(parent,UDim2.new(1,0,0.52,0),UDim2.new(0,0,0,0),T.T1,1)
-        clip.ClipsDescendants=true
-        local roof=mkF(clip,UDim2.new(0.68,0,0.68,0),UDim2.new(0.16,0,0,-7),T.T1,0.05)
-        roof.Rotation=45
-        -- body
-        dot(6,15,16,10,2)
-        -- door
-        dot(10,19,8,6,1)
-
-    elseif iconName=="scripts" or iconName=="code" then
-        -- three horizontal lines (code/list)
-        dot(4,5,20,2,1)
-        dot(4,11,14,2,1)
-        dot(4,17,17,2,1)
-        -- angle bracket <
-        local a1=mkF(parent,UDim2.new(0,8,0,2),UDim2.new(0,3,0,21),T.T1,0.05);a1.Rotation=45
-        local a2=mkF(parent,UDim2.new(0,8,0,2),UDim2.new(0,3,0,21),T.T1,0.05);a2.Rotation=-45
-
-    elseif iconName=="settings" or iconName=="gear" then
-        -- circle
-        local c=mkF(parent,UDim2.new(0,18,0,18),UDim2.new(0,5,0,5),T.T1,0.08);corner(c,9)
-        -- inner circle (cutout effect via slightly different color)
-        local ci=mkF(c,UDim2.new(0,10,0,10),UDim2.new(0,4,0,4),T.A,0.55);corner(ci,5)
-        -- 4 gear teeth
-        dot(12,1,4,5,1);dot(12,22,4,5,1);dot(1,12,5,4,1);dot(22,12,5,4,1)
-
-    elseif iconName=="player" or iconName=="user" then
-        -- head circle
-        local h=mkF(parent,UDim2.new(0,12,0,12),UDim2.new(0,8,0,1),T.T1,0.05);corner(h,6)
-        -- body arc (two angled lines)
-        dot(3,17,22,3,1)
-        dot(5,20,7,7,3)
-        dot(16,20,7,7,3)
-
-    elseif iconName=="combat" or iconName=="sword" then
-        -- sword diagonal line
-        local blade=mkF(parent,UDim2.new(0,3,0,20),UDim2.new(0,12,0,2),T.T1,0.05)
-        blade.Rotation=40; corner(blade,1)
-        -- guard
-        dot(4,13,20,3,1)
-        -- handle
-        local hdl=mkF(parent,UDim2.new(0,3,0,8),UDim2.new(0,12,0,16),T.T1,0.12)
-        hdl.Rotation=40; corner(hdl,1)
-
-    elseif iconName=="visual" or iconName=="eye" then
-        -- eye oval
-        local eye=mkF(parent,UDim2.new(0,22,0,14),UDim2.new(0,3,0,7),T.T1,0.05);corner(eye,7)
-        -- pupil
-        local pu=mkF(eye,UDim2.new(0,8,0,8),UDim2.new(0,7,0,3),T.A,0.30);corner(pu,4)
-
-    elseif iconName=="esp" then
-        -- crosshair
-        dot(12,2,4,24,1)
-        dot(2,12,24,4,1)
-        -- center dot
-        local cd=mkF(parent,UDim2.new(0,8,0,8),UDim2.new(0,10,0,10),T.A,0.15);corner(cd,4)
-
-    elseif iconName=="anim" or iconName=="run" then
-        -- stick figure running
-        local head=mkF(parent,UDim2.new(0,8,0,8),UDim2.new(0,10,0,0),T.T1,0.05);corner(head,4)
-        local body=mkF(parent,UDim2.new(0,3,0,10),UDim2.new(0,12,0,8),T.T1,0.05);corner(body,1)
-        -- arms & legs at angles
-        local arm=mkF(parent,UDim2.new(0,2,0,8),UDim2.new(0,8,0,10),T.T1,0.05);arm.Rotation=45
-        local leg=mkF(parent,UDim2.new(0,2,0,9),UDim2.new(0,10,0,17),T.T1,0.05);leg.Rotation=25
-
-    elseif iconName=="misc" or iconName=="star" then
-        -- 4-point star using rotated squares
-        dot(9,2,10,24,1)
-        local star2=mkF(parent,UDim2.new(0,10,0,24),UDim2.new(0,9,0,2),T.T1,0.05);star2.Rotation=90;corner(star2,1)
-        local sd=mkF(parent,UDim2.new(0,10,0,24),UDim2.new(0,9,0,2),T.T1,0.05);sd.Rotation=45;corner(sd,1)
-        local sd2=mkF(parent,UDim2.new(0,10,0,24),UDim2.new(0,9,0,2),T.T1,0.05);sd2.Rotation=-45;corner(sd2,1)
-
-    elseif iconName=="tools" or iconName=="wrench" then
-        -- wrench shape
-        local body2=mkF(parent,UDim2.new(0,4,0,18),UDim2.new(0,12,0,5),T.T1,0.05)
-        body2.Rotation=35; corner(body2,2)
-        local head2=mkF(parent,UDim2.new(0,10,0,8),UDim2.new(0,5,0,2),T.T1,0.05);corner(head2,3)
-
-    else
-        -- fallback: dot
-        local fb=mkF(parent,UDim2.new(0,16,0,16),UDim2.new(0,6,0,6),T.T1,0.05);corner(fb,8)
-    end
-end
-
--- ================================================================
--- TAB SYSTEM  (with animated slide transition)
+-- TAB SYSTEM  (slide transition · text label icon boxes)
 -- ================================================================
 local pages,navBtns={},{}
 local activeTab,tabCount=1,0
@@ -381,67 +283,55 @@ local activeTab,tabCount=1,0
 local function switchTab(idx)
     if idx==activeTab and tabCount>0 then return end
     local prev=activeTab; activeTab=idx
-
     for i,pg in ipairs(pages) do
         if i==idx then
-            pg.Position=UDim2.new(-0.06,0,0,0)
-            pg.BackgroundTransparency=1
-            pg.Visible=true
+            pg.Position=UDim2.new(-0.06,0,0,0); pg.Visible=true
             tw(pg,TM,{Position=UDim2.new(0,0,0,0)})
         elseif i==prev then
-            local cp=pg
-            tw(cp,TF,{Position=UDim2.new(0.04,0,0,0)})
+            local cp=pg; tw(cp,TF,{Position=UDim2.new(0.04,0,0,0)})
             task.delay(0.14,function() cp.Visible=false; cp.Position=UDim2.new(0,0,0,0) end)
         else
             pg.Visible=false; pg.Position=UDim2.new(0,0,0,0)
         end
     end
-
     for i,nb in ipairs(navBtns) do
         local on=(i==idx)
         tw(nb.bg,TM,{BackgroundTransparency=on and TR.sbOn or 1})
         nb.bar.Visible=on
         nb.lbl.Font=on and Enum.Font.GothamBold or Enum.Font.Gotham
         nb.lbl.TextColor3=on and T.T1 or T.T2
-        tw(nb.icoBg,TM,{BackgroundTransparency=on and 0.45 or 0.82})
-        if on then
-            tw(nb.icoBg,TBN,{Size=UDim2.new(0,28,0,28)})
-        end
+        tw(nb.icoBg,TM,{BackgroundTransparency=on and 0.40 or 0.80})
+        tw(nb.icoLbl,TM,{TextTransparency=on and 0 or 0.20})
+        if on then tw(nb.icoBg,TBN,{Size=UDim2.new(0,30,0,30),Position=UDim2.new(0,4,0.5,-15)}) end
     end
 end
 
--- iconName: pass a drawTabIcon key for custom drawn icon, or "" for text fallback
-local function newPage(iconName,name,fallbackChar)
+-- abbrev: short text shown in icon box (e.g. "Ho","SB","⚙","▶")
+-- name:   full tab name shown beside it
+local function newPage(abbrev,name)
     tabCount+=1; local idx=tabCount
 
     -- sidebar button
     local sbBtn=mkF(sbScroll,UDim2.new(1,0,0,38),UDim2.new(0,0,0,0),T.CD,1)
     rBg(sbBtn,"CD"); corner(sbBtn,9)
 
-    -- active indicator bar
+    -- left active bar
     local bar=mkF(sbBtn,UDim2.new(0,3,0,18),UDim2.new(0,0,0.5,-9),T.A,0)
     bar.Visible=(idx==1); corner(bar,2); rBg(bar,"A")
 
-    -- icon box
-    local icoBg=mkF(sbBtn,UDim2.new(0,28,0,28),UDim2.new(0,5,0.5,-14),T.A,idx==1 and 0.45 or 0.82)
-    icoBg.ClipsDescendants=true
+    -- icon box (shows abbrev text)
+    local icoBg=mkF(sbBtn,UDim2.new(0,28,0,28),UDim2.new(0,5,0.5,-14),T.A,idx==1 and 0.40 or 0.80)
     corner(icoBg,8); rBg(icoBg,"A")
+    local icoLbl=mkL(icoBg,abbrev,Enum.Font.GothamBold,11,T.T1,
+        UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+    icoLbl.TextTransparency=idx==1 and 0 or 0.20
 
-    -- draw custom icon OR fallback to text char
-    local knownIcons={home=true,scripts=true,code=true,settings=true,gear=true,
-        player=true,user=true,combat=true,sword=true,visual=true,eye=true,
-        esp=true,anim=true,run=true,misc=true,star=true,tools=true,wrench=true}
-    if knownIcons[iconName] then
-        drawTabIcon(icoBg,iconName)
-    else
-        mkL(icoBg,fallbackChar or iconName,Enum.Font.Gotham,14,T.T1,
-            UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
-    end
-
+    -- tab name label
     local nl=mkL(sbBtn,name,idx==1 and Enum.Font.GothamBold or Enum.Font.Gotham,12,
         idx==1 and T.T1 or T.T2,UDim2.new(0,39,0,0),UDim2.new(1,-44,1,0))
     rTx(nl,idx==1 and "T1" or "T2")
 
+    -- hit area
     local hit=mkB(sbBtn,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.CD,1)
     hit.MouseEnter:Connect(function()
         if activeTab~=idx then tw(sbBtn,TF,{BackgroundTransparency=0.84}) end
@@ -452,10 +342,9 @@ local function newPage(iconName,name,fallbackChar)
         tw(icoBg,TF,{Size=UDim2.new(0,28,0,28),Position=UDim2.new(0,5,0.5,-14)})
     end)
     hit.MouseButton1Click:Connect(function()
-        tw(sbBtn,TBN,{Size=UDim2.new(1,0,0,38)})
-        switchTab(idx)
+        tw(sbBtn,TBN,{Size=UDim2.new(1,0,0,38)}); switchTab(idx)
     end)
-    table.insert(navBtns,{bg=sbBtn,bar=bar,lbl=nl,icoBg=icoBg})
+    table.insert(navBtns,{bg=sbBtn,bar=bar,lbl=nl,icoBg=icoBg,icoLbl=icoLbl})
 
     -- page
     local page=mkF(Content,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.BG,1)
@@ -463,13 +352,9 @@ local function newPage(iconName,name,fallbackChar)
 
     -- page header
     local hIcon=mkF(page,UDim2.new(0,26,0,26),UDim2.new(0,2,0,4),T.A,0.78)
-    hIcon.ClipsDescendants=true; corner(hIcon,8);rBg(hIcon,"A")
-    if knownIcons[iconName] then
-        drawTabIcon(hIcon,iconName)
-    else
-        mkL(hIcon,fallbackChar or iconName,Enum.Font.Gotham,13,T.T1,
-            UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
-    end
+    corner(hIcon,8);rBg(hIcon,"A")
+    mkL(hIcon,abbrev,Enum.Font.GothamBold,11,T.T1,
+        UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
     local hTitle=mkL(page,name,Enum.Font.GothamBold,17,T.T1,UDim2.new(0,34,0,5),UDim2.new(1,-38,0,22));rTx(hTitle,"T1")
     mkF(page,UDim2.new(1,0,0,1),UDim2.new(0,0,0,34),Color3.new(1,1,1),0.86)
 
@@ -647,16 +532,16 @@ end
 -- ================================================================
 --  ╔═══════════════════════════════════════════╗
 --  ║  YOUR TABS START HERE                     ║
---  ║  local _,s=newPage("combat","Combat")       ║
+--  ║  local _,s=newPage("Cb","Combat")            ║
 --  ║  addToggle(s,"Silent Aim","",false,         ║
 --  ║      function(on) end)                     ║
---  ║  iconName: home|scripts|settings|player    ║
---  ║    combat|visual|esp|anim|misc|tools       ║
+--  ║  abbrev = 1–3 chars shown in icon box      ║
+--  ║  e.g. "Ho","SB","Se","Cb","Sp","Vi","Mx"   ║
 --  ╚═══════════════════════════════════════════╝
 -- ================================================================
 
 -- ──── HOME ────
-local _,homeScroll=newPage("home","Home")
+local _,homeScroll=newPage("Ho","Home")
 addSection(homeScroll,"Welcome")
 addLabel(homeScroll,"Crystal Hub  v2.1  by void.\nAdd your own tabs below the comment block.\nTitlebar and sidebar are fully transparent — your game shows through.")
 addSection(homeScroll,"Quick Actions")
@@ -671,7 +556,7 @@ addToggle(homeScroll,"Fullbright","Max ambient brightness.",false,function(on)
 end)
 
 -- ──── SCRIPTS (SCRIPTBLOX) ────
-local _,sbxScroll=newPage("scripts","Scripts")
+local _,sbxScroll=newPage("SB","Scripts")
 
 addSection(sbxScroll,"ScriptBlox Search")
 
@@ -749,31 +634,35 @@ local function addScriptCard(title,gameName,scriptCode,views,patched)
 end
 
 local function fetchScripts(query)
-    sStatus.Text="Searching...";clearResults()
+    sStatus.Text="Searching..."; clearResults()
     task.spawn(function()
-        local HS=game:GetService("HttpService")
-        local q=HS:UrlEncode(query or "")
-        local url="https://scriptblox.com/api/script/fetch?q="..q.."&max=20&page=1"
-        local ok,res=pcall(game.HttpGet,game,url,true)
+        local HS  = game:GetService("HttpService")
+        local q   = HS:UrlEncode(query or "")
+        -- ScriptBlox API  docs.scriptblox.com/scripts/fetch
+        local url = "https://scriptblox.com/api/script/fetch?q="..q.."&page=1&max=20&mode=free"
+        local ok,res = pcall(game.HttpGet, game, url, true)
         if not ok then
-            sStatus.Text="HTTP request failed.";pushNotif("Scripts","Request failed",3);return
+            sStatus.Text="HTTP request failed."
+            pushNotif("Scripts","Could not reach ScriptBlox",3); return
         end
-        local ok2,data=pcall(function() return HS:JSONDecode(res) end)
+        local ok2,data = pcall(function() return HS:JSONDecode(res) end)
         if not ok2 or not data then
-            sStatus.Text="Parse error.";return
+            sStatus.Text="Response parse error."; return
         end
-        local scripts=data.result and data.result.scripts
+        -- Response: { result: { totalPages, scripts: [...] } }
+        local scripts = data.result and data.result.scripts
         if not scripts or #scripts==0 then
-            sStatus.Text="No results found.";return
+            sStatus.Text="No results for \""..query.."\""; return
         end
-        sStatus.Text="Found "..#scripts.." scripts"
+        sStatus.Text="Found "..#scripts.." script"..(#scripts~=1 and "s" or "")
         for _,s in ipairs(scripts) do
             local title   = s.title or "Untitled"
-            local gname   = (s.game and s.game.name) or "Unknown Game"
-            local code    = s.script or ""
-            local views   = s.views or 0
+            local gname   = (s.game and s.game.name) or "Universal"
+            -- "script" contains the Lua source; some entries use "rawscript"
+            local code    = s.script or s.rawscript or ""
+            local views   = s.views  or 0
             local patched = s.isPatched or false
-            addScriptCard(title,gname,code,views,patched)
+            addScriptCard(title, gname, code, views, patched)
         end
     end)
 end
@@ -792,7 +681,7 @@ sBox.FocusLost:Connect(function(enter)
 end)
 
 -- ──── SETTINGS ────
-local _,settingsScroll=newPage("settings","Settings")
+local _,settingsScroll=newPage("Se","Settings")
 
 addSection(settingsScroll,"Theme — saves automatically")
 
