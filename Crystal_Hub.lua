@@ -275,6 +275,104 @@ local Content=mkF(Window,UDim2.new(1,-SBW-3,1,-54),UDim2.new(0,SBW+1,0,52),T.BG,
 rBg(Content,"BG"); Content.ClipsDescendants=true
 
 -- ================================================================
+-- CUSTOM DRAWN TAB ICONS
+-- Each icon is drawn with Frame instances inside a 28×28 container
+-- iconName: "home"|"scripts"|"settings"|"player"|"combat"|"visual"
+--           |"misc"|"anim"|"esp"|"tools" — falls back to text
+-- ================================================================
+local function drawTabIcon(parent,iconName)
+    -- parent is the 28×28 icoBg Frame; draw into it
+    local function dot(x,y,w,h,r)
+        local d=mkF(parent,UDim2.new(0,w,0,h),UDim2.new(0,x,0,y),T.T1,0.05);corner(d,r or 2);return d
+    end
+
+    if iconName=="home" then
+        -- roof: rotated diamond clipped to triangle
+        local clip=mkF(parent,UDim2.new(1,0,0.52,0),UDim2.new(0,0,0,0),T.T1,1)
+        clip.ClipsDescendants=true
+        local roof=mkF(clip,UDim2.new(0.68,0,0.68,0),UDim2.new(0.16,0,0,-7),T.T1,0.05)
+        roof.Rotation=45
+        -- body
+        dot(6,15,16,10,2)
+        -- door
+        dot(10,19,8,6,1)
+
+    elseif iconName=="scripts" or iconName=="code" then
+        -- three horizontal lines (code/list)
+        dot(4,5,20,2,1)
+        dot(4,11,14,2,1)
+        dot(4,17,17,2,1)
+        -- angle bracket <
+        local a1=mkF(parent,UDim2.new(0,8,0,2),UDim2.new(0,3,0,21),T.T1,0.05);a1.Rotation=45
+        local a2=mkF(parent,UDim2.new(0,8,0,2),UDim2.new(0,3,0,21),T.T1,0.05);a2.Rotation=-45
+
+    elseif iconName=="settings" or iconName=="gear" then
+        -- circle
+        local c=mkF(parent,UDim2.new(0,18,0,18),UDim2.new(0,5,0,5),T.T1,0.08);corner(c,9)
+        -- inner circle (cutout effect via slightly different color)
+        local ci=mkF(c,UDim2.new(0,10,0,10),UDim2.new(0,4,0,4),T.A,0.55);corner(ci,5)
+        -- 4 gear teeth
+        dot(12,1,4,5,1);dot(12,22,4,5,1);dot(1,12,5,4,1);dot(22,12,5,4,1)
+
+    elseif iconName=="player" or iconName=="user" then
+        -- head circle
+        local h=mkF(parent,UDim2.new(0,12,0,12),UDim2.new(0,8,0,1),T.T1,0.05);corner(h,6)
+        -- body arc (two angled lines)
+        dot(3,17,22,3,1)
+        dot(5,20,7,7,3)
+        dot(16,20,7,7,3)
+
+    elseif iconName=="combat" or iconName=="sword" then
+        -- sword diagonal line
+        local blade=mkF(parent,UDim2.new(0,3,0,20),UDim2.new(0,12,0,2),T.T1,0.05)
+        blade.Rotation=40; corner(blade,1)
+        -- guard
+        dot(4,13,20,3,1)
+        -- handle
+        local hdl=mkF(parent,UDim2.new(0,3,0,8),UDim2.new(0,12,0,16),T.T1,0.12)
+        hdl.Rotation=40; corner(hdl,1)
+
+    elseif iconName=="visual" or iconName=="eye" then
+        -- eye oval
+        local eye=mkF(parent,UDim2.new(0,22,0,14),UDim2.new(0,3,0,7),T.T1,0.05);corner(eye,7)
+        -- pupil
+        local pu=mkF(eye,UDim2.new(0,8,0,8),UDim2.new(0,7,0,3),T.A,0.30);corner(pu,4)
+
+    elseif iconName=="esp" then
+        -- crosshair
+        dot(12,2,4,24,1)
+        dot(2,12,24,4,1)
+        -- center dot
+        local cd=mkF(parent,UDim2.new(0,8,0,8),UDim2.new(0,10,0,10),T.A,0.15);corner(cd,4)
+
+    elseif iconName=="anim" or iconName=="run" then
+        -- stick figure running
+        local head=mkF(parent,UDim2.new(0,8,0,8),UDim2.new(0,10,0,0),T.T1,0.05);corner(head,4)
+        local body=mkF(parent,UDim2.new(0,3,0,10),UDim2.new(0,12,0,8),T.T1,0.05);corner(body,1)
+        -- arms & legs at angles
+        local arm=mkF(parent,UDim2.new(0,2,0,8),UDim2.new(0,8,0,10),T.T1,0.05);arm.Rotation=45
+        local leg=mkF(parent,UDim2.new(0,2,0,9),UDim2.new(0,10,0,17),T.T1,0.05);leg.Rotation=25
+
+    elseif iconName=="misc" or iconName=="star" then
+        -- 4-point star using rotated squares
+        dot(9,2,10,24,1)
+        local star2=mkF(parent,UDim2.new(0,10,0,24),UDim2.new(0,9,0,2),T.T1,0.05);star2.Rotation=90;corner(star2,1)
+        local sd=mkF(parent,UDim2.new(0,10,0,24),UDim2.new(0,9,0,2),T.T1,0.05);sd.Rotation=45;corner(sd,1)
+        local sd2=mkF(parent,UDim2.new(0,10,0,24),UDim2.new(0,9,0,2),T.T1,0.05);sd2.Rotation=-45;corner(sd2,1)
+
+    elseif iconName=="tools" or iconName=="wrench" then
+        -- wrench shape
+        local body2=mkF(parent,UDim2.new(0,4,0,18),UDim2.new(0,12,0,5),T.T1,0.05)
+        body2.Rotation=35; corner(body2,2)
+        local head2=mkF(parent,UDim2.new(0,10,0,8),UDim2.new(0,5,0,2),T.T1,0.05);corner(head2,3)
+
+    else
+        -- fallback: dot
+        local fb=mkF(parent,UDim2.new(0,16,0,16),UDim2.new(0,6,0,6),T.T1,0.05);corner(fb,8)
+    end
+end
+
+-- ================================================================
 -- TAB SYSTEM  (with animated slide transition)
 -- ================================================================
 local pages,navBtns={},{}
@@ -312,7 +410,8 @@ local function switchTab(idx)
     end
 end
 
-local function newPage(icon,name)
+-- iconName: pass a drawTabIcon key for custom drawn icon, or "" for text fallback
+local function newPage(iconName,name,fallbackChar)
     tabCount+=1; local idx=tabCount
 
     -- sidebar button
@@ -325,8 +424,19 @@ local function newPage(icon,name)
 
     -- icon box
     local icoBg=mkF(sbBtn,UDim2.new(0,28,0,28),UDim2.new(0,5,0.5,-14),T.A,idx==1 and 0.45 or 0.82)
+    icoBg.ClipsDescendants=true
     corner(icoBg,8); rBg(icoBg,"A")
-    mkL(icoBg,icon,Enum.Font.Gotham,14,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+
+    -- draw custom icon OR fallback to text char
+    local knownIcons={home=true,scripts=true,code=true,settings=true,gear=true,
+        player=true,user=true,combat=true,sword=true,visual=true,eye=true,
+        esp=true,anim=true,run=true,misc=true,star=true,tools=true,wrench=true}
+    if knownIcons[iconName] then
+        drawTabIcon(icoBg,iconName)
+    else
+        mkL(icoBg,fallbackChar or iconName,Enum.Font.Gotham,14,T.T1,
+            UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+    end
 
     local nl=mkL(sbBtn,name,idx==1 and Enum.Font.GothamBold or Enum.Font.Gotham,12,
         idx==1 and T.T1 or T.T2,UDim2.new(0,39,0,0),UDim2.new(1,-44,1,0))
@@ -352,8 +462,14 @@ local function newPage(icon,name)
     page.Visible=(idx==1); page.ClipsDescendants=true
 
     -- page header
-    local hIcon=mkF(page,UDim2.new(0,26,0,26),UDim2.new(0,2,0,4),T.A,0.78);corner(hIcon,8);rBg(hIcon,"A")
-    mkL(hIcon,icon,Enum.Font.Gotham,13,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+    local hIcon=mkF(page,UDim2.new(0,26,0,26),UDim2.new(0,2,0,4),T.A,0.78)
+    hIcon.ClipsDescendants=true; corner(hIcon,8);rBg(hIcon,"A")
+    if knownIcons[iconName] then
+        drawTabIcon(hIcon,iconName)
+    else
+        mkL(hIcon,fallbackChar or iconName,Enum.Font.Gotham,13,T.T1,
+            UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+    end
     local hTitle=mkL(page,name,Enum.Font.GothamBold,17,T.T1,UDim2.new(0,34,0,5),UDim2.new(1,-38,0,22));rTx(hTitle,"T1")
     mkF(page,UDim2.new(1,0,0,1),UDim2.new(0,0,0,34),Color3.new(1,1,1),0.86)
 
@@ -531,14 +647,16 @@ end
 -- ================================================================
 --  ╔═══════════════════════════════════════════╗
 --  ║  YOUR TABS START HERE                     ║
---  ║  local _, scroll = newPage("🎯","Combat") ║
---  ║  addToggle(scroll,"Silent Aim","",false,   ║
---  ║      function(on) end)                    ║
+--  ║  local _,s=newPage("combat","Combat")       ║
+--  ║  addToggle(s,"Silent Aim","",false,         ║
+--  ║      function(on) end)                     ║
+--  ║  iconName: home|scripts|settings|player    ║
+--  ║    combat|visual|esp|anim|misc|tools       ║
 --  ╚═══════════════════════════════════════════╝
 -- ================================================================
 
 -- ──── HOME ────
-local _,homeScroll=newPage("⌂","Home")
+local _,homeScroll=newPage("home","Home")
 addSection(homeScroll,"Welcome")
 addLabel(homeScroll,"Crystal Hub  v2.1  by void.\nAdd your own tabs below the comment block.\nTitlebar and sidebar are fully transparent — your game shows through.")
 addSection(homeScroll,"Quick Actions")
@@ -552,8 +670,129 @@ addToggle(homeScroll,"Fullbright","Max ambient brightness.",false,function(on)
     L.GlobalShadows=not on;L.Ambient=on and Color3.fromRGB(180,180,180) or Color3.fromRGB(127,127,127)
 end)
 
+-- ──── SCRIPTS (SCRIPTBLOX) ────
+local _,sbxScroll=newPage("scripts","Scripts")
+
+addSection(sbxScroll,"ScriptBlox Search")
+
+-- Search bar card
+local sCard=glassCard(sbxScroll,UDim2.new(1,0,0,50),UDim2.new(0,0,0,0))
+local sIbg=mkF(sCard,UDim2.new(1,-80,0,28),UDim2.new(0,10,0.5,-14),T.IP,TR.inp)
+rBg(sIbg,"IP");corner(sIbg,7);stroke(sIbg,Color3.new(1,1,1),0.86);shine(sIbg)
+local sPad=Instance.new("UIPadding");sPad.PaddingLeft=UDim.new(0,9);sPad.Parent=sIbg
+local sBox=Instance.new("TextBox");sBox.PlaceholderText="Search scripts..."
+sBox.Text="";sBox.Font=Enum.Font.Gotham;sBox.TextSize=12;sBox.TextColor3=T.T1
+sBox.PlaceholderColor3=T.T3;sBox.BackgroundTransparency=1;sBox.BorderSizePixel=0
+sBox.Size=UDim2.new(1,0,1,0);sBox.ClearTextOnFocus=false;sBox.Parent=sIbg;rTx(sBox,"T1")
+local sBtnF=mkF(sCard,UDim2.new(0,62,0,28),UDim2.new(1,-70,0.5,-14),T.A,TR.btn)
+rBg(sBtnF,"A");corner(sBtnF,7);shine(sBtnF)
+local sBtnL=mkL(sBtnF,"Search",Enum.Font.GothamBold,11,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center);rTx(sBtnL,"T1")
+
+-- status label
+local sStatus=mkL(sbxScroll,"",Enum.Font.Gotham,11,T.T3,UDim2.new(0,0,0,0),UDim2.new(1,0,0,18),Enum.TextXAlignment.Center)
+rTx(sStatus,"T3")
+
+addSection(sbxScroll,"Results")
+
+-- Results: we'll spawn cards as children of sbxScroll after the fixed items
+-- Tag them so we can clear them
+local function clearResults()
+    for _,c in ipairs(sbxScroll:GetChildren()) do
+        if c:GetAttribute("sbxResult") then c:Destroy() end
+    end
+end
+
+local function addScriptCard(title,gameName,scriptCode,views,patched)
+    local f=glassCard(sbxScroll,UDim2.new(1,0,0,68),UDim2.new(0,0,0,0))
+    f:SetAttribute("sbxResult",true)
+
+    -- game badge
+    local gBadge=mkF(f,UDim2.new(0,0,0,16),UDim2.new(0,10,0,8),T.A,0.75)
+    gBadge.AutomaticSize=Enum.AutomaticSize.X; corner(gBadge,8); rBg(gBadge,"A")
+    local gPad=Instance.new("UIPadding");gPad.PaddingLeft=UDim.new(0,6);gPad.PaddingRight=UDim.new(0,6);gPad.Parent=gBadge
+    local gLbl=mkL(gBadge,gameName or "Unknown",Enum.Font.GothamBold,9,T.T1,UDim2.new(0,0,0,0),UDim2.new(0,0,1,0))
+    gLbl.AutomaticSize=Enum.AutomaticSize.X;rTx(gLbl,"T1")
+
+    -- patched indicator
+    if patched then
+        local pb=mkF(f,UDim2.new(0,0,0,16),UDim2.new(1,-76,0,8),Color3.fromRGB(255,80,80),0.65)
+        pb.AutomaticSize=Enum.AutomaticSize.X;corner(pb,8)
+        local pp=Instance.new("UIPadding");pp.PaddingLeft=UDim.new(0,5);pp.PaddingRight=UDim.new(0,5);pp.Parent=pb
+        local pl=mkL(pb,"PATCHED",Enum.Font.GothamBold,8,Color3.new(1,1,1),UDim2.new(0,0,0,0),UDim2.new(0,0,1,0))
+        pl.AutomaticSize=Enum.AutomaticSize.X
+    end
+
+    -- title
+    local tl=mkL(f,title or "Untitled",Enum.Font.GothamBold,12,T.T1,UDim2.new(0,10,0,28),UDim2.new(1,-100,0,16))
+    tl.TextTruncate=Enum.TextTruncate.AtEnd;rTx(tl,"T1")
+
+    -- views
+    mkL(f,"👁 "..(views or 0),Enum.Font.Gotham,10,T.T3,UDim2.new(0,10,0,46),UDim2.new(0,60,0,14))
+
+    -- execute button
+    local eBtn=mkF(f,UDim2.new(0,66,0,28),UDim2.new(1,-74,0.5,-14),T.A,TR.btn)
+    rBg(eBtn,"A");corner(eBtn,7);shine(eBtn)
+    local eLbl=mkL(eBtn,"▶ Run",Enum.Font.GothamBold,11,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center);rTx(eLbl,"T1")
+    local eHit=mkB(f,UDim2.new(0,70,1,0),UDim2.new(1,-78,0,0),T.CD,1)
+    eHit.MouseEnter:Connect(function() tw(f,TF,{BackgroundTransparency=TR.card-0.09});tw(eBtn,TF,{BackgroundTransparency=TR.btn-0.12}) end)
+    eHit.MouseLeave:Connect(function() tw(f,TF,{BackgroundTransparency=TR.card});tw(eBtn,TF,{BackgroundTransparency=TR.btn}) end)
+    eHit.MouseButton1Click:Connect(function()
+        if not scriptCode or scriptCode=="" then
+            pushNotif("Scripts","No script code available",2); return
+        end
+        eLbl.Text="✓";tw(eBtn,TF,{BackgroundTransparency=0})
+        task.delay(1.4,function() eLbl.Text="▶ Run";tw(eBtn,TM,{BackgroundTransparency=TR.btn}) end)
+        local ok,err=pcall(loadstring(scriptCode))
+        if not ok then pushNotif("Execute Error",tostring(err):sub(1,80),4) end
+    end)
+    return f
+end
+
+local function fetchScripts(query)
+    sStatus.Text="Searching...";clearResults()
+    task.spawn(function()
+        local HS=game:GetService("HttpService")
+        local q=HS:UrlEncode(query or "")
+        local url="https://scriptblox.com/api/script/fetch?q="..q.."&max=20&page=1"
+        local ok,res=pcall(game.HttpGet,game,url,true)
+        if not ok then
+            sStatus.Text="HTTP request failed.";pushNotif("Scripts","Request failed",3);return
+        end
+        local ok2,data=pcall(function() return HS:JSONDecode(res) end)
+        if not ok2 or not data then
+            sStatus.Text="Parse error.";return
+        end
+        local scripts=data.result and data.result.scripts
+        if not scripts or #scripts==0 then
+            sStatus.Text="No results found.";return
+        end
+        sStatus.Text="Found "..#scripts.." scripts"
+        for _,s in ipairs(scripts) do
+            local title   = s.title or "Untitled"
+            local gname   = (s.game and s.game.name) or "Unknown Game"
+            local code    = s.script or ""
+            local views   = s.views or 0
+            local patched = s.isPatched or false
+            addScriptCard(title,gname,code,views,patched)
+        end
+    end)
+end
+
+local sBtnHit=mkB(sBtnF,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.A,1)
+sBtnHit.MouseButton1Click:Connect(function()
+    local q=sBox.Text
+    if q:len()<1 then pushNotif("Scripts","Enter a search term",2);return end
+    tw(sBtnF,TF,{BackgroundTransparency=0});fetchScripts(q)
+    task.delay(0.4,function() tw(sBtnF,TM,{BackgroundTransparency=TR.btn}) end)
+end)
+sBox.FocusLost:Connect(function(enter)
+    if enter then
+        local q=sBox.Text; if q:len()>0 then fetchScripts(q) end
+    end
+end)
+
 -- ──── SETTINGS ────
-local _,settingsScroll=newPage("⚙","Settings")
+local _,settingsScroll=newPage("settings","Settings")
 
 addSection(settingsScroll,"Theme — saves automatically")
 
