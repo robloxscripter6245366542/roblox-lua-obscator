@@ -1,54 +1,54 @@
 -- ================================================================
---   CRYSTAL HUB  ·  Premium Glass UI  ·  v2.0
---   Ultra-transparent · Modular · Add your own tabs below
---   No built-in scripts — everything is yours to build
+--   CRYSTAL HUB  ·  Premium Glass UI  ·  v2.1
+--   Transparent titlebar + sidebar · Animated particles · Slide tabs
+--   No built-in scripts — add your own tabs below
 -- ================================================================
 -- LocalScript → StarterPlayerScripts  /  Executor inject
 
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
 local LP               = Players.LocalPlayer
 local PGui             = LP:WaitForChild("PlayerGui")
 
 -- ================================================================
 -- PERSISTENCE
 -- ================================================================
-local saved = { themeIdx = 1, notif = true }
+local saved = { themeIdx=1, notif=true }
 pcall(function()
-    local DS = game:GetService("DataStoreService"):GetDataStore("CrystalHub_v2")
-    local ok, dat = pcall(function() return DS:GetAsync(tostring(LP.UserId)) end)
+    local DS = game:GetService("DataStoreService"):GetDataStore("CrystalHub_v21")
+    local ok,dat = pcall(function() return DS:GetAsync(tostring(LP.UserId)) end)
     if ok and type(dat)=="table" then for k,v in pairs(dat) do saved[k]=v end end
     _G._CHSave = function() pcall(function() DS:SetAsync(tostring(LP.UserId),saved) end) end
 end)
 local function save() if _G._CHSave then _G._CHSave() end end
 
 -- ================================================================
--- THEMES  (8 presets)
+-- THEMES
 -- ================================================================
 local THEMES = {
-    { name="Ocean",    A=Color3.fromRGB(56,149,255),  A2=Color3.fromRGB(100,180,255), BG=Color3.fromRGB(9,12,22),   SB=Color3.fromRGB(11,15,28),  CD=Color3.fromRGB(16,20,36),  IP=Color3.fromRGB(12,16,30),  T1=Color3.fromRGB(225,238,255), T2=Color3.fromRGB(140,175,230), T3=Color3.fromRGB(80,115,170)  },
-    { name="Violet",   A=Color3.fromRGB(150,90,255),  A2=Color3.fromRGB(190,140,255), BG=Color3.fromRGB(10,8,20),   SB=Color3.fromRGB(13,10,26),  CD=Color3.fromRGB(18,14,38),  IP=Color3.fromRGB(12,9,24),   T1=Color3.fromRGB(238,228,255), T2=Color3.fromRGB(175,145,235), T3=Color3.fromRGB(115,90,175)  },
-    { name="Rose",     A=Color3.fromRGB(255,90,140),  A2=Color3.fromRGB(255,150,185), BG=Color3.fromRGB(20,8,14),   SB=Color3.fromRGB(26,10,18),  CD=Color3.fromRGB(36,14,26),  IP=Color3.fromRGB(22,8,16),   T1=Color3.fromRGB(255,228,238), T2=Color3.fromRGB(230,160,190), T3=Color3.fromRGB(170,90,125)  },
-    { name="Emerald",  A=Color3.fromRGB(50,210,140),  A2=Color3.fromRGB(100,240,185), BG=Color3.fromRGB(7,16,14),   SB=Color3.fromRGB(9,20,17),   CD=Color3.fromRGB(13,28,24),  IP=Color3.fromRGB(8,16,14),   T1=Color3.fromRGB(220,250,240), T2=Color3.fromRGB(130,210,180), T3=Color3.fromRGB(75,155,125)  },
-    { name="Amber",    A=Color3.fromRGB(255,185,50),  A2=Color3.fromRGB(255,215,120), BG=Color3.fromRGB(18,14,6),   SB=Color3.fromRGB(22,17,7),   CD=Color3.fromRGB(30,24,10),  IP=Color3.fromRGB(20,15,6),   T1=Color3.fromRGB(255,248,225), T2=Color3.fromRGB(230,195,120), T3=Color3.fromRGB(165,130,65)  },
-    { name="Ice",      A=Color3.fromRGB(80,215,255),  A2=Color3.fromRGB(150,235,255), BG=Color3.fromRGB(8,14,20),   SB=Color3.fromRGB(10,17,25),  CD=Color3.fromRGB(14,22,34),  IP=Color3.fromRGB(9,14,21),   T1=Color3.fromRGB(215,245,255), T2=Color3.fromRGB(120,200,230), T3=Color3.fromRGB(70,145,175)  },
-    { name="Sunset",   A=Color3.fromRGB(255,120,70),  A2=Color3.fromRGB(255,175,130), BG=Color3.fromRGB(18,8,4),    SB=Color3.fromRGB(22,10,5),   CD=Color3.fromRGB(32,14,8),   IP=Color3.fromRGB(20,8,4),    T1=Color3.fromRGB(255,235,225), T2=Color3.fromRGB(235,170,140), T3=Color3.fromRGB(175,100,75)  },
-    { name="Graphite", A=Color3.fromRGB(160,170,195), A2=Color3.fromRGB(200,208,225), BG=Color3.fromRGB(14,14,16),  SB=Color3.fromRGB(18,18,20),  CD=Color3.fromRGB(24,24,28),  IP=Color3.fromRGB(16,16,18),  T1=Color3.fromRGB(235,235,245), T2=Color3.fromRGB(165,165,185), T3=Color3.fromRGB(105,105,125) },
+    { name="Ocean",    A=Color3.fromRGB(56,149,255),  BG=Color3.fromRGB(9,12,22),   CD=Color3.fromRGB(16,20,36),  IP=Color3.fromRGB(12,16,30),  T1=Color3.fromRGB(225,238,255), T2=Color3.fromRGB(140,175,230), T3=Color3.fromRGB(80,115,170)  },
+    { name="Violet",   A=Color3.fromRGB(150,90,255),  BG=Color3.fromRGB(10,8,20),   CD=Color3.fromRGB(18,14,38),  IP=Color3.fromRGB(12,9,24),   T1=Color3.fromRGB(238,228,255), T2=Color3.fromRGB(175,145,235), T3=Color3.fromRGB(115,90,175)  },
+    { name="Rose",     A=Color3.fromRGB(255,90,140),  BG=Color3.fromRGB(20,8,14),   CD=Color3.fromRGB(36,14,26),  IP=Color3.fromRGB(22,8,16),   T1=Color3.fromRGB(255,228,238), T2=Color3.fromRGB(230,160,190), T3=Color3.fromRGB(170,90,125)  },
+    { name="Emerald",  A=Color3.fromRGB(50,210,140),  BG=Color3.fromRGB(7,16,14),   CD=Color3.fromRGB(13,28,24),  IP=Color3.fromRGB(8,16,14),   T1=Color3.fromRGB(220,250,240), T2=Color3.fromRGB(130,210,180), T3=Color3.fromRGB(75,155,125)  },
+    { name="Amber",    A=Color3.fromRGB(255,185,50),  BG=Color3.fromRGB(18,14,6),   CD=Color3.fromRGB(30,24,10),  IP=Color3.fromRGB(20,15,6),   T1=Color3.fromRGB(255,248,225), T2=Color3.fromRGB(230,195,120), T3=Color3.fromRGB(165,130,65)  },
+    { name="Ice",      A=Color3.fromRGB(80,215,255),  BG=Color3.fromRGB(8,14,20),   CD=Color3.fromRGB(14,22,34),  IP=Color3.fromRGB(9,14,21),   T1=Color3.fromRGB(215,245,255), T2=Color3.fromRGB(120,200,230), T3=Color3.fromRGB(70,145,175)  },
+    { name="Sunset",   A=Color3.fromRGB(255,120,70),  BG=Color3.fromRGB(18,8,4),    CD=Color3.fromRGB(32,14,8),   IP=Color3.fromRGB(20,8,4),    T1=Color3.fromRGB(255,235,225), T2=Color3.fromRGB(235,170,140), T3=Color3.fromRGB(175,100,75)  },
+    { name="Graphite", A=Color3.fromRGB(160,170,195), BG=Color3.fromRGB(14,14,16),  CD=Color3.fromRGB(24,24,28),  IP=Color3.fromRGB(16,16,18),  T1=Color3.fromRGB(235,235,245), T2=Color3.fromRGB(165,165,185), T3=Color3.fromRGB(105,105,125) },
 }
 
--- Glass layer transparencies
-local TR = { win=0.10, sb=0.14, tbar=0.12, card=0.26, inp=0.36, btn=0.18, sbOn=0.14, sbOff=1 }
-
-local T = THEMES[math.clamp(saved.themeIdx or 1, 1, #THEMES)]
+local TR = { win=0.08, card=0.25, inp=0.36, btn=0.18, sbOn=0.10 }
+local T  = THEMES[math.clamp(saved.themeIdx or 1,1,#THEMES)]
 
 -- ================================================================
 -- TWEEN INFOS
 -- ================================================================
-local TF  = TweenInfo.new(0.14, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-local TM  = TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-local TS  = TweenInfo.new(0.38, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-local TSP = TweenInfo.new(0.38, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
+local TF  = TweenInfo.new(0.13, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local TM  = TweenInfo.new(0.20, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local TS  = TweenInfo.new(0.36, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local TSP = TweenInfo.new(0.36, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
+local TBN = TweenInfo.new(0.28, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
 
 local function tw(i,t,p) TweenService:Create(i,t,p):Play() end
 
@@ -61,27 +61,23 @@ local allScrolls   = {}
 local function rBg(i,k) if i and k then table.insert(bgReg,{i=i,k=k}) end end
 local function rTx(i,k) if i and k then table.insert(txReg,{i=i,k=k}) end end
 
-local function applyTheme(th, anim)
+local function applyTheme(th,anim)
     for _,e in ipairs(bgReg) do
         if e.i and e.i.Parent and th[e.k] then
-            if anim then tw(e.i, TM, {BackgroundColor3=th[e.k]})
-            else e.i.BackgroundColor3=th[e.k] end
+            if anim then tw(e.i,TM,{BackgroundColor3=th[e.k]}) else e.i.BackgroundColor3=th[e.k] end
         end
     end
     for _,e in ipairs(txReg) do
         if e.i and e.i.Parent and th[e.k] then e.i.TextColor3=th[e.k] end
     end
-    for _,s in ipairs(allScrolls) do
-        if s and s.Parent then s.ScrollBarImageColor3=th.A end
-    end
+    for _,s in ipairs(allScrolls) do if s and s.Parent then s.ScrollBarImageColor3=th.A end end
 end
 
 -- ================================================================
 -- PRIMITIVES
 -- ================================================================
 local function corner(p,r) local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,r or 10);c.Parent=p;return c end
-local function stroke(p,col,tr,thick) local s=Instance.new("UIStroke");s.Color=col or Color3.new(1,1,1);s.Transparency=tr or 0.82;s.Thickness=thick or 1;s.Parent=p;return s end
-
+local function stroke(p,col,tr,t2) local s=Instance.new("UIStroke");s.Color=col or Color3.new(1,1,1);s.Transparency=tr or 0.82;s.Thickness=t2 or 1;s.Parent=p;return s end
 local function mkF(par,sz,pos,col,tr)
     local f=Instance.new("Frame");f.Size=sz;f.Position=pos;f.BackgroundColor3=col;f.BackgroundTransparency=tr or 0;f.BorderSizePixel=0;f.Parent=par;return f
 end
@@ -91,8 +87,8 @@ end
 local function mkB(par,sz,pos,col,tr)
     local b=Instance.new("TextButton");b.Text="";b.Size=sz;b.Position=pos;b.BackgroundColor3=col;b.BackgroundTransparency=tr or 0;b.BorderSizePixel=0;b.AutoButtonColor=false;b.Parent=par;return b
 end
-local function shine(p,h) -- glass top highlight
-    local s=mkF(p,UDim2.new(1,0,0,h or 1),UDim2.new(0,0,0,0),Color3.new(1,1,1),0.74);return s
+local function shine(p,h)
+    return mkF(p,UDim2.new(1,0,0,h or 1),UDim2.new(0,0,0,0),Color3.new(1,1,1),0.76)
 end
 local function glassCard(par,sz,pos)
     local f=mkF(par,sz,pos,T.CD,TR.card);rBg(f,"CD");corner(f,10);stroke(f,Color3.new(1,1,1),0.84);shine(f);return f
@@ -103,38 +99,30 @@ end
 -- ================================================================
 local notifStack = {}
 local NW,NH,NGAP,NR,NB = 268,62,7,16,22
-local SG -- set later
+local SG
 
 local function pushNotif(title,body,dur)
     if not saved.notif then return end
     dur=dur or 3.5
     for _,n in ipairs(notifStack) do
-        n._y=n._y-(NH+NGAP)
-        tw(n.f, TM, {Position=UDim2.new(1,-(NW+NR),1,n._y)})
+        n._y=n._y-(NH+NGAP); tw(n.f,TM,{Position=UDim2.new(1,-(NW+NR),1,n._y)})
     end
     local y0=-(NH+NB)
     local nf=mkF(SG,UDim2.new(0,NW,0,NH),UDim2.new(1,NW+NR,1,y0),T.CD,TR.card)
-    nf.ZIndex=50; corner(nf,11); stroke(nf,Color3.new(1,1,1),0.80); shine(nf)
-    rBg(nf,"CD")
-    -- accent strip
-    local strip=mkF(nf,UDim2.new(0,3,0,NH-12),UDim2.new(0,0,0,6),T.A,0);corner(strip,2)
-    rBg(strip,"A")
-    -- icon
+    nf.ZIndex=50; corner(nf,11); stroke(nf,Color3.new(1,1,1),0.80); shine(nf); rBg(nf,"CD")
+    local strip=mkF(nf,UDim2.new(0,3,0,NH-12),UDim2.new(0,0,0,6),T.A,0);corner(strip,2);rBg(strip,"A")
     local ico=mkF(nf,UDim2.new(0,30,0,30),UDim2.new(0,9,0.5,-15),T.A,0.72);corner(ico,8);rBg(ico,"A")
     mkL(ico,"◆",Enum.Font.GothamBold,14,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center).ZIndex=51
-    -- texts
     local tl=mkL(nf,title,Enum.Font.GothamBold,13,T.T1,UDim2.new(0,48,0,7),UDim2.new(1,-66,0,17));tl.ZIndex=51;rTx(tl,"T1")
     local bl=mkL(nf,body,Enum.Font.Gotham,11,T.T2,UDim2.new(0,48,0,25),UDim2.new(1,-58,0,26),Enum.TextXAlignment.Left,true);bl.ZIndex=51;rTx(bl,"T2")
-    -- close
     local xb=mkB(nf,UDim2.new(0,20,0,20),UDim2.new(1,-24,0,4),T.CD,1);xb.ZIndex=52
-    mkL(xb,"✕",Enum.Font.GothamBold,10,T.T3,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center).ZIndex=52;rTx(mkL(xb,"","",0,T.T3,UDim2.new(0,0,0,0),UDim2.new(0,0,0,0)),"T3")
+    mkL(xb,"✕",Enum.Font.GothamBold,10,T.T3,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center).ZIndex=52
     local entry={f=nf,_y=y0}; table.insert(notifStack,1,entry)
     tw(nf,TweenInfo.new(0.26,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.new(1,-(NW+NR),1,y0)})
     local function dismiss()
         for i,n in ipairs(notifStack) do if n==entry then table.remove(notifStack,i);break end end
         for idx,n in ipairs(notifStack) do
-            n._y=-(NH+NB)-(idx-1)*(NH+NGAP)
-            tw(n.f,TM,{Position=UDim2.new(1,-(NW+NR),1,n._y)})
+            n._y=-(NH+NB)-(idx-1)*(NH+NGAP); tw(n.f,TM,{Position=UDim2.new(1,-(NW+NR),1,n._y)})
         end
         tw(nf,TM,{Position=UDim2.new(1,NW+NR,1,y0)})
         task.delay(0.26,function() if nf.Parent then nf:Destroy() end end)
@@ -152,42 +140,92 @@ SG.Name="CrystalHub"; SG.ResetOnSpawn=false
 SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 SG.IgnoreGuiInset=true; SG.Parent=PGui
 
-local WIN_W,WIN_H=615,498
+local WIN_W,WIN_H = 615,498
 local Window=mkF(SG,UDim2.new(0,WIN_W,0,WIN_H),UDim2.new(0.5,-WIN_W/2,0.5,-WIN_H/2),T.BG,TR.win)
 rBg(Window,"BG"); corner(Window,16); stroke(Window,Color3.new(1,1,1),0.78)
 Window.ClipsDescendants=true
-
--- Multi-layer glass interior
+-- top glass line
 shine(Window,1)
-local winInner=mkF(Window,UDim2.new(1,-2,1,-2),UDim2.new(0,1,0,1),Color3.new(1,1,1),0.975)
-corner(winInner,15); winInner.ZIndex=0
-
--- Bottom inner glow strip
-local bGlow=mkF(Window,UDim2.new(1,0,0,60),UDim2.new(0,0,1,-60),T.A,0.96)
-rBg(bGlow,"A")
+-- bottom accent glow
+local bGlow=mkF(Window,UDim2.new(1,0,0,50),UDim2.new(0,0,1,-50),T.A,0.97);rBg(bGlow,"A")
 
 -- ================================================================
--- TITLEBAR
+-- ANIMATED BACKGROUND PARTICLES
 -- ================================================================
-local TB=mkF(Window,UDim2.new(1,0,0,46),UDim2.new(0,0,0,0),T.SB,TR.tbar)
-rBg(TB,"SB"); corner(TB,16); shine(TB)
--- square off bottom corners of titlebar
-mkF(TB,UDim2.new(1,0,0,16),UDim2.new(0,0,1,-16),T.SB,TR.tbar); rBg(mkF(TB,UDim2.new(1,0,0,16),UDim2.new(0,0,1,-16),T.SB,TR.tbar),"SB")
--- bottom divider
-mkF(TB,UDim2.new(1,0,0,1),UDim2.new(0,0,1,-1),Color3.new(1,1,1),0.83)
+local particles = {}
+local PART_COUNT = 14
 
--- logo gem
-local gem=mkF(TB,UDim2.new(0,22,0,22),UDim2.new(0,13,0.5,-11),T.A,0.22)
-rBg(gem,"A"); corner(gem,7); stroke(gem,T.A,0.55)
+for i=1,PART_COUNT do
+    local sz  = math.random(3,9)
+    local p   = mkF(Window,
+        UDim2.new(0,sz,0,sz),
+        UDim2.new(math.random()*0.92,0,math.random()*0.92,0),
+        T.A, 0.75 + math.random()*0.20)
+    p.ZIndex=1; corner(p,sz)
+    rBg(p,"A")
+    local speed = 0.12 + math.random()*0.18
+    local phase = math.random()*math.pi*2
+    local ox    = p.Position.X.Scale
+    local oy    = p.Position.Y.Scale
+    table.insert(particles,{f=p,speed=speed,phase=phase,ox=ox,oy=oy,sz=sz})
+end
+
+local ptTime = 0
+RunService.Heartbeat:Connect(function(dt)
+    ptTime = ptTime + dt
+    for _,pt in ipairs(particles) do
+        if pt.f and pt.f.Parent then
+            local nx = pt.ox + math.sin(ptTime*pt.speed + pt.phase)*0.04
+            local ny = pt.oy + math.cos(ptTime*pt.speed*0.7 + pt.phase)*0.03
+            pt.f.Position = UDim2.new(math.clamp(nx,0,0.95),0,math.clamp(ny,0,0.94),0)
+        end
+    end
+end)
+
+-- Pulsing accent ring around gem (driven by tween loop)
+local function loopTween(inst,t,props,back)
+    local fwd = TweenService:Create(inst,t,props)
+    fwd:Play()
+    fwd.Completed:Connect(function()
+        if not inst.Parent then return end
+        if back then
+            local bk=TweenService:Create(inst,t,back); bk:Play()
+            bk.Completed:Connect(function()
+                if inst.Parent then loopTween(inst,t,props,back) end
+            end)
+        else
+            loopTween(inst,t,props,back)
+        end
+    end)
+end
+
+-- ================================================================
+-- TITLEBAR  — fully transparent
+-- ================================================================
+local TB=mkF(Window,UDim2.new(1,0,0,46),UDim2.new(0,0,0,0),T.BG,1)
+-- transparent: no background, no rBg
+-- bottom divider only
+mkF(TB,UDim2.new(1,0,0,1),UDim2.new(0,0,1,-1),Color3.new(1,1,1),0.86)
+
+-- Animated gem logo
+local gemRing=mkF(TB,UDim2.new(0,28,0,28),UDim2.new(0,11,0.5,-14),T.A,0.85)
+rBg(gemRing,"A"); corner(gemRing,8)
+local gem=mkF(TB,UDim2.new(0,22,0,22),UDim2.new(0,14,0.5,-11),T.A,0.22)
+rBg(gem,"A"); corner(gem,7); stroke(gem,T.A,0.50)
 mkL(gem,"◆",Enum.Font.GothamBold,12,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
 
-local tTitle=mkL(TB,"Crystal Hub",Enum.Font.GothamBold,15,T.T1,UDim2.new(0,42,0,0),UDim2.new(0,110,1,0));rTx(tTitle,"T1")
-local tVer=mkL(TB,"v2.0",Enum.Font.Gotham,10,T.T3,UDim2.new(0,152,0,0),UDim2.new(0,32,1,0));rTx(tVer,"T3")
+-- pulse the ring
+loopTween(gemRing,TweenInfo.new(1.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),
+    {BackgroundTransparency=0.60},
+    {BackgroundTransparency=0.88})
+
+local tTitle=mkL(TB,"Crystal Hub",Enum.Font.GothamBold,15,T.T1,UDim2.new(0,46,0,0),UDim2.new(0,110,1,0));rTx(tTitle,"T1")
+local tVer  =mkL(TB,"v2.1",Enum.Font.Gotham,10,T.T3,UDim2.new(0,158,0,0),UDim2.new(0,30,1,0));rTx(tVer,"T3")
 
 -- macOS traffic lights
 local function trafficBtn(xOff,col,cb)
     local b=mkB(TB,UDim2.new(0,13,0,13),UDim2.new(1,xOff,0.5,-6),col,0);corner(b,7)
-    b.MouseEnter:Connect(function() tw(b,TF,{BackgroundTransparency=0.3}) end)
+    b.MouseEnter:Connect(function() tw(b,TF,{BackgroundTransparency=0.35}) end)
     b.MouseLeave:Connect(function() tw(b,TF,{BackgroundTransparency=0}) end)
     b.MouseButton1Click:Connect(cb); return b
 end
@@ -200,18 +238,16 @@ trafficBtn(-54,Color3.fromRGB(255,190,55),function()
     minimized=not minimized
     tw(Window,TM,{Size=minimized and UDim2.new(0,WIN_W,0,46) or UDim2.new(0,WIN_W,0,WIN_H)})
 end)
-trafficBtn(-72,Color3.fromRGB(50,205,115),function()
-    -- reserved for fullscreen
-end)
+trafficBtn(-72,Color3.fromRGB(50,205,115),function() end)
 
 -- ================================================================
--- SIDEBAR
+-- SIDEBAR  — fully transparent
 -- ================================================================
 local SBW=168
-local Sidebar=mkF(Window,UDim2.new(0,SBW,1,-46),UDim2.new(0,0,0,46),T.SB,TR.sb)
-rBg(Sidebar,"SB")
-mkF(Sidebar,UDim2.new(0,SBW-16,1,0),UDim2.new(0,SBW-SBW,0,0),T.SB,TR.sb) -- fill right corner
-mkF(Sidebar,UDim2.new(0,1,1,0),UDim2.new(1,-1,0,0),Color3.new(1,1,1),0.84)
+local Sidebar=mkF(Window,UDim2.new(0,SBW,1,-46),UDim2.new(0,0,0,46),T.BG,1)
+-- transparent: no background, no rBg
+-- right divider only
+mkF(Sidebar,UDim2.new(0,1,1,0),UDim2.new(1,-1,0,0),Color3.new(1,1,1),0.88)
 
 local sbScroll=Instance.new("ScrollingFrame")
 sbScroll.Size=UDim2.new(1,0,1,-52);sbScroll.Position=UDim2.new(0,0,0,6)
@@ -220,15 +256,17 @@ sbScroll.ScrollBarThickness=0;sbScroll.CanvasSize=UDim2.new(0,0,0,0)
 sbScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;sbScroll.Parent=Sidebar
 
 local sbLL=Instance.new("UIListLayout");sbLL.Padding=UDim.new(0,3);sbLL.Parent=sbScroll
-local sbLP=Instance.new("UIPadding");sbLP.PaddingLeft=UDim.new(0,8);sbLP.PaddingRight=UDim.new(0,8);sbLP.PaddingTop=UDim.new(0,6);sbLP.Parent=sbScroll
+local sbLP=Instance.new("UIPadding")
+sbLP.PaddingLeft=UDim.new(0,8);sbLP.PaddingRight=UDim.new(0,8);sbLP.PaddingTop=UDim.new(0,6)
+sbLP.Parent=sbScroll
 
--- user card
+-- user card (keep slightly visible so it reads against transparent bg)
 local uCard=glassCard(Sidebar,UDim2.new(1,-16,0,42),UDim2.new(0,8,1,-50))
 local uAv=mkF(uCard,UDim2.new(0,28,0,28),UDim2.new(0,7,0.5,-14),T.A,0.68);corner(uAv,8);rBg(uAv,"A")
 mkL(uAv,string.sub(LP.Name,1,1):upper(),Enum.Font.GothamBold,14,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
-local uName=mkL(uCard,LP.Name,Enum.Font.GothamBold,11,T.T1,UDim2.new(0,42,0,5),UDim2.new(1,-52,0,15));rTx(uName,"T1")
-uName.TextTruncate=Enum.TextTruncate.AtEnd
-local uStatus=mkL(uCard,"● online",Enum.Font.Gotham,9,Color3.fromRGB(80,230,120),UDim2.new(0,42,0,20),UDim2.new(1,-52,0,12))
+local uNameL=mkL(uCard,LP.Name,Enum.Font.GothamBold,11,T.T1,UDim2.new(0,42,0,5),UDim2.new(1,-52,0,15));rTx(uNameL,"T1")
+uNameL.TextTruncate=Enum.TextTruncate.AtEnd
+mkL(uCard,"● online",Enum.Font.Gotham,9,Color3.fromRGB(80,230,120),UDim2.new(0,42,0,21),UDim2.new(1,-52,0,12))
 
 -- ================================================================
 -- CONTENT AREA
@@ -237,21 +275,40 @@ local Content=mkF(Window,UDim2.new(1,-SBW-3,1,-54),UDim2.new(0,SBW+1,0,52),T.BG,
 rBg(Content,"BG"); Content.ClipsDescendants=true
 
 -- ================================================================
--- TAB SYSTEM
+-- TAB SYSTEM  (with animated slide transition)
 -- ================================================================
 local pages,navBtns={},{}
 local activeTab,tabCount=1,0
 
 local function switchTab(idx)
-    activeTab=idx
-    for i,pg in ipairs(pages) do pg.Visible=(i==idx) end
+    if idx==activeTab and tabCount>0 then return end
+    local prev=activeTab; activeTab=idx
+
+    for i,pg in ipairs(pages) do
+        if i==idx then
+            pg.Position=UDim2.new(-0.06,0,0,0)
+            pg.BackgroundTransparency=1
+            pg.Visible=true
+            tw(pg,TM,{Position=UDim2.new(0,0,0,0)})
+        elseif i==prev then
+            local cp=pg
+            tw(cp,TF,{Position=UDim2.new(0.04,0,0,0)})
+            task.delay(0.14,function() cp.Visible=false; cp.Position=UDim2.new(0,0,0,0) end)
+        else
+            pg.Visible=false; pg.Position=UDim2.new(0,0,0,0)
+        end
+    end
+
     for i,nb in ipairs(navBtns) do
         local on=(i==idx)
         tw(nb.bg,TM,{BackgroundTransparency=on and TR.sbOn or 1})
         nb.bar.Visible=on
         nb.lbl.Font=on and Enum.Font.GothamBold or Enum.Font.Gotham
         nb.lbl.TextColor3=on and T.T1 or T.T2
-        tw(nb.icoBg,TM,{BackgroundTransparency=on and 0.50 or 0.82})
+        tw(nb.icoBg,TM,{BackgroundTransparency=on and 0.45 or 0.82})
+        if on then
+            tw(nb.icoBg,TBN,{Size=UDim2.new(0,28,0,28)})
+        end
     end
 end
 
@@ -261,25 +318,40 @@ local function newPage(icon,name)
     -- sidebar button
     local sbBtn=mkF(sbScroll,UDim2.new(1,0,0,38),UDim2.new(0,0,0,0),T.CD,1)
     rBg(sbBtn,"CD"); corner(sbBtn,9)
+
+    -- active indicator bar
     local bar=mkF(sbBtn,UDim2.new(0,3,0,18),UDim2.new(0,0,0.5,-9),T.A,0)
     bar.Visible=(idx==1); corner(bar,2); rBg(bar,"A")
-    local icoBg=mkF(sbBtn,UDim2.new(0,28,0,28),UDim2.new(0,5,0.5,-14),T.A,idx==1 and 0.50 or 0.82)
+
+    -- icon box
+    local icoBg=mkF(sbBtn,UDim2.new(0,28,0,28),UDim2.new(0,5,0.5,-14),T.A,idx==1 and 0.45 or 0.82)
     corner(icoBg,8); rBg(icoBg,"A")
     mkL(icoBg,icon,Enum.Font.Gotham,14,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+
     local nl=mkL(sbBtn,name,idx==1 and Enum.Font.GothamBold or Enum.Font.Gotham,12,
         idx==1 and T.T1 or T.T2,UDim2.new(0,39,0,0),UDim2.new(1,-44,1,0))
     rTx(nl,idx==1 and "T1" or "T2")
+
     local hit=mkB(sbBtn,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.CD,1)
-    hit.MouseEnter:Connect(function() if activeTab~=idx then tw(sbBtn,TF,{BackgroundTransparency=0.88}) end end)
-    hit.MouseLeave:Connect(function() if activeTab~=idx then tw(sbBtn,TF,{BackgroundTransparency=1}) end end)
-    hit.MouseButton1Click:Connect(function() switchTab(idx) end)
+    hit.MouseEnter:Connect(function()
+        if activeTab~=idx then tw(sbBtn,TF,{BackgroundTransparency=0.84}) end
+        tw(icoBg,TF,{Size=UDim2.new(0,30,0,30),Position=UDim2.new(0,4,0.5,-15)})
+    end)
+    hit.MouseLeave:Connect(function()
+        if activeTab~=idx then tw(sbBtn,TF,{BackgroundTransparency=1}) end
+        tw(icoBg,TF,{Size=UDim2.new(0,28,0,28),Position=UDim2.new(0,5,0.5,-14)})
+    end)
+    hit.MouseButton1Click:Connect(function()
+        tw(sbBtn,TBN,{Size=UDim2.new(1,0,0,38)})
+        switchTab(idx)
+    end)
     table.insert(navBtns,{bg=sbBtn,bar=bar,lbl=nl,icoBg=icoBg})
 
     -- page
     local page=mkF(Content,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.BG,1)
     page.Visible=(idx==1); page.ClipsDescendants=true
 
-    -- header
+    -- page header
     local hIcon=mkF(page,UDim2.new(0,26,0,26),UDim2.new(0,2,0,4),T.A,0.78);corner(hIcon,8);rBg(hIcon,"A")
     mkL(hIcon,icon,Enum.Font.Gotham,13,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
     local hTitle=mkL(page,name,Enum.Font.GothamBold,17,T.T1,UDim2.new(0,34,0,5),UDim2.new(1,-38,0,22));rTx(hTitle,"T1")
@@ -324,7 +396,7 @@ end
 local function addButton(scroll,label,desc,callback)
     local f=glassCard(scroll,UDim2.new(1,0,0,60),UDim2.new(0,0,0,0))
     mkL(f,label,Enum.Font.GothamBold,13,T.T1,UDim2.new(0,12,0,11),UDim2.new(1,-90,0,16)).TextTruncate=Enum.TextTruncate.AtEnd
-    if desc~="" then local d=mkL(f,desc,Enum.Font.Gotham,11,T.T3,UDim2.new(0,12,0,28),UDim2.new(1,-90,0,20),Enum.TextXAlignment.Left,true);rTx(d,"T3") end
+    if desc and desc~="" then local d=mkL(f,desc,Enum.Font.Gotham,11,T.T3,UDim2.new(0,12,0,28),UDim2.new(1,-90,0,20),Enum.TextXAlignment.Left,true);rTx(d,"T3") end
     local btn=mkF(f,UDim2.new(0,62,0,28),UDim2.new(1,-72,0.5,-14),T.A,TR.btn);corner(btn,8);rBg(btn,"A");stroke(btn,T.A,0.55);shine(btn)
     local bl=mkL(btn,"Run",Enum.Font.GothamBold,12,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center);rTx(bl,"T1")
     local hit=mkB(f,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.CD,1)
@@ -341,11 +413,11 @@ local function addToggle(scroll,label,desc,default,callback)
     local state=default or false
     local f=glassCard(scroll,UDim2.new(1,0,0,60),UDim2.new(0,0,0,0))
     mkL(f,label,Enum.Font.GothamBold,13,T.T1,UDim2.new(0,12,0,11),UDim2.new(1,-78,0,16)).TextTruncate=Enum.TextTruncate.AtEnd
-    if desc~="" then local d=mkL(f,desc,Enum.Font.Gotham,11,T.T3,UDim2.new(0,12,0,28),UDim2.new(1,-78,0,20),Enum.TextXAlignment.Left,true);rTx(d,"T3") end
+    if desc and desc~="" then local d=mkL(f,desc,Enum.Font.Gotham,11,T.T3,UDim2.new(0,12,0,28),UDim2.new(1,-78,0,20),Enum.TextXAlignment.Left,true);rTx(d,"T3") end
     local track=mkF(f,UDim2.new(0,44,0,24),UDim2.new(1,-56,0.5,-12),state and T.A or T.IP,state and 0.1 or TR.inp)
     rBg(track,state and "A" or "IP");corner(track,12)
     local knob=mkF(track,UDim2.new(0,18,0,18),UDim2.new(0,state and 23 or 3,0.5,-9),Color3.new(1,1,1),0.05)
-    corner(knob,9);stroke(knob,Color3.new(0,0,0),0.65)
+    corner(knob,9);stroke(knob,Color3.new(0,0,0),0.68)
     local hit=mkB(f,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.CD,1)
     hit.MouseEnter:Connect(function() tw(f,TF,{BackgroundTransparency=TR.card-0.09}) end)
     hit.MouseLeave:Connect(function() tw(f,TF,{BackgroundTransparency=TR.card}) end)
@@ -353,12 +425,8 @@ local function addToggle(scroll,label,desc,default,callback)
         state=not state;pcall(callback,state)
         tw(track,TM,{BackgroundColor3=state and T.A or T.IP,BackgroundTransparency=state and 0.1 or TR.inp})
         tw(knob,TSP,{Position=state and UDim2.new(0,23,0.5,-9) or UDim2.new(0,3,0.5,-9)})
-        rBg(track,state and "A" or "IP")
     end)
-    local function setVal(v)
-        state=v;track.BackgroundColor3=v and T.A or T.IP;track.BackgroundTransparency=v and 0.1 or TR.inp
-        knob.Position=v and UDim2.new(0,23,0.5,-9) or UDim2.new(0,3,0.5,-9)
-    end
+    local function setVal(v) state=v;track.BackgroundColor3=v and T.A or T.IP;track.BackgroundTransparency=v and 0.1 or TR.inp;knob.Position=v and UDim2.new(0,23,0.5,-9) or UDim2.new(0,3,0.5,-9) end
     return f,function() return state end,setVal
 end
 
@@ -367,7 +435,7 @@ local function addSlider(scroll,label,desc,min,max,default,callback)
     local f=glassCard(scroll,UDim2.new(1,0,0,66),UDim2.new(0,0,0,0))
     mkL(f,label,Enum.Font.GothamBold,13,T.T1,UDim2.new(0,12,0,10),UDim2.new(1,-66,0,15)).TextTruncate=Enum.TextTruncate.AtEnd
     local vl=mkL(f,tostring(val),Enum.Font.GothamBold,12,T.A,UDim2.new(1,-58,0,10),UDim2.new(0,50,0,15),Enum.TextXAlignment.Right);rTx(vl,"A")
-    if desc~="" then local d=mkL(f,desc,Enum.Font.Gotham,10,T.T3,UDim2.new(0,12,0,26),UDim2.new(1,-16,0,14),Enum.TextXAlignment.Left,true);rTx(d,"T3") end
+    if desc and desc~="" then local d=mkL(f,desc,Enum.Font.Gotham,10,T.T3,UDim2.new(0,12,0,26),UDim2.new(1,-16,0,14),Enum.TextXAlignment.Left,true);rTx(d,"T3") end
     local trk=mkF(f,UDim2.new(1,-20,0,4),UDim2.new(0,10,0,50),T.IP,TR.inp);rBg(trk,"IP");corner(trk,2)
     local pct=(val-min)/math.max(max-min,1)
     local fill=mkF(trk,UDim2.new(pct,0,1,0),UDim2.new(0,0,0,0),T.A,0.05);rBg(fill,"A");corner(fill,2)
@@ -386,9 +454,7 @@ local function addSlider(scroll,label,desc,min,max,default,callback)
         end
     end)
     UserInputService.InputChanged:Connect(function(inp)
-        if dragging and (inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch) then
-            setSlider(inp.Position.X)
-        end
+        if dragging and (inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch) then setSlider(inp.Position.X) end
     end)
     UserInputService.InputEnded:Connect(function(inp)
         if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then dragging=false end
@@ -398,8 +464,7 @@ end
 
 local function addDropdown(scroll,label,opts,default,callback)
     local sel=default or opts[1]; local open=false
-    local f=glassCard(scroll,UDim2.new(1,0,0,60),UDim2.new(0,0,0,0))
-    f.ClipsDescendants=false
+    local f=glassCard(scroll,UDim2.new(1,0,0,60),UDim2.new(0,0,0,0));f.ClipsDescendants=false
     mkL(f,label,Enum.Font.GothamBold,13,T.T1,UDim2.new(0,12,0,11),UDim2.new(1,-16,0,16)).TextTruncate=Enum.TextTruncate.AtEnd
     local selF=mkF(f,UDim2.new(1,-20,0,26),UDim2.new(0,10,1,-34),T.IP,TR.inp);rBg(selF,"IP");corner(selF,7);stroke(selF,Color3.new(1,1,1),0.86)
     local selLbl=mkL(selF,sel,Enum.Font.Gotham,12,T.T1,UDim2.new(0,9,0,0),UDim2.new(1,-26,1,0));rTx(selLbl,"T1")
@@ -436,8 +501,7 @@ local function addTextInput(scroll,label,placeholder,callback)
     local p2=Instance.new("UIPadding");p2.PaddingLeft=UDim.new(0,9);p2.Parent=ibg
     local box=Instance.new("TextBox");box.PlaceholderText=placeholder or "Type here...";box.Text=""
     box.Font=Enum.Font.Gotham;box.TextSize=12;box.TextColor3=T.T1;box.PlaceholderColor3=T.T3
-    box.BackgroundTransparency=1;box.BorderSizePixel=0;box.Size=UDim2.new(1,0,1,0);box.ClearTextOnFocus=false;box.Parent=ibg
-    rTx(box,"T1")
+    box.BackgroundTransparency=1;box.BorderSizePixel=0;box.Size=UDim2.new(1,0,1,0);box.ClearTextOnFocus=false;box.Parent=ibg;rTx(box,"T1")
     local goF=mkF(f,UDim2.new(0,58,0,28),UDim2.new(1,-68,1,-36),T.A,TR.btn);rBg(goF,"A");corner(goF,7);shine(goF)
     local gl=mkL(goF,"Go",Enum.Font.GothamBold,12,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center);rTx(gl,"T1")
     local gh=mkB(goF,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.A,1)
@@ -467,9 +531,7 @@ end
 -- ================================================================
 --  ╔═══════════════════════════════════════════╗
 --  ║  YOUR TABS START HERE                     ║
---  ║                                           ║
 --  ║  local _, scroll = newPage("🎯","Combat") ║
---  ║  addSection(scroll,"Aimbot")               ║
 --  ║  addToggle(scroll,"Silent Aim","",false,   ║
 --  ║      function(on) end)                    ║
 --  ╚═══════════════════════════════════════════╝
@@ -478,7 +540,7 @@ end
 -- ──── HOME ────
 local _,homeScroll=newPage("⌂","Home")
 addSection(homeScroll,"Welcome")
-addLabel(homeScroll,"Crystal Hub  v2.0  by void.\nAdd your own tabs below the comment block.\nAll settings save automatically — themes persist between sessions.")
+addLabel(homeScroll,"Crystal Hub  v2.1  by void.\nAdd your own tabs below the comment block.\nTitlebar and sidebar are fully transparent — your game shows through.")
 addSection(homeScroll,"Quick Actions")
 addButton(homeScroll,"Reset Character","Reload your character.",function() LP:LoadCharacter() end)
 addButton(homeScroll,"Rejoin Server","Reconnect to this place.",function()
@@ -503,7 +565,6 @@ local tgPad=Instance.new("UIPadding");tgPad.PaddingBottom=UDim.new(0,4);tgPad.Pa
 local selDots={}
 for i,th in ipairs(THEMES) do
     local tc=glassCard(themeGrid,UDim2.new(0,0,0,0),UDim2.new(0,0,0,0))
-    -- color strip
     local strip=mkF(tc,UDim2.new(1,-12,0,26),UDim2.new(0,6,0,6),th.A,0.18);corner(strip,6)
     for j=0,2 do local d=mkF(strip,UDim2.new(0,7,0,7),UDim2.new(0,5+j*11,0.5,-3),th.A,j*0.28);corner(d,4) end
     local nl=mkL(tc,th.name,Enum.Font.GothamBold,10,T.T1,UDim2.new(0,8,0,36),UDim2.new(1,-26,0,14));rTx(nl,"T1")
@@ -516,6 +577,8 @@ for i,th in ipairs(THEMES) do
     tH.MouseButton1Click:Connect(function()
         saved.themeIdx=ci;T=THEMES[ci];save()
         applyTheme(T,true)
+        -- recolour particles
+        for _,pt in ipairs(particles) do if pt.f and pt.f.Parent then pt.f.BackgroundColor3=T.A end end
         for j,d in ipairs(selDots) do d.Visible=(j==ci) end
         switchTab(activeTab)
         pushNotif("Theme",T.name.." applied ✦",2.5)
@@ -528,14 +591,13 @@ addToggle(settingsScroll,"Toast Notifications","Show action popups.",true,functi
 end)
 
 addSection(settingsScroll,"Info")
-addLabel(settingsScroll,"Crystal Hub  v2.0  ·  by void.\nPlayer: "..LP.Name.."  ·  Place: "..tostring(game.PlaceId).."\nTheme auto-saves to DataStore.")
+addLabel(settingsScroll,"Crystal Hub  v2.1  ·  by void.\nPlayer: "..LP.Name.."  ·  Place: "..tostring(game.PlaceId).."\nTheme auto-saves to DataStore.")
 
 -- ================================================================
 -- DRAG
 -- ================================================================
 do
-    local drag,dragStart,startPos=false,nil,nil
-    local lastDragInput=nil
+    local drag,dragStart,startPos,lastDragInput=false,nil,nil,nil
     TB.InputBegan:Connect(function(inp)
         if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
             drag=true;dragStart=inp.Position;startPos=Window.Position
@@ -545,9 +607,7 @@ do
         end
     end)
     TB.InputChanged:Connect(function(inp)
-        if inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch then
-            lastDragInput=inp
-        end
+        if inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch then lastDragInput=inp end
     end)
     UserInputService.InputChanged:Connect(function(inp)
         if inp==lastDragInput and drag and dragStart then
@@ -558,7 +618,7 @@ do
 end
 
 -- ================================================================
--- TOGGLE VISIBILITY  (RShift / RightShift)
+-- KEYBOARD TOGGLE
 -- ================================================================
 UserInputService.InputBegan:Connect(function(inp,gp)
     if gp then return end
@@ -568,12 +628,12 @@ UserInputService.InputBegan:Connect(function(inp,gp)
 end)
 
 -- ================================================================
--- INIT  — entrance animation + theme + first notification
+-- INIT
 -- ================================================================
 applyTheme(T,false)
 switchTab(1)
 
-Window.Size=UDim2.new(0,WIN_W*0.93,0,WIN_H*0.93)
+Window.Size=UDim2.new(0,WIN_W*0.92,0,WIN_H*0.92)
 Window.BackgroundTransparency=1
 tw(Window,TweenInfo.new(0.48,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
     Size=UDim2.new(0,WIN_W,0,WIN_H),
