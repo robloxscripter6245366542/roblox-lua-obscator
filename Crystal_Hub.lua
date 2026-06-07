@@ -662,26 +662,18 @@ local function addScriptCard(title,gameName,scriptCode,views,patched,imageUrl,ve
     return f
 end
 
--- Multi-method HTTP fetch — tries executor request APIs first for
--- proper SSL/HTTPS support, falls back to game:HttpGet
+-- HTTP fetch for Delta iOS (game:HttpGet only)
+-- ScriptBlox blocks Roblox's user-agent, so we proxy through allorigins
+local _HS2 = game:GetService("HttpService")
 local function httpFetch(url)
-    local methods = {
-        function()
-            local fn = rawget(_G,"request") or rawget(_G,"syn") and syn.request
-                or rawget(_G,"http") and http.request
-                or rawget(_G,"fluxus") and fluxus.request
-            if not fn then error("no executor request fn") end
-            local r = fn({Url=url,Method="GET",Headers={["User-Agent"]="Mozilla/5.0"}})
-            if r.StatusCode ~= 200 then error("HTTP "..tostring(r.StatusCode)) end
-            return r.Body
-        end,
-        function() return game:HttpGet(url, true) end,
-    }
-    for _,m in ipairs(methods) do
-        local ok,res = pcall(m)
-        if ok and type(res)=="string" and #res>2 then return res end
-    end
-    error("All HTTP methods failed")
+    -- direct attempt first
+    local ok,res = pcall(game.HttpGet, game, url, true)
+    if ok and type(res)=="string" and #res>4 then return res end
+    -- allorigins.win proxy — fetches on server side, bypasses UA block
+    local proxied = "https://api.allorigins.win/raw?url=".._HS2:UrlEncode(url)
+    ok,res = pcall(game.HttpGet, game, proxied, true)
+    if ok and type(res)=="string" and #res>4 then return res end
+    error("fetch failed for "..url)
 end
 
 local function fetchScripts(query)
