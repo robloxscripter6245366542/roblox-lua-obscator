@@ -379,13 +379,14 @@ local function newPage(name)
     local page=mkF(Content,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.BG,1)
     page.Visible=(idx==1);page.ClipsDescendants=true
 
-    -- scroll (fills entire page — no header)
+    -- scroll (fills entire page — ZIndex 1 so custom page content added after sits on top)
     local scroll=Instance.new("ScrollingFrame")
     scroll.Size=UDim2.new(1,0,1,0);scroll.Position=UDim2.new(0,0,0,0)
     scroll.BackgroundTransparency=1;scroll.BorderSizePixel=0
     scroll.ScrollBarThickness=3;scroll.ScrollBarImageColor3=T.A
     scroll.CanvasSize=UDim2.new(0,0,0,0);scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
     scroll.ScrollingDirection=Enum.ScrollingDirection.Y;scroll.Parent=page
+    scroll.ZIndex=1
     table.insert(allScrolls,scroll)
     local ll=Instance.new("UIListLayout",scroll);ll.Padding=UDim.new(0,5)
     local lp=Instance.new("UIPadding",scroll)
@@ -661,14 +662,36 @@ local function addScriptCard(title,gameName,scriptCode,views,patched,imageUrl,ve
     return f
 end
 
+-- Multi-method HTTP fetch — tries executor request APIs first for
+-- proper SSL/HTTPS support, falls back to game:HttpGet
+local function httpFetch(url)
+    local methods = {
+        function()
+            local fn = rawget(_G,"request") or rawget(_G,"syn") and syn.request
+                or rawget(_G,"http") and http.request
+                or rawget(_G,"fluxus") and fluxus.request
+            if not fn then error("no executor request fn") end
+            local r = fn({Url=url,Method="GET",Headers={["User-Agent"]="Mozilla/5.0"}})
+            if r.StatusCode ~= 200 then error("HTTP "..tostring(r.StatusCode)) end
+            return r.Body
+        end,
+        function() return game:HttpGet(url, true) end,
+    }
+    for _,m in ipairs(methods) do
+        local ok,res = pcall(m)
+        if ok and type(res)=="string" and #res>2 then return res end
+    end
+    error("All HTTP methods failed")
+end
+
 local function fetchScripts(query)
     sStatus.Text="Searching...";clearResults()
     task.spawn(function()
         local HS=game:GetService("HttpService")
         local q=HS:UrlEncode(query or "")
         local url="https://scriptblox.com/api/script/fetch?q="..q.."&page=1&max=20&mode=free"
-        local ok,res=pcall(game.HttpGet,game,url,true)
-        if not ok then sStatus.Text="HTTP request failed.";pushNotif("Scripts","Could not reach ScriptBlox",3);return end
+        local ok,res=pcall(httpFetch,url)
+        if not ok then sStatus.Text="HTTP failed: "..tostring(res):sub(1,60);pushNotif("Scripts","Could not reach ScriptBlox",3);return end
         local ok2,data=pcall(function() return HS:JSONDecode(res) end)
         if not ok2 or not data then sStatus.Text="Response parse error.";return end
         local scripts=data.result and data.result.scripts
@@ -693,13 +716,16 @@ sBox.FocusLost:Connect(function(enter) if enter and sBox.Text:len()>0 then fetch
 -- ──── EXECUTE ────
 local execPage,_=newPage("Execute")
 
+-- execute elements use ZIndex=2 to sit above the page's scroll frame (ZIndex=1)
 local execStatusF=mkF(execPage,UDim2.new(1,-12,0,32),UDim2.new(0,6,1,-40),T.CD,TR.card)
+execStatusF.ZIndex=2
 rBg(execStatusF,"CD");corner(execStatusF,8);stroke(execStatusF,Color3.new(1,1,1),0.88)
 local _esPad=Instance.new("UIPadding",execStatusF);_esPad.PaddingLeft=UDim.new(0,10)
 local execStatus=mkL(execStatusF,"Ready  ·  write code above or paste a URL below",Enum.Font.Gotham,10,T.T3,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0))
 execStatus.TextTruncate=Enum.TextTruncate.AtEnd;rTx(execStatus,"T3")
 
 local _urlRow=mkF(execPage,UDim2.new(1,-12,0,32),UDim2.new(0,6,1,-78),T.BG,1)
+_urlRow.ZIndex=2
 local _urlBg=mkF(_urlRow,UDim2.new(1,-76,0,28),UDim2.new(0,0,0,2),T.IP,TR.inp)
 rBg(_urlBg,"IP");corner(_urlBg,8);stroke(_urlBg,Color3.new(1,1,1),0.86);shine(_urlBg)
 local _urlPad=Instance.new("UIPadding",_urlBg);_urlPad.PaddingLeft=UDim.new(0,9)
@@ -713,6 +739,7 @@ local _fLbl=mkL(_fetchF,"↓ Fetch & Run",Enum.Font.GothamBold,10,T.T1,UDim2.new
 local _fHit=mkB(_fetchF,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.A,1)
 
 local _btnRow=mkF(execPage,UDim2.new(1,-12,0,34),UDim2.new(0,6,1,-118),T.BG,1)
+_btnRow.ZIndex=2
 local _runF=mkF(_btnRow,UDim2.new(0,120,0,30),UDim2.new(0,0,0,2),T.A,TR.btn)
 rBg(_runF,"A");corner(_runF,8);stroke(_runF,T.A,0.45);shine(_runF)
 local _runLbl=mkL(_runF,"▶  Execute",Enum.Font.GothamBold,13,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center);rTx(_runLbl,"T1")
@@ -722,7 +749,8 @@ rBg(_clrF,"CD");corner(_clrF,8);stroke(_clrF,Color3.new(1,1,1),0.84);shine(_clrF
 local _clrLbl=mkL(_clrF,"⌫  Clear",Enum.Font.GothamBold,12,T.T2,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center);rTx(_clrLbl,"T2")
 local _clrHit=mkB(_clrF,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.CD,1)
 
-local _edCard=mkF(execPage,UDim2.new(1,-12,1,-166),UDim2.new(0,6,0,8),T.CD,TR.card)
+local _edCard=mkF(execPage,UDim2.new(1,-12,1,-130),UDim2.new(0,6,0,8),T.CD,TR.card)
+_edCard.ZIndex=2
 rBg(_edCard,"CD");corner(_edCard,10);stroke(_edCard,Color3.new(1,1,1),0.84)
 local _edStrip=mkF(_edCard,UDim2.new(0,3,1,-12),UDim2.new(0,0,0,6),T.A,0.65);corner(_edStrip,2);rBg(_edStrip,"A")
 local _edPad=Instance.new("UIPadding",_edCard)
@@ -762,7 +790,7 @@ _fHit.MouseButton1Click:Connect(function()
     if url=="" then execStatus.Text="Enter a URL first.";execStatus.TextColor3=T.T3;return end
     execStatus.Text="Fetching...";execStatus.TextColor3=T.T3;tw(_fetchF,TF,{BackgroundTransparency=0})
     task.spawn(function()
-        local ok,src=pcall(game.HttpGet,game,url,true)
+        local ok,src=pcall(httpFetch,url)
         if not ok then execStatus.Text="✕  HTTP: "..tostring(src):sub(1,80);execStatus.TextColor3=Color3.fromRGB(255,90,90);tw(_fetchF,TM,{BackgroundTransparency=TR.btn});return end
         execRun(src);tw(_fetchF,TM,{BackgroundTransparency=TR.btn})
     end)
