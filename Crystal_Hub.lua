@@ -38,7 +38,7 @@ local THEMES = {
     { name="Graphite", A=Color3.fromRGB(160,170,195), BG=Color3.fromRGB(14,14,16),  CD=Color3.fromRGB(24,24,28),  IP=Color3.fromRGB(16,16,18),  T1=Color3.fromRGB(235,235,245), T2=Color3.fromRGB(165,165,185), T3=Color3.fromRGB(105,105,125) },
 }
 
-local TR = { win=0.08, card=0.25, inp=0.36, btn=0.18, sbOn=0.10 }
+local TR = { win=0.12, card=0.28, inp=0.38, btn=0.16, sbOn=0.10 }
 local T  = THEMES[math.clamp(saved.themeIdx or 1,1,#THEMES)]
 
 -- ================================================================
@@ -141,13 +141,27 @@ SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 SG.IgnoreGuiInset=true; SG.Parent=PGui
 
 local WIN_W,WIN_H = 615,498
+-- outer glow layers (behind window, synced each frame)
+local GLOW1=mkF(SG,UDim2.new(0,WIN_W+44,0,WIN_H+44),UDim2.new(0.5,-(WIN_W+44)/2,0.5,-(WIN_H+44)/2),T.A,0.965)
+rBg(GLOW1,"A");corner(GLOW1,22)
+local GLOW2=mkF(SG,UDim2.new(0,WIN_W+20,0,WIN_H+20),UDim2.new(0.5,-(WIN_W+20)/2,0.5,-(WIN_H+20)/2),T.A,0.950)
+rBg(GLOW2,"A");corner(GLOW2,18)
+
 local Window=mkF(SG,UDim2.new(0,WIN_W,0,WIN_H),UDim2.new(0.5,-WIN_W/2,0.5,-WIN_H/2),T.BG,TR.win)
-rBg(Window,"BG"); corner(Window,16); stroke(Window,Color3.new(1,1,1),0.78)
+rBg(Window,"BG"); corner(Window,16); stroke(Window,T.A,0.52)
 Window.ClipsDescendants=true
 -- top glass line
 shine(Window,1)
 -- bottom accent glow
-local bGlow=mkF(Window,UDim2.new(1,0,0,50),UDim2.new(0,0,1,-50),T.A,0.97);rBg(bGlow,"A")
+local bGlow=mkF(Window,UDim2.new(1,0,0,60),UDim2.new(0,0,1,-60),T.A,0.96);rBg(bGlow,"A")
+-- sync glow to window position every frame
+RunService.Heartbeat:Connect(function()
+    if GLOW1.Parent then
+        local ap=Window.AbsolutePosition
+        GLOW1.Position=UDim2.new(0,ap.X-22,0,ap.Y-22)
+        GLOW2.Position=UDim2.new(0,ap.X-10,0,ap.Y-10)
+    end
+end)
 
 -- ================================================================
 -- ANIMATED BACKGROUND PARTICLES
@@ -285,11 +299,13 @@ local function switchTab(idx)
     local prev=activeTab; activeTab=idx
     for i,pg in ipairs(pages) do
         if i==idx then
-            pg.Position=UDim2.new(-0.06,0,0,0); pg.Visible=true
-            tw(pg,TM,{Position=UDim2.new(0,0,0,0)})
+            pg.Position=UDim2.new(idx>prev and -0.07 or 0.07,0,0,0)
+            pg.Visible=true
+            tw(pg,TweenInfo.new(0.22,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.new(0,0,0,0)})
         elseif i==prev then
-            local cp=pg; tw(cp,TF,{Position=UDim2.new(0.04,0,0,0)})
-            task.delay(0.14,function() cp.Visible=false; cp.Position=UDim2.new(0,0,0,0) end)
+            local cp=pg; local out=idx>prev and 0.07 or -0.07
+            tw(cp,TweenInfo.new(0.18,Enum.EasingStyle.Quart,Enum.EasingDirection.In),{Position=UDim2.new(out,0,0,0)})
+            task.delay(0.19,function() cp.Visible=false; cp.Position=UDim2.new(0,0,0,0) end)
         else
             pg.Visible=false; pg.Position=UDim2.new(0,0,0,0)
         end
@@ -546,6 +562,9 @@ addToggle(homeScroll,"Fullbright","Max ambient brightness.",false,function(on)
     L.GlobalShadows=not on;L.Ambient=on and Color3.fromRGB(180,180,180) or Color3.fromRGB(127,127,127)
 end)
 
+-- forward-declared so Scripts tab can load code into it
+local execCodeBox
+
 -- ──── SCRIPTS (SCRIPTBLOX) ────
 local _,sbxScroll=newPage("Scripts")
 
@@ -578,48 +597,83 @@ local function clearResults()
     end
 end
 
-local function addScriptCard(title,gameName,scriptCode,views,patched)
-    local f=glassCard(sbxScroll,UDim2.new(1,0,0,68),UDim2.new(0,0,0,0))
+local function addScriptCard(title,gameName,scriptCode,views,patched,imageUrl,verified,likes)
+    local f=glassCard(sbxScroll,UDim2.new(1,0,0,84),UDim2.new(0,0,0,0))
     f:SetAttribute("sbxResult",true)
 
-    -- game badge
-    local gBadge=mkF(f,UDim2.new(0,0,0,16),UDim2.new(0,10,0,8),T.A,0.75)
-    gBadge.AutomaticSize=Enum.AutomaticSize.X; corner(gBadge,8); rBg(gBadge,"A")
-    local gPad=Instance.new("UIPadding");gPad.PaddingLeft=UDim.new(0,6);gPad.PaddingRight=UDim.new(0,6);gPad.Parent=gBadge
-    local gLbl=mkL(gBadge,gameName or "Unknown",Enum.Font.GothamBold,9,T.T1,UDim2.new(0,0,0,0),UDim2.new(0,0,1,0))
-    gLbl.AutomaticSize=Enum.AutomaticSize.X;rTx(gLbl,"T1")
+    -- game thumbnail
+    local thumb=Instance.new("ImageLabel")
+    thumb.Size=UDim2.new(0,52,0,52);thumb.Position=UDim2.new(0,8,0.5,-26)
+    thumb.BackgroundColor3=T.CD;thumb.BackgroundTransparency=0.3
+    thumb.BorderSizePixel=0;thumb.ScaleType=Enum.ScaleType.Crop
+    thumb.Image="";thumb.Parent=f;corner(thumb,8)
+    rBg(thumb,"CD")
+    if imageUrl and imageUrl~="" then
+        pcall(function() thumb.Image=imageUrl end)
+    end
+    -- fallback letter if no image
+    local thumbLbl=mkL(thumb,(gameName or "?"):sub(1,1):upper(),Enum.Font.GothamBold,18,T.T3,
+        UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+    rTx(thumbLbl,"T3")
+    thumb:GetPropertyChangedSignal("Image"):Connect(function()
+        thumbLbl.Visible=(thumb.Image=="" or thumb.Image=="rbxasset://textures/ui/GuiImagePlaceholder.png")
+    end)
 
-    -- patched indicator
+    -- patched badge
     if patched then
-        local pb=mkF(f,UDim2.new(0,0,0,16),UDim2.new(1,-76,0,8),Color3.fromRGB(255,80,80),0.65)
-        pb.AutomaticSize=Enum.AutomaticSize.X;corner(pb,8)
+        local pb=mkF(f,UDim2.new(0,0,0,14),UDim2.new(1,-6,0,6),Color3.fromRGB(220,60,60),0.60)
+        pb.AutomaticSize=Enum.AutomaticSize.X;corner(pb,6)
         local pp=Instance.new("UIPadding");pp.PaddingLeft=UDim.new(0,5);pp.PaddingRight=UDim.new(0,5);pp.Parent=pb
         local pl=mkL(pb,"PATCHED",Enum.Font.GothamBold,8,Color3.new(1,1,1),UDim2.new(0,0,0,0),UDim2.new(0,0,1,0))
         pl.AutomaticSize=Enum.AutomaticSize.X
+    elseif verified then
+        local vb=mkF(f,UDim2.new(0,0,0,14),UDim2.new(1,-6,0,6),Color3.fromRGB(50,200,120),0.60)
+        vb.AutomaticSize=Enum.AutomaticSize.X;corner(vb,6)
+        local vp=Instance.new("UIPadding");vp.PaddingLeft=UDim.new(0,5);vp.PaddingRight=UDim.new(0,5);vp.Parent=vb
+        local vl=mkL(vb,"✓ VERIFIED",Enum.Font.GothamBold,8,Color3.new(1,1,1),UDim2.new(0,0,0,0),UDim2.new(0,0,1,0))
+        vl.AutomaticSize=Enum.AutomaticSize.X
     end
 
     -- title
-    local tl=mkL(f,title or "Untitled",Enum.Font.GothamBold,12,T.T1,UDim2.new(0,10,0,28),UDim2.new(1,-100,0,16))
+    local tl=mkL(f,title or "Untitled",Enum.Font.GothamBold,12,T.T1,UDim2.new(0,68,0,10),UDim2.new(1,-142,0,16))
     tl.TextTruncate=Enum.TextTruncate.AtEnd;rTx(tl,"T1")
+    -- game name
+    local gl=mkL(f,gameName or "Universal",Enum.Font.Gotham,10,T.T2,UDim2.new(0,68,0,27),UDim2.new(1,-148,0,14))
+    gl.TextTruncate=Enum.TextTruncate.AtEnd;rTx(gl,"T2")
+    -- stats
+    mkL(f,"👁 "..tostring(views or 0).."  ♥ "..tostring(likes or 0),Enum.Font.Gotham,9,T.T3,
+        UDim2.new(0,68,0,43),UDim2.new(1,-148,0,14))
 
-    -- views
-    mkL(f,"👁 "..(views or 0),Enum.Font.Gotham,10,T.T3,UDim2.new(0,10,0,46),UDim2.new(0,60,0,14))
-
-    -- execute button
-    local eBtn=mkF(f,UDim2.new(0,66,0,28),UDim2.new(1,-74,0.5,-14),T.A,TR.btn)
-    rBg(eBtn,"A");corner(eBtn,7);shine(eBtn)
-    local eLbl=mkL(eBtn,"▶ Run",Enum.Font.GothamBold,11,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center);rTx(eLbl,"T1")
-    local eHit=mkB(f,UDim2.new(0,70,1,0),UDim2.new(1,-78,0,0),T.CD,1)
-    eHit.MouseEnter:Connect(function() tw(f,TF,{BackgroundTransparency=TR.card-0.09});tw(eBtn,TF,{BackgroundTransparency=TR.btn-0.12}) end)
-    eHit.MouseLeave:Connect(function() tw(f,TF,{BackgroundTransparency=TR.card});tw(eBtn,TF,{BackgroundTransparency=TR.btn}) end)
+    -- ▶ Run button
+    local eBg=mkF(f,UDim2.new(0,58,0,26),UDim2.new(1,-134,0.5,-13),T.A,TR.btn)
+    rBg(eBg,"A");corner(eBg,7);shine(eBg)
+    local eLbl=mkL(eBg,"▶ Run",Enum.Font.GothamBold,11,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+    rTx(eLbl,"T1")
+    local eHit=mkB(eBg,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.A,1)
+    eHit.MouseEnter:Connect(function() tw(eBg,TF,{BackgroundTransparency=0}) end)
+    eHit.MouseLeave:Connect(function() tw(eBg,TM,{BackgroundTransparency=TR.btn}) end)
     eHit.MouseButton1Click:Connect(function()
-        if not scriptCode or scriptCode=="" then
-            pushNotif("Scripts","No script code available",2); return
-        end
-        eLbl.Text="✓";tw(eBtn,TF,{BackgroundTransparency=0})
-        task.delay(1.4,function() eLbl.Text="▶ Run";tw(eBtn,TM,{BackgroundTransparency=TR.btn}) end)
-        local ok,err=pcall(loadstring(scriptCode))
+        if not scriptCode or scriptCode=="" then pushNotif("Scripts","No script code.",2);return end
+        eLbl.Text="✓";tw(eBg,TF,{BackgroundTransparency=0})
+        task.delay(1.4,function() eLbl.Text="▶ Run";tw(eBg,TM,{BackgroundTransparency=TR.btn}) end)
+        local fn,ce=loadstring(scriptCode)
+        if not fn then pushNotif("Execute Error",tostring(ce):sub(1,80),4);return end
+        local ok,err=pcall(fn)
         if not ok then pushNotif("Execute Error",tostring(err):sub(1,80),4) end
+    end)
+
+    -- 📋 Load to Editor button
+    local lBg=mkF(f,UDim2.new(0,62,0,26),UDim2.new(1,-70,0.5,-13),T.CD,TR.card)
+    rBg(lBg,"CD");corner(lBg,7);stroke(lBg,Color3.new(1,1,1),0.84);shine(lBg)
+    local lLbl=mkL(lBg,"📋 Editor",Enum.Font.GothamBold,10,T.T2,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+    rTx(lLbl,"T2")
+    local lHit=mkB(lBg,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.CD,1)
+    lHit.MouseEnter:Connect(function() tw(lBg,TF,{BackgroundTransparency=TR.card-0.10}) end)
+    lHit.MouseLeave:Connect(function() tw(lBg,TM,{BackgroundTransparency=TR.card}) end)
+    lHit.MouseButton1Click:Connect(function()
+        if execCodeBox then execCodeBox.Text=scriptCode or "" end
+        pushNotif("Scripts","Loaded into Execute tab",2)
+        switchTab(3) -- Execute is tab 3
     end)
     return f
 end
@@ -627,33 +681,27 @@ end
 local function fetchScripts(query)
     sStatus.Text="Searching..."; clearResults()
     task.spawn(function()
-        local HS  = game:GetService("HttpService")
-        local q   = HS:UrlEncode(query or "")
-        -- ScriptBlox API  docs.scriptblox.com/scripts/fetch
-        local url = "https://scriptblox.com/api/script/fetch?q="..q.."&page=1&max=20&mode=free"
-        local ok,res = pcall(game.HttpGet, game, url, true)
-        if not ok then
-            sStatus.Text="HTTP request failed."
-            pushNotif("Scripts","Could not reach ScriptBlox",3); return
-        end
-        local ok2,data = pcall(function() return HS:JSONDecode(res) end)
-        if not ok2 or not data then
-            sStatus.Text="Response parse error."; return
-        end
-        -- Response: { result: { totalPages, scripts: [...] } }
-        local scripts = data.result and data.result.scripts
-        if not scripts or #scripts==0 then
-            sStatus.Text="No results for \""..query.."\""; return
-        end
+        local HS=game:GetService("HttpService")
+        local q=HS:UrlEncode(query or "")
+        -- ScriptBlox API: docs.scriptblox.com/scripts/fetch
+        local url="https://scriptblox.com/api/script/fetch?q="..q.."&page=1&max=20&mode=free"
+        local ok,res=pcall(game.HttpGet,game,url,true)
+        if not ok then sStatus.Text="HTTP request failed.";pushNotif("Scripts","Could not reach ScriptBlox",3);return end
+        local ok2,data=pcall(function() return HS:JSONDecode(res) end)
+        if not ok2 or not data then sStatus.Text="Response parse error.";return end
+        local scripts=data.result and data.result.scripts
+        if not scripts or #scripts==0 then sStatus.Text="No results for \""..query.."\"";return end
         sStatus.Text="Found "..#scripts.." script"..(#scripts~=1 and "s" or "")
         for _,s in ipairs(scripts) do
             local title   = s.title or "Untitled"
             local gname   = (s.game and s.game.name) or "Universal"
-            -- "script" contains the Lua source; some entries use "rawscript"
             local code    = s.script or s.rawscript or ""
-            local views   = s.views  or 0
+            local views   = s.views or 0
             local patched = s.isPatched or false
-            addScriptCard(title, gname, code, views, patched)
+            local imgUrl  = (s.game and s.game.imageUrl) or ""
+            local verified= s.verified or false
+            local likes   = s.likes or 0
+            addScriptCard(title,gname,code,views,patched,imgUrl,verified,likes)
         end
     end)
 end
@@ -717,7 +765,7 @@ corner(_edStrip,2);rBg(_edStrip,"A")
 local _edPad=Instance.new("UIPadding")
 _edPad.PaddingLeft=UDim.new(0,10);_edPad.PaddingRight=UDim.new(0,8)
 _edPad.PaddingTop=UDim.new(0,8);_edPad.PaddingBottom=UDim.new(0,8);_edPad.Parent=_edCard
-local execCodeBox=Instance.new("TextBox")
+execCodeBox=Instance.new("TextBox")
 execCodeBox.PlaceholderText="-- write or paste your Lua script here\nprint(\"Hello from Crystal Hub!\")"
 execCodeBox.Text="";execCodeBox.Font=Enum.Font.Code;execCodeBox.TextSize=12
 execCodeBox.TextColor3=T.T1;execCodeBox.PlaceholderColor3=T.T3
@@ -817,12 +865,112 @@ for i,th in ipairs(THEMES) do
 end
 
 addSection(settingsScroll,"Notifications")
-addToggle(settingsScroll,"Toast Notifications","Show action popups.",true,function(on)
+addToggle(settingsScroll,"Toast Notifications","Show action popups.",saved.notif~=false,function(on)
     saved.notif=on;save()
+end)
+addSlider(settingsScroll,"Notification Duration","Seconds each toast stays visible.",1,8,saved.notifDur or 4,function(v)
+    saved.notifDur=v;save()
+end)
+
+addSection(settingsScroll,"Window")
+addSlider(settingsScroll,"UI Opacity","Window background opacity (higher = more visible).",1,10,saved.opacity or 9,function(v)
+    saved.opacity=v; TR.win=0.04+(10-v)*0.014
+    tw(Window,TM,{BackgroundTransparency=TR.win})
+    save()
+end)
+addToggle(settingsScroll,"Floating Particles","Animated accent dots in background.",saved.particles~=false,function(on)
+    saved.particles=on;save()
+    for _,pt in ipairs(particles) do if pt.f and pt.f.Parent then pt.f.Visible=on end end
+end)
+addSlider(settingsScroll,"Particle Count","Number of background particles (reload to apply).",0,30,saved.partCount or PART_COUNT,function(v)
+    saved.partCount=v;save()
+end)
+
+addSection(settingsScroll,"Keybinds")
+addKeybind(settingsScroll,"Toggle Visibility",saved.toggleKey or "RightShift",function(k)
+    saved.toggleKey=k;save()
+end)
+
+addSection(settingsScroll,"Performance")
+addToggle(settingsScroll,"Smooth Animations","Enable tween animations on elements.",saved.anims~=false,function(on)
+    saved.anims=on;save()
+    -- if off, override tw to be instant
+    if not on then
+        tw=function(i,_,p) for k,v in pairs(p) do pcall(function() i[k]=v end) end end
+    end
+end)
+
+addSection(settingsScroll,"Executor")
+addDropdown(settingsScroll,"Execute Mode",{"loadstring","pcall wrap","silent"},saved.execMode or "loadstring",function(v)
+    saved.execMode=v;save()
+end)
+addToggle(settingsScroll,"Auto-clear on Run","Clear editor after each execute.",saved.autoClear or false,function(on)
+    saved.autoClear=on;save()
+end)
+
+addSection(settingsScroll,"Actions")
+addButton(settingsScroll,"Reset All Settings","Restore every setting to default.",function()
+    saved={themeIdx=1,notif=true,notifDur=4,opacity=9,particles=true,partCount=PART_COUNT,toggleKey="RightShift",anims=true,execMode="loadstring",autoClear=false}
+    save();pushNotif("Settings","Reset to defaults — reload to fully apply",3)
+end)
+addButton(settingsScroll,"Close Crystal Hub","Destroy the GUI.",function()
+    tw(Window,TM,{Size=UDim2.new(0,0,0,0),Position=UDim2.new(0.5,0,0.5,0)})
+    task.delay(0.25,function() SG:Destroy() end)
 end)
 
 addSection(settingsScroll,"Info")
-addLabel(settingsScroll,"Crystal Hub  v2.1  ·  by void.\nPlayer: "..LP.Name.."  ·  Place: "..tostring(game.PlaceId).."\nTheme auto-saves to DataStore.")
+addLabel(settingsScroll,"Crystal Hub  v3.0  ·  by void.\nPlayer: "..LP.Name.."  ·  Place: "..tostring(game.PlaceId).."\nTheme · opacity · keybinds auto-save.")
+
+-- ================================================================
+-- _G.CrystalHub  — Rayfield-compatible tab API
+-- ================================================================
+_G.CrystalHub = {}
+
+function _G.CrystalHub:CreateTab(name)
+    local page,scroll=newPage(name)
+    local tab={}
+    function tab:CreateSection(title)             addSection(scroll,title);return self end
+    function tab:CreateLabel(text)                addLabel(scroll,text);return self end
+    function tab:CreateParagraph(cfg)
+        addLabel(scroll,(cfg.Title and cfg.Title..":\n" or "")..(cfg.Content or ""));return self
+    end
+    function tab:CreateButton(cfg)
+        addButton(scroll,cfg.Name or "Button",cfg.Description or "",cfg.Callback or function()end);return self
+    end
+    function tab:CreateToggle(cfg)
+        local _,get,set=addToggle(scroll,cfg.Name or "Toggle",cfg.Description or "",cfg.CurrentValue or false,cfg.Callback or function()end)
+        return {Get=get,Set=set}
+    end
+    function tab:CreateSlider(cfg)
+        local r=cfg.Range or {0,100}
+        local _,get=addSlider(scroll,cfg.Name or "Slider",cfg.Description or "",r[1],r[2],cfg.CurrentValue or r[1],cfg.Callback or function()end)
+        return {Get=get}
+    end
+    function tab:CreateDropdown(cfg)
+        local _,get=addDropdown(scroll,cfg.Name or "Dropdown",cfg.Options or {"Option 1"},cfg.CurrentOption or "",cfg.Callback or function()end)
+        return {Get=get}
+    end
+    function tab:CreateInput(cfg)
+        addTextInput(scroll,cfg.Name or "Input",cfg.PlaceholderText or "Type here...",cfg.Callback or function()end);return self
+    end
+    function tab:CreateKeybind(cfg)
+        addKeybind(scroll,cfg.Name or "Keybind",cfg.CurrentKeybind or "None",cfg.Callback or function()end);return self
+    end
+    return tab
+end
+
+function _G.CrystalHub:Notify(cfg)
+    pushNotif(cfg.Title or "Crystal Hub",cfg.Content or "",cfg.Duration or 3.5)
+end
+
+function _G.CrystalHub:Destroy()
+    tw(Window,TM,{Size=UDim2.new(0,0,0,0),Position=UDim2.new(0.5,0,0.5,0)})
+    task.delay(0.25,function() SG:Destroy() end)
+end
+
+function _G.CrystalHub:Toggle()
+    Window.Visible=not Window.Visible
+end
 
 -- ================================================================
 -- DRAG
@@ -853,8 +1001,18 @@ end
 -- ================================================================
 UserInputService.InputBegan:Connect(function(inp,gp)
     if gp then return end
-    if inp.KeyCode==Enum.KeyCode.RightShift or inp.KeyCode==Enum.KeyCode.Insert then
-        Window.Visible=not Window.Visible
+    local k=inp.KeyCode.Name
+    local tog=saved.toggleKey or "RightShift"
+    if k==tog or k=="Insert" then
+        local vis=not Window.Visible
+        Window.Visible=vis
+        if vis then
+            tw(Window,TweenInfo.new(0.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out),
+                {Size=UDim2.new(0,WIN_W,0,WIN_H)})
+        else
+            tw(Window,TF,{Size=UDim2.new(0,WIN_W*0.92,0,WIN_H*0.92)})
+            task.delay(0.14,function() Window.Visible=false;Window.Size=UDim2.new(0,WIN_W,0,WIN_H) end)
+        end
     end
 end)
 
@@ -864,13 +1022,20 @@ end)
 applyTheme(T,false)
 switchTab(1)
 
-Window.Size=UDim2.new(0,WIN_W*0.92,0,WIN_H*0.92)
+-- apply saved opacity
+if saved.opacity then TR.win=0.04+(10-saved.opacity)*0.014 end
+-- apply saved particles visibility
+if saved.particles==false then
+    for _,pt in ipairs(particles) do if pt.f then pt.f.Visible=false end end
+end
+
+Window.Size=UDim2.new(0,WIN_W*0.90,0,WIN_H*0.90)
 Window.BackgroundTransparency=1
-tw(Window,TweenInfo.new(0.48,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
+tw(Window,TweenInfo.new(0.52,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
     Size=UDim2.new(0,WIN_W,0,WIN_H),
     BackgroundTransparency=TR.win,
 })
 
-task.delay(0.55,function()
-    pushNotif("Crystal Hub","Loaded  ·  "..T.name.." theme  ✦",3.5)
+task.delay(0.60,function()
+    pushNotif("Crystal Hub","v3.0 loaded  ·  "..T.name.."  ✦",3.5)
 end)
