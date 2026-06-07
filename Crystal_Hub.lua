@@ -300,60 +300,53 @@ local function switchTab(idx)
         nb.bar.Visible=on
         nb.lbl.Font=on and Enum.Font.GothamBold or Enum.Font.Gotham
         nb.lbl.TextColor3=on and T.T1 or T.T2
-        tw(nb.icoBg,TM,{BackgroundTransparency=on and 0.40 or 0.80})
-        tw(nb.icoLbl,TM,{TextTransparency=on and 0 or 0.20})
-        if on then tw(nb.icoBg,TBN,{Size=UDim2.new(0,30,0,30),Position=UDim2.new(0,4,0.5,-15)}) end
+        tw(nb.dot,TM,{BackgroundTransparency=on and 0.20 or 0.75})
     end
 end
 
--- abbrev: short text shown in icon box (e.g. "Ho","SB","⚙","▶")
--- name:   full tab name shown beside it
-local function newPage(abbrev,name)
+local function newPage(name)
     tabCount+=1; local idx=tabCount
 
-    -- sidebar button
-    local sbBtn=mkF(sbScroll,UDim2.new(1,0,0,38),UDim2.new(0,0,0,0),T.CD,1)
+    -- sidebar button (full tab name, no icon box)
+    local sbBtn=mkF(sbScroll,UDim2.new(1,0,0,40),UDim2.new(0,0,0,0),T.CD,1)
     rBg(sbBtn,"CD"); corner(sbBtn,9)
 
     -- left active bar
-    local bar=mkF(sbBtn,UDim2.new(0,3,0,18),UDim2.new(0,0,0.5,-9),T.A,0)
+    local bar=mkF(sbBtn,UDim2.new(0,3,0,22),UDim2.new(0,0,0.5,-11),T.A,0)
     bar.Visible=(idx==1); corner(bar,2); rBg(bar,"A")
 
-    -- icon box (shows abbrev text)
-    local icoBg=mkF(sbBtn,UDim2.new(0,28,0,28),UDim2.new(0,5,0.5,-14),T.A,idx==1 and 0.40 or 0.80)
-    corner(icoBg,8); rBg(icoBg,"A")
-    local icoLbl=mkL(icoBg,abbrev,Enum.Font.GothamBold,11,T.T1,
-        UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
-    icoLbl.TextTransparency=idx==1 and 0 or 0.20
+    -- small accent dot
+    local dot=mkF(sbBtn,UDim2.new(0,6,0,6),UDim2.new(0,10,0.5,-3),T.A,idx==1 and 0.20 or 0.75)
+    corner(dot,3); rBg(dot,"A")
 
-    -- tab name label
-    local nl=mkL(sbBtn,name,idx==1 and Enum.Font.GothamBold or Enum.Font.Gotham,12,
-        idx==1 and T.T1 or T.T2,UDim2.new(0,39,0,0),UDim2.new(1,-44,1,0))
+    -- full name label
+    local nl=mkL(sbBtn,name,idx==1 and Enum.Font.GothamBold or Enum.Font.Gotham,13,
+        idx==1 and T.T1 or T.T2,UDim2.new(0,22,0,0),UDim2.new(1,-26,1,0))
     rTx(nl,idx==1 and "T1" or "T2")
 
     -- hit area
     local hit=mkB(sbBtn,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.CD,1)
     hit.MouseEnter:Connect(function()
         if activeTab~=idx then tw(sbBtn,TF,{BackgroundTransparency=0.84}) end
-        tw(icoBg,TF,{Size=UDim2.new(0,30,0,30),Position=UDim2.new(0,4,0.5,-15)})
+        tw(dot,TF,{BackgroundTransparency=0})
     end)
     hit.MouseLeave:Connect(function()
         if activeTab~=idx then tw(sbBtn,TF,{BackgroundTransparency=1}) end
-        tw(icoBg,TF,{Size=UDim2.new(0,28,0,28),Position=UDim2.new(0,5,0.5,-14)})
+        tw(dot,TM,{BackgroundTransparency=activeTab==idx and 0.20 or 0.75})
     end)
     hit.MouseButton1Click:Connect(function()
-        tw(sbBtn,TBN,{Size=UDim2.new(1,0,0,38)}); switchTab(idx)
+        tw(sbBtn,TBN,{Size=UDim2.new(1,0,0,40)}); switchTab(idx)
     end)
-    table.insert(navBtns,{bg=sbBtn,bar=bar,lbl=nl,icoBg=icoBg,icoLbl=icoLbl})
+    table.insert(navBtns,{bg=sbBtn,bar=bar,lbl=nl,dot=dot})
 
     -- page
     local page=mkF(Content,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.BG,1)
     page.Visible=(idx==1); page.ClipsDescendants=true
 
-    -- page header
+    -- page header (first letter of name in icon, full name as title)
     local hIcon=mkF(page,UDim2.new(0,26,0,26),UDim2.new(0,2,0,4),T.A,0.78)
     corner(hIcon,8);rBg(hIcon,"A")
-    mkL(hIcon,abbrev,Enum.Font.GothamBold,11,T.T1,
+    mkL(hIcon,name:sub(1,1),Enum.Font.GothamBold,13,T.T1,
         UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
     local hTitle=mkL(page,name,Enum.Font.GothamBold,17,T.T1,UDim2.new(0,34,0,5),UDim2.new(1,-38,0,22));rTx(hTitle,"T1")
     mkF(page,UDim2.new(1,0,0,1),UDim2.new(0,0,0,34),Color3.new(1,1,1),0.86)
@@ -532,16 +525,14 @@ end
 -- ================================================================
 --  ╔═══════════════════════════════════════════╗
 --  ║  YOUR TABS START HERE                     ║
---  ║  local _,s=newPage("Cb","Combat")            ║
---  ║  addToggle(s,"Silent Aim","",false,         ║
---  ║      function(on) end)                     ║
---  ║  abbrev = 1–3 chars shown in icon box      ║
---  ║  e.g. "Ho","SB","Se","Cb","Sp","Vi","Mx"   ║
+--  ║  local _,s=newPage("Combat")              ║
+--  ║  addToggle(s,"Silent Aim","",false,        ║
+--  ║      function(on) end)                    ║
 --  ╚═══════════════════════════════════════════╝
 -- ================================================================
 
 -- ──── HOME ────
-local _,homeScroll=newPage("Ho","Home")
+local _,homeScroll=newPage("Home")
 addSection(homeScroll,"Welcome")
 addLabel(homeScroll,"Crystal Hub  v2.1  by void.\nAdd your own tabs below the comment block.\nTitlebar and sidebar are fully transparent — your game shows through.")
 addSection(homeScroll,"Quick Actions")
@@ -556,7 +547,7 @@ addToggle(homeScroll,"Fullbright","Max ambient brightness.",false,function(on)
 end)
 
 -- ──── SCRIPTS (SCRIPTBLOX) ────
-local _,sbxScroll=newPage("SB","Scripts")
+local _,sbxScroll=newPage("Scripts")
 
 addSection(sbxScroll,"ScriptBlox Search")
 
@@ -680,8 +671,120 @@ sBox.FocusLost:Connect(function(enter)
     end
 end)
 
+-- ──── EXECUTE ────
+local execPage,_=newPage("Execute")
+
+-- status bar (declared first — referenced by all callbacks below)
+local execStatusF=mkF(execPage,UDim2.new(1,-12,0,32),UDim2.new(0,6,1,-40),T.CD,TR.card)
+rBg(execStatusF,"CD");corner(execStatusF,8);stroke(execStatusF,Color3.new(1,1,1),0.88)
+local _esPad=Instance.new("UIPadding");_esPad.PaddingLeft=UDim.new(0,10);_esPad.Parent=execStatusF
+local execStatus=mkL(execStatusF,"Ready  ·  write code above or paste a URL below",Enum.Font.Gotham,10,T.T3,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0))
+execStatus.TextTruncate=Enum.TextTruncate.AtEnd;rTx(execStatus,"T3")
+
+-- URL row (above status bar)
+local _urlRow=mkF(execPage,UDim2.new(1,-12,0,32),UDim2.new(0,6,1,-78),T.BG,1)
+local _urlBg=mkF(_urlRow,UDim2.new(1,-76,0,28),UDim2.new(0,0,0,2),T.IP,TR.inp)
+rBg(_urlBg,"IP");corner(_urlBg,8);stroke(_urlBg,Color3.new(1,1,1),0.86);shine(_urlBg)
+local _urlPad=Instance.new("UIPadding");_urlPad.PaddingLeft=UDim.new(0,9);_urlPad.Parent=_urlBg
+local execUrlBox=Instance.new("TextBox");execUrlBox.PlaceholderText="https://raw.githubusercontent.com/... (URL to script)"
+execUrlBox.Text="";execUrlBox.Font=Enum.Font.Gotham;execUrlBox.TextSize=11;execUrlBox.TextColor3=T.T1
+execUrlBox.PlaceholderColor3=T.T3;execUrlBox.BackgroundTransparency=1;execUrlBox.BorderSizePixel=0
+execUrlBox.Size=UDim2.new(1,0,1,0);execUrlBox.ClearTextOnFocus=false;execUrlBox.Parent=_urlBg;rTx(execUrlBox,"T1")
+local _fetchF=mkF(_urlRow,UDim2.new(0,68,0,28),UDim2.new(1,-68,0,2),T.A,TR.btn)
+rBg(_fetchF,"A");corner(_fetchF,8);shine(_fetchF)
+local _fLbl=mkL(_fetchF,"↓ Fetch & Run",Enum.Font.GothamBold,10,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+rTx(_fLbl,"T1")
+local _fHit=mkB(_fetchF,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.A,1)
+
+-- button row (above URL row)
+local _btnRow=mkF(execPage,UDim2.new(1,-12,0,34),UDim2.new(0,6,1,-118),T.BG,1)
+local _runF=mkF(_btnRow,UDim2.new(0,120,0,30),UDim2.new(0,0,0,2),T.A,TR.btn)
+rBg(_runF,"A");corner(_runF,8);stroke(_runF,T.A,0.45);shine(_runF)
+local _runLbl=mkL(_runF,"▶  Execute",Enum.Font.GothamBold,13,T.T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+rTx(_runLbl,"T1")
+local _runHit=mkB(_runF,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.A,1)
+local _clrF=mkF(_btnRow,UDim2.new(0,72,0,30),UDim2.new(0,126,0,2),T.CD,TR.card)
+rBg(_clrF,"CD");corner(_clrF,8);stroke(_clrF,Color3.new(1,1,1),0.84);shine(_clrF)
+local _clrLbl=mkL(_clrF,"⌫  Clear",Enum.Font.GothamBold,12,T.T2,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center)
+rTx(_clrLbl,"T2")
+local _clrHit=mkB(_clrF,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),T.CD,1)
+
+-- code editor (fills space above button row)
+local _edCard=mkF(execPage,UDim2.new(1,-12,1,-166),UDim2.new(0,6,0,40),T.CD,TR.card)
+rBg(_edCard,"CD");corner(_edCard,10);stroke(_edCard,Color3.new(1,1,1),0.84)
+local _edStrip=mkF(_edCard,UDim2.new(0,3,1,-12),UDim2.new(0,0,0,6),T.A,0.65)
+corner(_edStrip,2);rBg(_edStrip,"A")
+local _edPad=Instance.new("UIPadding")
+_edPad.PaddingLeft=UDim.new(0,10);_edPad.PaddingRight=UDim.new(0,8)
+_edPad.PaddingTop=UDim.new(0,8);_edPad.PaddingBottom=UDim.new(0,8);_edPad.Parent=_edCard
+local execCodeBox=Instance.new("TextBox")
+execCodeBox.PlaceholderText="-- write or paste your Lua script here\nprint(\"Hello from Crystal Hub!\")"
+execCodeBox.Text="";execCodeBox.Font=Enum.Font.Code;execCodeBox.TextSize=12
+execCodeBox.TextColor3=T.T1;execCodeBox.PlaceholderColor3=T.T3
+execCodeBox.BackgroundTransparency=1;execCodeBox.BorderSizePixel=0
+execCodeBox.Size=UDim2.new(1,0,1,0);execCodeBox.ClearTextOnFocus=false
+execCodeBox.MultiLine=true
+execCodeBox.TextXAlignment=Enum.TextXAlignment.Left
+execCodeBox.TextYAlignment=Enum.TextYAlignment.Top
+execCodeBox.Parent=_edCard;rTx(execCodeBox,"T1")
+execCodeBox.Focused:Connect(function() tw(_edCard,TF,{BackgroundTransparency=TR.card-0.10}) end)
+execCodeBox.FocusLost:Connect(function() tw(_edCard,TM,{BackgroundTransparency=TR.card}) end)
+
+-- shared execute logic
+local function execRun(code)
+    if not code or code=="" then
+        execStatus.Text="No code to execute.";execStatus.TextColor3=T.T3;return
+    end
+    local fn,ce=loadstring(code)
+    if not fn then
+        execStatus.Text="✕  Compile error: "..tostring(ce):sub(1,110)
+        execStatus.TextColor3=Color3.fromRGB(255,90,90);return
+    end
+    local ok,err=pcall(fn)
+    if ok then
+        execStatus.Text="✓  Executed successfully"
+        execStatus.TextColor3=Color3.fromRGB(80,230,120)
+    else
+        execStatus.Text="✕  Runtime: "..tostring(err):sub(1,110)
+        execStatus.TextColor3=Color3.fromRGB(255,90,90)
+    end
+end
+
+_runHit.MouseEnter:Connect(function() tw(_runF,TF,{BackgroundTransparency=0}) end)
+_runHit.MouseLeave:Connect(function() tw(_runF,TM,{BackgroundTransparency=TR.btn}) end)
+_runHit.MouseButton1Click:Connect(function()
+    tw(_runF,TF,{BackgroundTransparency=0})
+    execRun(execCodeBox.Text)
+    task.delay(0.3,function() tw(_runF,TM,{BackgroundTransparency=TR.btn}) end)
+end)
+
+_clrHit.MouseEnter:Connect(function() tw(_clrF,TF,{BackgroundTransparency=TR.card-0.09}) end)
+_clrHit.MouseLeave:Connect(function() tw(_clrF,TM,{BackgroundTransparency=TR.card}) end)
+_clrHit.MouseButton1Click:Connect(function()
+    execCodeBox.Text="";execStatus.Text="Cleared.";execStatus.TextColor3=T.T3
+end)
+
+_fHit.MouseEnter:Connect(function() tw(_fetchF,TF,{BackgroundTransparency=0}) end)
+_fHit.MouseLeave:Connect(function() tw(_fetchF,TM,{BackgroundTransparency=TR.btn}) end)
+_fHit.MouseButton1Click:Connect(function()
+    local url=execUrlBox.Text
+    if url=="" then execStatus.Text="Enter a URL first.";execStatus.TextColor3=T.T3;return end
+    execStatus.Text="Fetching...";execStatus.TextColor3=T.T3
+    tw(_fetchF,TF,{BackgroundTransparency=0})
+    task.spawn(function()
+        local ok,src=pcall(game.HttpGet,game,url,true)
+        if not ok then
+            execStatus.Text="✕  HTTP error: "..tostring(src):sub(1,80)
+            execStatus.TextColor3=Color3.fromRGB(255,90,90)
+            tw(_fetchF,TM,{BackgroundTransparency=TR.btn});return
+        end
+        execRun(src)
+        tw(_fetchF,TM,{BackgroundTransparency=TR.btn})
+    end)
+end)
+
 -- ──── SETTINGS ────
-local _,settingsScroll=newPage("Se","Settings")
+local _,settingsScroll=newPage("Settings")
 
 addSection(settingsScroll,"Theme — saves automatically")
 
