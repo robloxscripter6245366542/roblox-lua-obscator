@@ -91,6 +91,7 @@ local function shimmer(p) -- 1px inner top highlight
 end
 local function glassCard(par,sz,pos)
     local f=mkF(par,sz,pos,T.CD,TR.card);rBg(f,"CD");corner(f,12)
+    f.ClipsDescendants=true
     stroke(f,Color3.new(1,1,1),0.82,1);shimmer(f);return f
 end
 local function loopTween(inst,t,props,back)
@@ -168,10 +169,8 @@ loopTween(GLOW1,TweenInfo.new(3.0,Enum.EasingStyle.Sine,Enum.EasingDirection.InO
 local Window=mkF(SG,UDim2.new(0,WIN_W,0,WIN_H),UDim2.new(0.5,-WIN_W/2,0.5,-WIN_H/2),T.BG,TR.win)
 rBg(Window,"BG");corner(Window,16);Window.ClipsDescendants=true
 local winSt=stroke(Window,T.A,0.46,1.5);rSt(winSt,"A")
--- inner top accent strip
-local winTop=mkF(Window,UDim2.new(1,0,0,2),UDim2.new(0,0,0,0),T.A,0.84);rBg(winTop,"A")
--- bottom ambient bloom
-local bGlow=mkF(Window,UDim2.new(1,0,0,36),UDim2.new(0,0,1,-36),T.A,0.968);rBg(bGlow,"A")
+-- bottom ambient bloom (very subtle)
+local bGlow=mkF(Window,UDim2.new(1,0,0,30),UDim2.new(0,0,1,-30),T.A,0.974);rBg(bGlow,"A")
 
 -- Sync glow rings every frame
 RunService.Heartbeat:Connect(function()
@@ -243,9 +242,10 @@ winBtn(-70,Color3.fromRGB(50,205,115),function() end)
 
 -- ── SIDEBAR ─────────────────────────────────────────────────────
 local SBW=200
--- sidebar glass pane
-local sbPane=mkF(Window,UDim2.new(0,SBW,1,-TB_H),UDim2.new(0,0,0,TB_H),T.BG,0.90);rBg(sbPane,"BG")
-mkF(sbPane,UDim2.new(0,1,1,0),UDim2.new(1,-1,0,0),Color3.new(1,1,1),0.88)
+-- sidebar container (transparent — no extra background layer)
+local sbPane=mkF(Window,UDim2.new(0,SBW,1,-TB_H),UDim2.new(0,0,0,TB_H),T.BG,1)
+-- right divider line
+mkF(sbPane,UDim2.new(0,1,1,0),UDim2.new(1,-1,0,0),Color3.new(1,1,1),0.90)
 
 local sbScroll=Instance.new("ScrollingFrame")
 sbScroll.Size=UDim2.new(1,0,1,-56);sbScroll.Position=UDim2.new(0,0,0,6)
