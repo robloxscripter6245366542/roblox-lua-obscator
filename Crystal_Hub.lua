@@ -581,6 +581,22 @@ addToggle(homeScroll,"Infinite Jump","Jump while in the air.",false,function(on)
         end)
     end
 end)
+addToggle(homeScroll,"Noclip","Walk through walls.",false,function(on)
+    _G._CH_Noclip=on
+    if on and not _G._CH_NoclipConn then
+        _G._CH_NoclipConn=RunService.Stepped:Connect(function()
+            if not _G._CH_Noclip then return end
+            local char=LP.Character; if not char then return end
+            for _,p in ipairs(char:GetDescendants()) do
+                if p:IsA("BasePart") then p.CanCollide=false end
+            end
+        end)
+    elseif not on and LP.Character then
+        for _,p in ipairs(LP.Character:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide=true end
+        end
+    end
+end)
 
 -- ──── SCRIPTS (SCRIPTBLOX) ────
 -- forward-declared so Scripts tab can load code into Execute tab
