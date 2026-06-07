@@ -571,32 +571,6 @@ addToggle(homeScroll,"Fullbright","Max ambient brightness.",false,function(on)
     L.Brightness=on and 10 or 1;L.FogEnd=on and 1e6 or 100000
     L.GlobalShadows=not on;L.Ambient=on and Color3.fromRGB(180,180,180) or Color3.fromRGB(127,127,127)
 end)
-addToggle(homeScroll,"Infinite Jump","Jump while in the air.",false,function(on)
-    _G._CH_InfJump=on
-    if on and not _G._CH_JumpConn then
-        _G._CH_JumpConn=UserInputService.JumpRequest:Connect(function()
-            if _G._CH_InfJump and LP.Character and LP.Character:FindFirstChild("Humanoid") then
-                LP.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-            end
-        end)
-    end
-end)
-addToggle(homeScroll,"Noclip","Walk through walls.",false,function(on)
-    _G._CH_Noclip=on
-    if on and not _G._CH_NoclipConn then
-        _G._CH_NoclipConn=RunService.Stepped:Connect(function()
-            if not _G._CH_Noclip then return end
-            local char=LP.Character; if not char then return end
-            for _,p in ipairs(char:GetDescendants()) do
-                if p:IsA("BasePart") then p.CanCollide=false end
-            end
-        end)
-    elseif not on and LP.Character then
-        for _,p in ipairs(LP.Character:GetDescendants()) do
-            if p:IsA("BasePart") then p.CanCollide=true end
-        end
-    end
-end)
 
 -- ──── SCRIPTS (SCRIPTBLOX) ────
 -- forward-declared so Scripts tab can load code into Execute tab
