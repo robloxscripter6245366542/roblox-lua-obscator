@@ -50,28 +50,54 @@ Bridge.OnServerInvoke = function(player, action, payload)
         -- Bubble chat — server-side, replicated to every client ✓
         pcall(function() Chat:Chat(char, message, Enum.ChatColor.White) end)
 
-        -- FireAllClients on every RS chat remote with spoofed name.
-        -- Triggers the game's own client-side chat display handlers.
         local fired = 0
+        local seen  = {}
+
+        -- Helper: FireAllClients on a RemoteEvent with every arg pattern
+        local function blastRemote(v)
+            if seen[v] then return end; seen[v]=true
+            pcall(function() v:FireAllClients(fakeName, message) end)
+            pcall(function() v:FireAllClients(message, fakeName) end)
+            pcall(function() v:FireAllClients(plr.Name, message, fakeName) end)
+            pcall(function() v:FireAllClients({Name=fakeName, Message=message}) end)
+            pcall(function() v:FireAllClients({name=fakeName, text=message}) end)
+            pcall(function() v:FireAllClients({displayName=fakeName, message=message}) end)
+            fired = fired + 1
+        end
+
+        -- 1. Audit-discovered paths passed from client (highest confidence)
+        local extraPaths = type(payload.paths)=="table" and payload.paths or {}
+        for _, path in ipairs(extraPaths) do
+            local obj = game
+            for part in tostring(path):gmatch("[^.]+") do
+                if obj then obj = obj:FindFirstChild(part) end
+            end
+            if obj and obj:IsA("RemoteEvent") then blastRemote(obj) end
+        end
+
+        -- 2. Walk every RS RemoteEvent whose name matches chat keywords
         for _, v in ipairs(RS:GetDescendants()) do
             if v:IsA("RemoteEvent") then
                 local n = v.Name:lower()
                 for _, kw in ipairs(CHAT_KW) do
-                    if n:find(kw) then
-                        pcall(function() v:FireAllClients(fakeName, message) end)
-                        pcall(function() v:FireAllClients(message, fakeName) end)
-                        pcall(function() v:FireAllClients(plr.Name, message, fakeName) end)
-                        pcall(function() v:FireAllClients({Name=fakeName, Message=message}) end)
-                        fired = fired + 1
-                        break
-                    end
+                    if n:find(kw) then blastRemote(v); break end
+                end
+            end
+        end
+
+        -- 3. Walk whole game for any remaining chat remotes (catches custom locations)
+        for _, v in game:GetDescendants() do
+            if v:IsA("RemoteEvent") then
+                local n = v.Name:lower()
+                for _, kw in ipairs(CHAT_KW) do
+                    if n:find(kw) then blastRemote(v); break end
                 end
             end
         end
 
         return {
             ok  = true,
-            msg = "Chat:Chat sent + "..fired.." remote(s) FireAllClients as \""..fakeName.."\""
+            msg = "Chat:Chat + "..fired.." FireAllClients as \""..fakeName.."\""
         }
 
     elseif action == "ls" then
@@ -166,6 +192,9 @@ local Bridge = RS:FindFirstChild("SS_ExecBridge")
 if not Bridge then
     task.spawn(function() Bridge = RS:WaitForChild("SS_ExecBridge", 6) end)
 end
+
+-- Audit-discovered remote paths (populated by doVulnScan, sent with every bridge chat call)
+local auditPaths = {}
 
 local function callBridge(action, payload)
     if not Bridge then return nil end
@@ -610,12 +639,15 @@ local function doVulnScan()
 
             -- 3. Wire ALL found remotes into the chat system
             local added, liveObjs = 0, {}
+            auditPaths = {}  -- reset, repopulate from this scan
             for _, line in ipairs(merged) do
                 local sev, cls, path = line:match("^([^|]+)|([^|]+)|([^|]+)|")
                 if path and (cls=="RemoteEvent" or cls=="RemoteFunction") then
                     local obj = pathToObj(path)
                     if obj then
                         if registerRemote(obj) then added=added+1 end
+                        -- store path so SS bridge can FireAllClients server-side
+                        table.insert(auditPaths, obj:GetFullName())
                         if sev=="LIVE" then
                             table.insert(liveObjs, obj)
                             markTrusted(obj,"LIVE probe")
@@ -994,10 +1026,15 @@ local function doSend()
     if msg=="" then setStatus("Type a message first.",false);return end
 
     if modeIdx==1 then
-        -- SERVER: via SS bridge (Chat:Chat server-side)
+        -- SERVER: via SS bridge (Chat:Chat + FireAllClients on all found remotes)
         if not Bridge then setStatus("SS offline — run this script server-side first.",false);return end
         if not selectedPlayer then setStatus("Select a player first.",false);return end
-        local res=callBridge("chat",{target=selectedPlayer.Name, message=msg, display=selectedPlayer.DisplayName})
+        local res=callBridge("chat",{
+            target   = selectedPlayer.Name,
+            message  = msg,
+            display  = selectedPlayer.DisplayName,
+            paths    = auditPaths,   -- audit-discovered remotes → server FireAllClients all of them
+        })
         if res and res.ok then setStatus("Server: "..res.msg,true);notify("SS Chat",res.msg,4)
         else setStatus("SS error: "..(res and res.msg or "failed"),false) end
 
@@ -1031,7 +1068,7 @@ local function doSend()
         else setStatus("All client methods failed.",false) end
 
     elseif modeIdx==3 then
-        -- SPOOF ALL: hooks + all remotes + GUI sim
+        -- SPOOF ALL: hooks + all remotes (client) + SS bridge FireAllClients (server)
         if not selectedPlayer then setStatus("Select a player first.",false);return end
         local display=selectedPlayer.DisplayName; local uname=selectedPlayer.Name
         local hookMethods={}
@@ -1048,14 +1085,28 @@ local function doSend()
         local char=selectedPlayer.Character
         if char then pcall(function() ChatSvc:Chat(char,msg,Enum.ChatColor.White) end) end
         task.delay(1,unhookAll)
+        -- Also blast server-side through ALL audit-found paths (FireAllClients from server)
+        if Bridge and Bridge.Parent and #auditPaths>0 then
+            task.spawn(function()
+                callBridge("chat",{
+                    target  = selectedPlayer.Name,
+                    message = msg,
+                    display = display,
+                    paths   = auditPaths,
+                })
+            end)
+        end
         local parts={}
         if #hookMethods>0 then table.insert(parts,"hooks("..table.concat(hookMethods,"+")..") ✓") end
         if guiOk         then table.insert(parts,"GUI("..guiMethod..") ✓") end
         if fired>0       then table.insert(parts,fired.." remotes") end
+        if #auditPaths>0 and Bridge and Bridge.Parent then
+            table.insert(parts,"SS→"..#auditPaths.." paths ✓")
+        end
         setStatus(table.concat(parts," · "),#parts>0 and nil or false)
 
     elseif modeIdx==4 then
-        -- TARGETED: one remote + hooks
+        -- TARGETED: one remote + hooks + bridge audit paths
         if not selectedPlayer then setStatus("Select a player first.",false);return end
         if not selectedRemote then setStatus("Select a remote from the list.",false);return end
         local display=selectedPlayer.DisplayName; local uname=selectedPlayer.Name
@@ -1066,7 +1117,18 @@ local function doSend()
         local char=selectedPlayer.Character
         if char then pcall(function() ChatSvc:Chat(char,msg,Enum.ChatColor.White) end) end
         task.delay(1,unhookAll)
-        setStatus("Fired \""..selectedRemote.Name.."\" as \""..display.."\" + hooks",nil)
+        -- Reinforce server-side through audit paths
+        if Bridge and Bridge.Parent and #auditPaths>0 then
+            task.spawn(function()
+                callBridge("chat",{
+                    target  = selectedPlayer.Name,
+                    message = msg,
+                    display = display,
+                    paths   = auditPaths,
+                })
+            end)
+        end
+        setStatus("Fired \""..selectedRemote.Name.."\" as \""..display.."\" + hooks"..(#auditPaths>0 and " + SS" or ""),nil)
     end
 
     sendLbl.Text="✓  Sent";tw(sendCard,TF,{BackgroundTransparency=0})
