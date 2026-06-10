@@ -1,13 +1,12 @@
 -- ================================================================
 --   Chat Control — FE Remote Spoof  (Mic Up & others)
---   Mode 1 "As Me"    — TextChatService, replicated server-side ✓
---   Mode 2 "Spoof All"— fires ALL chat remotes, every arg pattern
---   Mode 3 "Targeted" — fires ONE selected remote (picked from list)
+--   Mode 1 "As Me"    — TextChatService, server-replicated ✓
+--   Mode 2 "Spoof All"— fires ALL remotes, detects which respond
+--   Mode 3 "Targeted" — fires only selected remote
 --
---   FE note: to be visible to ALL players the game must have a
---   RemoteEvent whose server handler broadcasts chat without
---   validating the DisplayName/name arg. We fire with 7 patterns
---   to catch unvalidated handlers.
+--   Detection: listens for OnClientEvent callbacks, Player.Chatted,
+--   TextChatService messages, and bubble-chat after each fire.
+--   If any signal matches our msg/target, that remote is TRUSTED.
 -- ================================================================
 local RS       = game:GetService("ReplicatedStorage")
 local Players  = game:GetService("Players")
@@ -15,31 +14,27 @@ local UIS      = game:GetService("UserInputService")
 local TweenSvc = game:GetService("TweenService")
 local TCS      = game:GetService("TextChatService")
 local ChatSvc  = game:GetService("Chat")
+local StarterGui = game:GetService("StarterGui")
 local LP       = Players.LocalPlayer
 local PGui     = LP:WaitForChild("PlayerGui")
 
 -- ── Remote scanner ────────────────────────────────────────────────
--- Scan all RemoteEvents/RemoteFunctions in RS (and workspace root)
-local allRemotes      = {}   -- every RE/RF found
-local chatRemotes     = {}   -- subset with chat-keyword names
-local selectedRemote  = nil  -- user-picked target for Mode 3
-local CHAT_KW = {"chat","say","speak","voice","bubble","message","talk","text","mic","post","send"}
+local CHAT_KW     = {"chat","say","speak","voice","bubble","message","talk","text","mic","post","send"}
+local allRemotes  = {}
+local chatRemotes = {}
+local trustedRemotes = {}   -- [remote] = method string
 
 local function scanAll()
-    local found = {}
-    local seen  = {}
+    local found, seen = {}, {}
     local function check(v)
-        if seen[v] then return end
-        seen[v]=true
+        if seen[v] then return end; seen[v]=true
         if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
             table.insert(found,v)
         end
     end
     pcall(function() for _,v in ipairs(RS:GetDescendants()) do check(v) end end)
-    pcall(function()
-        for _,v in ipairs(workspace:GetChildren()) do check(v) end
-    end)
-    allRemotes = found
+    pcall(function() for _,v in ipairs(workspace:GetChildren()) do check(v) end end)
+    allRemotes  = found
     chatRemotes = {}
     for _,v in ipairs(found) do
         local n=v.Name:lower()
@@ -50,7 +45,7 @@ local function scanAll()
     return found
 end
 
--- Fire one remote with 7 common chat arg patterns
+-- Fire one remote with 7 common arg patterns
 local function firePatterns(remote, uname, display, msg)
     pcall(function() remote:FireServer(msg) end)
     pcall(function() remote:FireServer(display, msg) end)
@@ -109,6 +104,11 @@ local function card(par,sz,pos)
     mkF(f,UDim2.new(1,-2,0,1),UDim2.new(0,1,0,1),Color3.new(1,1,1),0.80)
     return f
 end
+local function notify(title,text,dur)
+    pcall(function()
+        StarterGui:SetCore("SendNotification",{Title=title,Text=text,Duration=dur or 5})
+    end)
+end
 
 -- ── GUI ───────────────────────────────────────────────────────────
 local old=PGui:FindFirstChild("NPCChatControl"); if old then old:Destroy() end
@@ -130,7 +130,7 @@ local gemF=mkF(TB,UDim2.new(0,24,0,24),UDim2.new(0,12,0.5,-12),AC,0.16);corner(g
 stroke(gemF,AC,0.38,1)
 mkL(gemF,"◆",12,T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center,true)
 mkL(TB,"Chat Control",14,T1,UDim2.new(0,44,0,0),UDim2.new(0,130,1,0),Enum.TextXAlignment.Left,true)
-mkL(TB,"FE remote spoof",9,T3,UDim2.new(0,44,0,0),UDim2.new(0,200,1,0),Enum.TextXAlignment.Left,false)
+mkL(TB,"FE remote spoof · trust detector",9,T3,UDim2.new(0,44,0,0),UDim2.new(0,220,1,0),Enum.TextXAlignment.Left,false)
 
 local function winBtn(xOff,col,cb)
     local b=mkB(TB,UDim2.new(0,13,0,13),UDim2.new(1,xOff,0.5,-6),col,0.10);corner(b,7)
@@ -200,15 +200,15 @@ local selCard=card(RIGHT,UDim2.new(1,-14,0,42),UDim2.new(0,7,0,8))
 mkL(selCard,"SELECTED",8,T3,UDim2.new(0,10,0,4),UDim2.new(1,-10,0,11),Enum.TextXAlignment.Left,true)
 local selL=mkL(selCard,"— tap a player —",12,T2,UDim2.new(0,10,0,17),UDim2.new(1,-12,0,16),Enum.TextXAlignment.Left,false)
 
--- mode pills (3 modes, scale-positioned — no UIListLayout to avoid hit-offset bug)
+-- mode pills
 mkL(RIGHT,"SEND MODE",8,T3,UDim2.new(0,10,0,58),UDim2.new(1,-10,0,12),Enum.TextXAlignment.Left,true)
 mkF(RIGHT,UDim2.new(1,-14,0,1),UDim2.new(0,7,0,70),AC,0.70)
 
 local MODES  = {"As Me","Spoof All","Targeted"}
 local MNOTES = {
-    "YOU say it — TextChatService, visible to all ✓",
-    "Fires every found remote with 7 arg patterns",
-    "Fires only the remote you select below",
+    "YOU say it — TextChatService, all see it ✓",
+    "Fires every remote · auto-detects trusted ones",
+    "Fires only the selected remote (use after Spoof All)",
 }
 local modeIdx  = 1
 local modeBtns = {}
@@ -238,86 +238,224 @@ for i,name in ipairs(MODES) do
 end
 setModeNote()
 
--- ── Remote list (all found RemoteEvents) ──────────────────────────
+-- ── Remote list ───────────────────────────────────────────────────
 mkL(RIGHT,"REMOTES",8,T3,UDim2.new(0,10,0,112),UDim2.new(1,-80,0,12),Enum.TextXAlignment.Left,true)
 mkF(RIGHT,UDim2.new(1,-14,0,1),UDim2.new(0,7,0,124),AC,0.70)
 
--- scan button
 local rsBg=mkF(RIGHT,UDim2.new(0,58,0,18),UDim2.new(1,-65,0,110),AC,0.72);corner(rsBg,7)
 mkL(rsBg,"⟳ Scan",9,T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center,true)
 local rsHit=mkB(RIGHT,UDim2.new(0,58,0,18),UDim2.new(1,-65,0,110),AC,1);rsHit.ZIndex=2
 
--- scrollable remote list
 local remScroll=Instance.new("ScrollingFrame")
 remScroll.Size=UDim2.new(1,-14,0,80);remScroll.Position=UDim2.new(0,7,0,128)
 remScroll.BackgroundTransparency=1;remScroll.BorderSizePixel=0
 remScroll.ScrollBarThickness=3;remScroll.ScrollBarImageColor3=AC
 remScroll.CanvasSize=UDim2.new(0,0,0,0);remScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
 remScroll.ScrollingDirection=Enum.ScrollingDirection.Y;remScroll.Parent=RIGHT
+
 local remLL=Instance.new("UIListLayout",remScroll);remLL.Padding=UDim.new(0,2)
 local remEmptyL=mkL(remScroll,"Press ⟳ Scan to find remotes",10,T3,
     UDim2.new(0,0,0,0),UDim2.new(1,0,0,26),Enum.TextXAlignment.Center,false)
 
+local selectedRemote=nil
 local remoteBtns={}
 
 local function selectRemote(re)
     selectedRemote=re
     for r,btn in pairs(remoteBtns) do
         local on=(r==re)
-        tw(btn.bg,TF,{BackgroundTransparency=on and 0.16 or 0.60})
-        btn.lbl.TextColor3=on and T1 or T2
-        btn.lbl.Font=on and Enum.Font.GothamBold or Enum.Font.Gotham
+        local isTrusted=trustedRemotes[r]~=nil
+        tw(btn.bg,TF,{BackgroundTransparency=on and 0.14 or (isTrusted and 0.20 or 0.60)})
+        if not isTrusted then
+            btn.lbl.TextColor3=on and T1 or T2
+            btn.lbl.Font=on and Enum.Font.GothamBold or Enum.Font.Gotham
+        end
     end
 end
 
+-- Mark a remote as TRUSTED: update row UI, status, popup, auto-switch mode
+local statusL  -- forward ref; defined below
+local function markTrusted(remote, method)
+    if trustedRemotes[remote] then return end
+    trustedRemotes[remote]=method or "confirmed"
+
+    -- Update remote list row
+    if remoteBtns[remote] then
+        local btn=remoteBtns[remote]
+        btn.lbl.Text="✓ TRUSTED · "..remote.Name
+        btn.lbl.TextColor3=GRN
+        btn.lbl.Font=Enum.Font.GothamBold
+        tw(btn.bg,TF,{BackgroundTransparency=0.10})
+        -- green left dot
+        if btn.dot then btn.dot.BackgroundColor3=GRN;btn.dot.BackgroundTransparency=0 end
+        -- green stroke
+        if btn.stroke then btn.stroke.Color=GRN;btn.stroke.Transparency=0.30 end
+    end
+
+    -- Status bar
+    if statusL then
+        statusL.Text="TRUSTED: "..remote.Name.." → "..tostring(method).." ✓"
+        statusL.TextColor3=GRN
+    end
+
+    -- In-game notification popup
+    notify("Trusted Remote Found!",remote.Name.." responded via "..tostring(method),7)
+
+    -- Auto-switch to Targeted mode + select this remote
+    modeIdx=3;setModeNote()
+    for j,bt in ipairs(modeBtns) do
+        tw(bt.bg,TF,{BackgroundTransparency=j==3 and 0.72 or 1})
+        bt.lbl.Font=j==3 and Enum.Font.GothamBold or Enum.Font.Gotham
+        bt.lbl.TextColor3=j==3 and T1 or T3
+    end
+    selectRemote(remote)
+end
+
 local function rebuildRemoteList(found)
-    -- clear old
     for _,btn in pairs(remoteBtns) do btn.bg:Destroy() end
     remoteBtns={}
-    remEmptyL.Parent=nil  -- detach empty label
-
+    remEmptyL.Parent=nil
     if #found==0 then
         remEmptyL.Text="No remotes found in RS";remEmptyL.Parent=remScroll;return
     end
-
     for _,re in ipairs(found) do
         local isChatRem=false
         for _,v in ipairs(chatRemotes) do if v==re then isChatRem=true;break end end
-        local rowBg=mkF(remScroll,UDim2.new(1,0,0,22),UDim2.new(0,0,0,0),CD,0.60)
+        local isTrusted=trustedRemotes[re]~=nil
+        local rowBg=mkF(remScroll,UDim2.new(1,0,0,22),UDim2.new(0,0,0,0),
+            isTrusted and GRN or CD, isTrusted and 0.10 or 0.60)
         corner(rowBg,6);rowBg.ClipsDescendants=true
-        if isChatRem then
-            stroke(rowBg,AC,0.50,1)  -- highlight chat-keyword remotes
+        local rowStroke=stroke(rowBg,
+            isTrusted and GRN or (isChatRem and AC or Color3.new(1,1,1)),
+            isTrusted and 0.28 or (isChatRem and 0.50 or 0.88), 1)
+        local dot=mkF(rowBg,UDim2.new(0,5,0,5),UDim2.new(0,5,0.5,-2),
+            isTrusted and GRN or (isChatRem and AC or T3), 0);corner(dot,3)
+        local lbl
+        if isTrusted then
+            lbl=mkL(rowBg,"✓ TRUSTED · "..re.Name,9,GRN,UDim2.new(0,14,0,0),UDim2.new(1,-18,1,0),Enum.TextXAlignment.Left,true)
         else
-            stroke(rowBg,Color3.new(1,1,1),0.88,1)
+            lbl=mkL(rowBg,re.Name,9,T2,UDim2.new(0,14,0,0),UDim2.new(1,-18,1,0),Enum.TextXAlignment.Left,false)
         end
-        local dot=mkF(rowBg,UDim2.new(0,5,0,5),UDim2.new(0,5,0.5,-2),isChatRem and AC or T3,0);corner(dot,3)
-        local lbl=mkL(rowBg,re.Name,9,T2,UDim2.new(0,14,0,0),UDim2.new(1,-18,1,0),Enum.TextXAlignment.Left,false)
         local hit=mkB(rowBg,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),CD,1)
         local r=re
         hit.MouseButton1Click:Connect(function() selectRemote(r) end)
-        hit.MouseEnter:Connect(function() if selectedRemote~=r then tw(rowBg,TF,{BackgroundTransparency=0.38}) end end)
-        hit.MouseLeave:Connect(function() if selectedRemote~=r then tw(rowBg,TM,{BackgroundTransparency=0.60}) end end)
-        remoteBtns[re]={bg=rowBg,lbl=lbl}
+        hit.MouseEnter:Connect(function()
+            if selectedRemote~=r then tw(rowBg,TF,{BackgroundTransparency=0.36}) end
+        end)
+        hit.MouseLeave:Connect(function()
+            if selectedRemote~=r then
+                tw(rowBg,TM,{BackgroundTransparency=trustedRemotes[r] and 0.10 or 0.60})
+            end
+        end)
+        remoteBtns[re]={bg=rowBg,lbl=lbl,dot=dot,stroke=rowStroke}
     end
+    -- auto-select first trusted, else first chat remote
+    if not selectedRemote then
+        for r,_ in pairs(trustedRemotes) do selectRemote(r);break end
+        if not selectedRemote and #chatRemotes>0 then selectRemote(chatRemotes[1]) end
+    end
+end
+
+-- ── Trust detection ───────────────────────────────────────────────
+-- Starts listeners BEFORE firing so we catch the server's response.
+-- Signals watched (any one is enough to confirm):
+--   1. remote.OnClientEvent  — server fired back (broadcast pattern)
+--   2. targetPlayer.Chatted  — legacy chat system relayed the message
+--   3. TextChannel.MessageReceived — TextChatService received it from target
+--   4. target character Head.ChildAdded BillboardGui — bubble chat appeared
+local function watchForTrust(remote, targetPlr, msg, onTrusted)
+    if trustedRemotes[remote] then onTrusted(trustedRemotes[remote]);return end
+    local done  = false
+    local conns = {}
+    local function succeed(method)
+        if done then return end; done=true
+        for _,c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+        onTrusted(method)
+    end
+
+    -- 1. Server fires OnClientEvent back (most reliable for custom chat)
+    if remote:IsA("RemoteEvent") then
+        local ok,c=pcall(function()
+            return remote.OnClientEvent:Connect(function(...)
+                local args={...}
+                -- accept any callback; optionally check for our msg text
+                local matched=true
+                if #args>0 then
+                    matched=false
+                    for _,v in ipairs(args) do
+                        if type(v)=="string" and v:find(msg,1,true) then matched=true;break end
+                    end
+                end
+                if matched then succeed("OnClientEvent") end
+            end)
+        end)
+        if ok then table.insert(conns,c) end
+    end
+
+    -- 2. Legacy Chatted event on target player
+    if targetPlr then
+        local ok,c=pcall(function()
+            return targetPlr.Chatted:Connect(function(chatMsg)
+                if chatMsg:find(msg,1,true) then succeed("Chatted") end
+            end)
+        end)
+        if ok then table.insert(conns,c) end
+    end
+
+    -- 3. TextChatService channel — message appears attributed to target
+    pcall(function()
+        local channels=TCS:FindFirstChild("TextChannels")
+        if not channels then return end
+        for _,ch in ipairs(channels:GetChildren()) do
+            if ch:IsA("TextChannel") then
+                local ok,c=pcall(function()
+                    return ch.MessageReceived:Connect(function(tcMsg)
+                        local text=tcMsg.Text or ""
+                        if not text:find(msg,1,true) then return end
+                        local src=tcMsg.TextSource
+                        if src and src.UserId~=LP.UserId then
+                            succeed("TextChannel")
+                        end
+                    end)
+                end)
+                if ok then table.insert(conns,c) end
+            end
+        end
+    end)
+
+    -- 4. Bubble chat BillboardGui appears on target's Head
+    if targetPlr then
+        pcall(function()
+            local char=targetPlr.Character
+            if not char then return end
+            local head=char:FindFirstChild("Head")
+            if not head then return end
+            local ok,c=pcall(function()
+                return head.ChildAdded:Connect(function(child)
+                    if child:IsA("BillboardGui") then succeed("BubbleChat") end
+                end)
+            end)
+            if ok then table.insert(conns,c) end
+        end)
+    end
+
+    -- Cleanup after 2 seconds regardless
+    task.delay(2,function()
+        for _,c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    end)
 end
 
 local function doScan()
     remEmptyL.Text="scanning…";remEmptyL.Parent=remScroll
     for _,btn in pairs(remoteBtns) do btn.bg:Destroy() end;remoteBtns={}
     task.spawn(function()
-        local found=scanAll()
-        rebuildRemoteList(found)
-        -- auto-select first chat remote for convenience
-        if #chatRemotes>0 and not selectedRemote then
-            selectRemote(chatRemotes[1])
-        end
+        rebuildRemoteList(scanAll())
     end)
 end
-
 rsHit.MouseEnter:Connect(function() tw(rsBg,TF,{BackgroundTransparency=0.44}) end)
 rsHit.MouseLeave:Connect(function() tw(rsBg,TM,{BackgroundTransparency=0.72}) end)
 rsHit.MouseButton1Click:Connect(doScan)
-task.spawn(doScan)  -- auto-scan on open
+task.spawn(doScan)
 
 -- ── Message box ───────────────────────────────────────────────────
 mkL(RIGHT,"MESSAGE",8,T3,UDim2.new(0,10,0,216),UDim2.new(1,-10,0,12),Enum.TextXAlignment.Left,true)
@@ -340,10 +478,9 @@ msgBox.Parent=msgCard
 msgBox.Focused:Connect(function()  tw(msgCard,TF,{BackgroundTransparency=0.24}) end)
 msgBox.FocusLost:Connect(function() tw(msgCard,TM,{BackgroundTransparency=0.40}) end)
 
--- status label
-local statusL=mkL(RIGHT,"",10,T3,UDim2.new(0,10,1,-94),UDim2.new(1,-14,0,20),Enum.TextXAlignment.Left,false,true)
+statusL=mkL(RIGHT,"",10,T3,UDim2.new(0,10,1,-94),UDim2.new(1,-14,0,20),Enum.TextXAlignment.Left,false,true)
 
--- button row
+-- buttons
 local clrCard=mkF(RIGHT,UDim2.new(0,62,0,34),UDim2.new(0,7,1,-68),CD,0.50)
 corner(clrCard,9);stroke(clrCard,Color3.new(1,1,1),0.84,1)
 mkL(clrCard,"⌫ Clear",11,T2,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center,false)
@@ -362,14 +499,14 @@ local sendHit=mkB(sendCard,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),AC,1)
 sendHit.MouseEnter:Connect(function() tw(sendCard,TF,{BackgroundTransparency=0}) end)
 sendHit.MouseLeave:Connect(function() tw(sendCard,TM,{BackgroundTransparency=0.12}) end)
 
--- ── Player list logic ─────────────────────────────────────────────
+-- ── Player list ───────────────────────────────────────────────────
 local selectedPlayer=nil
 local playerBtns={}
 
 local function setStatus(msg,ok)
     local col=ok==true and GRN or (ok==nil and ORG or RED)
     statusL.Text=msg;statusL.TextColor3=col
-    task.delay(5,function()
+    task.delay(6,function()
         if statusL.Text==msg then statusL.Text="";statusL.TextColor3=T3 end
     end)
 end
@@ -428,44 +565,47 @@ local function doSend()
     if msg=="" then setStatus("Type a message first.",false);return end
 
     if modeIdx==1 then
-        -- ── As Me: TextChatService — server-side replication ──────────
         local channels=TCS:FindFirstChild("TextChannels")
         if not channels then setStatus("TextChannels not found.",false);return end
         local ch=channels:FindFirstChild("RBXGeneral") or channels:GetChildren()[1]
         if not ch or not ch:IsA("TextChannel") then setStatus("No TextChannel.",false);return end
         local ok,err=pcall(function() ch:SendAsync(msg) end)
         if ok then setStatus("Sent as you — all players see it ✓",true)
-        else setStatus("TextChat err: "..tostring(err):sub(1,50),false) end
+        else setStatus("TextChat error: "..tostring(err):sub(1,50),false) end
 
     elseif modeIdx==2 then
-        -- ── Spoof All: fire EVERY found remote with all patterns ───────
         if not selectedPlayer then setStatus("Select a player first.",false);return end
+        if #allRemotes==0 then setStatus("No remotes found — press ⟳ Scan",false);return end
         local display=selectedPlayer.DisplayName
         local uname=selectedPlayer.Name
         local fired=0
-        if #allRemotes==0 then
-            setStatus("No remotes found — press ⟳ Scan first",false);return
-        end
         for _,remote in ipairs(allRemotes) do
-            firePatterns(remote,uname,display,msg)
+            local r=remote
+            -- start listener BEFORE firing
+            watchForTrust(r, selectedPlayer, msg, function(method)
+                markTrusted(r, method)
+            end)
+            firePatterns(r, uname, display, msg)
             fired=fired+1
         end
-        -- local bubble so you at least see it
+        -- local bubble fallback
         local char=selectedPlayer.Character
         if char then pcall(function() ChatSvc:Chat(char,msg,Enum.ChatColor.White) end) end
-        setStatus("Fired "..fired.." remote(s) as \""..display.."\" — check if others see it",nil)
+        setStatus("Fired "..fired.." remote(s) — watching for trusted responses…",nil)
 
     elseif modeIdx==3 then
-        -- ── Targeted: fire only the selected remote ────────────────────
         if not selectedPlayer then setStatus("Select a player first.",false);return end
         if not selectedRemote then setStatus("Select a remote from the list.",false);return end
         local display=selectedPlayer.DisplayName
         local uname=selectedPlayer.Name
-        firePatterns(selectedRemote,uname,display,msg)
-        -- local bubble
+        local r=selectedRemote
+        watchForTrust(r, selectedPlayer, msg, function(method)
+            markTrusted(r, method)
+        end)
+        firePatterns(r, uname, display, msg)
         local char=selectedPlayer.Character
         if char then pcall(function() ChatSvc:Chat(char,msg,Enum.ChatColor.White) end) end
-        setStatus("Fired \""..selectedRemote.Name.."\" as \""..display.."\"",nil)
+        setStatus("Fired \""..r.Name.."\" as \""..display.."\" — watching…",nil)
     end
 
     sendLbl.Text="✓  Sent";tw(sendCard,TF,{BackgroundTransparency=0})
