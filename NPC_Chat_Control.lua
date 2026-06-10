@@ -68,6 +68,76 @@ local function firePatterns(remote, uname, display, msg)
     pcall(function() remote:FireServer({name=uname, text=msg}) end)
 end
 
+-- ── Advanced spoof hooks (executor-dependent) ────────────────────
+-- These hook the game's own RemoteEvent fires so even calls made by
+-- the game's LocalScripts carry the fake display name.
+-- Falls back silently if the executor doesn't expose the needed APIs.
+
+-- Hook __namecall on `game` to intercept every :FireServer call made
+-- by the game's own LocalScripts and replace the real display/name args.
+-- Returns unhook function (or nil if not supported).
+local namecallHook = nil
+local function hookNamecall(fakeDisplay, fakeName)
+    local ok = pcall(function()
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        local old = mt.__namecall
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if method == "FireServer" then
+                local args = {...}
+                for i,v in ipairs(args) do
+                    if type(v)=="string" then
+                        if v==LP.DisplayName then args[i]=fakeDisplay
+                        elseif v==LP.Name     then args[i]=fakeName end
+                    end
+                end
+                return old(self, table.unpack(args))
+            end
+            return old(self, ...)
+        end)
+        setreadonly(mt, true)
+        namecallHook = function()
+            pcall(function()
+                setreadonly(mt,false); mt.__namecall=old; setreadonly(mt,true)
+            end)
+            namecallHook=nil
+        end
+    end)
+    return ok
+end
+
+-- Hook LP's __index so any game LocalScript reading LP.DisplayName / LP.Name
+-- gets the fake value during the hook window.
+local lpHook = nil
+local function hookLPName(fakeDisplay, fakeName)
+    local ok = pcall(function()
+        local mt = getrawmetatable(LP)
+        setreadonly(mt, false)
+        local old = mt.__index
+        mt.__index = newcclosure(function(t, k)
+            if t==LP then
+                if k=="DisplayName" then return fakeDisplay end
+                if k=="Name"        then return fakeName end
+            end
+            return old(t, k)
+        end)
+        setreadonly(mt, true)
+        lpHook = function()
+            pcall(function()
+                setreadonly(mt,false); mt.__index=old; setreadonly(mt,true)
+            end)
+            lpHook=nil
+        end
+    end)
+    return ok
+end
+
+local function unhookAll()
+    if namecallHook then pcall(namecallHook) end
+    if lpHook       then pcall(lpHook) end
+end
+
 -- ── GUI simulation ────────────────────────────────────────────────
 -- Finds the game's own speech/chat TextBox in PlayerGui and injects
 -- text + fires its submit action — bypasses remote search entirely,
@@ -700,32 +770,44 @@ local function doSend()
         if not selectedPlayer then setStatus("Select a player first.",false);return end
         local display=selectedPlayer.DisplayName
         local uname=selectedPlayer.Name
+        local hookMethods = {}
 
-        -- GUI simulate first (spoofs name by injecting display name into the box
-        -- if the game uses the typed text as-is for the speaker label)
+        -- 1. Hook __namecall: intercepts EVERY FireServer call in the game,
+        --    replaces real name args with target's name.
+        if hookNamecall(display, uname) then
+            table.insert(hookMethods,"__namecall")
+        end
+        -- 2. Hook LP.__index: game's LocalScripts reading LP.DisplayName get fake name.
+        if hookLPName(display, uname) then
+            table.insert(hookMethods,"LP.__index")
+        end
+
+        -- 3. GUI simulate (fire the game's own speech submit)
         local guiOk, guiMethod = tryGUISimulate(msg)
 
-        -- Fire all remotes with every pattern + trust detection
-        local fired=0
+        -- 4. Fire all found remotes with all arg patterns + trust detection
+        local fired = 0
         for _,remote in ipairs(allRemotes) do
             local r=remote
-            watchForTrust(r, selectedPlayer, msg, function(method)
-                markTrusted(r, method)
+            watchForTrust(r, selectedPlayer, msg, function(m)
+                markTrusted(r, m)
             end)
             firePatterns(r, uname, display, msg)
             fired=fired+1
         end
-        -- local bubble so you see it
+
+        -- local bubble
         local char=selectedPlayer.Character
         if char then pcall(function() ChatSvc:Chat(char,msg,Enum.ChatColor.White) end) end
 
-        if guiOk then
-            setStatus("GUI sent via "..guiMethod.." + "..fired.." remotes fired",nil)
-        elseif fired>0 then
-            setStatus("Fired "..fired.." remote(s) — watching for trusted…",nil)
-        else
-            setStatus("No remotes found — press ⟳ Scan first",false)
-        end
+        -- unhook after 1s (long enough for all fires to complete)
+        task.delay(1, unhookAll)
+
+        local parts = {}
+        if #hookMethods>0 then table.insert(parts,"hooks("..table.concat(hookMethods,"+")..") ✓") end
+        if guiOk         then table.insert(parts,"GUI("..guiMethod..") ✓") end
+        if fired>0       then table.insert(parts,fired.." remotes") end
+        setStatus(table.concat(parts," · "),#parts>0 and nil or false)
 
     elseif modeIdx==3 then
         if not selectedPlayer then setStatus("Select a player first.",false);return end
@@ -733,13 +815,19 @@ local function doSend()
         local display=selectedPlayer.DisplayName
         local uname=selectedPlayer.Name
         local r=selectedRemote
-        watchForTrust(r, selectedPlayer, msg, function(method)
-            markTrusted(r, method)
+        -- apply hooks so even indirect calls carry fake name
+        hookNamecall(display, uname)
+        hookLPName(display, uname)
+        watchForTrust(r, selectedPlayer, msg, function(m)
+            markTrusted(r, m)
         end)
         firePatterns(r, uname, display, msg)
+        -- also try GUI simulate
+        tryGUISimulate(msg)
         local char=selectedPlayer.Character
         if char then pcall(function() ChatSvc:Chat(char,msg,Enum.ChatColor.White) end) end
-        setStatus("Fired \""..r.Name.."\" as \""..display.."\" — watching…",nil)
+        task.delay(1, unhookAll)
+        setStatus("Fired \""..r.Name.."\" as \""..display.."\" + hooks applied",nil)
     end
 
     sendLbl.Text="✓  Sent";tw(sendCard,TF,{BackgroundTransparency=0})
