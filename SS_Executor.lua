@@ -205,6 +205,58 @@ Bridge.OnServerInvoke = function(player, action, payload)
             table.insert(names, p.Name.." ("..p.UserId..")")
         end
         return { ok = true, msg = table.concat(names, "\n") }
+
+    -- ── Chat spoof (server-side, visible to ALL players) ──────────────
+    -- payload: { target=playerName, message=text, display=fakeDisplayName }
+    --
+    -- From the server we can:
+    --   1. Chat:Chat(character, msg)        → bubble above head, replicated to all
+    --   2. chatRemote:FireAllClients(...)   → hits every client's OnClientEvent handler
+    --      so if the game's client code listens on that remote and shows speech,
+    --      it will show the spoofed message for everyone.
+    elseif action == "chat" then
+        local Chat = game:GetService("Chat")
+        local RS2  = game:GetService("ReplicatedStorage")
+        local target  = tostring(payload.target  or "")
+        local message = tostring(payload.message or "")
+        local display = tostring(payload.display or "")
+        if message == "" then return {ok=false, msg="No message."} end
+
+        local plr  = Players:FindFirstChild(target)
+        local char = plr and plr.Character
+        if not char then
+            return {ok=false, msg="Player/character not found: "..target}
+        end
+        local fakeName = display ~= "" and display or plr.DisplayName
+
+        -- 1. Bubble chat — server-side, replicated to every client
+        pcall(function() Chat:Chat(char, message, Enum.ChatColor.White) end)
+
+        -- 2. Scan RS for any chat RemoteEvent and FireAllClients with spoofed name.
+        --    This triggers whatever OnClientEvent handler the game has for chat display.
+        local CKWS = {"chat","say","speak","voice","message","talk","text","mic"}
+        local fired = 0
+        for _, v in ipairs(RS2:GetDescendants()) do
+            if v:IsA("RemoteEvent") then
+                local n = v.Name:lower()
+                for _, kw in ipairs(CKWS) do
+                    if n:find(kw) then
+                        -- try common broadcast arg patterns
+                        pcall(function() v:FireAllClients(fakeName, message) end)
+                        pcall(function() v:FireAllClients(message, fakeName) end)
+                        pcall(function() v:FireAllClients(plr.Name, message, fakeName) end)
+                        pcall(function() v:FireAllClients({Name=fakeName, Message=message}) end)
+                        fired = fired + 1
+                        break
+                    end
+                end
+            end
+        end
+
+        return {
+            ok  = true,
+            msg = "Chat:Chat sent + "..fired.." remote(s) FireAllClients as \""..fakeName.."\""
+        }
     end
 
     return { ok = false, msg = "Unknown: "..tostring(action) }

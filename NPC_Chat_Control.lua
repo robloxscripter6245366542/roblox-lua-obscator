@@ -8,15 +8,35 @@
 --   TextChatService messages, and bubble-chat after each fire.
 --   If any signal matches our msg/target, that remote is TRUSTED.
 -- ================================================================
-local RS       = game:GetService("ReplicatedStorage")
-local Players  = game:GetService("Players")
-local UIS      = game:GetService("UserInputService")
-local TweenSvc = game:GetService("TweenService")
-local TCS      = game:GetService("TextChatService")
-local ChatSvc  = game:GetService("Chat")
+local RS         = game:GetService("ReplicatedStorage")
+local Players    = game:GetService("Players")
+local UIS        = game:GetService("UserInputService")
+local TweenSvc   = game:GetService("TweenService")
+local TCS        = game:GetService("TextChatService")
+local ChatSvc    = game:GetService("Chat")
 local StarterGui = game:GetService("StarterGui")
-local LP       = Players.LocalPlayer
-local PGui     = LP:WaitForChild("PlayerGui")
+local LP         = Players.LocalPlayer
+local PGui       = LP:WaitForChild("PlayerGui")
+
+-- SS Bridge (SS_Executor.lua must be running as a server Script)
+-- When available, "Server" mode executes Chat:Chat + FireAllClients server-side
+-- which is 100% visible to all players with no FE limitations.
+local Bridge = RS:FindFirstChild("SS_ExecBridge")
+if not Bridge then
+    -- wait briefly in case executor is still loading
+    task.spawn(function()
+        Bridge = RS:WaitForChild("SS_ExecBridge", 5)
+    end)
+end
+
+local function callBridge(action, payload)
+    if not Bridge then return nil end
+    local ok, res = pcall(function()
+        return Bridge:InvokeServer(action, payload)
+    end)
+    if ok then return res end
+    return nil
+end
 
 -- ── Remote scanner ────────────────────────────────────────────────
 local CHAT_KW     = {"chat","say","speak","voice","bubble","message","talk","text","mic","post","send","submit","input"}
@@ -269,8 +289,24 @@ mkF(TB,UDim2.new(1,0,0,1),UDim2.new(0,0,1,-1),Color3.new(1,1,1),0.88)
 local gemF=mkF(TB,UDim2.new(0,24,0,24),UDim2.new(0,12,0.5,-12),AC,0.16);corner(gemF,7)
 stroke(gemF,AC,0.38,1)
 mkL(gemF,"◆",12,T1,UDim2.new(0,0,0,0),UDim2.new(1,0,1,0),Enum.TextXAlignment.Center,true)
-mkL(TB,"Chat Control",14,T1,UDim2.new(0,44,0,0),UDim2.new(0,130,1,0),Enum.TextXAlignment.Left,true)
-mkL(TB,"FE remote spoof · trust detector",9,T3,UDim2.new(0,44,0,0),UDim2.new(0,220,1,0),Enum.TextXAlignment.Left,false)
+mkL(TB,"Chat Control",14,T1,UDim2.new(0,44,0,0),UDim2.new(0,120,1,0),Enum.TextXAlignment.Left,true)
+mkL(TB,"FE spoof · trust detector",9,T3,UDim2.new(0,44,0,0),UDim2.new(0,180,1,0),Enum.TextXAlignment.Left,false)
+-- bridge status pill
+local bPill=mkF(TB,UDim2.new(0,72,0,18),UDim2.new(0,228,0.5,-9),CD,0.40);corner(bPill,9)
+stroke(bPill,T3,0.60,1)
+local bDot=mkF(bPill,UDim2.new(0,6,0,6),UDim2.new(0,6,0.5,-3),RED,0);corner(bDot,3)
+local bLbl=mkL(bPill,"SS offline",9,RED,UDim2.new(0,16,0,0),UDim2.new(1,-18,1,0),Enum.TextXAlignment.Left,false)
+-- poll bridge state and update pill
+task.spawn(function()
+    while SG and SG.Parent do
+        local online = Bridge ~= nil and Bridge.Parent ~= nil
+        bDot.BackgroundColor3 = online and GRN or RED
+        bLbl.Text             = online and "SS online" or "SS offline"
+        bLbl.TextColor3       = online and GRN or RED
+        stroke(bPill, online and GRN or T3, online and 0.42 or 0.60, 1)
+        task.wait(2)
+    end
+end)
 
 local function winBtn(xOff,col,cb)
     local b=mkB(TB,UDim2.new(0,13,0,13),UDim2.new(1,xOff,0.5,-6),col,0.10);corner(b,7)
@@ -344,8 +380,9 @@ local selL=mkL(selCard,"— tap a player —",12,T2,UDim2.new(0,10,0,17),UDim2.n
 mkL(RIGHT,"SEND MODE",8,T3,UDim2.new(0,10,0,58),UDim2.new(1,-10,0,12),Enum.TextXAlignment.Left,true)
 mkF(RIGHT,UDim2.new(1,-14,0,1),UDim2.new(0,7,0,70),AC,0.70)
 
-local MODES  = {"As Me","Spoof All","Targeted"}
+local MODES  = {"Server","As Me","Spoof All","Targeted"}
 local MNOTES = {
+    "SS Bridge — Chat:Chat + FireAllClients server-side ✓ 100%",
     "YOU say it — TextChatService, all see it ✓",
     "Fires every remote · auto-detects trusted ones",
     "Fires only the selected remote (use after Spoof All)",
@@ -705,6 +742,25 @@ local function doSend()
     if msg=="" then setStatus("Type a message first.",false);return end
 
     if modeIdx==1 then
+        -- ── SERVER MODE: uses SS_ExecBridge (SS_Executor.lua on server) ──────
+        -- Server-side Chat:Chat + FireAllClients → 100% visible to all, no FE
+        if not Bridge then
+            setStatus("SS Bridge offline — run SS_Executor.lua as a server Script first.",false)
+            return
+        end
+        if not selectedPlayer then setStatus("Select a player first.",false);return end
+        local display = selectedPlayer.DisplayName
+        local uname   = selectedPlayer.Name
+        local res = callBridge("chat", {target=uname, message=msg, display=display})
+        if res and res.ok then
+            setStatus("Server: "..res.msg,true)
+            notify("SS Chat Sent",res.msg,4)
+        else
+            local errMsg = res and res.msg or "Bridge call failed"
+            setStatus("SS error: "..errMsg,false)
+        end
+
+    elseif modeIdx==2 then
         -- Try every path. The game's own GUI simulate is tried first because
         -- it uses the game's real code path — guaranteed visible if successful.
         local sent, method = false, ""
@@ -766,41 +822,28 @@ local function doSend()
             setStatus("All methods failed — try Spoof All mode.",false)
         end
 
-    elseif modeIdx==2 then
+    elseif modeIdx==3 then
+        -- ── SPOOF ALL ──────────────────────────────────────────────────────────
         if not selectedPlayer then setStatus("Select a player first.",false);return end
         local display=selectedPlayer.DisplayName
         local uname=selectedPlayer.Name
         local hookMethods = {}
 
-        -- 1. Hook __namecall: intercepts EVERY FireServer call in the game,
-        --    replaces real name args with target's name.
-        if hookNamecall(display, uname) then
-            table.insert(hookMethods,"__namecall")
-        end
-        -- 2. Hook LP.__index: game's LocalScripts reading LP.DisplayName get fake name.
-        if hookLPName(display, uname) then
-            table.insert(hookMethods,"LP.__index")
-        end
+        if hookNamecall(display, uname) then table.insert(hookMethods,"__namecall") end
+        if hookLPName(display, uname)   then table.insert(hookMethods,"LP.__index") end
 
-        -- 3. GUI simulate (fire the game's own speech submit)
         local guiOk, guiMethod = tryGUISimulate(msg)
 
-        -- 4. Fire all found remotes with all arg patterns + trust detection
         local fired = 0
         for _,remote in ipairs(allRemotes) do
             local r=remote
-            watchForTrust(r, selectedPlayer, msg, function(m)
-                markTrusted(r, m)
-            end)
+            watchForTrust(r, selectedPlayer, msg, function(m) markTrusted(r, m) end)
             firePatterns(r, uname, display, msg)
             fired=fired+1
         end
 
-        -- local bubble
         local char=selectedPlayer.Character
         if char then pcall(function() ChatSvc:Chat(char,msg,Enum.ChatColor.White) end) end
-
-        -- unhook after 1s (long enough for all fires to complete)
         task.delay(1, unhookAll)
 
         local parts = {}
@@ -809,25 +852,22 @@ local function doSend()
         if fired>0       then table.insert(parts,fired.." remotes") end
         setStatus(table.concat(parts," · "),#parts>0 and nil or false)
 
-    elseif modeIdx==3 then
+    elseif modeIdx==4 then
+        -- ── TARGETED ───────────────────────────────────────────────────────────
         if not selectedPlayer then setStatus("Select a player first.",false);return end
         if not selectedRemote then setStatus("Select a remote from the list.",false);return end
         local display=selectedPlayer.DisplayName
         local uname=selectedPlayer.Name
         local r=selectedRemote
-        -- apply hooks so even indirect calls carry fake name
         hookNamecall(display, uname)
         hookLPName(display, uname)
-        watchForTrust(r, selectedPlayer, msg, function(m)
-            markTrusted(r, m)
-        end)
+        watchForTrust(r, selectedPlayer, msg, function(m) markTrusted(r, m) end)
         firePatterns(r, uname, display, msg)
-        -- also try GUI simulate
         tryGUISimulate(msg)
         local char=selectedPlayer.Character
         if char then pcall(function() ChatSvc:Chat(char,msg,Enum.ChatColor.White) end) end
         task.delay(1, unhookAll)
-        setStatus("Fired \""..r.Name.."\" as \""..display.."\" + hooks applied",nil)
+        setStatus("Fired \""..r.Name.."\" as \""..display.."\" + hooks",nil)
     end
 
     sendLbl.Text="✓  Sent";tw(sendCard,TF,{BackgroundTransparency=0})
