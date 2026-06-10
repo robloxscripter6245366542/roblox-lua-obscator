@@ -499,59 +499,96 @@ local function mimicMovement(myChar, targetChar)
     local tRoot  = targetChar:FindFirstChild("HumanoidRootPart")
     if not (myH and myRoot and tH and tRoot) then return end
 
-    -- match speed settings
+    -- Always mirror humanoid tuning
     myH.WalkSpeed  = tH.WalkSpeed
     myH.JumpPower  = tH.JumpPower
     myH.JumpHeight = tH.JumpHeight
 
-    local tPos      = tRoot.Position
-    local teleport  = prevTargetPos ~= nil and (tPos - prevTargetPos).Magnitude > TELEPORT_THRESH
-    prevTargetPos   = tPos
+    local tPos  = tRoot.Position
+    local myPos = myRoot.Position
+    local dist  = (tPos - myPos).Magnitude
 
-    -- velocity-predicted target CFrame (compensates ~half a frame of latency)
-    local vel     = tRoot.AssemblyLinearVelocity
-    local predPos = tPos + vel * (1/60 * 0.5)
-    local rot     = tRoot.CFrame - tRoot.CFrame.Position
-    local predCF  = CFrame.new(predPos) * rot
+    -- Teleport detection: if target moved >TELEPORT_THRESH in one frame, snap
+    local didTeleport = prevTargetPos ~= nil and (tPos - prevTargetPos).Magnitude > TELEPORT_THRESH
+    prevTargetPos = tPos
 
     local mode = currentMode()
 
-    if mode == "POSSESS" then
-        myRoot.CFrame = teleport and predCF or myRoot.CFrame:Lerp(predCF, 0.85)
-        myRoot.AssemblyLinearVelocity  = tRoot.AssemblyLinearVelocity
-        myRoot.AssemblyAngularVelocity = tRoot.AssemblyAngularVelocity
-        setSelfFade()
-
-    elseif mode == "GHOST" then
-        myRoot.CFrame = teleport and predCF or myRoot.CFrame:Lerp(predCF, 0.95)
-        myRoot.AssemblyLinearVelocity  = tRoot.AssemblyLinearVelocity
-        myRoot.AssemblyAngularVelocity = tRoot.AssemblyAngularVelocity
-        setSelfGhost()
-
-    elseif mode == "BEHIND" then
-        local behind = predCF * CFrame.new(0, 0, 4)
-        myRoot.CFrame = teleport and behind or myRoot.CFrame:Lerp(behind, 0.75)
-        myRoot.AssemblyLinearVelocity = tRoot.AssemblyLinearVelocity
-        setSelfVisible()
-
-    elseif mode == "SHADOW" then
-        local shadowCF = predCF * CFrame.new(0, 0.2, 0)
-        local alpha    = teleport and 1 or 0.18
-        myRoot.CFrame  = myRoot.CFrame:Lerp(shadowCF, alpha)
-        setSelfVisible()
-    end
-
-    -- mirror all humanoid states
-    local state = tH:GetState()
-    if tH.Jump or state == Enum.HumanoidStateType.Jumping then
+    -- ── Jump / state mirroring (done first so jump registeres this frame) ──
+    local tState = tH:GetState()
+    if tH.Jump or tState == Enum.HumanoidStateType.Jumping then
         myH.Jump = true
     end
-    if state == Enum.HumanoidStateType.Freefall then
+    if tState == Enum.HumanoidStateType.Freefall then
         myH:ChangeState(Enum.HumanoidStateType.Freefall)
-    elseif state == Enum.HumanoidStateType.Swimming then
+    elseif tState == Enum.HumanoidStateType.Swimming then
         myH:ChangeState(Enum.HumanoidStateType.Swimming)
-    elseif state == Enum.HumanoidStateType.Climbing then
+    elseif tState == Enum.HumanoidStateType.Climbing then
         myH:ChangeState(Enum.HumanoidStateType.Climbing)
+    end
+
+    -- ── Target's horizontal movement direction & speed ──
+    local tVel  = tRoot.AssemblyLinearVelocity
+    local hVel  = Vector3.new(tVel.X, 0, tVel.Z)
+    local speed = hVel.Magnitude  -- studs/s
+
+    -- ── Work out where our character should be ──
+    local targetPos
+    if mode == "BEHIND" then
+        -- 4 studs directly behind the target
+        targetPos = tPos - tRoot.CFrame.LookVector * 4
+    else
+        -- POSSESS / GHOST / SHADOW: same coordinates as target
+        targetPos = tPos
+    end
+
+    -- ── Snap when teleport detected or way too far ──
+    if didTeleport or dist > TELEPORT_THRESH then
+        myRoot.CFrame = CFrame.new(targetPos) * (tRoot.CFrame - tRoot.CFrame.Position)
+        if mode == "GHOST" then setSelfGhost() elseif mode == "POSSESS" then setSelfFade() else setSelfVisible() end
+        return
+    end
+
+    -- ── Natural walking via Humanoid:MoveTo ──
+    -- We tell the Humanoid to walk to the goal; this triggers the walk animation
+    -- and goes through normal Roblox physics (ground detection, slope handling, etc.)
+    local gapToGoal = (targetPos - myPos).Magnitude
+
+    if speed > 0.5 then
+        -- Target is moving: walk in the same direction, boosted slightly so we keep up
+        local walkDir    = hVel.Unit
+        local catchUpBonus = math.min(gapToGoal * 2, 20) -- extra speed when lagging behind
+        myH.WalkSpeed    = speed + catchUpBonus
+        -- MoveTo a point far in the walk direction so the humanoid doesn't stop
+        myH:MoveTo(myPos + walkDir * 100)
+
+        -- Face the same direction as the target
+        local lookFlat = Vector3.new(tRoot.CFrame.LookVector.X, 0, tRoot.CFrame.LookVector.Z)
+        if lookFlat.Magnitude > 0.01 then
+            myRoot.CFrame = CFrame.new(myPos, myPos + lookFlat)
+        end
+    else
+        -- Target is standing still: walk to close the gap, then stop
+        if gapToGoal > 0.8 then
+            myH.WalkSpeed = math.min(gapToGoal * 4, tH.WalkSpeed + 10)
+            myH:MoveTo(targetPos)
+        else
+            -- We're close enough — face same direction and idle
+            myH.WalkSpeed = 0
+            local lookFlat = Vector3.new(tRoot.CFrame.LookVector.X, 0, tRoot.CFrame.LookVector.Z)
+            if lookFlat.Magnitude > 0.01 then
+                myRoot.CFrame = CFrame.new(myPos, myPos + lookFlat)
+            end
+        end
+    end
+
+    -- ── Visibility per mode ──
+    if mode == "POSSESS" then
+        setSelfFade()
+    elseif mode == "GHOST" then
+        setSelfGhost()
+    else
+        setSelfVisible()
     end
 end
 
