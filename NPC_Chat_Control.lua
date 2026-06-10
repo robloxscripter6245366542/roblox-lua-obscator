@@ -565,13 +565,73 @@ local function doSend()
     if msg=="" then setStatus("Type a message first.",false);return end
 
     if modeIdx==1 then
-        local channels=TCS:FindFirstChild("TextChannels")
-        if not channels then setStatus("TextChannels not found.",false);return end
-        local ch=channels:FindFirstChild("RBXGeneral") or channels:GetChildren()[1]
-        if not ch or not ch:IsA("TextChannel") then setStatus("No TextChannel.",false);return end
-        local ok,err=pcall(function() ch:SendAsync(msg) end)
-        if ok then setStatus("Sent as you — all players see it ✓",true)
-        else setStatus("TextChat error: "..tostring(err):sub(1,50),false) end
+        -- Try every Roblox-native chat path in order.
+        -- All of these go through the server — visible to ALL players.
+        local sent, method = false, ""
+
+        -- 1. TextChatService (modern games — Mic Up, most 2022+ games)
+        if not sent then
+            pcall(function()
+                local channels = TCS:FindFirstChild("TextChannels")
+                if not channels then return end
+                local ch = channels:FindFirstChild("RBXGeneral")
+                if not ch then
+                    -- try any available channel
+                    for _,v in ipairs(channels:GetChildren()) do
+                        if v:IsA("TextChannel") then ch=v;break end
+                    end
+                end
+                if not ch then return end
+                ch:SendAsync(msg)
+                sent=true;method="TextChatService"
+            end)
+        end
+
+        -- 2. Old Roblox chat SayMessageRequest (legacy games & some hybrids)
+        if not sent then
+            pcall(function()
+                local dce = RS:FindFirstChild("DefaultChatSystemChatEvents")
+                    or RS:FindFirstChild("ChatEvents")
+                if not dce then return end
+                local req = dce:FindFirstChild("SayMessageRequest")
+                    or dce:FindFirstChild("SendMessage")
+                if not req then return end
+                req:FireServer({Message=msg, Type="Say"})
+                sent=true;method="SayMessageRequest"
+            end)
+        end
+
+        -- 3. Chat:Chat on local character (works in some executors/older games)
+        if not sent then
+            pcall(function()
+                local char = LP.Character
+                if not char then return end
+                local part = char:FindFirstChild("HumanoidRootPart")
+                    or char:FindFirstChildWhichIsA("BasePart")
+                if not part then return end
+                ChatSvc:Chat(part, msg, Enum.ChatColor.White)
+                sent=true;method="Chat:Chat"
+            end)
+        end
+
+        -- 4. Any chat-named RemoteEvent in the game fired as LP (last resort)
+        if not sent and #chatRemotes>0 then
+            pcall(function()
+                for _,re in ipairs(chatRemotes) do
+                    pcall(function() re:FireServer(msg) end)
+                    pcall(function() re:FireServer(msg, LP.DisplayName) end)
+                    pcall(function() re:FireServer(LP.Name, msg) end)
+                end
+                sent=true;method="chat remotes ("..#chatRemotes..")"
+            end)
+        end
+
+        if sent then
+            setStatus("Sent via "..method.." — all players see it ✓",true)
+            notify("Chat Sent","Message sent via "..method.." ✓",3)
+        else
+            setStatus("All chat methods failed — game may block.",false)
+        end
 
     elseif modeIdx==2 then
         if not selectedPlayer then setStatus("Select a player first.",false);return end
