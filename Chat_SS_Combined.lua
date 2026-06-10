@@ -433,6 +433,64 @@ local function clientVulnScan()
     return results
 end
 
+-- Active probe: fires test payloads to every RemoteEvent, listens for echoes.
+-- Any remote that broadcasts the token back is confirmed unvalidated → LIVE.
+local function activeProbe(onDone)
+    local token = "PROBE_"..tostring(math.random(100000,999999))
+    local targets, conns, liveSet, liveLines = {}, {}, {}, {}
+
+    local function collect(svc)
+        pcall(function()
+            for _, v in ipairs(svc:GetDescendants()) do
+                if v:IsA("RemoteEvent") then table.insert(targets, v) end
+            end
+        end)
+    end
+    collect(RS); collect(workspace)
+    pcall(function()
+        for _, v in ipairs(LP.PlayerScripts:GetDescendants()) do
+            if v:IsA("RemoteEvent") then table.insert(targets, v) end
+        end
+    end)
+
+    if #targets == 0 then onDone({}); return end
+
+    -- listeners first, then fire
+    for _, re in ipairs(targets) do
+        local r = re
+        local ok, c = pcall(function()
+            return r.OnClientEvent:Connect(function(...)
+                if liveSet[r] then return end
+                local args = {...}
+                for _, v in ipairs(args) do
+                    if type(v)=="string" and v:find(token,1,true) then
+                        liveSet[r]=true
+                        table.insert(liveLines,
+                            "LIVE|"..r.ClassName.."|"..r:GetFullName()..
+                            "|echoed back — server broadcasts client args unvalidated!")
+                        break
+                    end
+                end
+            end)
+        end)
+        if ok then table.insert(conns,c) end
+    end
+
+    for _, re in ipairs(targets) do
+        local r = re
+        pcall(function() r:FireServer(token) end)
+        pcall(function() r:FireServer(LP.Name, token) end)
+        pcall(function() r:FireServer(LP.DisplayName, token) end)
+        pcall(function() r:FireServer({Message=token, Type="Say"}) end)
+        pcall(function() r:FireServer({text=token}) end)
+    end
+
+    task.delay(2.5, function()
+        for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+        onDone(liveLines)
+    end)
+end
+
 local function showVulnResults(lines, source)
     local old2 = PGui:FindFirstChild("__VulnResults__"); if old2 then old2:Destroy() end
     if #lines == 0 then notify("Vuln Scan","No findings ("..source..")",4); return end
@@ -469,6 +527,7 @@ local function showVulnResults(lines, source)
     vPad.PaddingLeft=UDim.new(0,8); vPad.PaddingRight=UDim.new(0,8); vPad.PaddingTop=UDim.new(0,6)
 
     local SEVCOL = {
+        LIVE     = Color3.fromRGB(255,60,220),
         CRITICAL = Color3.fromRGB(255,60,60),
         HIGH     = Color3.fromRGB(255,120,40),
         MEDIUM   = Color3.fromRGB(255,200,40),
@@ -511,19 +570,62 @@ local function showVulnResults(lines, source)
 end
 
 local function doVulnScan()
-    notify("Vuln Scan","Scanning…",2)
+    notify("Vuln Scan","Scanning + probing all remotes…",3)
     task.spawn(function()
-        local lines, source
+        -- static scan (name/sig patterns)
+        local staticLines, source
         if Bridge and Bridge.Parent then
             local res = callBridge("scan_vulns",{})
             if res and res.ok then
-                lines = res.data or {}; source = "SS server (deep)"
+                staticLines = res.data or {}; source = "SS server (deep)"
             end
         end
-        if not lines then
-            lines = clientVulnScan(); source = "client-only"
+        if not staticLines then
+            staticLines = clientVulnScan(); source = "client-only"
         end
-        showVulnResults(lines, source)
+        -- active probe: fire to ALL remotes, collect echoes
+        activeProbe(function(liveLines)
+            -- LIVE findings first (highest priority), then static
+            local merged = {}
+            for _, l in ipairs(liveLines)   do table.insert(merged, l) end
+            for _, l in ipairs(staticLines) do table.insert(merged, l) end
+            local src = source .. (#liveLines>0 and (" + "..#liveLines.." LIVE") or " + probe")
+            showVulnResults(merged, src)
+            if #liveLines > 0 then
+                notify("LIVE Remotes Found!", #liveLines.." remote(s) broadcast unvalidated — auto-selected for chat!", 8)
+                -- Wire the first LIVE remote into the chat: find its object and auto-select it
+                -- Extract path from "LIVE|class|path|detail"
+                local firstPath = liveLines[1]:match("^[^|]+|[^|]+|([^|]+)|")
+                if firstPath then
+                    -- find the remote object by path
+                    local obj = game
+                    for part in firstPath:gmatch("[^.]+") do
+                        if obj then obj = obj:FindFirstChild(part) end
+                    end
+                    if obj and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
+                        -- add to allRemotes/chatRemotes if not already there
+                        local already = false
+                        for _, r in ipairs(allRemotes) do if r==obj then already=true;break end end
+                        if not already then table.insert(allRemotes,obj); table.insert(chatRemotes,obj) end
+                        -- rebuild remote list and select this remote
+                        rebuildRemoteList(allRemotes)
+                        selectRemote(obj)
+                        markTrusted(obj,"LIVE probe")
+                        -- switch to Targeted mode
+                        modeIdx=4; setModeNote()
+                        for j,bt in ipairs(modeBtns) do
+                            tw(bt.bg,TF,{BackgroundTransparency=j==4 and 0.72 or 1})
+                            bt.lbl.Font=j==4 and Enum.Font.GothamBold or Enum.Font.Gotham
+                            bt.lbl.TextColor3=j==4 and T1 or T3
+                        end
+                        if statusL then
+                            statusL.Text="LIVE: "..obj.Name.." auto-selected — ready to send!"
+                            statusL.TextColor3=Color3.fromRGB(255,60,220)
+                        end
+                    end
+                end
+            end
+        end)
     end)
 end
 
