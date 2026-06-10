@@ -569,10 +569,28 @@ local function showVulnResults(lines, source)
         {Size=UDim2.new(0,VW,0,VH),BackgroundTransparency=0.18}):Play()
 end
 
+-- Resolve a fullpath string to its Instance (or nil)
+local function pathToObj(path)
+    local obj = game
+    for part in path:gmatch("[^.]+") do
+        if obj then obj = obj:FindFirstChild(part) end
+    end
+    return (obj and obj ~= game) and obj or nil
+end
+
+-- Add obj to allRemotes / chatRemotes if not already present
+local function registerRemote(obj)
+    if not (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then return false end
+    for _, r in ipairs(allRemotes) do if r==obj then return false end end
+    table.insert(allRemotes, obj)
+    table.insert(chatRemotes, obj)
+    return true
+end
+
 local function doVulnScan()
     notify("Vuln Scan","Scanning + probing all remotes…",3)
     task.spawn(function()
-        -- static scan (name/sig patterns)
+        -- 1. Static scan (sig/name patterns)
         local staticLines, source
         if Bridge and Bridge.Parent then
             local res = callBridge("scan_vulns",{})
@@ -583,47 +601,65 @@ local function doVulnScan()
         if not staticLines then
             staticLines = clientVulnScan(); source = "client-only"
         end
-        -- active probe: fire to ALL remotes, collect echoes
+
+        -- 2. Active probe (fires to every RemoteEvent, listens for echoes)
         activeProbe(function(liveLines)
-            -- LIVE findings first (highest priority), then static
             local merged = {}
             for _, l in ipairs(liveLines)   do table.insert(merged, l) end
             for _, l in ipairs(staticLines) do table.insert(merged, l) end
-            local src = source .. (#liveLines>0 and (" + "..#liveLines.." LIVE") or " + probe")
-            showVulnResults(merged, src)
-            if #liveLines > 0 then
-                notify("LIVE Remotes Found!", #liveLines.." remote(s) broadcast unvalidated — auto-selected for chat!", 8)
-                -- Wire the first LIVE remote into the chat: find its object and auto-select it
-                -- Extract path from "LIVE|class|path|detail"
-                local firstPath = liveLines[1]:match("^[^|]+|[^|]+|([^|]+)|")
-                if firstPath then
-                    -- find the remote object by path
-                    local obj = game
-                    for part in firstPath:gmatch("[^.]+") do
-                        if obj then obj = obj:FindFirstChild(part) end
-                    end
-                    if obj and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
-                        -- add to allRemotes/chatRemotes if not already there
-                        local already = false
-                        for _, r in ipairs(allRemotes) do if r==obj then already=true;break end end
-                        if not already then table.insert(allRemotes,obj); table.insert(chatRemotes,obj) end
-                        -- rebuild remote list and select this remote
-                        rebuildRemoteList(allRemotes)
-                        selectRemote(obj)
-                        markTrusted(obj,"LIVE probe")
-                        -- switch to Targeted mode
-                        modeIdx=4; setModeNote()
-                        for j,bt in ipairs(modeBtns) do
-                            tw(bt.bg,TF,{BackgroundTransparency=j==4 and 0.72 or 1})
-                            bt.lbl.Font=j==4 and Enum.Font.GothamBold or Enum.Font.Gotham
-                            bt.lbl.TextColor3=j==4 and T1 or T3
-                        end
-                        if statusL then
-                            statusL.Text="LIVE: "..obj.Name.." auto-selected — ready to send!"
-                            statusL.TextColor3=Color3.fromRGB(255,60,220)
+
+            -- 3. Wire ALL found remotes into the chat system
+            local added, liveObjs = 0, {}
+            for _, line in ipairs(merged) do
+                local sev, cls, path = line:match("^([^|]+)|([^|]+)|([^|]+)|")
+                if path and (cls=="RemoteEvent" or cls=="RemoteFunction") then
+                    local obj = pathToObj(path)
+                    if obj then
+                        if registerRemote(obj) then added=added+1 end
+                        if sev=="LIVE" then
+                            table.insert(liveObjs, obj)
+                            markTrusted(obj,"LIVE probe")
                         end
                     end
                 end
+            end
+
+            -- rebuild remote list with everything we found
+            if added > 0 then rebuildRemoteList(allRemotes) end
+
+            -- 4. Auto-select best remote and mode
+            local bestRemote = liveObjs[1]   -- prefer LIVE
+            if not bestRemote and #chatRemotes>0 then bestRemote=chatRemotes[1] end
+            if bestRemote then selectRemote(bestRemote) end
+
+            local newMode = #liveObjs>0 and 3 or (#added>1 and 3 or 4)
+            modeIdx = newMode; setModeNote()
+            for j,bt in ipairs(modeBtns) do
+                tw(bt.bg,TF,{BackgroundTransparency=j==newMode and 0.72 or 1})
+                bt.lbl.Font=j==newMode and Enum.Font.GothamBold or Enum.Font.Gotham
+                bt.lbl.TextColor3=j==newMode and T1 or T3
+            end
+
+            -- 5. Show results popup
+            local src = source..(" + "..#liveLines.." LIVE + "..added.." wired")
+            showVulnResults(merged, src)
+
+            -- 6. Status + notifications
+            if #liveObjs > 0 then
+                notify("LIVE! "..#liveObjs.." remote(s)",
+                    "Broadcasting unvalidated — Spoof All ready!",8)
+                if statusL then
+                    statusL.Text = #liveObjs.." LIVE + "..(added-#liveObjs).." flagged wired into Spoof All"
+                    statusL.TextColor3 = Color3.fromRGB(255,60,220)
+                end
+            elseif added > 0 then
+                notify("Audit done",added.." remote(s) added to Spoof All",5)
+                if statusL then
+                    statusL.Text = added.." vuln remote(s) added — Spoof All armed"
+                    statusL.TextColor3 = ORG
+                end
+            else
+                notify("Audit done","No flagged remotes found",4)
             end
         end)
     end)
