@@ -19,7 +19,7 @@ local LP       = Players.LocalPlayer
 local PGui     = LP:WaitForChild("PlayerGui")
 
 -- ── Remote scanner ────────────────────────────────────────────────
-local CHAT_KW     = {"chat","say","speak","voice","bubble","message","talk","text","mic","post","send"}
+local CHAT_KW     = {"chat","say","speak","voice","bubble","message","talk","text","mic","post","send","submit","input"}
 local allRemotes  = {}
 local chatRemotes = {}
 local trustedRemotes = {}   -- [remote] = method string
@@ -32,8 +32,12 @@ local function scanAll()
             table.insert(found,v)
         end
     end
+    -- scan every common container
     pcall(function() for _,v in ipairs(RS:GetDescendants()) do check(v) end end)
-    pcall(function() for _,v in ipairs(workspace:GetChildren()) do check(v) end end)
+    pcall(function() for _,v in ipairs(workspace:GetDescendants()) do check(v) end end)
+    pcall(function()
+        for _,v in ipairs(LP.PlayerScripts:GetDescendants()) do check(v) end
+    end)
     allRemotes  = found
     chatRemotes = {}
     for _,v in ipairs(found) do
@@ -45,8 +49,9 @@ local function scanAll()
     return found
 end
 
--- Fire one remote with 7 common arg patterns
+-- Fire one remote with every plausible arg pattern
 local function firePatterns(remote, uname, display, msg)
+    -- string patterns
     pcall(function() remote:FireServer(msg) end)
     pcall(function() remote:FireServer(display, msg) end)
     pcall(function() remote:FireServer(uname, msg) end)
@@ -54,6 +59,71 @@ local function firePatterns(remote, uname, display, msg)
     pcall(function() remote:FireServer(uname, msg, display) end)
     pcall(function() remote:FireServer(display, msg, uname) end)
     pcall(function() remote:FireServer(uname, display, msg) end)
+    -- table/dict patterns (some games pass {Message=..., Type=...})
+    pcall(function() remote:FireServer({Message=msg}) end)
+    pcall(function() remote:FireServer({Text=msg}) end)
+    pcall(function() remote:FireServer({message=msg}) end)
+    pcall(function() remote:FireServer({Message=msg, Type="Say"}) end)
+    pcall(function() remote:FireServer({Message=msg, DisplayName=display}) end)
+    pcall(function() remote:FireServer({name=uname, text=msg}) end)
+end
+
+-- ── GUI simulation ────────────────────────────────────────────────
+-- Finds the game's own speech/chat TextBox in PlayerGui and injects
+-- text + fires its submit action — bypasses remote search entirely,
+-- goes through the game's own code path, visible to ALL players.
+local GUI_KW = {"speech","chat","say","type","input","message","talk","mic","voice","speak","submit","send"}
+local function tryGUISimulate(message)
+    local candidates = {}
+    -- collect all TextBoxes, score each by keyword matches in name/placeholder/ancestors
+    for _,v in ipairs(PGui:GetDescendants()) do
+        if v:IsA("TextBox") then
+            local score = 0
+            local n  = v.Name:lower()
+            local ph = v.PlaceholderText:lower()
+            for _,kw in ipairs(GUI_KW) do
+                if n:find(kw)  then score=score+3 end
+                if ph:find(kw) then score=score+2 end
+            end
+            -- check ancestor names
+            local par = v.Parent
+            for _=1,4 do
+                if not par or par==PGui then break end
+                local pn = par.Name:lower()
+                for _,kw in ipairs(GUI_KW) do
+                    if pn:find(kw) then score=score+1 end
+                end
+                par=par.Parent
+            end
+            if score > 0 then
+                table.insert(candidates,{box=v, score=score, name=v.Name})
+            end
+        end
+    end
+    -- sort highest score first
+    table.sort(candidates, function(a,b) return a.score > b.score end)
+
+    for _,c in ipairs(candidates) do
+        local box = c.box
+        box.Text = message
+        -- simulate pressing Enter (FocusLost with enterPressed=true)
+        pcall(function() box.FocusLost:Fire(true) end)
+        task.wait(0.05)
+        -- find any submit button in the same parent tree
+        if box.Parent then
+            for _,sib in ipairs(box.Parent:GetDescendants()) do
+                if sib:IsA("TextButton") and sib ~= box then
+                    local sn = sib.Text:lower()
+                    if sn=="" or sn==">" or sn=="→" or sn:find("send") or sn:find("say") or sn:find("post") or sn:find("submit") then
+                        pcall(function() sib.MouseButton1Click:Fire() end)
+                        pcall(function() sib.Activated:Fire() end)
+                    end
+                end
+            end
+        end
+        return true, "GUI("..c.name..")"
+    end
+    return false, "no speech box found in PlayerGui"
 end
 
 -- ── Helpers ───────────────────────────────────────────────────────
@@ -565,29 +635,37 @@ local function doSend()
     if msg=="" then setStatus("Type a message first.",false);return end
 
     if modeIdx==1 then
-        -- Try every Roblox-native chat path in order.
-        -- All of these go through the server — visible to ALL players.
+        -- Try every path. The game's own GUI simulate is tried first because
+        -- it uses the game's real code path — guaranteed visible if successful.
         local sent, method = false, ""
 
-        -- 1. TextChatService (modern games — Mic Up, most 2022+ games)
+        -- 1. GUI SIMULATE: inject text into game's speech/chat TextBox + fire submit
+        --    This is the most reliable for custom-UI games like Mic Up where the
+        --    default Roblox chat is hidden. Goes through the game's own RemoteEvent.
+        if not sent then
+            local ok, m = tryGUISimulate(msg)
+            if ok then sent=true; method=m end
+        end
+
+        -- 2. TextChatService SendAsync (Roblox's own chat system — visible to all
+        --    in games that show the default Roblox chat)
         if not sent then
             pcall(function()
                 local channels = TCS:FindFirstChild("TextChannels")
                 if not channels then return end
                 local ch = channels:FindFirstChild("RBXGeneral")
                 if not ch then
-                    -- try any available channel
                     for _,v in ipairs(channels:GetChildren()) do
                         if v:IsA("TextChannel") then ch=v;break end
                     end
                 end
                 if not ch then return end
                 ch:SendAsync(msg)
-                sent=true;method="TextChatService"
+                sent=true; method="TextChatService"
             end)
         end
 
-        -- 2. Old Roblox chat SayMessageRequest (legacy games & some hybrids)
+        -- 3. Old chat SayMessageRequest (legacy/hybrid games)
         if not sent then
             pcall(function()
                 local dce = RS:FindFirstChild("DefaultChatSystemChatEvents")
@@ -597,61 +675,57 @@ local function doSend()
                     or dce:FindFirstChild("SendMessage")
                 if not req then return end
                 req:FireServer({Message=msg, Type="Say"})
-                sent=true;method="SayMessageRequest"
+                sent=true; method="SayMessageRequest"
             end)
         end
 
-        -- 3. Chat:Chat on local character (works in some executors/older games)
-        if not sent then
-            pcall(function()
-                local char = LP.Character
-                if not char then return end
-                local part = char:FindFirstChild("HumanoidRootPart")
-                    or char:FindFirstChildWhichIsA("BasePart")
-                if not part then return end
-                ChatSvc:Chat(part, msg, Enum.ChatColor.White)
-                sent=true;method="Chat:Chat"
-            end)
-        end
-
-        -- 4. Any chat-named RemoteEvent in the game fired as LP (last resort)
-        if not sent and #chatRemotes>0 then
-            pcall(function()
-                for _,re in ipairs(chatRemotes) do
-                    pcall(function() re:FireServer(msg) end)
-                    pcall(function() re:FireServer(msg, LP.DisplayName) end)
-                    pcall(function() re:FireServer(LP.Name, msg) end)
-                end
-                sent=true;method="chat remotes ("..#chatRemotes..")"
-            end)
+        -- 4. Fire all chat-named remotes as self (catches game-specific chat REs)
+        if not sent and #chatRemotes > 0 then
+            for _,re in ipairs(chatRemotes) do
+                pcall(function() re:FireServer(msg) end)
+                pcall(function() re:FireServer(LP.Name, msg) end)
+                pcall(function() re:FireServer({Message=msg, Type="Say"}) end)
+            end
+            sent=true; method="chat remotes ("..#chatRemotes..")"
         end
 
         if sent then
-            setStatus("Sent via "..method.." — all players see it ✓",true)
-            notify("Chat Sent","Message sent via "..method.." ✓",3)
+            setStatus("Sent via "..method.." ✓",true)
+            notify("Sent!","via "..method,3)
         else
-            setStatus("All chat methods failed — game may block.",false)
+            setStatus("All methods failed — try Spoof All mode.",false)
         end
 
     elseif modeIdx==2 then
         if not selectedPlayer then setStatus("Select a player first.",false);return end
-        if #allRemotes==0 then setStatus("No remotes found — press ⟳ Scan",false);return end
         local display=selectedPlayer.DisplayName
         local uname=selectedPlayer.Name
+
+        -- GUI simulate first (spoofs name by injecting display name into the box
+        -- if the game uses the typed text as-is for the speaker label)
+        local guiOk, guiMethod = tryGUISimulate(msg)
+
+        -- Fire all remotes with every pattern + trust detection
         local fired=0
         for _,remote in ipairs(allRemotes) do
             local r=remote
-            -- start listener BEFORE firing
             watchForTrust(r, selectedPlayer, msg, function(method)
                 markTrusted(r, method)
             end)
             firePatterns(r, uname, display, msg)
             fired=fired+1
         end
-        -- local bubble fallback
+        -- local bubble so you see it
         local char=selectedPlayer.Character
         if char then pcall(function() ChatSvc:Chat(char,msg,Enum.ChatColor.White) end) end
-        setStatus("Fired "..fired.." remote(s) — watching for trusted responses…",nil)
+
+        if guiOk then
+            setStatus("GUI sent via "..guiMethod.." + "..fired.." remotes fired",nil)
+        elseif fired>0 then
+            setStatus("Fired "..fired.." remote(s) — watching for trusted…",nil)
+        else
+            setStatus("No remotes found — press ⟳ Scan first",false)
+        end
 
     elseif modeIdx==3 then
         if not selectedPlayer then setStatus("Select a player first.",false);return end
