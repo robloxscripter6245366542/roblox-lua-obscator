@@ -191,12 +191,32 @@ titleBar.Size=UDim2.new(1,0,0,36)
 titleBar.BackgroundColor3=Color3.fromRGB(28,16,50); titleBar.BorderSizePixel=0; titleBar.Parent=main
 do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,10);c.Parent=titleBar end
 
+-- ϟ logo badge
+local logoBadge=Instance.new("Frame")
+logoBadge.Size=UDim2.new(0,32,0,26); logoBadge.Position=UDim2.new(0,6,0.5,-13)
+logoBadge.BackgroundColor3=Color3.fromRGB(130,50,230); logoBadge.BorderSizePixel=0; logoBadge.Parent=titleBar
+do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,7);c.Parent=logoBadge end
+do
+    local g=Instance.new("UIGradient")
+    g.Color=ColorSequence.new{
+        ColorSequenceKeypoint.new(0,Color3.fromRGB(190,100,255)),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(100,30,210)),
+    }
+    g.Rotation=135; g.Parent=logoBadge
+end
+local boltL=Instance.new("TextLabel"); boltL.Size=UDim2.new(1,0,1,0)
+boltL.BackgroundTransparency=1; boltL.Text="ϟ"
+boltL.TextColor3=Color3.fromRGB(255,255,220); boltL.Font=Enum.Font.GothamBold
+boltL.TextSize=17; boltL.Parent=logoBadge
+-- inner glow stroke
+do local s=Instance.new("UIStroke");s.Color=Color3.fromRGB(220,160,255);s.Thickness=1;s.Transparency=0.5;s.Parent=logoBadge end
+
 local titleLbl=Instance.new("TextLabel")
-titleLbl.Size=UDim2.new(1,-90,1,0); titleLbl.Position=UDim2.new(0,12,0,0)
+titleLbl.Size=UDim2.new(1,-105,1,0); titleLbl.Position=UDim2.new(0,44,0,0)
 titleLbl.BackgroundTransparency=1
-local cap = hasHookMeta and "OUT+IN" or (hasHookFn and "OUT(fn)+IN" or "IN only")
-titleLbl.Text="ϟ  Volt  ["..cap.."]"
-titleLbl.TextColor3=Color3.fromRGB(200,140,255); titleLbl.Font=Enum.Font.GothamBold
+local cap = hasHookMeta and "OUT+IN" or (hasHookFn and "OUT+IN" or "IN only")
+titleLbl.Text="VOLT  ·  "..cap
+titleLbl.TextColor3=Color3.fromRGB(210,160,255); titleLbl.Font=Enum.Font.GothamBold
 titleLbl.TextSize=13; titleLbl.TextXAlignment=Enum.TextXAlignment.Left; titleLbl.Parent=titleBar
 
 local function mkBtn(par,x,w,txt,col)
@@ -208,17 +228,17 @@ local function mkBtn(par,x,w,txt,col)
     do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,6);c.Parent=b end
     return b
 end
-local closeBtn=mkBtn(titleBar,-30,24,"✕",Color3.fromRGB(180,50,50))
-local minBtn  =mkBtn(titleBar,-58,24,"−",Color3.fromRGB(40,40,55))
+local closeBtn=mkBtn(titleBar,-30,24,"✖",Color3.fromRGB(180,50,50))
+local minBtn  =mkBtn(titleBar,-58,24,"━",Color3.fromRGB(55,35,85))
 
 -- Tab bar
 local tabBar=Instance.new("Frame")
 tabBar.Size=UDim2.new(1,0,0,30); tabBar.Position=UDim2.new(0,0,0,36)
 tabBar.BackgroundColor3=Color3.fromRGB(18,12,30); tabBar.BorderSizePixel=0; tabBar.Parent=main
 
-local tabOut=mkBtn(tabBar,-W+8,100,"▶ Outgoing",Color3.fromRGB(110,50,200))
+local tabOut=mkBtn(tabBar,-W+8,100,"↑  Outgoing",Color3.fromRGB(110,50,200))
 tabOut.Position=UDim2.new(0,4,0.5,-12)
-local tabIn=mkBtn(tabBar,-W+116,90,"◀ Incoming",Color3.fromRGB(40,30,65))
+local tabIn=mkBtn(tabBar,-W+116,90,"↓  Incoming",Color3.fromRGB(40,30,65))
 tabIn.Position=UDim2.new(0,108,0.5,-12)
 
 -- mode filter row
@@ -238,11 +258,11 @@ do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,5);c.Parent=search
 local function mkModeBtn(x,w,txt,col)
     local b=mkBtn(modeBar,0,w,txt,col); b.Position=UDim2.new(0,x,0.5,-11); b.Size=UDim2.new(0,w,0,22); return b
 end
-local btnAll     = mkModeBtn(158, 38,"All",    Color3.fromRGB(110,50,200))
-local btnBlocked = mkModeBtn(200, 60,"Blocked",Color3.fromRGB(55,40,75))
-local btnIgnored = mkModeBtn(264, 55,"Ignored",Color3.fromRGB(55,40,75))
+local btnAll     = mkModeBtn(158, 38,"⋮ All",    Color3.fromRGB(110,50,200))
+local btnBlocked = mkModeBtn(200, 62,"⊘ Blocked",Color3.fromRGB(55,40,75))
+local btnIgnored = mkModeBtn(266, 60,"◎ Ignored",Color3.fromRGB(55,40,75))
 local pauseBtn   = mkModeBtn(W-128,58,"⏸ Pause",Color3.fromRGB(150,110,30))
-local clearBtn   = mkModeBtn(W-66, 60,"🗑 Clear",Color3.fromRGB(130,40,40))
+local clearBtn   = mkModeBtn(W-66, 60,"⌫ Clear",Color3.fromRGB(130,40,40))
 
 local countLbl=Instance.new("TextLabel")
 countLbl.Size=UDim2.new(0,50,1,0); countLbl.Position=UDim2.new(0,323,0,0)
@@ -281,13 +301,13 @@ do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,8);c.Parent=codeTo
 
 local codeTitleLbl=Instance.new("TextLabel")
 codeTitleLbl.Size=UDim2.new(1,-200,1,0); codeTitleLbl.Position=UDim2.new(0,8,0,0)
-codeTitleLbl.BackgroundTransparency=1; codeTitleLbl.Text="📄 Code"
+codeTitleLbl.BackgroundTransparency=1; codeTitleLbl.Text="⌨  Code"
 codeTitleLbl.TextColor3=Color3.fromRGB(130,130,180); codeTitleLbl.Font=Enum.Font.Gotham
 codeTitleLbl.TextSize=10; codeTitleLbl.TextXAlignment=Enum.TextXAlignment.Left; codeTitleLbl.Parent=codeTop
 
-local replayBtn=mkBtn(codeTop,-196,64,"▶ Replay",Color3.fromRGB(90,40,180))
-local blockEntBtn=mkBtn(codeTop,-128,60,"🚫 Block",Color3.fromRGB(160,50,50))
-local copyBtn=mkBtn(codeTop,-64,60,"📋 Copy",Color3.fromRGB(55,55,80))
+local replayBtn=mkBtn(codeTop,-196,64,"↺  Replay",Color3.fromRGB(90,40,180))
+local blockEntBtn=mkBtn(codeTop,-128,60,"⊘  Block",Color3.fromRGB(160,50,50))
+local copyBtn=mkBtn(codeTop,-64,60,"⎘  Copy",Color3.fromRGB(65,45,100))
 replayBtn.Visible=false; blockEntBtn.Visible=false
 
 local codeBox=Instance.new("TextBox")
@@ -308,18 +328,19 @@ local function setSelected(entry)
     selectedEntry = entry
     if not entry then
         codeBox.Text="-- click an entry"
-        codeTitleLbl.Text="📄 Code"
+        codeTitleLbl.Text="⌨  Code"
         replayBtn.Visible=false; blockEntBtn.Visible=false
         return
     end
     if entry.rowFrame then entry.rowFrame.BackgroundColor3=Color3.fromRGB(44,24,72) end
     codeBox.Text = buildCode(entry)
-    codeTitleLbl.Text = (entry.dir=="OUT" and "▶ " or "◀ ") .. entry.shortName
+    codeTitleLbl.Text = (entry.dir=="OUT" and "↑ " or "↓ ") .. entry.shortName
     replayBtn.Visible = (entry.dir=="OUT")
     blockEntBtn.Visible = true
     local isBlocked = blockedNames[entry.name]
-    blockEntBtn.Text = isBlocked and "✅ Unblock" or "🚫 Block"
+    blockEntBtn.Text = isBlocked and "✓  Unblock" or "⊘  Block"
     blockEntBtn.BackgroundColor3 = isBlocked and Color3.fromRGB(40,120,50) or Color3.fromRGB(160,50,50)
+    replayBtn.Text = "↺  Replay"
 end
 
 -- ───────────────────────────────────────────────────────────────
@@ -422,14 +443,14 @@ local function buildRow(entry, order)
         return b
     end
 
-    local arrowBtn = mkRowBtn(-4,  expanded and "▲" or "▼", Color3.fromRGB(40,28,65))
-    local ignBtn   = mkRowBtn(-28, isIgnored and "👁" or "◌", Color3.fromRGB(40,28,65))
-    local blkBtn   = mkRowBtn(-52, isBlocked and "✅" or "🚫", isBlocked and Color3.fromRGB(40,110,50) or Color3.fromRGB(140,40,40))
-    local cpBtn    = mkRowBtn(-76, "📋", Color3.fromRGB(60,40,90))
+    local arrowBtn = mkRowBtn(-4,  expanded and "▴" or "▾", Color3.fromRGB(40,28,65))
+    local ignBtn   = mkRowBtn(-28, isIgnored and "●" or "◎", Color3.fromRGB(40,28,65))
+    local blkBtn   = mkRowBtn(-52, isBlocked and "✓" or "⊘", isBlocked and Color3.fromRGB(40,110,50) or Color3.fromRGB(140,40,40))
+    local cpBtn    = mkRowBtn(-76, "⎘", Color3.fromRGB(65,40,100))
 
     local replayRowBtn
     if entry.dir=="OUT" then
-        replayRowBtn = mkRowBtn(-100, "▶", Color3.fromRGB(90,40,170))
+        replayRowBtn = mkRowBtn(-100, "↺", Color3.fromRGB(90,40,170))
     end
 
     -- arg rows (expanded)
@@ -489,7 +510,7 @@ local function buildRow(entry, order)
 
     cpBtn.MouseButton1Click:Connect(function()
         pcall(function() setclipboard(buildCode(entry)) end)
-        cpBtn.Text="✓"; task.delay(1.2,function() cpBtn.Text="📋" end)
+        cpBtn.Text="✓"; task.delay(1.2,function() cpBtn.Text="⎘" end)
     end)
 
     if replayRowBtn then
@@ -651,6 +672,8 @@ local function setTab(tab)
     activeTab=tab
     tabOut.BackgroundColor3 = tab=="OUT" and Color3.fromRGB(110,50,200) or Color3.fromRGB(40,28,65)
     tabIn.BackgroundColor3  = tab=="IN"  and Color3.fromRGB(70,30,160)  or Color3.fromRGB(40,28,65)
+    tabOut.Text = tab=="OUT" and "↑  Outgoing" or "↑  Outgoing"
+    tabIn.Text  = tab=="IN"  and "↓  Incoming" or "↓  Incoming"
     setSelected(nil); rebuildAll()
 end
 tabOut.MouseButton1Click:Connect(function() setTab("OUT") end)
@@ -662,6 +685,9 @@ local function setMode(m)
     btnAll.BackgroundColor3     = m=="ALL"     and Color3.fromRGB(110,50,200) or Color3.fromRGB(45,32,70)
     btnBlocked.BackgroundColor3 = m=="BLOCKED" and Color3.fromRGB(160,50,50)  or Color3.fromRGB(45,32,70)
     btnIgnored.BackgroundColor3 = m=="IGNORED" and Color3.fromRGB(120,60,180) or Color3.fromRGB(45,32,70)
+    btnAll.Text     = "⋮ All"
+    btnBlocked.Text = "⊘ Blocked"
+    btnIgnored.Text = "◎ Ignored"
     rebuildAll()
 end
 btnAll.MouseButton1Click:Connect(function()     setMode("ALL")     end)
@@ -675,7 +701,7 @@ end)
 
 pauseBtn.MouseButton1Click:Connect(function()
     paused=not paused
-    pauseBtn.Text=paused and "▶ Resume" or "⏸ Pause"
+    pauseBtn.Text=paused and "▶  Resume" or "⏸ Pause"
     pauseBtn.BackgroundColor3=paused and Color3.fromRGB(40,150,60) or Color3.fromRGB(150,110,30)
 end)
 
@@ -686,7 +712,7 @@ end)
 copyBtn.MouseButton1Click:Connect(function()
     if not selectedEntry then return end
     pcall(function() setclipboard(buildCode(selectedEntry)) end)
-    copyBtn.Text="✓ Copied!"; task.delay(1.5,function() copyBtn.Text="📋 Copy" end)
+    copyBtn.Text="✓ Copied!"; task.delay(1.5,function() copyBtn.Text="⎘  Copy" end)
 end)
 
 replayBtn.MouseButton1Click:Connect(function()
@@ -694,7 +720,7 @@ replayBtn.MouseButton1Click:Connect(function()
     local r=selectedEntry.remote
     if r and r.Parent then
         pcall(function() r:FireServer(table.unpack(selectedEntry.args)) end)
-        replayBtn.Text="✓ Fired!"; task.delay(1.2,function() replayBtn.Text="▶ Replay" end)
+        replayBtn.Text="✓ Fired!"; task.delay(1.2,function() replayBtn.Text="↺  Replay" end)
     end
 end)
 
@@ -702,6 +728,7 @@ blockEntBtn.MouseButton1Click:Connect(function()
     if not selectedEntry then return end
     local n=selectedEntry.name
     if blockedNames[n] then blockedNames[n]=nil else blockedNames[n]=true end
+    blockEntBtn.Text = blockedNames[n] and "✓  Unblock" or "⊘  Block"
     setSelected(selectedEntry)  -- refresh UI
     local list=lists[activeTab]
     for i,e in ipairs(list) do if e==selectedEntry then buildRow(e,i); break end end
@@ -712,7 +739,7 @@ local minimized=false
 minBtn.MouseButton1Click:Connect(function()
     minimized=not minimized
     main.Size=minimized and UDim2.new(0,W,0,36) or UDim2.new(0,W,0,H)
-    minBtn.Text=minimized and "+" or "−"
+    minBtn.Text=minimized and "+" or "━"
 end)
 closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
 
