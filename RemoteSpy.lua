@@ -1,7 +1,7 @@
--- Remote Spy  v1
--- Intercepts ALL incoming/outgoing RemoteEvent + RemoteFunction calls
--- Click an entry → see generated Lua code  |  Replay outgoing calls
--- Requires hookmetamethod + getnamecallmethod (executor privilege) for outgoing
+-- Remote Spy  v2  — Cobalt-style
+-- Outgoing / Incoming tabs, grouped repeats with counter, arg type labels
+-- Click entry to expand args + see code  •  Replay  •  Copy
+-- Requires hookmetamethod + getnamecallmethod for outgoing capture
 
 local Players  = game:GetService("Players")
 local TweenSvc = game:GetService("TweenService")
@@ -10,92 +10,73 @@ local LocalPlayer = Players.LocalPlayer
 -- ───────────────────────────────────────────────────────────────
 --  STATE
 -- ───────────────────────────────────────────────────────────────
-local MAX_LOG    = 200
-local logData    = {}      -- array of entry tables
-local entryUI    = {}      -- parallel array of Frame objects
-local showOut    = true
-local showIn     = true
-local paused     = false
-local filterText = ""
-local selected   = nil     -- currently selected entry index
-local hasHook    = type(hookmetamethod) == "function"
+local MAX_LOG  = 150
+local paused   = false
+local activeTab = "OUT"  -- "OUT" | "IN"
+local hasHook  = type(hookmetamethod) == "function"
+local hookedIn = {}
+
+-- Separate lists for each tab
+local lists = { OUT = {}, IN = {} }
+-- Each entry: { remote, name, shortName, method, args, count, lastTime, timeStr, rowFrame, expanded }
 
 -- ───────────────────────────────────────────────────────────────
---  VALUE FORMATTER  — compact display in list
+--  ARG FORMATTERS
 -- ───────────────────────────────────────────────────────────────
-local function fmtV(v, d)
-    d = d or 0
-    if d > 2 then return "…" end
+local function argType(v)
     local t = typeof(v)
-    if     t == "nil"      then return "nil"
-    elseif t == "boolean"  then return tostring(v)
-    elseif t == "number"   then
-        return v == math.floor(v) and tostring(math.floor(v)) or ("%.3g"):format(v)
-    elseif t == "string"   then
-        local s = v:sub(1,30):gsub("[%c]","·")
-        return '"' .. s .. (#v>30 and "…" or "") .. '"'
-    elseif t == "Instance" then return "["..v.ClassName..":"..v.Name.."]"
-    elseif t == "Vector3"  then return ("V3(%g,%g,%g)"):format(v.X,v.Y,v.Z)
-    elseif t == "Vector2"  then return ("V2(%g,%g)"):format(v.X,v.Y)
-    elseif t == "CFrame"   then
-        local p = v.Position
-        return ("CF(%g,%g,%g)"):format(p.X,p.Y,p.Z)
-    elseif t == "Color3"   then
-        return ("RGB(%d,%d,%d)"):format(v.R*255,v.G*255,v.B*255)
-    elseif t == "EnumItem" then return tostring(v)
-    elseif t == "table"    then
-        local p, i = {}, 0
-        for k,u in pairs(v) do
-            i=i+1; if i>4 then p[#p+1]="…"; break end
-            p[#p+1] = type(k)=="number" and fmtV(u,d+1) or (tostring(k).."="..fmtV(u,d+1))
-        end
-        return "{"..table.concat(p,",").."}"
-    else return tostring(v):sub(1,20) end
+    if t == "Instance" then return v.ClassName end
+    return t
 end
 
-local function fmtArgs(args)
-    if #args == 0 then return "()" end
-    local p = {}
-    for _,v in ipairs(args) do p[#p+1] = fmtV(v) end
-    local s = "("..table.concat(p,", ")..")"
-    return #s > 70 and s:sub(1,70).."…)" or s
-end
-
--- ───────────────────────────────────────────────────────────────
---  CODE GENERATOR  — full copy-pasteable Lua
--- ───────────────────────────────────────────────────────────────
-local function codeVal(v, d)
-    d = d or 0
-    if d > 3 then return "nil --[[deep]]" end
+local function argVal(v)
     local t = typeof(v)
     if     t == "nil"     then return "nil"
     elseif t == "boolean" then return tostring(v)
-    elseif t == "number"  then return tostring(v)
+    elseif t == "number"  then
+        return v == math.floor(v) and tostring(math.floor(v)) or ("%.4g"):format(v)
     elseif t == "string"  then
-        return '"' .. v:gsub("\\","\\\\"):gsub('"','\\"'):gsub("\n","\\n") .. '"'
-    elseif t == "Instance" then
-        local path = v:GetFullName()
-        path = path:gsub("^game%.([^%.]+)", function(s)
-            return 'game:GetService("'..s..'")'
-        end)
-        return path
-    elseif t == "Vector3"  then return ("Vector3.new(%g, %g, %g)"):format(v.X,v.Y,v.Z)
-    elseif t == "Vector2"  then return ("Vector2.new(%g, %g)"):format(v.X,v.Y)
-    elseif t == "CFrame"   then
-        local c = {v:GetComponents()}
-        local s = {}; for _,n in ipairs(c) do s[#s+1]=tostring(n) end
+        local s = v:sub(1,40):gsub("[%c]","·")
+        return '"'..s..(#v>40 and "…" or "")..'"'
+    elseif t == "Instance"  then return v:GetFullName()
+    elseif t == "Vector3"   then return ("Vector3.new(%g, %g, %g)"):format(v.X,v.Y,v.Z)
+    elseif t == "Vector2"   then return ("Vector2.new(%g, %g)"):format(v.X,v.Y)
+    elseif t == "CFrame"    then local p=v.Position; return ("CFrame.new(%g, %g, %g)"):format(p.X,p.Y,p.Z)
+    elseif t == "Color3"    then return ("Color3.fromRGB(%d, %d, %d)"):format(v.R*255,v.G*255,v.B*255)
+    elseif t == "EnumItem"  then return tostring(v)
+    elseif t == "table"     then
+        local n = 0; for _ in pairs(v) do n=n+1 end
+        return "table ["..n.."]"
+    else return tostring(v):sub(1,30) end
+end
+
+-- full Lua code generation
+local function codeVal(v, d)
+    d = d or 0
+    if d > 3 then return "nil" end
+    local t = typeof(v)
+    if     t=="nil"     then return "nil"
+    elseif t=="boolean" then return tostring(v)
+    elseif t=="number"  then return tostring(v)
+    elseif t=="string"  then
+        return '"'..v:gsub("\\","\\\\"):gsub('"','\\"'):gsub("\n","\\n")..'"'
+    elseif t=="Instance" then
+        local p=v:GetFullName()
+        return p:gsub("^game%.([^%.]+)",function(s) return 'game:GetService("'..s..'")' end)
+    elseif t=="Vector3"  then return ("Vector3.new(%g, %g, %g)"):format(v.X,v.Y,v.Z)
+    elseif t=="Vector2"  then return ("Vector2.new(%g, %g)"):format(v.X,v.Y)
+    elseif t=="CFrame"   then
+        local c={v:GetComponents()}; local s={}
+        for _,n in ipairs(c) do s[#s+1]=tostring(n) end
         return "CFrame.new("..table.concat(s,", ")..")"
-    elseif t == "Color3"   then
-        return ("Color3.fromRGB(%d, %d, %d)"):format(v.R*255,v.G*255,v.B*255)
-    elseif t == "UDim2"    then
-        return ("UDim2.new(%g, %g, %g, %g)"):format(v.X.Scale,v.X.Offset,v.Y.Scale,v.Y.Offset)
-    elseif t == "EnumItem" then
-        return "Enum."..tostring(v.EnumType).."."..v.Name
-    elseif t == "table"    then
-        local p = {}
+    elseif t=="Color3"   then return ("Color3.fromRGB(%d, %d, %d)"):format(v.R*255,v.G*255,v.B*255)
+    elseif t=="UDim2"    then return ("UDim2.new(%g, %g, %g, %g)"):format(v.X.Scale,v.X.Offset,v.Y.Scale,v.Y.Offset)
+    elseif t=="EnumItem" then return "Enum."..tostring(v.EnumType).."."..v.Name
+    elseif t=="table"    then
+        local p={}
         for k,u in pairs(v) do
-            if type(k)=="number" then p[#p+1] = codeVal(u,d+1)
-            else p[#p+1] = '["'..tostring(k)..'"] = '..codeVal(u,d+1) end
+            if type(k)=="number" then p[#p+1]=codeVal(u,d+1)
+            else p[#p+1]='["'..tostring(k)..'"]='..codeVal(u,d+1) end
         end
         return "{"..table.concat(p,", ").."}"
     else return "--[["..t.."]]" end
@@ -103,371 +84,417 @@ end
 
 local function buildCode(entry)
     local r = entry.remote
-    if not r or not r.Parent then
-        -- remote gone; still show what we captured
-        local p = {}
-        for _,v in ipairs(entry.args) do p[#p+1] = codeVal(v) end
-        if entry.dir == "IN" then
-            return "-- [INCOMING] "..entry.name.."\n-- args: "..table.concat(p,", ")
-        end
-        return "-- remote destroyed\n-- "..entry.name..":"..entry.method.."("..table.concat(p,", ")..")"
-    end
-    local path = r:GetFullName()
-    path = path:gsub("^game%.([^%.]+)", function(s)
-        return 'game:GetService("'..s..'")'
-    end)
-    local p = {}
-    for _,v in ipairs(entry.args) do p[#p+1] = codeVal(v) end
-    local argStr = table.concat(p, ", ")
-    if entry.dir == "IN" then
-        return "-- [INCOMING] fired by server\n"..path..".OnClientEvent:Connect(function("
-            .. (argStr~="" and "..." or "") ..")\n    -- args: "..argStr.."\nend)"
+    local path
+    if r and r.Parent then
+        path = r:GetFullName():gsub("^game%.([^%.]+)",function(s) return 'game:GetService("'..s..'")' end)
     else
-        return path..":"..entry.method.."("..argStr..")"
+        path = "-- (remote destroyed) "..entry.name
     end
+    local p={}; for _,v in ipairs(entry.args) do p[#p+1]=codeVal(v) end
+    if entry.method == "OnClientEvent" then
+        return "-- [INCOMING] "..path..".OnClientEvent\n-- args: "..table.concat(p,", ")
+    end
+    return path..":"..entry.method.."("..table.concat(p,", ")..")"
 end
 
 -- ───────────────────────────────────────────────────────────────
---  GUI
+--  GUI CONSTANTS
 -- ───────────────────────────────────────────────────────────────
-local W, H = 520, 570
-local LOG_H = 310
-local CODE_Y = 38 + 4 + 36 + 4 + LOG_H + 8   -- 400
-local CODE_H = H - CODE_Y - 6                  -- 164
+local W, H      = 440, 520
+local ITEM_H    = 44   -- collapsed row height
+local ARG_H     = 20   -- per-arg row height
+local ARG_TYPE_COLORS = {
+    string   = Color3.fromRGB(100,180,100),
+    number   = Color3.fromRGB(100,140,220),
+    boolean  = Color3.fromRGB(220,160,80),
+    nil      = Color3.fromRGB(120,120,120),
+    Instance = Color3.fromRGB(200,120,200),
+    Vector3  = Color3.fromRGB(100,200,200),
+    CFrame   = Color3.fromRGB(200,200,100),
+    table    = Color3.fromRGB(220,100,100),
+}
+local function typeColor(t)
+    return ARG_TYPE_COLORS[t] or Color3.fromRGB(180,180,180)
+end
 
+-- ───────────────────────────────────────────────────────────────
+--  GUI CONSTRUCTION
+-- ───────────────────────────────────────────────────────────────
 local sg = Instance.new("ScreenGui")
-sg.Name="RemoteSpy"; sg.ResetOnSpawn=false
+sg.Name="RemoteSpy2"; sg.ResetOnSpawn=false
 sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
-sg.Parent = LocalPlayer:WaitForChild("PlayerGui")
+sg.Parent=LocalPlayer:WaitForChild("PlayerGui")
 
-local main = Instance.new("Frame")
+local main=Instance.new("Frame")
 main.Name="Main"; main.Size=UDim2.new(0,W,0,H)
 main.Position=UDim2.new(0.5,-W/2,0.5,-H/2)
-main.BackgroundColor3=Color3.fromRGB(11,11,15)
+main.BackgroundColor3=Color3.fromRGB(22,22,28)
 main.BorderSizePixel=0; main.Active=true; main.Draggable=true; main.Parent=sg
-do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,12);c.Parent=main end
+do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,10);c.Parent=main end
 
--- gradient overlay
-do
-    local g=Instance.new("UIGradient")
-    g.Color=ColorSequence.new{
-        ColorSequenceKeypoint.new(0,Color3.fromRGB(20,20,28)),
-        ColorSequenceKeypoint.new(1,Color3.fromRGB(11,11,15)),
-    }
-    g.Rotation=120; g.Parent=main
-end
-
--- ── Title Bar ──────────────────────────────────────────────────
+-- Title bar
 local titleBar=Instance.new("Frame")
-titleBar.Size=UDim2.new(1,0,0,38); titleBar.BackgroundColor3=Color3.fromRGB(17,17,24)
+titleBar.Size=UDim2.new(1,0,0,36); titleBar.BackgroundColor3=Color3.fromRGB(30,30,38)
 titleBar.BorderSizePixel=0; titleBar.Parent=main
-do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,12);c.Parent=titleBar end
+do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,10);c.Parent=titleBar end
 
 local titleLbl=Instance.new("TextLabel")
-titleLbl.Size=UDim2.new(1,-90,1,0); titleLbl.Position=UDim2.new(0,12,0,0)
+titleLbl.Size=UDim2.new(1,-80,1,0); titleLbl.Position=UDim2.new(0,12,0,0)
 titleLbl.BackgroundTransparency=1
-titleLbl.Text = hasHook and "🔍  Remote Spy" or "🔍  Remote Spy  ⚠️ no hook — IN only"
-titleLbl.TextColor3=Color3.fromRGB(210,210,255); titleLbl.Font=Enum.Font.GothamBold
+titleLbl.Text="⚡  Remote Spy" .. (hasHook and "" or "  (IN only)")
+titleLbl.TextColor3=Color3.fromRGB(230,230,230); titleLbl.Font=Enum.Font.GothamBold
 titleLbl.TextSize=13; titleLbl.TextXAlignment=Enum.TextXAlignment.Left; titleLbl.Parent=titleBar
 
-local function mkTitleBtn(xOff, txt, col)
+local function mkBtn(parent, x, w, txt, col)
     local b=Instance.new("TextButton")
-    b.Size=UDim2.new(0,26,0,26); b.Position=UDim2.new(1,xOff,0.5,-13)
+    b.Size=UDim2.new(0,w,0,24); b.Position=UDim2.new(1,x,0.5,-12)
     b.BackgroundColor3=col; b.BorderSizePixel=0
     b.Text=txt; b.TextColor3=Color3.fromRGB(255,255,255)
-    b.Font=Enum.Font.GothamBold; b.TextSize=12; b.Parent=titleBar
-    do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,7);c.Parent=b end
+    b.Font=Enum.Font.GothamBold; b.TextSize=11; b.Parent=parent
+    do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,6);c.Parent=b end
     return b
 end
-local closeBtn = mkTitleBtn(-30, "✕", Color3.fromRGB(180,50,50))
-local minBtn   = mkTitleBtn(-60, "−", Color3.fromRGB(38,38,55))
+local closeBtn=mkBtn(titleBar,-30,24,"✕",Color3.fromRGB(180,50,50))
+local minBtn  =mkBtn(titleBar,-58,24,"−",Color3.fromRGB(50,50,65))
 
--- ── Filter / Control Bar ───────────────────────────────────────
-local ctrlBar=Instance.new("Frame")
-ctrlBar.Size=UDim2.new(1,-10,0,36); ctrlBar.Position=UDim2.new(0,5,0,42)
-ctrlBar.BackgroundColor3=Color3.fromRGB(16,16,22); ctrlBar.BorderSizePixel=0
-ctrlBar.Parent=main
-do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,8);c.Parent=ctrlBar end
+-- Tab bar
+local tabBar=Instance.new("Frame")
+tabBar.Size=UDim2.new(1,0,0,32); tabBar.Position=UDim2.new(0,0,0,36)
+tabBar.BackgroundColor3=Color3.fromRGB(18,18,24); tabBar.BorderSizePixel=0; tabBar.Parent=main
+
+local function mkTab(txt, xPct)
+    local t=Instance.new("TextButton")
+    t.Size=UDim2.new(0.22,0,1,-4); t.Position=UDim2.new(xPct,-2,0,2)
+    t.BackgroundColor3=Color3.fromRGB(35,35,45); t.BorderSizePixel=0
+    t.Text=txt; t.TextColor3=Color3.fromRGB(200,200,200)
+    t.Font=Enum.Font.GothamBold; t.TextSize=12; t.Parent=tabBar
+    do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,6);c.Parent=t end
+    return t
+end
+local tabOut = mkTab("Outgoing", 0.01)
+local tabIn  = mkTab("Incoming", 0.24)
+
+-- controls row
+local ctrlRow=Instance.new("Frame")
+ctrlRow.Size=UDim2.new(1,0,0,30); ctrlRow.Position=UDim2.new(0,0,0,68)
+ctrlRow.BackgroundColor3=Color3.fromRGB(18,18,24); ctrlRow.BorderSizePixel=0; ctrlRow.Parent=main
 
 local searchBox=Instance.new("TextBox")
-searchBox.Size=UDim2.new(0,155,0,24); searchBox.Position=UDim2.new(0,6,0.5,-12)
-searchBox.BackgroundColor3=Color3.fromRGB(24,24,33); searchBox.BorderSizePixel=0
-searchBox.Text=""; searchBox.PlaceholderText="filter name…"
-searchBox.TextColor3=Color3.fromRGB(220,220,230); searchBox.PlaceholderColor3=Color3.fromRGB(90,90,110)
+searchBox.Size=UDim2.new(0,170,0,22); searchBox.Position=UDim2.new(0,6,0.5,-11)
+searchBox.BackgroundColor3=Color3.fromRGB(28,28,38); searchBox.BorderSizePixel=0
+searchBox.Text=""; searchBox.PlaceholderText="Search remote…"
+searchBox.TextColor3=Color3.fromRGB(220,220,220); searchBox.PlaceholderColor3=Color3.fromRGB(90,90,110)
 searchBox.Font=Enum.Font.Gotham; searchBox.TextSize=11; searchBox.ClearTextOnFocus=false
-searchBox.Parent=ctrlBar
+searchBox.Parent=ctrlRow
 do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,5);c.Parent=searchBox end
 
-local ctrlBtnData = {
-    {txt="▶ OUT", x=167, w=46, col=Color3.fromRGB(40,90,180)},
-    {txt="◀ IN",  x=217, w=40, col=Color3.fromRGB(35,140,80)},
-    {txt="⏸",     x=261, w=28, col=Color3.fromRGB(160,110,30)},
-    {txt="🗑",     x=293, w=28, col=Color3.fromRGB(140,40,40)},
-}
-local ctrlBtns = {}
-for _, d in ipairs(ctrlBtnData) do
-    local b=Instance.new("TextButton")
-    b.Size=UDim2.new(0,d.w,0,24); b.Position=UDim2.new(0,d.x,0.5,-12)
-    b.BackgroundColor3=d.col; b.BorderSizePixel=0
-    b.Text=d.txt; b.TextColor3=Color3.fromRGB(255,255,255)
-    b.Font=Enum.Font.GothamBold; b.TextSize=11; b.Parent=ctrlBar
-    do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,5);c.Parent=b end
-    table.insert(ctrlBtns, b)
-end
-local btnToggleOut, btnToggleIn, btnPause, btnClearLog = table.unpack(ctrlBtns)
+local pauseBtn = mkBtn(ctrlRow,-148,60, "⏸ Pause", Color3.fromRGB(160,120,30))
+local clearBtn = mkBtn(ctrlRow,-84, 50, "🗑 Clear", Color3.fromRGB(140,40,40))
+local countLbl2=Instance.new("TextLabel")
+countLbl2.Size=UDim2.new(0,70,1,0); countLbl2.Position=UDim2.new(1,-76,0,0)
+countLbl2.BackgroundTransparency=1; countLbl2.Text="0"
+countLbl2.TextColor3=Color3.fromRGB(90,90,110); countLbl2.Font=Enum.Font.Gotham
+countLbl2.TextSize=10; countLbl2.TextXAlignment=Enum.TextXAlignment.Right; countLbl2.Parent=ctrlRow
 
-local countLbl=Instance.new("TextLabel")
-countLbl.Size=UDim2.new(0,100,1,0); countLbl.Position=UDim2.new(1,-105,0,0)
-countLbl.BackgroundTransparency=1; countLbl.Text="0 entries"
-countLbl.TextColor3=Color3.fromRGB(90,90,110); countLbl.Font=Enum.Font.Gotham
-countLbl.TextSize=10; countLbl.TextXAlignment=Enum.TextXAlignment.Right
-countLbl.Parent=ctrlBar
+local divBar=Instance.new("Frame")
+divBar.Size=UDim2.new(1,0,0,1); divBar.Position=UDim2.new(0,0,0,98)
+divBar.BackgroundColor3=Color3.fromRGB(38,38,50); divBar.BorderSizePixel=0; divBar.Parent=main
 
--- ── Log Scroll ─────────────────────────────────────────────────
-local logScroll=Instance.new("ScrollingFrame")
-logScroll.Size=UDim2.new(1,-10,0,LOG_H); logScroll.Position=UDim2.new(0,5,0,82)
-logScroll.BackgroundColor3=Color3.fromRGB(9,9,12); logScroll.BorderSizePixel=0
-logScroll.ScrollBarThickness=4; logScroll.ScrollBarImageColor3=Color3.fromRGB(70,70,100)
-logScroll.CanvasSize=UDim2.new(0,0,0,0); logScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
-logScroll.ElasticBehavior=Enum.ElasticBehavior.Never; logScroll.Parent=main
-do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,8);c.Parent=logScroll end
+-- scroll frame for entries
+local LOG_SCROLL_H = H - 99 - 130
+local scroll=Instance.new("ScrollingFrame")
+scroll.Size=UDim2.new(1,0,0,LOG_SCROLL_H); scroll.Position=UDim2.new(0,0,0,99)
+scroll.BackgroundColor3=Color3.fromRGB(18,18,24); scroll.BorderSizePixel=0
+scroll.ScrollBarThickness=3; scroll.ScrollBarImageColor3=Color3.fromRGB(80,80,110)
+scroll.CanvasSize=UDim2.new(0,0,0,0); scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
+scroll.Parent=main
 
-local listLayout=Instance.new("UIListLayout")
-listLayout.SortOrder=Enum.SortOrder.LayoutOrder; listLayout.Padding=UDim.new(0,1)
-listLayout.Parent=logScroll
+local layout=Instance.new("UIListLayout")
+layout.SortOrder=Enum.SortOrder.LayoutOrder; layout.Padding=UDim.new(0,1); layout.Parent=scroll
 
--- ── Code Panel ─────────────────────────────────────────────────
-local codeFrame=Instance.new("Frame")
-codeFrame.Size=UDim2.new(1,-10,0,CODE_H); codeFrame.Position=UDim2.new(0,5,0,CODE_Y)
-codeFrame.BackgroundColor3=Color3.fromRGB(13,13,18); codeFrame.BorderSizePixel=0
-codeFrame.Parent=main
-do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,8);c.Parent=codeFrame end
+-- Code panel at bottom
+local CODE_Y = H - 128
+local codePanel=Instance.new("Frame")
+codePanel.Size=UDim2.new(1,0,0,128); codePanel.Position=UDim2.new(0,0,0,CODE_Y)
+codePanel.BackgroundColor3=Color3.fromRGB(14,14,20); codePanel.BorderSizePixel=0; codePanel.Parent=main
 
-local codeTopBar=Instance.new("Frame")
-codeTopBar.Size=UDim2.new(1,0,0,26); codeTopBar.BackgroundColor3=Color3.fromRGB(19,19,28)
-codeTopBar.BorderSizePixel=0; codeTopBar.Parent=codeFrame
-do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,8);c.Parent=codeTopBar end
+local codePanelTop=Instance.new("Frame")
+codePanelTop.Size=UDim2.new(1,0,0,26); codePanelTop.BackgroundColor3=Color3.fromRGB(22,22,32)
+codePanelTop.BorderSizePixel=0; codePanelTop.Parent=codePanel
+do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,6);c.Parent=codePanelTop end
 
-local codeTitleLbl=Instance.new("TextLabel")
-codeTitleLbl.Size=UDim2.new(1,-160,1,0); codeTitleLbl.Position=UDim2.new(0,8,0,0)
-codeTitleLbl.BackgroundTransparency=1; codeTitleLbl.Text="📄 Code  —  click an entry"
-codeTitleLbl.TextColor3=Color3.fromRGB(130,130,170); codeTitleLbl.Font=Enum.Font.Gotham
-codeTitleLbl.TextSize=10; codeTitleLbl.TextXAlignment=Enum.TextXAlignment.Left
-codeTitleLbl.Parent=codeTopBar
+local codeTitle=Instance.new("TextLabel")
+codeTitle.Size=UDim2.new(1,-180,1,0); codeTitle.Position=UDim2.new(0,8,0,0)
+codeTitle.BackgroundTransparency=1; codeTitle.Text="Code"
+codeTitle.TextColor3=Color3.fromRGB(140,140,180); codeTitle.Font=Enum.Font.Gotham
+codeTitle.TextSize=10; codeTitle.TextXAlignment=Enum.TextXAlignment.Left; codeTitle.Parent=codePanelTop
 
-local function mkCodeBtn(xOff, txt, col)
-    local b=Instance.new("TextButton")
-    b.Size=UDim2.new(0,70,0,20); b.Position=UDim2.new(1,xOff,0.5,-10)
-    b.BackgroundColor3=col; b.BorderSizePixel=0
-    b.Text=txt; b.TextColor3=Color3.fromRGB(255,255,255)
-    b.Font=Enum.Font.GothamBold; b.TextSize=10; b.Parent=codeTopBar
-    do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,5);c.Parent=b end
-    return b
-end
-local codeReplayBtn = mkCodeBtn(-154, "▶ Replay", Color3.fromRGB(40,130,200))
-local codeCopyBtn   = mkCodeBtn(-80,  "📋 Copy",  Color3.fromRGB(60,60,100))
+local replayBtn=mkBtn(codePanelTop,-172,70,"▶ Replay",Color3.fromRGB(35,90,180))
+local copyBtn  =mkBtn(codePanelTop,-98, 64,"📋 Copy", Color3.fromRGB(55,55,80))
+replayBtn.Visible=false
 
 local codeBox=Instance.new("TextBox")
-codeBox.Size=UDim2.new(1,-8,1,-30); codeBox.Position=UDim2.new(0,4,0,28)
+codeBox.Size=UDim2.new(1,-10,0,92); codeBox.Position=UDim2.new(0,5,0,30)
 codeBox.BackgroundTransparency=1
-codeBox.Text="-- click a log entry to view generated code"
-codeBox.TextColor3=Color3.fromRGB(130,200,140); codeBox.Font=Enum.Font.Code
+codeBox.Text="-- select an entry"
+codeBox.TextColor3=Color3.fromRGB(120,200,130); codeBox.Font=Enum.Font.Code
 codeBox.TextSize=11; codeBox.ClearTextOnFocus=false; codeBox.MultiLine=true
 codeBox.TextXAlignment=Enum.TextXAlignment.Left; codeBox.TextYAlignment=Enum.TextYAlignment.Top
-codeBox.TextWrapped=true; codeBox.Parent=codeFrame
+codeBox.TextWrapped=true; codeBox.Parent=codePanel
 
--- divider between scroll and code
 do
     local dv=Instance.new("Frame")
-    dv.Size=UDim2.new(1,-10,0,1); dv.Position=UDim2.new(0,5,0,CODE_Y-4)
-    dv.BackgroundColor3=Color3.fromRGB(35,35,50); dv.BorderSizePixel=0; dv.Parent=main
+    dv.Size=UDim2.new(1,0,0,1); dv.Position=UDim2.new(0,0,0,CODE_Y-1)
+    dv.BackgroundColor3=Color3.fromRGB(38,38,50); dv.BorderSizePixel=0; dv.Parent=main
 end
+do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,10);c.Parent=codePanel end
 
 -- ───────────────────────────────────────────────────────────────
---  ENTRY CREATION
+--  SELECTED ENTRY STATE
 -- ───────────────────────────────────────────────────────────────
-local OUT_COL   = Color3.fromRGB(50,100,220)
-local IN_COL    = Color3.fromRGB(40,170,100)
-local SEL_COL   = Color3.fromRGB(35,35,55)
-local NORM_COL  = Color3.fromRGB(14,14,18)
-local ALT_COL   = Color3.fromRGB(16,16,22)
-local entryCount = 0
+local selectedEntry = nil
 
-local function selectEntry(idx)
+local function setSelected(entry)
     -- deselect old
-    if selected and entryUI[selected] then
-        entryUI[selected].BackgroundColor3 = (selected%2==0) and ALT_COL or NORM_COL
+    if selectedEntry and selectedEntry.rowFrame then
+        selectedEntry.rowFrame.BackgroundColor3 = Color3.fromRGB(24,24,32)
     end
-    selected = idx
-    if not idx then
-        codeBox.Text = "-- click a log entry to view generated code"
-        codeTitleLbl.Text = "📄 Code  —  click an entry"
-        codeReplayBtn.Visible = false
+    selectedEntry = entry
+    if not entry then
+        codeBox.Text = "-- select an entry"
+        codeTitle.Text = "Code"
+        replayBtn.Visible = false
         return
     end
-    if entryUI[idx] then entryUI[idx].BackgroundColor3 = SEL_COL end
-    local e = logData[idx]
-    codeBox.Text = buildCode(e)
-    codeTitleLbl.Text = "📄 " .. (e.dir=="OUT" and "▶ OUT" or "◀ IN") .. "  " .. e.name
-    codeReplayBtn.Visible = (e.dir == "OUT")
+    if entry.rowFrame then
+        entry.rowFrame.BackgroundColor3 = Color3.fromRGB(38,38,58)
+    end
+    codeBox.Text = buildCode(entry)
+    codeTitle.Text = (entry.method=="OnClientEvent" and "◀ IN  " or "▶ OUT  ") .. entry.shortName
+    replayBtn.Visible = (entry.method ~= "OnClientEvent")
 end
 
-local function makeEntryRow(idx, entry)
-    local row=Instance.new("TextButton")
-    row.Name="Entry"..idx; row.Size=UDim2.new(1,0,0,36)
-    row.LayoutOrder=idx; row.BorderSizePixel=0
-    row.BackgroundColor3 = (idx%2==0) and ALT_COL or NORM_COL
-    row.AutoButtonColor=false; row.Text=""; row.Parent=logScroll
+-- ───────────────────────────────────────────────────────────────
+--  BUILD / REBUILD ENTRY ROW
+-- ───────────────────────────────────────────────────────────────
+local filterText = ""
+local function nameMatches(entry)
+    if filterText == "" then return true end
+    return entry.name:lower():find(filterText:lower(), 1, true) ~= nil
+end
 
-    -- direction badge
-    local badge=Instance.new("Frame")
-    badge.Size=UDim2.new(0,34,1,-6); badge.Position=UDim2.new(0,3,0,3)
-    badge.BackgroundColor3=entry.dir=="OUT" and OUT_COL or IN_COL
-    badge.BorderSizePixel=0; badge.Parent=row
-    do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,5);c.Parent=badge end
+local function buildRow(entry, order)
+    if entry.rowFrame then entry.rowFrame:Destroy() end
+    if not nameMatches(entry) then entry.rowFrame = nil; return end
 
-    local badgeLbl=Instance.new("TextLabel")
-    badgeLbl.Size=UDim2.new(1,0,0.5,0); badgeLbl.Position=UDim2.new(0,0,0,0)
-    badgeLbl.BackgroundTransparency=1
-    badgeLbl.Text=entry.dir=="OUT" and "OUT" or " IN"
-    badgeLbl.TextColor3=Color3.fromRGB(255,255,255); badgeLbl.Font=Enum.Font.GothamBold
-    badgeLbl.TextSize=9; badgeLbl.Parent=badge
+    local args = entry.args
+    local expanded = entry.expanded
 
-    local timeLbl=Instance.new("TextLabel")
-    timeLbl.Size=UDim2.new(1,0,0.5,0); timeLbl.Position=UDim2.new(0,0,0.5,0)
-    timeLbl.BackgroundTransparency=1; timeLbl.Text=entry.timeStr
-    timeLbl.TextColor3=Color3.fromRGB(200,200,200); timeLbl.Font=Enum.Font.Gotham
-    timeLbl.TextSize=8; timeLbl.Parent=badge
+    local totalH = ITEM_H + (expanded and math.max(#args,1)*ARG_H + 4 or 0)
+
+    local row=Instance.new("Frame")
+    row.Size=UDim2.new(1,0,0,totalH); row.LayoutOrder=order
+    row.BackgroundColor3 = (selectedEntry == entry) and Color3.fromRGB(38,38,58) or Color3.fromRGB(24,24,32)
+    row.BorderSizePixel=0; row.ClipsDescendants=true; row.Parent=scroll
+    entry.rowFrame = row
+
+    -- lightning icon
+    local icon=Instance.new("TextLabel")
+    icon.Size=UDim2.new(0,20,0,ITEM_H); icon.Position=UDim2.new(0,4,0,0)
+    icon.BackgroundTransparency=1; icon.Text="⚡"
+    icon.TextColor3=Color3.fromRGB(255,200,50); icon.Font=Enum.Font.GothamBold
+    icon.TextSize=14; icon.Parent=row
 
     -- remote name
     local nameLbl=Instance.new("TextLabel")
-    nameLbl.Size=UDim2.new(0,145,0,17); nameLbl.Position=UDim2.new(0,41,0,2)
+    nameLbl.Size=UDim2.new(1,-130,0,22); nameLbl.Position=UDim2.new(0,28,0,4)
     nameLbl.BackgroundTransparency=1; nameLbl.Text=entry.shortName
-    nameLbl.TextColor3=entry.dir=="OUT" and Color3.fromRGB(150,190,255) or Color3.fromRGB(130,220,160)
-    nameLbl.Font=Enum.Font.GothamBold; nameLbl.TextSize=11
-    nameLbl.TextXAlignment=Enum.TextXAlignment.Left; nameLbl.TextTruncate=Enum.TextTruncate.AtEnd
-    nameLbl.Parent=row
+    nameLbl.TextColor3=Color3.fromRGB(220,220,230); nameLbl.Font=Enum.Font.GothamBold
+    nameLbl.TextSize=12; nameLbl.TextXAlignment=Enum.TextXAlignment.Left
+    nameLbl.TextTruncate=Enum.TextTruncate.AtEnd; nameLbl.Parent=row
 
-    -- method label (e.g. FireServer / InvokeServer)
-    local methLbl=Instance.new("TextLabel")
-    methLbl.Size=UDim2.new(0,145,0,13); methLbl.Position=UDim2.new(0,41,0,19)
-    methLbl.BackgroundTransparency=1; methLbl.Text=entry.method
-    methLbl.TextColor3=Color3.fromRGB(90,90,120); methLbl.Font=Enum.Font.Gotham
-    methLbl.TextSize=9; methLbl.TextXAlignment=Enum.TextXAlignment.Left; methLbl.Parent=row
+    -- method label
+    local mLbl=Instance.new("TextLabel")
+    mLbl.Size=UDim2.new(1,-130,0,14); mLbl.Position=UDim2.new(0,28,0,26)
+    mLbl.BackgroundTransparency=1; mLbl.Text=entry.method
+    mLbl.TextColor3=Color3.fromRGB(90,90,120); mLbl.Font=Enum.Font.Gotham
+    mLbl.TextSize=9; mLbl.TextXAlignment=Enum.TextXAlignment.Left; mLbl.Parent=row
 
-    -- args summary
-    local argsLbl=Instance.new("TextLabel")
-    argsLbl.Size=UDim2.new(1,-235,1,0); argsLbl.Position=UDim2.new(0,190,0,0)
-    argsLbl.BackgroundTransparency=1; argsLbl.Text=entry.argStr
-    argsLbl.TextColor3=Color3.fromRGB(190,190,200); argsLbl.Font=Enum.Font.Code
-    argsLbl.TextSize=10; argsLbl.TextXAlignment=Enum.TextXAlignment.Left
-    argsLbl.TextTruncate=Enum.TextTruncate.AtEnd; argsLbl.Parent=row
-
-    -- replay btn (OUT only)
-    if entry.dir == "OUT" then
-        local rb=Instance.new("TextButton")
-        rb.Size=UDim2.new(0,22,0,22); rb.Position=UDim2.new(1,-48,0.5,-11)
-        rb.BackgroundColor3=Color3.fromRGB(35,80,160); rb.BorderSizePixel=0
-        rb.Text="▶"; rb.TextColor3=Color3.fromRGB(255,255,255)
-        rb.Font=Enum.Font.GothamBold; rb.TextSize=11; rb.Parent=row
-        do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,5);c.Parent=rb end
-        rb.MouseButton1Click:Connect(function()
-            local r=entry.remote
-            if r and r.Parent then
-                pcall(function() r:FireServer(table.unpack(entry.args)) end)
-            end
-        end)
+    -- count badge
+    if entry.count > 1 then
+        local cb=Instance.new("Frame")
+        cb.Size=UDim2.new(0,34,0,18); cb.Position=UDim2.new(1,-80,0,6)
+        cb.BackgroundColor3=Color3.fromRGB(50,80,160); cb.BorderSizePixel=0; cb.Parent=row
+        do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,9);c.Parent=cb end
+        local cLbl=Instance.new("TextLabel")
+        cLbl.Size=UDim2.new(1,0,1,0); cLbl.BackgroundTransparency=1
+        cLbl.Text="x"..entry.count; cLbl.TextColor3=Color3.fromRGB(255,255,255)
+        cLbl.Font=Enum.Font.GothamBold; cLbl.TextSize=10; cLbl.Parent=cb
     end
 
-    -- select on click
-    row.MouseButton1Click:Connect(function() selectEntry(idx) end)
+    -- time label
+    local tLbl=Instance.new("TextLabel")
+    tLbl.Size=UDim2.new(0,70,0,14); tLbl.Position=UDim2.new(1,-75,0,25)
+    tLbl.BackgroundTransparency=1; tLbl.Text=entry.timeStr
+    tLbl.TextColor3=Color3.fromRGB(80,80,100); tLbl.Font=Enum.Font.Gotham
+    tLbl.TextSize=9; tLbl.TextXAlignment=Enum.TextXAlignment.Right; tLbl.Parent=row
 
-    return row
+    -- arg count hint
+    local argHint=Instance.new("TextLabel")
+    argHint.Size=UDim2.new(0,60,0,14); argHint.Position=UDim2.new(1,-140,0,25)
+    argHint.BackgroundTransparency=1
+    argHint.Text=#args.." arg"..(#args==1 and "" or "s")
+    argHint.TextColor3=Color3.fromRGB(80,80,100); argHint.Font=Enum.Font.Gotham
+    argHint.TextSize=9; argHint.TextXAlignment=Enum.TextXAlignment.Right; argHint.Parent=row
+
+    -- expand arrow
+    local arrow=Instance.new("TextLabel")
+    arrow.Size=UDim2.new(0,16,0,ITEM_H); arrow.Position=UDim2.new(1,-18,0,0)
+    arrow.BackgroundTransparency=1; arrow.Text=expanded and "▲" or "▼"
+    arrow.TextColor3=Color3.fromRGB(80,80,110); arrow.Font=Enum.Font.GothamBold
+    arrow.TextSize=10; arrow.Parent=row
+
+    -- expanded arg rows
+    if expanded then
+        local argList = #args > 0 and args or { nil }
+        for i, v in ipairs(argList) do
+            local aRow=Instance.new("Frame")
+            aRow.Size=UDim2.new(1,-6,0,ARG_H); aRow.Position=UDim2.new(0,3,0,ITEM_H+(i-1)*ARG_H+2)
+            aRow.BackgroundColor3=Color3.fromRGB(18,18,26); aRow.BorderSizePixel=0; aRow.Parent=row
+            do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,4);c.Parent=aRow end
+
+            local numLbl=Instance.new("TextLabel")
+            numLbl.Size=UDim2.new(0,16,1,0); numLbl.Position=UDim2.new(0,3,0,0)
+            numLbl.BackgroundTransparency=1; numLbl.Text=tostring(i)
+            numLbl.TextColor3=Color3.fromRGB(80,80,100); numLbl.Font=Enum.Font.Gotham
+            numLbl.TextSize=10; numLbl.Parent=aRow
+
+            local valLbl=Instance.new("TextLabel")
+            valLbl.Size=UDim2.new(1,-90,1,0); valLbl.Position=UDim2.new(0,22,0,0)
+            valLbl.BackgroundTransparency=1; valLbl.Text=argVal(v)
+            valLbl.TextColor3=Color3.fromRGB(200,200,210); valLbl.Font=Enum.Font.Code
+            valLbl.TextSize=10; valLbl.TextXAlignment=Enum.TextXAlignment.Left
+            valLbl.TextTruncate=Enum.TextTruncate.AtEnd; valLbl.Parent=aRow
+
+            -- type badge
+            local typ = argType(v)
+            local typBadge=Instance.new("Frame")
+            typBadge.Size=UDim2.new(0,66,0,14); typBadge.Position=UDim2.new(1,-70,0.5,-7)
+            typBadge.BackgroundColor3=Color3.fromRGB(28,28,40); typBadge.BorderSizePixel=0; typBadge.Parent=aRow
+            do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,4);c.Parent=typBadge end
+            local typLbl=Instance.new("TextLabel")
+            typLbl.Size=UDim2.new(1,0,1,0); typLbl.BackgroundTransparency=1; typLbl.Text=typ
+            typLbl.TextColor3=typeColor(typ); typLbl.Font=Enum.Font.GothamBold; typLbl.TextSize=9
+            typLbl.Parent=typBadge
+        end
+    end
+
+    -- click to select / expand
+    local clickTarget=Instance.new("TextButton")
+    clickTarget.Size=UDim2.new(1,-18,0,ITEM_H); clickTarget.BackgroundTransparency=1
+    clickTarget.Text=""; clickTarget.Parent=row
+    clickTarget.MouseButton1Click:Connect(function()
+        setSelected(entry)
+    end)
+
+    -- arrow click to expand/collapse
+    local arrowBtn=Instance.new("TextButton")
+    arrowBtn.Size=UDim2.new(0,18,0,ITEM_H); arrowBtn.Position=UDim2.new(1,-18,0,0)
+    arrowBtn.BackgroundTransparency=1; arrowBtn.Text=""; arrowBtn.Parent=row
+    arrowBtn.MouseButton1Click:Connect(function()
+        entry.expanded = not entry.expanded
+        -- rebuild this entry
+        local list = lists[activeTab]
+        for i, e in ipairs(list) do
+            if e == entry then buildRow(e, i); break end
+        end
+        task.defer(function()
+            scroll.CanvasPosition = Vector2.new(0, scroll.AbsoluteCanvasSize.Y)
+        end)
+    end)
+end
+
+-- ───────────────────────────────────────────────────────────────
+--  REBUILD ALL ROWS
+-- ───────────────────────────────────────────────────────────────
+local function rebuildAll()
+    -- destroy all existing rows
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child:IsA("Frame") or child:IsA("TextButton") then child:Destroy() end
+    end
+    local list = lists[activeTab]
+    for i, e in ipairs(list) do
+        buildRow(e, i)
+    end
+    countLbl2.Text = #list .. ""
 end
 
 -- ───────────────────────────────────────────────────────────────
 --  LOG FUNCTION
 -- ───────────────────────────────────────────────────────────────
-local function shouldShow(entry)
-    if paused then return false end
-    if entry.dir=="OUT" and not showOut then return false end
-    if entry.dir=="IN"  and not showIn  then return false end
-    if filterText ~= "" then
-        if not entry.name:lower():find(filterText:lower(), 1, true) then return false end
-    end
-    return true
-end
-
-local function logRemote(dir, remote, args, method)
+local function logCall(dir, remote, args, method)
     if paused then return end
+    local list = lists[dir]
 
     local now = os.date("*t")
-    local timeStr = ("%02d:%02d:%02d"):format(now.hour, now.min, now.sec)
+    local timeStr = ("Time: %02d:%02d:%02d"):format(now.hour,now.min,now.sec)
     local fullName = pcall(function() return remote:GetFullName() end) and remote:GetFullName() or remote.Name
-    -- shorten: show last 2 path segments
-    local parts = {}
-    for p in fullName:gmatch("[^%.]+") do parts[#parts+1] = p end
-    local shortName = #parts >= 2 and (parts[#parts-1].."."..parts[#parts]) or parts[#parts] or remote.Name
+    local parts={}; for p in fullName:gmatch("[^%.]+") do parts[#parts+1]=p end
+    local shortName = #parts>=2 and (parts[#parts-1].."."..parts[#parts]) or (parts[#parts] or remote.Name)
+
+    -- check if same remote fired recently (group repeats)
+    local last = list[#list]
+    if last and last.method==method and last.name==fullName then
+        last.count = last.count + 1
+        last.timeStr = timeStr
+        last.args = args  -- update to latest args
+        -- rebuild only that row
+        buildRow(last, #list)
+        if selectedEntry == last then
+            codeBox.Text = buildCode(last)
+        end
+        return
+    end
+
+    -- trim oldest
+    if #list >= MAX_LOG then
+        local oldest = table.remove(list, 1)
+        if oldest.rowFrame then oldest.rowFrame:Destroy() end
+        if selectedEntry == oldest then setSelected(nil) end
+    end
 
     local entry = {
-        dir      = dir,
-        remote   = remote,
-        args     = args,
-        method   = method,
-        name     = fullName,
-        shortName= shortName,
-        timeStr  = timeStr,
-        argStr   = fmtArgs(args),
+        remote    = remote,
+        name      = fullName,
+        shortName = shortName,
+        method    = method,
+        args      = args,
+        count     = 1,
+        timeStr   = timeStr,
+        expanded  = false,
+        rowFrame  = nil,
     }
+    table.insert(list, entry)
 
-    -- trim oldest if over limit
-    if #logData >= MAX_LOG then
-        local oldest = entryUI[1]
-        if oldest then oldest:Destroy() end
-        table.remove(logData, 1)
-        table.remove(entryUI, 1)
-        -- reindex layout orders
-        for i, f in ipairs(entryUI) do
-            f.LayoutOrder = i
-            f.BackgroundColor3 = (i%2==0) and ALT_COL or NORM_COL
-        end
-        if selected then selected = selected - 1 end
-    end
-
-    table.insert(logData, entry)
-    local idx = #logData
-
-    if shouldShow(entry) then
-        local row = makeEntryRow(idx, entry)
-        entryUI[idx] = row
-        -- auto-scroll to bottom
+    if activeTab == dir then
+        buildRow(entry, #list)
+        countLbl2.Text = #list..""
         task.defer(function()
-            logScroll.CanvasPosition = Vector2.new(0, logScroll.AbsoluteCanvasSize.Y)
+            scroll.CanvasPosition = Vector2.new(0, scroll.AbsoluteCanvasSize.Y)
         end)
-    else
-        -- insert placeholder so indices stay aligned
-        local placeholder = Instance.new("Frame")
-        placeholder.Size=UDim2.new(1,0,0,0); placeholder.Visible=false
-        placeholder.LayoutOrder=idx; placeholder.BackgroundTransparency=1
-        placeholder.Parent=logScroll
-        entryUI[idx] = placeholder
     end
-
-    entryCount = entryCount + 1
-    countLbl.Text = #logData .. " entries"
 end
 
 -- ───────────────────────────────────────────────────────────────
---  OUTGOING HOOK  (hookmetamethod)
+--  OUTGOING HOOK
 -- ───────────────────────────────────────────────────────────────
 if hasHook then
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
         local m = getnamecallmethod()
-        if (m == "FireServer" or m == "InvokeServer") then
-            if typeof(self) == "Instance" and
-               (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
-                task.defer(logRemote, "OUT", self, {...}, m)
+        if m=="FireServer" or m=="InvokeServer" then
+            if typeof(self)=="Instance" and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
+                task.defer(logCall, "OUT", self, {...}, m)
             end
         end
         return oldNamecall(self, ...)
@@ -475,132 +502,90 @@ if hasHook then
 end
 
 -- ───────────────────────────────────────────────────────────────
---  INCOMING HOOK  (connect to all RemoteEvents)
+--  INCOMING HOOK
 -- ───────────────────────────────────────────────────────────────
-local hookedIn = {}
-
-local function hookIncoming(remote)
+local function hookIn(remote)
     if hookedIn[remote] then return end
     hookedIn[remote] = true
     if remote:IsA("RemoteEvent") then
         remote.OnClientEvent:Connect(function(...)
-            logRemote("IN", remote, {...}, "OnClientEvent")
+            logCall("IN", remote, {...}, "OnClientEvent")
         end)
+    elseif remote:IsA("RemoteFunction") then
+        -- can't easily hook OnClientInvoke without overwriting it
     end
 end
 
 task.spawn(function()
     for _, v in ipairs(game:GetDescendants()) do
-        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
-            hookIncoming(v)
-        end
+        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then hookIn(v) end
     end
     game.DescendantAdded:Connect(function(v)
-        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
-            task.defer(hookIncoming, v)
-        end
+        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then task.defer(hookIn, v) end
     end)
 end)
 
 -- ───────────────────────────────────────────────────────────────
---  FILTER REBUILD  (called when search/toggle changes)
+--  TAB + CONTROL HANDLERS
 -- ───────────────────────────────────────────────────────────────
-local function rebuildLog()
-    for _, f in ipairs(entryUI) do f:Destroy() end
-    entryUI = {}
-    selected = nil
-    codeBox.Text = "-- click a log entry to view generated code"
-    codeTitleLbl.Text = "📄 Code  —  click an entry"
-
-    for i, entry in ipairs(logData) do
-        if shouldShow(entry) then
-            local row = makeEntryRow(i, entry)
-            entryUI[i] = row
-        else
-            local ph = Instance.new("Frame")
-            ph.Size=UDim2.new(1,0,0,0); ph.Visible=false
-            ph.LayoutOrder=i; ph.BackgroundTransparency=1; ph.Parent=logScroll
-            entryUI[i] = ph
-        end
-    end
-    countLbl.Text = #logData .. " entries"
+local function setTab(tab)
+    activeTab = tab
+    tabOut.BackgroundColor3 = tab=="OUT" and Color3.fromRGB(52,90,200) or Color3.fromRGB(35,35,45)
+    tabIn.BackgroundColor3  = tab=="IN"  and Color3.fromRGB(35,140,80)  or Color3.fromRGB(35,35,45)
+    tabOut.TextColor3 = tab=="OUT" and Color3.fromRGB(255,255,255) or Color3.fromRGB(160,160,160)
+    tabIn.TextColor3  = tab=="IN"  and Color3.fromRGB(255,255,255) or Color3.fromRGB(160,160,160)
+    setSelected(nil)
+    rebuildAll()
 end
 
--- ───────────────────────────────────────────────────────────────
---  CONTROL HANDLERS
--- ───────────────────────────────────────────────────────────────
+tabOut.MouseButton1Click:Connect(function() setTab("OUT") end)
+tabIn.MouseButton1Click:Connect(function()  setTab("IN")  end)
+setTab("OUT")  -- default
+
 searchBox:GetPropertyChangedSignal("Text"):Connect(function()
     filterText = searchBox.Text
-    rebuildLog()
+    rebuildAll()
 end)
 
-btnToggleOut.MouseButton1Click:Connect(function()
-    showOut = not showOut
-    btnToggleOut.BackgroundColor3 = showOut
-        and Color3.fromRGB(40,90,180)
-        or  Color3.fromRGB(50,50,60)
-    btnToggleOut.Text = showOut and "▶ OUT" or "▶ ---"
-    rebuildLog()
-end)
-
-btnToggleIn.MouseButton1Click:Connect(function()
-    showIn = not showIn
-    btnToggleIn.BackgroundColor3 = showIn
-        and Color3.fromRGB(35,140,80)
-        or  Color3.fromRGB(50,50,60)
-    btnToggleIn.Text = showIn and "◀ IN" or "◀ ---"
-    rebuildLog()
-end)
-
-btnPause.MouseButton1Click:Connect(function()
+pauseBtn.MouseButton1Click:Connect(function()
     paused = not paused
-    btnPause.Text = paused and "▶" or "⏸"
-    btnPause.BackgroundColor3 = paused
-        and Color3.fromRGB(46,160,80)
-        or  Color3.fromRGB(160,110,30)
+    pauseBtn.Text = paused and "▶ Resume" or "⏸ Pause"
+    pauseBtn.BackgroundColor3 = paused
+        and Color3.fromRGB(46,160,60)
+        or  Color3.fromRGB(160,120,30)
 end)
 
-btnClearLog.MouseButton1Click:Connect(function()
-    logData = {}
-    for _, f in ipairs(entryUI) do f:Destroy() end
-    entryUI = {}
-    selected = nil
-    entryCount = 0
-    countLbl.Text = "0 entries"
-    codeBox.Text = "-- click a log entry to view generated code"
-    codeTitleLbl.Text = "📄 Code  —  click an entry"
-    codeReplayBtn.Visible = false
+clearBtn.MouseButton1Click:Connect(function()
+    lists[activeTab] = {}
+    setSelected(nil)
+    rebuildAll()
 end)
 
-codeCopyBtn.MouseButton1Click:Connect(function()
-    local code = codeBox.Text
-    if code == "" or code:find("^%-%-") then return end
+copyBtn.MouseButton1Click:Connect(function()
+    if not selectedEntry then return end
+    local code = buildCode(selectedEntry)
     pcall(function() setclipboard(code) end)
-    codeCopyBtn.Text = "✓ Copied!"
-    task.delay(1.5, function() codeCopyBtn.Text = "📋 Copy" end)
+    copyBtn.Text = "✓ Copied!"
+    task.delay(1.5, function() copyBtn.Text = "📋 Copy" end)
 end)
 
-codeReplayBtn.MouseButton1Click:Connect(function()
-    if not selected then return end
-    local e = logData[selected]
-    if not e or e.dir ~= "OUT" then return end
-    local r = e.remote
+replayBtn.MouseButton1Click:Connect(function()
+    if not selectedEntry or selectedEntry.method=="OnClientEvent" then return end
+    local r = selectedEntry.remote
     if r and r.Parent then
-        pcall(function() r:FireServer(table.unpack(e.args)) end)
-        codeReplayBtn.Text = "✓ Fired!"
-        task.delay(1, function() codeReplayBtn.Text = "▶ Replay" end)
+        pcall(function() r:FireServer(table.unpack(selectedEntry.args)) end)
+        replayBtn.Text = "✓ Fired!"
+        task.delay(1.2, function() replayBtn.Text = "▶ Replay" end)
     end
 end)
 
-codeReplayBtn.Visible = false
-
--- ── Minimize / Close ───────────────────────────────────────────
+-- ── Minimize / Close ──────────────────────────────────────────
 local minimized = false
 minBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
-    main.Size = minimized and UDim2.new(0,W,0,38) or UDim2.new(0,W,0,H)
+    main.Size = minimized and UDim2.new(0,W,0,36) or UDim2.new(0,W,0,H)
     minBtn.Text = minimized and "+" or "−"
 end)
 closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
 
-print("[RemoteSpy] Loaded. Hook: " .. (hasHook and "✓ OUT+IN" or "✗ IN only"))
+print("[RemoteSpy v2] Hook:" .. (hasHook and "✓" or "✗"))
