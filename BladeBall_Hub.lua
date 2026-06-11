@@ -27,33 +27,31 @@ local cfg = {
 }
 
 -- ──────────────────────────────────────────────────────────────
---  REMOTE DETECTION
+--  REMOTES
+--  Parry in Blade Ball is triggered by firing the CLIENT signal
+--  ParryAttemptAll.OnClientEvent with (ParticleShine nilInstance, Character).
+--  This is what the server broadcasts to all clients on a valid parry;
+--  firing it locally also registers the parry server-side.
 -- ──────────────────────────────────────────────────────────────
-local Remotes    = ReplicatedStorage:WaitForChild("Remotes", 10)
-local BallAdded  = Remotes and Remotes:FindFirstChild("BallAdded")
-local ParryRemote= nil
+local Remotes         = ReplicatedStorage:WaitForChild("Remotes", 10)
+local BallAdded       = Remotes and Remotes:FindFirstChild("BallAdded")
+local ParryAttemptAll = Remotes and Remotes:FindFirstChild("ParryAttemptAll")
 
--- Try common parry remote names
-if Remotes then
-    for _, name in ipairs({"Parry","Deflect","Block","Reflect","Swing","Hit","Slash"}) do
-        local r = Remotes:FindFirstChild(name)
-        if r then ParryRemote = r; break end
+-- Cache the ParticleShine nil-instance once so we don't scan every frame
+local cachedParticleShine = nil
+local function getParticleShine()
+    if cachedParticleShine and cachedParticleShine.Parent == nil then
+        -- still a nil-instance — check it's still valid
+        return cachedParticleShine
     end
-end
-
--- Fallback: listen for any RemoteEvent fired from a client parry input
--- so we can capture the real name at runtime
-if not ParryRemote and Remotes then
-    task.spawn(function()
-        for _, child in ipairs(Remotes:GetChildren()) do
-            if child:IsA("RemoteEvent") and child.Name ~= "BallAdded" then
-                -- hook first unknown remote as a candidate parry
-                if not ParryRemote then
-                    ParryRemote = child
-                end
-            end
+    if not getnilinstances then return nil end
+    for _, obj in ipairs(getnilinstances()) do
+        if obj.Name == "ParticleShine" then
+            cachedParticleShine = obj
+            return obj
         end
-    end)
+    end
+    return nil
 end
 
 -- ──────────────────────────────────────────────────────────────
@@ -114,13 +112,20 @@ end
 --  PARRY LOGIC
 -- ──────────────────────────────────────────────────────────────
 local function fireParry()
-    if not ParryRemote then return end
+    if not ParryAttemptAll then return end
     local now = tick()
     if now - lastParryTime < 0.3 then return end  -- global cooldown
     lastParryTime = now
 
     task.delay(cfg.ParryDelay, function()
-        pcall(function() ParryRemote:FireServer() end)
+        local char = LocalPlayer.Character
+        if not char then return end
+        local shine = getParticleShine()
+        -- firesignal triggers all OnClientEvent listeners locally,
+        -- which is how Blade Ball registers a valid parry.
+        pcall(function()
+            firesignal(ParryAttemptAll.OnClientEvent, shine, char)
+        end)
     end)
 end
 
@@ -430,17 +435,9 @@ task.spawn(function()
     while task.wait(0.5) do
         if not screenGui.Parent then break end
 
-        -- try to find parry remote if still missing
-        if not ParryRemote and Remotes then
-            for _, name in ipairs({"Parry","Deflect","Block","Reflect","Swing","Hit","Slash"}) do
-                local r = Remotes:FindFirstChild(name)
-                if r then ParryRemote = r; break end
-            end
-        end
-
-        local remoteStatus = ParryRemote
-            and ("✅ Remote: " .. ParryRemote.Name)
-            or  "⚠️  Parry remote not found"
+        local remoteStatus = ParryAttemptAll
+            and "✅ ParryAttemptAll ready"
+            or  "⚠️  ParryAttemptAll not found"
 
         local count = 0
         for _ in pairs(activeBalls) do count = count + 1 end
@@ -495,4 +492,4 @@ end)
 -- ──────────────────────────────────────────────────────────────
 --  DONE
 -- ──────────────────────────────────────────────────────────────
-print("[BladeBall Hub] Loaded. Parry remote: " .. (ParryRemote and ParryRemote.Name or "not found yet"))
+print("[BladeBall Hub] Loaded. ParryAttemptAll: " .. (ParryAttemptAll and "found" or "NOT found"))
