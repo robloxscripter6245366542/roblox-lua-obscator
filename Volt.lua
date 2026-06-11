@@ -126,7 +126,8 @@ local paused    = false
 local activeTab = "OUT"   -- "OUT" | "IN"
 local filterTxt = ""
 local filterMode= "ALL"   -- "ALL" | "BLOCKED" | "IGNORED"
-local lists     = { OUT={}, IN={} }
+local lists        = { OUT={}, IN={} }
+local remoteTotals = {}   -- [fullName] = cumulative fire count (survives log clears)
 local hookedIn  = {}
 local selectedEntry = nil
 
@@ -343,6 +344,20 @@ local function setSelected(entry)
     replayBtn.Text = "↺  Replay"
 end
 
+-- Remote type → icon + color  (matches Cobalt's per-type visual identity)
+local REMOTE_ICON = {
+    RemoteEvent             = { icon="⚡", col=Color3.fromRGB(80,160,255)  },
+    RemoteFunction          = { icon="ƒ",  col=Color3.fromRGB(160,100,255) },
+    UnreliableRemoteEvent   = { icon="≈",  col=Color3.fromRGB(80,210,180)  },
+    BindableEvent           = { icon="◈",  col=Color3.fromRGB(255,180,60)  },
+    BindableFunction        = { icon="⬡",  col=Color3.fromRGB(255,120,80)  },
+}
+local function remoteIcon(entry)
+    local r = entry.remote
+    local cls = r and r.ClassName or ""
+    return REMOTE_ICON[cls] or { icon="⚡", col=Color3.fromRGB(160,160,160) }
+end
+
 -- ───────────────────────────────────────────────────────────────
 --  BUILD ROW
 -- ───────────────────────────────────────────────────────────────
@@ -379,17 +394,26 @@ local function buildRow(entry, order)
         bar.BackgroundColor3=Color3.fromRGB(220,60,60); bar.BorderSizePixel=0; bar.Parent=row
     end
 
-    -- lightning icon
+    -- remote type icon (Cobalt-style: per type)
+    local ri = remoteIcon(entry)
+    local iconBg=Instance.new("Frame")
+    iconBg.Size=UDim2.new(0,22,0,22); iconBg.Position=UDim2.new(0,5,0,12)
+    iconBg.BackgroundColor3=isBlocked and Color3.fromRGB(120,30,30)
+        or Color3.fromRGB(ri.col.R*0.2*255, ri.col.G*0.2*255, ri.col.B*0.2*255)
+    iconBg.BackgroundTransparency=0.3; iconBg.BorderSizePixel=0; iconBg.Parent=row
+    do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,5);c.Parent=iconBg end
+
     local icon=Instance.new("TextLabel")
-    icon.Size=UDim2.new(0,18,0,ITEM_H); icon.Position=UDim2.new(0,6,0,0)
+    icon.Size=UDim2.new(1,0,1,0)
     icon.BackgroundTransparency=1
-    icon.Text = isBlocked and "🚫" or (isIgnored and "👁" or "ϟ")
-    icon.TextColor3=Color3.fromRGB(190,120,255); icon.Font=Enum.Font.GothamBold
-    icon.TextSize=13; icon.Parent=row
+    icon.Text = isBlocked and "⊘" or (isIgnored and "◎" or ri.icon)
+    icon.TextColor3 = isBlocked and Color3.fromRGB(255,100,100)
+        or (isIgnored and Color3.fromRGB(120,100,160) or ri.col)
+    icon.Font=Enum.Font.GothamBold; icon.TextSize=12; icon.Parent=iconBg
 
     -- name
     local nameLbl=Instance.new("TextLabel")
-    nameLbl.Size=UDim2.new(1,-200,0,22); nameLbl.Position=UDim2.new(0,28,0,3)
+    nameLbl.Size=UDim2.new(1,-210,0,22); nameLbl.Position=UDim2.new(0,32,0,3)
     nameLbl.BackgroundTransparency=1; nameLbl.Text=entry.shortName
     local nameCol = isBlocked and Color3.fromRGB(255,110,110)
         or (isIgnored and Color3.fromRGB(100,90,120)
@@ -413,14 +437,26 @@ local function buildRow(entry, order)
     srcLbl.Font=Enum.Font.Gotham; srcLbl.TextSize=9
     srcLbl.TextXAlignment=Enum.TextXAlignment.Left; srcLbl.TextTruncate=Enum.TextTruncate.AtEnd; srcLbl.Parent=row
 
-    -- count badge
+    -- burst count badge  (x14 — current group repeat)
     if entry.count>1 then
-        local bg=Instance.new("Frame"); bg.Size=UDim2.new(0,32,0,16); bg.Position=UDim2.new(1,-168,0,5)
+        local bg=Instance.new("Frame"); bg.Size=UDim2.new(0,32,0,16); bg.Position=UDim2.new(1,-168,0,4)
         bg.BackgroundColor3=Color3.fromRGB(100,50,180); bg.BorderSizePixel=0; bg.Parent=row
         do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,8);c.Parent=bg end
         local cL=Instance.new("TextLabel"); cL.Size=UDim2.new(1,0,1,0); cL.BackgroundTransparency=1
         cL.Text="x"..entry.count; cL.TextColor3=Color3.fromRGB(255,255,255)
         cL.Font=Enum.Font.GothamBold; cL.TextSize=9; cL.Parent=bg
+    end
+
+    -- total fires badge  (∑N — lifetime total for this remote)
+    local tot = remoteTotals[entry.name] or 0
+    if tot > 0 then
+        local tbg=Instance.new("Frame")
+        tbg.Size=UDim2.new(0,38,0,14); tbg.Position=UDim2.new(1,-168,0,26)
+        tbg.BackgroundColor3=Color3.fromRGB(16,60,70); tbg.BorderSizePixel=0; tbg.Parent=row
+        do local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,7);c.Parent=tbg end
+        local tL2=Instance.new("TextLabel"); tL2.Size=UDim2.new(1,0,1,0); tL2.BackgroundTransparency=1
+        tL2.Text="∑ "..tot; tL2.TextColor3=Color3.fromRGB(70,200,190)
+        tL2.Font=Enum.Font.GothamBold; tL2.TextSize=8; tL2.Parent=tbg
     end
 
     -- timestamp
@@ -544,6 +580,7 @@ local function logCall(dir, remote, args, method, callerSrc, callerLine, isExec)
     local fullName
     pcall(function() fullName=remote:GetFullName() end)
     fullName = fullName or remote.Name
+    remoteTotals[fullName] = (remoteTotals[fullName] or 0) + 1
     if ignoredNames[fullName] and filterMode~="IGNORED" then return end
 
     local parts={}; for p in fullName:gmatch("[^%.]+") do parts[#parts+1]=p end
