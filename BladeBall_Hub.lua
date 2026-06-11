@@ -28,14 +28,16 @@ local cfg = {
 
 -- ──────────────────────────────────────────────────────────────
 --  REMOTES
---  Parry in Blade Ball is triggered by firing the CLIENT signal
---  ParryAttemptAll.OnClientEvent with (ParticleShine nilInstance, Character).
---  This is what the server broadcasts to all clients on a valid parry;
---  firing it locally also registers the parry server-side.
+--  True server-side parry: ParryAttempt:FireServer()
+--  (From SwordsController: ParryButtonPress → ParryAttempt:FireServer())
+--  ParryAttemptAll is a server→all-clients broadcast for animations only.
+--  We fire ParryAttempt:FireServer() first, then firesignal for local VFX.
 -- ──────────────────────────────────────────────────────────────
 local Remotes         = ReplicatedStorage:WaitForChild("Remotes", 10)
 local BallAdded       = Remotes and Remotes:FindFirstChild("BallAdded")
+local ParryAttempt    = Remotes and Remotes:FindFirstChild("ParryAttempt")
 local ParryAttemptAll = Remotes and Remotes:FindFirstChild("ParryAttemptAll")
+local ParryButtonPress= Remotes and Remotes:FindFirstChild("ParryButtonPress")
 
 -- Cache the ParticleShine nil-instance once so we don't scan every frame
 local cachedParticleShine = nil
@@ -112,7 +114,6 @@ end
 --  PARRY LOGIC
 -- ──────────────────────────────────────────────────────────────
 local function fireParry()
-    if not ParryAttemptAll then return end
     local now = tick()
     if now - lastParryTime < 0.3 then return end  -- global cooldown
     lastParryTime = now
@@ -120,17 +121,30 @@ local function fireParry()
     task.delay(cfg.ParryDelay, function()
         local char = LocalPlayer.Character
         if not char then return end
-        local shine = getParticleShine()
-        -- firesignal triggers all OnClientEvent listeners locally,
-        -- which is how Blade Ball registers a valid parry.
-        pcall(function()
-            firesignal(ParryAttemptAll.OnClientEvent, shine, char)
-        end)
+
+        -- PRIMARY: FireServer registers the actual parry server-side.
+        -- SwordsController flow: ParryButtonPress → ParryAttempt:FireServer()
+        if ParryAttempt then
+            pcall(function() ParryAttempt:FireServer() end)
+        elseif ParryButtonPress then
+            -- Some versions use a BindableEvent instead of going direct
+            pcall(function() ParryButtonPress:Fire() end)
+        end
+
+        -- SECONDARY: firesignal triggers local VFX / animation listeners.
+        -- Only fires if the executor exposes firesignal; safe to skip otherwise.
+        if ParryAttemptAll and type(firesignal) == "function" then
+            local shine = getParticleShine()
+            pcall(function()
+                firesignal(ParryAttemptAll.OnClientEvent, shine, char)
+            end)
+        end
     end)
 end
 
 local function tryAutoParry()
     if not cfg.AutoParry then return end
+    if not (ParryAttempt or ParryButtonPress or ParryAttemptAll) then return end
     local char = LocalPlayer.Character
     if not char then return end
     local root = char:FindFirstChild("HumanoidRootPart")
@@ -435,9 +449,11 @@ task.spawn(function()
     while task.wait(0.5) do
         if not screenGui.Parent then break end
 
-        local remoteStatus = ParryAttemptAll
-            and "✅ ParryAttemptAll ready"
-            or  "⚠️  ParryAttemptAll not found"
+        local remoteStatus = ParryAttempt
+            and "✅ ParryAttempt ready"
+            or (ParryButtonPress
+                and "✅ ParryButtonPress ready"
+                or  "⚠️  Parry remote not found")
 
         local count = 0
         for _ in pairs(activeBalls) do count = count + 1 end
@@ -492,4 +508,6 @@ end)
 -- ──────────────────────────────────────────────────────────────
 --  DONE
 -- ──────────────────────────────────────────────────────────────
-print("[BladeBall Hub] Loaded. ParryAttemptAll: " .. (ParryAttemptAll and "found" or "NOT found"))
+print("[BladeBall Hub] Loaded. ParryAttempt: " .. (ParryAttempt and "found" or "NOT found")
+    .. " | ParryAttemptAll: " .. (ParryAttemptAll and "found" or "NOT found")
+    .. " | ParryButtonPress: " .. (ParryButtonPress and "found" or "NOT found"))
