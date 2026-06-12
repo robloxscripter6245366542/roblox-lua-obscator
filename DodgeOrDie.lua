@@ -53,7 +53,44 @@ local state = {
     jumpOn      = false,
     keepAlive   = false,
     keepRate    = 1.0,   -- seconds between heartbeat fires
+    autoDodge   = false,
+    dodgeDist   = 28,    -- start dodging when ball is within this many studs
 }
+
+-- ── AUTO-DODGE ───────────────────────────────────────────────────
+-- Finds the death ball heuristically (name match, or a big moving part)
+-- and runs the character directly away from it whenever it gets close.
+local cachedBall, lastBallScan = nil, 0
+local function findBall()
+    local best, bestScore
+    for _,p in ipairs(workspace:GetDescendants()) do
+        if p:IsA("BasePart") then
+            local n = p.Name:lower()
+            local named  = n:find("ball") or n:find("death") or n:find("hazard") or n:find("bomb")
+            local moving = p.AssemblyLinearVelocity.Magnitude > 6
+            local big    = p.Size.Magnitude > 6
+            if named or (big and moving) then
+                local score = (named and 1000 or 0) + p.Size.Magnitude + p.AssemblyLinearVelocity.Magnitude
+                if not bestScore or score > bestScore then bestScore = score; best = p end
+            end
+        end
+    end
+    return best
+end
+RunService.Heartbeat:Connect(function()
+    if not state.autoDodge or not hrp or not humanoid then return end
+    if tick() - lastBallScan > 0.4 or not (cachedBall and cachedBall.Parent) then
+        cachedBall = findBall(); lastBallScan = tick()
+    end
+    local ball = cachedBall
+    if not (ball and ball.Parent) then return end
+    -- predict where the ball is heading and measure flat distance
+    local future = ball.Position + ball.AssemblyLinearVelocity * 0.15
+    local toBall = Vector3.new(future.X - hrp.Position.X, 0, future.Z - hrp.Position.Z)
+    if toBall.Magnitude < state.dodgeDist and toBall.Magnitude > 0.1 then
+        humanoid:Move(-toBall.Unit, false)   -- sprint directly away from the threat
+    end
+end)
 
 -- ── KEEPALIVE LOOP (prevents Error 267 disconnect) ───────────────
 task.spawn(function()
@@ -166,7 +203,7 @@ sg.Name=randName(); sg.ResetOnSpawn=false; sg.ZIndexBehavior=Enum.ZIndexBehavior
 pcall(function() if syn and syn.protect_gui then syn.protect_gui(sg) end end)
 sg.Parent=guiParent()
 
-local W,H=260,436
+local W,H=260,520
 local main=Instance.new("Frame")
 main.AnchorPoint=Vector2.new(0.5,0.5); main.Position=UDim2.new(0.5,0,0.5,0)
 main.Size=UDim2.new(0,W,0,H); main.BackgroundColor3=BG; main.BorderSizePixel=0
@@ -270,15 +307,17 @@ local function mkSlider(name, min, max, default, onChange, order)
     UserInputService.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
 end
 
-mkToggle("Anti-Kick (Heartbeat)", false, function(v) state.keepAlive=v end, 0)
-mkToggle("Fly  (WASD/Space/Ctrl)", false, function(v) if v then startFly() else stopFly() end end, 1)
-mkToggle("Infinite Jump", false, function(v) state.infJump=v end, 2)
-mkToggle("Noclip", false, function(v) state.noclip=v; if not v and char then for _,p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide=true end end end end, 3)
-mkToggle("Speed Boost", false, function(v) state.speedOn=v; if not v and humanoid then humanoid.WalkSpeed=16 end end, 4)
-mkToggle("Jump Boost", false, function(v) state.jumpOn=v; if not v and humanoid then humanoid.JumpPower=50 end end, 5)
-mkSlider("Fly Speed", 20, 200, 70, function(v) state.flySpeed=v end, 6)
-mkSlider("Walk Speed", 16, 250, 16, function(v) state.walkSpeed=v end, 7)
-mkSlider("Jump Power", 50, 350, 50, function(v) state.jumpPower=v end, 8)
+mkToggle("⚡ AUTO-DODGE", false, function(v) state.autoDodge=v end, 0)
+mkSlider("Dodge Range", 12, 60, 28, function(v) state.dodgeDist=v end, 1)
+mkToggle("Anti-Kick (Heartbeat)", false, function(v) state.keepAlive=v end, 2)
+mkToggle("Fly  (WASD/Space/Ctrl)", false, function(v) if v then startFly() else stopFly() end end, 3)
+mkToggle("Infinite Jump", false, function(v) state.infJump=v end, 4)
+mkToggle("Noclip", false, function(v) state.noclip=v; if not v and char then for _,p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide=true end end end end, 5)
+mkToggle("Speed Boost", false, function(v) state.speedOn=v; if not v and humanoid then humanoid.WalkSpeed=16 end end, 6)
+mkToggle("Jump Boost", false, function(v) state.jumpOn=v; if not v and humanoid then humanoid.JumpPower=50 end end, 7)
+mkSlider("Fly Speed", 20, 200, 70, function(v) state.flySpeed=v end, 8)
+mkSlider("Walk Speed", 16, 250, 16, function(v) state.walkSpeed=v end, 9)
+mkSlider("Jump Power", 50, 350, 50, function(v) state.jumpPower=v end, 10)
 
 -- floating reopen button
 local pill=Instance.new("TextButton")
