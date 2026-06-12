@@ -15,7 +15,7 @@ local LocalPlayer  = Players.LocalPlayer
 -- ╚═══════════════════════════════════════════════════════════════╝
 local AI = {
     apiKey   = "sk-78bd359c2eb34548ac3779b37ce455ab",
-    model    = "deepseek-v4-flash",      -- fallbacks: deepseek-chat / deepseek-reasoner
+    model    = "deepseek-chat",          -- official default; alt: deepseek-reasoner
     endpoint = "https://api.deepseek.com/chat/completions",
     system   = "You are Volt AI, an expert Roblox/Luau reverse-engineering "
             .. "assistant embedded in a remote-spy tool. You explain remote "
