@@ -254,6 +254,19 @@ local function mountGui(gui)
     protectGui(gui); gui.Parent = guiParent()
 end
 
+-- ── CUSTOM LOGO LOADER  (download → getcustomasset, Cobalt-style) ──
+local LOGO_URL = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/claude/new-session-zuxx4c/assets/volt_logo.jpg"
+local voltLogoId = nil
+pcall(function()
+    if not (makefolder and writefile and getcustomasset) then return end
+    if not isfolder("Volt") then makefolder("Volt") end
+    local path = "Volt/logo.jpg"
+    if not (isfile and isfile(path)) then
+        writefile(path, game:HttpGet(LOGO_URL))
+    end
+    voltLogoId = getcustomasset(path)
+end)
+
 -- ╔═══════════════════════════════════════════════════════════════╗
 -- ║  TOGGLE PILL  (always visible)                                 ║
 -- ╚═══════════════════════════════════════════════════════════════╝
@@ -275,6 +288,11 @@ do
     g.Rotation=90; g.Parent=tBtn
 end
 do local s=Instance.new("UIStroke");s.Color=C_ACCENT2;s.Thickness=1;s.Transparency=0.45;s.Parent=tBtn end
+if voltLogoId then
+    tBtn.Text="  VOLT"  -- make room for logo on the left
+    local img=Instance.new("ImageLabel"); img.Size=UDim2.new(0,18,0,18); img.Position=UDim2.new(0,6,0.5,-9)
+    img.BackgroundTransparency=1; img.Image=voltLogoId; img.ScaleType=Enum.ScaleType.Fit; img.Parent=tBtn
+end
 
 -- ╔═══════════════════════════════════════════════════════════════╗
 -- ║  MAIN WINDOW                                                   ║
@@ -338,19 +356,25 @@ end
 
 local logoBadge=Instance.new("Frame")
 logoBadge.Size=UDim2.new(0,24,0,20); logoBadge.Position=UDim2.new(0,6,0.5,-10)
-logoBadge.BackgroundColor3=C_ACCENT; logoBadge.BorderSizePixel=0; logoBadge.ZIndex=2; logoBadge.Parent=titleBar
+logoBadge.BackgroundTransparency=1; logoBadge.ZIndex=2; logoBadge.Parent=titleBar
 corner(logoBadge,6)
-do
+if voltLogoId then
+    -- custom downloaded logo
+    local img=Instance.new("ImageLabel"); img.Size=UDim2.new(1,2,1,2); img.Position=UDim2.new(0.5,0,0.5,0)
+    img.AnchorPoint=Vector2.new(0.5,0.5); img.BackgroundTransparency=1; img.Image=voltLogoId
+    img.ScaleType=Enum.ScaleType.Fit; img.ZIndex=3; img.Parent=logoBadge
+else
+    logoBadge.BackgroundColor3=C_ACCENT; logoBadge.BackgroundTransparency=0
     local g=Instance.new("UIGradient")
     g.Color=ColorSequence.new{
         ColorSequenceKeypoint.new(0,Color3.fromRGB(184,98,255)),
         ColorSequenceKeypoint.new(1,Color3.fromRGB(92,22,200)),
     }
     g.Rotation=135; g.Parent=logoBadge
+    local bL=Instance.new("TextLabel"); bL.Size=UDim2.new(1,0,1,0); bL.BackgroundTransparency=1
+    bL.Text="ϟ"; bL.TextColor3=Color3.fromRGB(255,246,205); bL.Font=Enum.Font.GothamBold
+    bL.TextSize=13; bL.ZIndex=3; bL.Parent=logoBadge
 end
-local bL=Instance.new("TextLabel"); bL.Size=UDim2.new(1,0,1,0); bL.BackgroundTransparency=1
-bL.Text="ϟ"; bL.TextColor3=Color3.fromRGB(255,246,205); bL.Font=Enum.Font.GothamBold
-bL.TextSize=13; bL.ZIndex=3; bL.Parent=logoBadge
 
 local titleLbl=Instance.new("TextLabel")
 titleLbl.Size=UDim2.new(0,90,1,0); titleLbl.Position=UDim2.new(0,36,0,0)
