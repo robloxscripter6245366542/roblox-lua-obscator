@@ -229,12 +229,26 @@ local RAIL_W    = 50
 local LIST_W    = 210
 local ITEM_H    = 36
 
+-- ── ROBUST GUI PARENT  (hidden container, survives respawn/sanitizers) ──
+local function guiParent()
+    -- prefer executor hidden-UI container so games can't wipe/detect it
+    local ok, hui = pcall(function() return gethui and gethui() end)
+    if ok and hui then return hui end
+    local okc, cg = pcall(function() return game:GetService("CoreGui") end)
+    if okc and cg then return cg end
+    return LocalPlayer:WaitForChild("PlayerGui")
+end
+local function protectGui(gui)
+    pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+    pcall(function() if protect_gui then protect_gui(gui) end end)
+end
+
 -- ╔═══════════════════════════════════════════════════════════════╗
 -- ║  TOGGLE PILL  (always visible)                                 ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 local tSg=Instance.new("ScreenGui")
 tSg.Name="VoltToggle"; tSg.ResetOnSpawn=false; tSg.DisplayOrder=10
-tSg.Parent=LocalPlayer:WaitForChild("PlayerGui")
+protectGui(tSg); tSg.Parent=guiParent()
 
 local tBtn=Instance.new("TextButton")
 tBtn.Size=UDim2.new(0,86,0,24); tBtn.Position=UDim2.new(0.5,-43,0,6)
@@ -257,7 +271,7 @@ do local s=Instance.new("UIStroke");s.Color=C_ACCENT2;s.Thickness=1;s.Transparen
 -- ╚═══════════════════════════════════════════════════════════════╝
 local sg=Instance.new("ScreenGui")
 sg.Name="Volt"; sg.ResetOnSpawn=false; sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
-sg.Parent=LocalPlayer:WaitForChild("PlayerGui")
+protectGui(sg); sg.Parent=guiParent()
 
 local main=Instance.new("Frame")
 main.Name="Main"; main.AnchorPoint=Vector2.new(0.5,0.5)
