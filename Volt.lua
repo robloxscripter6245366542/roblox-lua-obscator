@@ -392,7 +392,7 @@ corner(verPill,7)
 -- live status dot
 local statusDot=Instance.new("Frame")
 statusDot.Size=UDim2.new(0,8,0,8); statusDot.Position=UDim2.new(0,126,0.5,-4)
-statusDot.BackgroundColor3=C_GOOD; statusDot.BorderSizePixel=0; statusDot.ZIndex=2; statusDot.Parent=titleBar
+statusDot.BackgroundColor3=Color3.fromRGB(240,180,70); statusDot.BorderSizePixel=0; statusDot.ZIndex=2; statusDot.Parent=titleBar
 corner(statusDot,4)
 task.spawn(function()
     while statusDot.Parent do
@@ -1208,8 +1208,10 @@ local function logCall(dir,remote,args,method,callerSrc,callerLine,isExec,return
     end
 end
 
--- ── OUTGOING HOOKS ───────────────────────────────────────────────
+-- ── HOOK INSTALLERS  (deferred — installed after a stealth delay) ──
 local InvokeMethods = { InvokeServer=true, Invoke=true, invokeServer=true, invoke=true }
+
+local function installOutgoingHooks()
 if hasHookMeta then
     local oldNC
     local hook=function(...)
@@ -1252,6 +1254,7 @@ if hasHookFn and not hasHookMeta then
         local bf=Instance.new("BindableFunction"); hookMethod(bf,"Invoke"); bf:Destroy()
     end)
 end
+end  -- installOutgoingHooks
 
 -- ── INCOMING HOOKS ───────────────────────────────────────────────
 local function hookIncoming(remote)
@@ -1262,12 +1265,26 @@ local function hookIncoming(remote)
         remote.Event:Connect(function(...) logCall("IN",remote,table.pack(...),"Event",nil,-1,false) end)
     end
 end
-task.spawn(function()
+local function installIncomingHooks()
     for _,v in ipairs(game:GetDescendants()) do if TargetClasses[v.ClassName] then hookIncoming(v) end end
     game.DescendantAdded:Connect(function(v) if TargetClasses[v.ClassName] then task.defer(hookIncoming,v) end end)
     if getnilinstances then
         for _,v in ipairs(getnilinstances()) do if TargetClasses[v.ClassName] then hookIncoming(v) end end
     end
+end
+
+-- ── DEFERRED STEALTH INSTALL ──────────────────────────────────────
+-- Wait for the game to finish loading + an extra delay so the
+-- anti-cheat's startup integrity scan passes BEFORE we hook anything.
+-- Override with:  getgenv().VoltConfig = { hookDelay = 10 }
+local HOOK_DELAY = (getgenv and getgenv().VoltConfig and getgenv().VoltConfig.hookDelay) or 6
+task.spawn(function()
+    if not game:IsLoaded() then game.Loaded:Wait() end
+    task.wait(HOOK_DELAY)
+    pcall(installIncomingHooks)
+    pcall(installOutgoingHooks)
+    -- subtle status cue: dot flips to accent once hooks are live
+    pcall(function() tween(statusDot,0.3,{BackgroundColor3=C_GOOD}) end)
 end)
 
 -- ── CONTROL HANDLERS ─────────────────────────────────────────────
