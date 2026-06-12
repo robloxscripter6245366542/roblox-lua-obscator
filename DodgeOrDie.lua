@@ -55,7 +55,35 @@ local state = {
     keepRate    = 1.0,   -- seconds between heartbeat fires
     autoDodge   = false,
     dodgeDist   = 28,    -- start dodging when ball is within this many studs
+    superSlide  = false,
+    slidePower  = 120,   -- game default is ~50; this dashes much faster
 }
+
+-- ── SUPER SLIDE (no cooldown) ────────────────────────────────────
+-- The game's "Slide Ability" is purely client-side: a BodyVelocity of
+-- LookVector*(Dashes+50) gated by a 1s cooldown. This reimplements it
+-- with adjustable power and NO cooldown, on the same C key.
+local sliding = false
+local function doSlide()
+    if sliding or not hrp then return end
+    sliding = true
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(30000, 0, 30000)
+    bv.Velocity = hrp.CFrame.LookVector * state.slidePower
+    bv.Parent = hrp
+    task.spawn(function()
+        for _=1,4 do
+            task.wait(0.08)
+            if bv.Parent then bv.Velocity = bv.Velocity * 0.72 end
+        end
+        if bv then bv:Destroy() end
+        sliding = false
+    end)
+end
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed or not state.superSlide then return end
+    if input.KeyCode == Enum.KeyCode.C then doSlide() end
+end)
 
 -- ── AUTO-DODGE ───────────────────────────────────────────────────
 -- Finds the death ball heuristically (name match, or a big moving part)
@@ -203,7 +231,7 @@ sg.Name=randName(); sg.ResetOnSpawn=false; sg.ZIndexBehavior=Enum.ZIndexBehavior
 pcall(function() if syn and syn.protect_gui then syn.protect_gui(sg) end end)
 sg.Parent=guiParent()
 
-local W,H=260,520
+local W,H=260,604
 local main=Instance.new("Frame")
 main.AnchorPoint=Vector2.new(0.5,0.5); main.Position=UDim2.new(0.5,0,0.5,0)
 main.Size=UDim2.new(0,W,0,H); main.BackgroundColor3=BG; main.BorderSizePixel=0
@@ -309,15 +337,17 @@ end
 
 mkToggle("⚡ AUTO-DODGE", false, function(v) state.autoDodge=v end, 0)
 mkSlider("Dodge Range", 12, 60, 28, function(v) state.dodgeDist=v end, 1)
-mkToggle("Anti-Kick (Heartbeat)", false, function(v) state.keepAlive=v end, 2)
-mkToggle("Fly  (WASD/Space/Ctrl)", false, function(v) if v then startFly() else stopFly() end end, 3)
-mkToggle("Infinite Jump", false, function(v) state.infJump=v end, 4)
-mkToggle("Noclip", false, function(v) state.noclip=v; if not v and char then for _,p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide=true end end end end, 5)
-mkToggle("Speed Boost", false, function(v) state.speedOn=v; if not v and humanoid then humanoid.WalkSpeed=16 end end, 6)
-mkToggle("Jump Boost", false, function(v) state.jumpOn=v; if not v and humanoid then humanoid.JumpPower=50 end end, 7)
-mkSlider("Fly Speed", 20, 200, 70, function(v) state.flySpeed=v end, 8)
-mkSlider("Walk Speed", 16, 250, 16, function(v) state.walkSpeed=v end, 9)
-mkSlider("Jump Power", 50, 350, 50, function(v) state.jumpPower=v end, 10)
+mkToggle("Super Slide  (C, no cooldown)", false, function(v) state.superSlide=v end, 2)
+mkSlider("Slide Power", 50, 350, 120, function(v) state.slidePower=v end, 3)
+mkToggle("Anti-Kick (Heartbeat)", false, function(v) state.keepAlive=v end, 4)
+mkToggle("Fly  (WASD/Space/Ctrl)", false, function(v) if v then startFly() else stopFly() end end, 5)
+mkToggle("Infinite Jump", false, function(v) state.infJump=v end, 6)
+mkToggle("Noclip", false, function(v) state.noclip=v; if not v and char then for _,p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide=true end end end end, 7)
+mkToggle("Speed Boost", false, function(v) state.speedOn=v; if not v and humanoid then humanoid.WalkSpeed=16 end end, 8)
+mkToggle("Jump Boost", false, function(v) state.jumpOn=v; if not v and humanoid then humanoid.JumpPower=50 end end, 9)
+mkSlider("Fly Speed", 20, 200, 70, function(v) state.flySpeed=v end, 10)
+mkSlider("Walk Speed", 16, 250, 16, function(v) state.walkSpeed=v end, 11)
+mkSlider("Jump Power", 50, 350, 50, function(v) state.jumpPower=v end, 12)
 
 -- floating reopen button
 local pill=Instance.new("TextButton")
