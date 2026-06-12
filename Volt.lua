@@ -170,13 +170,13 @@ local OutgoingMethods = {
 }
 local BindClasses = { BindableEvent=true, BindableFunction=true }
 
--- ── ICONS / COLOURS ──────────────────────────────────────────────
+-- ── ICONS / COLOURS  (img = Cobalt's official remote asset IDs) ──
 local REMOTE_ICON = {
-    RemoteEvent           = { icon="⚡", col=Color3.fromRGB(120,150,255) },
-    RemoteFunction        = { icon="ƒ",  col=Color3.fromRGB(180,120,255) },
-    UnreliableRemoteEvent = { icon="≈",  col=Color3.fromRGB(90,220,190)  },
-    BindableEvent         = { icon="◈",  col=Color3.fromRGB(255,190,80)  },
-    BindableFunction      = { icon="⬡",  col=Color3.fromRGB(255,135,95)  },
+    RemoteEvent           = { icon="⚡", img="rbxassetid://110803789420086", col=Color3.fromRGB(120,150,255) },
+    RemoteFunction        = { icon="ƒ",  img="rbxassetid://108537517159060", col=Color3.fromRGB(180,120,255) },
+    UnreliableRemoteEvent = { icon="≈",  img="rbxassetid://126244162339059", col=Color3.fromRGB(90,220,190)  },
+    BindableEvent         = { icon="◈",  img="rbxassetid://116839398727495", col=Color3.fromRGB(255,190,80)  },
+    BindableFunction      = { icon="⬡",  img="rbxassetid://112264959079193", col=Color3.fromRGB(255,135,95)  },
 }
 local function remoteIcon(entry)
     local r=entry.remote; local cls=r and r.ClassName or ""
@@ -223,10 +223,10 @@ local C_GOOD    = Color3.fromRGB(96,222,142)
 local C_BAD     = Color3.fromRGB(236,92,112)
 
 -- ── DIMENSIONS ───────────────────────────────────────────────────
-local W, H      = 580, 392
+local W, H      = 640, 420   -- Cobalt's exact window size
 local TITLE_H   = 30
 local RAIL_W    = 50
-local LIST_W    = 196
+local LIST_W    = 210
 local ITEM_H    = 36
 
 -- ╔═══════════════════════════════════════════════════════════════╗
@@ -687,10 +687,16 @@ local function buildRow(entry, order)
     iconBg.BackgroundColor3=isB and Color3.fromRGB(90,16,16) or ri.col
     iconBg.BackgroundTransparency=0.82; iconBg.BorderSizePixel=0; iconBg.Parent=row
     corner(iconBg,6)
-    local iconLbl=Instance.new("TextLabel"); iconLbl.Size=UDim2.new(1,0,1,0); iconLbl.BackgroundTransparency=1
-    iconLbl.Text=isB and "⊘" or (isI and "◎" or ri.icon)
-    iconLbl.TextColor3=isB and C_BAD or (isI and C_DIM or ri.col)
-    iconLbl.Font=Enum.Font.GothamBold; iconLbl.TextSize=11; iconLbl.Parent=iconBg
+    if ri.img and not isB and not isI then
+        -- Cobalt's official remote-type image
+        local img=Instance.new("ImageLabel"); img.Size=UDim2.new(0,15,0,15); img.Position=UDim2.new(0.5,-7,0.5,-7)
+        img.BackgroundTransparency=1; img.Image=ri.img; img.ImageColor3=ri.col; img.Parent=iconBg
+    else
+        local iconLbl=Instance.new("TextLabel"); iconLbl.Size=UDim2.new(1,0,1,0); iconLbl.BackgroundTransparency=1
+        iconLbl.Text=isB and "⊘" or (isI and "◎" or ri.icon)
+        iconLbl.TextColor3=isB and C_BAD or (isI and C_DIM or ri.col)
+        iconLbl.Font=Enum.Font.GothamBold; iconLbl.TextSize=11; iconLbl.Parent=iconBg
+    end
 
     local nameCol=isB and C_BAD or (isI and Color3.fromRGB(90,80,118)
         or (entry.dir=="OUT" and C_ACCENT2 or Color3.fromRGB(134,208,255)))
