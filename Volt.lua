@@ -229,9 +229,15 @@ local RAIL_W    = 50
 local LIST_W    = 210
 local ITEM_H    = 36
 
--- ── ROBUST GUI PARENT  (hidden container, survives respawn/sanitizers) ──
+-- ── STEALTH MOUNTING  (hidden container + randomised, non-scannable name) ──
+local function randName()
+    local chars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    local t={}
+    for _=1,math.random(8,14) do local i=math.random(1,#chars); t[#t+1]=chars:sub(i,i) end
+    return table.concat(t)
+end
 local function guiParent()
-    -- prefer executor hidden-UI container so games can't wipe/detect it
+    -- prefer executor hidden-UI container so the game can't enumerate/wipe it
     local ok, hui = pcall(function() return gethui and gethui() end)
     if ok and hui then return hui end
     local okc, cg = pcall(function() return game:GetService("CoreGui") end)
@@ -242,13 +248,17 @@ local function protectGui(gui)
     pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
     pcall(function() if protect_gui then protect_gui(gui) end end)
 end
+local function mountGui(gui)
+    gui.Name = randName()                 -- defeat name-based scanners
+    gui.ResetOnSpawn = false
+    protectGui(gui); gui.Parent = guiParent()
+end
 
 -- ╔═══════════════════════════════════════════════════════════════╗
 -- ║  TOGGLE PILL  (always visible)                                 ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 local tSg=Instance.new("ScreenGui")
-tSg.Name="VoltToggle"; tSg.ResetOnSpawn=false; tSg.DisplayOrder=10
-protectGui(tSg); tSg.Parent=guiParent()
+tSg.DisplayOrder=10; mountGui(tSg)
 
 local tBtn=Instance.new("TextButton")
 tBtn.Size=UDim2.new(0,86,0,24); tBtn.Position=UDim2.new(0.5,-43,0,6)
@@ -270,8 +280,7 @@ do local s=Instance.new("UIStroke");s.Color=C_ACCENT2;s.Thickness=1;s.Transparen
 -- ║  MAIN WINDOW                                                   ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 local sg=Instance.new("ScreenGui")
-sg.Name="Volt"; sg.ResetOnSpawn=false; sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
-protectGui(sg); sg.Parent=guiParent()
+sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; mountGui(sg)
 
 local main=Instance.new("Frame")
 main.Name="Main"; main.AnchorPoint=Vector2.new(0.5,0.5)
@@ -1307,5 +1316,4 @@ tBtn.MouseLeave:Connect(function() tween(tBtn,0.16,{Size=UDim2.new(0,86,0,24),Po
 
 switchPage("OUT")
 
-print(("[Volt v2] hookMeta:%s hookFn:%s dbgInfo:%s"):format(
-    tostring(hasHookMeta),tostring(hasHookFn),tostring(hasDbgInfo)))
+-- (no console output — avoid leaving an identifiable signature)
