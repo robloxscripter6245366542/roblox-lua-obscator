@@ -9,14 +9,11 @@ local HttpService  = game:GetService("HttpService")
 local LocalPlayer  = Players.LocalPlayer
 
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  AI CONFIG  (DeepSeek)                                         ║
--- ║  NOTE: this key ships inside the script — rotate it if the     ║
--- ║  repo/script is shared publicly.                               ║
+-- ║  AI CONFIG  (Pollinations.ai — free, no API key)              ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 local AI = {
-    apiKey   = "sk-78bd359c2eb34548ac3779b37ce455ab",
-    model    = "deepseek-chat",          -- official default; alt: deepseek-reasoner
-    endpoint = "https://api.deepseek.com/chat/completions",
+    model    = "openai",                 -- smartest free model; alt: mistral, openai-large
+    endpoint = "https://text.pollinations.ai/openai",
     system   = "You are Volt AI, an expert Roblox/Luau reverse-engineering "
             .. "assistant embedded in a remote-spy tool. You explain remote "
             .. "calls, write Luau, and answer scripting questions concisely.",
@@ -604,6 +601,13 @@ local function addNoArgsRow(ord)
     lbl.Text="∅  no arguments"; lbl.TextColor3=C_DIM
     lbl.Font=Enum.Font.GothamMedium; lbl.TextSize=10; lbl.Parent=row
 end
+local function addSectionRow(txt, ord)
+    local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,18); row.LayoutOrder=ord
+    row.BackgroundColor3=Color3.fromRGB(16,9,28); row.BorderSizePixel=0; row.Parent=argScroll
+    local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(1,-8,1,0); lbl.Position=UDim2.new(0,8,0,0)
+    lbl.BackgroundTransparency=1; lbl.Text=txt; lbl.TextColor3=C_GOOD
+    lbl.Font=Enum.Font.GothamBold; lbl.TextSize=9; lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.Parent=row
+end
 
 -- ── ENTRY SELECTION ──────────────────────────────────────────────
 local function setSelected(entry)
@@ -624,6 +628,19 @@ local function setSelected(entry)
     local ord,n=1,argCount(entry.args)
     if n>0 then for i=1,n do addArgRow(i,entry.args[i],ord); ord=ord+1 end
     else addNoArgsRow(ord); ord=ord+1 end
+    -- server return values (RemoteFunction / BindableFunction invokes)
+    if entry.returns then
+        local rn=argCount(entry.returns)
+        addSectionRow("↩  RETURNS ("..rn..")", ord); ord=ord+1
+        if rn>0 then for i=1,rn do addArgRow(i,entry.returns[i],ord); ord=ord+1 end
+        else
+            local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,20); row.LayoutOrder=ord
+            row.BackgroundTransparency=1; row.Parent=argScroll
+            local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(1,0,1,0); lbl.BackgroundTransparency=1
+            lbl.Text="(void)"; lbl.TextColor3=C_DIM; lbl.Font=Enum.Font.GothamMedium; lbl.TextSize=10; lbl.Parent=row
+            ord=ord+1
+        end
+    end
     addCallerRow(entry,ord)
 
     codeBox.Text=buildCode(entry)
@@ -918,7 +935,7 @@ do local sep=Instance.new("Frame");sep.Size=UDim2.new(1,0,0,1);sep.Position=UDim
    sep.BackgroundColor3=C_BORDER;sep.BorderSizePixel=0;sep.Parent=aiHdr end
 local aiTitle=Instance.new("TextLabel")
 aiTitle.Size=UDim2.new(1,-200,1,0); aiTitle.Position=UDim2.new(0,10,0,0)
-aiTitle.BackgroundTransparency=1; aiTitle.Text="✦  VOLT AI  ·  DeepSeek"
+aiTitle.BackgroundTransparency=1; aiTitle.Text="✦  VOLT AI  ·  Pollinations"
 aiTitle.TextColor3=C_ACCENT2; aiTitle.Font=Enum.Font.GothamBold; aiTitle.TextSize=11
 aiTitle.TextXAlignment=Enum.TextXAlignment.Left; aiTitle.Parent=aiHdr
 
@@ -1015,10 +1032,7 @@ local function aiSendMessage(promptText)
         local res, err = httpRequest({
             Url     = AI.endpoint,
             Method  = "POST",
-            Headers = {
-                ["Content-Type"]  = "application/json",
-                ["Authorization"] = "Bearer "..AI.apiKey,
-            },
+            Headers = { ["Content-Type"] = "application/json" },
             Body    = body,
         })
         local reply
@@ -1028,12 +1042,18 @@ local function aiSendMessage(promptText)
             local code = res.StatusCode or res.status_code or 0
             local raw  = res.Body or res.body or ""
             if code>=200 and code<300 then
+                -- Pollinations may reply as OpenAI-JSON or as plain text
                 local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
-                if ok and decoded and decoded.choices and decoded.choices[1] then
-                    reply = decoded.choices[1].message.content
+                if ok and type(decoded)=="table" and decoded.choices and decoded.choices[1] then
+                    reply = decoded.choices[1].message and decoded.choices[1].message.content
+                        or decoded.choices[1].text
+                elseif raw~="" then
+                    reply = raw   -- plain-text completion
+                end
+                if reply and reply~="" then
                     table.insert(aiHistory, {role="assistant", content=reply})
                 else
-                    reply = "⚠ Could not parse response:\n"..raw:sub(1,400)
+                    reply = "⚠ Empty response from AI."
                 end
             else
                 reply = ("⚠ API %d:\n%s"):format(code, raw:sub(1,400))
@@ -1058,7 +1078,7 @@ aiClearBtn.MouseButton1Click:Connect(function()
     aiHistory = { {role="system", content=AI.system} }
 end)
 -- greeting
-aiAddBubble("assistant","Hey — I'm Volt AI, running on DeepSeek. Ask me to explain a captured remote, write Luau, or debug a script. Hit “Explain remote” to analyse your current selection.")
+aiAddBubble("assistant","Hey — I'm Volt AI, running free on Pollinations. Ask me to explain a captured remote, write Luau, or debug a script. Hit “Explain remote” to analyse your current selection.")
 
 -- ── PAGE SWITCHING ───────────────────────────────────────────────
 switchPage=function(id)
@@ -1083,7 +1103,7 @@ switchPage=function(id)
 end
 
 -- ── LOG CALL ─────────────────────────────────────────────────────
-local function logCall(dir,remote,args,method,callerSrc,callerLine,isExec)
+local function logCall(dir,remote,args,method,callerSrc,callerLine,isExec,returns)
     if paused then return end
     if dir=="OUT" and not settings.captureOut then return end
     if dir=="IN"  and not settings.captureIn  then return end
@@ -1104,7 +1124,7 @@ local function logCall(dir,remote,args,method,callerSrc,callerLine,isExec)
 
     local last=list[#list]
     if settings.mergeRepeats and last and last.name==fullName and last.method==method then
-        last.count=last.count+1; last.timeStr=timeStr; last.args=args
+        last.count=last.count+1; last.timeStr=timeStr; last.args=args; last.returns=returns
         local onPage=(dir==currentPage) or (currentPage=="BLOCKED" and dir=="OUT")
         if last.rowFrame and onPage then buildRow(last,#list) end
         if selectedEntry==last then setSelected(last) end
@@ -1119,7 +1139,7 @@ local function logCall(dir,remote,args,method,callerSrc,callerLine,isExec)
 
     local entry={
         dir=dir,remote=remote,name=fullName,shortName=shortName,
-        method=method,args=args,count=1,timeStr=timeStr,
+        method=method,args=args,count=1,timeStr=timeStr,returns=returns,
         callerSrc=callerSrc,callerLine=callerLine,isExecutor=isExec,rowFrame=nil,
     }
     table.insert(list,entry)
@@ -1136,6 +1156,7 @@ local function logCall(dir,remote,args,method,callerSrc,callerLine,isExec)
 end
 
 -- ── OUTGOING HOOKS ───────────────────────────────────────────────
+local InvokeMethods = { InvokeServer=true, Invoke=true, invokeServer=true, invoke=true }
 if hasHookMeta then
     local oldNC
     local hook=function(...)
@@ -1145,7 +1166,14 @@ if hasHookMeta then
             if blockedNames[n] then return end
             local src,line=getCallerInfo()
             local isExec=hasCheckCall and checkcaller() or false
-            task.defer(logCall,"OUT",self,table.pack(select(2,...)),m,src,line,isExec)
+            local packed=table.pack(select(2,...))
+            if InvokeMethods[m] then
+                -- function call: run it, capture what the server returns
+                local rets=table.pack(oldNC(...))
+                task.defer(logCall,"OUT",self,packed,m,src,line,isExec,rets)
+                return table.unpack(rets,1,rets.n)
+            end
+            task.defer(logCall,"OUT",self,packed,m,src,line,isExec)
         end
         return oldNC(...)
     end
