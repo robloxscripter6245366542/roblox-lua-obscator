@@ -436,6 +436,7 @@ local railBtns={}
 local PAGES={
     {id="OUT",      icon="↑", name="Outgoing"},
     {id="IN",       icon="↓", name="Incoming"},
+    {id="EXPLORER", icon="⛁", name="Remotes"},
     {id="BLOCKED",  icon="⊘", name="Blocked"},
     {id="STATS",    icon="◷", name="Stats"},
     {id="AI",       icon="✦", name="AI Chat"},
@@ -1133,6 +1134,132 @@ end)
 -- greeting
 aiAddBubble("assistant","Hey — I'm Volt AI, running free on Pollinations. Ask me to explain a captured remote, write Luau, or debug a script. Hit “Explain remote” to analyse your current selection.")
 
+-- ╔════════════════ REMOTES EXPLORER PAGE (Dex-style) ════════════╗
+-- Lists EVERY remote in the game (fired or not, including nil-parented
+-- and admin remotes) so you can find and fire them manually.
+local explorerPage=Instance.new("Frame")
+explorerPage.Size=UDim2.new(1,0,1,0); explorerPage.BackgroundTransparency=1; explorerPage.Visible=false; explorerPage.Parent=content
+
+local expBar=Instance.new("Frame")
+expBar.Size=UDim2.new(1,0,0,30); expBar.BackgroundColor3=C_PANEL; expBar.BorderSizePixel=0; expBar.Parent=explorerPage
+do local sep=Instance.new("Frame");sep.Size=UDim2.new(1,0,0,1);sep.Position=UDim2.new(0,0,1,-1)
+   sep.BackgroundColor3=C_BORDER;sep.BorderSizePixel=0;sep.Parent=expBar end
+local expSearch=Instance.new("TextBox")
+expSearch.Size=UDim2.new(1,-150,0,20); expSearch.Position=UDim2.new(0,8,0.5,-10)
+expSearch.BackgroundColor3=Color3.fromRGB(26,16,44); expSearch.BorderSizePixel=0
+expSearch.Text=""; expSearch.PlaceholderText="🔍 search all remotes…"
+expSearch.TextColor3=C_TEXT; expSearch.PlaceholderColor3=C_DIM
+expSearch.Font=Enum.Font.Gotham; expSearch.TextSize=11; expSearch.ClearTextOnFocus=false
+expSearch.TextXAlignment=Enum.TextXAlignment.Left; expSearch.Parent=expBar
+corner(expSearch,5); pad(expSearch,8,0,0,0)
+local expCount=Instance.new("TextLabel")
+expCount.Size=UDim2.new(0,80,1,0); expCount.Position=UDim2.new(1,-138,0,0)
+expCount.BackgroundTransparency=1; expCount.Text="0 found"; expCount.TextColor3=C_DIM
+expCount.Font=Enum.Font.GothamMedium; expCount.TextSize=10; expCount.TextXAlignment=Enum.TextXAlignment.Right; expCount.Parent=expBar
+local expRefresh=Instance.new("TextButton")
+expRefresh.Size=UDim2.new(0,52,0,20); expRefresh.Position=UDim2.new(1,-56,0.5,-10)
+expRefresh.BackgroundColor3=C_ACCENT; expRefresh.BorderSizePixel=0
+expRefresh.Text="↻ Scan"; expRefresh.TextColor3=Color3.fromRGB(255,255,255); expRefresh.AutoButtonColor=false
+expRefresh.Font=Enum.Font.GothamBold; expRefresh.TextSize=9; expRefresh.Parent=expBar
+corner(expRefresh,5)
+
+local expScroll=Instance.new("ScrollingFrame")
+expScroll.Size=UDim2.new(1,0,1,-30); expScroll.Position=UDim2.new(0,0,0,30)
+expScroll.BackgroundTransparency=1; expScroll.BorderSizePixel=0
+expScroll.ScrollBarThickness=3; expScroll.ScrollBarImageColor3=C_ACCENT
+expScroll.CanvasSize=UDim2.new(0,0,0,0); expScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y; expScroll.Parent=explorerPage
+local expLayout=Instance.new("UIListLayout"); expLayout.Padding=UDim.new(0,2); expLayout.SortOrder=Enum.SortOrder.LayoutOrder; expLayout.Parent=expScroll
+pad(expScroll,4,4,4,4)
+
+local allRemotes, expFilter = {}, ""
+local function scanAllRemotes()
+    local found, seen = {}, {}
+    local function add(v)
+        if v and TargetClasses[v.ClassName] and not seen[v] then
+            seen[v]=true; found[#found+1]=v
+        end
+    end
+    for _,v in ipairs(game:GetDescendants()) do add(v) end
+    if getnilinstances then
+        local ok,nils=pcall(getnilinstances)
+        if ok then for _,v in ipairs(nils) do pcall(add,v) end end
+    end
+    table.sort(found,function(a,b)
+        local pa,pb=a.Name,b.Name
+        pcall(function() pa=a:GetFullName() end); pcall(function() pb=b:GetFullName() end)
+        return pa<pb
+    end)
+    return found
+end
+
+local function fireRemoteInstance(r)
+    pcall(function()
+        if r:IsA("RemoteEvent") or r:IsA("UnreliableRemoteEvent") then r:FireServer()
+        elseif r:IsA("RemoteFunction") then r:InvokeServer()
+        elseif r:IsA("BindableEvent") then r:Fire()
+        elseif r:IsA("BindableFunction") then r:Invoke() end
+    end)
+end
+
+local function buildExplorer()
+    for _,c in ipairs(expScroll:GetChildren()) do
+        if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end
+    end
+    local shown=0
+    for i,r in ipairs(allRemotes) do
+        local full=r.Name; pcall(function() full=r:GetFullName() end)
+        if expFilter=="" or full:lower():find(expFilter:lower(),1,true) then
+            shown=shown+1
+            local ri=REMOTE_ICON[r.ClassName] or {icon="⚡",col=C_DIM}
+            local row=Instance.new("Frame")
+            row.Size=UDim2.new(1,0,0,30); row.LayoutOrder=i; row.BackgroundColor3=C_ROW
+            row.BorderSizePixel=0; row.Parent=expScroll
+            corner(row,5)
+            -- type icon
+            local ic=Instance.new("Frame"); ic.Size=UDim2.new(0,20,0,20); ic.Position=UDim2.new(0,6,0.5,-10)
+            ic.BackgroundColor3=ri.col; ic.BackgroundTransparency=0.82; ic.BorderSizePixel=0; ic.Parent=row
+            corner(ic,5)
+            if ri.img then
+                local im=Instance.new("ImageLabel");im.Size=UDim2.new(0,14,0,14);im.Position=UDim2.new(0.5,-7,0.5,-7)
+                im.BackgroundTransparency=1;im.Image=ri.img;im.ImageColor3=ri.col;im.Parent=ic
+            else
+                local il=Instance.new("TextLabel");il.Size=UDim2.new(1,0,1,0);il.BackgroundTransparency=1
+                il.Text=ri.icon;il.TextColor3=ri.col;il.Font=Enum.Font.GothamBold;il.TextSize=11;il.Parent=ic
+            end
+            -- path (short)
+            local short=full:gsub("^game%.","")
+            local nameLbl=Instance.new("TextLabel")
+            nameLbl.Size=UDim2.new(1,-122,1,0); nameLbl.Position=UDim2.new(0,32,0,0)
+            nameLbl.BackgroundTransparency=1; nameLbl.Text=short; nameLbl.TextColor3=C_TEXT
+            nameLbl.Font=Enum.Font.Gotham; nameLbl.TextSize=10
+            nameLbl.TextXAlignment=Enum.TextXAlignment.Left; nameLbl.TextTruncate=Enum.TextTruncate.AtEnd; nameLbl.Parent=row
+            -- copy + fire buttons
+            local function mkB(xOff,w,txt,col,fn)
+                local b=Instance.new("TextButton"); b.Size=UDim2.new(0,w,0,20); b.Position=UDim2.new(1,xOff,0.5,-10)
+                b.BackgroundColor3=col; b.BorderSizePixel=0; b.Text=txt; b.TextColor3=C_TEXT
+                b.Font=Enum.Font.GothamBold; b.TextSize=9; b.AutoButtonColor=false; b.Parent=row
+                corner(b,4)
+                b.MouseEnter:Connect(function() tween(b,0.12,{BackgroundColor3=col:Lerp(Color3.new(1,1,1),0.2)}) end)
+                b.MouseLeave:Connect(function() tween(b,0.16,{BackgroundColor3=col}) end)
+                b.MouseButton1Click:Connect(fn)
+            end
+            mkB(-86,40,"⎘ Copy",Color3.fromRGB(54,34,90),function()
+                local path=full:gsub("^game%.([^%.]+)",function(s) return 'game:GetService("'..s..'")' end)
+                local call=(r:IsA("RemoteFunction") and ":InvokeServer()") or (r:IsA("BindableFunction") and ":Invoke()")
+                    or (r:IsA("BindableEvent") and ":Fire()") or ":FireServer()"
+                pcall(function() setclipboard(path..call) end)
+            end)
+            mkB(-44,40,"▶ Fire",Color3.fromRGB(80,32,168),function() fireRemoteInstance(r) end)
+        end
+    end
+    expCount.Text=shown.." / "..#allRemotes
+end
+
+expRefresh.MouseButton1Click:Connect(function()
+    expRefresh.Text="…"; allRemotes=scanAllRemotes(); buildExplorer(); expRefresh.Text="↻ Scan"
+end)
+expSearch:GetPropertyChangedSignal("Text"):Connect(function() expFilter=expSearch.Text; buildExplorer() end)
+
 -- ── PAGE SWITCHING ───────────────────────────────────────────────
 switchPage=function(id)
     currentPage=id
@@ -1148,11 +1275,15 @@ switchPage=function(id)
     statsPage.Visible=(id=="STATS")
     setPage.Visible=(id=="SETTINGS")
     aiPage.Visible=(id=="AI")
+    explorerPage.Visible=(id=="EXPLORER")
     if isBrowser then
         local titles={OUT="OUTGOING ↑", IN="INCOMING ↓", BLOCKED="BLOCKED ⊘"}
         pageTitle.Text=titles[id]
         setSelected(nil); rebuildAll()
-    elseif id=="STATS" then refreshStats() end
+    elseif id=="STATS" then refreshStats()
+    elseif id=="EXPLORER" then
+        if #allRemotes==0 then allRemotes=scanAllRemotes(); buildExplorer() end
+    end
 end
 
 -- ── LOG CALL ─────────────────────────────────────────────────────
