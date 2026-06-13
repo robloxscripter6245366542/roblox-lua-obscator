@@ -1287,11 +1287,68 @@ switchPage=function(id)
 end
 
 -- ── LOG CALL ─────────────────────────────────────────────────────
+-- ── EXTERNAL BRIDGE  (streams capture to the C++ Volt.exe over a .jsonl) ──
+-- The external UI tails VoltStream/stream.jsonl. We append one JSON line per
+-- captured call. Any executor with writefile/appendfile feeds the desktop app.
+local VBridge do
+    local FOLDER, PATH = "VoltStream", "VoltStream/stream.jsonl"
+    local hasAppend = type(appendfile)=="function"
+    local hasWrite  = type(writefile)=="function"
+    VBridge = { enabled = (hasAppend or hasWrite) }
+    if type(makefolder)=="function" then
+        pcall(function() if not (type(isfolder)=="function" and isfolder(FOLDER)) then makefolder(FOLDER) end end)
+    end
+    pcall(function() if hasWrite then writefile(PATH,"") end end)
+    local function esc(s)
+        s=tostring(s):gsub('\\','\\\\'):gsub('"','\\"'):gsub('\n','\\n'):gsub('\r','\\r'):gsub('\t','\\t')
+        return (s:gsub('[%z\1-\8\11\12\14-\31]',' '))
+    end
+    local function argStr(a)
+        if type(a)~="table" then return "(no args)" end
+        local n=a.n or #a; if n==0 then return "(no args)" end
+        local p={}
+        for i=1,math.min(n,6) do
+            local v=a[i]; local t=typeof and typeof(v) or type(v); local r
+            if t=="string" then r='"'..(#v>40 and v:sub(1,37).."..." or v)..'"'
+            elseif t=="Instance" then r=v.ClassName.."("..v.Name..")"
+            elseif t=="Vector3" then r=string.format("Vector3(%.1f, %.1f, %.1f)",v.X,v.Y,v.Z)
+            elseif t=="table" then r="{...}" elseif v==nil then r="nil" else r=tostring(v) end
+            p[#p+1]=r
+        end
+        if n>6 then p[#p+1]=string.format("…(+%d)",n-6) end
+        return table.concat(p,", ")
+    end
+    function VBridge.emit(dir,remote,args,method,isExec,source)
+        if not VBridge.enabled then return end
+        local name,rtype="Unknown","RemoteEvent"
+        if remote then
+            pcall(function() name=remote:GetFullName() end)
+            pcall(function() rtype=remote.ClassName end)
+        end
+        local line=string.format(
+            '{"dir":"%s","name":"%s","method":"%s","rtype":"%s","args":"%s","source":"%s","count":1,"exec":%s,"t":%.3f}\n',
+            dir=="IN" and "in" or "out", esc(name), esc(method or "?"), esc(rtype),
+            esc(argStr(args)), esc(source or ""), isExec and "true" or "false",
+            (os.clock and os.clock()) or 0)
+        if hasAppend then pcall(appendfile,PATH,line)
+        elseif hasWrite then
+            local prev=""; if type(isfile)=="function" and isfile(PATH) then pcall(function() prev=readfile(PATH) end) end
+            pcall(writefile,PATH,prev..line)
+        end
+    end
+end
+
 local function logCall(dir,remote,args,method,callerSrc,callerLine,isExec,returns)
     if paused then return end
     if dir=="OUT" and not settings.captureOut then return end
     if dir=="IN"  and not settings.captureIn  then return end
     if remote and BindClasses[remote.ClassName] and not settings.captureBind then return end
+
+    -- stream to the external C++ UI (best-effort; never blocks capture)
+    pcall(function()
+        VBridge.emit(dir, remote, args, method, isExec,
+                     callerSrc and (tostring(callerSrc)..":"..tostring(callerLine)) or "")
+    end)
 
     local fullName
     pcall(function() fullName=remote:GetFullName() end)
