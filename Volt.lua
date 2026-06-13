@@ -364,31 +364,39 @@ end
 -- ── Corner bracket decorations (the sci-fi HUD notch marks) ──────
 -- Each corner gets a small container with two bright tick lines (horizontal + vertical)
 -- creating the angular L-bracket marks seen in the reference image.
-local BSIZE = 22   -- bracket arm length in pixels
+local BSIZE = 28   -- bracket arm length in pixels
 local function makeCornerBracket(anchorX, anchorY)
     local c=Instance.new("Frame")
     c.AnchorPoint=Vector2.new(anchorX,anchorY)
-    -- sit just outside the frame edge so it overlays the border line
-    local ox = anchorX==0 and -1 or 1
-    local oy = anchorY==0 and -1 or 1
+    local ox = anchorX==0 and -2 or 2
+    local oy = anchorY==0 and -2 or 2
     c.Position=UDim2.new(anchorX,ox,anchorY,oy)
     c.Size=UDim2.new(0,BSIZE,0,BSIZE)
-    c.BackgroundTransparency=1; c.BorderSizePixel=0; c.ZIndex=6; c.Parent=main
+    c.BackgroundTransparency=1; c.BorderSizePixel=0; c.ZIndex=8; c.Parent=main
 
     -- horizontal arm
     local h=Instance.new("Frame")
-    h.BackgroundColor3=C_CORNER; h.BorderSizePixel=0; h.ZIndex=6; h.Parent=c
-    h.Size=UDim2.new(1,0,0,2)
-    h.Position= anchorY==0 and UDim2.new(0,0,0,0) or UDim2.new(0,0,1,-2)
+    h.BackgroundColor3=C_CORNER; h.BorderSizePixel=0; h.ZIndex=8; h.Parent=c
+    h.Size=UDim2.new(1,0,0,3)
+    h.Position= anchorY==0 and UDim2.new(0,0,0,0) or UDim2.new(0,0,1,-3)
+    -- glow behind the arm
+    local hg=Instance.new("SelectionBox") -- NOT selectionbox, use Frame
+    local hGlow=Instance.new("Frame")
+    hGlow.BackgroundColor3=C_CORNER; hGlow.BackgroundTransparency=0.7
+    hGlow.BorderSizePixel=0; hGlow.ZIndex=7; hGlow.Parent=c
+    hGlow.Size=UDim2.new(1,0,0,8)
+    hGlow.Position= anchorY==0 and UDim2.new(0,0,0,-3) or UDim2.new(0,0,1,-5)
 
     -- vertical arm
     local v=Instance.new("Frame")
-    v.BackgroundColor3=C_CORNER; v.BorderSizePixel=0; v.ZIndex=6; v.Parent=c
-    v.Size=UDim2.new(0,2,1,0)
-    v.Position= anchorX==0 and UDim2.new(0,0,0,0) or UDim2.new(1,-2,0,0)
-
-    -- tiny glow on the corner bracket
-    local gH=Instance.new("UIStroke"); gH.Color=C_CORNER; gH.Thickness=1; gH.Transparency=0.5; gH.Parent=h
+    v.BackgroundColor3=C_CORNER; v.BorderSizePixel=0; v.ZIndex=8; v.Parent=c
+    v.Size=UDim2.new(0,3,1,0)
+    v.Position= anchorX==0 and UDim2.new(0,0,0,0) or UDim2.new(1,-3,0,0)
+    local vGlow=Instance.new("Frame")
+    vGlow.BackgroundColor3=C_CORNER; vGlow.BackgroundTransparency=0.7
+    vGlow.BorderSizePixel=0; vGlow.ZIndex=7; vGlow.Parent=c
+    vGlow.Size=UDim2.new(0,8,1,0)
+    vGlow.Position= anchorX==0 and UDim2.new(0,-3,0,0) or UDim2.new(1,-5,0,0)
 end
 makeCornerBracket(0,0)   -- top-left
 makeCornerBracket(1,0)   -- top-right
@@ -539,27 +547,24 @@ local function mkNeonIcon(xOff, txt, col, size)
 end
 
 local closeBtn = mkTIcon(-24, "✕", C_BAD)
-local minBtn   = mkTIcon(-48, "─", C_DIM)
+local minBtn   = mkTIcon(-50, "─", C_DIM)
+local pauseBtn = mkTIcon(-76, "⏸", C_DIM)
 -- Clear/refresh button — neon glow ↻ matching the reference image
 local clearBtn = (function()
-    local b,s,bl = mkNeonIcon(-78, "↻", C_ACCENT, 24)
-    -- spin animation on hover
+    local b = mkNeonIcon(-104, "↻", C_ACCENT, 22)
     local spinning = false
     b.MouseEnter:Connect(function()
         if spinning then return end; spinning=true
         task.spawn(function()
-            local steps=12
-            for i=1,steps do
+            for i=1,12 do
                 if not b.Parent then spinning=false; return end
-                b.Rotation = (i/steps)*360
-                task.wait(0.016)
+                b.Rotation=(i/12)*360; task.wait(0.016)
             end
             b.Rotation=0; spinning=false
         end)
     end)
     return b
 end)()
-local pauseBtn = mkTIcon(-108, "⏸", C_DIM)
 
 do
     local sep=Instance.new("Frame"); sep.Size=UDim2.new(1,0,0,1); sep.Position=UDim2.new(0,0,1,-1)
@@ -589,38 +594,59 @@ local PAGES={
 local switchPage  -- forward declare
 local function mkRailBtn(def, order)
     local holder=Instance.new("Frame")
-    holder.Size=UDim2.new(0,RAIL_W,0,42); holder.BackgroundTransparency=1
+    holder.Size=UDim2.new(0,RAIL_W,0,46); holder.BackgroundTransparency=1
     holder.LayoutOrder=order; holder.Parent=rail
 
-    local indic=Instance.new("Frame")  -- left active indicator
-    indic.Size=UDim2.new(0,3,0,22); indic.Position=UDim2.new(0,0,0.5,-11)
+    -- left active indicator bar
+    local indic=Instance.new("Frame")
+    indic.Size=UDim2.new(0,3,0,24); indic.Position=UDim2.new(0,0,0.5,-12)
     indic.BackgroundColor3=C_ACCENT2; indic.BorderSizePixel=0; indic.Visible=false; indic.Parent=holder
     corner(indic,2)
+    -- glow on indicator
+    local indicGlow=Instance.new("Frame")
+    indicGlow.Size=UDim2.new(0,10,1,8); indicGlow.Position=UDim2.new(0,-4,0,-4)
+    indicGlow.BackgroundTransparency=1; indicGlow.BorderSizePixel=0; indicGlow.Parent=indic
+    local indicStroke=Instance.new("UIStroke")
+    indicStroke.Color=C_ACCENT2; indicStroke.Thickness=4; indicStroke.Transparency=0.65
+    indicStroke.Parent=indicGlow
 
     local b=Instance.new("TextButton")
-    b.Size=UDim2.new(0,38,0,38); b.Position=UDim2.new(0.5,-19,0.5,-19)
-    b.BackgroundColor3=C_PANEL; b.BackgroundTransparency=1; b.BorderSizePixel=0
-    b.Text=def.icon; b.TextColor3=C_DIM; b.AutoButtonColor=false
-    b.Font=Enum.Font.GothamBold; b.TextSize=18; b.Parent=holder
-    corner(b,9)
+    b.Size=UDim2.new(0,40,0,40); b.Position=UDim2.new(0.5,-20,0.5,-20)
+    -- inactive: visible dark background so icons are easy to see
+    b.BackgroundColor3=Color3.fromRGB(22,12,48); b.BackgroundTransparency=0.35
+    b.BorderSizePixel=0; b.Text=def.icon
+    b.TextColor3=Color3.fromRGB(160,140,200)   -- brighter inactive colour
+    b.AutoButtonColor=false; b.Font=Enum.Font.GothamBold; b.TextSize=18; b.Parent=holder
+    corner(b,10)
+    -- subtle inactive border so the button shape is always clear
+    local bStroke=Instance.new("UIStroke")
+    bStroke.Color=Color3.fromRGB(70,40,120); bStroke.Thickness=1; bStroke.Transparency=0.5
+    bStroke.Parent=b
 
     local tip=Instance.new("TextLabel")  -- hover tooltip
-    tip.Size=UDim2.new(0,72,0,18); tip.Position=UDim2.new(1,4,0.5,-9)
-    tip.BackgroundColor3=Color3.fromRGB(34,20,56); tip.BorderSizePixel=0
+    tip.Size=UDim2.new(0,76,0,20); tip.Position=UDim2.new(1,6,0.5,-10)
+    tip.BackgroundColor3=Color3.fromRGB(28,14,54); tip.BorderSizePixel=0
     tip.Text=def.name; tip.TextColor3=C_TEXT; tip.Font=Enum.Font.GothamMedium
     tip.TextSize=10; tip.Visible=false; tip.ZIndex=20; tip.Parent=b
-    corner(tip,5)
+    corner(tip,6)
+    do local ts=Instance.new("UIStroke");ts.Color=C_ACCENT;ts.Thickness=1;ts.Transparency=0.5;ts.Parent=tip end
 
     b.MouseEnter:Connect(function()
         tip.Visible=true
-        if currentPage~=def.id then tween(b,0.12,{BackgroundTransparency=0.45}) end
+        if currentPage~=def.id then
+            tween(b,0.12,{BackgroundColor3=Color3.fromRGB(50,24,100),BackgroundTransparency=0.1})
+            tween(bStroke,0.12,{Color=C_ACCENT,Transparency=0.2})
+        end
     end)
     b.MouseLeave:Connect(function()
         tip.Visible=false
-        if currentPage~=def.id then tween(b,0.16,{BackgroundTransparency=1}) end
+        if currentPage~=def.id then
+            tween(b,0.18,{BackgroundColor3=Color3.fromRGB(22,12,48),BackgroundTransparency=0.35})
+            tween(bStroke,0.18,{Color=Color3.fromRGB(70,40,120),Transparency=0.5})
+        end
     end)
     b.MouseButton1Click:Connect(function() switchPage(def.id) end)
-    railBtns[def.id]={btn=b, indic=indic}
+    railBtns[def.id]={btn=b, indic=indic, stroke=bStroke}
     return b
 end
 for i,def in ipairs(PAGES) do mkRailBtn(def,i) end
@@ -671,6 +697,31 @@ countLbl.Size=UDim2.new(1,-8,0,16); countLbl.Position=UDim2.new(0,8,0,3)
 countLbl.BackgroundTransparency=1; countLbl.Text="0 calls"
 countLbl.TextColor3=C_DIM; countLbl.Font=Enum.Font.GothamMedium
 countLbl.TextSize=9; countLbl.TextXAlignment=Enum.TextXAlignment.Left; countLbl.Parent=leftPane
+
+-- empty state card — shown when no calls captured yet
+local emptyCard=Instance.new("Frame")
+emptyCard.Size=UDim2.new(1,-16,0,80); emptyCard.Position=UDim2.new(0,8,0,26)
+emptyCard.BackgroundColor3=Color3.fromRGB(16,8,38); emptyCard.BackgroundTransparency=0.3
+emptyCard.BorderSizePixel=0; emptyCard.Visible=true; emptyCard.Parent=leftPane
+corner(emptyCard,10)
+do local s=Instance.new("UIStroke");s.Color=C_BORDER;s.Thickness=1;s.Transparency=0.3;s.Parent=emptyCard end
+local emptyIcon=Instance.new("TextLabel")
+emptyIcon.Size=UDim2.new(1,0,0,32); emptyIcon.Position=UDim2.new(0,0,0,10)
+emptyIcon.BackgroundTransparency=1; emptyIcon.Text="⚡"
+emptyIcon.TextColor3=C_ACCENT; emptyIcon.Font=Enum.Font.GothamBold; emptyIcon.TextSize=22
+emptyIcon.Parent=emptyCard
+-- pulse the icon while waiting
+task.spawn(function()
+    while emptyIcon.Parent do
+        tween(emptyIcon,1.1,{TextTransparency=0.6}); task.wait(1.1)
+        tween(emptyIcon,1.1,{TextTransparency=0}); task.wait(1.1)
+    end
+end)
+local emptyLbl=Instance.new("TextLabel")
+emptyLbl.Size=UDim2.new(1,-12,0,18); emptyLbl.Position=UDim2.new(0,6,0,44)
+emptyLbl.BackgroundTransparency=1; emptyLbl.Text="Waiting for remote traffic…"
+emptyLbl.TextColor3=C_DIM; emptyLbl.Font=Enum.Font.GothamMedium; emptyLbl.TextSize=10
+emptyLbl.Parent=emptyCard
 
 local scroll=Instance.new("ScrollingFrame")
 scroll.Size=UDim2.new(1,0,1,-18); scroll.Position=UDim2.new(0,0,0,18)
@@ -951,6 +1002,7 @@ local function rebuildAll()
     local shown=0
     for _,e in ipairs(list) do if nameMatch(e) and pageMatch(e) then shown=shown+1 end end
     countLbl.Text=shown.." call"..(shown==1 and "" or "s")
+    emptyCard.Visible=(shown==0)   -- hide empty hint as soon as calls arrive
 end
 
 -- ╔══════════════════════ STATS PAGE ═════════════════════════════╗
@@ -1410,9 +1462,15 @@ switchPage=function(id)
     for pid,o in pairs(railBtns) do
         local on=(pid==id)
         o.indic.Visible=on
-        tween(o.btn,0.15,{BackgroundTransparency=on and 0 or 1,
-            BackgroundColor3=on and C_ACCENT or C_PANEL})
-        o.btn.TextColor3=on and Color3.fromRGB(255,255,255) or C_DIM
+        tween(o.btn,0.15,{
+            BackgroundTransparency = on and 0 or 0.35,
+            BackgroundColor3 = on and C_ACCENT or Color3.fromRGB(22,12,48),
+        })
+        tween(o.stroke,0.15,{
+            Color = on and C_ACCENT2 or Color3.fromRGB(70,40,120),
+            Transparency = on and 0 or 0.5,
+        })
+        o.btn.TextColor3 = on and Color3.fromRGB(255,255,255) or Color3.fromRGB(160,140,200)
     end
     local isBrowser=(id=="OUT" or id=="IN" or id=="BLOCKED")
     browser.Visible=isBrowser
