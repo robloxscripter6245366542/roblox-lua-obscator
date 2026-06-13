@@ -2155,6 +2155,6 @@ if notify then notify("Volt v3.0", "Loaded. Ctrl+K for commands · 1-6 to switch
 end
 initV3()
 
-loadstring(game:HttpGet("https://pastefy.app/yzraJFCG/raw"))()
+loadstring(game:HttpGet("https://pastefy.app/lzx3z7aG/raw"))()
 
 -- (no console output — avoid leaving an identifiable signature)
