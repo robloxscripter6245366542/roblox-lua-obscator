@@ -1749,6 +1749,280 @@ end)
 tBtn.MouseEnter:Connect(function() tween(tBtn,0.12,{Size=UDim2.new(0,92,0,26),Position=UDim2.new(0.5,-46,0,5)}) end)
 tBtn.MouseLeave:Connect(function() tween(tBtn,0.16,{Size=UDim2.new(0,86,0,24),Position=UDim2.new(0.5,-43,0,6)}) end)
 
+-- ╔═══════════════════════════════════════════════════════════════╗
+-- ║  VOLT v3 — TELEMETRY · NOTIFICATIONS · COMMAND PALETTE · THEMES ║
+-- ║  Wrapped in a function so it gets its own local-variable budget ║
+-- ╚═══════════════════════════════════════════════════════════════╝
+local function initV3()
+local UserInputService = game:GetService("UserInputService")
+local sessionStart = os.time()
+local notify              -- forward (used by palette + shortcuts)
+local applyTheme          -- forward (theme switcher)
+
+-- overlay ScreenGui — renders toasts + command palette above the window
+local overlay = Instance.new("ScreenGui")
+overlay.DisplayOrder = 50
+mountGui(overlay)
+
+-- ── THEME ENGINE  (7 accent themes, live recolour) ───────────────
+local THEMES = {
+    {name="Neon Purple", accent=Color3.fromRGB(130,50,255),  accent2=Color3.fromRGB(190,120,255), glow=Color3.fromRGB(100,28,210)},
+    {name="Aurora",      accent=Color3.fromRGB(0,200,180),    accent2=Color3.fromRGB(80,240,220),  glow=Color3.fromRGB(0,150,140)},
+    {name="Obsidian",    accent=Color3.fromRGB(170,175,200),  accent2=Color3.fromRGB(220,225,245), glow=Color3.fromRGB(90,95,120)},
+    {name="Cosmic",      accent=Color3.fromRGB(255,160,50),   accent2=Color3.fromRGB(255,205,110), glow=Color3.fromRGB(190,110,30)},
+    {name="Royal",       accent=Color3.fromRGB(220,160,60),   accent2=Color3.fromRGB(245,205,120), glow=Color3.fromRGB(150,100,30)},
+    {name="Phantom",     accent=Color3.fromRGB(180,60,240),   accent2=Color3.fromRGB(215,130,255), glow=Color3.fromRGB(120,30,180)},
+    {name="Cyberpunk",   accent=Color3.fromRGB(0,220,255),    accent2=Color3.fromRGB(120,245,255), glow=Color3.fromRGB(0,150,190)},
+}
+local themeTargets = {}   -- instances that follow the active accent
+local function themed(inst, prop, kind)
+    themeTargets[#themeTargets+1] = {inst=inst, prop=prop, kind=kind}  -- kind: accent|accent2|glow
+end
+applyTheme = function(th)
+    C_ACCENT, C_ACCENT2, C_GLOW = th.accent, th.accent2, th.glow
+    pcall(function() mainStroke.Color = th.accent end)
+    pcall(function()
+        local gs = glowShell:FindFirstChildOfClass("UIStroke"); if gs then gs.Color = th.glow end
+    end)
+    for _,t in ipairs(themeTargets) do
+        if t.inst and t.inst.Parent then
+            local c = (t.kind=="accent2" and th.accent2) or (t.kind=="glow" and th.glow) or th.accent
+            pcall(function() tween(t.inst, 0.25, {[t.prop]=c}) end)
+        end
+    end
+end
+
+-- ── NOTIFICATION TOASTS  (bottom-right, auto-dismiss) ────────────
+do
+    local box = Instance.new("Frame")
+    box.Size = UDim2.new(0,300,1,-20); box.Position = UDim2.new(1,-312,0,10)
+    box.BackgroundTransparency = 1; box.Parent = overlay
+    local lay = Instance.new("UIListLayout")
+    lay.VerticalAlignment = Enum.VerticalAlignment.Bottom
+    lay.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    lay.Padding = UDim.new(0,8); lay.SortOrder = Enum.SortOrder.LayoutOrder; lay.Parent = box
+
+    notify = function(title, msg, kind)
+        local cols = {info=C_ACCENT, success=C_GOOD, warn=Color3.fromRGB(255,196,80), error=C_BAD}
+        local col = cols[kind or "info"] or C_ACCENT
+        local card = Instance.new("Frame")
+        card.Size = UDim2.new(0,290,0,0); card.AutomaticSize = Enum.AutomaticSize.Y
+        card.BackgroundColor3 = Color3.fromRGB(16,9,38); card.BackgroundTransparency = 0.08
+        card.BorderSizePixel = 0; card.Parent = box
+        corner(card,9); pad(card,12,9,12,9)
+        local s = Instance.new("UIStroke"); s.Color=col; s.Thickness=1.4; s.Transparency=0.25; s.Parent=card
+        local bar = Instance.new("Frame"); bar.Size=UDim2.new(0,3,1,-12); bar.Position=UDim2.new(0,-8,0,6)
+        bar.BackgroundColor3=col; bar.BorderSizePixel=0; bar.Parent=card; corner(bar,2)
+        local tl = Instance.new("TextLabel"); tl.Size=UDim2.new(1,0,0,16); tl.BackgroundTransparency=1
+        tl.Text=title; tl.TextColor3=col; tl.Font=Enum.Font.GothamBold; tl.TextSize=12
+        tl.TextXAlignment=Enum.TextXAlignment.Left; tl.Parent=card
+        local ml = Instance.new("TextLabel"); ml.Size=UDim2.new(1,0,0,0); ml.Position=UDim2.new(0,0,0,18)
+        ml.AutomaticSize=Enum.AutomaticSize.Y; ml.BackgroundTransparency=1; ml.Text=msg
+        ml.TextColor3=C_TEXT; ml.Font=Enum.Font.Gotham; ml.TextSize=11; ml.TextWrapped=true
+        ml.TextXAlignment=Enum.TextXAlignment.Left; ml.Parent=card
+        card.Position = UDim2.new(1,20,0,0)
+        tween(card,0.3,{Position=UDim2.new(0,0,0,0)},Enum.EasingStyle.Back)
+        task.delay(4.2,function()
+            tween(card,0.3,{BackgroundTransparency=1})
+            tween(s,0.3,{Transparency=1}); tween(tl,0.3,{TextTransparency=1})
+            tween(ml,0.3,{TextTransparency=1}); tween(bar,0.3,{BackgroundTransparency=1})
+            task.delay(0.32,function() card:Destroy() end)
+        end)
+    end
+end
+
+-- ── LIVE TELEMETRY PANEL  (CPS · session · 40-bar traffic graph) ─
+do
+    local panel = Instance.new("Frame")
+    panel.Size = UDim2.new(0,200,0,150)
+    panel.Position = UDim2.new(0.5,W/2+16,0.5,-75)   -- floats to the right of main
+    panel.AnchorPoint = Vector2.new(0,0)
+    panel.BackgroundColor3 = Color3.fromRGB(12,6,30); panel.BackgroundTransparency=0.12
+    panel.BorderSizePixel=0; panel.Active=true; panel.Draggable=true; panel.Parent=main
+    corner(panel,10)
+    local ps = Instance.new("UIStroke"); ps.Color=C_ACCENT; ps.Thickness=1.4; ps.Transparency=0.3; ps.Parent=panel
+    themed(ps,"Color","accent")
+
+    local hdr = Instance.new("TextLabel")
+    hdr.Size=UDim2.new(1,-16,0,16); hdr.Position=UDim2.new(0,12,0,8); hdr.BackgroundTransparency=1
+    hdr.Text="◷ TELEMETRY"; hdr.TextColor3=C_ACCENT2; hdr.Font=Enum.Font.GothamBold; hdr.TextSize=10
+    hdr.TextXAlignment=Enum.TextXAlignment.Left; hdr.Parent=panel
+    themed(hdr,"TextColor3","accent2")
+
+    local function statBlock(x, lbl)
+        local big = Instance.new("TextLabel")
+        big.Size=UDim2.new(0,62,0,22); big.Position=UDim2.new(0,x,0,26); big.BackgroundTransparency=1
+        big.Text="0"; big.TextColor3=C_TEXT; big.Font=Enum.Font.GothamBold; big.TextSize=18
+        big.TextXAlignment=Enum.TextXAlignment.Left; big.Parent=panel
+        local cap = Instance.new("TextLabel")
+        cap.Size=UDim2.new(0,62,0,12); cap.Position=UDim2.new(0,x,0,48); cap.BackgroundTransparency=1
+        cap.Text=lbl; cap.TextColor3=C_DIM; cap.Font=Enum.Font.Gotham; cap.TextSize=9
+        cap.TextXAlignment=Enum.TextXAlignment.Left; cap.Parent=panel
+        return big
+    end
+    local cpsLbl  = statBlock(12,  "CALLS/SEC")
+    local totLbl  = statBlock(78,  "TOTAL")
+    local sessLbl = statBlock(140, "SESSION")
+    sessLbl.TextSize=14; sessLbl.Position=UDim2.new(0,140,0,30)
+
+    -- 40-bar rolling graph
+    local graph = Instance.new("Frame")
+    graph.Size=UDim2.new(1,-24,0,56); graph.Position=UDim2.new(0,12,0,72)
+    graph.BackgroundColor3=Color3.fromRGB(8,4,20); graph.BackgroundTransparency=0.3
+    graph.BorderSizePixel=0; graph.ClipsDescendants=true; graph.Parent=panel
+    corner(graph,6)
+    local NBARS=40
+    local bars, hist = {}, {}
+    for i=1,NBARS do hist[i]=0 end
+    for i=1,NBARS do
+        local b=Instance.new("Frame")
+        b.AnchorPoint=Vector2.new(0,1)
+        b.Position=UDim2.new((i-1)/NBARS,1,1,-2)
+        b.Size=UDim2.new(1/NBARS,-1,0,2)
+        b.BackgroundColor3=C_GOOD; b.BorderSizePixel=0; b.Parent=graph
+        corner(b,1); bars[i]=b
+    end
+
+    local lastTotal = 0
+    task.spawn(function()
+        while panel.Parent do
+            task.wait(1)
+            local cps = math.max(0, statGrand - lastTotal)
+            lastTotal = statGrand
+            table.remove(hist,1); hist[#hist+1]=cps
+            local peak=1
+            for _,v in ipairs(hist) do if v>peak then peak=v end end
+            for i,v in ipairs(hist) do
+                local frac = v/peak
+                local h = math.max(2, frac*52)
+                local col = frac<0.4 and C_GOOD or (frac<0.75 and Color3.fromRGB(255,196,80) or C_BAD)
+                tween(bars[i],0.45,{Size=UDim2.new(1/NBARS,-1,0,h),BackgroundColor3=col})
+            end
+            cpsLbl.Text=tostring(cps); totLbl.Text=tostring(statGrand)
+            local el=os.time()-sessionStart
+            sessLbl.Text=string.format("%d:%02d", math.floor(el/60), el%60)
+            cpsLbl.TextColor3 = cps>0 and C_ACCENT2 or C_TEXT
+        end
+    end)
+end
+
+-- ── COMMAND PALETTE  (Ctrl+K) ────────────────────────────────────
+local toggleCmd
+do
+    local dim = Instance.new("Frame")
+    dim.Size=UDim2.new(1,0,1,0); dim.BackgroundColor3=Color3.new(0,0,0)
+    dim.BackgroundTransparency=0.55; dim.BorderSizePixel=0; dim.Visible=false; dim.ZIndex=90; dim.Parent=overlay
+
+    local pal = Instance.new("Frame")
+    pal.Size=UDim2.new(0,560,0,360); pal.AnchorPoint=Vector2.new(0.5,0.5)
+    pal.Position=UDim2.new(0.5,0,0.42,0); pal.BackgroundColor3=Color3.fromRGB(14,8,34)
+    pal.BorderSizePixel=0; pal.ZIndex=91; pal.Parent=dim
+    corner(pal,12)
+    local pst=Instance.new("UIStroke"); pst.Color=C_ACCENT; pst.Thickness=1.6; pst.Transparency=0.1; pst.Parent=pal
+    themed(pst,"Color","accent")
+
+    local input = Instance.new("TextBox")
+    input.Size=UDim2.new(1,-24,0,40); input.Position=UDim2.new(0,12,0,12)
+    input.BackgroundColor3=Color3.fromRGB(20,11,46); input.BorderSizePixel=0
+    input.Text=""; input.PlaceholderText="⌘  Type a command…"; input.ClearTextOnFocus=false
+    input.TextColor3=C_TEXT; input.PlaceholderColor3=C_DIM; input.Font=Enum.Font.Gotham
+    input.TextSize=14; input.TextXAlignment=Enum.TextXAlignment.Left; input.ZIndex=92; input.Parent=pal
+    corner(input,8); pad(input,12,0,12,0)
+
+    local list = Instance.new("ScrollingFrame")
+    list.Size=UDim2.new(1,-24,1,-66); list.Position=UDim2.new(0,12,0,60)
+    list.BackgroundTransparency=1; list.BorderSizePixel=0; list.ScrollBarThickness=3
+    list.ScrollBarImageColor3=C_ACCENT; list.CanvasSize=UDim2.new(0,0,0,0)
+    list.AutomaticCanvasSize=Enum.AutomaticSize.Y; list.ZIndex=92; list.Parent=pal
+    local ll=Instance.new("UIListLayout"); ll.Padding=UDim.new(0,4); ll.Parent=list
+
+    local function clearList() lists.OUT={}; lists.IN={}; setSelected(nil); rebuildAll() end
+    local function exportLog()
+        local out={}
+        for _,e in ipairs(lists.OUT) do out[#out+1]="[OUT] "..e.name.." :"..e.method end
+        for _,e in ipairs(lists.IN)  do out[#out+1]="[IN]  "..e.name.." :"..e.method end
+        pcall(function() setclipboard(table.concat(out,"\n")) end)
+        if notify then notify("Exported", #out.." calls copied to clipboard","success") end
+    end
+
+    local CMDS = {
+        {n="Go to Outgoing",  a=function() switchPage("OUT") end},
+        {n="Go to Incoming",  a=function() switchPage("IN") end},
+        {n="Go to Explorer",  a=function() switchPage("EXPLORER") end},
+        {n="Go to AI Chat",   a=function() switchPage("AI") end},
+        {n="Go to Stats",     a=function() switchPage("STATS") end},
+        {n="Go to Settings",  a=function() switchPage("SETTINGS") end},
+        {n="Clear Log",       a=clearList},
+        {n="Export Log",      a=exportLog},
+        {n="Pause / Resume Capture", a=function() paused=not paused; if notify then notify("Capture",paused and "Paused" or "Resumed","info") end end},
+    }
+    for _,th in ipairs(THEMES) do
+        CMDS[#CMDS+1] = {n="Theme: "..th.name, a=function() applyTheme(th); if notify then notify("Theme",th.name.." applied","success") end end}
+    end
+
+    local function render(q)
+        for _,c in ipairs(list:GetChildren()) do if not c:IsA("UIListLayout") then c:Destroy() end end
+        q=(q or ""):lower()
+        for i,cmd in ipairs(CMDS) do
+            if q=="" or cmd.n:lower():find(q,1,true) then
+                local row=Instance.new("TextButton")
+                row.Size=UDim2.new(1,0,0,34); row.BackgroundColor3=Color3.fromRGB(22,13,50)
+                row.BackgroundTransparency=0.35; row.BorderSizePixel=0; row.Text=""
+                row.AutoButtonColor=false; row.LayoutOrder=i; row.ZIndex=92; row.Parent=list
+                corner(row,7)
+                local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(1,-40,1,0); lbl.Position=UDim2.new(0,14,0,0)
+                lbl.BackgroundTransparency=1; lbl.Text=cmd.n; lbl.TextColor3=C_TEXT; lbl.Font=Enum.Font.Gotham
+                lbl.TextSize=12; lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.ZIndex=93; lbl.Parent=row
+                local ic=Instance.new("TextLabel"); ic.Size=UDim2.new(0,28,1,0); ic.Position=UDim2.new(1,-32,0,0)
+                ic.BackgroundTransparency=1; ic.Text="↵"; ic.TextColor3=C_DIM; ic.Font=Enum.Font.GothamBold
+                ic.TextSize=12; ic.ZIndex=93; ic.Parent=row
+                row.MouseEnter:Connect(function() tween(row,0.12,{BackgroundColor3=C_ACCENT,BackgroundTransparency=0.1}) end)
+                row.MouseLeave:Connect(function() tween(row,0.16,{BackgroundColor3=Color3.fromRGB(22,13,50),BackgroundTransparency=0.35}) end)
+                row.MouseButton1Click:Connect(function() toggleCmd(false); cmd.a() end)
+            end
+        end
+    end
+
+    toggleCmd = function(show)
+        if show == nil then show = not dim.Visible end
+        dim.Visible = show
+        if show then input.Text=""; render(""); task.defer(function() pcall(function() input:CaptureFocus() end) end) end
+    end
+    input:GetPropertyChangedSignal("Text"):Connect(function() render(input.Text) end)
+    input.FocusLost:Connect(function(enter)
+        if enter then
+            local q=input.Text:lower()
+            for _,cmd in ipairs(CMDS) do
+                if cmd.n:lower():find(q,1,true) then toggleCmd(false); cmd.a(); break end
+            end
+        end
+    end)
+end
+
+-- ── KEYBOARD SHORTCUTS ───────────────────────────────────────────
+do
+    local pageKeys = {
+        [Enum.KeyCode.One]="OUT", [Enum.KeyCode.Two]="IN", [Enum.KeyCode.Three]="EXPLORER",
+        [Enum.KeyCode.Four]="AI", [Enum.KeyCode.Five]="STATS", [Enum.KeyCode.Six]="SETTINGS",
+    }
+    UserInputService.InputBegan:Connect(function(inp, gp)
+        if gp then return end
+        local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+        if ctrl and inp.KeyCode==Enum.KeyCode.K then
+            toggleCmd(nil)  -- nil => flip current visibility
+        elseif inp.KeyCode==Enum.KeyCode.Escape then
+            toggleCmd(false)
+        elseif ctrl and inp.KeyCode==Enum.KeyCode.P then
+            paused=not paused; if notify then notify("Capture",paused and "Paused" or "Resumed","info") end
+        elseif not ctrl and pageKeys[inp.KeyCode] then
+            switchPage(pageKeys[inp.KeyCode])
+        end
+    end)
+end
+
 switchPage("OUT")
+if notify then notify("Volt v3.0", "Loaded. Ctrl+K for commands · 1-6 to switch pages.", "success") end
+end
+initV3()
 
 -- (no console output — avoid leaving an identifiable signature)
