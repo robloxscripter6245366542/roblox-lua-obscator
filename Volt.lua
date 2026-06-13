@@ -11,7 +11,7 @@ local LocalPlayer  = Players.LocalPlayer
 -- ╔═══════════════════════════════════════════════════════════════╗
 -- ║  AI CONFIG  (DeepSeek primary · Pollinations free fallback)    ║
 -- ║  Override the key safely at runtime:                          ║
--- ║    getgenv().VoltConfig = { deepseekKey = "sk-..." }           ║
+-- ║    getgenv().VoltConfig = { deepseekKey = "<your-key>" }       ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 local AI = {
     system = "You are Volt AI, an expert Roblox/Luau reverse-engineering "
