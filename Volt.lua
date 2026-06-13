@@ -489,10 +489,77 @@ local function mkTIcon(xOff, txt, col)
     b.MouseLeave:Connect(function() tween(b,0.16,{BackgroundTransparency=1}) end)
     return b
 end
+
+-- Neon glow icon button — matches the purple neon circular-arrow reference.
+-- Creates a dark background button with a bright glowing stroke + outer bloom.
+local function mkNeonIcon(xOff, txt, col, size)
+    size = size or 24
+    local b=Instance.new("TextButton")
+    b.Size=UDim2.new(0,size,0,size); b.Position=UDim2.new(1,xOff-(size/2),0.5,-size/2)
+    b.BackgroundColor3=Color3.fromRGB(8,4,22); b.BackgroundTransparency=0.15
+    b.BorderSizePixel=0; b.Text=txt; b.TextColor3=col or C_ACCENT2
+    b.AutoButtonColor=false; b.Font=Enum.Font.GothamBold; b.TextSize=14
+    b.ZIndex=3; b.Parent=titleBar
+    corner(b, size/2)  -- fully round
+
+    -- inner bright stroke (the neon ring)
+    local stroke=Instance.new("UIStroke")
+    stroke.Color=col or C_ACCENT; stroke.Thickness=1.4; stroke.Transparency=0.05
+    stroke.Parent=b
+
+    -- outer diffuse bloom (wider, very transparent — the glow halo)
+    local bloom=Instance.new("Frame")
+    bloom.AnchorPoint=Vector2.new(0.5,0.5); bloom.Position=UDim2.new(0.5,0,0.5,0)
+    bloom.Size=UDim2.new(1,14,1,14); bloom.BackgroundTransparency=1
+    bloom.BorderSizePixel=0; bloom.ZIndex=2; bloom.Parent=b
+    corner(bloom, (size+14)/2)
+    local bloomStroke=Instance.new("UIStroke")
+    bloomStroke.Color=col or C_ACCENT; bloomStroke.Thickness=5; bloomStroke.Transparency=0.7
+    bloomStroke.Parent=bloom
+
+    -- hover: intensify glow
+    b.MouseEnter:Connect(function()
+        tween(stroke,0.12,{Transparency=0, Color=C_ACCENT2})
+        tween(bloomStroke,0.12,{Transparency=0.4})
+        tween(b,0.12,{BackgroundTransparency=0})
+    end)
+    b.MouseLeave:Connect(function()
+        tween(stroke,0.18,{Transparency=0.05, Color=col or C_ACCENT})
+        tween(bloomStroke,0.18,{Transparency=0.7})
+        tween(b,0.18,{BackgroundTransparency=0.15})
+    end)
+    -- click flash
+    b.MouseButton1Down:Connect(function()
+        tween(b,0.06,{BackgroundColor3=Color3.fromRGB(40,16,90)})
+    end)
+    b.MouseButton1Up:Connect(function()
+        tween(b,0.12,{BackgroundColor3=Color3.fromRGB(8,4,22)})
+    end)
+    return b, stroke, bloomStroke
+end
+
 local closeBtn = mkTIcon(-24, "✕", C_BAD)
 local minBtn   = mkTIcon(-48, "─", C_DIM)
-local clearBtn = mkTIcon(-72, "⌫", C_DIM)
-local pauseBtn = mkTIcon(-96, "⏸", C_DIM)
+-- Clear/refresh button — neon glow ↻ matching the reference image
+local clearBtn = (function()
+    local b,s,bl = mkNeonIcon(-78, "↻", C_ACCENT, 24)
+    -- spin animation on hover
+    local spinning = false
+    b.MouseEnter:Connect(function()
+        if spinning then return end; spinning=true
+        task.spawn(function()
+            local steps=12
+            for i=1,steps do
+                if not b.Parent then spinning=false; return end
+                b.Rotation = (i/steps)*360
+                task.wait(0.016)
+            end
+            b.Rotation=0; spinning=false
+        end)
+    end)
+    return b
+end)()
+local pauseBtn = mkTIcon(-108, "⏸", C_DIM)
 
 do
     local sep=Instance.new("Frame"); sep.Size=UDim2.new(1,0,0,1); sep.Position=UDim2.new(0,0,1,-1)
