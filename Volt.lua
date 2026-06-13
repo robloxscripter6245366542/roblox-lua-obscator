@@ -206,21 +206,23 @@ local TYPE_COLS = {
 }
 local function tc(t) return TYPE_COLS[t] or Color3.fromRGB(185,185,185) end
 
--- ── PURPLE PALETTE ───────────────────────────────────────────────
-local C_BG      = Color3.fromRGB(15,9,24)
-local C_PANEL   = Color3.fromRGB(19,12,32)
-local C_PANEL2  = Color3.fromRGB(23,14,40)
-local C_RAIL    = Color3.fromRGB(12,7,20)
-local C_ROW     = Color3.fromRGB(24,15,40)
-local C_ROWALT  = Color3.fromRGB(20,12,34)
-local C_SEL     = Color3.fromRGB(52,26,92)
-local C_ACCENT  = Color3.fromRGB(140,70,240)
-local C_ACCENT2 = Color3.fromRGB(184,116,255)
+-- ── PURPLE PALETTE  (HUD frame edition) ─────────────────────────
+local C_BG      = Color3.fromRGB(8,  4,  25)   -- very dark navy, matches reference
+local C_PANEL   = Color3.fromRGB(14, 7,  36)
+local C_PANEL2  = Color3.fromRGB(18, 10, 46)
+local C_RAIL    = Color3.fromRGB(6,  3,  18)
+local C_ROW     = Color3.fromRGB(18, 9,  42)
+local C_ROWALT  = Color3.fromRGB(13, 6,  32)
+local C_SEL     = Color3.fromRGB(50, 22, 96)
+local C_ACCENT  = Color3.fromRGB(130, 50, 255)  -- neon border purple
+local C_ACCENT2 = Color3.fromRGB(185,120, 255)  -- bright highlight
+local C_GLOW    = Color3.fromRGB(100, 28, 210)  -- outer glow (diffuse)
+local C_CORNER  = Color3.fromRGB(195,130, 255)  -- corner bracket marks
 local C_TEXT    = Color3.fromRGB(232,224,255)
-local C_DIM     = Color3.fromRGB(124,108,154)
-local C_BORDER  = Color3.fromRGB(48,28,80)
-local C_GOOD    = Color3.fromRGB(96,222,142)
-local C_BAD     = Color3.fromRGB(236,92,112)
+local C_DIM     = Color3.fromRGB(120,104,155)
+local C_BORDER  = Color3.fromRGB(55, 28, 88)
+local C_GOOD    = Color3.fromRGB(96, 222,142)
+local C_BAD     = Color3.fromRGB(236, 92,112)
 
 -- ── DIMENSIONS ───────────────────────────────────────────────────
 local W, H      = 640, 420   -- Cobalt's exact window size
@@ -275,19 +277,20 @@ tSg.DisplayOrder=10; mountGui(tSg)
 
 local tBtn=Instance.new("TextButton")
 tBtn.Size=UDim2.new(0,86,0,24); tBtn.Position=UDim2.new(0.5,-43,0,6)
-tBtn.BackgroundColor3=Color3.fromRGB(68,26,138); tBtn.BorderSizePixel=0
-tBtn.Text="ϟ  VOLT"; tBtn.TextColor3=C_TEXT
+tBtn.BackgroundColor3=Color3.fromRGB(8,4,22); tBtn.BorderSizePixel=0
+tBtn.Text="⚡ VOLT"; tBtn.TextColor3=C_TEXT
 tBtn.Font=Enum.Font.GothamBold; tBtn.TextSize=12; tBtn.AutoButtonColor=false; tBtn.Parent=tSg
-corner(tBtn,12)
+corner(tBtn,4)
+-- Glow border stroke on the pill matching the HUD frame style
+do local s=Instance.new("UIStroke");s.Color=C_ACCENT;s.Thickness=1.5;s.Transparency=0.0;s.Parent=tBtn end
+-- subtle outer glow behind the pill
 do
-    local g=Instance.new("UIGradient")
-    g.Color=ColorSequence.new{
-        ColorSequenceKeypoint.new(0,Color3.fromRGB(118,52,214)),
-        ColorSequenceKeypoint.new(1,Color3.fromRGB(58,18,118)),
-    }
-    g.Rotation=90; g.Parent=tBtn
+    local g=Instance.new("Frame"); g.AnchorPoint=Vector2.new(0.5,0.5)
+    g.Position=UDim2.new(0.5,0,0.5,0); g.Size=UDim2.new(1,10,1,10)
+    g.BackgroundTransparency=1; g.BorderSizePixel=0; g.ZIndex=0; g.Parent=tBtn
+    corner(g,6)
+    local s=Instance.new("UIStroke");s.Color=C_GLOW;s.Thickness=5;s.Transparency=0.65;s.Parent=g
 end
-do local s=Instance.new("UIStroke");s.Color=C_ACCENT2;s.Thickness=1;s.Transparency=0.45;s.Parent=tBtn end
 if voltLogoId then
     tBtn.Text="  VOLT"  -- make room for logo on the left
     local img=Instance.new("ImageLabel"); img.Size=UDim2.new(0,18,0,18); img.Position=UDim2.new(0,6,0.5,-9)
@@ -305,40 +308,101 @@ main.Name="Main"; main.AnchorPoint=Vector2.new(0.5,0.5)
 main.Position=UDim2.new(0.5,0,0.5,0); main.Size=UDim2.new(0,W,0,H)
 main.BackgroundColor3=C_BG; main.BorderSizePixel=0
 main.Active=true; main.Draggable=true; main.Parent=sg
-corner(main,11)
+corner(main,6)  -- HUD frame uses near-square corners
+
+-- Background radial-style gradient: darker navy center, purple edges (reference image look)
 do
     local g=Instance.new("UIGradient")
     g.Color=ColorSequence.new{
-        ColorSequenceKeypoint.new(0,Color3.fromRGB(27,16,46)),
-        ColorSequenceKeypoint.new(1,Color3.fromRGB(13,7,23)),
+        ColorSequenceKeypoint.new(0,   Color3.fromRGB(22,10,58)),   -- edge purple
+        ColorSequenceKeypoint.new(0.45,Color3.fromRGB(10, 4,28)),   -- dark center
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(22,10,58)),   -- edge purple
     }
-    g.Rotation=120; g.Parent=main
+    g.Rotation=135; g.Parent=main
 end
 
--- drop shadow
-local shadow=Instance.new("ImageLabel")
-shadow.Name="Shadow"; shadow.AnchorPoint=Vector2.new(0.5,0.5)
-shadow.Position=UDim2.new(0.5,0,0.5,0); shadow.Size=UDim2.new(1,54,1,54)
-shadow.BackgroundTransparency=1; shadow.Image="rbxassetid://6014261993"
-shadow.ImageColor3=Color3.fromRGB(92,36,180); shadow.ImageTransparency=0.32
-shadow.ScaleType=Enum.ScaleType.Slice; shadow.SliceCenter=Rect.new(49,49,450,450)
-shadow.ZIndex=0; shadow.Parent=main
+-- ── Outer diffuse glow shell ──────────────────────────────────────
+-- A slightly larger container behind main that bleeds the neon purple outward.
+local glowShell=Instance.new("Frame")
+glowShell.AnchorPoint=Vector2.new(0.5,0.5); glowShell.Position=UDim2.new(0.5,0,0.5,0)
+glowShell.Size=UDim2.new(1,20,1,20); glowShell.BackgroundTransparency=1
+glowShell.BorderSizePixel=0; glowShell.ZIndex=0; glowShell.Parent=main
+corner(glowShell,8)
+do
+    local s=Instance.new("UIStroke")
+    s.Color=C_GLOW; s.Thickness=8; s.Transparency=0.58; s.Parent=glowShell
+end
 
--- animated glow border
+-- ── Main bright border line ───────────────────────────────────────
 local mainStroke=Instance.new("UIStroke")
-mainStroke.Color=C_ACCENT; mainStroke.Thickness=1.4; mainStroke.Transparency=0.15; mainStroke.Parent=main
+mainStroke.Color=C_ACCENT; mainStroke.Thickness=1.8; mainStroke.Transparency=0.0; mainStroke.Parent=main
 do
     local sg2=Instance.new("UIGradient")
     sg2.Color=ColorSequence.new{
-        ColorSequenceKeypoint.new(0,Color3.fromRGB(170,96,255)),
-        ColorSequenceKeypoint.new(0.5,Color3.fromRGB(98,42,192)),
-        ColorSequenceKeypoint.new(1,Color3.fromRGB(170,96,255)),
+        ColorSequenceKeypoint.new(0,   Color3.fromRGB(210,130,255)),
+        ColorSequenceKeypoint.new(0.35,Color3.fromRGB(110, 35,240)),
+        ColorSequenceKeypoint.new(0.65,Color3.fromRGB(110, 35,240)),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(210,130,255)),
     }
     sg2.Parent=mainStroke
     task.spawn(function()
-        while sg2.Parent do sg2.Rotation=(sg2.Rotation+2)%360; task.wait(0.03) end
+        while sg2.Parent do sg2.Rotation=(sg2.Rotation+1.2)%360; task.wait(0.04) end
     end)
 end
+
+-- ── Inner secondary border (double-border effect) ─────────────────
+local innerBorderFrame=Instance.new("Frame")
+innerBorderFrame.AnchorPoint=Vector2.new(0.5,0.5); innerBorderFrame.Position=UDim2.new(0.5,0,0.5,0)
+innerBorderFrame.Size=UDim2.new(1,-10,1,-10); innerBorderFrame.BackgroundTransparency=1
+innerBorderFrame.BorderSizePixel=0; innerBorderFrame.ZIndex=1; innerBorderFrame.Parent=main
+corner(innerBorderFrame,4)
+do
+    local s=Instance.new("UIStroke")
+    s.Color=Color3.fromRGB(80,25,160); s.Thickness=0.8; s.Transparency=0.5; s.Parent=innerBorderFrame
+end
+
+-- ── Corner bracket decorations (the sci-fi HUD notch marks) ──────
+-- Each corner gets a small container with two bright tick lines (horizontal + vertical)
+-- creating the angular L-bracket marks seen in the reference image.
+local BSIZE = 22   -- bracket arm length in pixels
+local function makeCornerBracket(anchorX, anchorY)
+    local c=Instance.new("Frame")
+    c.AnchorPoint=Vector2.new(anchorX,anchorY)
+    -- sit just outside the frame edge so it overlays the border line
+    local ox = anchorX==0 and -1 or 1
+    local oy = anchorY==0 and -1 or 1
+    c.Position=UDim2.new(anchorX,ox,anchorY,oy)
+    c.Size=UDim2.new(0,BSIZE,0,BSIZE)
+    c.BackgroundTransparency=1; c.BorderSizePixel=0; c.ZIndex=6; c.Parent=main
+
+    -- horizontal arm
+    local h=Instance.new("Frame")
+    h.BackgroundColor3=C_CORNER; h.BorderSizePixel=0; h.ZIndex=6; h.Parent=c
+    h.Size=UDim2.new(1,0,0,2)
+    h.Position= anchorY==0 and UDim2.new(0,0,0,0) or UDim2.new(0,0,1,-2)
+
+    -- vertical arm
+    local v=Instance.new("Frame")
+    v.BackgroundColor3=C_CORNER; v.BorderSizePixel=0; v.ZIndex=6; v.Parent=c
+    v.Size=UDim2.new(0,2,1,0)
+    v.Position= anchorX==0 and UDim2.new(0,0,0,0) or UDim2.new(1,-2,0,0)
+
+    -- tiny glow on the corner bracket
+    local gH=Instance.new("UIStroke"); gH.Color=C_CORNER; gH.Thickness=1; gH.Transparency=0.5; gH.Parent=h
+end
+makeCornerBracket(0,0)   -- top-left
+makeCornerBracket(1,0)   -- top-right
+makeCornerBracket(0,1)   -- bottom-left
+makeCornerBracket(1,1)   -- bottom-right
+
+-- drop shadow (soft purple bloom behind the whole window)
+local shadow=Instance.new("ImageLabel")
+shadow.Name="Shadow"; shadow.AnchorPoint=Vector2.new(0.5,0.5)
+shadow.Position=UDim2.new(0.5,0,0.5,0); shadow.Size=UDim2.new(1,80,1,80)
+shadow.BackgroundTransparency=1; shadow.Image="rbxassetid://6014261993"
+shadow.ImageColor3=Color3.fromRGB(80,20,170); shadow.ImageTransparency=0.22
+shadow.ScaleType=Enum.ScaleType.Slice; shadow.SliceCenter=Rect.new(49,49,450,450)
+shadow.ZIndex=0; shadow.Parent=main
 
 -- open animation
 main.Size=UDim2.new(0,W*0.92,0,H*0.92); main.BackgroundTransparency=0.4
@@ -346,12 +410,25 @@ tween(main,0.28,{Size=UDim2.new(0,W,0,H),BackgroundTransparency=0},Enum.EasingSt
 
 -- ── TITLE BAR ────────────────────────────────────────────────────
 local titleBar=Instance.new("Frame")
-titleBar.Size=UDim2.new(1,0,0,TITLE_H); titleBar.BackgroundColor3=C_PANEL2
+titleBar.Size=UDim2.new(1,0,0,TITLE_H); titleBar.BackgroundColor3=Color3.fromRGB(10,5,28)
 titleBar.BorderSizePixel=0; titleBar.Parent=main
-corner(titleBar,11)
+corner(titleBar,6)
 do -- square off the bottom corners
-    local f=Instance.new("Frame"); f.Size=UDim2.new(1,0,0,12); f.Position=UDim2.new(0,0,1,-12)
-    f.BackgroundColor3=C_PANEL2; f.BorderSizePixel=0; f.Parent=titleBar
+    local f=Instance.new("Frame"); f.Size=UDim2.new(1,0,0,8); f.Position=UDim2.new(0,0,1,-8)
+    f.BackgroundColor3=Color3.fromRGB(10,5,28); f.BorderSizePixel=0; f.Parent=titleBar
+end
+-- HUD separator line at bottom of title bar
+do
+    local sep=Instance.new("Frame"); sep.Size=UDim2.new(1,0,0,1); sep.Position=UDim2.new(0,0,1,-1)
+    sep.BackgroundColor3=C_ACCENT; sep.BorderSizePixel=0; sep.ZIndex=3; sep.Parent=titleBar
+    local sg3=Instance.new("UIGradient")
+    sg3.Color=ColorSequence.new{
+        ColorSequenceKeypoint.new(0,Color3.fromRGB(0,0,0,0) and C_BORDER or Color3.fromRGB(30,10,60)),
+        ColorSequenceKeypoint.new(0.2,C_ACCENT),
+        ColorSequenceKeypoint.new(0.8,C_ACCENT),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(30,10,60)),
+    }
+    sg3.Parent=sep
 end
 
 local logoBadge=Instance.new("Frame")
