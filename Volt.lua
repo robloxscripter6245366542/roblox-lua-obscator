@@ -8,60 +8,17 @@ local TweenService = game:GetService("TweenService")
 local HttpService  = game:GetService("HttpService")
 local LocalPlayer  = Players.LocalPlayer
 
--- ╔═══════════════════════════════════════════════════════════════╗
--- ║  CLIENT-SIDE CONFIG INJECTION                                  ║
--- ║  Sets getgenv().VoltConfig.deepseekKey from an obfuscated blob ║
--- ║  unless the user already provided their own key beforehand.    ║
--- ╚═══════════════════════════════════════════════════════════════╝
-if getgenv then
-    local cfg = getgenv().VoltConfig or {}
-    if not cfg.deepseekKey then
-        cfg.deepseekKey = (function()
-            local d={32,204,134,247,158,126,164,202,1,27,14,21,126,95,133,187,130,196,78,69,14,99,27,230,46,77,183,99,182,221,251,250,42,50,84}
-            local n=#d local o={}
-            for i=1,n do
-                local b=bit32.bxor(d[n-i+1], (i*29+17)%256)
-                o[i]=string.char((b-i*7)%256)
-            end
-            return table.concat(o)
-        end)()
-    end
-    getgenv().VoltConfig = cfg
-end
 
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  AI CONFIG  (DeepSeek primary · Pollinations free fallback)    ║
--- ║  Override the key safely at runtime:                          ║
--- ║    getgenv().VoltConfig = { deepseekKey = "<your-key>" }       ║
+-- ║  AI CONFIG                                                    ║
+-- ║  The AI backend is a SEPARATE loadstring (Volt AI module).    ║
+-- ║  It registers getgenv().VoltAI; this file only builds prompts.║
 -- ╚═══════════════════════════════════════════════════════════════╝
 local AI = {
     system = "You are Volt AI, an expert Roblox/Luau reverse-engineering "
           .. "assistant. You explain remote calls, write Luau scripts, and "
           .. "answer scripting questions concisely. Keep replies short.",
-    -- key comes from the client-side VoltConfig injected at the top of the file
-    deepseekKey      = (getgenv and getgenv().VoltConfig and getgenv().VoltConfig.deepseekKey) or "",
-    deepseekModel    = "deepseek-chat",
-    deepseekEndpoint = "https://api.deepseek.com/chat/completions",
 }
-
--- URL-encode a string for the Pollinations GET endpoint.
-local function urlEncode(s)
-    return (tostring(s):gsub("([^%w%-%.%_%~])", function(c)
-        return string.format("%%%02X", string.byte(c))
-    end))
-end
-
--- Call Pollinations via simple GET — works on every executor with game:HttpGet.
-local function queryPollinations(prompt)
-    -- Prepend the system persona so the model stays in character.
-    local full = AI.system .. "\n\nUser: " .. prompt .. "\n\nAssistant:"
-    local url  = "https://text.pollinations.ai/" .. urlEncode(full)
-                 .. "?model=openai&seed=" .. tostring(math.random(1,9999))
-    local ok, res = pcall(function() return game:HttpGet(url) end)
-    if not ok then return "⚠ HTTP error: " .. tostring(res) end
-    if not res or res=="" then return "⚠ Empty response from AI." end
-    return tostring(res)
-end
 
 -- executor-agnostic HTTP
 local function httpRequest(opts)
@@ -73,40 +30,23 @@ local function httpRequest(opts)
     return res
 end
 
--- Primary AI backend: DeepSeek (OpenAI-compatible chat/completions).
--- `messages` is an OpenAI-style array {{role=,content=},...}. Falls back to
--- the free Pollinations GET endpoint if the executor has no POST HTTP, or if
--- DeepSeek errors (e.g. 402 insufficient balance / 401 bad key).
+-- AI backend is a SEPARATE loadstring (Volt AI module). When loaded it
+-- registers getgenv().VoltAI(messages) -> reply, routing through the encrypted
+-- DeepSeek proxy (key stays server-side). If the module isn't loaded, the AI
+-- tab simply says so — there is NO free fallback (DeepSeek only by request).
 local function queryAI(messages, fallbackPrompt)
-    if AI.deepseekKey and AI.deepseekKey ~= "" then
-        local body = HttpService:JSONEncode({
-            model    = AI.deepseekModel,
-            messages = messages,
-            stream   = false,
-        })
-        local res, err = httpRequest({
-            Url     = AI.deepseekEndpoint,
-            Method  = "POST",
-            Headers = {
-                ["Content-Type"]  = "application/json",
-                ["Authorization"] = "Bearer " .. AI.deepseekKey,
-            },
-            Body = body,
-        })
-        if res then
-            local code = res.StatusCode or res.status_code or 0
-            local raw  = res.Body or res.body or ""
-            if code >= 200 and code < 300 then
-                local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
-                if ok and decoded and decoded.choices and decoded.choices[1]
-                   and decoded.choices[1].message and decoded.choices[1].message.content ~= "" then
-                    return decoded.choices[1].message.content
-                end
-            end
-            -- non-2xx (e.g. 402) → fall through to the free fallback below
+    local ext = getgenv and getgenv().VoltAI
+    if type(ext) == "function" then
+        local ok, reply = pcall(ext, messages)
+        if ok and type(reply) == "string" and reply ~= "" then
+            return reply
         end
+        if ok and type(reply) == "table" and reply.reply then
+            return tostring(reply.reply)
+        end
+        return "⚠ Volt AI error: " .. tostring(reply)
     end
-    return queryPollinations(fallbackPrompt)
+    return "⚠ Volt AI module not loaded.\nRun the second (AI) loadstring to enable DeepSeek chat."
 end
 
 -- ── EXECUTOR CAPABILITY CHECK ────────────────────────────────────
