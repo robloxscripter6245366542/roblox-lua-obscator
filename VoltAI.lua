@@ -1,20 +1,33 @@
 -- Volt AI — DeepSeek module (SECOND loadstring).
 --
 -- Load this AFTER Volt.lua. It registers getgenv().VoltAI(messages) -> reply,
--- which Volt's AI tab calls. Requests go through the encrypted proxy so the
--- DeepSeek API key never touches the client:
+-- which Volt's AI tab calls.
 --
---     Volt (client) --HTTPS--> /api/ai --Bearer key--> DeepSeek
---
--- The proxy holds DEEPSEEK_KEY as a server-side env var. Self-host? override:
---     getgenv().VoltConfig = { aiProxy = "https://your-app.vercel.app/api/ai" }
--- before running this loadstring.
+-- Backend selection:
+--   * If getgenv().VoltConfig.aiProxy is set, it routes through that proxy
+--     (key stays server-side):  client --HTTPS--> /api/ai --> DeepSeek
+--   * Otherwise it calls DeepSeek directly with the embedded (obfuscated) key
+--     so the AI works out-of-the-box with no server setup.
 
 local HttpService = game:GetService("HttpService")
-
 local cfg = (getgenv and getgenv().VoltConfig) or {}
-local PROXY = cfg.aiProxy or "https://roblox-lua-obscator.vercel.app/api/ai"
+
+-- embedded DeepSeek key — multi-layer obfuscated (reversed order + index-mixed
+-- XOR + per-index offset); decoded at runtime, no plaintext in the file.
+local function decodeKey()
+    local d={80,206,214,162,157,124,117,193,213,235,243,41,117,115,138,187,129,181,39,69,14,52,55,225,212,155,182,146,184,51,254,208,42,50,84}
+    local n=#d local o={}
+    for i=1,n do
+        local b=bit32.bxor(d[n-i+1], (i*29+17)%256)
+        o[i]=string.char((b-i*7)%256)
+    end
+    return table.concat(o)
+end
+
+local PROXY = cfg.aiProxy            -- optional: route through a server proxy
 local TOKEN = cfg.aiToken
+local KEY   = cfg.deepseekKey or decodeKey()
+local MODEL = cfg.deepseekModel or "deepseek-chat"
 
 -- executor-agnostic POST
 local function httpRequest(opts)
@@ -28,28 +41,42 @@ end
 
 -- messages: OpenAI-style array {{role=,content=},...}  ->  reply string
 local function VoltAI(messages)
-    local headers = { ["Content-Type"] = "application/json" }
-    if TOKEN then headers["x-volt-token"] = TOKEN end
+    local url, headers, body
+    if PROXY and PROXY ~= "" then
+        -- proxy mode: send only {messages}; server attaches the key
+        url = PROXY
+        headers = { ["Content-Type"] = "application/json" }
+        if TOKEN then headers["x-volt-token"] = TOKEN end
+        body = HttpService:JSONEncode({ messages = messages })
+    else
+        -- direct mode: call DeepSeek with the embedded key
+        url = "https://api.deepseek.com/chat/completions"
+        headers = {
+            ["Content-Type"]  = "application/json",
+            ["Authorization"] = "Bearer " .. KEY,
+        }
+        body = HttpService:JSONEncode({ model = MODEL, messages = messages, stream = false })
+    end
 
-    local res, err = httpRequest({
-        Url     = PROXY,
-        Method  = "POST",
-        Headers = headers,
-        Body    = HttpService:JSONEncode({ messages = messages }),
-    })
+    local res, err = httpRequest({ Url = url, Method = "POST", Headers = headers, Body = body })
     if not res then return "⚠ AI request failed: " .. tostring(err) end
 
     local code = res.StatusCode or res.status_code or 0
     local raw  = res.Body or res.body or ""
     local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
-    if code >= 200 and code < 300 and ok and decoded and decoded.reply and decoded.reply ~= "" then
-        return decoded.reply
+    if ok and decoded then
+        -- proxy returns {reply=...}; DeepSeek returns {choices=[{message={content}}]}
+        if decoded.reply and decoded.reply ~= "" then return decoded.reply end
+        if decoded.choices and decoded.choices[1] and decoded.choices[1].message
+           and decoded.choices[1].message.content ~= "" then
+            return decoded.choices[1].message.content
+        end
+        if decoded.error then
+            local e = decoded.error
+            return "⚠ DeepSeek: " .. tostring((type(e)=="table" and (e.message or e.type)) or e)
+        end
     end
-    -- surface a useful server error (missing key, upstream 402, etc.)
-    if ok and decoded and decoded.error then
-        return "⚠ DeepSeek proxy: " .. tostring(decoded.error)
-    end
-    return "⚠ DeepSeek proxy returned " .. tostring(code)
+    return "⚠ DeepSeek returned " .. tostring(code)
 end
 
 if getgenv then getgenv().VoltAI = VoltAI end
