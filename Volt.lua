@@ -9,13 +9,19 @@ local HttpService  = game:GetService("HttpService")
 local LocalPlayer  = Players.LocalPlayer
 
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  AI CONFIG  (Pollinations.ai — free, no API key)              ║
--- ║  Uses simple GET API so game:HttpGet() is all that's needed.  ║
+-- ║  AI CONFIG  (DeepSeek primary · Pollinations free fallback)    ║
+-- ║  Override the key safely at runtime:                          ║
+-- ║    getgenv().VoltConfig = { deepseekKey = "sk-..." }           ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 local AI = {
     system = "You are Volt AI, an expert Roblox/Luau reverse-engineering "
           .. "assistant. You explain remote calls, write Luau scripts, and "
           .. "answer scripting questions concisely. Keep replies short.",
+    -- runtime override wins; embedded key is the fallback default
+    deepseekKey      = (getgenv and getgenv().VoltConfig and getgenv().VoltConfig.deepseekKey)
+                       or "sk-c689bb8176ba49a5bd6149bd3371fa93",
+    deepseekModel    = "deepseek-chat",
+    deepseekEndpoint = "https://api.deepseek.com/chat/completions",
 }
 
 -- URL-encode a string for the Pollinations GET endpoint.
@@ -45,6 +51,42 @@ local function httpRequest(opts)
     local ok, res = pcall(fn, opts)
     if not ok then return nil, tostring(res) end
     return res
+end
+
+-- Primary AI backend: DeepSeek (OpenAI-compatible chat/completions).
+-- `messages` is an OpenAI-style array {{role=,content=},...}. Falls back to
+-- the free Pollinations GET endpoint if the executor has no POST HTTP, or if
+-- DeepSeek errors (e.g. 402 insufficient balance / 401 bad key).
+local function queryAI(messages, fallbackPrompt)
+    if AI.deepseekKey and AI.deepseekKey ~= "" then
+        local body = HttpService:JSONEncode({
+            model    = AI.deepseekModel,
+            messages = messages,
+            stream   = false,
+        })
+        local res, err = httpRequest({
+            Url     = AI.deepseekEndpoint,
+            Method  = "POST",
+            Headers = {
+                ["Content-Type"]  = "application/json",
+                ["Authorization"] = "Bearer " .. AI.deepseekKey,
+            },
+            Body = body,
+        })
+        if res then
+            local code = res.StatusCode or res.status_code or 0
+            local raw  = res.Body or res.body or ""
+            if code >= 200 and code < 300 then
+                local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
+                if ok and decoded and decoded.choices and decoded.choices[1]
+                   and decoded.choices[1].message and decoded.choices[1].message.content ~= "" then
+                    return decoded.choices[1].message.content
+                end
+            end
+            -- non-2xx (e.g. 402) → fall through to the free fallback below
+        end
+    end
+    return queryPollinations(fallbackPrompt)
 end
 
 -- ── EXECUTOR CAPABILITY CHECK ────────────────────────────────────
@@ -1320,22 +1362,19 @@ local function aiSendMessage(promptText)
     aiInput.Text=""
 
     task.spawn(function()
-        -- Respect rate limit: Pollinations allows ~1 req/sec on free tier.
-        -- Wait 1.5s before sending so rapid messages don't get 429'd.
-        task.wait(1.5)
-        -- Build context: last 4 exchanges so the model remembers the convo.
+        task.wait(0.15)
+        -- Trimmed OpenAI-style message array for DeepSeek: system + recent turns.
+        local msgs = { aiHistory[1] }                 -- system prompt
+        local start = math.max(2, #aiHistory - 11)
+        for i = start, #aiHistory do msgs[#msgs+1] = aiHistory[i] end
+        -- Flattened context string for the Pollinations GET fallback.
         local ctx = ""
-        local msgList = aiHistory
-        local start = math.max(2, #msgList - 7)  -- skip system prompt (idx 1)
-        for i = start, #msgList do
-            local m = msgList[i]
-            if m.role == "user" then
-                ctx = ctx .. "User: " .. m.content .. "\n"
-            elseif m.role == "assistant" then
-                ctx = ctx .. "Assistant: " .. m.content .. "\n"
-            end
+        for i = start, #aiHistory do
+            local m = aiHistory[i]
+            if m.role == "user" then ctx = ctx .. "User: " .. m.content .. "\n"
+            elseif m.role == "assistant" then ctx = ctx .. "Assistant: " .. m.content .. "\n" end
         end
-        local reply = queryPollinations(ctx .. "User: " .. promptText)
+        local reply = queryAI(msgs, ctx)
         -- strip leading/trailing whitespace
         reply = reply:match("^%s*(.-)%s*$") or reply
         if reply ~= "" then
