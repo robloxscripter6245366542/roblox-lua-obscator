@@ -10,14 +10,32 @@ local LocalPlayer  = Players.LocalPlayer
 
 -- ╔═══════════════════════════════════════════════════════════════╗
 -- ║  AI CONFIG  (Pollinations.ai — free, no API key)              ║
+-- ║  Uses simple GET API so game:HttpGet() is all that's needed.  ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 local AI = {
-    model    = "openai",                 -- smartest free model; alt: mistral, openai-large
-    endpoint = "https://text.pollinations.ai/openai",
-    system   = "You are Volt AI, an expert Roblox/Luau reverse-engineering "
-            .. "assistant embedded in a remote-spy tool. You explain remote "
-            .. "calls, write Luau, and answer scripting questions concisely.",
+    system = "You are Volt AI, an expert Roblox/Luau reverse-engineering "
+          .. "assistant. You explain remote calls, write Luau scripts, and "
+          .. "answer scripting questions concisely. Keep replies short.",
 }
+
+-- URL-encode a string for the Pollinations GET endpoint.
+local function urlEncode(s)
+    return (tostring(s):gsub("([^%w%-%.%_%~])", function(c)
+        return string.format("%%%02X", string.byte(c))
+    end))
+end
+
+-- Call Pollinations via simple GET — works on every executor with game:HttpGet.
+local function queryPollinations(prompt)
+    -- Prepend the system persona so the model stays in character.
+    local full = AI.system .. "\n\nUser: " .. prompt .. "\n\nAssistant:"
+    local url  = "https://text.pollinations.ai/" .. urlEncode(full)
+                 .. "?model=openai&seed=" .. tostring(math.random(1,9999))
+    local ok, res = pcall(function() return game:HttpGet(url) end)
+    if not ok then return "⚠ HTTP error: " .. tostring(res) end
+    if not res or res=="" then return "⚠ Empty response from AI." end
+    return tostring(res)
+end
 
 -- executor-agnostic HTTP
 local function httpRequest(opts)
@@ -1274,42 +1292,28 @@ local function aiSendMessage(promptText)
     aiInput.Text=""
 
     task.spawn(function()
-        local body = HttpService:JSONEncode({
-            model    = AI.model,
-            messages = aiHistory,
-            stream   = false,
-        })
-        local res, err = httpRequest({
-            Url     = AI.endpoint,
-            Method  = "POST",
-            Headers = { ["Content-Type"] = "application/json" },
-            Body    = body,
-        })
-        local reply
-        if not res then
-            reply = "⚠ HTTP error: "..tostring(err)
-        else
-            local code = res.StatusCode or res.status_code or 0
-            local raw  = res.Body or res.body or ""
-            if code>=200 and code<300 then
-                -- Pollinations may reply as OpenAI-JSON or as plain text
-                local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
-                if ok and type(decoded)=="table" and decoded.choices and decoded.choices[1] then
-                    reply = decoded.choices[1].message and decoded.choices[1].message.content
-                        or decoded.choices[1].text
-                elseif raw~="" then
-                    reply = raw   -- plain-text completion
-                end
-                if reply and reply~="" then
-                    table.insert(aiHistory, {role="assistant", content=reply})
-                else
-                    reply = "⚠ Empty response from AI."
-                end
-            else
-                reply = ("⚠ API %d:\n%s"):format(code, raw:sub(1,400))
+        -- Respect rate limit: Pollinations allows ~1 req/sec on free tier.
+        -- Wait 1.5s before sending so rapid messages don't get 429'd.
+        task.wait(1.5)
+        -- Build context: last 4 exchanges so the model remembers the convo.
+        local ctx = ""
+        local msgList = aiHistory
+        local start = math.max(2, #msgList - 7)  -- skip system prompt (idx 1)
+        for i = start, #msgList do
+            local m = msgList[i]
+            if m.role == "user" then
+                ctx = ctx .. "User: " .. m.content .. "\n"
+            elseif m.role == "assistant" then
+                ctx = ctx .. "Assistant: " .. m.content .. "\n"
             end
         end
-        thinking.Text = reply
+        local reply = queryPollinations(ctx .. "User: " .. promptText)
+        -- strip leading/trailing whitespace
+        reply = reply:match("^%s*(.-)%s*$") or reply
+        if reply ~= "" then
+            table.insert(aiHistory, {role="assistant", content=reply})
+        end
+        thinking.Text = (reply ~= "") and reply or "⚠ Empty response."
         task.defer(function() aiScroll.CanvasPosition=Vector2.new(0,aiScroll.AbsoluteCanvasSize.Y) end)
         aiBusy=false
     end)
