@@ -9,6 +9,27 @@ local HttpService  = game:GetService("HttpService")
 local LocalPlayer  = Players.LocalPlayer
 
 -- ╔═══════════════════════════════════════════════════════════════╗
+-- ║  CLIENT-SIDE CONFIG INJECTION                                  ║
+-- ║  Sets getgenv().VoltConfig.deepseekKey from an obfuscated blob ║
+-- ║  unless the user already provided their own key beforehand.    ║
+-- ╚═══════════════════════════════════════════════════════════════╝
+if getgenv then
+    local cfg = getgenv().VoltConfig or {}
+    if not cfg.deepseekKey then
+        cfg.deepseekKey = (function()
+            local d={32,204,134,247,158,126,164,202,1,27,14,21,126,95,133,187,130,196,78,69,14,99,27,230,46,77,183,99,182,221,251,250,42,50,84}
+            local n=#d local o={}
+            for i=1,n do
+                local b=bit32.bxor(d[n-i+1], (i*29+17)%256)
+                o[i]=string.char((b-i*7)%256)
+            end
+            return table.concat(o)
+        end)()
+    end
+    getgenv().VoltConfig = cfg
+end
+
+-- ╔═══════════════════════════════════════════════════════════════╗
 -- ║  AI CONFIG  (DeepSeek primary · Pollinations free fallback)    ║
 -- ║  Override the key safely at runtime:                          ║
 -- ║    getgenv().VoltConfig = { deepseekKey = "<your-key>" }       ║
@@ -17,18 +38,8 @@ local AI = {
     system = "You are Volt AI, an expert Roblox/Luau reverse-engineering "
           .. "assistant. You explain remote calls, write Luau scripts, and "
           .. "answer scripting questions concisely. Keep replies short.",
-    -- runtime override wins; embedded key is multi-layer obfuscated (reversed
-    -- order + index-mixed XOR + per-index arithmetic offset). Not plaintext.
-    deepseekKey      = (getgenv and getgenv().VoltConfig and getgenv().VoltConfig.deepseekKey)
-                       or (function()
-                            local d={32,204,134,247,158,126,164,202,1,27,14,21,126,95,133,187,130,196,78,69,14,99,27,230,46,77,183,99,182,221,251,250,42,50,84}
-                            local n=#d local o={}
-                            for i=1,n do
-                                local b=bit32.bxor(d[n-i+1], (i*29+17)%256)
-                                o[i]=string.char((b-i*7)%256)
-                            end
-                            return table.concat(o)
-                          end)(),
+    -- key comes from the client-side VoltConfig injected at the top of the file
+    deepseekKey      = (getgenv and getgenv().VoltConfig and getgenv().VoltConfig.deepseekKey) or "",
     deepseekModel    = "deepseek-chat",
     deepseekEndpoint = "https://api.deepseek.com/chat/completions",
 }
