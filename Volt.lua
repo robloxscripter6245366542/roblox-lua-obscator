@@ -1221,9 +1221,37 @@ aiClearBtn.Text="⌫ Clear"; aiClearBtn.TextColor3=C_TEXT; aiClearBtn.AutoButton
 aiClearBtn.Font=Enum.Font.GothamBold; aiClearBtn.TextSize=9; aiClearBtn.Parent=aiHdr
 corner(aiClearBtn,5)
 
+-- ── AI INTELLIGENCE quick-action bar ─────────────────────────────
+local aiQuickBar=Instance.new("Frame")
+aiQuickBar.Size=UDim2.new(1,0,0,28); aiQuickBar.Position=UDim2.new(0,0,0,30)
+aiQuickBar.BackgroundColor3=C_BG; aiQuickBar.BackgroundTransparency=0.3
+aiQuickBar.BorderSizePixel=0; aiQuickBar.Parent=aiPage
+local aiQuickLay=Instance.new("UIListLayout"); aiQuickLay.FillDirection=Enum.FillDirection.Horizontal
+aiQuickLay.Padding=UDim.new(0,6); aiQuickLay.VerticalAlignment=Enum.VerticalAlignment.Center
+aiQuickLay.Parent=aiQuickBar; pad(aiQuickBar,8,0,8,0)
+local aiQuick={}   -- {key=button}
+local function mkQuick(key, label)
+    local b=Instance.new("TextButton")
+    b.Size=UDim2.new(0,0,0,20); b.AutomaticSize=Enum.AutomaticSize.X
+    b.BackgroundColor3=Color3.fromRGB(40,24,70); b.BorderSizePixel=0
+    b.Text="  "..label.."  "; b.TextColor3=C_ACCENT2; b.AutoButtonColor=false
+    b.Font=Enum.Font.GothamBold; b.TextSize=9; b.Parent=aiQuickBar
+    corner(b,5)
+    local st=Instance.new("UIStroke");st.Color=C_BORDER;st.Thickness=1;st.Transparency=0.5;st.Parent=b
+    b.MouseEnter:Connect(function() tween(b,0.12,{BackgroundColor3=C_ACCENT}); b.TextColor3=Color3.fromRGB(255,255,255) end)
+    b.MouseLeave:Connect(function() tween(b,0.16,{BackgroundColor3=Color3.fromRGB(40,24,70)}); b.TextColor3=C_ACCENT2 end)
+    aiQuick[key]=b
+    return b
+end
+mkQuick("summary","◷ Summarize Traffic")
+mkQuick("patterns","⧉ Detect Patterns")
+mkQuick("anomaly","⚠ Find Anomalies")
+mkQuick("docs","▤ Generate Docs")
+mkQuick("classify","✦ Classify Remotes")
+
 -- message scroll
 local aiScroll=Instance.new("ScrollingFrame")
-aiScroll.Size=UDim2.new(1,0,1,-74); aiScroll.Position=UDim2.new(0,0,0,30)
+aiScroll.Size=UDim2.new(1,0,1,-102); aiScroll.Position=UDim2.new(0,0,0,58)
 aiScroll.BackgroundTransparency=1; aiScroll.BorderSizePixel=0
 aiScroll.ScrollBarThickness=3; aiScroll.ScrollBarImageColor3=C_ACCENT
 aiScroll.CanvasSize=UDim2.new(0,0,0,0); aiScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y; aiScroll.Parent=aiPage
@@ -1331,6 +1359,46 @@ aiClearBtn.MouseButton1Click:Connect(function()
     end
     aiHistory = { {role="system", content=AI.system} }
 end)
+
+-- ── AI INTELLIGENCE quick-action prompt builders ─────────────────
+local function topRemotesText(n)
+    local arr={}
+    for name,cnt in pairs(remoteTotals) do arr[#arr+1]={name=name,cnt=cnt} end
+    table.sort(arr,function(a,b) return a.cnt>b.cnt end)
+    local out={}
+    for i=1,math.min(n or 12,#arr) do out[#out+1]=("%d. %s — %d calls"):format(i,arr[i].name,arr[i].cnt) end
+    return table.concat(out,"\n"), #arr
+end
+local function recentCallsText(limit)
+    local out={}
+    local function add(list,tag)
+        local start=math.max(1,#list-(limit or 10)+1)
+        for i=#list,start,-1 do
+            local e=list[i]; if e then out[#out+1]=("[%s] %s:%s(%s)"):format(tag,e.name,e.method,(e.args and e.args[1]~=nil) and fmtV(e.args[1]) or "") end
+        end
+    end
+    add(lists.OUT,"OUT"); add(lists.IN,"IN")
+    return table.concat(out,"\n")
+end
+if aiQuick.summary then aiQuick.summary.MouseButton1Click:Connect(function()
+    local top,uniq=topRemotesText(12)
+    aiSendMessage(("Summarize this Roblox game's network traffic. %d total calls across %d unique remotes. Top remotes:\n%s\n\nGive a short high-level summary of what this game is doing over the network."):format(statGrand,uniq,top))
+end) end
+if aiQuick.patterns then aiQuick.patterns.MouseButton1Click:Connect(function()
+    aiSendMessage("Analyze these recent Roblox remote calls for communication PATTERNS (polling loops, request/response pairs, heartbeats, batching). Recent traffic:\n\n"..recentCallsText(20))
+end) end
+if aiQuick.anomaly then aiQuick.anomaly.MouseButton1Click:Connect(function()
+    local top=topRemotesText(15)
+    aiSendMessage("Act as a security analyst. Inspect these remote call frequencies for ANOMALIES or suspicious behaviour (anti-cheat pings, kick triggers, abnormally high call rates, exploit-detection remotes). Data:\n"..top)
+end) end
+if aiQuick.docs then aiQuick.docs.MouseButton1Click:Connect(function()
+    aiSendMessage("Generate concise markdown DOCUMENTATION for these captured Roblox remotes — name, likely purpose, and example arguments. Remotes:\n\n"..recentCallsText(18))
+end) end
+if aiQuick.classify then aiQuick.classify.MouseButton1Click:Connect(function()
+    local top=topRemotesText(15)
+    aiSendMessage("Classify each of these Roblox remotes by purpose (Combat, Economy, Movement, Anti-Cheat, UI, Data, Misc). Output a short categorized list:\n"..top)
+end) end
+
 -- greeting
 aiAddBubble("assistant","Hey — I'm Volt AI, running free on Pollinations. Ask me to explain a captured remote, write Luau, or debug a script. Hit “Explain remote” to analyse your current selection.")
 
@@ -1372,6 +1440,7 @@ local expLayout=Instance.new("UIListLayout"); expLayout.Padding=UDim.new(0,2); e
 pad(expScroll,4,4,4,4)
 
 local allRemotes, expFilter = {}, ""
+local pinnedRemotes = {}   -- [fullName]=true ; pinned float to top
 local function scanAllRemotes()
     local found, seen = {}, {}
     local function add(v)
@@ -1411,8 +1480,11 @@ local function buildExplorer()
         if expFilter=="" or full:lower():find(expFilter:lower(),1,true) then
             shown=shown+1
             local ri=REMOTE_ICON[r.ClassName] or {icon="⚡",col=C_DIM}
+            local isPin=pinnedRemotes[full]
             local row=Instance.new("Frame")
-            row.Size=UDim2.new(1,0,0,30); row.LayoutOrder=i; row.BackgroundColor3=C_ROW
+            row.Size=UDim2.new(1,0,0,30)
+            row.LayoutOrder=(isPin and -100000 or 0)+i   -- pinned float to top
+            row.BackgroundColor3=isPin and C_SEL or C_ROW
             row.BorderSizePixel=0; row.Parent=expScroll
             corner(row,5)
             -- type icon
@@ -1429,10 +1501,29 @@ local function buildExplorer()
             -- path (short)
             local short=full:gsub("^game%.","")
             local nameLbl=Instance.new("TextLabel")
-            nameLbl.Size=UDim2.new(1,-122,1,0); nameLbl.Position=UDim2.new(0,32,0,0)
+            nameLbl.Size=UDim2.new(1,-176,1,0); nameLbl.Position=UDim2.new(0,32,0,0)
             nameLbl.BackgroundTransparency=1; nameLbl.Text=short; nameLbl.TextColor3=C_TEXT
             nameLbl.Font=Enum.Font.Gotham; nameLbl.TextSize=10
             nameLbl.TextXAlignment=Enum.TextXAlignment.Left; nameLbl.TextTruncate=Enum.TextTruncate.AtEnd; nameLbl.Parent=row
+            -- call-frequency badge (how often this remote has fired this session)
+            local freq=remoteTotals[full] or 0
+            if freq>0 then
+                local fb=Instance.new("TextLabel")
+                fb.Size=UDim2.new(0,42,0,16); fb.Position=UDim2.new(1,-172,0.5,-8)
+                fb.BackgroundColor3=C_ACCENT; fb.BackgroundTransparency=0.78; fb.BorderSizePixel=0
+                fb.Text="×"..freq; fb.TextColor3=C_ACCENT2; fb.Font=Enum.Font.GothamBold; fb.TextSize=9
+                fb.Parent=row; corner(fb,8)
+            end
+            -- pin/favourite star
+            local pinBtn=Instance.new("TextButton")
+            pinBtn.Size=UDim2.new(0,22,0,20); pinBtn.Position=UDim2.new(1,-128,0.5,-10)
+            pinBtn.BackgroundTransparency=1; pinBtn.Text=isPin and "★" or "☆"
+            pinBtn.TextColor3=isPin and Color3.fromRGB(255,205,90) or C_DIM
+            pinBtn.Font=Enum.Font.GothamBold; pinBtn.TextSize=15; pinBtn.AutoButtonColor=false; pinBtn.Parent=row
+            pinBtn.MouseButton1Click:Connect(function()
+                if pinnedRemotes[full] then pinnedRemotes[full]=nil else pinnedRemotes[full]=true end
+                buildExplorer()
+            end)
             -- copy + fire buttons
             local function mkB(xOff,w,txt,col,fn)
                 local b=Instance.new("TextButton"); b.Size=UDim2.new(0,w,0,20); b.Position=UDim2.new(1,xOff,0.5,-10)
