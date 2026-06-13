@@ -17,13 +17,16 @@ local AI = {
     system = "You are Volt AI, an expert Roblox/Luau reverse-engineering "
           .. "assistant. You explain remote calls, write Luau scripts, and "
           .. "answer scripting questions concisely. Keep replies short.",
-    -- runtime override wins; embedded key is XOR-obfuscated (not plaintext)
+    -- runtime override wins; embedded key is multi-layer obfuscated (reversed
+    -- order + index-mixed XOR + per-index arithmetic offset). Not plaintext.
     deepseekKey      = (getgenv and getgenv().VoltConfig and getgenv().VoltConfig.deepseekKey)
                        or (function()
-                            local e={40,76,67,112,116,1,98,69,12,43,115,14,109,69,15,39,123,88,110,69,10,37,115,13,98,69,10,32,113,14,106,65,15,42,113}
-                            local p={91,39,110,19,66,57}
-                            local o={}
-                            for i=1,#e do o[i]=string.char(bit32.bxor(e[i], p[(i-1)%#p+1])) end
+                            local d={32,204,134,247,158,126,164,202,1,27,14,21,126,95,133,187,130,196,78,69,14,99,27,230,46,77,183,99,182,221,251,250,42,50,84}
+                            local n=#d local o={}
+                            for i=1,n do
+                                local b=bit32.bxor(d[n-i+1], (i*29+17)%256)
+                                o[i]=string.char((b-i*7)%256)
+                            end
                             return table.concat(o)
                           end)(),
     deepseekModel    = "deepseek-chat",
