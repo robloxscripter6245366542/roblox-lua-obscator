@@ -1792,6 +1792,46 @@ applyTheme = function(th)
     end
 end
 
+-- ── THEME PICKER  (visual grid injected into the Settings page) ──
+do
+    pcall(function() mkSectionHdr("THEME", 11) end)
+    local activeIdx = 1
+    local cards = {}
+    local function repaintCards()
+        for i,c in ipairs(cards) do
+            local on = (i==activeIdx)
+            tween(c.stroke,0.18,{Transparency=on and 0 or 0.65, Color=on and c.theme.accent2 or C_BORDER})
+            c.check.Visible = on
+        end
+    end
+    for i,th in ipairs(THEMES) do
+        local row=Instance.new("TextButton")
+        row.Size=UDim2.new(1,0,0,40); row.BackgroundColor3=C_PANEL
+        row.BorderSizePixel=0; row.AutoButtonColor=false; row.Text=""
+        row.LayoutOrder=11+i; row.Parent=setPage
+        corner(row,7)
+        local stroke=Instance.new("UIStroke"); stroke.Thickness=1.5; stroke.Color=C_BORDER; stroke.Transparency=0.65; stroke.Parent=row
+        local sw1=Instance.new("Frame"); sw1.Size=UDim2.new(0,20,0,20); sw1.Position=UDim2.new(0,12,0.5,-10)
+        sw1.BackgroundColor3=th.accent; sw1.BorderSizePixel=0; sw1.Parent=row; corner(sw1,5)
+        local sw2=Instance.new("Frame"); sw2.Size=UDim2.new(0,20,0,20); sw2.Position=UDim2.new(0,34,0.5,-10)
+        sw2.BackgroundColor3=th.accent2; sw2.BorderSizePixel=0; sw2.Parent=row; corner(sw2,5)
+        local nm=Instance.new("TextLabel"); nm.Size=UDim2.new(1,-120,1,0); nm.Position=UDim2.new(0,64,0,0)
+        nm.BackgroundTransparency=1; nm.Text=th.name; nm.TextColor3=C_TEXT; nm.Font=Enum.Font.GothamBold
+        nm.TextSize=12; nm.TextXAlignment=Enum.TextXAlignment.Left; nm.Parent=row
+        local check=Instance.new("TextLabel"); check.Size=UDim2.new(0,24,1,0); check.Position=UDim2.new(1,-32,0,0)
+        check.BackgroundTransparency=1; check.Text="✓"; check.TextColor3=th.accent2; check.Font=Enum.Font.GothamBold
+        check.TextSize=16; check.Visible=(i==1); check.Parent=row
+        cards[i]={stroke=stroke, check=check, theme=th}
+        row.MouseButton1Click:Connect(function()
+            activeIdx=i; applyTheme(th); repaintCards()
+            if notify then notify("Theme", th.name.." applied", "success") end
+        end)
+        row.MouseEnter:Connect(function() if activeIdx~=i then tween(stroke,0.12,{Transparency=0.3}) end end)
+        row.MouseLeave:Connect(function() if activeIdx~=i then tween(stroke,0.16,{Transparency=0.65}) end end)
+    end
+    repaintCards()
+end
+
 -- ── NOTIFICATION TOASTS  (bottom-right, auto-dismiss) ────────────
 do
     local box = Instance.new("Frame")
