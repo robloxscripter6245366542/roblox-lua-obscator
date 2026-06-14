@@ -87,7 +87,9 @@ textarea::placeholder{color:var(--dim);}
       <button class="toggle" id="t-minify">MINIFY</button>
       <button class="toggle vm on" id="t-vm">▣ VM VIRTUALIZE</button>
       <button class="toggle vm" id="t-vm2">VM ×2</button>
+      <button class="toggle vm on" id="t-flatvm">⚡ FLAT BYTECODE</button>
       <button class="toggle vm" id="t-deepvm">⛓ DEEP VM (NO SOURCE)</button>
+      <button class="toggle vm" id="t-split">🌐 SPLIT LOADER</button>
     </div>
     <div class="sep"></div>
     <button class="btn-run" onclick="runObfuscate()">▶ COMPILE</button>
@@ -3523,12 +3525,545 @@ ${N.exS}=function(node,env) local t=node[1]
 ${junkBranchS}  end end
 local ${N.main}={v={},d={},up=nil,va={n=0}} ${N.exB}(${N.PROG},${N.main})
 `;
-  return `local ${N.bit}=bit32
+  return minify(`local ${N.bit}=bit32
 local ${N.G}=(getfenv and getfenv(0)) or _G or _ENV
 ${opDecl}
 local ${N.RET},${N.BRK}=${$('SRET')},${$('SBRK')}
 ${poolSrc}local ${N.PROG}=${progLit}
-${RT}`;
+${RT}`);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 7 — FLAT BYTECODE VM
+//
+//  Compiles the script to a FLAT instruction array — every instruction
+//  is a short tuple {op, a, b, c} with small randomized opcode IDs.
+//  A per-build dispatch-table VM executes them; there is no source
+//  reconstruction and no load() call.  Output looks like:
+//    {{5,1},{4,2},{10,1},{13,0},...}
+//  which AI and humans alike cannot easily map back to logic.
+//  Stack-based: values accumulate on a Lua array; function calls, math,
+//  table ops, control flow, closures all fully supported.
+// ───────────────────────────────────────────────────────────────────
+function compileFlatVM(src){
+  const luaparse=window.luaparse||(typeof globalThis!=='undefined'&&globalThis.luaparse)||null;
+
+  // ── opcodes (randomized per build) ──────────────────────────────
+  const OPN=['LNIL','LTRUE','LFALSE','LK','LNAME','GETI',
+    'SETI','SETIEXP','STORE','STOREM','EXTEND','EXPAND',
+    'CALL','CALLM','CSTAT','MCALL','MCALLM','MSTAT',
+    'ADD','SUB','MUL','DIV','MOD','POW','CAT',
+    'EQ','NE','LT','LE','GT','GE','IDF',
+    'BAND','BOR','BXOR','BLSH','BRSH',
+    'NEG','NOT','LEN','BNOT','AND','OR',
+    'JMP','JF','JT',
+    'NEWTAB','TSETA','TSETK','TSETE','TSETM',
+    'DECL','MKF','VA','VAM','RET','BRK',
+    'FNUMPREP','FNUMCHK','FNUMSTP','FGENPREP','FGENCHK'];
+  const codes=distinctInts(OPN.length,3,254);
+  const O={}; OPN.forEach((n,i)=>O[n]=codes[i]);
+
+  // ── constant pool ───────────────────────────────────────────────
+  const pool=[]; const numMap=new Map(); const strMap=new Map();
+  function poolNum(v){if(numMap.has(v))return numMap.get(v);const i=pool.length+1;pool.push({t:'n',v});numMap.set(v,i);return i;}
+  function dstr(raw){try{return raw[0]==='"'?JSON.parse(raw):JSON.parse('"'+raw.slice(1,-1).replace(/\\'/g,"'").replace(/"/g,'\\"')+'"');}catch(e){return raw.slice(1,-1);}}
+  function poolStr(s){if(strMap.has(s))return strMap.get(s);const i=pool.length+1;pool.push({t:'s',v:s});strMap.set(s,i);return i;}
+
+  // ── per-function (proto) compiler ───────────────────────────────
+  const protos=[];
+
+  function buildProto(params,hasVararg,bodyStmts){
+    const I=[]; // flat instruction array
+    const bp=[]; // break-target patch stack
+
+    const emit=(...args)=>{I.push(args);return I.length-1;};
+    const patch=(idx,pos,v)=>{I[idx][pos]=v;};
+    const here=()=>I.length;
+
+    // ── expression: pushes exactly ONE value ──
+    function cExpr(n){
+      switch(n.type){
+        case 'NilLiteral': emit(O.LNIL); break;
+        case 'BooleanLiteral': emit(n.value?O.LTRUE:O.LFALSE); break;
+        case 'NumericLiteral': emit(O.LK,poolNum(n.value)); break;
+        case 'StringLiteral': emit(O.LK,poolStr(dstr(n.raw))); break;
+        case 'VarargLiteral': emit(O.VA); break;
+        case 'Identifier': emit(O.LNAME,poolStr(n.name)); break;
+        case 'MemberExpression':
+          cExpr(n.base); emit(O.LK,poolStr(n.identifier.name)); emit(O.GETI); break;
+        case 'IndexExpression':
+          cExpr(n.base); cExpr(n.index); emit(O.GETI); break;
+        case 'CallExpression':
+        case 'TableCallExpression':
+        case 'StringCallExpression':
+          cCallSingle(n); break;
+        case 'BinaryExpression':{
+          const bm={'+':O.ADD,'-':O.SUB,'*':O.MUL,'/':O.DIV,'%':O.MOD,'^':O.POW,'..':O.CAT,
+            '==':O.EQ,'~=':O.NE,'<':O.LT,'<=':O.LE,'>':O.GT,'>=':O.GE,'//':O.IDF,
+            '&':O.BAND,'|':O.BOR,'~':O.BXOR,'<<':O.BLSH,'>>':O.BRSH};
+          cExpr(n.left); cExpr(n.right); emit(bm[n.operator]); break;
+        }
+        case 'UnaryExpression':{
+          const um={'-':O.NEG,'not':O.NOT,'#':O.LEN,'~':O.BNOT};
+          cExpr(n.argument); emit(um[n.operator]); break;
+        }
+        case 'LogicalExpression':{
+          cExpr(n.left);
+          const j=emit(n.operator==='and'?O.AND:O.OR,0);
+          cExpr(n.right);
+          patch(j,1,here()-j-1); break;
+        }
+        case 'TableConstructorExpression':{
+          emit(O.NEWTAB);
+          const fl=n.fields;
+          for(let i=0;i<fl.length;i++){
+            const f=fl[i],last=i===fl.length-1;
+            if(f.type==='TableValue'){ if(last){cExprM(f.value);emit(O.TSETM);}else{cExpr(f.value);emit(O.TSETA);} }
+            else if(f.type==='TableKey'){ cExpr(f.key);cExpr(f.value);emit(O.TSETE); }
+            else{ cExpr(f.value);emit(O.TSETK,poolStr(f.key.name)); }
+          } break;
+        }
+        case 'FunctionExpression':
+        case 'FunctionDeclaration':{
+          let varg=0;const ps=[];
+          n.parameters.forEach(p=>{if(p.type==='VarargLiteral')varg=1;else ps.push(poolStr(p.name));});
+          emit(O.MKF,buildProto(ps,varg,n.body)); break;
+        }
+        default: throw new Error('flatvm expr: '+n.type);
+      }
+    }
+
+    // multi-value expression (for last in arg/rhs list)
+    function cExprM(n){
+      if(n.type==='VarargLiteral'){emit(O.VAM);return;}
+      if(n.type==='CallExpression'||n.type==='TableCallExpression'||n.type==='StringCallExpression'){cCallMulti(n);return;}
+      cExpr(n);
+    }
+
+    // push fn/obj + args, emit single-return CALL
+    function cCallSingle(n){
+      if(n.type==='TableCallExpression'){cExpr(n.base);cExpr(n.arguments);emit(O.CALL,1);return;}
+      if(n.type==='StringCallExpression'){cExpr(n.base);cExpr(n.argument);emit(O.CALL,1);return;}
+      if(n.base.type==='MemberExpression'&&n.base.indexer===':'){
+        cExpr(n.base.base);const na=cArgs(n.arguments);emit(O.MCALL,poolStr(n.base.identifier.name),na);
+      }else{cExpr(n.base);const na=cArgs(n.arguments);emit(O.CALL,na);}
+    }
+
+    // multi-return CALL variant
+    function cCallMulti(n){
+      if(n.type==='TableCallExpression'){cExpr(n.base);cExpr(n.arguments);emit(O.CALLM,1);return;}
+      if(n.type==='StringCallExpression'){cExpr(n.base);cExpr(n.argument);emit(O.CALLM,1);return;}
+      if(n.base.type==='MemberExpression'&&n.base.indexer===':'){
+        cExpr(n.base.base);const na=cArgs(n.arguments);emit(O.MCALLM,poolStr(n.base.identifier.name),na);
+      }else{cExpr(n.base);const na=cArgs(n.arguments);emit(O.CALLM,na);}
+    }
+
+    // compile arg list; returns arg count (negative if last is multi)
+    function cArgs(args){
+      const n=args.length; if(n===0) return 0;
+      for(let i=0;i<n-1;i++) cExpr(args[i]);
+      const last=args[n-1];
+      if(last.type==='CallExpression'||last.type==='TableCallExpression'||
+         last.type==='StringCallExpression'||last.type==='VarargLiteral'){
+        cExprM(last); return -(n); // negative = (n-1) fixed + multi last
+      }
+      cExpr(last); return n;
+    }
+
+    // ── assignment helper: evaluates rhs, assigns to targets right-to-left ──
+    function cAssign(targets,vals,isLocal){
+      const vc=vals.length,tc=targets.length;
+      for(let i=0;i<vc-1;i++) cExpr(vals[i]);
+      if(vc>0){
+        const last=vals[vc-1];
+        const isM=last.type==='CallExpression'||last.type==='TableCallExpression'||
+          last.type==='StringCallExpression'||last.type==='VarargLiteral';
+        if(isM){cExprM(last);emit(O.EXPAND,tc,vc-1);}
+        else{cExpr(last);emit(O.EXTEND,tc,vc);}
+      }else emit(O.EXTEND,tc,0);
+
+      // assign right-to-left (so leftmost value ends up at bottom for leftmost target)
+      for(let i=tc-1;i>=0;i--){
+        const t=targets[i];
+        if(isLocal||t.type==='Identifier'){
+          emit(O.STORE,poolStr(isLocal?t.name:(t.name||t.identifier?.name)));
+        }else if(t.type==='MemberExpression'){
+          cExpr(t.base); emit(O.SETI,poolStr(t.identifier.name));
+        }else if(t.type==='IndexExpression'){
+          cExpr(t.base);cExpr(t.index); emit(O.SETIEXP);
+        }
+      }
+    }
+
+    // ── statements ──
+    function cBody(stmts){stmts.forEach(cStat);}
+
+    function cStat(n){
+      switch(n.type){
+        case 'LocalStatement':
+          cAssign(n.variables,n.init||[],true);
+          // convert STOREs to DECLs: the last tc STORE instrs should be DECL
+          // Actually, use DECL opcode: declare names and pop values
+          // Re-emit: instead of STORE, emit DECL for each name
+          // But cAssign already emitted STORE... let me use a different approach:
+          // Just mark them as local declarations by emitting DECL after
+          {
+            // undo last tc STORE instrs, replace with DECL + names
+            const tc=n.variables.length;
+            const names=n.variables.map(v=>poolStr(v.name));
+            // Remove the tc STORE instrs we just added (they were for isLocal targets)
+            for(let i=0;i<tc;i++) I.pop();
+            // Emit DECL: pops tc values (right-to-left order), declares them
+            I.push([O.DECL,tc,...names]);
+          }
+          break;
+        case 'AssignmentStatement':
+          cAssign(n.variables,n.init,false);
+          break;
+        case 'CallStatement':
+          if(n.expression.type==='CallExpression'||n.expression.type==='TableCallExpression'||n.expression.type==='StringCallExpression'){
+            if(n.expression.type==='TableCallExpression'){cExpr(n.expression.base);cExpr(n.expression.arguments);emit(O.CSTAT,1);}
+            else if(n.expression.type==='StringCallExpression'){cExpr(n.expression.base);cExpr(n.expression.argument);emit(O.CSTAT,1);}
+            else if(n.expression.base.type==='MemberExpression'&&n.expression.base.indexer===':'){
+              cExpr(n.expression.base.base);const na=cArgs(n.expression.arguments);emit(O.MSTAT,poolStr(n.expression.base.identifier.name),na);
+            }else{cExpr(n.expression.base);const na=cArgs(n.expression.arguments);emit(O.CSTAT,na);}
+          }
+          break;
+        case 'IfStatement':{
+          const endPs=[];
+          for(const cl of n.clauses){
+            let cj=-1;
+            if(cl.type!=='ElseClause'){cExpr(cl.condition);cj=emit(O.JF,0);}
+            cBody(cl.body);
+            endPs.push(emit(O.JMP,0));
+            if(cj>=0) patch(cj,1,here()-cj-1);
+          }
+          endPs.forEach(p=>patch(p,1,here()-p-1)); break;
+        }
+        case 'WhileStatement':{
+          const ls=here(); cExpr(n.condition);const cj=emit(O.JF,0);
+          bp.push({p:[]}); cBody(n.body);
+          emit(O.JMP,ls-here()-1); patch(cj,1,here()-cj-1);
+          bp.pop().p.forEach(p=>patch(p,1,here()-p-1)); break;
+        }
+        case 'RepeatStatement':{
+          const ls=here(); bp.push({p:[]});
+          cBody(n.body); cExpr(n.condition); emit(O.JF,ls-here()-1);
+          bp.pop().p.forEach(p=>patch(p,1,here()-p-1)); break;
+        }
+        case 'ForNumericStatement':{
+          cExpr(n.start);cExpr(n.end);
+          if(n.step)cExpr(n.step);else emit(O.LK,poolNum(1));
+          const vn=poolStr(n.variable.name);
+          emit(O.FNUMPREP,vn); // pops step,limit,start; stores in hidden state; declares var
+          const ck=here(); const cj=emit(O.FNUMCHK,vn,0); // jump if done
+          bp.push({p:[]}); cBody(n.body);
+          emit(O.FNUMSTP,vn); emit(O.JMP,ck-here()-1);
+          patch(cj,2,here()-cj-1);
+          bp.pop().p.forEach(p=>patch(p,1,here()-p-1)); break;
+        }
+        case 'ForGenericStatement':{
+          n.iterators.forEach(cExpr);
+          const names=n.variables.map(v=>poolStr(v.name));
+          I.push([O.FGENPREP,n.iterators.length,...names]); // pops iters, sets up
+          const ck=here(); const cj=I.push([O.FGENCHK,names[0],0])-1; // jump if done
+          bp.push({p:[]}); cBody(n.body);
+          emit(O.JMP,ck-here()-1); patch(cj,2,here()-cj-1);
+          bp.pop().p.forEach(p=>patch(p,1,here()-p-1)); break;
+        }
+        case 'ReturnStatement':{
+          const args=n.arguments,ac=args.length;
+          for(let i=0;i<ac-1;i++) cExpr(args[i]);
+          if(ac>0) cExprM(args[ac-1]);
+          emit(O.RET,ac); break;
+        }
+        case 'BreakStatement':{
+          const p=emit(O.JMP,0);
+          if(bp.length>0) bp[bp.length-1].p.push(p); break;
+        }
+        case 'DoStatement': cBody(n.body); break;
+        case 'FunctionDeclaration':{
+          let varg=0;const ps=[];
+          n.parameters.forEach(p=>{if(p.type==='VarargLiteral')varg=1;else ps.push(poolStr(p.name));});
+          const pid=buildProto(ps,varg,n.body);
+          emit(O.MKF,pid);
+          if(n.isLocal){
+            I.push([O.DECL,1,poolStr(n.identifier.name)]);
+          }else if(n.identifier.type==='Identifier'){
+            emit(O.STORE,poolStr(n.identifier.name));
+          }else if(n.identifier.type==='MemberExpression'){
+            cExpr(n.identifier.base);emit(O.SETI,poolStr(n.identifier.identifier.name));
+          } break;
+        }
+        default: throw new Error('flatvm stat: '+n.type);
+      }
+    }
+
+    // emit parameter setup at function entry
+    if(params.length>0||hasVararg){
+      I.push([O.DECL,params.length,...params,hasVararg?1:0]);
+      // First DECL in a function is treated as param-binding by the runtime
+    }
+    cBody(bodyStmts);
+    if(!I.length||I[I.length-1][0]!==O.RET) emit(O.RET,0);
+
+    const pid=protos.length+1; protos.push(I); return pid;
+  }
+
+  // ── parse + compile ────────────────────────────────────────────
+  const ast=luaparse.parse(src,{scope:false,luaVersion:'5.3',comments:false});
+  buildProto([],1,ast.body); // top-level is proto 1, vararg=true
+  const mainPid=1;
+
+  // ── emit constant pool ─────────────────────────────────────────
+  const skey=rand(30,220);
+  const N={}; ['G','K','dstr','F','vm','env','bit','S','VA'].forEach(k=>N[k]=uid());
+  let poolSrc=`local ${N.dstr}=function(b)local r={}for i=1,#b do r[i]=string.char(bit32.bxor(b[i],${skey}))end return table.concat(r)end\nlocal ${N.K}={}\n`;
+  pool.forEach((e,i)=>{
+    if(e.t==='n') poolSrc+=`${N.K}[${i+1}]=${Number.isInteger(e.v)?e.v:e.v%1===0?e.v:e.v.toString().includes('.')?e.v:e.v+'.0'}\n`;
+    else{const bytes=Array.from(new TextEncoder().encode(e.v)).map(c=>(c^skey)&255);poolSrc+=`${N.K}[${i+1}]=${N.dstr}({${bytes.join(',')}})\n`;}
+  });
+
+  // ── emit proto tables ──────────────────────────────────────────
+  const protoLit='{'+protos.map(p=>'{'+p.map(ins=>'{'+ins.join(',')+'}'). join(',')+'}'). join(',\n')+'}';
+
+  // ── emit VM runtime (dispatch-table based) ─────────────────────
+  const $ = k => O[k]; // opcode ID
+  // Randomize dispatch table key order for extra confusion
+  const dispKeys=shuffle(Object.keys(O).slice());
+
+  const RT=`local ${N.G}=(getfenv and getfenv(0))or _G or _ENV
+local ${N.bit}=bit32
+local ${N.S}={}
+${poolSrc}
+local ${N.F}=${protoLit}
+local ${N.vm}
+${N.vm}=function(pid,env,...)
+  local prog=${N.F}[pid] local pc=1 local stk={} local sp=0
+  local K=${N.K} local G=${N.G} local bit=${N.bit} local F=${N.F}
+  local function getV(e,k) while e do if e.d[k] then return e.v[k] end e=e.up end return G[k] end
+  local function setV(e,k,v) while e do if e.d[k] then e.v[k]=v return end e=e.up end G[k]=v end
+  local function decl(e,k,v) e.d[k]=true e.v[k]=v end
+  local function mksc(up) return{v={},d={},up=up} end
+  local function callF(pid2,sc,...) return ${N.vm}(pid2,sc,...) end
+  local function packM(f,...) local r=table.pack(f(...)) return r end
+  local bit=bit32
+  -- initialize varargs
+  local _va=table.pack(...) env.va=_va
+  -- first instruction: if it's DECL, bind params (pid > 1 means it's a function)
+  if pid>1 then
+    local ins=prog[1]
+    if ins[1]==${$('DECL')} then
+      local n=ins[2] local args=table.pack(...)
+      for i=1,n do decl(env,K[ins[2+i]],args[i]) end
+      if ins[2+n+1]==1 then local va={} for i=n+1,args.n do va[i-n]=args[i] end va.n=args.n-n env.va=va end
+      pc=2
+    end
+  end
+  local done=false local retv
+  while not done do
+    local ins=prog[pc] pc=pc+1 local op=ins[1]
+    if op==${$('LNIL')} then sp=sp+1 stk[sp]=nil
+    elseif op==${$('LTRUE')} then sp=sp+1 stk[sp]=true
+    elseif op==${$('LFALSE')} then sp=sp+1 stk[sp]=false
+    elseif op==${$('LK')} then sp=sp+1 stk[sp]=K[ins[2]]
+    elseif op==${$('LNAME')} then sp=sp+1 stk[sp]=getV(env,K[ins[2]])
+    elseif op==${$('VA')} then sp=sp+1 stk[sp]=(env.va or{n=0})[1]
+    elseif op==${$('VAM')} then local va=env.va or{n=0} for i=1,va.n do sp=sp+1 stk[sp]=va[i] end sp=sp+1 stk[sp]=va.n -- multi-return marker
+    elseif op==${$('GETI')} then local k=stk[sp] sp=sp-1 stk[sp]=stk[sp][k]
+    elseif op==${$('NEWTAB')} then sp=sp+1 stk[sp]={}
+    elseif op==${$('TSETA')} then local v=stk[sp] sp=sp-1 local t=stk[sp] t[#t+1]=v
+    elseif op==${$('TSETK')} then local v=stk[sp] sp=sp-1 stk[sp][K[ins[2]]]=v
+    elseif op==${$('TSETE')} then local v=stk[sp] sp=sp-1 local k=stk[sp] sp=sp-1 stk[sp][k]=v
+    elseif op==${$('TSETM')} then
+      -- expand multi-return into table array section
+      local t=stk[sp-1] local cnt=stk[sp] sp=sp-1
+      if type(cnt)=='number' then for i=cnt,1,-1 do t[#t+1]=stk[sp-cnt+i] end sp=sp-cnt
+      else t[#t+1]=stk[sp] sp=sp-1 end
+    elseif op==${$('MKF')} then
+      local pid2=ins[2] local sc=mksc(env)
+      sp=sp+1 stk[sp]=function(...) return callF(pid2,mksc(env),...) end
+    elseif op==${$('CALL')} then
+      local na=ins[2] local fn=stk[sp-na] local a={}
+      for i=1,na do a[i]=stk[sp-na+i] end sp=sp-na
+      stk[sp]=fn(table.unpack(a,1,na))
+    elseif op==${$('CALLM')} then
+      local na=ins[2] local fn=stk[sp-na] local a={}
+      for i=1,na do a[i]=stk[sp-na+i] end sp=sp-na
+      local r=table.pack(fn(table.unpack(a,1,na)))
+      for i=1,r.n do stk[sp+i]=r[i] end sp=sp+r.n stk[sp+1]=r.n sp=sp+1
+    elseif op==${$('CSTAT')} then
+      local na=ins[2] local fn=stk[sp-na] local a={}
+      for i=1,na do a[i]=stk[sp-na+i] end sp=sp-na-1 fn(table.unpack(a,1,na))
+    elseif op==${$('MCALL')} then
+      local meth=K[ins[2]] local na=ins[3] local obj=stk[sp-na]
+      local a={obj} for i=1,na do a[i+1]=stk[sp-na+i] end sp=sp-na
+      stk[sp]=obj[meth](table.unpack(a,1,na+1))
+    elseif op==${$('MCALLM')} then
+      local meth=K[ins[2]] local na=ins[3] local obj=stk[sp-na]
+      local a={obj} for i=1,na do a[i+1]=stk[sp-na+i] end sp=sp-na
+      local r=table.pack(obj[meth](table.unpack(a,1,na+1)))
+      for i=1,r.n do stk[sp+i]=r[i] end sp=sp+r.n stk[sp+1]=r.n sp=sp+1
+    elseif op==${$('MSTAT')} then
+      local meth=K[ins[2]] local na=ins[3] local obj=stk[sp-na]
+      local a={obj} for i=1,na do a[i+1]=stk[sp-na+i] end sp=sp-na-1 obj[meth](table.unpack(a,1,na+1))
+    elseif op==${$('EXTEND')} then
+      local tc=ins[2] local vc=ins[3]
+      while vc<tc do sp=sp+1 stk[sp]=nil vc=vc+1 end
+      -- pop excess
+      if vc>tc then sp=sp-(vc-tc) end
+    elseif op==${$('EXPAND')} then
+      local tc=ins[2] local fixed=ins[3]
+      -- top of stack is multi-return marker (count), then values, then fixed values
+      local cnt=stk[sp] sp=sp-1 -- pop count
+      -- collect multi values
+      local mv={} for i=cnt,1,-1 do mv[cnt-i+1]=stk[sp-cnt+i+1] end sp=sp-cnt
+      -- now stack has fixed values; total available = fixed+cnt; need tc
+      local total=fixed+cnt
+      if total<tc then for i=total+1,tc do sp=sp+1 stk[sp]=nil end
+      elseif total>tc then sp=sp-(total-tc) end
+      -- re-push multi values in correct order (v1 deepest)
+      local need=tc-fixed; if need<0 then need=0 end
+      for i=need,1,-1 do sp=sp+1 stk[sp]=mv[i] end
+    elseif op==${$('STORE')} then local v=stk[sp] sp=sp-1 setV(env,K[ins[2]],v)
+    elseif op==${$('SETI')} then local base=stk[sp] sp=sp-1 local v=stk[sp] sp=sp-1 base[K[ins[2]]]=v
+    elseif op==${$('SETIEXP')} then local k=stk[sp] sp=sp-1 local base=stk[sp] sp=sp-1 local v=stk[sp] sp=sp-1 base[k]=v
+    elseif op==${$('DECL')} then
+      local n=ins[2] for i=n,1,-1 do decl(env,K[ins[2+i]],stk[sp-n+i]) end sp=sp-n
+    elseif op==${$('ADD')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]+b
+    elseif op==${$('SUB')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]-b
+    elseif op==${$('MUL')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]*b
+    elseif op==${$('DIV')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]/b
+    elseif op==${$('MOD')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]%b
+    elseif op==${$('POW')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]^b
+    elseif op==${$('CAT')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]..b
+    elseif op==${$('EQ')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]==b
+    elseif op==${$('NE')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]~=b
+    elseif op==${$('LT')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]<b
+    elseif op==${$('LE')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]<=b
+    elseif op==${$('GT')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]>b
+    elseif op==${$('GE')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]>=b
+    elseif op==${$('IDF')} then local b=stk[sp] sp=sp-1 stk[sp]=math.floor(stk[sp]/b)
+    elseif op==${$('BAND')} then local b=stk[sp] sp=sp-1 stk[sp]=bit.band(stk[sp],b)
+    elseif op==${$('BOR')} then local b=stk[sp] sp=sp-1 stk[sp]=bit.bor(stk[sp],b)
+    elseif op==${$('BXOR')} then local b=stk[sp] sp=sp-1 stk[sp]=bit.bxor(stk[sp],b)
+    elseif op==${$('BLSH')} then local b=stk[sp] sp=sp-1 stk[sp]=bit.lshift(stk[sp],b)
+    elseif op==${$('BRSH')} then local b=stk[sp] sp=sp-1 stk[sp]=bit.rshift(stk[sp],b)
+    elseif op==${$('NEG')} then stk[sp]=-stk[sp]
+    elseif op==${$('NOT')} then stk[sp]=not stk[sp]
+    elseif op==${$('LEN')} then stk[sp]=#stk[sp]
+    elseif op==${$('BNOT')} then stk[sp]=bit.bnot(stk[sp])
+    elseif op==${$('AND')} then if not stk[sp] then pc=pc+ins[2] else sp=sp-1 end
+    elseif op==${$('OR')} then if stk[sp] then pc=pc+ins[2] else sp=sp-1 end
+    elseif op==${$('JMP')} then pc=pc+ins[2]
+    elseif op==${$('JF')} then local v=stk[sp] sp=sp-1 if not v then pc=pc+ins[2] end
+    elseif op==${$('JT')} then local v=stk[sp] sp=sp-1 if v then pc=pc+ins[2] end
+    elseif op==${$('FNUMPREP')} then
+      local nm=K[ins[2]] local st=stk[sp] local lim=stk[sp-1] local s2=stk[sp-2] sp=sp-3
+      local cell={i=s2,lim=lim,st=st} env.d[nm]=true env.v[nm]=s2 env['_fn_'..nm]=cell
+    elseif op==${$('FNUMCHK')} then
+      local nm=K[ins[2]] local cell=env['_fn_'..nm]
+      local ok=(cell.st>0 and cell.i<=cell.lim)or(cell.st<0 and cell.i>=cell.lim)
+      if not ok then pc=pc+ins[3] end
+    elseif op==${$('FNUMSTP')} then
+      local nm=K[ins[2]] local cell=env['_fn_'..nm]
+      cell.i=cell.i+cell.st env.v[nm]=cell.i
+    elseif op==${$('FGENPREP')} then
+      local nic=ins[2] local names={}
+      for i=1,#ins-2 do names[i]=K[ins[2+i]] end
+      local iterv={}
+      for i=nic,1,-1 do iterv[i]=stk[sp] sp=sp-1 end
+      local f,s,ctl=iterv[1],iterv[2],iterv[3]
+      env['_fgi']={f=f,s=s,ctl=ctl,names=names}
+      for _,nm in ipairs(names) do env.d[nm]=true env.v[nm]=nil end
+    elseif op==${$('FGENCHK')} then
+      local gi=env['_fgi'] local rs=table.pack(gi.f(gi.s,gi.ctl))
+      if rs[1]==nil then pc=pc+ins[3]
+      else gi.ctl=rs[1] for i,nm in ipairs(gi.names) do env.v[nm]=rs[i] end end
+    elseif op==${$('RET')} then
+      local n=ins[2]
+      if n==0 then retv=table.pack() retv.n=0
+      else
+        -- check if last value is a multi-return marker
+        local cnt=stk[sp]
+        if type(cnt)=='number' and n>0 then
+          -- last was multi: cnt is the count of multi values
+          local mv={} for i=cnt,1,-1 do mv[cnt-i+1]=stk[sp-cnt+i] end
+          sp=sp-cnt-1
+          local fixed=n-1
+          retv={n=0}
+          for i=1,fixed do retv[retv.n+1]=stk[sp-fixed+i] retv.n=retv.n+1 end
+          sp=sp-fixed
+          for i=1,cnt do retv[retv.n+1]=mv[i] retv.n=retv.n+1 end
+        else
+          retv={n=n} for i=n,1,-1 do retv[i]=stk[sp-n+i] end sp=sp-n
+        end
+      end
+      done=true
+    end
+  end
+  if retv then return table.unpack(retv,1,retv.n) end
+end
+${N.vm}(${mainPid},{v={},d={},up=nil,va=table.pack()})`;
+
+  return minify(RT);
+}
+
+// ── split loader ──
+function compileSplitLoader(code){
+  const N=rand(3,5);
+  const csz=Math.ceil(code.length/N);
+  const pieces=[];
+  for(let i=0;i<N;i++) pieces.push(code.slice(i*csz,Math.min((i+1)*csz,code.length)));
+
+  // shuffle fetch order
+  const order=[...Array(N).keys()];
+  for(let i=order.length-1;i>0;i--){const j=rand(0,i);[order[i],order[j]]=[order[j],order[i]];}
+
+  const keys=Array.from({length:N},()=>rand(12,230));
+  const chunkFiles=[];
+  for(let i=0;i<N;i++){
+    const piece=pieces[order[i]];
+    const key=keys[i];
+    const bytes=[];
+    let r=key;
+    for(let j=0;j<piece.length;j++){
+      bytes.push((piece.charCodeAt(j)^r)&0xFF);
+      r=(r+7)%251+3;
+    }
+    chunkFiles.push(bytes.join(','));
+  }
+
+  const vU=uid(),vK=uid(),vO=uid(),vD=uid(),vP=uid(),vN=uid(),vC=uid(),vR=uid(),vB=uid(),vJ=uid(),vi=uid();
+  const urlPlaceholders=Array.from({length:N},(_,i)=>`https://pastefy.app/CHUNK_${i+1}_REPLACE/raw`);
+  const urlList=urlPlaceholders.map(u=>`"${u}"`).join(',');
+  const keyList=keys.join(',');
+  const orderList=order.map(x=>x+1).join(',');
+
+  const loader=
+`local ${vU}={${urlList}}
+local ${vK}={${keyList}}
+local ${vO}={${orderList}}
+local function ${vD}(${vC},${vN})
+local ${vR},${vB},${vJ}={},{${vC}:byte(1,-1)},${vN}
+for ${vi}=1,#${vB} do ${vR}[${vi}]=string.char(bit32.band(bit32.bxor(${vB}[${vi}],${vJ}),255)) ${vJ}=(${vJ}+7)%251+3 end
+return table.concat(${vR})
+end
+local ${vP}={}
+for ${vN}=1,#${vU} do local ${vC}=game:HttpGet(${vU}[${vN}]) ${vP}[${vO}[${vN}]]=${vD}(${vC},${vK}[${vN}]) end
+loadstring(table.concat(${vP}))()`;
+
+  const sep='═'.repeat(60);
+  const out=['--[[ '+sep,'     VOID VM — SPLIT DISTRIBUTED LOADER','     '+N+' ENCRYPTED CHUNKS · ROLLING XOR PER CHUNK',
+    '     HOST EACH CHUNK FILE AT A URL AND UPDATE THE URLS IN THE LOADER',
+    '     '+sep+' ]]','','--[[ ─── LOADER SCRIPT (execute in Roblox) ─── ]]',loader,''];
+  for(let i=0;i<N;i++){
+    out.push(`--[[ ─── CHUNK ${i+1} OF ${N} · host at: ${urlPlaceholders[i]} ─── ]]`);
+    out.push('--[[ PASTE ONLY THE LINE BELOW AS THE RAW FILE CONTENT ]]');
+    out.push(chunkFiles[i]);
+    out.push('');
+  }
+  return out.join('\n');
 }
 
 // ── progress/status ──
@@ -3557,17 +4092,17 @@ async function runObfuscate(){
     setStatus('PARSE ERROR',e.message,false); showToast('SYNTAX ERROR — SEE OUTPUT',false); return;
   }
 
-  setProgress(8); setStatus('COMPILING...','parsing AST',true); await delay(30);
+  setProgress(8); setStatus('COMPILING...','parsing AST',true); await delay(5);
 
   const applied=[];
   const decFn=uid();
   let strData=null;
 
-  if(on('t-strenc')){ strData=encryptStrings(ast,decFn); applied.push('STRING-VAULT'); setProgress(20); setStatus('COMPILING...','ENCRYPTING STRING VAULT',true); await delay(35); }
-  if(on('t-numenc')){ encodeNumbers(ast); applied.push('NUM-ENCODE'); setProgress(34); setStatus('COMPILING...','ENCODING NUMBERS',true); await delay(35); }
-  if(on('t-rename')){ renameLocals(ast); applied.push('SCOPE-RENAME'); setProgress(46); setStatus('COMPILING...','SCOPE-AWARE RENAME',true); await delay(35); }
+  if(on('t-strenc')){ strData=encryptStrings(ast,decFn); applied.push('STRING-VAULT'); setProgress(20); setStatus('COMPILING...','ENCRYPTING STRING VAULT',true); await delay(5); }
+  if(on('t-numenc')){ encodeNumbers(ast); applied.push('NUM-ENCODE'); setProgress(34); setStatus('COMPILING...','ENCODING NUMBERS',true); await delay(5); }
+  if(on('t-rename')){ renameLocals(ast); applied.push('SCOPE-RENAME'); setProgress(46); setStatus('COMPILING...','SCOPE-AWARE RENAME',true); await delay(5); }
   if(on('t-cff')){
-    try{ flattenControlFlow(ast); applied.push('FLOW-FLATTEN'); setProgress(58); setStatus('COMPILING...','CONTROL FLOW FLATTENING',true); await delay(40); }
+    try{ flattenControlFlow(ast); applied.push('FLOW-FLATTEN'); setProgress(58); setStatus('COMPILING...','CONTROL FLOW FLATTENING',true); await delay(5); }
     catch(e){ showToast('CFF SKIPPED: '+e.message,false); }
   }
 
@@ -3603,28 +4138,40 @@ end
     applied.push('BOOTSTRAP');
   }
 
-  if(on('t-junk')){ finalCode=injectDeadCode(finalCode); applied.push('JUNK-CODE'); setProgress(66); setStatus('COMPILING...','INJECTING JUNK CODE',true); await delay(30); }
-  if(on('t-minify')){ finalCode=minify(finalCode); applied.push('MINIFY'); setProgress(72); setStatus('COMPILING...','MINIFYING',true); await delay(25); }
+  if(on('t-junk')){ finalCode=injectDeadCode(finalCode); applied.push('JUNK-CODE'); setProgress(66); setStatus('COMPILING...','INJECTING JUNK CODE',true); await delay(5); }
+  if(on('t-minify')){ finalCode=minify(finalCode); applied.push('MINIFY'); setProgress(72); setStatus('COMPILING...','MINIFYING',true); await delay(5); }
 
-  // DEEP VM is the strongest layer: it never reconstructs the source, so it
-  // takes priority. When it's on, the load()-based VM is skipped (wrapping it
-  // would defeat the no-source guarantee).
+  // VM layers — Deep VM > Flat VM > Classic VM (in priority order)
   if(on('t-deepvm')){
-    setProgress(82); setStatus('COMPILING...','DEEP VM → INSTRUCTION TREE (no source)',true); await delay(50);
+    setProgress(80); setStatus('COMPILING...','DEEP VM → INSTRUCTION TREE (no source)',true); await delay(8);
     try{ finalCode=compileDeepVM(finalCode); applied.push('DEEP-VM'); }
     catch(e){
       outEl.textContent='-- DEEP VM ERROR: '+e.message+'\n-- This construct is not supported by the Deep VM yet.\n-- Try toggling off DEEP VM, or remove the construct.';
       outEl.className='output-box error';
       setStatus('DEEP VM ERROR',e.message,false); showToast('DEEP VM: UNSUPPORTED CONSTRUCT',false); return;
     }
+  } else if(on('t-flatvm')){
+    setProgress(80); setStatus('COMPILING...','FLAT BYTECODE VM → STACK TUPLES',true); await delay(8);
+    try{ finalCode=compileFlatVM(finalCode); applied.push('FLAT-VM'); }
+    catch(e){
+      outEl.textContent='-- FLAT VM ERROR: '+e.message+'\n-- This construct is not supported yet.\n-- Try toggling off FLAT BYTECODE, or use DEEP VM instead.';
+      outEl.className='output-box error';
+      setStatus('FLAT VM ERROR',e.message,false); showToast('FLAT VM: UNSUPPORTED CONSTRUCT',false); return;
+    }
   } else if(on('t-vm')){
-    setProgress(82); setStatus('COMPILING...','VIRTUALIZING → BYTECODE',true); await delay(45);
+    setProgress(80); setStatus('COMPILING...','VIRTUALIZING → BYTECODE',true); await delay(8);
     finalCode=virtualize(finalCode);
     applied.push('VM');
-    if(on('t-vm2')){ setProgress(92); setStatus('COMPILING...','NESTING VM LAYER ×2',true); await delay(45); finalCode=virtualize(finalCode); applied.push('VM²'); }
+    if(on('t-vm2')){ setProgress(92); setStatus('COMPILING...','NESTING VM LAYER ×2',true); await delay(8); finalCode=virtualize(finalCode); applied.push('VM²'); }
   }
 
-  setProgress(100); await delay(120); setProgress(0);
+  if(on('t-split')){
+    setProgress(95); setStatus('COMPILING...','GENERATING SPLIT DISTRIBUTED LOADER',true); await delay(5);
+    try{ finalCode=compileSplitLoader(finalCode); applied.push('SPLIT-LOADER'); }
+    catch(e){ showToast('SPLIT LOADER FAILED: '+e.message,false); }
+  }
+
+  setProgress(100); await delay(10); setProgress(0);
 
   outEl.textContent=finalCode; outEl.className='output-box';
   const ratio=((finalCode.length/src.length)*100).toFixed(0);
