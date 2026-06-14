@@ -68,10 +68,10 @@ textarea::placeholder{color:var(--dim);}
   <div class="logo-icon">V</div>
   <div class="logo-text">VOID<span>::</span>VM</div>
   <div class="header-badges">
-    <div class="badge vm">VIRTUAL MACHINE</div>
+    <div class="badge vm">DEEP VM · NO SOURCE</div>
     <div class="badge">LUAU</div>
     <div class="badge live">● ONLINE</div>
-    <div class="badge">v7.0</div>
+    <div class="badge">v8.0</div>
   </div>
 </header>
 <main>
@@ -85,6 +85,7 @@ textarea::placeholder{color:var(--dim);}
       <button class="toggle" id="t-minify">MINIFY</button>
       <button class="toggle vm on" id="t-vm">▣ VM VIRTUALIZE</button>
       <button class="toggle vm" id="t-vm2">VM ×2</button>
+      <button class="toggle vm" id="t-deepvm">⛓ DEEP VM (NO SOURCE)</button>
     </div>
     <div class="sep"></div>
     <button class="btn-run" onclick="runObfuscate()">▶ COMPILE</button>
@@ -472,6 +473,202 @@ function virtualize(src){
   return L.join('\n');
 }
 
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 6 — DEEP VM  (true virtualization · source is NEVER rebuilt)
+//
+//  Compiles the script into an INSTRUCTION TREE (pure data) plus a
+//  tree-walking VM that executes it directly. There is no load() of
+//  your source anywhere — the logic only exists as opcodes + a constant
+//  pool. To recover the script an attacker must reverse the whole VM,
+//  exactly like commercial VM obfuscators. Per build: randomized opcode
+//  ids, randomized constant cipher, mangled VM internals.
+//  Trade-off: tree-walking is slower than native — best for logic that
+//  isn't in a hot per-frame loop. Runs on Roblox Luau (bit32/getfenv).
+// ───────────────────────────────────────────────────────────────────
+function compileDeepVM(src){
+  const luaparse=window.luaparse;
+  const OPN=['NIL','TRUE','FALSE','NUM','STR','VARARG','NAME','INDEX','CALL','MCALL','BIN','UN','AND','OR','TABLE','FUNC',
+    'LOCALDECL','ASSIGN','CALLSTAT','IF','WHILE','REPEAT','NUMFOR','GENFOR','RETURN','BREAK','DO','LOCALFUNC'];
+  const BINL=['ADD','SUB','MUL','DIV','MOD','POW','CONCAT','EQ','NE','LT','LE','GT','GE','IDIV','BAND','BOR','BXOR','SHL','SHR'];
+  const UNL=['NEG','NOT','LEN','BNOT'];
+  const ALL=[...OPN,...BINL.map(x=>'B_'+x),...UNL.map(x=>'U_'+x),'SRET','SBRK'];
+  const codes=distinctInts(ALL.length,2,4000);
+  const O={}; ALL.forEach((n,i)=>O[n]=codes[i]);
+  const binId={'+':O.B_ADD,'-':O.B_SUB,'*':O.B_MUL,'/':O.B_DIV,'%':O.B_MOD,'^':O.B_POW,'..':O.B_CONCAT,
+    '==':O.B_EQ,'~=':O.B_NE,'<':O.B_LT,'<=':O.B_LE,'>':O.B_GT,'>=':O.B_GE,'//':O.B_IDIV,
+    '&':O.B_BAND,'|':O.B_BOR,'~':O.B_BXOR,'<<':O.B_SHL,'>>':O.B_SHR};
+  const unId={'-':O.U_NEG,'not':O.U_NOT,'#':O.U_LEN,'~':O.U_BNOT};
+  const pool=[]; const numMap=new Map(), strMap=new Map();
+  function poolNum(v){ if(numMap.has(v))return numMap.get(v); const i=pool.length+1; pool.push({t:'n',v}); numMap.set(v,i); return i; }
+  function decodeStr(raw){ try{ return raw[0]==='"'?JSON.parse(raw):JSON.parse('"'+raw.slice(1,-1).replace(/\\'/g,"'").replace(/"/g,'\\"')+'"'); }catch(e){ return raw.slice(1,-1); } }
+  function poolStr(s){ if(strMap.has(s))return strMap.get(s); const i=pool.length+1; pool.push({t:'s',v:s}); strMap.set(s,i); return i; }
+  function cExpr(n){
+    switch(n.type){
+      case 'NilLiteral': return [O.NIL];
+      case 'BooleanLiteral': return [n.value?O.TRUE:O.FALSE];
+      case 'NumericLiteral': return [O.NUM, poolNum(n.value)];
+      case 'StringLiteral': return [O.STR, poolStr(decodeStr(n.raw))];
+      case 'VarargLiteral': return [O.VARARG];
+      case 'Identifier': return [O.NAME, poolStr(n.name)];
+      case 'MemberExpression': return [O.INDEX, cExpr(n.base), [O.STR, poolStr(n.identifier.name)]];
+      case 'IndexExpression': return [O.INDEX, cExpr(n.base), cExpr(n.index)];
+      case 'CallExpression':
+        if(n.base.type==='MemberExpression' && n.base.indexer===':')
+          return [O.MCALL, cExpr(n.base.base), poolStr(n.base.identifier.name), n.arguments.map(cExpr)];
+        return [O.CALL, cExpr(n.base), n.arguments.map(cExpr)];
+      case 'TableCallExpression': return [O.CALL, cExpr(n.base), [cExpr(n.arguments)]];
+      case 'StringCallExpression': return [O.CALL, cExpr(n.base), [cExpr(n.argument)]];
+      case 'BinaryExpression': return [O.BIN, binId[n.operator], cExpr(n.left), cExpr(n.right)];
+      case 'LogicalExpression': return [n.operator==='and'?O.AND:O.OR, cExpr(n.left), cExpr(n.right)];
+      case 'UnaryExpression': return [O.UN, unId[n.operator], cExpr(n.argument)];
+      case 'TableConstructorExpression':
+        return [O.TABLE, n.fields.map(f=>{
+          if(f.type==='TableValue') return [0, cExpr(f.value)];
+          if(f.type==='TableKey') return [1, cExpr(f.key), cExpr(f.value)];
+          return [2, poolStr(f.key.name), cExpr(f.value)];
+        })];
+      case 'FunctionDeclaration': {
+        let varg=0; const ps=[];
+        n.parameters.forEach(p=>{ if(p.type==='VarargLiteral') varg=1; else ps.push(poolStr(p.name)); });
+        return [O.FUNC, ps, varg, n.body.map(cStat)];
+      }
+      default: throw new Error('deepvm expr '+n.type);
+    }
+  }
+  function cStat(n){
+    switch(n.type){
+      case 'LocalStatement': return [O.LOCALDECL, n.variables.map(v=>poolStr(v.name)), (n.init||[]).map(cExpr)];
+      case 'AssignmentStatement': return [O.ASSIGN, n.variables.map(cExpr), n.init.map(cExpr)];
+      case 'CallStatement': return [O.CALLSTAT, cExpr(n.expression)];
+      case 'IfStatement': return [O.IF, n.clauses.map(c=>{
+        if(c.type==='ElseClause') return [0, c.body.map(cStat)];
+        return [cExpr(c.condition), c.body.map(cStat)];
+      })];
+      case 'WhileStatement': return [O.WHILE, cExpr(n.condition), n.body.map(cStat)];
+      case 'RepeatStatement': return [O.REPEAT, n.body.map(cStat), cExpr(n.condition)];
+      case 'ForNumericStatement': return [O.NUMFOR, poolStr(n.variable.name), cExpr(n.start), cExpr(n.end), n.step?cExpr(n.step):0, n.body.map(cStat)];
+      case 'ForGenericStatement': return [O.GENFOR, n.variables.map(v=>poolStr(v.name)), n.iterators.map(cExpr), n.body.map(cStat)];
+      case 'ReturnStatement': return [O.RETURN, n.arguments.map(cExpr)];
+      case 'BreakStatement': return [O.BREAK];
+      case 'DoStatement': return [O.DO, n.body.map(cStat)];
+      case 'FunctionDeclaration': {
+        let varg=0; const ps=[];
+        n.parameters.forEach(p=>{ if(p.type==='VarargLiteral') varg=1; else ps.push(poolStr(p.name)); });
+        if(n.isLocal) return [O.LOCALFUNC, poolStr(n.identifier.name), [O.FUNC, ps, varg, n.body.map(cStat)]];
+        let idn=n.identifier;
+        if(idn.type==='MemberExpression' && idn.indexer===':'){ ps.unshift(poolStr('self')); idn={type:'MemberExpression',indexer:'.',base:idn.base,identifier:idn.identifier}; }
+        return [O.ASSIGN, [cExpr(idn)], [[O.FUNC, ps, varg, n.body.map(cStat)]]];
+      }
+      default: throw new Error('deepvm stat '+n.type);
+    }
+  }
+  function lit(x){ if(Array.isArray(x)) return '{'+x.map(lit).join(',')+'}'; if(typeof x==='number') return String(x); throw new Error('deepvm lit'); }
+  function luaNum(v){ if(Number.isInteger(v)) return String(v); let s=String(v); if(!/[.eE]/.test(s))s+='.0'; return s; }
+
+  const ast=luaparse.parse(src,{scope:false,luaVersion:'5.3',comments:false});
+  const PROG=ast.body.map(cStat);
+  const progLit=lit(PROG);
+  const skey=rand(40,200);
+  const N={}; ['dstr','K','G','getV','setV','evE','evM','evL','exB','exS','mkC','luVA','PROG','RET','BRK','bit','main'].forEach(k=>N[k]=uid());
+  const opNames={}; ALL.forEach(a=>opNames[a]=uid());
+  const opDecl='local '+ALL.map(a=>opNames[a]).join(',')+'='+ALL.map(a=>O[a]).join(',');
+  const $=k=>opNames[k];
+  let poolSrc='local '+N.dstr+'=function(b)local r={} for i=1,#b do r[i]=string.char('+N.bit+'.bxor(b[i],'+skey+'))end return table.concat(r)end\nlocal '+N.K+'={}\n';
+  pool.forEach((e,i)=>{
+    if(e.t==='n') poolSrc+=N.K+'['+(i+1)+']='+luaNum(e.v)+'\n';
+    else { const bytes=Array.from(new TextEncoder().encode(e.v)).map(c=>(c^skey)&255); poolSrc+=N.K+'['+(i+1)+']='+N.dstr+'({'+bytes.join(',')+'})\n'; }
+  });
+  const RT=`
+local ${N.getV},${N.setV},${N.evE},${N.evM},${N.evL},${N.exB},${N.exS},${N.mkC},${N.luVA}
+${N.getV}=function(env,name) local e=env while e do if e.d[name] then return e.v[name] end e=e.up end return ${N.G}[name] end
+${N.setV}=function(env,name,val) local e=env while e do if e.d[name] then e.v[name]=val return end e=e.up end ${N.G}[name]=val end
+${N.luVA}=function(env) local e=env while e do if e.va then return e.va end e=e.up end return {n=0} end
+${N.evM}=function(node,env) local t=node[1]
+  if t==${$('CALL')} then local f=${N.evE}(node[2],env) local a=${N.evL}(node[3],env) return f(table.unpack(a,1,a.n))
+  elseif t==${$('MCALL')} then local b=${N.evE}(node[2],env) local m=b[${N.K}[node[3]]] local a=${N.evL}(node[4],env) local args={b} for i=1,a.n do args[i+1]=a[i] end return m(table.unpack(args,1,a.n+1))
+  elseif t==${$('VARARG')} then local va=${N.luVA}(env) return table.unpack(va,1,va.n)
+  else return ${N.evE}(node,env) end end
+${N.evL}=function(list,env) local out,n={},0 local len=#list
+  for i=1,len do if i==len then local nd=list[i] local t=nd[1]
+      if t==${$('CALL')} or t==${$('MCALL')} or t==${$('VARARG')} then local vs=table.pack(${N.evM}(nd,env)) for j=1,vs.n do n=n+1 out[n]=vs[j] end
+      else n=n+1 out[n]=${N.evE}(nd,env) end
+    else n=n+1 out[n]=${N.evE}(list[i],env) end end
+  out.n=n return out end
+${N.evE}=function(node,env) local t=node[1]
+  if t==${$('NIL')} then return nil
+  elseif t==${$('TRUE')} then return true
+  elseif t==${$('FALSE')} then return false
+  elseif t==${$('NUM')} then return ${N.K}[node[2]]
+  elseif t==${$('STR')} then return ${N.K}[node[2]]
+  elseif t==${$('NAME')} then return ${N.getV}(env,${N.K}[node[2]])
+  elseif t==${$('VARARG')} then local va=${N.luVA}(env) return va[1]
+  elseif t==${$('INDEX')} then local b=${N.evE}(node[2],env) return b[${N.evE}(node[3],env)]
+  elseif t==${$('CALL')} or t==${$('MCALL')} then local r=table.pack(${N.evM}(node,env)) return r[1]
+  elseif t==${$('AND')} then local l=${N.evE}(node[2],env) if not l then return l end return ${N.evE}(node[3],env)
+  elseif t==${$('OR')} then local l=${N.evE}(node[2],env) if l then return l end return ${N.evE}(node[3],env)
+  elseif t==${$('UN')} then local o=node[2] local a=${N.evE}(node[3],env)
+    if o==${$('U_NEG')} then return -a elseif o==${$('U_NOT')} then return not a elseif o==${$('U_LEN')} then return #a else return ${N.bit}.bnot(a) end
+  elseif t==${$('BIN')} then local o=node[2] local a=${N.evE}(node[3],env) local b=${N.evE}(node[4],env)
+    if o==${$('B_ADD')} then return a+b elseif o==${$('B_SUB')} then return a-b elseif o==${$('B_MUL')} then return a*b
+    elseif o==${$('B_DIV')} then return a/b elseif o==${$('B_MOD')} then return a%b elseif o==${$('B_POW')} then return a^b
+    elseif o==${$('B_CONCAT')} then return a..b elseif o==${$('B_EQ')} then return a==b elseif o==${$('B_NE')} then return a~=b
+    elseif o==${$('B_LT')} then return a<b elseif o==${$('B_LE')} then return a<=b elseif o==${$('B_GT')} then return a>b
+    elseif o==${$('B_GE')} then return a>=b elseif o==${$('B_IDIV')} then return math.floor(a/b)
+    elseif o==${$('B_BAND')} then return ${N.bit}.band(a,b) elseif o==${$('B_BOR')} then return ${N.bit}.bor(a,b)
+    elseif o==${$('B_BXOR')} then return ${N.bit}.bxor(a,b) elseif o==${$('B_SHL')} then return ${N.bit}.lshift(a,b) else return ${N.bit}.rshift(a,b) end
+  elseif t==${$('TABLE')} then local tb={} local fl=node[2] local ai=1
+    for i=1,#fl do local f=fl[i] local k=f[1]
+      if k==0 then if i==#fl then local nd=f[2] local tt=nd[1]
+          if tt==${$('CALL')} or tt==${$('MCALL')} or tt==${$('VARARG')} then local vs=table.pack(${N.evM}(nd,env)) for j=1,vs.n do tb[ai]=vs[j] ai=ai+1 end
+          else tb[ai]=${N.evE}(nd,env) ai=ai+1 end
+        else tb[ai]=${N.evE}(f[2],env) ai=ai+1 end
+      elseif k==1 then tb[${N.evE}(f[2],env)]=${N.evE}(f[3],env)
+      else tb[${N.K}[f[2]]]=${N.evE}(f[3],env) end end
+    return tb
+  elseif t==${$('FUNC')} then return ${N.mkC}(node,env) end end
+${N.mkC}=function(node,defEnv) local params=node[2] local varg=node[3] local body=node[4]
+  return function(...) local sc={v={},d={},up=defEnv} local args=table.pack(...)
+    for i=1,#params do local nm=${N.K}[params[i]] sc.d[nm]=true sc.v[nm]=args[i] end
+    if varg==1 then local va={} local c=0 for i=#params+1,args.n do c=c+1 va[c]=args[i] end va.n=c sc.va=va end
+    local sig,vals=${N.exB}(body,sc)
+    if sig==${N.RET} then return table.unpack(vals,1,vals.n) end end end
+${N.exB}=function(body,env) for i=1,#body do local sig,vals=${N.exS}(body[i],env) if sig then return sig,vals end end end
+${N.exS}=function(node,env) local t=node[1]
+  if t==${$('CALLSTAT')} then ${N.evM}(node[2],env)
+  elseif t==${$('LOCALDECL')} then local names=node[2] local vals=${N.evL}(node[3],env)
+    for i=1,#names do local nm=${N.K}[names[i]] env.d[nm]=true env.v[nm]=vals[i] end
+  elseif t==${$('ASSIGN')} then local tg=node[2] local vals=${N.evL}(node[3],env)
+    for i=1,#tg do local tn=tg[i] if tn[1]==${$('NAME')} then ${N.setV}(env,${N.K}[tn[2]],vals[i])
+      else local b=${N.evE}(tn[2],env) b[${N.evE}(tn[3],env)]=vals[i] end end
+  elseif t==${$('IF')} then local cl=node[2]
+    for i=1,#cl do local c=cl[i] if type(c[1])=='table' then if ${N.evE}(c[1],env) then return ${N.exB}(c[2],{v={},d={},up=env}) end
+      else return ${N.exB}(c[2],{v={},d={},up=env}) end end
+  elseif t==${$('WHILE')} then while ${N.evE}(node[2],env) do local sig,vals=${N.exB}(node[3],{v={},d={},up=env})
+      if sig==${N.BRK} then break elseif sig==${N.RET} then return sig,vals end end
+  elseif t==${$('REPEAT')} then repeat local sc={v={},d={},up=env} local sig,vals=${N.exB}(node[2],sc)
+      if sig==${N.BRK} then break elseif sig==${N.RET} then return sig,vals end until ${N.evE}(node[3],sc)
+  elseif t==${$('NUMFOR')} then local nm=${N.K}[node[2]] local a=${N.evE}(node[3],env) local b=${N.evE}(node[4],env)
+    local st=1 if node[5]~=0 then st=${N.evE}(node[5],env) end local i=a
+    while (st>0 and i<=b) or (st<0 and i>=b) do local sc={v={},d={},up=env} sc.d[nm]=true sc.v[nm]=i
+      local sig,vals=${N.exB}(node[6],sc) if sig==${N.BRK} then break elseif sig==${N.RET} then return sig,vals end i=i+st end
+  elseif t==${$('GENFOR')} then local names=node[2] local it=${N.evL}(node[3],env) local f,s,ctl=it[1],it[2],it[3]
+    while true do local rs=table.pack(f(s,ctl)) if rs[1]==nil then break end ctl=rs[1]
+      local sc={v={},d={},up=env} for i=1,#names do local nm=${N.K}[names[i]] sc.d[nm]=true sc.v[nm]=rs[i] end
+      local sig,vals=${N.exB}(node[4],sc) if sig==${N.BRK} then break elseif sig==${N.RET} then return sig,vals end end
+  elseif t==${$('DO')} then return ${N.exB}(node[2],{v={},d={},up=env})
+  elseif t==${$('LOCALFUNC')} then local nm=${N.K}[node[2]] env.d[nm]=true env.v[nm]=${N.evE}(node[3],env)
+  elseif t==${$('RETURN')} then return ${N.RET},${N.evL}(node[2],env)
+  elseif t==${$('BREAK')} then return ${N.BRK} end end
+local ${N.main}={v={},d={},up=nil,va={n=0}} ${N.exB}(${N.PROG},${N.main})
+`;
+  return `local ${N.bit}=bit32
+local ${N.G}=(getfenv and getfenv(0)) or _G or _ENV
+${opDecl}
+local ${N.RET},${N.BRK}=${$('SRET')},${$('SBRK')}
+${poolSrc}local ${N.PROG}=${progLit}
+${RT}`;
+}
+
 // ── progress/status ──
 function setProgress(p){ const el=document.getElementById('progressBar'); if(el) el.style.width=p+'%'; }
 function setStatus(t,d,proc){ const a=document.getElementById('statusText'),b=document.getElementById('statusDetail'),c=document.getElementById('statusbar'); if(a)a.textContent=t; if(b)b.textContent=d; if(c)c.className='statusbar'+(proc?' processing':''); }
@@ -542,7 +739,18 @@ end
 
   if(on('t-minify')){ finalCode=minify(finalCode); applied.push('MINIFY'); setProgress(68); setStatus('COMPILING...','MINIFYING',true); await delay(25); }
 
-  if(on('t-vm')){
+  // DEEP VM is the strongest layer: it never reconstructs the source, so it
+  // takes priority. When it's on, the load()-based VM is skipped (wrapping it
+  // would defeat the no-source guarantee).
+  if(on('t-deepvm')){
+    setProgress(80); setStatus('COMPILING...','DEEP VM → INSTRUCTION TREE (no source)',true); await delay(50);
+    try{ finalCode=compileDeepVM(finalCode); applied.push('DEEP-VM'); }
+    catch(e){
+      outEl.textContent='-- DEEP VM ERROR: '+e.message+'\n-- This construct is not supported by the Deep VM yet.\n-- Try toggling off DEEP VM, or remove the construct.';
+      outEl.className='output-box error';
+      setStatus('DEEP VM ERROR',e.message,false); showToast('DEEP VM: UNSUPPORTED CONSTRUCT',false); return;
+    }
+  } else if(on('t-vm')){
     setProgress(80); setStatus('COMPILING...','VIRTUALIZING → BYTECODE',true); await delay(45);
     finalCode=virtualize(finalCode);
     applied.push('VM');
