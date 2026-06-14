@@ -46,6 +46,10 @@ main{position:relative;z-index:10;display:flex;flex-direction:column;height:calc
 .btn-copy-big{padding:5px 16px;background:linear-gradient(135deg,rgba(255,45,120,0.14),rgba(255,45,120,0.04));border:1px solid var(--pink);color:var(--pink);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;cursor:pointer;transition:all 0.16s;box-shadow:0 0 10px rgba(255,45,120,0.1);white-space:nowrap;}
 .btn-copy-big:hover{box-shadow:0 0 22px rgba(255,45,120,0.35);background:rgba(255,45,120,0.16);}
 .btn-copy-big:active{transform:scale(0.96);}
+.btn-host{padding:5px 16px;margin-right:8px;background:linear-gradient(135deg,rgba(0,245,255,0.14),rgba(0,245,255,0.04));border:1px solid var(--cyan);color:var(--cyan);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;cursor:pointer;transition:all 0.16s;box-shadow:0 0 10px rgba(0,245,255,0.1);white-space:nowrap;}
+.btn-host:hover{box-shadow:0 0 22px rgba(0,245,255,0.35);background:rgba(0,245,255,0.16);}
+.btn-host:active{transform:scale(0.96);}
+.btn-host:disabled{opacity:0.5;cursor:not-allowed;}
 textarea,.output-box{flex:1;background:var(--bg);color:var(--text);border:none;outline:none;padding:15px;font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.75;resize:none;width:100%;overflow-y:auto;tab-size:2;}
 textarea::placeholder{color:var(--dim);}
 .output-box{white-space:pre-wrap;word-break:break-all;color:#7fffb0;}
@@ -90,6 +94,7 @@ textarea::placeholder{color:var(--dim);}
       <button class="toggle vm on" id="t-flatvm">⚡ FLAT BYTECODE</button>
       <button class="toggle vm" id="t-deepvm">⛓ DEEP VM (NO SOURCE)</button>
       <button class="toggle vm" id="t-split">🌐 SPLIT LOADER</button>
+      <button class="toggle vm on" id="t-host">☁ AUTO HOST</button>
     </div>
     <div class="sep"></div>
     <button class="btn-run" onclick="runObfuscate()">▶ COMPILE</button>
@@ -121,6 +126,7 @@ print('Max wave: ' .. config.maxWave)"></textarea>
         <div class="pane-dot dot-pink"></div>
         <span class="pane-title">VIRTUALIZED OUTPUT</span>
         <span class="pane-meta" id="outStats">—</span>
+        <button class="btn-host" onclick="autoHost()">☁ HOST → LOADSTRING</button>
         <button class="btn-copy-big" onclick="copyOutput()">⧉ COPY OUTPUT</button>
       </div>
       <div class="output-box empty" id="output">-- Virtualized output appears here...</div>
@@ -4235,6 +4241,13 @@ end
   document.getElementById('outStats').textContent=`${finalCode.length} CHARS · ${ratio}% SIZE`;
   setStatus('DONE',applied.join(' → ')+' · runnable Luau',false);
   showToast('COMPILED ✓ — '+applied.length+' LAYERS',true);
+
+  // AUTO HOST: upload to pastefy.app and hand back a ready loadstring.
+  // Skipped when SPLIT LOADER is on (that output is meant for manual multi-host distribution).
+  if(on('t-host')&&!on('t-split')){
+    const loader=await autoHost();
+    if(loader) applied.push('AUTO-HOST');
+  }
 }
 
 function copyOutput(){
@@ -4248,6 +4261,76 @@ function copyOutput(){
       sel.removeAllRanges(); sel.addRange(r);
       try{ document.execCommand('copy'); showToast('COPIED ✓',true); }catch(e){ showToast('SELECT MANUALLY',false); }
     });
+}
+
+// ── auto-host ──
+// Uploads the given code to a paste service and returns the RAW url.
+// Tries pastefy.app first (the user's preferred host), then falls back to
+// other services that accept anonymous cross-origin uploads.
+async function uploadToPaste(code){
+  // 1) pastefy.app — JSON API v2, anonymous UNLISTED paste
+  try{
+    const res=await fetch('https://pastefy.app/api/v2/paste',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({title:'VoidVM',content:code,visibility:'UNLISTED',type:'PASTE'})
+    });
+    if(res.ok){
+      const j=await res.json();
+      const id=(j&&(j.paste&&j.paste.id||j.id));
+      if(id) return {url:'https://pastefy.app/'+id+'/raw', host:'pastefy.app'};
+    }
+  }catch(e){/* CORS or network — fall through */}
+
+  // 2) paste.rs — plain-text POST, returns the url in the body
+  try{
+    const res=await fetch('https://paste.rs/',{method:'POST',body:code});
+    if(res.ok){
+      const u=(await res.text()).trim();
+      if(/^https?:\/\//.test(u)) return {url:u, host:'paste.rs'};
+    }
+  }catch(e){/* fall through */}
+
+  // 3) dpaste.com — form POST, raw url = returned url + '.txt'
+  try{
+    const body=new URLSearchParams();
+    body.set('content',code); body.set('syntax','text'); body.set('expiry_days','365');
+    const res=await fetch('https://dpaste.com/api/v2/',{method:'POST',body});
+    if(res.ok){
+      const u=(await res.text()).trim();
+      if(/^https?:\/\//.test(u)) return {url:u.replace(/\/?$/,'')+'.txt', host:'dpaste.com'};
+    }
+  }catch(e){/* fall through */}
+
+  return null;
+}
+
+let _lastHosted='';
+async function autoHost(){
+  const outEl=document.getElementById('output');
+  const code=outEl.textContent;
+  if(!code||code.startsWith('-- ')&&code.includes('appears here')){ showToast('COMPILE SOMETHING FIRST',false); return null; }
+  const btn=document.querySelector('.btn-host');
+  if(btn){ btn.disabled=true; btn.textContent='☁ HOSTING...'; }
+  setStatus('HOSTING...','uploading to paste service',true);
+  let result=null;
+  try{ result=await uploadToPaste(code); }catch(e){ result=null; }
+  if(btn){ btn.disabled=false; btn.textContent='☁ HOST → LOADSTRING'; }
+  if(!result){
+    setStatus('HOST FAILED','paste services unreachable (CORS/network) — use SPLIT LOADER manually',false);
+    showToast('AUTO-HOST FAILED — HOST MANUALLY',false);
+    return null;
+  }
+  const loader='loadstring(game:HttpGet("'+result.url+'"))()';
+  _lastHosted=loader;
+  // Show the ready loadstring at the very top of the output, keep the code below as reference
+  outEl.textContent='-- ✓ HOSTED ON '+result.host.toUpperCase()+' — paste this ONE line into your executor:\n'+loader+'\n\n--[[ ─── original obfuscated payload (already uploaded) ─── ]]\n'+code;
+  outEl.className='output-box';
+  // Copy the loadstring straight to the clipboard for convenience
+  try{ await navigator.clipboard.writeText(loader); showToast('HOSTED ✓ — LOADSTRING COPIED',true); }
+  catch(e){ showToast('HOSTED ✓ — '+result.host,true); }
+  setStatus('HOSTED ✓',result.host+' · loadstring ready · copied to clipboard',false);
+  return loader;
 }
 
 // ── wiring ──
@@ -4265,6 +4348,7 @@ ready(function(){
   // expose for inline onclick handlers
   window.runObfuscate=runObfuscate;
   window.copyOutput=copyOutput;
+  window.autoHost=autoHost;
 });
 
 })();
