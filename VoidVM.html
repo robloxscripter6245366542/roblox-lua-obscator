@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOID::VM</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap');
+:root{--bg:#05060a;--surface:#0b0d14;--panel:#0f1119;--border:#1a1f2e;--cyan:#00f5ff;--pink:#ff2d78;--green:#00ff88;--amber:#ffb347;--violet:#a06bff;--dim:#3a4060;--text:#c8d0e8;--muted:#555e80;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,245,255,0.012) 2px,rgba(0,245,255,0.012) 4px);pointer-events:none;z-index:9999;}
+body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,245,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,245,255,0.025) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0;}
+header{position:relative;z-index:10;padding:16px 26px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;background:rgba(11,13,20,0.97);backdrop-filter:blur(10px);}
+.logo-icon{width:33px;height:33px;border:1.5px solid var(--cyan);display:flex;align-items:center;justify-content:center;font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--cyan);box-shadow:0 0 14px rgba(0,245,255,0.25),inset 0 0 8px rgba(0,245,255,0.06);}
+.logo-text{font-size:17px;font-weight:700;letter-spacing:5px;color:#fff;text-transform:uppercase;}
+.logo-text span{color:var(--cyan);}
+.header-badges{display:flex;gap:7px;margin-left:auto;}
+.badge{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:2px;border:1px solid var(--border);padding:3px 8px;}
+.badge.live{color:var(--green);border-color:rgba(0,255,136,0.3);}
+.badge.vm{color:var(--violet);border-color:rgba(160,107,255,0.3);}
+.progress-bar{position:fixed;top:0;left:0;height:2px;width:0%;background:linear-gradient(90deg,var(--cyan),var(--violet),var(--pink));z-index:99999;box-shadow:0 0 8px var(--cyan);transition:width 0.07s linear;}
+main{position:relative;z-index:10;display:flex;flex-direction:column;height:calc(100vh - 69px);}
+.toolbar{padding:9px 18px;display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--border);background:var(--surface);flex-wrap:wrap;}
+.toolbar-label{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:2px;white-space:nowrap;}
+.toggle-group{display:flex;gap:2px;flex-wrap:wrap;}
+.toggle{padding:4px 10px;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.14s;user-select:none;white-space:nowrap;}
+.toggle.on{background:rgba(0,245,255,0.08);border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 8px rgba(0,245,255,0.12);}
+.toggle.vm.on{background:rgba(160,107,255,0.1);border-color:var(--violet);color:var(--violet);box-shadow:0 0 10px rgba(160,107,255,0.18);}
+.toggle:hover:not(.on){border-color:var(--dim);color:var(--text);}
+.sep{width:1px;height:20px;background:var(--border);margin:0 3px;flex-shrink:0;}
+.btn-run{padding:7px 24px;background:linear-gradient(135deg,rgba(0,245,255,0.12),rgba(0,245,255,0.04));border:1px solid var(--cyan);color:var(--cyan);font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:3px;cursor:pointer;transition:all 0.18s;box-shadow:0 0 14px rgba(0,245,255,0.1);position:relative;overflow:hidden;white-space:nowrap;}
+.btn-run::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(0,245,255,0.15),transparent);transition:left 0.4s;}
+.btn-run:hover::before{left:100%;}
+.btn-run:hover{box-shadow:0 0 28px rgba(0,245,255,0.28);}
+.btn-run:active{transform:scale(0.97);}
+.editors{display:flex;flex:1;overflow:hidden;}
+.pane{display:flex;flex-direction:column;flex:1;border-right:1px solid var(--border);overflow:hidden;min-width:0;}
+.pane:last-child{border-right:none;}
+.pane-header{padding:8px 15px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px;flex-shrink:0;}
+.pane-dot{width:6px;height:6px;border-radius:50%;}
+.dot-cyan{background:var(--cyan);box-shadow:0 0 6px var(--cyan);}
+.dot-pink{background:var(--pink);box-shadow:0 0 6px var(--pink);}
+.pane-title{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);}
+.pane-meta{margin-left:auto;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--dim);}
+.btn-copy-big{padding:5px 16px;background:linear-gradient(135deg,rgba(255,45,120,0.14),rgba(255,45,120,0.04));border:1px solid var(--pink);color:var(--pink);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;cursor:pointer;transition:all 0.16s;box-shadow:0 0 10px rgba(255,45,120,0.1);white-space:nowrap;}
+.btn-copy-big:hover{box-shadow:0 0 22px rgba(255,45,120,0.35);background:rgba(255,45,120,0.16);}
+.btn-copy-big:active{transform:scale(0.96);}
+textarea,.output-box{flex:1;background:var(--bg);color:var(--text);border:none;outline:none;padding:15px;font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.75;resize:none;width:100%;overflow-y:auto;tab-size:2;}
+textarea::placeholder{color:var(--dim);}
+.output-box{white-space:pre-wrap;word-break:break-all;color:#7fffb0;}
+.output-box.empty{color:var(--dim);}
+.output-box.error{color:var(--pink);}
+.statusbar{padding:6px 18px;border-top:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:14px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);flex-shrink:0;}
+.status-dot{width:5px;height:5px;border-radius:50%;background:var(--cyan);box-shadow:0 0 5px var(--cyan);animation:pulse 2s infinite;}
+.processing .status-dot{background:var(--violet);box-shadow:0 0 5px var(--violet);animation:none;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.2;}}
+#statusDetail{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+.toast{position:fixed;bottom:42px;left:50%;transform:translateX(-50%) translateY(14px);background:rgba(5,6,10,0.94);border:1px solid var(--cyan);color:var(--cyan);padding:8px 20px;font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:2px;opacity:0;transition:all 0.22s;pointer-events:none;z-index:99998;backdrop-filter:blur(12px);}
+.toast.pink{border-color:var(--pink);color:var(--pink);}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+@media(max-width:660px){.editors{flex-direction:column;}.pane{min-height:210px;}.btn-run{margin-left:0;}}
+</style>
+</head>
+<body>
+<div class="progress-bar" id="progressBar"></div>
+<header>
+  <div class="logo-icon">V</div>
+  <div class="logo-text">VOID<span>::</span>VM</div>
+  <div class="header-badges">
+    <div class="badge vm">VIRTUAL MACHINE</div>
+    <div class="badge">LUAU</div>
+    <div class="badge live">● ONLINE</div>
+    <div class="badge">v7.0</div>
+  </div>
+</header>
+<main>
+  <div class="toolbar">
+    <span class="toolbar-label">LAYERS//</span>
+    <div class="toggle-group">
+      <button class="toggle on" id="t-strenc">STRING VAULT</button>
+      <button class="toggle on" id="t-numenc">NUM ENCODE</button>
+      <button class="toggle on" id="t-rename">SCOPE RENAME</button>
+      <button class="toggle" id="t-wrap">BOOTSTRAP</button>
+      <button class="toggle" id="t-minify">MINIFY</button>
+      <button class="toggle vm on" id="t-vm">▣ VM VIRTUALIZE</button>
+      <button class="toggle vm" id="t-vm2">VM ×2</button>
+    </div>
+    <div class="sep"></div>
+    <button class="btn-run" onclick="runObfuscate()">▶ COMPILE</button>
+  </div>
+  <div class="editors">
+    <div class="pane">
+      <div class="pane-header">
+        <div class="pane-dot dot-cyan"></div>
+        <span class="pane-title">SOURCE INPUT</span>
+        <span class="pane-meta" id="lineCount">0 LINES</span>
+      </div>
+      <textarea id="input" spellcheck="false" placeholder="-- Paste your Lua / Luau script here.
+-- Parsed into a real AST, then compiled into encrypted VM bytecode.
+-- 100% client-side. Your code never leaves this browser.
+
+local config = { maxWave = 50, baseHealth = 200 }
+local function describe(name, lvl)
+  if lvl > 10 then
+    return name .. ' is strong at ' .. lvl
+  else
+    return name .. ' is weak at ' .. lvl
+  end
+end
+print(describe('Goblin', 5))
+print('Max wave: ' .. config.maxWave)"></textarea>
+    </div>
+    <div class="pane">
+      <div class="pane-header">
+        <div class="pane-dot dot-pink"></div>
+        <span class="pane-title">VIRTUALIZED OUTPUT</span>
+        <span class="pane-meta" id="outStats">—</span>
+        <button class="btn-copy-big" onclick="copyOutput()">⧉ COPY OUTPUT</button>
+      </div>
+      <div class="output-box empty" id="output">-- Virtualized output appears here...</div>
+    </div>
+  </div>
+  <div class="statusbar" id="statusbar">
+    <div class="status-dot"></div>
+    <span id="statusText">LOADING PARSER...</span>
+    <span id="statusDetail">— fetching luaparse · AST → custom bytecode · polymorphic VM · client-side</span>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+
+<!-- luaparse 0.3.1 — parses Lua locally in your browser. Only the library is fetched; your script is never uploaded. -->
+<script src="https://unpkg.com/luaparse@0.3.1/luaparse.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  VOID::VM v7.0 — AST hardener + polymorphic bytecode VM
+//  Every build emits a UNIQUE opcode map, cipher and VM architecture.
+//  Targets Roblox Luau (uses bit32.* — no Lua 5.3-only operators).
+// ═══════════════════════════════════════════════════════════════════
+(function(){
+'use strict';
+
+function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
+
+// ── helpers ──
+const rand  = (a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+const delay = ms=>new Promise(r=>setTimeout(r,ms));
+function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=rand(0,i);[a[i],a[j]]=[a[j],a[i]];} return a; }
+function distinctInts(count,lo,hi){ const s=new Set(); while(s.size<count) s.add(rand(lo,hi)); return [...s]; }
+
+// ── lookalike identifier generator (l / I / i / 1 confusables) ──
+// All digits are EXACTLY one char so the positional encoding is a clean
+// bijection — guarantees every counter value maps to a unique name.
+let _counter=0;
+const LOOK=['l','I','i','1'];
+function uid(){ let n=_counter++,s=''; do{ s=LOOK[n%LOOK.length]+s; n=Math.floor(n/LOOK.length);}while(n>0); return '_'+s; }
+
+// ───────────────────────────────────────────────────────────────────
+//  CODE GENERATION  (AST -> Lua source)
+// ───────────────────────────────────────────────────────────────────
+function gen(node){
+  if(node==null) return '';
+  switch(node.type){
+    case 'Chunk': return node.body.map(gen).join('\n');
+    case 'LocalStatement':
+      return 'local '+node.variables.map(gen).join(', ')+
+        (node.init&&node.init.length?' = '+node.init.map(gen).join(', '):'');
+    case 'AssignmentStatement':
+      return node.variables.map(gen).join(', ')+' = '+node.init.map(gen).join(', ');
+    case 'CallStatement': return gen(node.expression);
+    case 'Identifier': return node.name;
+    case 'StringLiteral': return node.raw;
+    case 'NumericLiteral': return node.raw!==undefined?node.raw:String(node.value);
+    case 'BooleanLiteral': return node.raw!==undefined?node.raw:String(node.value);
+    case 'NilLiteral': return 'nil';
+    case 'VarargLiteral': return '...';
+    case 'BinaryExpression':
+    case 'LogicalExpression':
+      return '('+gen(node.left)+' '+node.operator+' '+gen(node.right)+')';
+    case 'UnaryExpression':
+      return '('+node.operator+(node.operator.match(/[a-z]/)?' ':'')+gen(node.argument)+')';
+    case 'MemberExpression':
+      return gen(node.base)+node.indexer+gen(node.identifier);
+    case 'IndexExpression':
+      return gen(node.base)+'['+gen(node.index)+']';
+    case 'CallExpression':
+      return gen(node.base)+'('+node.arguments.map(gen).join(', ')+')';
+    case 'TableCallExpression':
+      return gen(node.base)+gen(node.arguments);
+    case 'StringCallExpression':
+      return gen(node.base)+gen(node.argument);
+    case 'FunctionDeclaration':{
+      const id=node.identifier?gen(node.identifier):'';
+      const params=node.parameters.map(gen).join(', ');
+      const localKw=node.isLocal?'local ':'';
+      const name=id?' '+id:'';
+      return localKw+'function'+name+'('+params+')\n'+node.body.map(gen).join('\n')+'\nend';
+    }
+    case 'TableConstructorExpression':
+      return '{'+node.fields.map(gen).join(', ')+'}';
+    case 'TableKey': return '['+gen(node.key)+'] = '+gen(node.value);
+    case 'TableKeyString': return gen(node.key)+' = '+gen(node.value);
+    case 'TableValue': return gen(node.value);
+    case 'ReturnStatement': return 'return '+node.arguments.map(gen).join(', ');
+    case 'BreakStatement': return 'break';
+    case 'ContinueStatement': return 'continue';
+    case 'GotoStatement': return 'goto '+gen(node.label);
+    case 'LabelStatement': return '::'+gen(node.label)+'::';
+    case 'DoStatement': return 'do\n'+node.body.map(gen).join('\n')+'\nend';
+    case 'WhileStatement':
+      return 'while '+gen(node.condition)+' do\n'+node.body.map(gen).join('\n')+'\nend';
+    case 'RepeatStatement':
+      return 'repeat\n'+node.body.map(gen).join('\n')+'\nuntil '+gen(node.condition);
+    case 'IfStatement': return node.clauses.map(gen).join('\n')+'\nend';
+    case 'IfClause': return 'if '+gen(node.condition)+' then\n'+node.body.map(gen).join('\n');
+    case 'ElseifClause': return 'elseif '+gen(node.condition)+' then\n'+node.body.map(gen).join('\n');
+    case 'ElseClause': return 'else\n'+node.body.map(gen).join('\n');
+    case 'ForNumericStatement':
+      return 'for '+gen(node.variable)+' = '+gen(node.start)+', '+gen(node.end)+
+        (node.step?', '+gen(node.step):'')+' do\n'+node.body.map(gen).join('\n')+'\nend';
+    case 'ForGenericStatement':
+      return 'for '+node.variables.map(gen).join(', ')+' in '+node.iterators.map(gen).join(', ')+
+        ' do\n'+node.body.map(gen).join('\n')+'\nend';
+    case 'FunctionExpression':
+      return 'function('+node.parameters.map(gen).join(', ')+')\n'+node.body.map(gen).join('\n')+'\nend';
+    default:
+      throw new Error('Unhandled node type: '+node.type);
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 1 — scope-aware local rename
+// ───────────────────────────────────────────────────────────────────
+function renameLocals(ast){
+  const scopeStack=[new Map()];
+  const lookup=name=>{ for(let i=scopeStack.length-1;i>=0;i--) if(scopeStack[i].has(name)) return scopeStack[i].get(name); return null; };
+  const declare=name=>{ const id=uid(); scopeStack[scopeStack.length-1].set(name,id); return id; };
+  const push=()=>scopeStack.push(new Map());
+  const pop =()=>scopeStack.pop();
+  function walk(node){
+    if(!node||typeof node!=='object') return;
+    switch(node.type){
+      case 'Chunk': node.body.forEach(walk); break;
+      case 'LocalStatement':
+        (node.init||[]).forEach(walk);
+        node.variables.forEach(v=>v.name=declare(v.name));
+        break;
+      case 'FunctionDeclaration':
+        if(node.identifier){
+          if(node.identifier.type==='Identifier'&&node.isLocal) node.identifier.name=declare(node.identifier.name);
+          else walk(node.identifier);
+        }
+        push();
+        node.parameters.forEach(p=>{ if(p.type==='Identifier') p.name=declare(p.name); });
+        node.body.forEach(walk); pop();
+        break;
+      case 'FunctionExpression':
+        push();
+        node.parameters.forEach(p=>{ if(p.type==='Identifier') p.name=declare(p.name); });
+        node.body.forEach(walk); pop();
+        break;
+      case 'Identifier':
+        if(node.isLocal!==false){ const r=lookup(node.name); if(r) node.name=r; }
+        break;
+      case 'ForNumericStatement':
+        walk(node.start); walk(node.end); if(node.step) walk(node.step);
+        push(); node.variable.name=declare(node.variable.name); node.body.forEach(walk); pop();
+        break;
+      case 'ForGenericStatement':
+        node.iterators.forEach(walk);
+        push(); node.variables.forEach(v=>v.name=declare(v.name)); node.body.forEach(walk); pop();
+        break;
+      case 'DoStatement': push(); node.body.forEach(walk); pop(); break;
+      case 'WhileStatement': walk(node.condition); push(); node.body.forEach(walk); pop(); break;
+      case 'RepeatStatement': push(); node.body.forEach(walk); walk(node.condition); pop(); break;
+      case 'IfStatement':
+        node.clauses.forEach(c=>{ if(c.condition) walk(c.condition); push(); c.body.forEach(walk); pop(); });
+        break;
+      default:
+        for(const k in node){ const v=node[k]; if(Array.isArray(v)) v.forEach(walk); else if(v&&typeof v==='object'&&v.type) walk(v); }
+    }
+  }
+  walk(ast);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 2 — string vault (shuffled table + decoys, Luau bit32 decoder)
+// ───────────────────────────────────────────────────────────────────
+function encryptStrings(ast, decFn){
+  const realStrings=[]; const key=rand(40,200);
+  function collect(node){
+    if(!node||typeof node!=='object') return;
+    if(Array.isArray(node)){ node.forEach(collect); return; }
+    if(node.type==='StringLiteral'){
+      let val;
+      try{ const raw=node.raw; val=raw[0]==='"'?JSON.parse(raw):JSON.parse('"'+raw.slice(1,-1).replace(/\\'/g,"'").replace(/"/g,'\\"')+'"'); }catch(e){ val=node.value||''; }
+      node.__si=realStrings.length; realStrings.push(String(val==null?'':val)); return;
+    }
+    for(const k in node){ const v=node[k]; if(v&&typeof v==='object') collect(v); }
+  }
+  collect(ast);
+  const entries=realStrings.map((s,i)=>({s,realIdx:i}));
+  const decoyCount=Math.max(3,Math.floor(realStrings.length*0.7));
+  for(let i=0;i<decoyCount;i++){ const len=rand(3,14); let s=''; for(let j=0;j<len;j++) s+=String.fromCharCode(rand(33,126)); entries.push({s,realIdx:null}); }
+  shuffle(entries);
+  const posOf={}; entries.forEach((e,pos)=>{ if(e.realIdx!==null) posOf[e.realIdx]=pos+1; });
+  // UTF-8 safe byte encoding
+  const enc=new TextEncoder();
+  const strings=entries.map(e=>Array.from(enc.encode(e.s)).map(c=>(c^key)&0xFF));
+  function replace(node){
+    if(!node||typeof node!=='object') return;
+    if(Array.isArray(node)){ node.forEach(replace); return; }
+    if(node.type==='StringLiteral'&&node.__si!==undefined){
+      const pos=posOf[node.__si];
+      Object.keys(node).forEach(k=>delete node[k]);
+      Object.assign(node,{type:'CallExpression',base:{type:'Identifier',name:decFn,isLocal:true},arguments:[{type:'NumericLiteral',value:pos,raw:String(pos)}]});
+      return;
+    }
+    for(const k in node){ const v=node[k]; if(v&&typeof v==='object') replace(v); }
+  }
+  replace(ast);
+  return { strings, key };
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 3 — numeric encoding (additive split + bit32.bxor mix)
+// ───────────────────────────────────────────────────────────────────
+function bit32xorNode(enc, mask){
+  return { type:'CallExpression',
+    base:{ type:'MemberExpression', indexer:'.', base:{type:'Identifier',name:'bit32'}, identifier:{type:'Identifier',name:'bxor'} },
+    arguments:[ {type:'NumericLiteral',value:enc,raw:String(enc)}, {type:'NumericLiteral',value:mask,raw:String(mask)} ] };
+}
+function encodeNumbers(ast){
+  function walk(node){
+    if(!node||typeof node!=='object') return;
+    if(Array.isArray(node)){ node.forEach(walk); return; }
+    if(node.type==='NumericLiteral'&&node.value!==undefined){
+      const n=node.value;
+      if(Number.isInteger(n)&&n>=2&&n<=99999){
+        if(rand(0,1)===0){
+          const a=rand(1,Math.max(2,Math.floor(n/2))); const b=n-a;
+          Object.keys(node).forEach(k=>delete node[k]);
+          Object.assign(node,{type:'BinaryExpression',operator:'+',
+            left:{type:'NumericLiteral',value:a,raw:String(a)},
+            right:{type:'NumericLiteral',value:b,raw:String(b)}});
+        }else{
+          const mask=rand(1,65535); const enc=n^mask;
+          const repl=bit32xorNode(enc,mask);
+          Object.keys(node).forEach(k=>delete node[k]);
+          Object.assign(node,repl);
+        }
+        return;
+      }
+    }
+    for(const k in node){ const v=node[k]; if(v&&typeof v==='object') walk(v); }
+  }
+  walk(ast);
+}
+
+// ── minify ──
+function minify(code){ return code.split('\n').map(l=>l.replace(/\s+/g,' ').trim()).filter(Boolean).join(' '); }
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 5 — VM VIRTUALIZATION  (the headline)
+//
+//  The whole hardened script is compiled into encrypted bytecode and a
+//  tiny stack-less VM rebuilds + load()s it at runtime. Per build:
+//    • randomized opcode numbers (polymorphic dispatch)
+//    • randomized reversible cipher pipeline (xor-key / xor-index /
+//      xor-const / add-const / sub-const), unique order & constants
+//    • rolling key of random length, per-index mixing
+//    • anti-tamper Adler-style checksum (refuses to run if modified)
+//    • light anti-hook guard on bit32 / string.char
+//  Output runs on Roblox Luau (bit32.bxor, no 5.3-only operators).
+// ───────────────────────────────────────────────────────────────────
+function virtualize(src){
+  const enc=new TextEncoder();
+  const bytes=Array.from(enc.encode(src));
+  const N=bytes.length;
+
+  // rolling key
+  const kn=rand(8,16);
+  const KEY=[]; for(let i=0;i<kn;i++) KEY.push(rand(1,255));
+
+  // reversible decode pipeline (executed per byte, in order)
+  const TYPES=['xork','xori','xorc','addc','subc'];
+  const numSteps=rand(4,7);
+  const steps=[]; let hasKey=false;
+  for(let i=0;i<numSteps;i++){
+    const t=TYPES[rand(0,TYPES.length-1)];
+    if(t==='xork') hasKey=true;
+    steps.push({t, c:(t==='xorc'||t==='addc'||t==='subc')?rand(1,255):null});
+  }
+  if(!hasKey) steps.push({t:'xork',c:null});
+
+  // opcode map — distinct random ints (polymorphic)
+  const usedOps=['HALT', ...new Set(steps.map(s=>s.t))];
+  const codes=distinctInts(usedOps.length,17,239);
+  const OP={}; usedOps.forEach((o,i)=>OP[o]=codes[i]);
+
+  // flat bytecode program
+  const PROG=[];
+  for(const s of steps){ PROG.push(OP[s.t]); if(s.c!=null) PROG.push(s.c); }
+  PROG.push(OP['HALT']);
+
+  // encrypt: invert the decode pipeline (reverse order, inverse op)
+  const E=[];
+  for(let i=1;i<=N;i++){
+    let acc=bytes[i-1];
+    for(let s=steps.length-1;s>=0;s--){
+      const st=steps[s];
+      if(st.t==='xork')      acc^=KEY[(i-1)%kn];
+      else if(st.t==='xori') acc^=((i-1)&255);
+      else if(st.t==='xorc') acc^=st.c;
+      else if(st.t==='addc') acc=(((acc-st.c)%256)+256)%256; // inverse of +c
+      else if(st.t==='subc') acc=(acc+st.c)%256;             // inverse of -c
+      acc&=255;
+    }
+    E.push(acc&255);
+  }
+
+  // anti-tamper checksum (must match Lua-side recompute)
+  let CK=0;
+  for(const v of E)    CK=(CK+v)%65521;
+  for(const v of PROG) CK=(CK+v)%65521;
+
+  // names
+  const nB=uid(),nK=uid(),nKN=uid(),nP=uid(),nE=uid(),nOut=uid(),nLd=uid(),nFn=uid(),nCk=uid(),nJ=uid(),nI=uid(),nPc=uid(),nOp=uid(),nAcc=uid();
+
+  // dispatch branches for used ops, randomized order
+  const branch={
+    HALT:`${nOp}==${OP.HALT} then break`,
+    xork:`${nOp}==${OP.xork} then ${nAcc}=${nB}(${nAcc},${nK}[((${nI}-1)%${nKN})+1])`,
+    xori:`${nOp}==${OP.xori} then ${nAcc}=${nB}(${nAcc},(${nI}-1)%256)`,
+    xorc:`${nOp}==${OP.xorc} then ${nAcc}=${nB}(${nAcc},${nP}[${nPc}]) ${nPc}=${nPc}+1`,
+    addc:`${nOp}==${OP.addc} then ${nAcc}=(${nAcc}+${nP}[${nPc}])%256 ${nPc}=${nPc}+1`,
+    subc:`${nOp}==${OP.subc} then ${nAcc}=(${nAcc}-${nP}[${nPc}])%256 ${nPc}=${nPc}+1`,
+  };
+  const order=shuffle(usedOps.slice());
+  let dispatch='';
+  order.forEach((o,idx)=>{ dispatch+=(idx===0?'      if ':'      elseif ')+branch[o]+'\n'; });
+  dispatch+='      end';
+
+  // emit Lua (Luau-safe)
+  const L=[];
+  L.push(`local ${nB}=bit32.bxor`);
+  L.push(`local ${nK}={${KEY.join(',')}}`);
+  L.push(`local ${nKN}=#${nK}`);
+  L.push(`local ${nP}={${PROG.join(',')}}`);
+  L.push(`local ${nE}={${E.join(',')}}`);
+  // anti-hook guard
+  L.push(`if type(bit32)~="table" or type(string.char)~="function" then return end`);
+  // anti-tamper
+  L.push(`local ${nCk}=0`);
+  L.push(`for ${nJ}=1,#${nE} do ${nCk}=(${nCk}+${nE}[${nJ}])%65521 end`);
+  L.push(`for ${nJ}=1,#${nP} do ${nCk}=(${nCk}+${nP}[${nJ}])%65521 end`);
+  L.push(`if ${nCk}~=${CK} then return end`);
+  // VM execute
+  L.push(`local ${nOut}={}`);
+  L.push(`for ${nI}=1,#${nE} do`);
+  L.push(`  local ${nAcc}=${nE}[${nI}]`);
+  L.push(`  local ${nPc}=1`);
+  L.push(`  while true do`);
+  L.push(`    local ${nOp}=${nP}[${nPc}] ${nPc}=${nPc}+1`);
+  L.push(dispatch);
+  L.push(`  end`);
+  L.push(`  ${nOut}[${nI}]=string.char(${nAcc}%256)`);
+  L.push(`end`);
+  L.push(`local ${nLd}=loadstring or load`);
+  L.push(`local ${nFn}=${nLd}(table.concat(${nOut}),"=?")`);
+  L.push(`if ${nFn} then return ${nFn}() end`);
+  return L.join('\n');
+}
+
+// ── progress/status ──
+function setProgress(p){ const el=document.getElementById('progressBar'); if(el) el.style.width=p+'%'; }
+function setStatus(t,d,proc){ const a=document.getElementById('statusText'),b=document.getElementById('statusDetail'),c=document.getElementById('statusbar'); if(a)a.textContent=t; if(b)b.textContent=d; if(c)c.className='statusbar'+(proc?' processing':''); }
+function showToast(msg,cyan=true){ const t=document.getElementById('toast'); if(!t)return; t.textContent=msg; t.className='toast'+(cyan?'':' pink')+' show'; setTimeout(()=>t.classList.remove('show'),2800); }
+const on=id=>document.getElementById(id)?.classList.contains('on');
+
+// ───────────────────────────────────────────────────────────────────
+//  MAIN PIPELINE
+// ───────────────────────────────────────────────────────────────────
+async function runObfuscate(){
+  const luaparse=window.luaparse;
+  const inputEl=document.getElementById('input');
+  const outEl=document.getElementById('output');
+  if(!luaparse){ showToast('PARSER NOT LOADED — CHECK CONNECTION',false); setStatus('NO PARSER','luaparse failed to load from CDN',false); return; }
+  const src=(inputEl.value||'').trim();
+  if(!src){ showToast('NO SOURCE CODE',false); return; }
+  _counter=0;
+
+  let ast;
+  try{ ast=luaparse.parse(src,{scope:false,luaVersion:'5.3',comments:false}); }
+  catch(e){
+    outEl.textContent='-- PARSE ERROR:\n-- '+e.message+'\n\n-- Check your Lua syntax and try again.';
+    outEl.className='output-box error';
+    setStatus('PARSE ERROR',e.message,false); showToast('SYNTAX ERROR — SEE OUTPUT',false); return;
+  }
+
+  setProgress(8); setStatus('COMPILING...','parsing AST',true); await delay(30);
+
+  const applied=[];
+  const decFn=uid();
+  let strData=null;
+
+  if(on('t-strenc')){ strData=encryptStrings(ast,decFn); applied.push('STRING-VAULT'); setProgress(28); setStatus('COMPILING...','ENCRYPTING STRING VAULT',true); await delay(35); }
+  if(on('t-numenc')){ encodeNumbers(ast); applied.push('NUM-ENCODE'); setProgress(42); setStatus('COMPILING...','ENCODING NUMBERS',true); await delay(35); }
+  if(on('t-rename')){ renameLocals(ast); applied.push('SCOPE-RENAME'); setProgress(56); setStatus('COMPILING...','SCOPE-AWARE RENAME',true); await delay(35); }
+
+  let body;
+  try{ body=gen(ast); }
+  catch(e){
+    outEl.textContent='-- CODEGEN ERROR: '+e.message+'\n-- This construct is not supported yet. Try without it.';
+    outEl.className='output-box error';
+    setStatus('CODEGEN ERROR',e.message,false); showToast('UNSUPPORTED CONSTRUCT',false); return;
+  }
+
+  // string vault decryptor header (Luau bit32)
+  let header='';
+  if(strData){
+    const tableLit='{'+strData.strings.map(b=>'{'+b.join(',')+'}').join(',')+'}';
+    const tbl=uid(), p=uid(), bb=uid(), rr=uid(), jj=uid();
+    header=
+`local ${tbl}=${tableLit}
+local function ${decFn}(${p})
+local ${bb}=${tbl}[${p}]
+local ${rr}={}
+for ${jj}=1,#${bb} do ${rr}[${jj}]=string.char(bit32.band(bit32.bxor(${bb}[${jj}],${strData.key}),255)) end
+return table.concat(${rr})
+end
+`;
+  }
+
+  let finalCode=header+body;
+
+  if(on('t-wrap')){
+    const f=uid(),e2=uid();
+    finalCode=`local ${f} = function()\n${finalCode}\nend\nlocal ${e2} = pcall(${f})\n`;
+    applied.push('BOOTSTRAP');
+  }
+
+  if(on('t-minify')){ finalCode=minify(finalCode); applied.push('MINIFY'); setProgress(68); setStatus('COMPILING...','MINIFYING',true); await delay(25); }
+
+  if(on('t-vm')){
+    setProgress(80); setStatus('COMPILING...','VIRTUALIZING → BYTECODE',true); await delay(45);
+    finalCode=virtualize(finalCode);
+    applied.push('VM');
+    if(on('t-vm2')){ setProgress(90); setStatus('COMPILING...','NESTING VM LAYER ×2',true); await delay(45); finalCode=virtualize(finalCode); applied.push('VM²'); }
+  }
+
+  setProgress(100); await delay(120); setProgress(0);
+
+  outEl.textContent=finalCode; outEl.className='output-box';
+  const ratio=((finalCode.length/src.length)*100).toFixed(0);
+  document.getElementById('outStats').textContent=`${finalCode.length} CHARS · ${ratio}% SIZE`;
+  setStatus('DONE',applied.join(' → ')+' · runnable Luau',false);
+  showToast('COMPILED ✓ — '+applied.length+' LAYERS',true);
+}
+
+function copyOutput(){
+  const elText=document.getElementById('output').textContent;
+  if(!elText||elText.startsWith('-- ')&&elText.includes('appears here')){ showToast('NOTHING TO COPY YET',false); return; }
+  navigator.clipboard.writeText(elText)
+    .then(()=>showToast('OUTPUT COPIED ✓',true))
+    .catch(()=>{
+      const sel=window.getSelection(),r=document.createRange();
+      r.selectNodeContents(document.getElementById('output'));
+      sel.removeAllRanges(); sel.addRange(r);
+      try{ document.execCommand('copy'); showToast('COPIED ✓',true); }catch(e){ showToast('SELECT MANUALLY',false); }
+    });
+}
+
+// ── wiring ──
+ready(function(){
+  document.querySelectorAll('.toggle').forEach(b=>b.addEventListener('click',()=>b.classList.toggle('on')));
+  const inputEl=document.getElementById('input');
+  const upd=()=>document.getElementById('lineCount').textContent=inputEl.value.split('\n').length+' LINES';
+  inputEl.addEventListener('input',upd); upd();
+  // parser load status
+  if(window.luaparse){ setStatus('READY','AST → custom bytecode · polymorphic VM · client-side',false); }
+  else{
+    setStatus('LOADING PARSER...','fetching luaparse from CDN',true);
+    let tries=0; const iv=setInterval(()=>{ if(window.luaparse){ clearInterval(iv); setStatus('READY','AST → custom bytecode · polymorphic VM · client-side',false); } else if(++tries>40){ clearInterval(iv); setStatus('PARSER OFFLINE','luaparse CDN unreachable — check your connection',false); } },150);
+  }
+  // expose for inline onclick handlers
+  window.runObfuscate=runObfuscate;
+  window.copyOutput=copyOutput;
+});
+
+})();
+</script>
+</body>
+</html>
