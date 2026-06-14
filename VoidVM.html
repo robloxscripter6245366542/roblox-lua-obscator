@@ -71,7 +71,7 @@ textarea::placeholder{color:var(--dim);}
     <div class="badge vm">DEEP VM · NO SOURCE</div>
     <div class="badge">LUAU</div>
     <div class="badge live">● ONLINE</div>
-    <div class="badge">v8.0</div>
+    <div class="badge">v9.0</div>
   </div>
 </header>
 <main>
@@ -81,6 +81,8 @@ textarea::placeholder{color:var(--dim);}
       <button class="toggle on" id="t-strenc">STRING VAULT</button>
       <button class="toggle on" id="t-numenc">NUM ENCODE</button>
       <button class="toggle on" id="t-rename">SCOPE RENAME</button>
+      <button class="toggle" id="t-cff">⟳ FLOW FLATTEN</button>
+      <button class="toggle" id="t-junk">☠ JUNK CODE</button>
       <button class="toggle" id="t-wrap">BOOTSTRAP</button>
       <button class="toggle" id="t-minify">MINIFY</button>
       <button class="toggle vm on" id="t-vm">▣ VM VIRTUALIZE</button>
@@ -3103,6 +3105,112 @@ function encodeNumbers(ast){
   walk(ast);
 }
 
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 4a — Control-Flow Flattening (function bodies only)
+//
+//  Rewrites each function body into a state-machine dispatch loop:
+//    local _state = S1
+//    while true do
+//      if _state == S1 then stmt1; _state = S2
+//      elseif _state == S2 then stmt2; _state = S3  ...
+//      elseif _state == SN then stmtN; break
+//      end
+//    end
+//  All local declarations are hoisted above the loop so cross-clause
+//  references work correctly. Runs after SCOPE RENAME so state-var names
+//  are uid()-mangled confusables just like every other local.
+// ───────────────────────────────────────────────────────────────────
+function flattenControlFlow(ast){
+  function collectLocals(stmts){
+    const names=[];
+    for(const s of stmts){
+      if(s.type==='LocalStatement') for(const v of s.variables) names.push(v.name);
+      else if(s.type==='FunctionDeclaration'&&s.isLocal&&s.identifier&&s.identifier.type==='Identifier') names.push(s.identifier.name);
+    }
+    return names;
+  }
+  function convertLocal(s){
+    // local function f()...end  →  make non-local (assigns to already-hoisted local f)
+    if(s.type==='FunctionDeclaration'&&s.isLocal){ s.isLocal=false; return s; }
+    // local x,y = expr  →  x,y = expr   (hoisted vars already declared above loop)
+    if(!s.init||s.init.length===0) return null;
+    return {type:'AssignmentStatement',variables:s.variables.map(v=>({type:'Identifier',name:v.name})),init:s.init};
+  }
+  function flattenBody(stmts){
+    if(stmts.length<3) return;
+    const localNames=collectLocals(stmts);
+    const converted=stmts.map(s=>(s.type==='LocalStatement'||(s.type==='FunctionDeclaration'&&s.isLocal))?convertLocal(s):s).filter(Boolean);
+    if(converted.length<2) return;
+    const stateIds=converted.map(()=>rand(100000,999999));
+    const sv=uid();
+    const clauses=converted.map((stmt,i)=>{
+      const isLast=i===converted.length-1;
+      const body=[stmt];
+      if(isLast){
+        // ReturnStatement already exits the function — adding break after it is a syntax error in Lua.
+        if(stmt.type!=='ReturnStatement') body.push({type:'BreakStatement'});
+      } else body.push({type:'AssignmentStatement',variables:[{type:'Identifier',name:sv}],init:[{type:'NumericLiteral',value:stateIds[i+1],raw:String(stateIds[i+1])}]});
+      return {type:i===0?'IfClause':'ElseifClause',
+        condition:{type:'BinaryExpression',operator:'==',left:{type:'Identifier',name:sv},right:{type:'NumericLiteral',value:stateIds[i],raw:String(stateIds[i])}},
+        body};
+    });
+    const newStmts=[];
+    if(localNames.length>0) newStmts.push({type:'LocalStatement',variables:localNames.map(n=>({type:'Identifier',name:n})),init:[]});
+    newStmts.push({type:'LocalStatement',variables:[{type:'Identifier',name:sv}],init:[{type:'NumericLiteral',value:stateIds[0],raw:String(stateIds[0])}]});
+    newStmts.push({type:'WhileStatement',condition:{type:'BooleanLiteral',value:true,raw:'true'},body:[{type:'IfStatement',clauses}]});
+    stmts.length=0; for(const s of newStmts) stmts.push(s);
+  }
+  function walk(node){
+    if(!node||typeof node!=='object') return;
+    switch(node.type){
+      case 'FunctionDeclaration':case 'FunctionExpression':
+        flattenBody(node.body); node.body.forEach(walk); break;
+      case 'IfStatement': node.clauses.forEach(c=>{if(c.condition)walk(c.condition);c.body.forEach(walk);}); break;
+      case 'WhileStatement': walk(node.condition); node.body.forEach(walk); break;
+      case 'RepeatStatement': node.body.forEach(walk); walk(node.condition); break;
+      case 'ForNumericStatement': walk(node.start);walk(node.end);if(node.step)walk(node.step);node.body.forEach(walk); break;
+      case 'ForGenericStatement': node.iterators.forEach(walk);node.body.forEach(walk); break;
+      case 'DoStatement': node.body.forEach(walk); break;
+      case 'Chunk': node.body.forEach(walk); break;
+      default: for(const k in node){const v=node[k];if(Array.isArray(v))v.forEach(walk);else if(v&&typeof v==='object'&&v.type)walk(v);}
+    }
+  }
+  walk(ast);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 4b — Dead Code / Junk Code Injection
+//
+//  Sprinkles unreachable blocks between real statements. Every block
+//  uses a condition that is provably always-false at Lua runtime:
+//    0 ~= 0  /  1 == 2  /  false  /  v == v+1 (integer literals)
+//  All injected names are uid()-generated confusables. Side-effect
+//  free: no global writes, no function calls.
+// ───────────────────────────────────────────────────────────────────
+function injectDeadCode(code){
+  const lines=code.split('\n');
+  const out=[];
+  // Patterns that are ALWAYS false → block never executes
+  const pats=[
+    ()=>`if (0 ~= 0) then local ${uid()} = ${rand(1,9999)} end`,
+    ()=>`if (1 == 2) then local ${uid()} = nil end`,
+    ()=>`while (false) do local ${uid()} = "" break end`,
+    ()=>{const v=rand(10,9990);return `if (${v} == ${v+1}) then local ${uid()} = ${rand(1,99)} end`;},
+    ()=>`do local ${uid()} = nil end`,
+    ()=>{const v=rand(2,9998);return `if (${v} ~= ${v}) then local ${uid()} = "${rand(100,999)}" end`;},
+    ()=>`if (nil == false) then local ${uid()} = 0 end`,
+  ];
+  for(const line of lines){
+    out.push(line);
+    const tr=line.trim();
+    // Never inject after 'return' — Lua forbids statements after return in the same block
+    if(tr&&!/^return(\s|$)/.test(tr)&&Math.random()<0.28){
+      out.push(pats[rand(0,pats.length-1)]());
+    }
+  }
+  return out.join('\n');
+}
+
 // ── minify ──
 function minify(code){ return code.split('\n').map(l=>l.replace(/\s+/g,' ').trim()).filter(Boolean).join(' '); }
 
@@ -3323,6 +3431,13 @@ function compileDeepVM(src){
     if(e.t==='n') poolSrc+=N.K+'['+(i+1)+']='+luaNum(e.v)+'\n';
     else { const bytes=Array.from(new TextEncoder().encode(e.v)).map(c=>(c^skey)&255); poolSrc+=N.K+'['+(i+1)+']='+N.dstr+'({'+bytes.join(',')+'})\n'; }
   });
+
+  // Junk opcode branches — IDs in 5000-9999 never appear in PROG but bloat & confuse the dispatcher
+  const junkCount=rand(14,22);
+  const junkIds=distinctInts(junkCount,5000,9999);
+  const junkBranchE=junkIds.map(id=>`  elseif t==${id} then local ${uid()}=nil`).join('\n');
+  const junkBranchS=junkIds.map(id=>`  elseif t==${id} then local ${uid()}=nil`).join('\n');
+
   const RT=`
 local ${N.getV},${N.setV},${N.evE},${N.evM},${N.evL},${N.exB},${N.exS},${N.mkC},${N.luVA}
 ${N.getV}=function(env,name) local e=env while e do if e.d[name] then return e.v[name] end e=e.up end return ${N.G}[name] end
@@ -3370,7 +3485,8 @@ ${N.evE}=function(node,env) local t=node[1]
       elseif k==1 then tb[${N.evE}(f[2],env)]=${N.evE}(f[3],env)
       else tb[${N.K}[f[2]]]=${N.evE}(f[3],env) end end
     return tb
-  elseif t==${$('FUNC')} then return ${N.mkC}(node,env) end end
+  elseif t==${$('FUNC')} then return ${N.mkC}(node,env)
+${junkBranchE}  end end
 ${N.mkC}=function(node,defEnv) local params=node[2] local varg=node[3] local body=node[4]
   return function(...) local sc={v={},d={},up=defEnv} local args=table.pack(...)
     for i=1,#params do local nm=${N.K}[params[i]] sc.d[nm]=true sc.v[nm]=args[i] end
@@ -3403,7 +3519,8 @@ ${N.exS}=function(node,env) local t=node[1]
   elseif t==${$('DO')} then return ${N.exB}(node[2],{v={},d={},up=env})
   elseif t==${$('LOCALFUNC')} then local nm=${N.K}[node[2]] env.d[nm]=true env.v[nm]=${N.evE}(node[3],env)
   elseif t==${$('RETURN')} then return ${N.RET},${N.evL}(node[2],env)
-  elseif t==${$('BREAK')} then return ${N.BRK} end end
+  elseif t==${$('BREAK')} then return ${N.BRK}
+${junkBranchS}  end end
 local ${N.main}={v={},d={},up=nil,va={n=0}} ${N.exB}(${N.PROG},${N.main})
 `;
   return `local ${N.bit}=bit32
@@ -3446,9 +3563,13 @@ async function runObfuscate(){
   const decFn=uid();
   let strData=null;
 
-  if(on('t-strenc')){ strData=encryptStrings(ast,decFn); applied.push('STRING-VAULT'); setProgress(28); setStatus('COMPILING...','ENCRYPTING STRING VAULT',true); await delay(35); }
-  if(on('t-numenc')){ encodeNumbers(ast); applied.push('NUM-ENCODE'); setProgress(42); setStatus('COMPILING...','ENCODING NUMBERS',true); await delay(35); }
-  if(on('t-rename')){ renameLocals(ast); applied.push('SCOPE-RENAME'); setProgress(56); setStatus('COMPILING...','SCOPE-AWARE RENAME',true); await delay(35); }
+  if(on('t-strenc')){ strData=encryptStrings(ast,decFn); applied.push('STRING-VAULT'); setProgress(20); setStatus('COMPILING...','ENCRYPTING STRING VAULT',true); await delay(35); }
+  if(on('t-numenc')){ encodeNumbers(ast); applied.push('NUM-ENCODE'); setProgress(34); setStatus('COMPILING...','ENCODING NUMBERS',true); await delay(35); }
+  if(on('t-rename')){ renameLocals(ast); applied.push('SCOPE-RENAME'); setProgress(46); setStatus('COMPILING...','SCOPE-AWARE RENAME',true); await delay(35); }
+  if(on('t-cff')){
+    try{ flattenControlFlow(ast); applied.push('FLOW-FLATTEN'); setProgress(58); setStatus('COMPILING...','CONTROL FLOW FLATTENING',true); await delay(40); }
+    catch(e){ showToast('CFF SKIPPED: '+e.message,false); }
+  }
 
   let body;
   try{ body=gen(ast); }
@@ -3482,13 +3603,14 @@ end
     applied.push('BOOTSTRAP');
   }
 
-  if(on('t-minify')){ finalCode=minify(finalCode); applied.push('MINIFY'); setProgress(68); setStatus('COMPILING...','MINIFYING',true); await delay(25); }
+  if(on('t-junk')){ finalCode=injectDeadCode(finalCode); applied.push('JUNK-CODE'); setProgress(66); setStatus('COMPILING...','INJECTING JUNK CODE',true); await delay(30); }
+  if(on('t-minify')){ finalCode=minify(finalCode); applied.push('MINIFY'); setProgress(72); setStatus('COMPILING...','MINIFYING',true); await delay(25); }
 
   // DEEP VM is the strongest layer: it never reconstructs the source, so it
   // takes priority. When it's on, the load()-based VM is skipped (wrapping it
   // would defeat the no-source guarantee).
   if(on('t-deepvm')){
-    setProgress(80); setStatus('COMPILING...','DEEP VM → INSTRUCTION TREE (no source)',true); await delay(50);
+    setProgress(82); setStatus('COMPILING...','DEEP VM → INSTRUCTION TREE (no source)',true); await delay(50);
     try{ finalCode=compileDeepVM(finalCode); applied.push('DEEP-VM'); }
     catch(e){
       outEl.textContent='-- DEEP VM ERROR: '+e.message+'\n-- This construct is not supported by the Deep VM yet.\n-- Try toggling off DEEP VM, or remove the construct.';
@@ -3496,10 +3618,10 @@ end
       setStatus('DEEP VM ERROR',e.message,false); showToast('DEEP VM: UNSUPPORTED CONSTRUCT',false); return;
     }
   } else if(on('t-vm')){
-    setProgress(80); setStatus('COMPILING...','VIRTUALIZING → BYTECODE',true); await delay(45);
+    setProgress(82); setStatus('COMPILING...','VIRTUALIZING → BYTECODE',true); await delay(45);
     finalCode=virtualize(finalCode);
     applied.push('VM');
-    if(on('t-vm2')){ setProgress(90); setStatus('COMPILING...','NESTING VM LAYER ×2',true); await delay(45); finalCode=virtualize(finalCode); applied.push('VM²'); }
+    if(on('t-vm2')){ setProgress(92); setStatus('COMPILING...','NESTING VM LAYER ×2',true); await delay(45); finalCode=virtualize(finalCode); applied.push('VM²'); }
   }
 
   setProgress(100); await delay(120); setProgress(0);
