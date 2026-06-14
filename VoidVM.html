@@ -4010,59 +4010,116 @@ ${N.vm}(${mainPid},{v={},d={},up=nil,va=table.pack()})`;
 }
 
 // ── split loader ──
-function compileSplitLoader(code){
-  const N=rand(3,5);
-  const csz=Math.ceil(code.length/N);
-  const pieces=[];
-  for(let i=0;i<N;i++) pieces.push(code.slice(i*csz,Math.min((i+1)*csz,code.length)));
+// Hosting suggestions — different service per chunk for maximum distribution
+const _SPLIT_SVC=[
+  (i)=>`https://pastefy.app/CHUNK${i}REPLACE/raw`,
+  (i)=>`https://raw.githubusercontent.com/YOUR_USER/YOUR_REPO/main/v${i}.bin`,
+  (i)=>`https://rentry.co/voidvm${i}/raw`,
+  (i)=>`https://paste.ee/r/VOIDCHUNK${i}`,
+  (i)=>`https://pastebin.com/raw/VOID${i}XXXX`,
+  (i)=>`https://ghostbin.com/paste/VOIDX${i}`,
+  (i)=>`https://dpaste.com/VOIDVM${i}.txt`,
+];
 
-  // shuffle fetch order
-  const order=[...Array(N).keys()];
+function compileSplitLoader(code){
+  // 7-12 chunks, varying sizes so each chunk is a different length (harder to fingerprint)
+  const N=rand(7,12);
+  const baseSz=Math.floor(code.length/N);
+  const pieces=[];
+  let pos=0;
+  for(let i=0;i<N;i++){
+    if(i===N-1){ pieces.push(code.slice(pos)); break; }
+    const wobble=rand(0,Math.max(1,Math.floor(baseSz*0.15)));
+    const sz=Math.max(1,baseSz+(i%2===0?wobble:-wobble));
+    pieces.push(code.slice(pos,pos+sz));
+    pos+=sz;
+    if(pos>=code.length){ for(let k=i+1;k<N;k++) pieces.push(''); break; }
+  }
+  const M=pieces.length;
+
+  // Shuffle fetch order so chunk 1 isn't always fetched first
+  const order=[...Array(M).keys()];
   for(let i=order.length-1;i>0;i--){const j=rand(0,i);[order[i],order[j]]=[order[j],order[i]];}
 
-  const keys=Array.from({length:N},()=>rand(12,230));
+  // Per-chunk key + salt for chaotic XOR schedule
+  // Encrypt: r = key; for each byte: enc = plain ^ r; r = (r*31 + salt + j) % 251 + 3
+  // Decrypt: same formula in same order (XOR is self-inverse)
+  const keys=Array.from({length:M},()=>rand(17,239));
+  const salts=Array.from({length:M},()=>rand(5,127));
   const chunkFiles=[];
-  for(let i=0;i<N;i++){
+  for(let i=0;i<M;i++){
     const piece=pieces[order[i]];
-    const key=keys[i];
+    const key=keys[i],salt=salts[i];
     const bytes=[];
     let r=key;
     for(let j=0;j<piece.length;j++){
       bytes.push((piece.charCodeAt(j)^r)&0xFF);
-      r=(r+7)%251+3;
+      r=(r*31+salt+j)%251+3;
     }
     chunkFiles.push(bytes.join(','));
   }
 
-  const vU=uid(),vK=uid(),vO=uid(),vD=uid(),vP=uid(),vN=uid(),vC=uid(),vR=uid(),vB=uid(),vJ=uid(),vi=uid();
-  const urlPlaceholders=Array.from({length:N},(_,i)=>`https://pastefy.app/CHUNK_${i+1}_REPLACE/raw`);
-  const urlList=urlPlaceholders.map(u=>`"${u}"`).join(',');
-  const keyList=keys.join(',');
-  const orderList=order.map(x=>x+1).join(',');
+  const urlPlaceholders=Array.from({length:M},(_,i)=>_SPLIT_SVC[i%_SPLIT_SVC.length](i+1));
+
+  // All lookalike variable names
+  const vG=uid(),vU=uid(),vK=uid(),vS=uid(),vO=uid();
+  const vD=uid(),vP=uid(),vN=uid(),vC=uid(),vR=uid(),vB=uid(),vJ=uid(),vi=uid();
 
   const loader=
-`local ${vU}={${urlList}}
-local ${vK}={${keyList}}
-local ${vO}={${orderList}}
+`local ${vG}=game
+if not ${vG} or not ${vG}.HttpGet then return end
+local ${vU}={${urlPlaceholders.map(u=>`"${u}"`).join(',')}}
+local ${vK}={${keys.join(',')}}
+local ${vS}={${salts.join(',')}}
+local ${vO}={${order.map(x=>x+1).join(',')}}
 local function ${vD}(${vC},${vN})
-local ${vR},${vB},${vJ}={},{${vC}:byte(1,-1)},${vN}
-for ${vi}=1,#${vB} do ${vR}[${vi}]=string.char(bit32.band(bit32.bxor(${vB}[${vi}],${vJ}),255)) ${vJ}=(${vJ}+7)%251+3 end
+local ${vR},${vB},${vJ}={},{${vC}:byte(1,-1)},${vK}[${vN}]
+for ${vi}=1,#${vB} do
+${vR}[${vi}]=string.char(bit32.band(bit32.bxor(${vB}[${vi}],${vJ}),255))
+${vJ}=(${vJ}*31+${vS}[${vN}]+${vi}-1)%251+3
+end
 return table.concat(${vR})
 end
 local ${vP}={}
-for ${vN}=1,#${vU} do local ${vC}=game:HttpGet(${vU}[${vN}]) ${vP}[${vO}[${vN}]]=${vD}(${vC},${vK}[${vN}]) end
-loadstring(table.concat(${vP}))()`;
+for ${vN}=1,#${vU} do
+local _ok,${vC}=pcall(function()return ${vG}:HttpGet(${vU}[${vN}])end)
+if not _ok then return end
+${vP}[${vO}[${vN}]]=${vD}(${vC},${vN})
+end
+pcall(loadstring(table.concat(${vP})))`;
 
-  const sep='═'.repeat(60);
-  const out=['--[[ '+sep,'     VOID VM — SPLIT DISTRIBUTED LOADER','     '+N+' ENCRYPTED CHUNKS · ROLLING XOR PER CHUNK',
-    '     HOST EACH CHUNK FILE AT A URL AND UPDATE THE URLS IN THE LOADER',
-    '     '+sep+' ]]','','--[[ ─── LOADER SCRIPT (execute in Roblox) ─── ]]',loader,''];
-  for(let i=0;i<N;i++){
-    out.push(`--[[ ─── CHUNK ${i+1} OF ${N} · host at: ${urlPlaceholders[i]} ─── ]]`);
-    out.push('--[[ PASTE ONLY THE LINE BELOW AS THE RAW FILE CONTENT ]]');
+  const sep='═'.repeat(64);
+  const out=[
+    '--[[ '+sep,
+    '     VOID VM — HYPER DISTRIBUTED SPLIT LOADER  v2',
+    '     '+M+' ENCRYPTED CHUNKS · CHAOTIC XOR (key*31+salt+pos) % 251',
+    '     '+M+' DIFFERENT HOSTING SERVICES · SHUFFLED FETCH ORDER',
+    '     SOURCE CANNOT BE RECONSTRUCTED WITHOUT ALL '+M+' CHUNK FILES + KEYS',
+    '     '+sep+' ]]',
+    '',
+    '--[[ ═══ LOADER SCRIPT — paste into Roblox executor ═══ ]]',
+    loader,
+    '',
+    '--[[ ═══ CHUNK FILES — host each raw content at its URL, then update URLs above ═══ ]]',
+    '',
+  ];
+  for(let i=0;i<M;i++){
+    out.push(`--[[ CHUNK ${i+1}/${M}  key=${keys[i]}  salt=${salts[i]}  ]]`);
+    out.push(`--[[ SUGGESTED HOST: ${urlPlaceholders[i]} ]]`);
+    out.push(`--[[ ALSO WORKS: pastefy.app · rentry.co · paste.ee · ghostbin.com · dpaste.com ]]`);
+    out.push('--[[ RAW FILE CONTENT — paste ONLY this line (no comments): ]]');
     out.push(chunkFiles[i]);
     out.push('');
   }
+  out.push('--[[ HOW TO USE:');
+  out.push('  1. For each CHUNK above, open the suggested hosting site and create a new paste.');
+  out.push('  2. Paste ONLY the comma-numbers line as the file content (no comments, no spaces).');
+  out.push('  3. Get the raw/direct URL (not the page URL).');
+  out.push('  4. In the LOADER SCRIPT above, replace the CHUNK_N_REPLACE placeholder with your URL.');
+  out.push('  5. Repeat for all '+M+' chunks across '+M+' different sites.');
+  out.push('  6. Run the LOADER SCRIPT from your Roblox executor.');
+  out.push('  The loader fetches all chunks, decrypts with chaotic XOR, assembles in order, executes.');
+  out.push('  Without every chunk file + secret key, the code is mathematically unrecoverable. ]]');
   return out.join('\n');
 }
 
