@@ -3220,7 +3220,35 @@ function injectDeadCode(code){
 }
 
 // ── minify ──
-function minify(code){ return code.split('\n').map(l=>l.replace(/\s+/g,' ').trim()).filter(Boolean).join(' '); }
+// Strips Lua comments (line `--` and long `--[[ ]]`) while respecting string
+// literals so a `-- note` at the end of a code line can never comment out the
+// rest of the program once everything is collapsed onto a single line.
+function stripLuaComments(code){
+  let out='',i=0;const n=code.length;
+  while(i<n){
+    const c=code[i];
+    // short/long string literals — copy through untouched
+    if(c==='"'||c==="'"){
+      const q=c;out+=c;i++;
+      while(i<n){const d=code[i];out+=d;if(d==='\\'){out+=code[i+1]||'';i+=2;continue;}i++;if(d===q)break;}
+      continue;
+    }
+    // long-bracket string  [[ ... ]] / [=[ ... ]=]
+    if(c==='['){
+      const m=/^\[(=*)\[/.exec(code.slice(i));
+      if(m){const close=']'+m[1]+']';const end=code.indexOf(close,i+m[0].length);const seg=end===-1?code.slice(i):code.slice(i,end+close.length);out+=seg;i+=seg.length;continue;}
+    }
+    // comment
+    if(c==='-'&&code[i+1]==='-'){
+      const m=/^--\[(=*)\[/.exec(code.slice(i));
+      if(m){const close=']'+m[1]+']';const end=code.indexOf(close,i+m[0].length);i=end===-1?n:end+close.length;continue;}
+      let j=i+2;while(j<n&&code[j]!=='\n')j++;i=j;continue; // line comment → drop to EOL, keep newline
+    }
+    out+=c;i++;
+  }
+  return out;
+}
+function minify(code){ return stripLuaComments(code).split('\n').map(l=>l.replace(/\s+/g,' ').trim()).filter(Boolean).join(' '); }
 
 // ───────────────────────────────────────────────────────────────────
 //  LAYER 5 — VM VIRTUALIZATION  (the headline)
@@ -3565,7 +3593,7 @@ function compileFlatVM(src){
     'JMP','JF','JT',
     'NEWTAB','TSETA','TSETK','TSETE','TSETM',
     'DECL','MKF','VA','VAM','RET','BRK',
-    'FNUMPREP','FNUMCHK','FNUMSTP','FGENPREP','FGENCHK'];
+    'FNUMPREP','FNUMCHK','FNUMSTP','FGENPREP','FGENCHK','PDECL'];
   const codes=distinctInts(OPN.length,3,254);
   const O={}; OPN.forEach((n,i)=>O[n]=codes[i]);
 
@@ -3624,7 +3652,7 @@ function compileFlatVM(src){
           const fl=n.fields;
           for(let i=0;i<fl.length;i++){
             const f=fl[i],last=i===fl.length-1;
-            if(f.type==='TableValue'){ if(last){cExprM(f.value);emit(O.TSETM);}else{cExpr(f.value);emit(O.TSETA);} }
+            if(f.type==='TableValue'){ if(last&&isMulti(f.value)){cExprM(f.value);emit(O.TSETM);}else{cExpr(f.value);emit(O.TSETA);} }
             else if(f.type==='TableKey'){ cExpr(f.key);cExpr(f.value);emit(O.TSETE); }
             else{ cExpr(f.value);emit(O.TSETK,poolStr(f.key.name)); }
           } break;
@@ -3639,6 +3667,11 @@ function compileFlatVM(src){
       }
     }
 
+    // true when an expression yields a dynamic number of values at runtime
+    function isMulti(n){
+      return !!n&&(n.type==='CallExpression'||n.type==='TableCallExpression'||
+        n.type==='StringCallExpression'||n.type==='VarargLiteral');
+    }
     // multi-value expression (for last in arg/rhs list)
     function cExprM(n){
       if(n.type==='VarargLiteral'){emit(O.VAM);return;}
@@ -3769,9 +3802,15 @@ function compileFlatVM(src){
           bp.pop().p.forEach(p=>patch(p,1,here()-p-1)); break;
         }
         case 'ForGenericStatement':{
-          n.iterators.forEach(cExpr);
+          // the iterator list yields the 3 control values f,s,ctl (last expr
+          // may be multi); normalise to exactly 3 values on the stack
+          const its=n.iterators,ic=its.length;
+          const dyn=ic>0&&isMulti(its[ic-1]);
+          for(let i=0;i<ic-1;i++) cExpr(its[i]);
+          if(ic>0){ if(dyn){cExprM(its[ic-1]);emit(O.EXPAND,3,ic-1);} else {cExpr(its[ic-1]);emit(O.EXTEND,3,ic);} }
+          else emit(O.EXTEND,3,0);
           const names=n.variables.map(v=>poolStr(v.name));
-          I.push([O.FGENPREP,n.iterators.length,...names]); // pops iters, sets up
+          I.push([O.FGENPREP,names.length,...names]); // pops the 3 control values
           const ck=here(); const cj=I.push([O.FGENCHK,names[0],0])-1; // jump if done
           bp.push({p:[]}); cBody(n.body);
           emit(O.JMP,ck-here()-1); patch(cj,2,here()-cj-1);
@@ -3779,9 +3818,10 @@ function compileFlatVM(src){
         }
         case 'ReturnStatement':{
           const args=n.arguments,ac=args.length;
+          const dyn=ac>0&&isMulti(args[ac-1]);
           for(let i=0;i<ac-1;i++) cExpr(args[i]);
-          if(ac>0) cExprM(args[ac-1]);
-          emit(O.RET,ac); break;
+          if(ac>0){ if(dyn) cExprM(args[ac-1]); else cExpr(args[ac-1]); }
+          emit(O.RET,ac,dyn?1:0); break;
         }
         case 'BreakStatement':{
           const p=emit(O.JMP,0);
@@ -3790,6 +3830,9 @@ function compileFlatVM(src){
         case 'DoStatement': cBody(n.body); break;
         case 'FunctionDeclaration':{
           let varg=0;const ps=[];
+          // colon syntax `function T:m()` implies an initial `self` parameter
+          const isMethod=n.identifier&&n.identifier.type==='MemberExpression'&&n.identifier.indexer===':';
+          if(isMethod) ps.push(poolStr('self'));
           n.parameters.forEach(p=>{if(p.type==='VarargLiteral')varg=1;else ps.push(poolStr(p.name));});
           const pid=buildProto(ps,varg,n.body);
           emit(O.MKF,pid);
@@ -3805,21 +3848,22 @@ function compileFlatVM(src){
       }
     }
 
-    // emit parameter setup at function entry
+    // emit parameter setup at function entry (dedicated PDECL opcode binds
+    // from call args, distinct from a regular `local` DECL that pops the stack)
     if(params.length>0||hasVararg){
-      I.push([O.DECL,params.length,...params,hasVararg?1:0]);
-      // First DECL in a function is treated as param-binding by the runtime
+      I.push([O.PDECL,params.length,...params,hasVararg?1:0]);
     }
     cBody(bodyStmts);
-    if(!I.length||I[I.length-1][0]!==O.RET) emit(O.RET,0);
+    if(!I.length||I[I.length-1][0]!==O.RET) emit(O.RET,0,0);
 
     const pid=protos.length+1; protos.push(I); return pid;
   }
 
   // ── parse + compile ────────────────────────────────────────────
   const ast=luaparse.parse(src,{scope:false,luaVersion:'5.3',comments:false});
-  buildProto([],1,ast.body); // top-level is proto 1, vararg=true
-  const mainPid=1;
+  // top-level chunk is vararg; nested functions are pushed first, so capture
+  // the real pid of main rather than assuming it is proto 1.
+  const mainPid=buildProto([],1,ast.body);
 
   // ── emit constant pool ─────────────────────────────────────────
   const skey=rand(30,220);
@@ -3853,19 +3897,24 @@ ${N.vm}=function(pid,env,...)
   local function mksc(up) return{v={},d={},up=up} end
   local function callF(pid2,sc,...) return ${N.vm}(pid2,sc,...) end
   local function packM(f,...) local r=table.pack(f(...)) return r end
-  local bit=bit32
-  -- initialize varargs
-  local _va=table.pack(...) env.va=_va
-  -- first instruction: if it's DECL, bind params (pid > 1 means it's a function)
-  if pid>1 then
-    local ins=prog[1]
-    if ins[1]==${$('DECL')} then
-      local n=ins[2] local args=table.pack(...)
-      for i=1,n do decl(env,K[ins[2+i]],args[i]) end
-      if ins[2+n+1]==1 then local va={} for i=n+1,args.n do va[i-n]=args[i] end va.n=args.n-n env.va=va end
-      pc=2
+  -- Pop a call's argument list off the stack and return {args}, count.
+  -- na>=0 : na fixed args.  na<0 : (-na-1) fixed args + a multi-value last
+  -- (values then a count marker on top of the stack).  Leaves sp pointing at
+  -- the slot just below the args (the fn / obj slot).
+  local function popArgs(na)
+    if na>=0 then
+      local a={} for i=1,na do a[i]=stk[sp-na+i] end sp=sp-na return a,na
     end
+    local fixed=(-na)-1
+    local cnt=stk[sp] sp=sp-1
+    local mv={} for i=1,cnt do mv[i]=stk[sp-cnt+i] end sp=sp-cnt
+    local a={} for i=1,fixed do a[i]=stk[sp-fixed+i] end sp=sp-fixed
+    for i=1,cnt do a[fixed+i]=mv[i] end
+    return a,fixed+cnt
   end
+  local bit=bit32
+  -- stash all incoming call args; PDECL (if present) rebinds params/varargs
+  local _va=table.pack(...) env.va=_va
   local done=false local retv
   while not done do
     local ins=prog[pc] pc=pc+1 local op=ins[1]
@@ -3882,60 +3931,61 @@ ${N.vm}=function(pid,env,...)
     elseif op==${$('TSETK')} then local v=stk[sp] sp=sp-1 stk[sp][K[ins[2]]]=v
     elseif op==${$('TSETE')} then local v=stk[sp] sp=sp-1 local k=stk[sp] sp=sp-1 stk[sp][k]=v
     elseif op==${$('TSETM')} then
-      -- expand multi-return into table array section
-      local t=stk[sp-1] local cnt=stk[sp] sp=sp-1
-      if type(cnt)=='number' then for i=cnt,1,-1 do t[#t+1]=stk[sp-cnt+i] end sp=sp-cnt
-      else t[#t+1]=stk[sp] sp=sp-1 end
+      -- append a multi-value tail into the table's array section
+      -- stack: [t, v1..vN, count];  t sits just below the N values
+      local cnt=stk[sp] sp=sp-1
+      local t=stk[sp-cnt]
+      for i=1,cnt do t[#t+1]=stk[sp-cnt+i] end
+      sp=sp-cnt
     elseif op==${$('MKF')} then
       local pid2=ins[2] local sc=mksc(env)
       sp=sp+1 stk[sp]=function(...) return callF(pid2,mksc(env),...) end
     elseif op==${$('CALL')} then
-      local na=ins[2] local fn=stk[sp-na] local a={}
-      for i=1,na do a[i]=stk[sp-na+i] end sp=sp-na
-      stk[sp]=fn(table.unpack(a,1,na))
+      local na=ins[2] local a,m=popArgs(na) local fn=stk[sp]
+      stk[sp]=fn(table.unpack(a,1,m))
     elseif op==${$('CALLM')} then
-      local na=ins[2] local fn=stk[sp-na] local a={}
-      for i=1,na do a[i]=stk[sp-na+i] end sp=sp-na
-      local r=table.pack(fn(table.unpack(a,1,na)))
-      for i=1,r.n do stk[sp+i]=r[i] end sp=sp+r.n stk[sp+1]=r.n sp=sp+1
+      local na=ins[2] local a,m=popArgs(na) local fn=stk[sp] sp=sp-1
+      local r=table.pack(fn(table.unpack(a,1,m)))
+      for i=1,r.n do sp=sp+1 stk[sp]=r[i] end sp=sp+1 stk[sp]=r.n
     elseif op==${$('CSTAT')} then
-      local na=ins[2] local fn=stk[sp-na] local a={}
-      for i=1,na do a[i]=stk[sp-na+i] end sp=sp-na-1 fn(table.unpack(a,1,na))
+      local na=ins[2] local a,m=popArgs(na) local fn=stk[sp] sp=sp-1
+      fn(table.unpack(a,1,m))
     elseif op==${$('MCALL')} then
-      local meth=K[ins[2]] local na=ins[3] local obj=stk[sp-na]
-      local a={obj} for i=1,na do a[i+1]=stk[sp-na+i] end sp=sp-na
-      stk[sp]=obj[meth](table.unpack(a,1,na+1))
+      local meth=K[ins[2]] local na=ins[3] local a,m=popArgs(na) local obj=stk[sp]
+      local full={obj} for i=1,m do full[i+1]=a[i] end
+      stk[sp]=obj[meth](table.unpack(full,1,m+1))
     elseif op==${$('MCALLM')} then
-      local meth=K[ins[2]] local na=ins[3] local obj=stk[sp-na]
-      local a={obj} for i=1,na do a[i+1]=stk[sp-na+i] end sp=sp-na
-      local r=table.pack(obj[meth](table.unpack(a,1,na+1)))
-      for i=1,r.n do stk[sp+i]=r[i] end sp=sp+r.n stk[sp+1]=r.n sp=sp+1
+      local meth=K[ins[2]] local na=ins[3] local a,m=popArgs(na) local obj=stk[sp] sp=sp-1
+      local full={obj} for i=1,m do full[i+1]=a[i] end
+      local r=table.pack(obj[meth](table.unpack(full,1,m+1)))
+      for i=1,r.n do sp=sp+1 stk[sp]=r[i] end sp=sp+1 stk[sp]=r.n
     elseif op==${$('MSTAT')} then
-      local meth=K[ins[2]] local na=ins[3] local obj=stk[sp-na]
-      local a={obj} for i=1,na do a[i+1]=stk[sp-na+i] end sp=sp-na-1 obj[meth](table.unpack(a,1,na+1))
+      local meth=K[ins[2]] local na=ins[3] local a,m=popArgs(na) local obj=stk[sp] sp=sp-1
+      local full={obj} for i=1,m do full[i+1]=a[i] end obj[meth](table.unpack(full,1,m+1))
     elseif op==${$('EXTEND')} then
       local tc=ins[2] local vc=ins[3]
       while vc<tc do sp=sp+1 stk[sp]=nil vc=vc+1 end
       -- pop excess
       if vc>tc then sp=sp-(vc-tc) end
     elseif op==${$('EXPAND')} then
+      -- stack: [fixed1..fixedF, v1..vN, count].  Pop count; the remaining
+      -- F+N values are already in target order — pad or trim to exactly tc.
       local tc=ins[2] local fixed=ins[3]
-      -- top of stack is multi-return marker (count), then values, then fixed values
-      local cnt=stk[sp] sp=sp-1 -- pop count
-      -- collect multi values
-      local mv={} for i=cnt,1,-1 do mv[cnt-i+1]=stk[sp-cnt+i+1] end sp=sp-cnt
-      -- now stack has fixed values; total available = fixed+cnt; need tc
+      local cnt=stk[sp] sp=sp-1
       local total=fixed+cnt
       if total<tc then for i=total+1,tc do sp=sp+1 stk[sp]=nil end
       elseif total>tc then sp=sp-(total-tc) end
-      -- re-push multi values in correct order (v1 deepest)
-      local need=tc-fixed; if need<0 then need=0 end
-      for i=need,1,-1 do sp=sp+1 stk[sp]=mv[i] end
     elseif op==${$('STORE')} then local v=stk[sp] sp=sp-1 setV(env,K[ins[2]],v)
     elseif op==${$('SETI')} then local base=stk[sp] sp=sp-1 local v=stk[sp] sp=sp-1 base[K[ins[2]]]=v
     elseif op==${$('SETIEXP')} then local k=stk[sp] sp=sp-1 local base=stk[sp] sp=sp-1 local v=stk[sp] sp=sp-1 base[k]=v
     elseif op==${$('DECL')} then
       local n=ins[2] for i=n,1,-1 do decl(env,K[ins[2+i]],stk[sp-n+i]) end sp=sp-n
+    elseif op==${$('PDECL')} then
+      -- bind named params from the stashed call args (_va); set up vararg tail
+      local n=ins[2] for i=1,n do decl(env,K[ins[2+i]],_va[i]) end
+      if ins[2+n+1]==1 then
+        local va={} local c=0 for i=n+1,_va.n do c=c+1 va[c]=_va[i] end va.n=c env.va=va
+      else env.va={n=0} end
     elseif op==${$('ADD')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]+b
     elseif op==${$('SUB')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]-b
     elseif op==${$('MUL')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]*b
@@ -3975,11 +4025,9 @@ ${N.vm}=function(pid,env,...)
       local nm=K[ins[2]] local cell=env['_fn_'..nm]
       cell.i=cell.i+cell.st env.v[nm]=cell.i
     elseif op==${$('FGENPREP')} then
-      local nic=ins[2] local names={}
-      for i=1,#ins-2 do names[i]=K[ins[2+i]] end
-      local iterv={}
-      for i=nic,1,-1 do iterv[i]=stk[sp] sp=sp-1 end
-      local f,s,ctl=iterv[1],iterv[2],iterv[3]
+      local nn=ins[2] local names={}
+      for i=1,nn do names[i]=K[ins[2+i]] end
+      local ctl=stk[sp] local s=stk[sp-1] local f=stk[sp-2] sp=sp-3
       env['_fgi']={f=f,s=s,ctl=ctl,names=names}
       for _,nm in ipairs(names) do env.d[nm]=true env.v[nm]=nil end
     elseif op==${$('FGENCHK')} then
@@ -3987,23 +4035,18 @@ ${N.vm}=function(pid,env,...)
       if rs[1]==nil then pc=pc+ins[3]
       else gi.ctl=rs[1] for i,nm in ipairs(gi.names) do env.v[nm]=rs[i] end end
     elseif op==${$('RET')} then
-      local n=ins[2]
-      if n==0 then retv=table.pack() retv.n=0
+      local n=ins[2] local dyn=ins[3]
+      if n==0 then retv={n=0}
+      elseif dyn==1 then
+        -- last value is multi: a count marker sits on top of the stack
+        local cnt=stk[sp] sp=sp-1
+        local fixed=n-1
+        retv={n=0}
+        for i=1,fixed do retv.n=retv.n+1 retv[retv.n]=stk[sp-cnt-fixed+i] end
+        for i=1,cnt do retv.n=retv.n+1 retv[retv.n]=stk[sp-cnt+i] end
+        sp=sp-cnt-fixed
       else
-        -- check if last value is a multi-return marker
-        local cnt=stk[sp]
-        if type(cnt)=='number' and n>0 then
-          -- last was multi: cnt is the count of multi values
-          local mv={} for i=cnt,1,-1 do mv[cnt-i+1]=stk[sp-cnt+i] end
-          sp=sp-cnt-1
-          local fixed=n-1
-          retv={n=0}
-          for i=1,fixed do retv[retv.n+1]=stk[sp-fixed+i] retv.n=retv.n+1 end
-          sp=sp-fixed
-          for i=1,cnt do retv[retv.n+1]=mv[i] retv.n=retv.n+1 end
-        else
-          retv={n=n} for i=n,1,-1 do retv[i]=stk[sp-n+i] end sp=sp-n
-        end
+        retv={n=n} for i=1,n do retv[i]=stk[sp-n+i] end sp=sp-n
       end
       done=true
     end
