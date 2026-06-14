@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node / npm (test tooling only)
+node_modules/
+package-lock.json
+package.json
