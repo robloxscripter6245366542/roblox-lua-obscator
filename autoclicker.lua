@@ -161,6 +161,182 @@ UIS.InputBegan:Connect(function(input, gp)
     end
 end)
 
+-- ── Minimal draggable speed bar ───────────────────────────────────────────────
+-- A small bar you drag. Drag the fill = set CPS (0 .. MAX_CPS). Click the dot
+-- on the left = toggle on/off. No big panel, no notifications.
+local MAX_CPS  = 50000
+local Players  = game:GetService("Players")
+
+local function getContainer()
+    if type(getgenv) == "function" and type(getgenv().gethui) == "function" then
+        return getgenv().gethui()
+    end
+    if type(gethui) == "function" then return gethui() end
+    return Players.LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local container = getContainer()
+local oldGui = container:FindFirstChild("AutoClickerBar")
+if oldGui then oldGui:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name           = "AutoClickerBar"
+ScreenGui.ResetOnSpawn   = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent         = container
+
+-- The draggable bar
+local Bar = Instance.new("Frame")
+Bar.Name             = "Bar"
+Bar.Size             = UDim2.fromOffset(240, 34)
+Bar.Position         = UDim2.fromOffset(40, 120)
+Bar.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+Bar.BorderSizePixel  = 0
+Bar.Parent           = ScreenGui
+Instance.new("UICorner", Bar).CornerRadius = UDim.new(0, 8)
+
+-- Toggle dot (left)
+local Dot = Instance.new("TextButton")
+Dot.Name             = "Dot"
+Dot.Text             = ""
+Dot.Size             = UDim2.fromOffset(20, 20)
+Dot.Position         = UDim2.fromOffset(7, 7)
+Dot.BackgroundColor3 = Color3.fromRGB(220, 80, 80)   -- red = off
+Dot.BorderSizePixel  = 0
+Dot.Parent           = Bar
+Instance.new("UICorner", Dot).CornerRadius = UDim.new(1, 0)
+
+-- Slider track
+local Track = Instance.new("Frame")
+Track.Name             = "Track"
+Track.Size             = UDim2.fromOffset(150, 8)
+Track.Position         = UDim2.fromOffset(36, 13)
+Track.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+Track.BorderSizePixel  = 0
+Track.Parent           = Bar
+Instance.new("UICorner", Track).CornerRadius = UDim.new(1, 0)
+
+-- Slider fill
+local Fill = Instance.new("Frame")
+Fill.Name             = "Fill"
+Fill.Size             = UDim2.fromScale(1, 1)   -- starts full (50k)
+Fill.BackgroundColor3 = Color3.fromRGB(220, 80, 255)
+Fill.BorderSizePixel  = 0
+Fill.Parent           = Track
+Instance.new("UICorner", Fill).CornerRadius = UDim.new(1, 0)
+
+-- Slider knob
+local Knob = Instance.new("Frame")
+Knob.Name             = "Knob"
+Knob.Size             = UDim2.fromOffset(14, 14)
+Knob.AnchorPoint      = Vector2.new(0.5, 0.5)
+Knob.Position         = UDim2.fromScale(1, 0.5)
+Knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Knob.BorderSizePixel  = 0
+Knob.ZIndex           = 3
+Knob.Parent           = Track
+Instance.new("UICorner", Knob).CornerRadius = UDim.new(1, 0)
+
+-- CPS readout (right)
+local CpsText = Instance.new("TextLabel")
+CpsText.Name              = "CpsText"
+CpsText.BackgroundTransparency = 1
+CpsText.Size              = UDim2.fromOffset(46, 34)
+CpsText.Position          = UDim2.fromOffset(192, 0)
+CpsText.Font              = Enum.Font.GothamBold
+CpsText.TextSize          = 11
+CpsText.TextColor3        = Color3.fromRGB(100, 220, 255)
+CpsText.Text              = "50k"
+CpsText.Parent            = Bar
+
+local function fmtCPS(n)
+    if n >= 1000 then
+        return string.format("%.0fk", n / 1000)
+    end
+    return tostring(math.floor(n))
+end
+
+local function refreshDot()
+    Dot.BackgroundColor3 = AC.Enabled and Color3.fromRGB(80, 220, 100)
+                                       or  Color3.fromRGB(220, 80, 80)
+end
+
+Dot.MouseButton1Click:Connect(function()
+    AC:Toggle()
+    refreshDot()
+end)
+
+-- ── Slider drag = set CPS ─────────────────────────────────────────────────────
+local function setFromX(absX)
+    local rel = (absX - Track.AbsolutePosition.X) / Track.AbsoluteSize.X
+    rel = math.clamp(rel, 0, 1)
+    Fill.Size      = UDim2.fromScale(rel, 1)
+    Knob.Position  = UDim2.fromScale(rel, 0.5)
+    AC.CPS         = math.floor(rel * MAX_CPS)
+    CpsText.Text   = fmtCPS(AC.CPS)
+end
+
+local sliding = false
+Track.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        sliding = true
+        setFromX(input.Position.X)
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch) then
+        setFromX(input.Position.X)
+    end
+end)
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        sliding = false
+    end
+end)
+
+-- ── Drag the whole bar (grab anywhere except the slider/dot) ──────────────────
+do
+    local dragging, dragStart, startPos
+    Bar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            -- ignore if the press started on the track or dot (those have their own jobs)
+            local mx, my = input.Position.X, input.Position.Y
+            local tp, ts = Track.AbsolutePosition, Track.AbsoluteSize
+            local dp, ds = Dot.AbsolutePosition,   Dot.AbsoluteSize
+            local onTrack = mx >= tp.X and mx <= tp.X+ts.X and my >= tp.Y-6 and my <= tp.Y+ts.Y+6
+            local onDot   = mx >= dp.X and mx <= dp.X+ds.X and my >= dp.Y   and my <= dp.Y+ds.Y
+            if onTrack or onDot then return end
+            dragging  = true
+            dragStart = input.Position
+            startPos  = Bar.Position
+        end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            Bar.Position = UDim2.fromOffset(
+                startPos.X.Offset + delta.X,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+end
+
+refreshDot()
+
 print("[AutoClicker v2] Loaded | Method: " .. AC.Method
-    .. " | Target: " .. AC.CPS .. " CPS | Press [E] to toggle"
-    .. " | console: getgenv().AutoClicker:Stop()")
+    .. " | Drag the bar to move it, drag the slider to set speed (0-50k CPS)"
+    .. " | tap the dot or press [E] to toggle")
