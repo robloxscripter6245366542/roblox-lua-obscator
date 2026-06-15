@@ -205,7 +205,7 @@ UIS.InputBegan:Connect(function(input, gp)
 end)
 
 -- ══════════════════════════════════════════════════════════════════════════════
---  PREMIUM GLASSMORPHISM UI  (transparency • gradients • glow • smooth tweens)
+--  SHARED THEME + HELPERS
 -- ══════════════════════════════════════════════════════════════════════════════
 local TweenSvc = game:GetService("TweenService")
 local Players  = game:GetService("Players")
@@ -269,6 +269,328 @@ end
 local container = getContainer()
 local oldGui = container:FindFirstChild("AutoClickerUI")
 if oldGui then oldGui:Destroy() end
+local oldIntro = container:FindFirstChild("AutoClickerIntro")
+if oldIntro then oldIntro:Destroy() end
+
+-- ══════════════════════════════════════════════════════════════════════════════
+--  INTRO / SCAN SCREEN — detects iPad vs PC, identifies executor, scans + tests
+--  all UNC functions, then transitions into the AutoClicker.
+-- ══════════════════════════════════════════════════════════════════════════════
+do
+    local UIS_i = game:GetService("UserInputService")
+    local cam   = workspace.CurrentCamera
+    local vp    = cam and cam.ViewportSize or Vector2.new(1280, 720)
+
+    -- ── Platform detection ────────────────────────────────────────────────────
+    local touch = UIS_i.TouchEnabled
+    local kbd   = UIS_i.KeyboardEnabled
+    local mouse = UIS_i.MouseEnabled
+    local minDim = math.min(vp.X, vp.Y)
+
+    local platform, isPad, fastPath
+    if touch and not kbd then
+        -- pure touch device. iPad/tablet has a large short-side; phones are smaller.
+        if minDim >= 700 then
+            platform = "iPad / Tablet"
+            isPad    = true
+        else
+            platform = "Phone"
+            isPad    = false
+        end
+    elseif touch and kbd then
+        platform = "Tablet + Keyboard"
+        isPad    = minDim >= 700
+    else
+        platform = "PC"
+        isPad    = false
+    end
+    -- iPads run modern executors fast -> short scan delays
+    fastPath = isPad
+
+    -- ── Executor detection ────────────────────────────────────────────────────
+    local execName = "Unknown"
+    do
+        local ok, name = pcall(function()
+            if identifyexecutor then return identifyexecutor() end
+            if getexecutorname then return getexecutorname() end
+            if syn   then return "Synapse" end
+            if KRNL_LOADED then return "KRNL" end
+            if fluxus then return "Fluxus" end
+            if is_sirhurt_closure then return "SirHurt" end
+            return nil
+        end)
+        if ok and type(name) == "string" and #name > 0 then
+            execName = name
+        elseif type(getgenv) == "function" then
+            execName = "Generic (UNC)"
+        end
+    end
+
+    -- ── UNC scan list ─────────────────────────────────────────────────────────
+    local uncList = {
+        "mouse1click", "mouse1press", "mouse1release",
+        "mouse2click", "mouse2press", "mouse2release",
+        "touchTap", "touchStart", "touchEnd",
+        "getgenv", "gethui", "hookfunction", "newcclosure",
+        "hookmetamethod", "getconnections", "firesignal",
+    }
+    local foundCount, totalCount = 0, #uncList
+    local function uncHas(n)
+        if type(getgenv) == "function" and type(getgenv()[n]) == "function" then return true end
+        if type(_G[n]) == "function" then return true end
+        return false
+    end
+
+    -- ── Saved-scan cache ──────────────────────────────────────────────────────
+    -- Format: "platform|executor|foundCount|method"
+    -- Saved on disk via writefile; loaded with readfile.
+    -- If the saved values match the current environment we skip the full scan.
+    local CACHE_FILE = "autoclicker_scan.txt"
+    local canWrite  = type(writefile) == "function"
+    local canRead   = type(readfile)  == "function"
+
+    local function saveCache(plat, exec, fc, method)
+        if not canWrite then return end
+        pcall(writefile, CACHE_FILE, plat.."|"..exec.."|"..tostring(fc).."|"..method)
+    end
+
+    local function loadCache()
+        if not canRead then return nil end
+        local ok, raw = pcall(readfile, CACHE_FILE)
+        if not ok or type(raw) ~= "string" or raw == "" then return nil end
+        local p,e,fc,m = raw:match("^([^|]+)|([^|]+)|(%d+)|(.+)$")
+        if not p then return nil end
+        return {platform=p, executor=e, foundCount=tonumber(fc), method=m}
+    end
+
+    -- quick pre-count to compare against cache
+    local preScan = 0
+    for _, n in ipairs(uncList) do if uncHas(n) then preScan = preScan + 1 end end
+
+    local cache = loadCache()
+    local cacheHit = cache
+        and cache.platform  == platform
+        and cache.executor  == execName
+        and cache.foundCount == preScan
+        and cache.method    == AC.Method
+
+    -- ── Build the big intro UI ────────────────────────────────────────────────
+    local Intro = Instance.new("ScreenGui")
+    Intro.Name           = "AutoClickerIntro"
+    Intro.ResetOnSpawn   = false
+    Intro.IgnoreGuiInset = true
+    Intro.DisplayOrder   = 99999
+    Intro.Parent         = container
+
+    -- dim backdrop
+    local Dim = Instance.new("Frame")
+    Dim.Size                  = UDim2.fromScale(1, 1)
+    Dim.BackgroundColor3      = Color3.fromRGB(0, 0, 0)
+    Dim.BackgroundTransparency = 1
+    Dim.BorderSizePixel       = 0
+    Dim.Parent                = Intro
+    tween(Dim, 0.4, {BackgroundTransparency = 0.45}):Play()
+
+    -- big card
+    local big = isPad and UDim2.fromOffset(520, 360) or UDim2.fromOffset(440, 320)
+    local Panel = Instance.new("Frame")
+    Panel.AnchorPoint          = Vector2.new(0.5, 0.5)
+    Panel.Position             = UDim2.fromScale(0.5, 0.5)
+    Panel.Size                 = UDim2.fromOffset(big.X.Offset, 0)
+    Panel.BackgroundColor3     = THEME.Glass
+    Panel.BackgroundTransparency = 0.15
+    Panel.BorderSizePixel      = 0
+    Panel.Parent               = Intro
+    corner(Panel, 22)
+    gradient(Panel, Color3.fromRGB(36, 30, 56), Color3.fromRGB(16, 16, 26), 90)
+    local pStroke = stroke(Panel, THEME.AccentA, 1.6, 0.05)
+    gradient(pStroke, THEME.AccentA, THEME.AccentB, 30)
+
+    local pGlow = Instance.new("ImageLabel")
+    pGlow.BackgroundTransparency = 1
+    pGlow.Image            = "rbxassetid://6014261993"
+    pGlow.ImageColor3      = THEME.AccentA
+    pGlow.ImageTransparency = 0.4
+    pGlow.AnchorPoint      = Vector2.new(0.5, 0.5)
+    pGlow.Position         = UDim2.fromScale(0.5, 0.5)
+    pGlow.ScaleType        = Enum.ScaleType.Slice
+    pGlow.SliceCenter      = Rect.new(49, 49, 450, 450)
+    pGlow.Size             = UDim2.new(1, 80, 1, 80)
+    pGlow.ZIndex           = 0
+    pGlow.Parent           = Panel
+
+    -- title
+    local Logo = Instance.new("TextLabel")
+    Logo.BackgroundTransparency = 1
+    Logo.Position          = UDim2.new(0, 0, 0, 28)
+    Logo.Size              = UDim2.new(1, 0, 0, 34)
+    Logo.Font              = Enum.Font.GothamBlack
+    Logo.TextSize          = isPad and 34 or 28
+    Logo.Text              = "AUTOCLICKER"
+    Logo.TextColor3        = THEME.Text
+    Logo.Parent            = Panel
+    gradient(Logo, THEME.AccentB, THEME.AccentA, 0)
+
+    local Sub = Instance.new("TextLabel")
+    Sub.BackgroundTransparency = 1
+    Sub.Position           = UDim2.new(0, 0, 0, 64)
+    Sub.Size               = UDim2.new(1, 0, 0, 16)
+    Sub.Font               = Enum.Font.Gotham
+    Sub.TextSize           = 12
+    Sub.Text               = "initializing • scanning environment"
+    Sub.TextColor3         = THEME.Dim
+    Sub.Parent             = Panel
+
+    -- info rows (Platform / Executor / UNC)
+    local function infoRow(y, label)
+        local L = Instance.new("TextLabel")
+        L.BackgroundTransparency = 1
+        L.Position        = UDim2.new(0, 36, 0, y)
+        L.Size            = UDim2.new(0, 130, 0, 18)
+        L.Font            = Enum.Font.Gotham
+        L.TextSize        = 13
+        L.Text            = label
+        L.TextColor3      = THEME.Dim
+        L.TextXAlignment  = Enum.TextXAlignment.Left
+        L.Parent          = Panel
+        local V = Instance.new("TextLabel")
+        V.BackgroundTransparency = 1
+        V.AnchorPoint     = Vector2.new(1, 0)
+        V.Position        = UDim2.new(1, -36, 0, y)
+        V.Size            = UDim2.new(0, 240, 0, 18)
+        V.Font            = Enum.Font.GothamBold
+        V.TextSize        = 13
+        V.Text            = "…"
+        V.TextColor3      = THEME.AccentB
+        V.TextXAlignment  = Enum.TextXAlignment.Right
+        V.Parent          = Panel
+        return V
+    end
+    local vPlatform = infoRow(108, "Platform")
+    local vExec     = infoRow(136, "Executor")
+    local vUNC      = infoRow(164, "UNC Functions")
+    local vTest     = infoRow(192, "UNC Test")
+
+    -- status line
+    local Status = Instance.new("TextLabel")
+    Status.BackgroundTransparency = 1
+    Status.AnchorPoint     = Vector2.new(0.5, 1)
+    Status.Position        = UDim2.new(0.5, 0, 1, -54)
+    Status.Size            = UDim2.new(1, -72, 0, 18)
+    Status.Font            = Enum.Font.GothamMedium
+    Status.TextSize        = 12
+    Status.Text            = "Starting…"
+    Status.TextColor3      = THEME.Text
+    Status.Parent          = Panel
+
+    -- progress bar
+    local PTrack = Instance.new("Frame")
+    PTrack.AnchorPoint      = Vector2.new(0.5, 1)
+    PTrack.Position         = UDim2.new(0.5, 0, 1, -28)
+    PTrack.Size             = UDim2.new(1, -72, 0, 8)
+    PTrack.BackgroundColor3 = Color3.fromRGB(45, 45, 62)
+    PTrack.BackgroundTransparency = 0.2
+    PTrack.BorderSizePixel  = 0
+    PTrack.Parent           = Panel
+    corner(PTrack, 4)
+    local PFill = Instance.new("Frame")
+    PFill.Size              = UDim2.fromScale(0, 1)
+    PFill.BackgroundColor3  = Color3.new(1, 1, 1)
+    PFill.BorderSizePixel   = 0
+    PFill.Parent            = PTrack
+    corner(PFill, 4)
+    gradient(PFill, THEME.AccentA, THEME.AccentB, 0)
+
+    -- entrance
+    tween(Panel, 0.5, {Size = big}, Enum.EasingStyle.Back):Play()
+
+    -- scan timing (fast on iPad)
+    local step = fastPath and 0.18 or 0.34
+    local function setProgress(p, msg)
+        tween(PFill, 0.3, {Size = UDim2.fromScale(math.clamp(p, 0, 1), 1)}):Play()
+        if msg then Status.Text = msg end
+    end
+
+    -- ── Run the scan sequence OR load from cache ──────────────────────────────
+    task.wait(0.5)
+
+    if cacheHit then
+        -- ── CACHE HIT: environment unchanged, skip full scan ──────────────────
+        Sub.Text = "environment unchanged • loading from cache"
+        tween(Sub, 0.3, {TextColor3 = THEME.AccentB}):Play()
+
+        vPlatform.Text      = cache.platform;  vPlatform.TextColor3  = THEME.OnA
+        vExec.Text          = cache.executor;  vExec.TextColor3      = THEME.OnA
+        vUNC.Text           = cache.foundCount .. " / " .. totalCount
+        vUNC.TextColor3     = THEME.OnA
+        vTest.Text          = "PASS (cached)";  vTest.TextColor3     = THEME.OnA
+
+        -- zip through the progress bar fast
+        tween(PFill, 0.45, {Size = UDim2.fromScale(1, 1)},
+              Enum.EasingStyle.Quint):Play()
+        task.wait(0.5)
+        setProgress(1, "Ready — all clear")
+        task.wait(fastPath and 0.25 or 0.45)
+    else
+        -- ── FULL SCAN: environment is new or changed ──────────────────────────
+        if cache then
+            Sub.Text = "environment changed • rescanning"
+            tween(Sub, 0.3, {TextColor3 = THEME.OffA}):Play()
+            task.wait(0.4)
+        end
+
+        -- 1) platform
+        Status.Text = "Detecting platform…"
+        task.wait(step)
+        vPlatform.Text = platform
+        vPlatform.TextColor3 = THEME.OnA
+        setProgress(0.25)
+
+        -- 2) executor
+        Status.Text = "Identifying executor…"
+        task.wait(step)
+        vExec.Text = execName
+        vExec.TextColor3 = THEME.OnA
+        setProgress(0.45)
+
+        -- 3) scan UNC functions one by one
+        Status.Text = "Scanning UNC functions…"
+        for i = 1, totalCount do
+            if uncHas(uncList[i]) then foundCount = foundCount + 1 end
+            vUNC.Text = foundCount .. " / " .. totalCount
+            setProgress(0.45 + 0.35 * (i / totalCount))
+            task.wait(fastPath and 0.015 or 0.04)
+        end
+        vUNC.TextColor3 = foundCount > 0 and THEME.OnA or THEME.OffA
+
+        -- 4) UNC test — verify the click method is callable
+        Status.Text = "Running UNC test…"
+        task.wait(step)
+        local testOk = pcall(function() return type(clickFn) == "function" end)
+        if testOk and clickFn then
+            vTest.Text = "PASS";    vTest.TextColor3 = THEME.OnA
+        else
+            vTest.Text = "FALLBACK"; vTest.TextColor3 = THEME.OffB
+        end
+        setProgress(1, "Ready — launching AutoClicker")
+        Sub.Text = "method: " .. AC.Method
+
+        -- 5) save results so next execute is instant
+        saveCache(platform, execName, foundCount, AC.Method)
+        task.wait(fastPath and 0.4 or 0.7)
+    end
+
+    -- ── Fade out and clean up ─────────────────────────────────────────────────
+    tween(Panel, 0.35, {Size  = UDim2.fromOffset(big.X.Offset, 0),
+                        BackgroundTransparency = 1}):Play()
+    tween(Dim,   0.4,  {BackgroundTransparency = 1}):Play()
+    for _, d in ipairs(Panel:GetDescendants()) do
+        if d:IsA("TextLabel") then tween(d, 0.25, {TextTransparency   = 1}):Play() end
+        if d:IsA("Frame")     then tween(d, 0.25, {BackgroundTransparency = 1}):Play() end
+    end
+    task.wait(0.4)
+    Intro:Destroy()
+end
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name           = "AutoClickerUI"
