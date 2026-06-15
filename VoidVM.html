@@ -4070,54 +4070,47 @@ const _SPLIT_SVC=[
   (i)=>`https://dpaste.com/VOIDVM${i}.txt`,
 ];
 
-function compileSplitLoader(code){
-  // 7-12 chunks, varying sizes so each chunk is a different length (harder to fingerprint)
+// Chaotic XOR used everywhere in the split loader.
+//   r = key; for each byte: out = in ^ r; r = (r*31 + salt + pos) % 251 + 3
+// XOR is self-inverse so the same routine encrypts and decrypts.
+function _splitXor(str,key,salt){
+  const bytes=[]; let r=key;
+  for(let j=0;j<str.length;j++){ bytes.push((str.charCodeAt(j)^r)&0xFF); r=(r*31+salt+j)%251+3; }
+  return bytes;
+}
+
+// Compute the chunk data for a payload: split → shuffle → per-chunk encrypt.
+function computeSplit(code){
   const N=rand(7,12);
   const baseSz=Math.floor(code.length/N);
-  const pieces=[];
-  let pos=0;
+  const pieces=[]; let pos=0;
   for(let i=0;i<N;i++){
     if(i===N-1){ pieces.push(code.slice(pos)); break; }
     const wobble=rand(0,Math.max(1,Math.floor(baseSz*0.15)));
     const sz=Math.max(1,baseSz+(i%2===0?wobble:-wobble));
-    pieces.push(code.slice(pos,pos+sz));
-    pos+=sz;
+    pieces.push(code.slice(pos,pos+sz)); pos+=sz;
     if(pos>=code.length){ for(let k=i+1;k<N;k++) pieces.push(''); break; }
   }
   const M=pieces.length;
-
-  // Shuffle fetch order so chunk 1 isn't always fetched first
   const order=[...Array(M).keys()];
   for(let i=order.length-1;i>0;i--){const j=rand(0,i);[order[i],order[j]]=[order[j],order[i]];}
-
-  // Per-chunk key + salt for chaotic XOR schedule
-  // Encrypt: r = key; for each byte: enc = plain ^ r; r = (r*31 + salt + j) % 251 + 3
-  // Decrypt: same formula in same order (XOR is self-inverse)
   const keys=Array.from({length:M},()=>rand(17,239));
   const salts=Array.from({length:M},()=>rand(5,127));
   const chunkFiles=[];
-  for(let i=0;i<M;i++){
-    const piece=pieces[order[i]];
-    const key=keys[i],salt=salts[i];
-    const bytes=[];
-    let r=key;
-    for(let j=0;j<piece.length;j++){
-      bytes.push((piece.charCodeAt(j)^r)&0xFF);
-      r=(r*31+salt+j)%251+3;
-    }
-    chunkFiles.push(bytes.join(','));
-  }
+  for(let i=0;i<M;i++) chunkFiles.push(_splitXor(pieces[order[i]],keys[i],salts[i]).join(','));
+  return {M,order,keys,salts,chunkFiles};
+}
 
-  const urlPlaceholders=Array.from({length:M},(_,i)=>_SPLIT_SVC[i%_SPLIT_SVC.length](i+1));
-
-  // All lookalike variable names
+// Build the runtime loader. realUrls are baked in as plain strings (no encryption).
+function buildSplitLoader(data,realUrls){
+  const {M,order,keys,salts}=data;
   const vG=uid(),vU=uid(),vK=uid(),vS=uid(),vO=uid();
   const vD=uid(),vP=uid(),vN=uid(),vC=uid(),vR=uid(),vB=uid(),vJ=uid(),vi=uid();
-
+  const urls=realUrls||Array.from({length:M},(_,i)=>_SPLIT_SVC[i%_SPLIT_SVC.length](i+1));
+  const urlSetup=`local ${vU}={${urls.map(u=>`"${u}"`).join(',')}}`;
   const loader=
 `local ${vG}=game
-if not ${vG} or not ${vG}.HttpGet then return end
-local ${vU}={${urlPlaceholders.map(u=>`"${u}"`).join(',')}}
+${urlSetup}
 local ${vK}={${keys.join(',')}}
 local ${vS}={${salts.join(',')}}
 local ${vO}={${order.map(x=>x+1).join(',')}}
@@ -4131,12 +4124,18 @@ return table.concat(${vR})
 end
 local ${vP}={}
 for ${vN}=1,#${vU} do
-local _ok,${vC}=pcall(function()return ${vG}:HttpGet(${vU}[${vN}])end)
-if not _ok then return end
-${vP}[${vO}[${vN}]]=${vD}(${vC},${vN})
+${vP}[${vO}[${vN}]]=${vD}(${vG}:HttpGet(${vU}[${vN}]),${vN})
 end
-pcall(loadstring(table.concat(${vP})))`;
+loadstring(table.concat(${vP}))()`;
+  return loader;
+}
 
+// Manual split output: encrypted chunk files + a loader the user wires up.
+function compileSplitLoader(code){
+  const data=computeSplit(code);
+  const {M,keys,salts,chunkFiles}=data;
+  const loader=buildSplitLoader(data,null);
+  const urlPlaceholders=Array.from({length:M},(_,i)=>_SPLIT_SVC[i%_SPLIT_SVC.length](i+1));
   const sep='═'.repeat(64);
   const out=[
     '--[[ '+sep,
@@ -4144,6 +4143,7 @@ pcall(loadstring(table.concat(${vP})))`;
     '     '+M+' ENCRYPTED CHUNKS · CHAOTIC XOR (key*31+salt+pos) % 251',
     '     '+M+' DIFFERENT HOSTING SERVICES · SHUFFLED FETCH ORDER',
     '     SOURCE CANNOT BE RECONSTRUCTED WITHOUT ALL '+M+' CHUNK FILES + KEYS',
+    '     TIP: turn on AUTO HOST too and the URLs are uploaded + baked in ENCRYPTED',
     '     '+sep+' ]]',
     '',
     '--[[ ═══ LOADER SCRIPT — paste into Roblox executor ═══ ]]',
@@ -4155,7 +4155,6 @@ pcall(loadstring(table.concat(${vP})))`;
   for(let i=0;i<M;i++){
     out.push(`--[[ CHUNK ${i+1}/${M}  key=${keys[i]}  salt=${salts[i]}  ]]`);
     out.push(`--[[ SUGGESTED HOST: ${urlPlaceholders[i]} ]]`);
-    out.push(`--[[ ALSO WORKS: pastefy.app · rentry.co · paste.ee · ghostbin.com · dpaste.com ]]`);
     out.push('--[[ RAW FILE CONTENT — paste ONLY this line (no comments): ]]');
     out.push(chunkFiles[i]);
     out.push('');
@@ -4164,12 +4163,24 @@ pcall(loadstring(table.concat(${vP})))`;
   out.push('  1. For each CHUNK above, open the suggested hosting site and create a new paste.');
   out.push('  2. Paste ONLY the comma-numbers line as the file content (no comments, no spaces).');
   out.push('  3. Get the raw/direct URL (not the page URL).');
-  out.push('  4. In the LOADER SCRIPT above, replace the CHUNK_N_REPLACE placeholder with your URL.');
+  out.push('  4. In the LOADER SCRIPT above, replace the placeholder URL with your real URL.');
   out.push('  5. Repeat for all '+M+' chunks across '+M+' different sites.');
   out.push('  6. Run the LOADER SCRIPT from your Roblox executor.');
-  out.push('  The loader fetches all chunks, decrypts with chaotic XOR, assembles in order, executes.');
-  out.push('  Without every chunk file + secret key, the code is mathematically unrecoverable. ]]');
+  out.push('  Or: enable AUTO HOST to upload every chunk automatically and bake the URLs in encrypted. ]]');
   return out.join('\n');
+}
+
+// Automatic split: upload every chunk to a paste host, then bake the real URLs
+// into the loader ENCRYPTED. Returns the finished loader, or null on failure.
+async function compileSplitLoaderAuto(code){
+  const data=computeSplit(code);
+  const realUrls=new Array(data.chunkFiles.length);
+  for(let i=0;i<data.chunkFiles.length;i++){
+    const r=await uploadToPaste(data.chunkFiles[i]);
+    if(!r) return null;
+    realUrls[i]=r.url;
+  }
+  return buildSplitLoader(data,realUrls);
 }
 
 // ── progress/status ──
