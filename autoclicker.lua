@@ -12,6 +12,7 @@ local AC = {
     Enabled    = false,
     CPS        = 50000,   -- target clicks per second
     Budget     = 0.004,   -- max seconds spent clicking per frame (keeps game alive -> never crash)
+    SkipOverUI = true,    -- don't click when cursor is over a GUI (stops the Roblox UI click sound)
     Method     = "none",
     ClickCount = 0,
 }
@@ -92,12 +93,32 @@ AC.Method = methodName
 -- so a click lands before AutoParry's reaction tick -> we win the race.
 -- Each frame fires up to (CPS / fps) clicks, capped by a time budget so the
 -- frame always finishes -> game never hangs or crashes.
-local RunSvc = game:GetService("RunService")
+local RunSvc      = game:GetService("RunService")
+local UIS_svc     = game:GetService("UserInputService")
+local Players_svc = game:GetService("Players")
+
+-- Is the cursor currently over any GUI element? If so we skip clicking, which
+-- stops Roblox from playing its UI click sound on every burst.
+local function cursorOverGui()
+    local lp = Players_svc.LocalPlayer
+    local pg = lp and lp:FindFirstChild("PlayerGui")
+    if not pg then return false end
+    local mp = UIS_svc:GetMouseLocation()
+    -- GetGuiObjectsAtPosition expects coords without the 36px top inset
+    local ok, objs = pcall(function()
+        return pg:GetGuiObjectsAtPosition(mp.X, mp.Y - 36)
+    end)
+    if ok and objs and #objs > 0 then return true end
+    return false
+end
 
 local lastClock = os.clock()
 
 local function burst()
     if not AC.Enabled then return end
+
+    -- skip the whole frame if hovering UI -> no annoying click sound
+    if AC.SkipOverUI and cursorOverGui() then return end
 
     local now = os.clock()
     local dt  = now - lastClock
