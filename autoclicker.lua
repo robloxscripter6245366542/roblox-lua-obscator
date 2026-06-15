@@ -53,38 +53,59 @@ end
 
 -- ── Single click (NO yields — must be instant for burst loop) ─────────────────
 -- For top speed we only use the fastest no-wait methods.
--- mouse1click / mouse2click / touchTap fire instantly with no release delay.
+-- We fire EVERY available input type per click — a mouse click AND a touch tap —
+-- so it works in ANY game: ones that detect block via mouse clicks, and ones that
+-- use tap-to-block. Whatever the game listens for, we cover it.
 local clickFn, methodName
+do
+    local pos = getSafePos()
+    local parts = {}      -- functions to call each click
+    local names = {}      -- for display
 
-if fn.mouse1click then
-    clickFn = fn.mouse1click
-    methodName = "mouse1click"
-elseif fn.mouse2click then
-    clickFn = fn.mouse2click
-    methodName = "mouse2click"
-elseif fn.touchTap then
-    local pos = getSafePos()
-    clickFn = function() fn.touchTap({pos}) end
-    methodName = "touchTap"
-elseif fn.mouse1press and fn.mouse1release then
-    -- press+release with no wait (still instant, just two calls)
-    clickFn = function() fn.mouse1press(); fn.mouse1release() end
-    methodName = "mouse1press/release"
-elseif fn.mouse2press and fn.mouse2release then
-    clickFn = function() fn.mouse2press(); fn.mouse2release() end
-    methodName = "mouse2press/release"
-elseif fn.touchStart and fn.touchEnd then
-    local pos = getSafePos()
-    clickFn = function() fn.touchStart({pos}); fn.touchEnd({pos}) end
-    methodName = "touchStart/End"
-else
-    -- VirtualInputManager fallback (no waits)
-    local vim = game:GetService("VirtualInputManager")
-    clickFn = function()
-        vim:SendMouseButtonEvent(0, 0, 0, true,  game, 0)
-        vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+    -- Mouse left-click (most common)
+    if fn.mouse1click then
+        parts[#parts+1] = fn.mouse1click
+        names[#names+1] = "mouse1click"
+    elseif fn.mouse1press and fn.mouse1release then
+        parts[#parts+1] = function() fn.mouse1press(); fn.mouse1release() end
+        names[#names+1] = "mouse1press/release"
     end
-    methodName = "VirtualInputManager"
+
+    -- Touch tap (tap-to-block games / mobile)
+    if fn.touchTap then
+        parts[#parts+1] = function() fn.touchTap({pos}) end
+        names[#names+1] = "touchTap"
+    elseif fn.touchStart and fn.touchEnd then
+        parts[#parts+1] = function() fn.touchStart({pos}); fn.touchEnd({pos}) end
+        names[#names+1] = "touchStart/End"
+    end
+
+    -- If neither mouse nor touch UNC funcs exist, fall back to right-click then VIM
+    if #parts == 0 then
+        if fn.mouse2click then
+            parts[#parts+1] = fn.mouse2click
+            names[#names+1] = "mouse2click"
+        elseif fn.mouse2press and fn.mouse2release then
+            parts[#parts+1] = function() fn.mouse2press(); fn.mouse2release() end
+            names[#names+1] = "mouse2press/release"
+        else
+            local vim = game:GetService("VirtualInputManager")
+            parts[#parts+1] = function()
+                vim:SendMouseButtonEvent(0, 0, 0, true,  game, 0)
+                vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+            end
+            names[#names+1] = "VirtualInputManager"
+        end
+    end
+
+    if #parts == 1 then
+        clickFn = parts[1]
+    else
+        clickFn = function()
+            for i = 1, #parts do parts[i]() end
+        end
+    end
+    methodName = table.concat(names, " + ")
 end
 AC.Method = methodName
 
@@ -177,17 +198,66 @@ UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == Enum.KeyCode.E then
         local on = AC:Toggle()
+        if AC.OnVisual then AC.OnVisual() end   -- keep the UI in sync
         print("[AutoClicker] " .. (on and "ON" or "OFF")
             .. " | " .. AC.ClickCount .. " clicks | " .. AC.Method)
     end
 end)
 
--- ── Minimal draggable speed bar ───────────────────────────────────────────────
--- A small bar you drag. Drag the fill = set CPS (0 .. MAX_CPS). Click the dot
--- on the left = toggle on/off. No big panel, no notifications.
-local MAX_CPS  = 50000
+-- ══════════════════════════════════════════════════════════════════════════════
+--  PREMIUM GLASSMORPHISM UI  (transparency • gradients • glow • smooth tweens)
+-- ══════════════════════════════════════════════════════════════════════════════
+local TweenSvc = game:GetService("TweenService")
 local Players  = game:GetService("Players")
+local MAX_CPS  = 50000
 
+-- Theme ────────────────────────────────────────────────────────────────────────
+local THEME = {
+    AccentA = Color3.fromRGB(170, 80, 255),   -- purple
+    AccentB = Color3.fromRGB(90, 200, 255),   -- cyan
+    OnA     = Color3.fromRGB(70, 230, 160),    -- green (on)
+    OnB     = Color3.fromRGB(120, 255, 210),
+    OffA    = Color3.fromRGB(255, 90, 110),    -- red (off)
+    OffB    = Color3.fromRGB(255, 150, 90),
+    Glass   = Color3.fromRGB(22, 22, 32),
+    Text    = Color3.fromRGB(235, 235, 245),
+    Dim     = Color3.fromRGB(150, 150, 170),
+}
+
+local function tween(obj, t, props, style, dir)
+    return TweenSvc:Create(obj, TweenInfo.new(
+        t or 0.25,
+        style or Enum.EasingStyle.Quint,
+        dir or Enum.EasingDirection.Out
+    ), props)
+end
+
+local function corner(parent, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r)
+    c.Parent = parent
+    return c
+end
+
+local function gradient(parent, a, b, rot)
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new(a, b)
+    g.Rotation = rot or 0
+    g.Parent = parent
+    return g
+end
+
+local function stroke(parent, color, thick, trans)
+    local s = Instance.new("UIStroke")
+    s.Color = color
+    s.Thickness = thick or 1
+    s.Transparency = trans or 0
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = parent
+    return s
+end
+
+-- Container ─────────────────────────────────────────────────────────────────────
 local function getContainer()
     if type(getgenv) == "function" and type(getgenv().gethui) == "function" then
         return getgenv().gethui()
@@ -197,105 +267,243 @@ local function getContainer()
 end
 
 local container = getContainer()
-local oldGui = container:FindFirstChild("AutoClickerBar")
+local oldGui = container:FindFirstChild("AutoClickerUI")
 if oldGui then oldGui:Destroy() end
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name           = "AutoClickerBar"
+ScreenGui.Name           = "AutoClickerUI"
 ScreenGui.ResetOnSpawn   = false
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder    = 9999
 ScreenGui.Parent         = container
 
--- The draggable bar
-local Bar = Instance.new("Frame")
-Bar.Name             = "Bar"
-Bar.Size             = UDim2.fromOffset(240, 34)
-Bar.Position         = UDim2.fromOffset(40, 120)
-Bar.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
-Bar.BorderSizePixel  = 0
-Bar.Parent           = ScreenGui
-Instance.new("UICorner", Bar).CornerRadius = UDim.new(0, 8)
+-- Outer glow ────────────────────────────────────────────────────────────────────
+local Glow = Instance.new("ImageLabel")
+Glow.Name              = "Glow"
+Glow.BackgroundTransparency = 1
+Glow.Image             = "rbxassetid://6014261993"   -- soft radial
+Glow.ImageColor3       = THEME.AccentA
+Glow.ImageTransparency = 0.35
+Glow.AnchorPoint       = Vector2.new(0.5, 0.5)
+Glow.Position          = UDim2.fromScale(0.5, 0.5)
+Glow.ScaleType         = Enum.ScaleType.Slice
+Glow.SliceCenter       = Rect.new(49, 49, 450, 450)
+Glow.Size              = UDim2.new(1, 60, 1, 60)
+Glow.ZIndex            = 0
 
--- Toggle dot (left)
-local Dot = Instance.new("TextButton")
-Dot.Name             = "Dot"
-Dot.Text             = ""
-Dot.Size             = UDim2.fromOffset(20, 20)
-Dot.Position         = UDim2.fromOffset(7, 7)
-Dot.BackgroundColor3 = Color3.fromRGB(220, 80, 80)   -- red = off
-Dot.BorderSizePixel  = 0
-Dot.Parent           = Bar
-Instance.new("UICorner", Dot).CornerRadius = UDim.new(1, 0)
+-- Main glass card ────────────────────────────────────────────────────────────────
+local Card = Instance.new("Frame")
+Card.Name              = "Card"
+Card.Size              = UDim2.fromOffset(280, 92)
+Card.Position          = UDim2.fromOffset(60, 140)
+Card.BackgroundColor3  = THEME.Glass
+Card.BackgroundTransparency = 0.25   -- transparency / glass look
+Card.BorderSizePixel   = 0
+Card.Parent            = ScreenGui
+corner(Card, 16)
+Glow.Parent = Card
 
--- Slider track
-local Track = Instance.new("Frame")
-Track.Name             = "Track"
-Track.Size             = UDim2.fromOffset(150, 8)
-Track.Position         = UDim2.fromOffset(36, 13)
-Track.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-Track.BorderSizePixel  = 0
-Track.Parent           = Bar
-Instance.new("UICorner", Track).CornerRadius = UDim.new(1, 0)
+-- subtle vertical gradient on the glass
+gradient(Card, Color3.fromRGB(34, 34, 50), Color3.fromRGB(18, 18, 28), 90)
 
--- Slider fill
-local Fill = Instance.new("Frame")
-Fill.Name             = "Fill"
-Fill.Size             = UDim2.fromScale(1, 1)   -- starts full (50k)
-Fill.BackgroundColor3 = Color3.fromRGB(220, 80, 255)
-Fill.BorderSizePixel  = 0
-Fill.Parent           = Track
-Instance.new("UICorner", Fill).CornerRadius = UDim.new(1, 0)
+-- gradient border
+local CardStroke = stroke(Card, THEME.AccentA, 1.4, 0.1)
+gradient(CardStroke, THEME.AccentA, THEME.AccentB, 25)
 
--- Slider knob
-local Knob = Instance.new("Frame")
-Knob.Name             = "Knob"
-Knob.Size             = UDim2.fromOffset(14, 14)
-Knob.AnchorPoint      = Vector2.new(0.5, 0.5)
-Knob.Position         = UDim2.fromScale(1, 0.5)
-Knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-Knob.BorderSizePixel  = 0
-Knob.ZIndex           = 3
-Knob.Parent           = Track
-Instance.new("UICorner", Knob).CornerRadius = UDim.new(1, 0)
+-- top accent line
+local TopLine = Instance.new("Frame")
+TopLine.Name             = "TopLine"
+TopLine.Size             = UDim2.new(1, -28, 0, 2)
+TopLine.Position         = UDim2.new(0, 14, 0, 10)
+TopLine.BackgroundColor3 = Color3.new(1, 1, 1)
+TopLine.BorderSizePixel  = 0
+TopLine.Parent           = Card
+corner(TopLine, 2)
+gradient(TopLine, THEME.AccentA, THEME.AccentB, 0)
 
--- CPS readout (right)
+-- Title ──────────────────────────────────────────────────────────────────────────
+local Title = Instance.new("TextLabel")
+Title.Name              = "Title"
+Title.BackgroundTransparency = 1
+Title.Position          = UDim2.fromOffset(18, 16)
+Title.Size              = UDim2.fromOffset(150, 18)
+Title.Font              = Enum.Font.GothamBold
+Title.TextSize          = 14
+Title.Text              = "AUTOCLICKER"
+Title.TextColor3        = THEME.Text
+Title.TextXAlignment    = Enum.TextXAlignment.Left
+Title.Parent            = Card
+gradient(Title, THEME.AccentB, THEME.AccentA, 0)
+
+-- CPS readout (top-right) ─────────────────────────────────────────────────────────
 local CpsText = Instance.new("TextLabel")
 CpsText.Name              = "CpsText"
 CpsText.BackgroundTransparency = 1
-CpsText.Size              = UDim2.fromOffset(46, 34)
-CpsText.Position          = UDim2.fromOffset(192, 0)
-CpsText.Font              = Enum.Font.GothamBold
-CpsText.TextSize          = 11
-CpsText.TextColor3        = Color3.fromRGB(100, 220, 255)
+CpsText.AnchorPoint       = Vector2.new(1, 0)
+CpsText.Position          = UDim2.new(1, -64, 0, 14)
+CpsText.Size              = UDim2.fromOffset(48, 22)
+CpsText.Font              = Enum.Font.GothamBlack
+CpsText.TextSize          = 16
+CpsText.TextColor3        = THEME.AccentB
+CpsText.TextXAlignment    = Enum.TextXAlignment.Right
 CpsText.Text              = "50k"
-CpsText.Parent            = Bar
+CpsText.Parent            = Card
 
+local CpsUnit = Instance.new("TextLabel")
+CpsUnit.BackgroundTransparency = 1
+CpsUnit.AnchorPoint       = Vector2.new(1, 0)
+CpsUnit.Position          = UDim2.new(1, -64, 0, 32)
+CpsUnit.Size              = UDim2.fromOffset(48, 10)
+CpsUnit.Font              = Enum.Font.Gotham
+CpsUnit.TextSize          = 8
+CpsUnit.TextColor3        = THEME.Dim
+CpsUnit.TextXAlignment    = Enum.TextXAlignment.Right
+CpsUnit.Text              = "CPS"
+CpsUnit.Parent            = Card
+
+-- Toggle pill (animated) ──────────────────────────────────────────────────────────
+local Toggle = Instance.new("TextButton")
+Toggle.Name              = "Toggle"
+Toggle.AutoButtonColor   = false
+Toggle.Text              = ""
+Toggle.Size              = UDim2.fromOffset(46, 24)
+Toggle.Position          = UDim2.new(1, -60, 0, 14)  -- placed top-right, replacing simple readout pos shift
+Toggle.Position          = UDim2.fromOffset(18, 56)
+Toggle.BackgroundColor3  = Color3.fromRGB(40, 40, 55)
+Toggle.BackgroundTransparency = 0.1
+Toggle.BorderSizePixel   = 0
+Toggle.Parent            = Card
+corner(Toggle, 12)
+local ToggleStroke = stroke(Toggle, THEME.OffA, 1.2, 0.2)
+
+local Pill = Instance.new("Frame")
+Pill.Name              = "Pill"
+Pill.Size              = UDim2.fromOffset(18, 18)
+Pill.Position          = UDim2.fromOffset(3, 3)
+Pill.BackgroundColor3  = Color3.new(1, 1, 1)
+Pill.BorderSizePixel   = 0
+Pill.Parent            = Toggle
+corner(Pill, 9)
+gradient(Pill, THEME.OffA, THEME.OffB, 90)
+
+local ToggleLabel = Instance.new("TextLabel")
+ToggleLabel.BackgroundTransparency = 1
+ToggleLabel.Position      = UDim2.fromOffset(72, 56)
+ToggleLabel.Size          = UDim2.fromOffset(70, 24)
+ToggleLabel.Font          = Enum.Font.GothamBold
+ToggleLabel.TextSize      = 12
+ToggleLabel.TextColor3    = THEME.OffA
+ToggleLabel.Text          = "OFF"
+ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+ToggleLabel.Parent        = Card
+
+-- Slider ───────────────────────────────────────────────────────────────────────
+local Track = Instance.new("Frame")
+Track.Name             = "Track"
+Track.Size             = UDim2.fromOffset(110, 6)
+Track.AnchorPoint      = Vector2.new(1, 0.5)
+Track.Position         = UDim2.new(1, -18, 0, 68)
+Track.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
+Track.BackgroundTransparency = 0.2
+Track.BorderSizePixel  = 0
+Track.Parent           = Card
+corner(Track, 3)
+
+local Fill = Instance.new("Frame")
+Fill.Name             = "Fill"
+Fill.Size             = UDim2.fromScale(1, 1)
+Fill.BackgroundColor3 = Color3.new(1, 1, 1)
+Fill.BorderSizePixel  = 0
+Fill.Parent           = Track
+corner(Fill, 3)
+gradient(Fill, THEME.AccentA, THEME.AccentB, 0)
+
+local Knob = Instance.new("Frame")
+Knob.Name             = "Knob"
+Knob.Size             = UDim2.fromOffset(16, 16)
+Knob.AnchorPoint      = Vector2.new(0.5, 0.5)
+Knob.Position         = UDim2.fromScale(1, 0.5)
+Knob.BackgroundColor3 = Color3.new(1, 1, 1)
+Knob.BorderSizePixel  = 0
+Knob.ZIndex           = 4
+Knob.Parent           = Track
+corner(Knob, 8)
+stroke(Knob, THEME.AccentB, 1.5, 0)
+local KnobGlow = Instance.new("ImageLabel")
+KnobGlow.BackgroundTransparency = 1
+KnobGlow.Image           = "rbxassetid://6014261993"
+KnobGlow.ImageColor3     = THEME.AccentB
+KnobGlow.ImageTransparency = 0.3
+KnobGlow.AnchorPoint     = Vector2.new(0.5, 0.5)
+KnobGlow.Position        = UDim2.fromScale(0.5, 0.5)
+KnobGlow.Size            = UDim2.fromScale(2.4, 2.4)
+KnobGlow.ZIndex          = 3
+KnobGlow.Parent          = Knob
+
+local SpeedLabel = Instance.new("TextLabel")
+SpeedLabel.BackgroundTransparency = 1
+SpeedLabel.AnchorPoint    = Vector2.new(0, 0.5)
+SpeedLabel.Position       = UDim2.new(0, 18, 0, 68)
+SpeedLabel.Size           = UDim2.fromOffset(60, 16)
+SpeedLabel.Font           = Enum.Font.Gotham
+SpeedLabel.TextSize       = 11
+SpeedLabel.TextColor3     = THEME.Dim
+SpeedLabel.Text           = "Speed"
+SpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
+SpeedLabel.Parent         = Card
+
+-- Helpers ──────────────────────────────────────────────────────────────────────
 local function fmtCPS(n)
-    if n >= 1000 then
-        return string.format("%.0fk", n / 1000)
-    end
+    if n >= 1000 then return string.format("%.0fk", n / 1000) end
     return tostring(math.floor(n))
 end
 
-local function refreshDot()
-    Dot.BackgroundColor3 = AC.Enabled and Color3.fromRGB(80, 220, 100)
-                                       or  Color3.fromRGB(220, 80, 80)
+-- Animated toggle visuals
+local function applyToggleVisual()
+    if AC.Enabled then
+        tween(Pill, 0.3, {Position = UDim2.fromOffset(25, 3)},
+              Enum.EasingStyle.Back):Play()
+        tween(Toggle, 0.3, {BackgroundColor3 = Color3.fromRGB(30, 55, 45)}):Play()
+        ToggleStroke.Color = THEME.OnA
+        Pill.UIGradient.Color = ColorSequence.new(THEME.OnA, THEME.OnB)
+        ToggleLabel.Text = "ON"
+        tween(ToggleLabel, 0.2, {TextColor3 = THEME.OnA}):Play()
+        tween(Glow, 0.3, {ImageColor3 = THEME.OnA, ImageTransparency = 0.25}):Play()
+    else
+        tween(Pill, 0.3, {Position = UDim2.fromOffset(3, 3)},
+              Enum.EasingStyle.Back):Play()
+        tween(Toggle, 0.3, {BackgroundColor3 = Color3.fromRGB(40, 40, 55)}):Play()
+        ToggleStroke.Color = THEME.OffA
+        Pill.UIGradient.Color = ColorSequence.new(THEME.OffA, THEME.OffB)
+        ToggleLabel.Text = "OFF"
+        tween(ToggleLabel, 0.2, {TextColor3 = THEME.OffA}):Play()
+        tween(Glow, 0.3, {ImageColor3 = THEME.AccentA, ImageTransparency = 0.35}):Play()
+    end
 end
 
-Dot.MouseButton1Click:Connect(function()
+AC.OnVisual = applyToggleVisual   -- let the [E] keybind refresh the UI too
+
+Toggle.MouseButton1Click:Connect(function()
     AC:Toggle()
-    refreshDot()
+    applyToggleVisual()
+end)
+-- hover feedback
+Toggle.MouseEnter:Connect(function()
+    tween(Toggle, 0.15, {BackgroundTransparency = 0}):Play()
+end)
+Toggle.MouseLeave:Connect(function()
+    tween(Toggle, 0.15, {BackgroundTransparency = 0.1}):Play()
 end)
 
--- ── Slider drag = set CPS ─────────────────────────────────────────────────────
+-- Slider drag = set CPS
 local function setFromX(absX)
     local rel = (absX - Track.AbsolutePosition.X) / Track.AbsoluteSize.X
     rel = math.clamp(rel, 0, 1)
-    Fill.Size      = UDim2.fromScale(rel, 1)
-    Knob.Position  = UDim2.fromScale(rel, 0.5)
-    AC.CPS         = math.floor(rel * MAX_CPS)
-    CpsText.Text   = fmtCPS(AC.CPS)
+    tween(Fill, 0.08, {Size = UDim2.fromScale(rel, 1)}):Play()
+    tween(Knob, 0.08, {Position = UDim2.fromScale(rel, 0.5)}):Play()
+    AC.CPS = math.floor(rel * MAX_CPS)
+    CpsText.Text = fmtCPS(AC.CPS)
 end
 
 local sliding = false
@@ -303,10 +511,10 @@ Track.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
     or input.UserInputType == Enum.UserInputType.Touch then
         sliding = true
+        tween(Knob, 0.1, {Size = UDim2.fromOffset(20, 20)}):Play()
         setFromX(input.Position.X)
     end
 end)
-
 UIS.InputChanged:Connect(function(input)
     if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement
         or input.UserInputType == Enum.UserInputType.Touch) then
@@ -316,33 +524,36 @@ end)
 UIS.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
     or input.UserInputType == Enum.UserInputType.Touch then
+        if sliding then tween(Knob, 0.15, {Size = UDim2.fromOffset(16, 16)}):Play() end
         sliding = false
     end
 end)
 
--- ── Drag the whole bar (grab anywhere except the slider/dot) ──────────────────
+-- Drag the whole card (grab the title / empty areas, not the controls) ──────────
 do
     local dragging, dragStart, startPos
-    Bar.InputBegan:Connect(function(input)
+    Card.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
-            -- ignore if the press started on the track or dot (those have their own jobs)
             local mx, my = input.Position.X, input.Position.Y
-            local tp, ts = Track.AbsolutePosition, Track.AbsoluteSize
-            local dp, ds = Dot.AbsolutePosition,   Dot.AbsoluteSize
-            local onTrack = mx >= tp.X and mx <= tp.X+ts.X and my >= tp.Y-6 and my <= tp.Y+ts.Y+6
-            local onDot   = mx >= dp.X and mx <= dp.X+ds.X and my >= dp.Y   and my <= dp.Y+ds.Y
-            if onTrack or onDot then return end
+            local function over(o, padX, padY)
+                padX, padY = padX or 0, padY or 0
+                local p, s = o.AbsolutePosition, o.AbsoluteSize
+                return mx >= p.X-padX and mx <= p.X+s.X+padX
+                   and my >= p.Y-padY and my <= p.Y+s.Y+padY
+            end
+            if over(Track, 8, 10) or over(Toggle, 4, 4) then return end
             dragging  = true
             dragStart = input.Position
-            startPos  = Bar.Position
+            startPos  = Card.Position
+            tween(Card, 0.1, {BackgroundTransparency = 0.15}):Play()
         end
     end)
     UIS.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
             or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
-            Bar.Position = UDim2.fromOffset(
+            Card.Position = UDim2.fromOffset(
                 startPos.X.Offset + delta.X,
                 startPos.Y.Offset + delta.Y
             )
@@ -351,13 +562,33 @@ do
     UIS.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
+            if dragging then tween(Card, 0.2, {BackgroundTransparency = 0.25}):Play() end
             dragging = false
         end
     end)
 end
 
-refreshDot()
+-- Pulsing glow while active (subtle breathing animation) ─────────────────────────
+task.spawn(function()
+    while ScreenGui.Parent do
+        if AC.Enabled then
+            tween(Glow, 1.1, {ImageTransparency = 0.15}):Play()
+            task.wait(1.1)
+            tween(Glow, 1.1, {ImageTransparency = 0.32}):Play()
+            task.wait(1.1)
+        else
+            task.wait(0.3)
+        end
+    end
+end)
+
+-- Entrance animation ─────────────────────────────────────────────────────────────
+Card.Size = UDim2.fromOffset(280, 0)
+Card.BackgroundTransparency = 1
+tween(Card, 0.45, {Size = UDim2.fromOffset(280, 92), BackgroundTransparency = 0.25},
+      Enum.EasingStyle.Back):Play()
+
+applyToggleVisual()
 
 print("[AutoClicker v2] Loaded | Method: " .. AC.Method
-    .. " | Drag the bar to move it, drag the slider to set speed (0-50k CPS)"
-    .. " | tap the dot or press [E] to toggle")
+    .. " | Glass UI: drag card to move, drag slider for 0-50k CPS, click the pill or press [E]")
