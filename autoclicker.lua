@@ -5,7 +5,6 @@
 
 local AC = {
     Enabled      = false,
-    MoveSafe     = true,   -- true = pause clicks while walking (no movement interrupt)
     CPS          = 20,     -- clicks per second
     Method       = "none",
     ClickCount   = 0,
@@ -47,17 +46,8 @@ local function getSafePos()
     return Vector2.new(vp.X * 0.5, vp.Y * 0.5)
 end
 
--- ── Check if the character is currently moving ────────────────────────────────
 local Players     = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
-
-local function isWalking()
-    local char = LocalPlayer.Character
-    if not char then return false end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then return false end
-    return hum.MoveDirection.Magnitude > 0.01
-end
 
 -- ── Click dispatch ────────────────────────────────────────────────────────────
 local function doClick()
@@ -133,12 +123,10 @@ local function startLoop()
     AC.ClickCount = 0
     AC._thread = task.spawn(function()
         while AC.Enabled do
-            -- Movement-safe guard: skip this tick if character is walking
-            if not (AC.MoveSafe and isWalking()) then
-                local used = doClick()
-                if AC.Method == "none" then AC.Method = used end
-                AC.ClickCount = AC.ClickCount + 1
-            end
+            -- Always click — walking, running, jumping, all fine
+            local used = doClick()
+            if AC.Method == "none" then AC.Method = used end
+            AC.ClickCount = AC.ClickCount + 1
             task.wait(1 / AC.CPS)
         end
         AC._thread = nil
@@ -180,7 +168,7 @@ ScreenGui.Parent         = container
 -- Window
 local W = Instance.new("Frame")
 W.Name              = "Window"
-W.Size              = UDim2.fromOffset(260, 210)
+W.Size              = UDim2.fromOffset(260, 180)
 W.Position          = UDim2.fromOffset(40, 200)
 W.BackgroundColor3  = Color3.fromRGB(18, 18, 22)
 W.BorderSizePixel   = 0
@@ -289,15 +277,13 @@ local function makeRow(order, labelText)
     return val
 end
 
-local StatusVal  = makeRow(1, "Status:")
-local CpsVal     = makeRow(2, "CPS:")
-local MethodVal  = makeRow(3, "Method:")
-local MoveSafeVal = makeRow(4, "Move Safe:")
+local StatusVal = makeRow(1, "Status:")
+local CpsVal    = makeRow(2, "CPS:")
+local MethodVal = makeRow(3, "Method:")
 
-StatusVal.TextColor3   = Color3.fromRGB(220, 80, 80)
-CpsVal.TextColor3      = Color3.fromRGB(100, 220, 255)
-MethodVal.TextColor3   = Color3.fromRGB(180, 180, 255)
-MoveSafeVal.TextColor3 = Color3.fromRGB(80, 220, 100)
+StatusVal.TextColor3 = Color3.fromRGB(220, 80, 80)
+CpsVal.TextColor3    = Color3.fromRGB(100, 220, 255)
+MethodVal.TextColor3 = Color3.fromRGB(180, 180, 255)
 
 -- Toggle button
 local ToggleBtn = Instance.new("TextButton")
@@ -306,60 +292,31 @@ ToggleBtn.TextSize         = 14
 ToggleBtn.TextColor3       = Color3.fromRGB(255, 255, 255)
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 80)
 ToggleBtn.BorderSizePixel  = 0
-ToggleBtn.Size             = UDim2.new(1, 0, 0, 32)
-ToggleBtn.LayoutOrder      = 5
+ToggleBtn.Size             = UDim2.new(1, 0, 0, 34)
+ToggleBtn.LayoutOrder      = 4
 ToggleBtn.Parent           = Body
 Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 8)
 
--- Move-safe toggle button
-local SafeBtn = Instance.new("TextButton")
-SafeBtn.Font             = Enum.Font.Gotham
-SafeBtn.TextSize         = 12
-SafeBtn.TextColor3       = Color3.fromRGB(255, 255, 255)
-SafeBtn.BackgroundColor3 = Color3.fromRGB(40, 140, 60)
-SafeBtn.BorderSizePixel  = 0
-SafeBtn.Size             = UDim2.new(1, 0, 0, 26)
-SafeBtn.LayoutOrder      = 6
-SafeBtn.Parent           = Body
-Instance.new("UICorner", SafeBtn).CornerRadius = UDim.new(0, 8)
-
 -- ── UI update ─────────────────────────────────────────────────────────────────
 local function updateUI()
-    CpsVal.Text     = tostring(AC.CPS) .. " CPS"
-    MethodVal.Text  = AC.Method
+    CpsVal.Text    = tostring(AC.CPS) .. " CPS"
+    MethodVal.Text = AC.Method
 
     if AC.Enabled then
-        StatusVal.Text       = "ON — " .. AC.ClickCount .. " clicks"
-        StatusVal.TextColor3 = Color3.fromRGB(80, 220, 100)
+        StatusVal.Text             = "ON — " .. AC.ClickCount .. " clicks"
+        StatusVal.TextColor3       = Color3.fromRGB(80, 220, 100)
         ToggleBtn.Text             = "Disable  [E]"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
     else
-        StatusVal.Text       = "OFF"
-        StatusVal.TextColor3 = Color3.fromRGB(220, 80, 80)
+        StatusVal.Text             = "OFF"
+        StatusVal.TextColor3       = Color3.fromRGB(220, 80, 80)
         ToggleBtn.Text             = "Enable  [E]"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 80)
-    end
-
-    if AC.MoveSafe then
-        MoveSafeVal.Text       = "ON (won't interrupt walk)"
-        MoveSafeVal.TextColor3 = Color3.fromRGB(80, 220, 100)
-        SafeBtn.Text             = "Move Safe: ON"
-        SafeBtn.BackgroundColor3 = Color3.fromRGB(40, 140, 60)
-    else
-        MoveSafeVal.Text       = "OFF (clicks always fire)"
-        MoveSafeVal.TextColor3 = Color3.fromRGB(220, 180, 80)
-        SafeBtn.Text             = "Move Safe: OFF"
-        SafeBtn.BackgroundColor3 = Color3.fromRGB(130, 80, 30)
     end
 end
 
 ToggleBtn.MouseButton1Click:Connect(function()
     toggle()
-    updateUI()
-end)
-
-SafeBtn.MouseButton1Click:Connect(function()
-    AC.MoveSafe = not AC.MoveSafe
     updateUI()
 end)
 
@@ -410,4 +367,4 @@ end
 
 -- ── Init ──────────────────────────────────────────────────────────────────────
 updateUI()
-print("[AutoClicker] Loaded | Method: " .. AC.Method .. " | [E] to toggle | Move Safe = ON")
+print("[AutoClicker] Loaded | Method: " .. AC.Method .. " | [E] to toggle | Clicks fire during walk/run/jump")
