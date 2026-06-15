@@ -1,6 +1,8 @@
--- AutoClicker v3.0
+-- AutoClicker v3.1
 -- Scan-first: detects device + executor, tests every UNC function, THEN picks
 -- the right click method from those results. 50k CPS burst engine. Never crashes.
+-- Fires mouse1click + touchTap simultaneously — works whether a game uses
+-- click-to-block OR tap-to-block (Blade Ball, Anime Ball, etc.) with no config.
 -- Toggle: [E] or tap the pill. Drag the card to move. Drag the slider for speed.
 
 -- ── State ─────────────────────────────────────────────────────────────────────
@@ -53,6 +55,13 @@ local THEME = {
     Txt = Color3.fromRGB(235, 235, 245),
     Dim = Color3.fromRGB(150, 150, 170),
 }
+
+-- screen-center touch position: safe from joystick (bottom-left) and jump button (bottom-right)
+local function getSafePos()
+    local cam = workspace.CurrentCamera
+    local vp  = cam and cam.ViewportSize or Vector2.new(1280, 720)
+    return Vector2.new(vp.X * 0.5, vp.Y * 0.5)
+end
 
 -- ── Container ─────────────────────────────────────────────────────────────────
 local function getContainer()
@@ -383,7 +392,7 @@ do
         local pos   = getSafePos()
         local parts, names2 = {}, {}
 
-        -- prefer mouse1 (best compat, no movement interrupt)
+        -- ALWAYS fire mouse1 input (covers click-to-block games: Blade Ball PC, etc.)
         if found.mouse1click then
             parts[#parts+1] = resolve("mouse1click")
             names2[#names2+1] = "mouse1click"
@@ -391,8 +400,18 @@ do
             local mp, mr = resolve("mouse1press"), resolve("mouse1release")
             parts[#parts+1] = function() mp(); mr() end
             names2[#names2+1] = "mouse1press/release"
+        elseif found.mouse2click then
+            parts[#parts+1] = resolve("mouse2click")
+            names2[#names2+1] = "mouse2click"
+        elseif found.mouse2press and found.mouse2release then
+            local mp2, mr2 = resolve("mouse2press"), resolve("mouse2release")
+            parts[#parts+1] = function() mp2(); mr2() end
+            names2[#names2+1] = "mouse2press/release"
         end
-        -- add touch on top (covers tap-to-block games)
+
+        -- ALWAYS fire touch input on top (covers tap-to-block games: Blade Ball Mobile,
+        -- Anime Ball mobile mode, etc.) — firing both means the script works regardless
+        -- of whether the game reads mouse or touch for its block/action mechanic.
         if found.touchTap then
             local tt = resolve("touchTap")
             parts[#parts+1] = function() tt({pos}) end
@@ -402,23 +421,15 @@ do
             parts[#parts+1] = function() ts({pos}); te({pos}) end
             names2[#names2+1] = "touchStart/End"
         end
-        -- fallback: mouse2 or VIM
+
+        -- last resort: VIM (if executor provides no UNC input functions at all)
         if #parts == 0 then
-            if found.mouse2click then
-                parts[#parts+1] = resolve("mouse2click")
-                names2[#names2+1] = "mouse2click"
-            elseif found.mouse2press and found.mouse2release then
-                local mp, mr = resolve("mouse2press"), resolve("mouse2release")
-                parts[#parts+1] = function() mp(); mr() end
-                names2[#names2+1] = "mouse2press/release"
-            else
-                local vim = game:GetService("VirtualInputManager")
-                parts[#parts+1] = function()
-                    vim:SendMouseButtonEvent(0,0,0,true,game,0)
-                    vim:SendMouseButtonEvent(0,0,0,false,game,0)
-                end
-                names2[#names2+1] = "VirtualInputManager"
+            local vim = game:GetService("VirtualInputManager")
+            parts[#parts+1] = function()
+                vim:SendMouseButtonEvent(0,0,0,true,game,0)
+                vim:SendMouseButtonEvent(0,0,0,false,game,0)
             end
+            names2[#names2+1] = "VirtualInputManager"
         end
 
         -- wire up AC._click from scan results
@@ -457,18 +468,27 @@ end
 
 -- if cache was hit, _click still needs to be wired (no scan ran)
 if not AC._click then
-    -- resolve from whatever is available right now (already pre-counted above)
     local pos = getSafePos()
     local function r(n) return resolve(n) end
     local parts, names2 = {}, {}
+    -- mouse input (click-to-block games)
     if r"mouse1click" then parts[#parts+1]=r"mouse1click"; names2[#names2+1]="mouse1click"
     elseif r"mouse1press" and r"mouse1release" then
         local mp,mr=r"mouse1press",r"mouse1release"
-        parts[#parts+1]=function() mp();mr() end; names2[#names2+1]="mouse1press/release" end
-    if r"touchTap" then local tt=r"touchTap"; parts[#parts+1]=function() tt({pos}) end; names2[#names2+1]="touchTap"
+        parts[#parts+1]=function() mp();mr() end; names2[#names2+1]="mouse1press/release"
+    elseif r"mouse2click" then parts[#parts+1]=r"mouse2click"; names2[#names2+1]="mouse2click"
+    elseif r"mouse2press" and r"mouse2release" then
+        local mp2,mr2=r"mouse2press",r"mouse2release"
+        parts[#parts+1]=function() mp2();mr2() end; names2[#names2+1]="mouse2press/release"
+    end
+    -- touch input on top (tap-to-block games — fires simultaneously with mouse)
+    if r"touchTap" then
+        local tt=r"touchTap"; parts[#parts+1]=function() tt({pos}) end; names2[#names2+1]="touchTap"
     elseif r"touchStart" and r"touchEnd" then
         local ts,te=r"touchStart",r"touchEnd"
-        parts[#parts+1]=function() ts({pos});te({pos}) end; names2[#names2+1]="touchStart/End" end
+        parts[#parts+1]=function() ts({pos});te({pos}) end; names2[#names2+1]="touchStart/End"
+    end
+    -- last resort
     if #parts==0 then
         local vim=game:GetService("VirtualInputManager")
         parts[1]=function() vim:SendMouseButtonEvent(0,0,0,true,game,0); vim:SendMouseButtonEvent(0,0,0,false,game,0) end
@@ -517,17 +537,28 @@ local cs = stroke(Card, THEME.A, 1.4, 0.08)
 grad(cs, THEME.A, THEME.B, 25)
 Glow.Parent = Card
 
+-- ┌─────────────────── CARD LAYOUT (300 × 168) ───────────────────────────┐
+-- │  y=10  accent bar                                                      │
+-- │  y=17  "AUTOCLICKER" title                              [CPS big]  y=16│
+-- │  y=40  method subtitle                                  [CPS unit] y=36│
+-- │  y=55  divider line                                                     │
+-- │  y=68  [toggle pill]  OFF / ON · clicks                                 │
+-- │  y=96  divider line                                                     │
+-- │  y=108 "Speed"                                                          │
+-- │  y=126 slider track ──────────────────────────────●                    │
+-- └────────────────────────────────────────────────────────────────────────┘
+
 -- top accent bar
 local TopBar = Instance.new("Frame")
 TopBar.Size = UDim2.new(1,-28,0,2); TopBar.Position = UDim2.new(0,14,0,10)
 TopBar.BackgroundColor3 = Color3.new(1,1,1); TopBar.BorderSizePixel = 0
 TopBar.Parent = Card; corner(TopBar,2); grad(TopBar, THEME.A, THEME.B, 0)
 
--- title
+-- title (left-aligned, room for CPS on the right)
 local TitleLbl = Instance.new("TextLabel")
 TitleLbl.BackgroundTransparency = 1
 TitleLbl.Position  = UDim2.fromOffset(18,17)
-TitleLbl.Size      = UDim2.fromOffset(160,20)
+TitleLbl.Size      = UDim2.fromOffset(150,22)
 TitleLbl.Font      = Enum.Font.GothamBlack
 TitleLbl.TextSize  = 16
 TitleLbl.TextColor3 = THEME.Txt
@@ -536,69 +567,90 @@ TitleLbl.Text      = "AUTOCLICKER"
 TitleLbl.Parent    = Card
 grad(TitleLbl, THEME.B, THEME.A, 0)
 
--- method label (small, below title)
-local MethodLbl = Instance.new("TextLabel")
-MethodLbl.BackgroundTransparency = 1
-MethodLbl.Position  = UDim2.fromOffset(18,37)
-MethodLbl.Size      = UDim2.new(1,-36,0,14)
-MethodLbl.Font      = Enum.Font.Gotham; MethodLbl.TextSize = 10
-MethodLbl.TextColor3 = THEME.Dim
-MethodLbl.TextXAlignment = Enum.TextXAlignment.Left
-MethodLbl.Text      = AC.Method
-MethodLbl.Parent    = Card
-
--- ── Toggle pill ───────────────────────────────────────────────────────────────
-local Toggle = Instance.new("TextButton")
-Toggle.AutoButtonColor = false; Toggle.Text = ""
-Toggle.Size = UDim2.fromOffset(48,26); Toggle.Position = UDim2.fromOffset(18,60)
-Toggle.BackgroundColor3 = Color3.fromRGB(40,40,56)
-Toggle.BackgroundTransparency = 0.1; Toggle.BorderSizePixel = 0
-Toggle.Parent = Card; corner(Toggle, 13)
-local tStroke = stroke(Toggle, THEME.Off, 1.2, 0.2)
-
-local Pill = Instance.new("Frame")
-Pill.Size = UDim2.fromOffset(20,20); Pill.Position = UDim2.fromOffset(3,3)
-Pill.BackgroundColor3 = Color3.new(1,1,1); Pill.BorderSizePixel = 0
-Pill.Parent = Toggle; corner(Pill, 10)
-local pillGrad = grad(Pill, THEME.Off, THEME.OfB, 90)
-
-local StateLbl = Instance.new("TextLabel")
-StateLbl.BackgroundTransparency = 1
-StateLbl.Position = UDim2.fromOffset(72,62); StateLbl.Size = UDim2.fromOffset(80,22)
-StateLbl.Font = Enum.Font.GothamBold; StateLbl.TextSize = 13
-StateLbl.TextColor3 = THEME.Off; StateLbl.TextXAlignment = Enum.TextXAlignment.Left
-StateLbl.Text = "OFF"; StateLbl.Parent = Card
-
--- CPS readout
+-- CPS big number (top-right)
 local CpsLbl = Instance.new("TextLabel")
 CpsLbl.BackgroundTransparency = 1
 CpsLbl.AnchorPoint = Vector2.new(1,0)
-CpsLbl.Position    = UDim2.new(1,-18,0,60)
-CpsLbl.Size        = UDim2.fromOffset(60,18)
-CpsLbl.Font = Enum.Font.GothamBlack; CpsLbl.TextSize = 17
+CpsLbl.Position    = UDim2.new(1,-18,0,14)
+CpsLbl.Size        = UDim2.fromOffset(72,22)
+CpsLbl.Font = Enum.Font.GothamBlack; CpsLbl.TextSize = 18
 CpsLbl.TextColor3 = THEME.B; CpsLbl.TextXAlignment = Enum.TextXAlignment.Right
 CpsLbl.Text = "50k"; CpsLbl.Parent = Card
 
+-- "CPS" unit label (below big number)
 local CpsUnit = Instance.new("TextLabel")
 CpsUnit.BackgroundTransparency = 1
 CpsUnit.AnchorPoint = Vector2.new(1,0)
-CpsUnit.Position    = UDim2.new(1,-18,0,78)
-CpsUnit.Size        = UDim2.fromOffset(60,12)
+CpsUnit.Position    = UDim2.new(1,-18,0,36)
+CpsUnit.Size        = UDim2.fromOffset(72,12)
 CpsUnit.Font = Enum.Font.Gotham; CpsUnit.TextSize = 9
 CpsUnit.TextColor3 = THEME.Dim; CpsUnit.TextXAlignment = Enum.TextXAlignment.Right
 CpsUnit.Text = "CPS"; CpsUnit.Parent = Card
 
--- ── Speed slider ──────────────────────────────────────────────────────────────
+-- method label (under title, never overlaps CPS because size stops before right zone)
+local MethodLbl = Instance.new("TextLabel")
+MethodLbl.BackgroundTransparency = 1
+MethodLbl.Position  = UDim2.fromOffset(18,40)
+MethodLbl.Size      = UDim2.fromOffset(170,14)    -- fixed width, safe from CPS column
+MethodLbl.Font      = Enum.Font.Gotham; MethodLbl.TextSize = 10
+MethodLbl.TextColor3 = THEME.Dim
+MethodLbl.TextXAlignment = Enum.TextXAlignment.Left
+MethodLbl.TextTruncate   = Enum.TextTruncate.AtEnd
+MethodLbl.Text      = AC.Method
+MethodLbl.Parent    = Card
+
+-- thin divider under header
+local Div1 = Instance.new("Frame")
+Div1.Size = UDim2.new(1,-28,0,1); Div1.Position = UDim2.new(0,14,0,58)
+Div1.BackgroundColor3 = Color3.fromRGB(55,55,75); Div1.BorderSizePixel = 0
+Div1.Parent = Card
+
+-- ── Toggle pill (y=68, h=30) ──────────────────────────────────────────────────
+local Toggle = Instance.new("TextButton")
+Toggle.AutoButtonColor = false; Toggle.Text = ""
+Toggle.Size     = UDim2.fromOffset(52,28)
+Toggle.Position = UDim2.fromOffset(18,66)
+Toggle.BackgroundColor3      = Color3.fromRGB(40,40,56)
+Toggle.BackgroundTransparency = 0.1; Toggle.BorderSizePixel = 0
+Toggle.Parent = Card; corner(Toggle, 14)
+local tStroke = stroke(Toggle, THEME.Off, 1.2, 0.2)
+
+local Pill = Instance.new("Frame")
+Pill.Size     = UDim2.fromOffset(22,22)
+Pill.Position = UDim2.fromOffset(3,3)
+Pill.BackgroundColor3 = Color3.new(1,1,1); Pill.BorderSizePixel = 0
+Pill.Parent = Toggle; corner(Pill, 11)
+local pillGrad = grad(Pill, THEME.Off, THEME.OfB, 90)
+
+-- state label sits to the right of the pill, same row, ample width
+local StateLbl = Instance.new("TextLabel")
+StateLbl.BackgroundTransparency = 1
+StateLbl.Position = UDim2.fromOffset(78,67)
+StateLbl.Size     = UDim2.new(1,-96,0,28)   -- stretches to right edge minus padding
+StateLbl.Font = Enum.Font.GothamBold; StateLbl.TextSize = 13
+StateLbl.TextColor3 = THEME.Off; StateLbl.TextXAlignment = Enum.TextXAlignment.Left
+StateLbl.TextTruncate = Enum.TextTruncate.AtEnd
+StateLbl.Text = "OFF"; StateLbl.Parent = Card
+
+-- thin divider under toggle row
+local Div2 = Instance.new("Frame")
+Div2.Size = UDim2.new(1,-28,0,1); Div2.Position = UDim2.new(0,14,0,103)
+Div2.BackgroundColor3 = Color3.fromRGB(55,55,75); Div2.BorderSizePixel = 0
+Div2.Parent = Card
+
+-- ── Speed slider (y=108 label, y=126 track) ───────────────────────────────────
 local SpdLbl = Instance.new("TextLabel")
 SpdLbl.BackgroundTransparency = 1
-SpdLbl.Position = UDim2.fromOffset(18,102); SpdLbl.Size = UDim2.fromOffset(50,14)
+SpdLbl.Position = UDim2.fromOffset(18,108)
+SpdLbl.Size     = UDim2.new(1,-36,0,14)
 SpdLbl.Font = Enum.Font.Gotham; SpdLbl.TextSize = 11
 SpdLbl.TextColor3 = THEME.Dim; SpdLbl.TextXAlignment = Enum.TextXAlignment.Left
-SpdLbl.Text = "Speed"; SpdLbl.Parent = Card
+SpdLbl.Text = "Speed  (drag to adjust)"; SpdLbl.Parent = Card
 
 local Track = Instance.new("Frame")
-Track.Size = UDim2.new(1,-36,0,7); Track.Position = UDim2.fromOffset(18,118)
-Track.BackgroundColor3 = Color3.fromRGB(50,50,68)
+Track.Size     = UDim2.new(1,-36,0,7)
+Track.Position = UDim2.fromOffset(18,126)
+Track.BackgroundColor3      = Color3.fromRGB(50,50,68)
 Track.BackgroundTransparency = 0.25; Track.BorderSizePixel = 0
 Track.Parent = Card; corner(Track, 4)
 
@@ -608,9 +660,11 @@ Fill.BorderSizePixel = 0; Fill.Parent = Track; corner(Fill, 4)
 grad(Fill, THEME.A, THEME.B, 0)
 
 local Knob = Instance.new("Frame")
-Knob.Size = UDim2.fromOffset(18,18); Knob.AnchorPoint = Vector2.new(0.5,0.5)
-Knob.Position = UDim2.fromScale(1,0.5); Knob.BackgroundColor3 = Color3.new(1,1,1)
-Knob.BorderSizePixel = 0; Knob.ZIndex = 4; Knob.Parent = Track; corner(Knob, 9)
+Knob.Size        = UDim2.fromOffset(18,18)
+Knob.AnchorPoint = Vector2.new(0.5,0.5)
+Knob.Position    = UDim2.fromScale(1,0.5)
+Knob.BackgroundColor3 = Color3.new(1,1,1); Knob.BorderSizePixel = 0
+Knob.ZIndex = 4; Knob.Parent = Track; corner(Knob, 9)
 stroke(Knob, THEME.B, 1.5, 0)
 local KnobGlow = Instance.new("ImageLabel")
 KnobGlow.BackgroundTransparency = 1; KnobGlow.Image = "rbxassetid://6014261993"
@@ -618,9 +672,10 @@ KnobGlow.ImageColor3 = THEME.B; KnobGlow.ImageTransparency = 0.3
 KnobGlow.AnchorPoint = Vector2.new(0.5,0.5); KnobGlow.Position = UDim2.fromScale(0.5,0.5)
 KnobGlow.Size = UDim2.fromScale(2.5,2.5); KnobGlow.ZIndex = 3; KnobGlow.Parent = Knob
 
--- card height now known
-Card.Size = UDim2.fromOffset(290,0)
-tw(Card, 0.45, {Size = UDim2.fromOffset(290, 146)}, Enum.EasingStyle.Back):Play()
+-- card entrance: open from height=0 to final height=162
+-- Track bottom edge = 126+7 = 133; knob extends to 133+9 = 142; + 20px padding = 162
+Card.Size = UDim2.fromOffset(300,0)
+tw(Card, 0.45, {Size = UDim2.fromOffset(300, 162)}, Enum.EasingStyle.Back):Play()
 
 -- ── Visual helpers ────────────────────────────────────────────────────────────
 local MAX_CPS = 50000
