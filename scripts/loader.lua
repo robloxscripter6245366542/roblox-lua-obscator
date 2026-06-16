@@ -1,198 +1,189 @@
--- SangraHub v1.0
-local Players = game:GetService("Players")
+-- SangraBB v2.1 | No-UI Blade Ball Auto-Parry
+-- UNC executor/device scan → picks correct input method
+-- Parry runs in spawned thread so movement is never blocked
+
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+local Players    = game:GetService("Players")
+local UIS        = game:GetService("UserInputService")
+local lp         = Players.LocalPlayer
 
-local player = Players.LocalPlayer
+if _G.SangraBBActive then _G.SangraBBActive = false task.wait(0.05) end
+_G.SangraBBActive = true
 
-if _G.SangraHubRunning then _G.SangraHubRunning = false end
-_G.SangraHubRunning = true
+-- ─── UNC / Executor / Device Scan ────────────────────────────────────────────
+local Device = {}
 
-local cfg = { speed = false, fly = false, esp = false, noclip = false, infiniteJump = false }
+-- executor identity
+do
+    local name = ""
+    pcall(function()
+        if type(identifyexecutor) == "function" then
+            name = tostring(identifyexecutor()):lower()
+        elseif type(getexecutorname) == "function" then
+            name = tostring(getexecutorname()):lower()
+        end
+    end)
+    Device.execName = name
+    Device.isXeno    = name:find("xeno")    ~= nil
+    Device.isDelta   = name:find("delta")   ~= nil
+    Device.isVelocity= name:find("velocity")~= nil
+    Device.isKRNL    = name:find("krnl")    ~= nil
+    Device.isSolara  = name:find("solara")  ~= nil
+    Device.isWave    = name:find("wave")    ~= nil
+end
 
--- GUI
-local sg = Instance.new("ScreenGui")
-sg.Name = "SangraHub"
-sg.ResetOnSpawn = false
-sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-sg.Parent = game:GetService("CoreGui")
+-- platform: mobile = iPad/phone, pc = desktop
+do
+    local touch  = UIS.TouchEnabled
+    local kb     = UIS.KeyboardEnabled
+    local mouse  = UIS.MouseEnabled
+    Device.isMobile = touch and not kb and not mouse
+    Device.isPC     = kb or mouse
+    Device.platform = Device.isMobile and "mobile" or "pc"
+end
 
-local main = Instance.new("Frame")
-main.Size = UDim2.fromOffset(270, 320)
-main.Position = UDim2.fromOffset(60, 60)
-main.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
-main.BorderSizePixel = 0
-main.Parent = sg
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 8)
+-- UNC capability probe
+local UNC = {
+    hasVIM         = pcall(function() return game:GetService("VirtualInputManager") end),
+    hasNewcclosure = type(newcclosure)    == "function",
+    hasHookfunc    = type(hookfunction)   == "function",
+    hasGetupvalues = type(getupvalues)    == "function",
+    hasGetprotos   = type(getprotos)      == "function",
+    hasGetrawmeta  = type(getrawmetatable)== "function",
+    hasFiretouch   = type(firetouchinterest)  == "function",
+    hasSimclick    = type(simulateclick)  == "function",
+}
+_G.SangraBB_UNC    = UNC
+_G.SangraBB_Device = Device
 
-local bar = Instance.new("Frame")
-bar.Size = UDim2.new(1, 0, 0, 36)
-bar.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
-bar.BorderSizePixel = 0
-bar.Parent = main
-Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 8)
+-- ─── Input: pick correct parry method based on device/UNC ────────────────────
+local VIM = pcall(function() return game:GetService("VirtualInputManager") end)
+    and game:GetService("VirtualInputManager") or nil
 
-local lbl = Instance.new("TextLabel")
-lbl.Size = UDim2.new(1, 0, 1, 0)
-lbl.BackgroundTransparency = 1
-lbl.Text = "SangraHub  |  RightCtrl to hide"
-lbl.TextColor3 = Color3.fromRGB(170, 120, 255)
-lbl.TextSize = 13
-lbl.Font = Enum.Font.GothamBold
-lbl.Parent = bar
+local function doParry()
+    -- always spawned so it never blocks PreSimulation / movement
+    if Device.isMobile then
+        -- mobile: simulate tap at screen centre
+        if VIM and VIM.SendTouchEvent then
+            local cx = cam and cam.ViewportSize.X / 2 or 0
+            local cy = cam and cam.ViewportSize.Y / 2 or 0
+            pcall(function() VIM:SendTouchEvent(0, Vector2.new(cx, cy), true,  game) end)
+            task.wait(0.05)
+            pcall(function() VIM:SendTouchEvent(0, Vector2.new(cx, cy), false, game) end)
+        end
+    else
+        -- pc: mouse click via VIM (most reliable across executors)
+        if VIM then
+            pcall(function() VIM:SendMouseButtonEvent(0, 0, 0, true,  game, 0) end)
+            task.wait(0.04)
+            pcall(function() VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0) end)
+        end
+    end
+end
 
-local list = Instance.new("Frame")
-list.Size = UDim2.new(1, -16, 1, -48)
-list.Position = UDim2.fromOffset(8, 44)
-list.BackgroundTransparency = 1
-list.Parent = main
-Instance.new("UIListLayout", list).Padding = UDim.new(0, 6)
+local cam = workspace.CurrentCamera
 
-local function toggle(name, key)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, 38)
-    row.BackgroundColor3 = Color3.fromRGB(24, 24, 34)
-    row.BorderSizePixel = 0
-    row.Parent = list
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+-- ─── Physics: time-to-impact ──────────────────────────────────────────────────
+local function timeToImpact(bPos, bVel, pPos)
+    local delta = pPos - bPos
+    local closing = bVel:Dot(delta.Unit)
+    if closing <= 0 then return math.huge end
+    return delta.Magnitude / closing
+end
 
-    local t = Instance.new("TextLabel")
-    t.Size = UDim2.new(1, -60, 1, 0)
-    t.Position = UDim2.fromOffset(10, 0)
-    t.BackgroundTransparency = 1
-    t.Text = name
-    t.TextColor3 = Color3.fromRGB(210, 210, 225)
-    t.TextSize = 13
-    t.Font = Enum.Font.Gotham
-    t.TextXAlignment = Enum.TextXAlignment.Left
-    t.Parent = row
+-- ─── Adaptive timing window ───────────────────────────────────────────────────
+local window     = 0.52   -- seconds before impact to fire
+local adaptAlpha = 0.12   -- EMA learning rate
+local parryCount = 0
 
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.fromOffset(48, 24)
-    btn.Position = UDim2.new(1, -56, 0.5, -12)
-    btn.BackgroundColor3 = Color3.fromRGB(55, 55, 75)
-    btn.Text = "OFF"
-    btn.TextColor3 = Color3.fromRGB(170, 170, 190)
-    btn.TextSize = 12
-    btn.Font = Enum.Font.GothamBold
-    btn.BorderSizePixel = 0
-    btn.Parent = row
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+local function adapt(successETA)
+    window = window * (1 - adaptAlpha) + (successETA + 0.02) * adaptAlpha
+    window = math.clamp(window, 0.18, 1.1)
+end
 
-    btn.MouseButton1Click:Connect(function()
-        cfg[key] = not cfg[key]
-        btn.BackgroundColor3 = cfg[key] and Color3.fromRGB(110, 70, 210) or Color3.fromRGB(55, 55, 75)
-        btn.Text = cfg[key] and "ON" or "OFF"
+-- ─── Ball state (metatable) ───────────────────────────────────────────────────
+local function newState(ball)
+    return setmetatable({ ball = ball, fired = false }, {
+        __index = function(s, k)
+            if k == "alive" then return s.ball and s.ball.Parent ~= nil end
+        end,
+    })
+end
+
+local states = {}  -- ball → state
+
+local function track(ball)
+    if states[ball] then return end
+    states[ball] = newState(ball)
+    pcall(function()
+        ball:GetAttributeChangedSignal("target"):Connect(function()
+            if states[ball] then states[ball].fired = false end
+        end)
     end)
 end
 
-toggle("Speed Boost", "speed")
-toggle("Fly", "fly")
-toggle("ESP", "esp")
-toggle("Noclip", "noclip")
-toggle("Infinite Jump", "infiniteJump")
-
--- Drag
-local drag, ds, sp
-bar.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        drag = true; ds = i.Position; sp = main.Position
-    end
-end)
-UserInputService.InputChanged:Connect(function(i)
-    if drag and i.UserInputType == Enum.UserInputType.MouseMovement then
-        local d = i.Position - ds
-        main.Position = UDim2.fromOffset(sp.X.Offset + d.X, sp.Y.Offset + d.Y)
-    end
-end)
-UserInputService.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
-end)
-
-UserInputService.InputBegan:Connect(function(i, gp)
-    if not gp and i.KeyCode == Enum.KeyCode.RightControl then
-        main.Visible = not main.Visible
-    end
-end)
-
--- Speed / Noclip / Infinite Jump
-RunService.Heartbeat:Connect(function()
-    if not _G.SangraHubRunning then return end
-    local char = player.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hum.WalkSpeed = cfg.speed and 80 or 16
-        if cfg.infiniteJump and hum:GetState() == Enum.HumanoidStateType.Freefall then
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-        end
-    end
-    if cfg.noclip then
-        for _, p in ipairs(char:GetDescendants()) do
-            if p:IsA("BasePart") then p.CanCollide = false end
-        end
-    end
-end)
-
--- Fly
-local flyConn, prevFly
-local function startFly()
-    local char = player.Character
-    if not char then return end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not root or not hum then return end
-    hum.PlatformStand = true
-    local bg = Instance.new("BodyGyro", root)
-    bg.MaxTorque = Vector3.new(1e6,1e6,1e6); bg.D = 200
-    local bv = Instance.new("BodyVelocity", root)
-    bv.MaxForce = Vector3.new(1e6,1e6,1e6); bv.Velocity = Vector3.zero
-    flyConn = RunService.Heartbeat:Connect(function()
-        if not cfg.fly then
-            pcall(function() bv:Destroy(); bg:Destroy(); hum.PlatformStand = false end)
-            flyConn:Disconnect(); flyConn = nil; return
-        end
-        local cf = workspace.CurrentCamera.CFrame
-        local v = Vector3.zero
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then v += cf.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then v -= cf.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then v -= cf.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then v += cf.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then v += Vector3.yAxis end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then v -= Vector3.yAxis end
-        bv.Velocity = v * 60; bg.CFrame = cf
-    end)
+local function untrack(ball)
+    states[ball] = nil
 end
 
-RunService.Heartbeat:Connect(function()
-    if cfg.fly and not prevFly then startFly() end
-    prevFly = cfg.fly
+-- ─── Ball folder watcher ──────────────────────────────────────────────────────
+local ballsFolder = workspace:WaitForChild("Balls", 20)
+if ballsFolder then
+    for _, b in ipairs(ballsFolder:GetChildren()) do track(b) end
+    ballsFolder.ChildAdded:Connect(function(b) task.wait() track(b) end)
+    ballsFolder.ChildRemoved:Connect(function(b) untrack(b) end)
+end
+
+-- background scan for hidden ball containers (memory-style sweep)
+task.spawn(function()
+    while _G.SangraBBActive do
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if not states[obj] then
+                local ok, v = pcall(function() return obj:GetAttribute("realBall") end)
+                if ok and v ~= nil then track(obj) end
+            end
+        end
+        task.wait(1.5)
+    end
 end)
 
--- ESP
-local boxes = {}
-RunService.Heartbeat:Connect(function()
-    if not cfg.esp then
-        for _, b in pairs(boxes) do pcall(function() b:Destroy() end) end
-        boxes = {}; return
-    end
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= player and p.Character and not boxes[p] then
-            local b = Instance.new("SelectionBox")
-            b.Adornee = p.Character
-            b.Color3 = Color3.fromRGB(110, 70, 210)
-            b.LineThickness = 0.05
-            b.SurfaceTransparency = 0.75
-            b.SurfaceColor3 = Color3.fromRGB(110, 70, 210)
-            b.Parent = sg
-            boxes[p] = b
+-- ─── PreSimulation: parry check (never yields — spawns parry thread) ──────────
+local parrying = false
+
+RunService.PreSimulation:Connect(function()
+    if not _G.SangraBBActive then return end
+    local char = lp.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local ppos = hrp.Position
+    local name = lp.Name
+
+    local bestBall, bestETA = nil, math.huge
+
+    for ball, state in pairs(states) do
+        if ball and ball.Parent and not state.fired
+            and ball:GetAttribute("target") == name
+        then
+            local vel = ball:FindFirstChild("zoomies")
+            if vel then
+                local eta = timeToImpact(ball.Position, vel.VectorVelocity, ppos)
+                if eta < bestETA then bestBall = ball; bestETA = eta end
+            end
         end
     end
-    for p, b in pairs(boxes) do
-        if not p.Character then b:Destroy(); boxes[p] = nil end
-    end
-end)
 
-Players.PlayerRemoving:Connect(function(p)
-    if boxes[p] then boxes[p]:Destroy(); boxes[p] = nil end
+    if bestBall and bestETA <= window and not parrying then
+        parrying = true
+        local capturedETA = bestETA
+        local capturedBall = bestBall
+        if states[capturedBall] then states[capturedBall].fired = true end
+        parryCount += 1
+        adapt(capturedETA)
+        task.spawn(function()
+            doParry()
+            task.wait(0.1)
+            parrying = false
+        end)
+    end
 end)
