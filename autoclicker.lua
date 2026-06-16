@@ -1,4 +1,4 @@
--- AutoClicker v3.1
+-- AutoClicker v3.2
 -- Scan-first: detects device + executor, tests every UNC function, THEN picks
 -- the right click method from those results. 50k CPS burst engine. Never crashes.
 -- Fires mouse1click + touchTap simultaneously — works whether a game uses
@@ -22,6 +22,7 @@ local RunSvc    = game:GetService("RunService")
 local UIS       = game:GetService("UserInputService")
 local TweenSvc  = game:GetService("TweenService")
 local Players   = game:GetService("Players")
+local GuiSvc    = game:GetService("GuiService")
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 local function resolve(name)
@@ -75,12 +76,15 @@ for _, n in ipairs({"AutoClickerUI","AutoClickerIntro"}) do
 end
 
 -- ── Burst engine (uses AC._click set after scan) ──────────────────────────────
+local _guiInset = 0
+pcall(function() _guiInset = GuiSvc:GetGuiInset().Y end)
+
 local function cursorOverGui()
     local lp = Players.LocalPlayer
     local pg = lp and lp:FindFirstChildOfClass("PlayerGui")
     if not pg then return false end
     local mp = UIS:GetMouseLocation()
-    local ok, objs = pcall(function() return pg:GetGuiObjectsAtPosition(mp.X, mp.Y - 36) end)
+    local ok, objs = pcall(function() return pg:GetGuiObjectsAtPosition(mp.X, mp.Y - _guiInset) end)
     return ok and objs and #objs > 0
 end
 
@@ -104,6 +108,8 @@ local function burst()
     AC.ClickCount = AC.ClickCount + fired
 end
 
+-- unbind any previous run's binding so re-execute gets the correct early-frame slot
+pcall(function() RunSvc:UnbindFromRenderStep("ACBurst") end)
 local bound = false
 pcall(function()
     RunSvc:BindToRenderStep("ACBurst", Enum.RenderPriority.First.Value - 1, burst)
@@ -136,56 +142,53 @@ local isPad, platform
 -- has(name) → bool: return found[name] during scan, or resolve(name)~=nil on cache hit.
 local function pickClickMethod(pos, isMobile, has)
     local parts, names2 = {}, {}
-    if isMobile then
-        -- ── iPad / Phone ──────────────────────────────────────────────────────
-        -- touch first (native to mobile executor; works for tap-to-block ON)
+
+    -- safe resolve: returns function or nil; never errors
+    local function get(n) return resolve(n) end
+
+    local function addTouch()
         if has"touchTap" then
-            local tt = resolve("touchTap")
-            parts[#parts+1] = function() tt({pos}) end
-            names2[#names2+1] = "touchTap"
+            local tt = get("touchTap")
+            if tt then parts[#parts+1] = function() tt({pos}) end; names2[#names2+1] = "touchTap" end
         elseif has"touchStart" and has"touchEnd" then
-            local ts, te = resolve("touchStart"), resolve("touchEnd")
-            parts[#parts+1] = function() ts({pos}); te({pos}) end
-            names2[#names2+1] = "touchStart/End"
-        end
-        -- mouse on top (tap-to-block OFF still fires click input)
-        if has"mouse1click" then
-            parts[#parts+1] = resolve("mouse1click")
-            names2[#names2+1] = "mouse1click"
-        elseif has"mouse1press" and has"mouse1release" then
-            local mp, mr = resolve("mouse1press"), resolve("mouse1release")
-            parts[#parts+1] = function() mp(); mr() end
-            names2[#names2+1] = "mouse1press/release"
-        end
-    else
-        -- ── PC ────────────────────────────────────────────────────────────────
-        -- mouse first (primary input on PC)
-        if has"mouse1click" then
-            parts[#parts+1] = resolve("mouse1click")
-            names2[#names2+1] = "mouse1click"
-        elseif has"mouse1press" and has"mouse1release" then
-            local mp, mr = resolve("mouse1press"), resolve("mouse1release")
-            parts[#parts+1] = function() mp(); mr() end
-            names2[#names2+1] = "mouse1press/release"
-        elseif has"mouse2click" then
-            parts[#parts+1] = resolve("mouse2click")
-            names2[#names2+1] = "mouse2click"
-        elseif has"mouse2press" and has"mouse2release" then
-            local mp2, mr2 = resolve("mouse2press"), resolve("mouse2release")
-            parts[#parts+1] = function() mp2(); mr2() end
-            names2[#names2+1] = "mouse2press/release"
-        end
-        -- touch on top (covers tap-to-block ON games on PC)
-        if has"touchTap" then
-            local tt = resolve("touchTap")
-            parts[#parts+1] = function() tt({pos}) end
-            names2[#names2+1] = "touchTap"
-        elseif has"touchStart" and has"touchEnd" then
-            local ts, te = resolve("touchStart"), resolve("touchEnd")
-            parts[#parts+1] = function() ts({pos}); te({pos}) end
-            names2[#names2+1] = "touchStart/End"
+            local ts, te = get("touchStart"), get("touchEnd")
+            if ts and te then
+                parts[#parts+1] = function() ts({pos}); te({pos}) end
+                names2[#names2+1] = "touchStart/End"
+            end
         end
     end
+
+    local function addMouse()
+        if has"mouse1click" then
+            local fn = get("mouse1click")
+            if fn then parts[#parts+1] = fn; names2[#names2+1] = "mouse1click" end
+        elseif has"mouse1press" and has"mouse1release" then
+            local mp, mr = get("mouse1press"), get("mouse1release")
+            if mp and mr then
+                parts[#parts+1] = function() mp(); mr() end
+                names2[#names2+1] = "mouse1press/release"
+            end
+        elseif has"mouse2click" then
+            local fn = get("mouse2click")
+            if fn then parts[#parts+1] = fn; names2[#names2+1] = "mouse2click" end
+        elseif has"mouse2press" and has"mouse2release" then
+            local mp2, mr2 = get("mouse2press"), get("mouse2release")
+            if mp2 and mr2 then
+                parts[#parts+1] = function() mp2(); mr2() end
+                names2[#names2+1] = "mouse2press/release"
+            end
+        end
+    end
+
+    if isMobile then
+        addTouch()   -- touch first on iPad/Phone (native to mobile executor)
+        addMouse()   -- mouse on top (covers tap-to-block OFF)
+    else
+        addMouse()   -- mouse first on PC
+        addTouch()   -- touch on top (covers tap-to-block ON)
+    end
+
     -- last resort: VIM (executor has no UNC input functions at all)
     if #parts == 0 then
         local vim = game:GetService("VirtualInputManager")
@@ -224,14 +227,15 @@ do
     -- ── Executor ──────────────────────────────────────────────────────────────
     local execName = "Unknown"
     pcall(function()
+        local G = type(getgenv) == "function" and getgenv() or _G
         local n
-        if identifyexecutor then n = identifyexecutor()
-        elseif getexecutorname then n = getexecutorname()
-        elseif syn   then n = "Synapse X"
-        elseif KRNL_LOADED then n = "KRNL"
-        elseif fluxus then n = "Fluxus"
-        elseif is_sirhurt_closure then n = "SirHurt"
-        elseif type(getgenv) == "function" then n = "Generic (UNC)"
+        if type(G.identifyexecutor) == "function" then n = G.identifyexecutor()
+        elseif type(G.getexecutorname) == "function" then n = G.getexecutorname()
+        elseif G.syn   then n = "Synapse X"
+        elseif G.KRNL_LOADED then n = "KRNL"
+        elseif G.fluxus then n = "Fluxus"
+        elseif type(G.is_sirhurt_closure) == "function" then n = "SirHurt"
+        elseif type(G.getgenv) == "function" then n = "Generic (UNC)"
         end
         if type(n) == "string" and #n > 0 then execName = n end
     end)
@@ -715,7 +719,9 @@ applyVisual()
 
 -- ── Slider logic ──────────────────────────────────────────────────────────────
 local function setFromX(absX)
-    local rel = math.clamp((absX - Track.AbsolutePosition.X) / Track.AbsoluteSize.X, 0, 1)
+    local w = Track.AbsoluteSize.X
+    if w <= 0 then return end
+    local rel = math.clamp((absX - Track.AbsolutePosition.X) / w, 0, 1)
     tw(Fill, 0.07, {Size = UDim2.fromScale(rel,1)}):Play()
     tw(Knob, 0.07, {Position = UDim2.fromScale(rel,0.5)}):Play()
     AC.CPS = math.max(1, math.floor(rel * MAX_CPS))
@@ -793,4 +799,4 @@ task.spawn(function()
     end
 end)
 
-print(("[AutoClicker v3] Ready | %s | [E] to toggle"):format(AC.Method))
+print(("[AutoClicker v3.2] Ready | %s | [E] to toggle"):format(AC.Method))
