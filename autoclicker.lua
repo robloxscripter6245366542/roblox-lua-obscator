@@ -125,6 +125,79 @@ UIS.InputBegan:Connect(function(input, gp)
     end
 end)
 
+-- platform info (set during scan; also used by the cache-hit fallback outside do-block)
+local isPad, platform
+
+-- Picks the right UNC click functions from scan results.
+-- iPad/Phone: touch is primary (mobile executors know touch best).
+-- PC: mouse is primary.
+-- Both layers always fire together so the script works whether a game uses
+-- click-to-block OR tap-to-block (Blade Ball, Anime Ball, etc.) with no setup.
+-- has(name) → bool: return found[name] during scan, or resolve(name)~=nil on cache hit.
+local function pickClickMethod(pos, isMobile, has)
+    local parts, names2 = {}, {}
+    if isMobile then
+        -- ── iPad / Phone ──────────────────────────────────────────────────────
+        -- touch first (native to mobile executor; works for tap-to-block ON)
+        if has"touchTap" then
+            local tt = resolve("touchTap")
+            parts[#parts+1] = function() tt({pos}) end
+            names2[#names2+1] = "touchTap"
+        elseif has"touchStart" and has"touchEnd" then
+            local ts, te = resolve("touchStart"), resolve("touchEnd")
+            parts[#parts+1] = function() ts({pos}); te({pos}) end
+            names2[#names2+1] = "touchStart/End"
+        end
+        -- mouse on top (tap-to-block OFF still fires click input)
+        if has"mouse1click" then
+            parts[#parts+1] = resolve("mouse1click")
+            names2[#names2+1] = "mouse1click"
+        elseif has"mouse1press" and has"mouse1release" then
+            local mp, mr = resolve("mouse1press"), resolve("mouse1release")
+            parts[#parts+1] = function() mp(); mr() end
+            names2[#names2+1] = "mouse1press/release"
+        end
+    else
+        -- ── PC ────────────────────────────────────────────────────────────────
+        -- mouse first (primary input on PC)
+        if has"mouse1click" then
+            parts[#parts+1] = resolve("mouse1click")
+            names2[#names2+1] = "mouse1click"
+        elseif has"mouse1press" and has"mouse1release" then
+            local mp, mr = resolve("mouse1press"), resolve("mouse1release")
+            parts[#parts+1] = function() mp(); mr() end
+            names2[#names2+1] = "mouse1press/release"
+        elseif has"mouse2click" then
+            parts[#parts+1] = resolve("mouse2click")
+            names2[#names2+1] = "mouse2click"
+        elseif has"mouse2press" and has"mouse2release" then
+            local mp2, mr2 = resolve("mouse2press"), resolve("mouse2release")
+            parts[#parts+1] = function() mp2(); mr2() end
+            names2[#names2+1] = "mouse2press/release"
+        end
+        -- touch on top (covers tap-to-block ON games on PC)
+        if has"touchTap" then
+            local tt = resolve("touchTap")
+            parts[#parts+1] = function() tt({pos}) end
+            names2[#names2+1] = "touchTap"
+        elseif has"touchStart" and has"touchEnd" then
+            local ts, te = resolve("touchStart"), resolve("touchEnd")
+            parts[#parts+1] = function() ts({pos}); te({pos}) end
+            names2[#names2+1] = "touchStart/End"
+        end
+    end
+    -- last resort: VIM (executor has no UNC input functions at all)
+    if #parts == 0 then
+        local vim = game:GetService("VirtualInputManager")
+        parts[#parts+1] = function()
+            vim:SendMouseButtonEvent(0,0,0,true,game,0)
+            vim:SendMouseButtonEvent(0,0,0,false,game,0)
+        end
+        names2[#names2+1] = "VirtualInputManager"
+    end
+    return parts, names2
+end
+
 -- ══════════════════════════════════════════════════════════════════════════════
 --  INTRO / SCAN — runs first, then hands off to the main UI
 -- ══════════════════════════════════════════════════════════════════════════════
@@ -136,7 +209,6 @@ do
     -- ── Platform ──────────────────────────────────────────────────────────────
     local isTouch = UIS.TouchEnabled
     local isKbd   = UIS.KeyboardEnabled
-    local platform, isPad
     if isTouch and not isKbd then
         isPad    = minDim >= 700
         platform = isPad and "iPad / Tablet" or "Phone"
@@ -385,52 +457,12 @@ do
         end
         vUNC.TextColor3 = fc > 0 and THEME.On or THEME.Off
 
-        -- 4) determine best click method FROM scan results
+        -- 4) determine best click method FROM scan results (platform-aware)
         Status.Text = "Selecting click method…"
         task.wait(step * 0.6)
 
-        local pos   = getSafePos()
-        local parts, names2 = {}, {}
-
-        -- ALWAYS fire mouse1 input (covers click-to-block games: Blade Ball PC, etc.)
-        if found.mouse1click then
-            parts[#parts+1] = resolve("mouse1click")
-            names2[#names2+1] = "mouse1click"
-        elseif found.mouse1press and found.mouse1release then
-            local mp, mr = resolve("mouse1press"), resolve("mouse1release")
-            parts[#parts+1] = function() mp(); mr() end
-            names2[#names2+1] = "mouse1press/release"
-        elseif found.mouse2click then
-            parts[#parts+1] = resolve("mouse2click")
-            names2[#names2+1] = "mouse2click"
-        elseif found.mouse2press and found.mouse2release then
-            local mp2, mr2 = resolve("mouse2press"), resolve("mouse2release")
-            parts[#parts+1] = function() mp2(); mr2() end
-            names2[#names2+1] = "mouse2press/release"
-        end
-
-        -- ALWAYS fire touch input on top (covers tap-to-block games: Blade Ball Mobile,
-        -- Anime Ball mobile mode, etc.) — firing both means the script works regardless
-        -- of whether the game reads mouse or touch for its block/action mechanic.
-        if found.touchTap then
-            local tt = resolve("touchTap")
-            parts[#parts+1] = function() tt({pos}) end
-            names2[#names2+1] = "touchTap"
-        elseif found.touchStart and found.touchEnd then
-            local ts, te = resolve("touchStart"), resolve("touchEnd")
-            parts[#parts+1] = function() ts({pos}); te({pos}) end
-            names2[#names2+1] = "touchStart/End"
-        end
-
-        -- last resort: VIM (if executor provides no UNC input functions at all)
-        if #parts == 0 then
-            local vim = game:GetService("VirtualInputManager")
-            parts[#parts+1] = function()
-                vim:SendMouseButtonEvent(0,0,0,true,game,0)
-                vim:SendMouseButtonEvent(0,0,0,false,game,0)
-            end
-            names2[#names2+1] = "VirtualInputManager"
-        end
+        local pos = getSafePos()
+        local parts, names2 = pickClickMethod(pos, isPad, function(n) return found[n] end)
 
         -- wire up AC._click from scan results
         if #parts == 1 then
@@ -467,33 +499,10 @@ do
 end
 
 -- if cache was hit, _click still needs to be wired (no scan ran)
+-- uses the same platform-aware pickClickMethod so iPad vs PC priority is respected
 if not AC._click then
     local pos = getSafePos()
-    local function r(n) return resolve(n) end
-    local parts, names2 = {}, {}
-    -- mouse input (click-to-block games)
-    if r"mouse1click" then parts[#parts+1]=r"mouse1click"; names2[#names2+1]="mouse1click"
-    elseif r"mouse1press" and r"mouse1release" then
-        local mp,mr=r"mouse1press",r"mouse1release"
-        parts[#parts+1]=function() mp();mr() end; names2[#names2+1]="mouse1press/release"
-    elseif r"mouse2click" then parts[#parts+1]=r"mouse2click"; names2[#names2+1]="mouse2click"
-    elseif r"mouse2press" and r"mouse2release" then
-        local mp2,mr2=r"mouse2press",r"mouse2release"
-        parts[#parts+1]=function() mp2();mr2() end; names2[#names2+1]="mouse2press/release"
-    end
-    -- touch input on top (tap-to-block games — fires simultaneously with mouse)
-    if r"touchTap" then
-        local tt=r"touchTap"; parts[#parts+1]=function() tt({pos}) end; names2[#names2+1]="touchTap"
-    elseif r"touchStart" and r"touchEnd" then
-        local ts,te=r"touchStart",r"touchEnd"
-        parts[#parts+1]=function() ts({pos});te({pos}) end; names2[#names2+1]="touchStart/End"
-    end
-    -- last resort
-    if #parts==0 then
-        local vim=game:GetService("VirtualInputManager")
-        parts[1]=function() vim:SendMouseButtonEvent(0,0,0,true,game,0); vim:SendMouseButtonEvent(0,0,0,false,game,0) end
-        names2[1]="VirtualInputManager"
-    end
+    local parts, names2 = pickClickMethod(pos, isPad, function(n) return resolve(n) ~= nil end)
     AC._click = #parts==1 and parts[1] or function() for i=1,#parts do parts[i]() end end
     AC.Method  = table.concat(names2," + ")
 end
