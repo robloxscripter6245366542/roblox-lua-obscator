@@ -1,1 +1,1 @@
-loadstring(game:HttpGet("https://raw.githubusercontent.com/IndraT99/RobloxScript/refs/heads/main/IndraHub_Lite.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/IndraHub_Lite.lua"))()
