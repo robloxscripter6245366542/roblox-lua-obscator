@@ -985,11 +985,35 @@ end)
 -- ═══════════════════════════════════════════════════════════════
 local tracker = BallTracker.new()
 
+-- ── BallAdded remote: server notifies us the instant a ball spawns,
+--    before it even appears in workspace.Balls — earliest possible tracking
+local function connectBallAdded()
+    local ok, remote = pcall(function()
+        return RepStor:WaitForChild("Remotes", 10)
+                      :WaitForChild("BallAdded", 10)
+    end)
+    if not (ok and remote) then return end
+
+    remote.OnClientEvent:Connect(function(ball, ...)
+        if typeof(ball) == "Instance" then
+            -- track immediately — don't defer, we want this ASAP
+            tracker:track(ball)
+            -- also reset parry state in case this replaces a previous ball
+            local state = tracker.states[ball]
+            if state then state.fired = false end
+        end
+    end)
+end
+
+task.spawn(connectBallAdded)
+
+-- ── workspace.Balls watcher (fallback + cleanup)
 local ballsFolder = WS:FindFirstChild("Balls") or WS:WaitForChild("Balls", 30)
 if ballsFolder then
     for _, b in ipairs(ballsFolder:GetChildren()) do tracker:track(b) end
     ballsFolder.ChildAdded:Connect(function(b)
-        task.defer(function() tracker:track(b) end)
+        -- BallAdded remote may have already tracked it; track() is idempotent
+        tracker:track(b)
     end)
     ballsFolder.ChildRemoved:Connect(function(b)
         tracker:untrack(b)
