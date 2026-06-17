@@ -278,6 +278,83 @@ do
 end
 
 -- ═══════════════════════════════════════════════════════════════
+--  REPLION INTEGRATION  (server-authoritative state sync)
+--  Fires before attribute changes reach the client — gives us
+--  the earliest possible warning when the ball targets us.
+-- ═══════════════════════════════════════════════════════════════
+local Replion = {
+    onTargetChanged = Signal.new(),   -- (ballId, newTarget)
+    onStateChanged  = Signal.new(),   -- (path, value)
+    log             = {},
+    maxLog          = 60,
+}
+
+local REPLION_PATH = {"Packages", "_Index", "ytrev_replion@2.0.0-rc.1", "replion", "Remotes", "Update"}
+
+local function getReplionRemote()
+    local ok, remote = pcall(function()
+        local root = RepStor
+        for _, key in ipairs(REPLION_PATH) do
+            root = root[key]
+        end
+        return root
+    end)
+    return ok and remote or nil
+end
+
+task.spawn(function()
+    -- wait for ReplicatedStorage to be fully populated
+    task.wait(2)
+    local remote = getReplionRemote()
+    if not (remote and remote:IsA("RemoteEvent")) then
+        -- fallback: scan for any remote named "Update" inside Packages
+        local pkgs = RepStor:FindFirstChild("Packages")
+        if pkgs then
+            for _, desc in ipairs(pkgs:GetDescendants()) do
+                if desc:IsA("RemoteEvent") and desc.Name == "Update" then
+                    remote = desc
+                    break
+                end
+            end
+        end
+    end
+    if not remote then return end
+
+    remote.OnClientEvent:Connect(function(channel, path, value)
+        -- log every Replion update
+        local entry = { channel=tostring(channel), path=path, value=value, t=os.clock() }
+        table.insert(Replion.log, entry)
+        if #Replion.log > Replion.maxLog then table.remove(Replion.log, 1) end
+
+        Replion.onStateChanged:Fire(path, value)
+
+        -- detect ball target change: path typically contains "target" key
+        -- value is the player name being targeted
+        local pathStr = tostring(path)
+        if pathStr:lower():find("target") or pathStr:lower():find("ball") then
+            if type(value) == "string" then
+                Replion.onTargetChanged:Fire(channel, value)
+            end
+        end
+
+        -- detect target in table/dict form
+        if type(value) == "table" then
+            local tgt = value.target or value.Target or value.targetPlayer
+            if tgt then
+                Replion.onTargetChanged:Fire(channel, tgt)
+            end
+        end
+    end)
+end)
+
+-- when Replion tells us WE are targeted: pre-arm parry state
+Replion.onTargetChanged:Connect(function(_, newTarget)
+    if newTarget == lp.Name then
+        _G.WindHub_ReplionTargeted = os.clock()
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════
 --  REMOTE SPY  (RemoteEvent + RemoteFunction)
 -- ═══════════════════════════════════════════════════════════════
 local RemoteSpy = {
@@ -969,10 +1046,17 @@ RS.PreSimulation:Connect(function()
     -- ── AUTO-PARRY ──────────────────────────────────────────────
     if Config.autoParry and not parryBusy then
         local threat, eta = tracker:bestThreat()
+
+        -- Replion pre-arm: if server just targeted us (<150ms ago) and
+        -- we have a closing ball, treat as Ultra regardless of mode
+        local replionRecent = _G.WindHub_ReplionTargeted
+            and (os.clock() - _G.WindHub_ReplionTargeted) < 0.15
+
         if threat then
             local win = PingComp:effectiveWindow()
             local mode = Config.parryMode
-            local fire = (mode == "Ultra")
+            local fire = replionRecent
+                or (mode == "Ultra")
                 or (mode == "Predictive"    and eta <= win)
                 or (mode == "Conservative"  and eta <= win * 0.55)
 
