@@ -355,6 +355,84 @@ Replion.onTargetChanged:Connect(function(_, newTarget)
 end)
 
 -- ═══════════════════════════════════════════════════════════════
+--  GAME REMOTE HOOKS  (all known Blade Ball remotes)
+--  ReplicatedStorage.Remotes.*
+-- ═══════════════════════════════════════════════════════════════
+local GameRemotes = {
+    onParryAttempt  = Signal.new(),   -- any player attempted parry
+    onParrySuccess  = Signal.new(),   -- server confirmed parry
+    onBallExplode   = Signal.new(),   -- ball destroyed
+    onStandoffStart = Signal.new(),   -- standoff mode began
+    onCooldownEnd   = Signal.new(),   -- SecondaryEndCD
+    onDisableReaper = Signal.new(),   -- reaper disabled
+    connected       = {},
+}
+
+local REMOTE_HANDLERS = {
+    ParryAttemptAll = function(...)
+        GameRemotes.onParryAttempt:Fire(...)
+    end,
+    ParrySuccessAll = function(player, ...)
+        GameRemotes.onParrySuccess:Fire(player, ...)
+        -- if WE successfully parried, log the exact server-confirmed time
+        if typeof(player) == "Instance" and player == lp then
+            _G.WindHub_LastSuccessAt = os.clock()
+        end
+        if type(player) == "string" and player == lp.Name then
+            _G.WindHub_LastSuccessAt = os.clock()
+        end
+    end,
+    BallExplode = function(ball, ...)
+        GameRemotes.onBallExplode:Fire(ball, ...)
+        -- immediately untrack — ball is dead
+        if typeof(ball) == "Instance" then
+            _G.WindHub_ExplodedBalls = _G.WindHub_ExplodedBalls or {}
+            _G.WindHub_ExplodedBalls[ball] = true
+        end
+    end,
+    StandoffStart = function(...)
+        GameRemotes.onStandoffStart:Fire(...)
+        -- switch to Ultra mode during standoff (faster reaction needed)
+        _G.WindHub_Standoff = true
+        task.delay(30, function() _G.WindHub_Standoff = false end)
+    end,
+    SecondaryEndCD = function(...)
+        GameRemotes.onCooldownEnd:Fire(...)
+        _G.WindHub_SecondaryReady = true
+    end,
+    DisableReaper = function(...)
+        GameRemotes.onDisableReaper:Fire(...)
+    end,
+    BallAdded = function(ball, ...)
+        -- handled separately in INIT, but also fire here for listeners
+        if typeof(ball) == "Instance" then
+            _G.WindHub_LatestBall = ball
+        end
+    end,
+}
+
+task.spawn(function()
+    local remotes = RepStor:WaitForChild("Remotes", 15)
+    if not remotes then return end
+    for name, handler in pairs(REMOTE_HANDLERS) do
+        local ok, remote = pcall(function()
+            return remotes:WaitForChild(name, 10)
+        end)
+        if ok and remote and remote:IsA("RemoteEvent") then
+            remote.OnClientEvent:Connect(handler)
+            GameRemotes.connected[name] = true
+        end
+    end
+end)
+
+-- integrate standoff → auto-switch parry mode
+RS.Heartbeat:Connect(function()
+    if _G.WindHub_Standoff and Config.parryMode ~= "Ultra" then
+        Config.parryMode = "Ultra"
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════
 --  REMOTE SPY  (RemoteEvent + RemoteFunction)
 -- ═══════════════════════════════════════════════════════════════
 local RemoteSpy = {
@@ -566,7 +644,8 @@ function BallTracker:updateFrame(hrp, now)
     self.queue:clear()
 
     for ball, state in pairs(self.states) do
-        if not (ball and ball.Parent) then
+        local exploded = _G.WindHub_ExplodedBalls and _G.WindHub_ExplodedBalls[ball]
+        if exploded or not (ball and ball.Parent) then
             self.states[ball] = nil
             continue
         end
