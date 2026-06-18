@@ -15,17 +15,6 @@
 --  NO KEY SYSTEM. Loads WindHub automatically every game.
 -- ============================================================
 
--- Only run in Blade Ball (place ID check)
--- Remove the if/end below to run in ALL games
-local BLADE_BALL_PLACE = 13772394625
-local ok, placeId = pcall(function()
-    return game.PlaceId
-end)
-if not ok or (placeId ~= BLADE_BALL_PLACE and placeId ~= 0) then
-    -- Not Blade Ball — skip silently
-    return
-end
-
 -- Wait for game to be ready (important for autoexec)
 if not game:IsLoaded() then
     game.Loaded:Wait()

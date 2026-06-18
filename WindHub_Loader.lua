@@ -9,6 +9,8 @@
 --  NO KEY SYSTEM. Just paste and run.
 -- ============================================================
 
+warn("[WindHub Loader] Starting...")
+
 -- Primary: Vercel CDN (fast, reliable, no GitHub rate limits)
 -- Fallback: raw.githubusercontent.com
 local URLS = {
@@ -29,8 +31,8 @@ local function toast(msg, col)
             end)
         end
         local f = Instance.new("Frame", sg)
-        f.Size = UDim2.new(0, 400, 0, 58)
-        f.Position = UDim2.new(0.5, -200, 0, 14)
+        f.Size = UDim2.new(0, 420, 0, 64)
+        f.Position = UDim2.new(0.5, -210, 0, 14)
         f.BackgroundColor3 = Color3.fromRGB(10, 10, 16)
         f.BorderSizePixel = 0
         Instance.new("UICorner", f).CornerRadius = UDim.new(0, 9)
@@ -43,21 +45,21 @@ local function toast(msg, col)
         t.BackgroundTransparency = 1
         t.TextColor3 = col or Color3.fromRGB(80, 200, 255)
         t.Font = Enum.Font.GothamBold
-        t.TextSize = 13
+        t.TextSize = 12
         t.TextXAlignment = Enum.TextXAlignment.Left
         t.TextWrapped = true
         t.Text = "WindHub v6.0  |  " .. msg
-        game:GetService("Debris"):AddItem(sg, 5)
+        game:GetService("Debris"):AddItem(sg, 8)
     end)
 end
 
--- HTTP fetch — tries each URL with multiple methods
+-- HTTP fetch -- tries each URL with multiple methods
 local function fetchURL(url)
     local body = nil
 
     -- Method 1: game:HttpGet
     pcall(function()
-        local r = game:HttpGet(url, true)
+        local r = game:HttpGet(url)
         if r and #r > 500 then body = r end
     end)
     if body then return body end
@@ -78,7 +80,7 @@ local function fetchURL(url)
 
     -- Method 3: HttpService:GetAsync
     pcall(function()
-        local r = game:GetService("HttpService"):GetAsync(url, true)
+        local r = game:GetService("HttpService"):GetAsync(url)
         if r and #r > 500 then body = r end
     end)
 
@@ -109,21 +111,27 @@ if not body or #body < 500 then
 end
 
 local kb = math.floor(#body / 1024)
-toast("Downloaded " .. kb .. " KB — compiling...", Color3.fromRGB(80, 200, 120))
+toast("Downloaded " .. kb .. " KB - compiling...", Color3.fromRGB(80, 200, 120))
+warn("[WindHub] Downloaded " .. kb .. " KB, compiling...")
 
 -- Compile
 local fn, compErr = loadstring(body)
 if not fn then
-    toast("Compile error — check console output!", Color3.fromRGB(255, 60, 60))
-    warn("[WindHub] Compile error: " .. tostring(compErr))
+    local errMsg = tostring(compErr)
+    -- Show first 120 chars of error in toast so user can see it without console
+    local shortErr = errMsg:sub(1, 120)
+    toast("Compile ERROR: " .. shortErr, Color3.fromRGB(255, 60, 60))
+    warn("[WindHub] COMPILE ERROR: " .. errMsg)
     return
 end
 
 toast("Launching WindHub v6.0...", Color3.fromRGB(80, 200, 120))
+warn("[WindHub] Compiled OK, launching...")
 
 -- Execute
 local ran, runErr = pcall(fn)
 if not ran then
-    toast("Runtime error — check console output!", Color3.fromRGB(255, 60, 60))
-    warn("[WindHub] Runtime error: " .. tostring(runErr))
+    local errMsg = tostring(runErr)
+    toast("Runtime ERROR: " .. errMsg:sub(1, 120), Color3.fromRGB(255, 60, 60))
+    warn("[WindHub] RUNTIME ERROR: " .. errMsg)
 end
