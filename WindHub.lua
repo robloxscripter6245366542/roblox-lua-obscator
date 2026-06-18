@@ -2812,6 +2812,7 @@ local GameRemotes = {
     onBallAdded      = Signal.new(),
     onPlayerDied     = Signal.new(),
     onWinnerText     = Signal.new(),
+    onSetMessage     = Signal.new(),
     connected        = {},
 }
 
@@ -2926,12 +2927,22 @@ local REMOTE_DEFS = {
         name    = "WinnerText",
         handler = function(winnerName, ...)
             GameRemotes.onWinnerText:Fire(winnerName, ...)
-            -- Track round winner for session analytics
             if type(winnerName) == "string" then
                 _G._WindHub_LastWinner = { name = winnerName, t = os.clock() }
                 if winnerName == lp.Name then
                     _G.WindHub_WinsThisSession = (_G.WindHub_WinsThisSession or 0) + 1
                 end
+            end
+        end,
+    },
+    {
+        name    = "SetMessage",
+        handler = function(msg, ...)
+            -- Cobalt confirmed: SetMessage fires server-side UI text to all clients
+            -- (game state announcements like "Standoff!", "Round starting", etc.)
+            GameRemotes.onSetMessage:Fire(msg, ...)
+            if type(msg) == "string" then
+                _G._WindHub_LastServerMsg = { text = msg, t = os.clock() }
             end
         end,
     },
@@ -2994,7 +3005,7 @@ if EX.hook and EX.conns then
             -- Core Remotes folder
             local coreFld = RepStor:FindFirstChild("Remotes")
             if coreFld then
-                for _, name in ipairs({ "BallAdded", "ParrySuccessAll", "ParryAttemptAll", "BallExplode", "StandoffStart", "StandoffEnd", "SecondaryEndCD", "DisableReaper", "WinnerText" }) do
+                for _, name in ipairs({ "BallAdded", "ParrySuccessAll", "ParryAttemptAll", "BallExplode", "StandoffStart", "StandoffEnd", "SecondaryEndCD", "DisableReaper", "WinnerText", "SetMessage" }) do
                     local r = coreFld:FindFirstChild(name)
                     if r and r:IsA("RemoteEvent") then _hookRemoteEvent(r, name) end
                 end
