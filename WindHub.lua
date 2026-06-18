@@ -422,6 +422,28 @@ do
         missing_important= missing_important,
         missing_optional = missing_optional,
     }
+
+    -- Fire a clickable toast once UI is ready (at ~1.5s)
+    if not all_ok then
+        task.spawn(function()
+            task.wait(2)
+            if not UI.notify then return end
+            local detailLines = {}
+            for _, l in ipairs(missing_critical)  do table.insert(detailLines, "[CRIT] " .. l:gsub("^%s+","")) end
+            for _, l in ipairs(missing_important) do table.insert(detailLines, "[WARN] " .. l:gsub("^%s+","")) end
+            for _, l in ipairs(missing_optional)  do table.insert(detailLines, "[INFO] " .. l:gsub("^%s+","")) end
+            local crit = #missing_critical
+            UI.notify({
+                title    = crit > 0 and "UNC Missing — Parry Hook Disabled" or "UNC Partially Missing",
+                text     = crit > 0
+                    and (crit .. " critical function(s) missing. Tap to see list.")
+                    or  (#missing_important .. " important function(s) missing. Tap to see list."),
+                kind     = crit > 0 and "bad" or "warn",
+                duration = 12,
+                detail   = table.concat(detailLines, "\n"),
+            })
+        end)
+    end
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -5598,27 +5620,39 @@ mk("UIListLayout", {
 
 function UI.notify(opts)
     opts = opts or {}
-    local title = opts.title or "WindHub"
-    local msg   = opts.text or ""
-    local dur   = opts.duration or 3
-    local kind  = opts.kind or "info"
+    local title    = opts.title or "WindHub"
+    local msg      = opts.text or ""
+    local dur      = opts.duration or 3
+    local kind     = opts.kind or "info"
+    local detail   = opts.detail   -- optional multi-line detail shown on click
+    local onClick  = opts.onClick  -- optional callback
+
     local accentCol = (kind == "good" and UI.Theme.Good)
         or (kind == "warn" and UI.Theme.Warn)
         or (kind == "bad" and UI.Theme.Bad)
         or UI.Theme.Accent
 
-    local toast = mk("Frame", {
+    local hasDetail = (detail and #detail > 0) or (type(onClick) == "function")
+
+    -- outer clickable button so the whole toast is tappable
+    local toastBtn = mk("TextButton", {
         Parent = toastHolder,
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundColor3 = UI.Theme.BgLight,
         BorderSizePixel = 0,
         BackgroundTransparency = 1,
+        Text = "",
+        AutoButtonColor = false,
         ZIndex = 51,
     })
+    local toast = toastBtn   -- alias so rest of code stays the same
+
     corner(toast, 10)
     stroke(toast, UI.Theme.Stroke, 1, 0.2)
-    local accent = mk("Frame", {
+
+    -- coloured left accent bar
+    local accentBar = mk("Frame", {
         Parent = toast,
         Size = UDim2.new(0, 4, 1, -12),
         Position = UDim2.new(0, 6, 0, 6),
@@ -5626,10 +5660,11 @@ function UI.notify(opts)
         BorderSizePixel = 0,
         ZIndex = 52,
     })
-    corner(accent, 2)
+    corner(accentBar, 2)
+
     mk("TextLabel", {
         Parent = toast,
-        Size = UDim2.new(1, -28, 0, 16),
+        Size = UDim2.new(1, -46, 0, 16),
         Position = UDim2.new(0, 18, 0, 8),
         BackgroundTransparency = 1,
         Text = title,
@@ -5641,7 +5676,7 @@ function UI.notify(opts)
     })
     mk("TextLabel", {
         Parent = toast,
-        Size = UDim2.new(1, -28, 0, 0),
+        Size = UDim2.new(1, -46, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         Position = UDim2.new(0, 18, 0, 24),
         BackgroundTransparency = 1,
@@ -5653,6 +5688,41 @@ function UI.notify(opts)
         TextWrapped = true,
         ZIndex = 52,
     })
+    -- "tap to expand" hint when detail is present
+    if hasDetail then
+        mk("TextLabel", {
+            Parent = toast,
+            Size = UDim2.new(0, 26, 0, 14),
+            Position = UDim2.new(1, -32, 0, 8),
+            BackgroundTransparency = 1,
+            Text = "▼",
+            Font = Enum.Font.Gotham,
+            TextSize = 10,
+            TextColor3 = accentCol,
+            ZIndex = 52,
+        })
+    end
+
+    -- expandable detail frame (hidden by default)
+    local detailFrame = nil
+    if hasDetail then
+        detailFrame = mk("TextLabel", {
+            Parent = toast,
+            Size = UDim2.new(1, -28, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            Position = UDim2.new(0, 18, 0, 44),
+            BackgroundTransparency = 1,
+            Text = detail or "",
+            Font = Enum.Font.Code,
+            TextSize = 10,
+            TextColor3 = accentCol,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextWrapped = true,
+            Visible = false,
+            ZIndex = 52,
+        })
+    end
+
     -- pad bottom
     mk("Frame", {
         Parent = toast,
@@ -5660,6 +5730,23 @@ function UI.notify(opts)
         Position = UDim2.new(0, 0, 1, 0),
         BackgroundTransparency = 1,
     })
+
+    -- click handler: expand detail or fire callback
+    local _expanded = false
+    toastBtn.MouseButton1Click:Connect(function()
+        if onClick then pcall(onClick) end
+        if detailFrame then
+            _expanded = not _expanded
+            detailFrame.Visible = _expanded
+        end
+    end)
+    -- hover highlight
+    toastBtn.MouseEnter:Connect(function()
+        if hasDetail then tween(toast, { BackgroundColor3 = UI.Theme.Stroke }, 0.12) end
+    end)
+    toastBtn.MouseLeave:Connect(function()
+        tween(toast, { BackgroundColor3 = UI.Theme.BgLight }, 0.12)
+    end)
 
     -- slide-in
     toast.Position = UDim2.new(1, 20, 0, 0)
@@ -5673,6 +5760,7 @@ function UI.notify(opts)
     end
 
     task.delay(dur, function()
+        if _expanded then return end   -- don't dismiss while user is reading detail
         tween(toast, { BackgroundTransparency = 1, Position = UDim2.new(1, 20, 0, 0) }, 0.25)
         for _, d in ipairs(toast:GetDescendants()) do
             if d:IsA("TextLabel") then tween(d, { TextTransparency = 1 }, 0.25) end
@@ -5680,6 +5768,8 @@ function UI.notify(opts)
         end
         task.delay(0.3, function() pcall(function() toast:Destroy() end) end)
     end)
+
+    return toast
 end
 
 
