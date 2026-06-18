@@ -4543,6 +4543,43 @@ end)
 if not screen.Parent then screen.Parent = CoreGui end
 UI.screen = screen
 
+-- ── Startup toast (always visible, confirms script loaded) ──
+task.spawn(function()
+    task.wait(0.2)
+    pcall(function()
+        local toastGui = Instance.new("ScreenGui")
+        toastGui.Name = "WindHubStartup"
+        toastGui.ResetOnSpawn = false
+        toastGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        toastGui.DisplayOrder = 99998
+        pcall(function() toastGui.Parent = CoreGui end)
+        if not toastGui.Parent then
+            toastGui.Parent = game:GetService("Players").LocalPlayer.PlayerGui
+        end
+        local f = Instance.new("Frame", toastGui)
+        f.Size = UDim2.new(0, 320, 0, 52)
+        f.Position = UDim2.new(0.5, -160, 0, 10)
+        f.BackgroundColor3 = Color3.fromRGB(12, 14, 22)
+        f.BorderSizePixel = 0
+        Instance.new("UICorner", f).CornerRadius = UDim.new(0, 9)
+        local s = Instance.new("UIStroke", f)
+        s.Color = Color3.fromRGB(94, 132, 255)
+        s.Thickness = 1.5
+        local t = Instance.new("TextLabel", f)
+        t.Size = UDim2.new(1, -14, 1, 0)
+        t.Position = UDim2.new(0, 7, 0, 0)
+        t.BackgroundTransparency = 1
+        t.Font = Enum.Font.GothamBold
+        t.TextSize = 14
+        t.TextColor3 = Color3.fromRGB(120, 180, 255)
+        t.TextXAlignment = Enum.TextXAlignment.Left
+        t.TextWrapped = true
+        t.RichText = true
+        t.Text = "<b>WindHub v6.0</b> loaded  |  Click <b>Console</b> tab for output"
+        game:GetService("Debris"):AddItem(toastGui, 6)
+    end)
+end)
+
 -- ── Window sizing (responsive for mobile vs PC) ───────────
 local isMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled
 UI.isMobile    = isMobile
@@ -8540,8 +8577,16 @@ end
 task.spawn(function()
     task.wait(0.8)
     _buildConsoleUI()
-    Console.good("WindHub v6.0 console ready")
-    Console.info("Type 'help' for available commands")
+    -- Replay any messages buffered before the UI was ready
+    Console.rebuild()
+    Console.good("WindHub v6.0 loaded on " .. (ExecName ~= "unknown" and ExecName or "executor"))
+    Console.info("Click the Console tab in the sidebar to see logs")
+    Console.info("Type 'help' in the input box below for all commands")
+    -- Auto-activate the console tab so user sees output immediately
+    local consoleTab = UI._tabs[#UI._tabs]
+    if consoleTab and consoleTab.activate then
+        consoleTab.activate()
+    end
 end)
 
 -- Forward all print() calls to the console too.
