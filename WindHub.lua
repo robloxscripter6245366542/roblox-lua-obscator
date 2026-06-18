@@ -1316,7 +1316,33 @@ local function _isBall(obj)
     local ok6, nm  = pcall(function() return obj.Name end)
     if ok6 and nm  and nm:lower():find("ball") then return true end
 
+    -- Blade Ball: ball part is a numeric-named nil instance (e.g. "439").
+    -- Cobalt confirmed: BallAdded fires with a nil-parented BasePart named "439".
+    -- Accept any nil-parented BasePart whose name is a pure integer.
+    local ok7, par = pcall(function() return obj.Parent end)
+    if ok7 and par == nil and ok6 and nm and nm:match("^%d+$") then return true end
+
     return false
+end
+
+-- ── §10.7b  GetNil — targeted nil-instance lookup (Cobalt pattern) ─────────
+--  Finds a specific nil-parented instance by Name + DebugId.
+--  Used as a direct complement to the BallAdded remote: the server fires
+--  BallAdded and the argument IS the nil instance, but this helper lets
+--  us verify or re-fetch it when needed.
+local function GetNil(name, debugId)
+    if not EX.nil_ then return nil end
+    local found = nil
+    pcall(function()
+        for _, obj in ipairs(EF.getnilinstances()) do
+            local okN, n = pcall(function() return obj.Name end)
+            local okD, d = pcall(function() return obj:GetDebugId() end)
+            if okN and okD and n == name and d == debugId then
+                found = obj
+            end
+        end
+    end)
+    return found
 end
 
 -- ── §10.8  New Ball Handler ───────────────────────────────────────────────
@@ -2846,16 +2872,12 @@ local REMOTE_DEFS = {
         name    = "BallAdded",
         handler = function(ball, ...)
             GameRemotes.onBallAdded:Fire(ball, ...)
-            if typeof(ball) == "Instance" then
-                _G.WindHub_LatestBall = ball
-                -- Track via MemScanner to deduplicate with GC scan
-                if not MemScanner._seen[ball] then
-                    MemScanner._seen[ball] = true
-                    if _G._WindTracker then
-                        _G._WindTracker:track(ball)
-                    end
-                end
-            end
+            if typeof(ball) ~= "Instance" then return end
+            _G.WindHub_LatestBall = ball
+            -- Route through _onBallFound so nil-parented balls (Cobalt pattern:
+            -- BallAdded fires with a nil-parent Part named "439") get the
+            -- AncestryChanged pre-arm and all MemScanner callbacks fire correctly.
+            _onBallFound(ball, _G._WindTracker)
         end,
     },
 }
