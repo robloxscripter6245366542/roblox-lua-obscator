@@ -2813,6 +2813,7 @@ local GameRemotes = {
     onPlayerDied     = Signal.new(),
     onWinnerText     = Signal.new(),
     onSetMessage     = Signal.new(),
+    onPlrDashed      = Signal.new(),
     connected        = {},
 }
 
@@ -2946,6 +2947,24 @@ local REMOTE_DEFS = {
             end
         end,
     },
+    {
+        name    = "PlrDashed",
+        handler = function(player, ...)
+            -- Cobalt confirmed: PlrDashed fires when any player uses their dash ability.
+            -- Tracking dashes is critical for parry prediction — a dashing player's
+            -- position changes instantly, invalidating in-flight ETA calculations.
+            GameRemotes.onPlrDashed:Fire(player, ...)
+            if typeof(player) == "Instance" then
+                _G._WindHub_LastDash = _G._WindHub_LastDash or {}
+                _G._WindHub_LastDash[player] = os.clock()
+                -- If the local player just dashed, flag it so the parry engine
+                -- can recalculate target position on the next heartbeat.
+                if player == lp then
+                    _G.WindHub_LocalDashedAt = os.clock()
+                end
+            end
+        end,
+    },
 }
 
 task.spawn(function()
@@ -3005,7 +3024,7 @@ if EX.hook and EX.conns then
             -- Core Remotes folder
             local coreFld = RepStor:FindFirstChild("Remotes")
             if coreFld then
-                for _, name in ipairs({ "BallAdded", "ParrySuccessAll", "ParryAttemptAll", "BallExplode", "StandoffStart", "StandoffEnd", "SecondaryEndCD", "DisableReaper", "WinnerText", "SetMessage" }) do
+                for _, name in ipairs({ "BallAdded", "ParrySuccessAll", "ParryAttemptAll", "BallExplode", "StandoffStart", "StandoffEnd", "SecondaryEndCD", "DisableReaper", "WinnerText", "SetMessage", "PlrDashed" }) do
                     local r = coreFld:FindFirstChild(name)
                     if r and r:IsA("RemoteEvent") then _hookRemoteEvent(r, name) end
                 end
