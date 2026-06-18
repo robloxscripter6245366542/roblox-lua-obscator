@@ -4762,6 +4762,79 @@ local function headerBtn(name, txt, xOff, col)
 end
 local btnClose = headerBtn("Close", "✕", -34, UI.Theme.Bad)
 local btnMin   = headerBtn("Min", "—", -64, UI.Theme.Warn)
+local btnZoom  = headerBtn("Zoom", "⊕", -96, UI.Theme.Accent)
+
+-- ── Zoom / scale system ───────────────────────────────────
+local ZOOM_LEVELS = { 1.0, 1.25, 1.5, 2.0 }
+local ZOOM_LABELS = { "1x", "1.25x", "1.5x", "2x" }
+local _zoomIdx = 1   -- current level index
+
+local function applyZoom(idx)
+    local scale = ZOOM_LEVELS[idx]
+    local scaledW = math.floor(winW * scale)
+    local scaledH = math.floor(winH * scale)
+    springTween(window, { Size = UDim2.new(0, scaledW, 0, scaledH) }, 0.35)
+    btnZoom.Text = ZOOM_LABELS[idx]
+    -- also scale fonts slightly for readability at large sizes
+    pcall(function()
+        if UI.statusLeft  then UI.statusLeft.TextSize  = math.floor(10 * math.min(scale, 1.5)) end
+        if UI.statusRight then UI.statusRight.TextSize = math.floor(10 * math.min(scale, 1.5)) end
+    end)
+end
+
+btnZoom.MouseButton1Click:Connect(function()
+    _zoomIdx = (_zoomIdx % #ZOOM_LEVELS) + 1
+    applyZoom(_zoomIdx)
+    UI.notify({
+        title = "Zoom",
+        text  = "Window scaled to " .. ZOOM_LABELS[_zoomIdx],
+        kind  = "info",
+        duration = 1.2,
+    })
+end)
+
+-- Pinch-to-zoom on mobile
+if isMobile then
+    local _pinchDist = nil
+    local _pinchStartScale = 1.0
+    UIS.TouchStarted:Connect(function(t)
+        local touches = UIS:GetTouches()
+        if #touches == 2 then
+            local p1 = touches[1].Position
+            local p2 = touches[2].Position
+            _pinchDist = (p1 - p2).Magnitude
+            _pinchStartScale = ZOOM_LEVELS[_zoomIdx]
+        end
+    end)
+    UIS.TouchMoved:Connect(function()
+        local touches = UIS:GetTouches()
+        if #touches == 2 and _pinchDist and _pinchDist > 0 then
+            local p1 = touches[1].Position
+            local p2 = touches[2].Position
+            local newDist = (p1 - p2).Magnitude
+            local ratio = newDist / _pinchDist
+            local targetScale = math.clamp(_pinchStartScale * ratio, 0.75, 2.5)
+            local scaledW = math.floor(winW * targetScale)
+            local scaledH = math.floor(winH * targetScale)
+            window.Size = UDim2.new(0, scaledW, 0, scaledH)
+        end
+    end)
+    UIS.TouchEnded:Connect(function()
+        local touches = UIS:GetTouches()
+        if #touches < 2 then
+            _pinchDist = nil
+            -- snap to nearest zoom level
+            local curW = window.Size.X.Offset
+            local bestIdx, bestDiff = 1, math.huge
+            for i, lvl in ipairs(ZOOM_LEVELS) do
+                local diff = math.abs(winW * lvl - curW)
+                if diff < bestDiff then bestDiff = diff; bestIdx = i end
+            end
+            _zoomIdx = bestIdx
+            applyZoom(_zoomIdx)
+        end
+    end)
+end
 
 
 -- ── Tab sidebar ───────────────────────────────────────────
