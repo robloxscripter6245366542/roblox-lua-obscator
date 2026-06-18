@@ -423,27 +423,8 @@ do
         missing_optional = missing_optional,
     }
 
-    -- Fire a clickable toast once UI is ready (at ~1.5s)
-    if not all_ok then
-        task.spawn(function()
-            task.wait(2)
-            if not UI.notify then return end
-            local detailLines = {}
-            for _, l in ipairs(missing_critical)  do table.insert(detailLines, "[CRIT] " .. l:gsub("^%s+","")) end
-            for _, l in ipairs(missing_important) do table.insert(detailLines, "[WARN] " .. l:gsub("^%s+","")) end
-            for _, l in ipairs(missing_optional)  do table.insert(detailLines, "[INFO] " .. l:gsub("^%s+","")) end
-            local crit = #missing_critical
-            UI.notify({
-                title    = crit > 0 and "UNC Missing — Parry Hook Disabled" or "UNC Partially Missing",
-                text     = crit > 0
-                    and (crit .. " critical function(s) missing. Tap to see list.")
-                    or  (#missing_important .. " important function(s) missing. Tap to see list."),
-                kind     = crit > 0 and "bad" or "warn",
-                duration = 12,
-                detail   = table.concat(detailLines, "\n"),
-            })
-        end)
-    end
+    -- Notification is deferred — fired from §31 after UI.notify exists
+    -- (UI is not declared until line ~4427, so we can't call it here)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -5772,6 +5753,27 @@ function UI.notify(opts)
     return toast
 end
 
+-- ── UNC failure side-notification (fires here, UI.notify now exists) ──
+task.defer(function()
+    local r = _G._WindHub_UNCReport
+    if not r or r.ok then return end
+
+    local detailLines = {}
+    for _, l in ipairs(r.missing_critical)  do table.insert(detailLines, "[CRIT] " .. l:gsub("^%s+","")) end
+    for _, l in ipairs(r.missing_important) do table.insert(detailLines, "[WARN] " .. l:gsub("^%s+","")) end
+    for _, l in ipairs(r.missing_optional)  do table.insert(detailLines, "[INFO] " .. l:gsub("^%s+","")) end
+
+    local crit = #r.missing_critical
+    UI.notify({
+        title   = crit > 0 and "UNC Missing — Parry Hook Disabled" or "UNC Partially Missing",
+        text    = crit > 0
+            and (crit .. " critical function(s) missing. Tap ▼ to see list.")
+            or  (#r.missing_important .. " important function(s) missing. Tap ▼ to see list."),
+        kind    = crit > 0 and "bad" or "warn",
+        duration = 15,
+        detail  = table.concat(detailLines, "\n"),
+    })
+end)
 
 -- ── Window dragging (PC mouse + mobile touch) ─────────────
 do
