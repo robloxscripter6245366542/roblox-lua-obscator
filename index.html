@@ -5,6 +5,53 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Loadstring Share</title>
 <style>
+/* ── Toast notifications ── */
+#toast-container{
+  position:fixed;
+  bottom:24px;
+  right:24px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  z-index:9999;
+  pointer-events:none;
+}
+.toast{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  min-width:260px;
+  max-width:340px;
+  background:#111118;
+  border-radius:11px;
+  padding:13px 16px;
+  box-shadow:0 8px 32px rgba(0,0,0,.6);
+  border:1.5px solid #1e1e30;
+  pointer-events:all;
+  animation:slideIn .22s ease;
+  cursor:default;
+}
+.toast.removing{animation:slideOut .22s ease forwards}
+.toast-icon{font-size:16px;line-height:1.4;flex-shrink:0}
+.toast-body{flex:1}
+.toast-title{font-size:13px;font-weight:700;margin-bottom:2px}
+.toast-msg{font-size:12px;color:#6b7280;line-height:1.5}
+.toast-close{
+  background:none;border:none;color:#4b5563;cursor:pointer;
+  font-size:15px;line-height:1;padding:0;flex-shrink:0;
+  pointer-events:all;
+}
+.toast-close:hover{color:#e5e7eb}
+
+/* variants */
+.toast.error  {border-color:#3f1515;} .toast.error  .toast-title{color:#f87171}
+.toast.success{border-color:#14532d;} .toast.success .toast-title{color:#4ade80}
+.toast.info   {border-color:#1e3050;} .toast.info   .toast-title{color:#60a5fa}
+.toast.warn   {border-color:#3f2f10;} .toast.warn   .toast-title{color:#fbbf24}
+
+@keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(20px)}}
+</style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{
   background:#09090f;
@@ -308,5 +355,8 @@ function goHome(){
   location.reload();
 }
 </script>
+<!-- Toast container -->
+<div id="toast-container"></div>
+
 </body>
 </html>
