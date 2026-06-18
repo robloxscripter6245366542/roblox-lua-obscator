@@ -54,7 +54,7 @@
     Profile manager · Anti-detection · Server analysis · 10-tab animated UI
   ════════════════════════════════════════════════════════════════════════════ --]]
 
-warn("[WindHub] v6.0 — script received, starting up...")
+warn("[WindHub] v6.0 - script received, starting up...")
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  §01  SERVICES
@@ -20873,7 +20873,7 @@ if Console then Console.info("WindHub", string.format(" %d modules | %d config k
 if Console then Console.info("WindHub", " No key system. Ready to use.") end
 if Console then Console.info("WindHub", "═══════════════════════════════════════════════════════════") end
 
-warn("[WindHub] v6.0 READY — open the WindHub window and click the Console tab to see logs.")
+warn("[WindHub] v6.0 READY - open the WindHub window and click the Console tab to see logs.")
 warn("[WindHub] If the window is missing, re-run the loadstring.")
 
 -- §100.9 End of file
