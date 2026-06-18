@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>WindHub v6.0 — #1 Blade Ball Script</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:#0a0a10;
+    color:#e8eaf6;
+    font-family:'Segoe UI',system-ui,sans-serif;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:40px 16px 60px;
+  }
+
+  /* ── logo ── */
+  .logo{
+    font-size:48px;
+    font-weight:900;
+    letter-spacing:-1px;
+    background:linear-gradient(135deg,#5e84ff,#9b6eff);
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+    background-clip:text;
+    margin-bottom:6px;
+  }
+  .subtitle{
+    color:#6b7280;
+    font-size:14px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    margin-bottom:36px;
+  }
+
+  /* ── card ── */
+  .card{
+    width:100%;
+    max-width:680px;
+    background:#12121c;
+    border:1.5px solid #22223a;
+    border-radius:16px;
+    padding:28px;
+    margin-bottom:20px;
+  }
+  .card-title{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:1.5px;
+    color:#5e84ff;
+    font-weight:700;
+    margin-bottom:12px;
+  }
+
+  /* ── code box ── */
+  .code-wrap{
+    background:#080810;
+    border:1px solid #1e1e30;
+    border-radius:10px;
+    padding:14px 16px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:10px;
+  }
+  .code-wrap code{
+    flex:1;
+    font-family:'Consolas','Fira Code',monospace;
+    font-size:13px;
+    color:#a5b4fc;
+    word-break:break-all;
+    user-select:all;
+  }
+  .copy-btn{
+    flex-shrink:0;
+    background:#1e2040;
+    border:1px solid #3a3a60;
+    color:#a5b4fc;
+    font-size:12px;
+    font-weight:600;
+    padding:7px 14px;
+    border-radius:8px;
+    cursor:pointer;
+    transition:background .15s,color .15s;
+    white-space:nowrap;
+  }
+  .copy-btn:hover{background:#2a2a55;color:#fff}
+  .copy-btn.copied{background:#1a3a25;color:#4ade80;border-color:#2a5a35}
+
+  .desc{
+    font-size:13px;
+    color:#6b7280;
+    line-height:1.6;
+  }
+  .desc strong{color:#9ca3af}
+
+  /* ── badges ── */
+  .badges{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:16px;
+  }
+  .badge{
+    background:#1a1a2a;
+    border:1px solid #2a2a42;
+    border-radius:20px;
+    padding:4px 12px;
+    font-size:11px;
+    color:#9ca3af;
+    font-weight:600;
+  }
+  .badge.green{border-color:#1a3a25;color:#4ade80}
+  .badge.blue{border-color:#1a2a4a;color:#60a5fa}
+  .badge.purple{border-color:#2a1a4a;color:#a78bfa}
+
+  /* ── feature grid ── */
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+    gap:10px;
+    margin-top:14px;
+  }
+  .feat{
+    background:#0e0e1a;
+    border:1px solid #1a1a2c;
+    border-radius:10px;
+    padding:10px 12px;
+    font-size:12px;
+    color:#9ca3af;
+  }
+  .feat span{
+    display:block;
+    font-size:15px;
+    margin-bottom:4px;
+  }
+
+  /* ── stats row ── */
+  .stats{
+    display:flex;
+    justify-content:center;
+    gap:32px;
+    flex-wrap:wrap;
+    margin-bottom:32px;
+  }
+  .stat{text-align:center}
+  .stat-num{
+    font-size:32px;
+    font-weight:800;
+    background:linear-gradient(135deg,#5e84ff,#9b6eff);
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+    background-clip:text;
+  }
+  .stat-lbl{font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+
+  /* ── divider ── */
+  .divider{width:100%;max-width:680px;height:1px;background:#1a1a2c;margin:4px 0 20px}
+
+  footer{font-size:11px;color:#374151;margin-top:auto;padding-top:20px}
+</style>
+</head>
+<body>
+
+<div class="logo">WindHub</div>
+<div class="subtitle">v6.0 &nbsp;·&nbsp; The #1 Blade Ball Script</div>
+
+<div class="stats">
+  <div class="stat"><div class="stat-num">20K+</div><div class="stat-lbl">Lines of code</div></div>
+  <div class="stat"><div class="stat-num">100+</div><div class="stat-lbl">Modules</div></div>
+  <div class="stat"><div class="stat-num">5</div><div class="stat-lbl">Parry modes</div></div>
+  <div class="stat"><div class="stat-num">0</div><div class="stat-lbl">Key system</div></div>
+</div>
+
+<!-- LOADSTRING CARD -->
+<div class="card">
+  <div class="card-title">Loadstring — paste into your executor</div>
+
+  <div class="code-wrap">
+    <code id="ls1">loadstring(game:HttpGet("https://roblox-lua-obscator-git-claude-rem-b354df-saguine-opus-projects.vercel.app/WindHub_Loader.lua"))()</code>
+    <button class="copy-btn" onclick="copy('ls1',this)">Copy</button>
+  </div>
+  <p class="desc">
+    <strong>Recommended.</strong> Loads from this Vercel CDN — fastest delivery, auto-fallback to GitHub mirror.
+  </p>
+
+  <div style="margin-top:20px" class="card-title">Alternative — direct script</div>
+  <div class="code-wrap">
+    <code id="ls2">loadstring(game:HttpGet("https://roblox-lua-obscator-git-claude-rem-b354df-saguine-opus-projects.vercel.app/WindHub.lua"))()</code>
+    <button class="copy-btn" onclick="copy('ls2',this)">Copy</button>
+  </div>
+  <p class="desc">Loads the full 20,000+ line script directly. No loader wrapper.</p>
+</div>
+
+<!-- EXECUTORS CARD -->
+<div class="card">
+  <div class="card-title">Supported Executors</div>
+  <div class="badges">
+    <div class="badge blue">Delta</div>
+    <div class="badge blue">Codex</div>
+    <div class="badge blue">Xeno</div>
+    <div class="badge blue">Wave</div>
+    <div class="badge blue">Optimware</div>
+    <div class="badge blue">Opium</div>
+    <div class="badge blue">Volt</div>
+    <div class="badge blue">Potassium</div>
+    <div class="badge green">No Key System</div>
+    <div class="badge green">Mobile + PC</div>
+    <div class="badge purple">Auto-updates</div>
+  </div>
+</div>
+
+<!-- FEATURES CARD -->
+<div class="card">
+  <div class="card-title">Features</div>
+  <div class="grid">
+    <div class="feat"><span>⚔</span>Auto-Parry Engine<br><small style="color:#4b5563">5 modes · RK4 physics</small></div>
+    <div class="feat"><span>🧠</span>Neural Network<br><small style="color:#4b5563">Learns your timing</small></div>
+    <div class="feat"><span>👁</span>Full ESP<br><small style="color:#4b5563">Balls · Players · Hitbox</small></div>
+    <div class="feat"><span>💾</span>Memory Scanner<br><small style="color:#4b5563">GC heap · nil-instance</small></div>
+    <div class="feat"><span>🕵</span>Anti-Detection<br><small style="color:#4b5563">5 stealth profiles</small></div>
+    <div class="feat"><span>📡</span>Remote Spy<br><small style="color:#4b5563">All remotes hooked</small></div>
+    <div class="feat"><span>🏆</span>Tournament Mode<br><small style="color:#4b5563">ELO · ranked system</small></div>
+    <div class="feat"><span>📊</span>Analytics<br><small style="color:#4b5563">Stats · combat graphs</small></div>
+    <div class="feat"><span>🎵</span>Audio FX<br><small style="color:#4b5563">Parry sounds · combo</small></div>
+    <div class="feat"><span>🗺</span>Minimap<br><small style="color:#4b5563">Ball tracking · trails</small></div>
+    <div class="feat"><span>⌨</span>Console<br><small style="color:#4b5563">60+ commands</small></div>
+    <div class="feat"><span>🔧</span>Config I/O<br><small style="color:#4b5563">Save · load profiles</small></div>
+  </div>
+</div>
+
+<!-- HOW TO USE -->
+<div class="card">
+  <div class="card-title">How to Use</div>
+  <ol style="padding-left:18px;font-size:13px;color:#9ca3af;line-height:2">
+    <li>Open <strong style="color:#e5e7eb">Blade Ball</strong> on Roblox</li>
+    <li>Open your executor and enable <strong style="color:#e5e7eb">HTTP Requests</strong></li>
+    <li>Paste the loadstring above and run it</li>
+    <li>The WindHub GUI will appear in the center of your screen</li>
+    <li>Click the <strong style="color:#e5e7eb">Console</strong> tab to see startup output</li>
+    <li>Use <strong style="color:#e5e7eb">F5</strong> to toggle auto-parry · <strong style="color:#e5e7eb">F6</strong> to cycle modes</li>
+  </ol>
+</div>
+
+<div class="divider"></div>
+<footer>WindHub v6.0 · No key system · Open source on GitHub</footer>
+
+<script>
+function copy(id, btn) {
+  const text = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = 'Copy';
+      btn.classList.remove('copied');
+    }, 2000);
+  }).catch(() => {
+    // fallback
+    const r = document.createRange();
+    r.selectNode(document.getElementById(id));
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(r);
+    document.execCommand('copy');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+</script>
+</body>
+</html>
