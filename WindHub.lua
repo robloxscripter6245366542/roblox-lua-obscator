@@ -54,6 +54,8 @@
     Profile manager · Anti-detection · Server analysis · 10-tab animated UI
   ════════════════════════════════════════════════════════════════════════════ --]]
 
+warn("[WindHub] v6.0 — script received, starting up...")
+
 -- ════════════════════════════════════════════════════════════════════════════
 --  §01  SERVICES
 -- ════════════════════════════════════════════════════════════════════════════
@@ -9051,10 +9053,14 @@ task.spawn(function()
     Console.info("Click the Console tab in the sidebar to see logs")
     Console.info("Type 'help' in the input box below for all commands")
     -- Auto-activate the console tab so user sees output immediately
-    local consoleTab = UI._tabs[#UI._tabs]
+    local consoleTab = nil
+    for _, t in ipairs(UI._tabs) do
+        if t.name == "Console" then consoleTab = t; break end
+    end
     if consoleTab and consoleTab.activate then
         consoleTab.activate()
     end
+    warn("[WindHub] UI ready — Console tab activated. Check the WindHub window.")
 end)
 
 -- Forward all print() calls to the console too.
@@ -20866,6 +20872,9 @@ if Console then Console.info("WindHub", string.format(" %d modules | %d config k
     Registry:count(), #CONFIG_REFERENCE, 0)) end
 if Console then Console.info("WindHub", " No key system. Ready to use.") end
 if Console then Console.info("WindHub", "═══════════════════════════════════════════════════════════") end
+
+warn("[WindHub] v6.0 READY — open the WindHub window and click the Console tab to see logs.")
+warn("[WindHub] If the window is missing, re-run the loadstring.")
 
 -- §100.9 End of file
 -- WindHub v6.0.0 complete.
