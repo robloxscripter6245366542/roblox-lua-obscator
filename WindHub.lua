@@ -628,6 +628,19 @@ local DEFAULTS = {
     toggleKey      = "RightShift",
     panicKey       = "End",
     parryKey       = "P",
+    -- Extended / late-added keys (must be in DEFAULTS so __newindex allows writes)
+    parryActive       = false,   -- master parry on/off (v6 HUD toggle)
+    visualFX          = true,    -- particle / screen effects on parry
+    dodgeAssist       = false,   -- macro dodge assist mode
+    hitboxViz         = false,   -- show hitbox debug visualisation
+    windPhysics       = false,   -- wind-force physics simulation
+    useJerkModel      = false,   -- jerk-based trajectory prediction
+    magnusForce       = true,    -- Magnus spinning-ball correction
+    predSteps         = 20,      -- prediction step count
+    monteCarloSamples = 64,      -- samples for Monte Carlo spread
+    autoCalibrate     = true,    -- auto-calibrate timing on hit/miss
+    writeBarrierWatch = true,    -- watch for memory write-barrier changes
+    scanInterval      = 0.5,     -- memory scan interval (seconds)
 }
 
 local Config = {}
@@ -3040,6 +3053,9 @@ task.spawn(function()
     end
 end)
 
+-- Forward declaration so closures in §18b/§18c capture the right upvalue
+local RemoteSpy
+
 -- ── §18b  Cobalt-style hookfunction interception ─────────────────────────
 --  Wraps the GAME's own OnClientEvent handlers for key remotes so WindHub
 --  sees raw args before the game processes them. Runs after a short delay
@@ -3063,8 +3079,8 @@ if EX.hook and EX.conns then
                 local old; old = EF.hookfunction(fn, function(...)
                     if RemoteSpy and RemoteSpy.log then
                         local entry = { name = label, args = {...}, t = os.clock(), source = "hookfn" }
-                        table.insert(RemoteSpy.log, 1, entry)
-                        if #RemoteSpy.log > 500 then table.remove(RemoteSpy.log) end
+                        table.insert(RemoteSpy.log, entry)
+                        if #RemoteSpy.log > RemoteSpy.maxLog then table.remove(RemoteSpy.log, 1) end
                     end
                     return old(...)
                 end)
@@ -3195,7 +3211,7 @@ end)
 --       Hooks all RemoteEvents in workspace and ReplicatedStorage,
 --       logs all incoming calls with timestamp, arguments, and frequency.
 -- ════════════════════════════════════════════════════════════════════════════
-local RemoteSpy = {
+RemoteSpy = {
     onFired  = Signal.new(),
     log      = {},
     freq     = {},   -- remote name → calls per second
@@ -8690,11 +8706,15 @@ function Console.log(msg, level)
     Console._addLine(entry)
 end
 
-function Console.info (m) Console.log(m, "info")  end
-function Console.warn (m) Console.log(m, "warn")  end
-function Console.error(m) Console.log(m, "error") end
-function Console.debug(m) Console.log(m, "debug") end
-function Console.good (m) Console.log(m, "good")  end
+local function _fmtMsg(tag, msg)
+    if msg ~= nil then return "[" .. tostring(tag) .. "] " .. tostring(msg) end
+    return tostring(tag)
+end
+function Console.info (tag, msg) Console.log(_fmtMsg(tag, msg), "info")  end
+function Console.warn (tag, msg) Console.log(_fmtMsg(tag, msg), "warn")  end
+function Console.error(tag, msg) Console.log(_fmtMsg(tag, msg), "error") end
+function Console.debug(tag, msg) Console.log(_fmtMsg(tag, msg), "debug") end
+function Console.good (tag, msg) Console.log(_fmtMsg(tag, msg), "good")  end
 
 -- ── §42.1  Console UI ─────────────────────────────────────
 local function _buildConsoleUI()
@@ -8858,7 +8878,7 @@ end
 function Console._addLine(entry)
     if not Console._scroll then return end
     local filterLvl = Console._filter
-    if filterLvl == "warn" and entry.level == "info" or entry.level == "debug" then return end
+    if filterLvl == "warn" and (entry.level == "info" or entry.level == "debug") then return end
 
     local icon  = Console.levels[entry.level]  or "·"
     local col   = Console.colors[entry.level]  or Console.colors.info
@@ -9587,12 +9607,12 @@ local TrendAnalyser = {
     trend      = "stable",   -- "improving" | "degrading" | "stable"
 }
 
-AccuracyTracker_origFired = AccuracyTracker.fired
+local AccuracyTracker_origFired   = AccuracyTracker.fired
+local AccuracyTracker_origSuccess = AccuracyTracker.success
 function AccuracyTracker:fired()
     AccuracyTracker_origFired(self)
     TrendAnalyser._curShots = TrendAnalyser._curShots + 1
 end
-AccuracyTracker_origSuccess = AccuracyTracker.success
 function AccuracyTracker:success()
     AccuracyTracker_origSuccess(self)
     TrendAnalyser._curHits  = TrendAnalyser._curHits  + 1
