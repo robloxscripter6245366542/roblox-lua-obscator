@@ -232,6 +232,7 @@ local FUNC_NAMES = {
     "identifyexecutor", "getexecutorname",
     "checkcaller", "islclosure", "iscclosure",
     "getconnections", "firesignal",
+    "getcallbackvalue", "hookmetamethod",
     "loadstring", "run_on_actor",
 }
 for _, n in ipairs(FUNC_NAMES) do EF[n] = _ef(n) end
@@ -259,7 +260,10 @@ local EX = {
     wmem  = type(EF.writeprocessmemory)== "function",
     mbase = type(EF.getmodulebase)     == "function",
     conns = type(EF.getconnections)    == "function",
+    meta  = type(EF.hookmetamethod)    == "function",
+    cbv   = type(EF.getcallbackvalue)  == "function",
 }
+EX.conn = EX.conns  -- alias used in §18b hookfunction block
 
 local isMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled
 
@@ -2807,6 +2811,7 @@ local GameRemotes = {
     onDisableReaper  = Signal.new(),
     onBallAdded      = Signal.new(),
     onPlayerDied     = Signal.new(),
+    onWinnerText     = Signal.new(),
     connected        = {},
 }
 
@@ -2850,10 +2855,27 @@ local REMOTE_DEFS = {
     },
     {
         name    = "BallExplode",
-        handler = function(ball, ...)
-            GameRemotes.onBallExplode:Fire(ball, ...)
+        handler = function(ball, hitPlayer, wasBlocked, ...)
+            -- Cobalt confirmed: BallExplode(ball, hitPlayer, wasBlocked)
+            -- ball       = nil-parented BasePart (e.g. "347")
+            -- hitPlayer  = Player instance who got hit
+            -- wasBlocked = false → they failed to parry; true → they blocked
+            GameRemotes.onBallExplode:Fire(ball, hitPlayer, wasBlocked, ...)
             if typeof(ball) == "Instance" then
                 _G.WindHub_ExplodedBalls[ball] = true
+            end
+            -- Record the victim for kill feed / player analysis
+            if typeof(hitPlayer) == "Instance" and not wasBlocked then
+                _G._WindHub_LastKill = {
+                    victim  = hitPlayer,
+                    ball    = ball,
+                    t       = os.clock(),
+                }
+                -- If local player got eliminated, flag it
+                if hitPlayer == lp then
+                    _G.WindHub_LocalDied = true
+                    _G.WindHub_LocalDiedAt = os.clock()
+                end
             end
         end,
     },
@@ -2900,6 +2922,19 @@ local REMOTE_DEFS = {
             _onBallFound(ball, _G._WindTracker)
         end,
     },
+    {
+        name    = "WinnerText",
+        handler = function(winnerName, ...)
+            GameRemotes.onWinnerText:Fire(winnerName, ...)
+            -- Track round winner for session analytics
+            if type(winnerName) == "string" then
+                _G._WindHub_LastWinner = { name = winnerName, t = os.clock() }
+                if winnerName == lp.Name then
+                    _G.WindHub_WinsThisSession = (_G.WindHub_WinsThisSession or 0) + 1
+                end
+            end
+        end,
+    },
 }
 
 task.spawn(function()
@@ -2916,6 +2951,128 @@ task.spawn(function()
         end
     end
 end)
+
+-- ── §18b  Cobalt-style hookfunction interception ─────────────────────────
+--  Wraps the GAME's own OnClientEvent handlers for key remotes so WindHub
+--  sees raw args before the game processes them. Runs after a short delay
+--  so the game's own connections are already established.
+--
+--  Cobalt-confirmed remotes and paths:
+--    ReplicatedStorage.Remotes.BallAdded
+--    ReplicatedStorage.Remotes.ParrySuccessAll
+--    ReplicatedStorage.Remotes.BallExplode
+--    ReplicatedStorage.conch_networking.update_user_roles
+--    ReplicatedStorage.Packages._Index["ytrev_replion@2.0.0-rc.1"].replion.Remotes.UpdateReplicateTo
+if EX.hook and EX.conns then
+    local function _hookRemoteEvent(remote, label)
+        local conns = EF.getconnections(remote.OnClientEvent)
+        if not conns then return 0 end
+        local hooked = 0
+        for _, conn in ipairs(conns) do
+            local fn = conn.Function
+            if type(fn) ~= "function" then continue end
+            pcall(function()
+                local old; old = EF.hookfunction(fn, function(...)
+                    if RemoteSpy and RemoteSpy.log then
+                        local entry = { name = label, args = {...}, t = os.clock(), source = "hookfn" }
+                        table.insert(RemoteSpy.log, 1, entry)
+                        if #RemoteSpy.log > 500 then table.remove(RemoteSpy.log) end
+                    end
+                    return old(...)
+                end)
+                hooked = hooked + 1
+            end)
+        end
+        if Console then
+            Console.info("HookFn", "Hooked " .. label .. " (" .. hooked .. "/" .. #conns .. " conns)")
+        end
+        return hooked
+    end
+
+    task.delay(2, function()
+        pcall(function()
+            -- Core Remotes folder
+            local coreFld = RepStor:FindFirstChild("Remotes")
+            if coreFld then
+                for _, name in ipairs({ "BallAdded", "ParrySuccessAll", "BallExplode", "StandoffStart", "StandoffEnd", "SecondaryEndCD", "DisableReaper", "WinnerText" }) do
+                    local r = coreFld:FindFirstChild(name)
+                    if r and r:IsA("RemoteEvent") then _hookRemoteEvent(r, name) end
+                end
+            end
+
+            -- conch_networking (role sync)
+            local conch = RepStor:FindFirstChild("conch_networking")
+            if conch then
+                local r = conch:FindFirstChild("update_user_roles")
+                if r and r:IsA("RemoteEvent") then _hookRemoteEvent(r, "update_user_roles") end
+            end
+
+            -- Replion replication remote (deep path)
+            pcall(function()
+                local r = RepStor.Packages._Index["ytrev_replion@2.0.0-rc.1"].replion.Remotes.UpdateReplicateTo
+                if r and r:IsA("RemoteEvent") then _hookRemoteEvent(r, "Replion.UpdateReplicateTo") end
+            end)
+
+            -- sleitnick_net internal remotes (obfuscated names, Cobalt-confirmed)
+            pcall(function()
+                local netPkg = RepStor.Packages._Index["sleitnick_net@0.1.0"].net
+                for _, child in ipairs(netPkg:GetChildren()) do
+                    if child:IsA("RemoteEvent") then
+                        _hookRemoteEvent(child, "sleitnick_net." .. child.Name)
+                    end
+                end
+            end)
+        end)
+    end)
+end
+
+-- ── §18c  RemotePing intercept (Cobalt pattern) ───────────────────────────
+--  Blade Ball uses ReplicatedStorage.Shared.Ping.RemotePing (RemoteFunction)
+--  for latency measurement. Hooking OnClientInvoke gives WindHub the raw
+--  round-trip time before the game processes it, and hookmetamethod ensures
+--  the game can't silently overwrite our hook.
+if EX.hook and EX.cbv and EX.meta then
+    task.delay(2, function()
+        pcall(function()
+            local shared = RepStor:FindFirstChild("Shared")
+            local pingFld = shared and shared:FindFirstChild("Ping")
+            local pingRF  = pingFld and pingFld:FindFirstChild("RemotePing")
+            if not pingRF or not pingRF:IsA("RemoteFunction") then return end
+
+            local Callback = EF.getcallbackvalue(pingRF, "OnClientInvoke")
+            if type(Callback) ~= "function" then return end
+
+            pingRF.OnClientInvoke = function(...)
+                local t0     = os.clock()
+                local args   = table.pack(...)
+                local result = table.pack(Callback(table.unpack(args, 1, args.n)))
+                -- Record round-trip as an additional PingComp sample
+                local rtt = (os.clock() - t0) * 1000
+                if rtt > 0 and rtt < 2000 then
+                    PingComp.pingMs = rtt
+                    table.insert(PingComp.hist, rtt)
+                    if #PingComp.hist > 60 then table.remove(PingComp.hist, 1) end
+                    PingComp.method = "RemotePing"
+                end
+                return table.unpack(result, 1, result.n)
+            end
+
+            -- Prevent the game from overwriting our hook
+            local mtHook; mtHook = EF.hookmetamethod(game, "__newindex", function(self, key, value)
+                if rawequal(self, pingRF) and rawequal(key, "OnClientInvoke")
+                    and type(value) == "function"
+                    and (not EF.checkcaller or not EF.checkcaller())
+                then
+                    Callback = value  -- update inner callback transparently
+                    return
+                end
+                return mtHook(self, key, value)
+            end)
+
+            if Console then Console.info("HookFn", "RemotePing hooked — PingComp using direct RTT") end
+        end)
+    end)
+end
 
 -- Auto-switch to Ultra during Standoff
 RS.Heartbeat:Connect(function()
