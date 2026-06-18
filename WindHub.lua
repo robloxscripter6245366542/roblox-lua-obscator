@@ -3097,10 +3097,14 @@ if EX.hook and EX.conns then
                 end
             end
 
-            -- Replion replication remote (deep path)
+            -- Replion remotes — iterate all children (Cobalt confirmed: UpdateReplicateTo, Set)
             pcall(function()
-                local r = RepStor.Packages._Index["ytrev_replion@2.0.0-rc.1"].replion.Remotes.UpdateReplicateTo
-                if r and r:IsA("RemoteEvent") then _hookRemoteEvent(r, "Replion.UpdateReplicateTo") end
+                local replionRemotes = RepStor.Packages._Index["ytrev_replion@2.0.0-rc.1"].replion.Remotes
+                for _, child in ipairs(replionRemotes:GetChildren()) do
+                    if child:IsA("RemoteEvent") then
+                        _hookRemoteEvent(child, "Replion." .. child.Name)
+                    end
+                end
             end)
 
             -- Store remotes (Cobalt confirmed: Store.UpdateCrateKeys)
