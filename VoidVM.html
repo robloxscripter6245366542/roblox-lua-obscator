@@ -1,0 +1,4411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOID::VM</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap');
+:root{--bg:#05060a;--surface:#0b0d14;--panel:#0f1119;--border:#1a1f2e;--cyan:#00f5ff;--pink:#ff2d78;--green:#00ff88;--amber:#ffb347;--violet:#a06bff;--dim:#3a4060;--text:#c8d0e8;--muted:#555e80;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,245,255,0.012) 2px,rgba(0,245,255,0.012) 4px);pointer-events:none;z-index:9999;}
+body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,245,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,245,255,0.025) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0;}
+header{position:relative;z-index:10;padding:16px 26px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;background:rgba(11,13,20,0.97);backdrop-filter:blur(10px);}
+.logo-icon{width:33px;height:33px;border:1.5px solid var(--cyan);display:flex;align-items:center;justify-content:center;font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--cyan);box-shadow:0 0 14px rgba(0,245,255,0.25),inset 0 0 8px rgba(0,245,255,0.06);}
+.logo-text{font-size:17px;font-weight:700;letter-spacing:5px;color:#fff;text-transform:uppercase;}
+.logo-text span{color:var(--cyan);}
+.header-badges{display:flex;gap:7px;margin-left:auto;}
+.badge{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:2px;border:1px solid var(--border);padding:3px 8px;}
+.badge.live{color:var(--green);border-color:rgba(0,255,136,0.3);}
+.badge.vm{color:var(--violet);border-color:rgba(160,107,255,0.3);}
+.progress-bar{position:fixed;top:0;left:0;height:2px;width:0%;background:linear-gradient(90deg,var(--cyan),var(--violet),var(--pink));z-index:99999;box-shadow:0 0 8px var(--cyan);transition:width 0.07s linear;}
+main{position:relative;z-index:10;display:flex;flex-direction:column;height:calc(100vh - 69px);}
+.toolbar{padding:9px 18px;display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--border);background:var(--surface);flex-wrap:wrap;}
+.toolbar-label{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:2px;white-space:nowrap;}
+.toggle-group{display:flex;gap:2px;flex-wrap:wrap;}
+.toggle{padding:4px 10px;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.14s;user-select:none;white-space:nowrap;}
+.toggle.on{background:rgba(0,245,255,0.08);border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 8px rgba(0,245,255,0.12);}
+.toggle.vm.on{background:rgba(160,107,255,0.1);border-color:var(--violet);color:var(--violet);box-shadow:0 0 10px rgba(160,107,255,0.18);}
+.toggle:hover:not(.on){border-color:var(--dim);color:var(--text);}
+.sep{width:1px;height:20px;background:var(--border);margin:0 3px;flex-shrink:0;}
+.btn-run{padding:7px 24px;background:linear-gradient(135deg,rgba(0,245,255,0.12),rgba(0,245,255,0.04));border:1px solid var(--cyan);color:var(--cyan);font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:3px;cursor:pointer;transition:all 0.18s;box-shadow:0 0 14px rgba(0,245,255,0.1);position:relative;overflow:hidden;white-space:nowrap;}
+.btn-run::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(0,245,255,0.15),transparent);transition:left 0.4s;}
+.btn-run:hover::before{left:100%;}
+.btn-run:hover{box-shadow:0 0 28px rgba(0,245,255,0.28);}
+.btn-run:active{transform:scale(0.97);}
+.editors{display:flex;flex:1;overflow:hidden;}
+.pane{display:flex;flex-direction:column;flex:1;border-right:1px solid var(--border);overflow:hidden;min-width:0;}
+.pane:last-child{border-right:none;}
+.pane-header{padding:8px 15px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px;flex-shrink:0;}
+.pane-dot{width:6px;height:6px;border-radius:50%;}
+.dot-cyan{background:var(--cyan);box-shadow:0 0 6px var(--cyan);}
+.dot-pink{background:var(--pink);box-shadow:0 0 6px var(--pink);}
+.pane-title{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);}
+.pane-meta{margin-left:auto;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--dim);}
+.btn-copy-big{padding:5px 16px;background:linear-gradient(135deg,rgba(255,45,120,0.14),rgba(255,45,120,0.04));border:1px solid var(--pink);color:var(--pink);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;cursor:pointer;transition:all 0.16s;box-shadow:0 0 10px rgba(255,45,120,0.1);white-space:nowrap;}
+.btn-copy-big:hover{box-shadow:0 0 22px rgba(255,45,120,0.35);background:rgba(255,45,120,0.16);}
+.btn-copy-big:active{transform:scale(0.96);}
+.btn-host{padding:5px 16px;margin-right:8px;background:linear-gradient(135deg,rgba(0,245,255,0.14),rgba(0,245,255,0.04));border:1px solid var(--cyan);color:var(--cyan);font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;cursor:pointer;transition:all 0.16s;box-shadow:0 0 10px rgba(0,245,255,0.1);white-space:nowrap;}
+.btn-host:hover{box-shadow:0 0 22px rgba(0,245,255,0.35);background:rgba(0,245,255,0.16);}
+.btn-host:active{transform:scale(0.96);}
+.btn-host:disabled{opacity:0.5;cursor:not-allowed;}
+textarea,.output-box{flex:1;background:var(--bg);color:var(--text);border:none;outline:none;padding:15px;font-family:'Share Tech Mono',monospace;font-size:12px;line-height:1.75;resize:none;width:100%;overflow-y:auto;tab-size:2;}
+textarea::placeholder{color:var(--dim);}
+.output-box{white-space:pre-wrap;word-break:break-all;color:#7fffb0;}
+.output-box.empty{color:var(--dim);}
+.output-box.error{color:var(--pink);}
+.statusbar{padding:6px 18px;border-top:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:14px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);flex-shrink:0;}
+.status-dot{width:5px;height:5px;border-radius:50%;background:var(--cyan);box-shadow:0 0 5px var(--cyan);animation:pulse 2s infinite;}
+.processing .status-dot{background:var(--violet);box-shadow:0 0 5px var(--violet);animation:none;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.2;}}
+#statusDetail{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+.toast{position:fixed;bottom:42px;left:50%;transform:translateX(-50%) translateY(14px);background:rgba(5,6,10,0.94);border:1px solid var(--cyan);color:var(--cyan);padding:8px 20px;font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:2px;opacity:0;transition:all 0.22s;pointer-events:none;z-index:99998;backdrop-filter:blur(12px);}
+.toast.pink{border-color:var(--pink);color:var(--pink);}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+@media(max-width:660px){.editors{flex-direction:column;}.pane{min-height:210px;}.btn-run{margin-left:0;}}
+</style>
+</head>
+<body>
+<div class="progress-bar" id="progressBar"></div>
+<header>
+  <div class="logo-icon">V</div>
+  <div class="logo-text">VOID<span>::</span>VM</div>
+  <div class="header-badges">
+    <div class="badge vm">DEEP VM · NO SOURCE</div>
+    <div class="badge">LUAU</div>
+    <div class="badge live">● ONLINE</div>
+    <div class="badge">v9.0</div>
+  </div>
+</header>
+<main>
+  <div class="toolbar">
+    <span class="toolbar-label">LAYERS//</span>
+    <div class="toggle-group">
+      <button class="toggle on" id="t-strenc">STRING VAULT</button>
+      <button class="toggle on" id="t-numenc">NUM ENCODE</button>
+      <button class="toggle on" id="t-rename">SCOPE RENAME</button>
+      <button class="toggle" id="t-cff">⟳ FLOW FLATTEN</button>
+      <button class="toggle" id="t-junk">☠ JUNK CODE</button>
+      <button class="toggle" id="t-wrap">BOOTSTRAP</button>
+      <button class="toggle" id="t-minify">MINIFY</button>
+      <button class="toggle vm on" id="t-vm">▣ VM VIRTUALIZE</button>
+      <button class="toggle vm" id="t-vm2">VM ×2</button>
+      <button class="toggle vm on" id="t-flatvm">⚡ FLAT BYTECODE</button>
+      <button class="toggle vm" id="t-deepvm">⛓ DEEP VM (NO SOURCE)</button>
+      <button class="toggle vm" id="t-split">🌐 SPLIT LOADER</button>
+      <button class="toggle vm on" id="t-host">☁ AUTO HOST</button>
+    </div>
+    <div class="sep"></div>
+    <button class="btn-run" onclick="runObfuscate()">▶ COMPILE</button>
+  </div>
+  <div class="editors">
+    <div class="pane">
+      <div class="pane-header">
+        <div class="pane-dot dot-cyan"></div>
+        <span class="pane-title">SOURCE INPUT</span>
+        <span class="pane-meta" id="lineCount">0 LINES</span>
+      </div>
+      <textarea id="input" spellcheck="false" placeholder="-- Paste your Lua / Luau script here.
+-- Parsed into a real AST, then compiled into encrypted VM bytecode.
+-- 100% client-side. Your code never leaves this browser.
+
+local config = { maxWave = 50, baseHealth = 200 }
+local function describe(name, lvl)
+  if lvl > 10 then
+    return name .. ' is strong at ' .. lvl
+  else
+    return name .. ' is weak at ' .. lvl
+  end
+end
+print(describe('Goblin', 5))
+print('Max wave: ' .. config.maxWave)"></textarea>
+    </div>
+    <div class="pane">
+      <div class="pane-header">
+        <div class="pane-dot dot-pink"></div>
+        <span class="pane-title">VIRTUALIZED OUTPUT</span>
+        <span class="pane-meta" id="outStats">—</span>
+        <button class="btn-host" onclick="autoHost()">☁ HOST → LOADSTRING</button>
+        <button class="btn-copy-big" onclick="copyOutput()">⧉ COPY OUTPUT</button>
+      </div>
+      <div class="output-box empty" id="output">-- Virtualized output appears here...</div>
+    </div>
+  </div>
+  <div class="statusbar" id="statusbar">
+    <div class="status-dot"></div>
+    <span id="statusText">LOADING PARSER...</span>
+    <span id="statusDetail">— fetching luaparse · AST → custom bytecode · polymorphic VM · client-side</span>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+
+<!-- luaparse 0.3.1 — bundled inline so the tool works fully offline.
+     Your script is parsed locally and never leaves this browser. -->
+<script>
+/* global exports:true, module:true, require:true, define:true, global:true */
+
+(function (root, name, factory) {
+  'use strict';
+
+  // Used to determine if values are of the language type `Object`
+  var objectTypes = {
+        'function': true
+      , 'object': true
+    }
+    // Detect free variable `exports`
+    , freeExports = objectTypes[typeof exports] && exports && !exports.nodeType && exports
+    // Detect free variable `module`
+    , freeModule = objectTypes[typeof module] && module && !module.nodeType && module
+    // Detect free variable `global`, from Node.js or Browserified code, and
+    // use it as `window`
+    , freeGlobal = freeExports && freeModule && typeof global === 'object' && global
+    // Detect the popular CommonJS extension `module.exports`
+    , moduleExports = freeModule && freeModule.exports === freeExports && freeExports;
+
+  /* istanbul ignore else */
+  if (freeGlobal && (freeGlobal.global === freeGlobal ||
+                     /* istanbul ignore next */ freeGlobal.window === freeGlobal ||
+                     /* istanbul ignore next */ freeGlobal.self === freeGlobal)) {
+    root = freeGlobal;
+  }
+
+  // Some AMD build optimizers, like r.js, check for specific condition
+  // patterns like the following:
+  /* istanbul ignore if */
+  if (typeof define === 'function' &&
+      /* istanbul ignore next */ typeof define.amd === 'object' &&
+      /* istanbul ignore next */ define.amd) {
+    // defined as an anonymous module.
+    define(['exports'], factory);
+    // In case the source has been processed and wrapped in a define module use
+    // the supplied `exports` object.
+    if (freeExports && moduleExports) factory(freeModule.exports);
+  }
+  // check for `exports` after `define` in case a build optimizer adds an
+  // `exports` object
+  else /* istanbul ignore else */ if (freeExports && freeModule) {
+    // in Node.js or RingoJS v0.8.0+
+    /* istanbul ignore else */
+    if (moduleExports) factory(freeModule.exports);
+    // in RingoJS v0.7.0-
+    else factory(freeExports);
+  }
+  // in a browser or Rhino
+  else {
+    factory((root[name] = {}));
+  }
+}(this, 'luaparse', function (exports) {
+  'use strict';
+
+  exports.version = "0.3.1";
+
+  var input, options, length, features, encodingMode;
+
+  // Options can be set either globally on the parser object through
+  // defaultOptions, or during the parse call.
+  var defaultOptions = exports.defaultOptions = {
+    // Explicitly tell the parser when the input ends.
+      wait: false
+    // Store comments as an array in the chunk object.
+    , comments: true
+    // Track identifier scopes by adding an isLocal attribute to each
+    // identifier-node.
+    , scope: false
+    // Store location information on each syntax node as
+    // `loc: { start: { line, column }, end: { line, column } }`.
+    , locations: false
+    // Store the start and end character locations on each syntax node as
+    // `range: [start, end]`.
+    , ranges: false
+    // A callback which will be invoked when a syntax node has been completed.
+    // The node which has been created will be passed as the only parameter.
+    , onCreateNode: null
+    // A callback which will be invoked when a new scope is created.
+    , onCreateScope: null
+    // A callback which will be invoked when the current scope is destroyed.
+    , onDestroyScope: null
+    // A callback which will be invoked when a local variable is declared in the current scope.
+    // The variable's name will be passed as the only parameter
+    , onLocalDeclaration: null
+    // The version of Lua targeted by the parser (string; allowed values are
+    // '5.1', '5.2', '5.3').
+    , luaVersion: '5.1'
+    // Encoding mode: how to interpret code units higher than U+007F in input
+    , encodingMode: 'none'
+  };
+
+  function encodeUTF8(codepoint, highMask) {
+    highMask = highMask || 0;
+
+    if (codepoint < 0x80) {
+      return String.fromCharCode(codepoint);
+    } else if (codepoint < 0x800) {
+      return String.fromCharCode(
+        highMask | 0xc0 |  (codepoint >>  6)        ,
+        highMask | 0x80 | ( codepoint        & 0x3f)
+      );
+    } else if (codepoint < 0x10000) {
+      return String.fromCharCode(
+        highMask | 0xe0 |  (codepoint >> 12)        ,
+        highMask | 0x80 | ((codepoint >>  6) & 0x3f),
+        highMask | 0x80 | ( codepoint        & 0x3f)
+      );
+    } else /* istanbul ignore else */ if (codepoint < 0x110000) {
+      return String.fromCharCode(
+        highMask | 0xf0 |  (codepoint >> 18)        ,
+        highMask | 0x80 | ((codepoint >> 12) & 0x3f),
+        highMask | 0x80 | ((codepoint >>  6) & 0x3f),
+        highMask | 0x80 | ( codepoint        & 0x3f)
+      );
+    } else {
+      // TODO: Lua 5.4 allows up to six-byte sequences, as in UTF-8:1993
+      return null;
+    }
+  }
+
+  function toHex(num, digits) {
+    var result = num.toString(16);
+    while (result.length < digits)
+      result = '0' + result;
+    return result;
+  }
+
+  function checkChars(rx) {
+    return function (s) {
+      var m = rx.exec(s);
+      if (!m)
+        return s;
+      raise(null, errors.invalidCodeUnit, toHex(m[0].charCodeAt(0), 4).toUpperCase());
+    };
+  }
+
+  var encodingModes = {
+    // `pseudo-latin1` encoding mode: assume the input was decoded with the latin1 encoding
+    // WARNING: latin1 does **NOT** mean cp1252 here like in the bone-headed WHATWG standard;
+    // it means true ISO/IEC 8859-1 identity-mapped to Basic Latin and Latin-1 Supplement blocks
+    'pseudo-latin1': {
+      fixup: checkChars(/[^\x00-\xff]/),
+      encodeByte: function (value) {
+        if (value === null)
+          return '';
+        return String.fromCharCode(value);
+      },
+      encodeUTF8: function (codepoint) {
+        return encodeUTF8(codepoint);
+      },
+    },
+
+    // `x-user-defined` encoding mode: assume the input was decoded with the WHATWG `x-user-defined` encoding
+    'x-user-defined': {
+      fixup: checkChars(/[^\x00-\x7f\uf780-\uf7ff]/),
+      encodeByte: function (value) {
+        if (value === null)
+          return '';
+        if (value >= 0x80)
+          return String.fromCharCode(value | 0xf700);
+        return String.fromCharCode(value);
+      },
+      encodeUTF8: function (codepoint) {
+        return encodeUTF8(codepoint, 0xf700);
+      }
+    },
+
+    // `none` encoding mode: disregard intrepretation of string literals, leave identifiers as-is
+    'none': {
+      discardStrings: true,
+      fixup: function (s) {
+        return s;
+      },
+      encodeByte: function (value) {
+        return '';
+      },
+      encodeUTF8: function (codepoint) {
+        return '';
+      }
+    }
+  };
+
+  // The available tokens expressed as enum flags so they can be checked with
+  // bitwise operations.
+
+  var EOF = 1, StringLiteral = 2, Keyword = 4, Identifier = 8
+    , NumericLiteral = 16, Punctuator = 32, BooleanLiteral = 64
+    , NilLiteral = 128, VarargLiteral = 256;
+
+  exports.tokenTypes = { EOF: EOF, StringLiteral: StringLiteral
+    , Keyword: Keyword, Identifier: Identifier, NumericLiteral: NumericLiteral
+    , Punctuator: Punctuator, BooleanLiteral: BooleanLiteral
+    , NilLiteral: NilLiteral, VarargLiteral: VarargLiteral
+  };
+
+  // As this parser is a bit different from luas own, the error messages
+  // will be different in some situations.
+
+  var errors = exports.errors = {
+      unexpected: 'unexpected %1 \'%2\' near \'%3\''
+    , unexpectedEOF: 'unexpected symbol near \'<eof>\''
+    , expected: '\'%1\' expected near \'%2\''
+    , expectedToken: '%1 expected near \'%2\''
+    , unfinishedString: 'unfinished string near \'%1\''
+    , malformedNumber: 'malformed number near \'%1\''
+    , decimalEscapeTooLarge: 'decimal escape too large near \'%1\''
+    , invalidEscape: 'invalid escape sequence near \'%1\''
+    , hexadecimalDigitExpected: 'hexadecimal digit expected near \'%1\''
+    , braceExpected: 'missing \'%1\' near \'%2\''
+    , tooLargeCodepoint: 'UTF-8 value too large near \'%1\''
+    , unfinishedLongString: 'unfinished long string (starting at line %1) near \'%2\''
+    , unfinishedLongComment: 'unfinished long comment (starting at line %1) near \'%2\''
+    , ambiguousSyntax: 'ambiguous syntax (function call x new statement) near \'%1\''
+    , noLoopToBreak: 'no loop to break near \'%1\''
+    , labelAlreadyDefined: 'label \'%1\' already defined on line %2'
+    , labelNotVisible: 'no visible label \'%1\' for <goto>'
+    , gotoJumpInLocalScope: '<goto %1> jumps into the scope of local \'%2\''
+    , cannotUseVararg: 'cannot use \'...\' outside a vararg function near \'%1\''
+    , invalidCodeUnit: 'code unit U+%1 is not allowed in the current encoding mode'
+  };
+
+  // ### Abstract Syntax Tree
+  //
+  // The default AST structure is inspired by the Mozilla Parser API but can
+  // easily be customized by overriding these functions.
+
+  var ast = exports.ast = {
+      labelStatement: function(label) {
+      return {
+          type: 'LabelStatement'
+        , label: label
+      };
+    }
+
+    , breakStatement: function() {
+      return {
+          type: 'BreakStatement'
+      };
+    }
+
+    , gotoStatement: function(label) {
+      return {
+          type: 'GotoStatement'
+        , label: label
+      };
+    }
+
+    , returnStatement: function(args) {
+      return {
+          type: 'ReturnStatement'
+        , 'arguments': args
+      };
+    }
+
+    , ifStatement: function(clauses) {
+      return {
+          type: 'IfStatement'
+        , clauses: clauses
+      };
+    }
+    , ifClause: function(condition, body) {
+      return {
+          type: 'IfClause'
+        , condition: condition
+        , body: body
+      };
+    }
+    , elseifClause: function(condition, body) {
+      return {
+          type: 'ElseifClause'
+        , condition: condition
+        , body: body
+      };
+    }
+    , elseClause: function(body) {
+      return {
+          type: 'ElseClause'
+        , body: body
+      };
+    }
+
+    , whileStatement: function(condition, body) {
+      return {
+          type: 'WhileStatement'
+        , condition: condition
+        , body: body
+      };
+    }
+
+    , doStatement: function(body) {
+      return {
+          type: 'DoStatement'
+        , body: body
+      };
+    }
+
+    , repeatStatement: function(condition, body) {
+      return {
+          type: 'RepeatStatement'
+        , condition: condition
+        , body: body
+      };
+    }
+
+    , localStatement: function(variables, init) {
+      return {
+          type: 'LocalStatement'
+        , variables: variables
+        , init: init
+      };
+    }
+
+    , assignmentStatement: function(variables, init) {
+      return {
+          type: 'AssignmentStatement'
+        , variables: variables
+        , init: init
+      };
+    }
+
+    , callStatement: function(expression) {
+      return {
+          type: 'CallStatement'
+        , expression: expression
+      };
+    }
+
+    , functionStatement: function(identifier, parameters, isLocal, body) {
+      return {
+          type: 'FunctionDeclaration'
+        , identifier: identifier
+        , isLocal: isLocal
+        , parameters: parameters
+        , body: body
+      };
+    }
+
+    , forNumericStatement: function(variable, start, end, step, body) {
+      return {
+          type: 'ForNumericStatement'
+        , variable: variable
+        , start: start
+        , end: end
+        , step: step
+        , body: body
+      };
+    }
+
+    , forGenericStatement: function(variables, iterators, body) {
+      return {
+          type: 'ForGenericStatement'
+        , variables: variables
+        , iterators: iterators
+        , body: body
+      };
+    }
+
+    , chunk: function(body) {
+      return {
+          type: 'Chunk'
+        , body: body
+      };
+    }
+
+    , identifier: function(name) {
+      return {
+          type: 'Identifier'
+        , name: name
+      };
+    }
+
+    , literal: function(type, value, raw) {
+      type = (type === StringLiteral) ? 'StringLiteral'
+        : (type === NumericLiteral) ? 'NumericLiteral'
+        : (type === BooleanLiteral) ? 'BooleanLiteral'
+        : (type === NilLiteral) ? 'NilLiteral'
+        : 'VarargLiteral';
+
+      return {
+          type: type
+        , value: value
+        , raw: raw
+      };
+    }
+
+    , tableKey: function(key, value) {
+      return {
+          type: 'TableKey'
+        , key: key
+        , value: value
+      };
+    }
+    , tableKeyString: function(key, value) {
+      return {
+          type: 'TableKeyString'
+        , key: key
+        , value: value
+      };
+    }
+    , tableValue: function(value) {
+      return {
+          type: 'TableValue'
+        , value: value
+      };
+    }
+
+
+    , tableConstructorExpression: function(fields) {
+      return {
+          type: 'TableConstructorExpression'
+        , fields: fields
+      };
+    }
+    , binaryExpression: function(operator, left, right) {
+      var type = ('and' === operator || 'or' === operator) ?
+        'LogicalExpression' :
+        'BinaryExpression';
+
+      return {
+          type: type
+        , operator: operator
+        , left: left
+        , right: right
+      };
+    }
+    , unaryExpression: function(operator, argument) {
+      return {
+          type: 'UnaryExpression'
+        , operator: operator
+        , argument: argument
+      };
+    }
+    , memberExpression: function(base, indexer, identifier) {
+      return {
+          type: 'MemberExpression'
+        , indexer: indexer
+        , identifier: identifier
+        , base: base
+      };
+    }
+
+    , indexExpression: function(base, index) {
+      return {
+          type: 'IndexExpression'
+        , base: base
+        , index: index
+      };
+    }
+
+    , callExpression: function(base, args) {
+      return {
+          type: 'CallExpression'
+        , base: base
+        , 'arguments': args
+      };
+    }
+
+    , tableCallExpression: function(base, args) {
+      return {
+          type: 'TableCallExpression'
+        , base: base
+        , 'arguments': args
+      };
+    }
+
+    , stringCallExpression: function(base, argument) {
+      return {
+          type: 'StringCallExpression'
+        , base: base
+        , argument: argument
+      };
+    }
+
+    , comment: function(value, raw) {
+      return {
+          type: 'Comment'
+        , value: value
+        , raw: raw
+      };
+    }
+  };
+
+  // Wrap up the node object.
+
+  function finishNode(node) {
+    // Pop a `Marker` off the location-array and attach its location data.
+    if (trackLocations) {
+      var location = locations.pop();
+      location.complete();
+      location.bless(node);
+    }
+    if (options.onCreateNode) options.onCreateNode(node);
+    return node;
+  }
+
+
+  // Helpers
+  // -------
+
+  var slice = Array.prototype.slice
+    , toString = Object.prototype.toString
+    ;
+
+  var indexOf = /* istanbul ignore next */ function (array, element) {
+    for (var i = 0, length = array.length; i < length; ++i) {
+      if (array[i] === element) return i;
+    }
+    return -1;
+  };
+
+  /* istanbul ignore else */
+  if (Array.prototype.indexOf)
+    indexOf = function (array, element) {
+      return array.indexOf(element);
+    };
+
+  // Iterate through an array of objects and return the index of an object
+  // with a matching property.
+
+  function indexOfObject(array, property, element) {
+    for (var i = 0, length = array.length; i < length; ++i) {
+      if (array[i][property] === element) return i;
+    }
+    return -1;
+  }
+
+  // A sprintf implementation using %index (beginning at 1) to input
+  // arguments in the format string.
+  //
+  // Example:
+  //
+  //     // Unexpected function in token
+  //     sprintf('Unexpected %2 in %1.', 'token', 'function');
+
+  function sprintf(format) {
+    var args = slice.call(arguments, 1);
+    format = format.replace(/%(\d)/g, function (match, index) {
+      return '' + args[index - 1] || /* istanbul ignore next */ '';
+    });
+    return format;
+  }
+
+  // Polyfill for `Object.assign`.
+
+  var assign = /* istanbul ignore next */ function (dest) {
+    var args = slice.call(arguments, 1)
+      , src, prop;
+
+    for (var i = 0, length = args.length; i < length; ++i) {
+      src = args[i];
+      for (prop in src)
+        /* istanbul ignore else */
+        if (Object.prototype.hasOwnProperty.call(src, prop)) {
+          dest[prop] = src[prop];
+        }
+    }
+
+    return dest;
+  };
+
+  /* istanbul ignore else */
+  if (Object.assign)
+    assign = Object.assign;
+
+  // ### Error functions
+
+  exports.SyntaxError = SyntaxError;
+
+  // XXX: Eliminate this function and change the error type to be different from SyntaxError.
+  // This will unfortunately be a breaking change, because some downstream users depend
+  // on the error thrown being an instance of SyntaxError. For example, the Ace editor:
+  // <https://github.com/ajaxorg/ace/blob/4c7e5eb3f5d5ca9434847be51834a4e41661b852/lib/ace/mode/lua_worker.js#L55>
+
+  function fixupError(e) {
+    /* istanbul ignore if */
+    if (!Object.create)
+      return e;
+    return Object.create(e, {
+      'line': { 'writable': true, value: e.line },
+      'index': { 'writable': true, value: e.index },
+      'column': { 'writable': true, value: e.column }
+    });
+  }
+
+  // #### Raise an exception.
+  //
+  // Raise an exception by passing a token, a string format and its paramters.
+  //
+  // The passed tokens location will automatically be added to the error
+  // message if it exists, if not it will default to the lexers current
+  // position.
+  //
+  // Example:
+  //
+  //     // [1:0] expected [ near (
+  //     raise(token, "expected %1 near %2", '[', token.value);
+
+  function raise(token) {
+    var message = sprintf.apply(null, slice.call(arguments, 1))
+      , error, col;
+
+    if (token === null || typeof token.line === 'undefined') {
+      col = index - lineStart + 1;
+      error = fixupError(new SyntaxError(sprintf('[%1:%2] %3', line, col, message)));
+      error.index = index;
+      error.line = line;
+      error.column = col;
+    } else {
+      col = token.range[0] - token.lineStart;
+      error = fixupError(new SyntaxError(sprintf('[%1:%2] %3', token.line, col, message)));
+      error.line = token.line;
+      error.index = token.range[0];
+      error.column = col;
+    }
+    throw error;
+  }
+
+  function tokenValue(token) {
+    var raw = input.slice(token.range[0], token.range[1]);
+    if (raw)
+      return raw;
+    return token.value;
+  }
+
+  // #### Raise an unexpected token error.
+  //
+  // Example:
+  //
+  //     // expected <name> near '0'
+  //     raiseUnexpectedToken('<name>', token);
+
+  function raiseUnexpectedToken(type, token) {
+    raise(token, errors.expectedToken, type, tokenValue(token));
+  }
+
+  // #### Raise a general unexpected error
+  //
+  // Usage should pass either a token object or a symbol string which was
+  // expected. We can also specify a nearby token such as <eof>, this will
+  // default to the currently active token.
+  //
+  // Example:
+  //
+  //     // Unexpected symbol 'end' near '<eof>'
+  //     unexpected(token);
+  //
+  // If there's no token in the buffer it means we have reached <eof>.
+
+  function unexpected(found) {
+    var near = tokenValue(lookahead);
+    if ('undefined' !== typeof found.type) {
+      var type;
+      switch (found.type) {
+        case StringLiteral:   type = 'string';      break;
+        case Keyword:         type = 'keyword';     break;
+        case Identifier:      type = 'identifier';  break;
+        case NumericLiteral:  type = 'number';      break;
+        case Punctuator:      type = 'symbol';      break;
+        case BooleanLiteral:  type = 'boolean';     break;
+        case NilLiteral:
+          return raise(found, errors.unexpected, 'symbol', 'nil', near);
+        case EOF:
+          return raise(found, errors.unexpectedEOF);
+      }
+      return raise(found, errors.unexpected, type, tokenValue(found), near);
+    }
+    return raise(found, errors.unexpected, 'symbol', found, near);
+  }
+
+  // Lexer
+  // -----
+  //
+  // The lexer, or the tokenizer reads the input string character by character
+  // and derives a token left-right. To be as efficient as possible the lexer
+  // prioritizes the common cases such as identifiers. It also works with
+  // character codes instead of characters as string comparisons was the
+  // biggest bottleneck of the parser.
+  //
+  // If `options.comments` is enabled, all comments encountered will be stored
+  // in an array which later will be appended to the chunk object. If disabled,
+  // they will simply be disregarded.
+  //
+  // When the lexer has derived a valid token, it will be returned as an object
+  // containing its value and as well as its position in the input string (this
+  // is always enabled to provide proper debug messages).
+  //
+  // `lex()` starts lexing and returns the following token in the stream.
+
+  var index
+    , token
+    , previousToken
+    , lookahead
+    , comments
+    , tokenStart
+    , line
+    , lineStart;
+
+  exports.lex = lex;
+
+  function lex() {
+    skipWhiteSpace();
+
+    // Skip comments beginning with --
+    while (45 === input.charCodeAt(index) &&
+           45 === input.charCodeAt(index + 1)) {
+      scanComment();
+      skipWhiteSpace();
+    }
+    if (index >= length) return {
+        type : EOF
+      , value: '<eof>'
+      , line: line
+      , lineStart: lineStart
+      , range: [index, index]
+    };
+
+    var charCode = input.charCodeAt(index)
+      , next = input.charCodeAt(index + 1);
+
+    // Memorize the range index where the token begins.
+    tokenStart = index;
+    if (isIdentifierStart(charCode)) return scanIdentifierOrKeyword();
+
+    switch (charCode) {
+      case 39: case 34: // '"
+        return scanStringLiteral();
+
+      case 48: case 49: case 50: case 51: case 52: case 53:
+      case 54: case 55: case 56: case 57: // 0-9
+        return scanNumericLiteral();
+
+      case 46: // .
+        // If the dot is followed by a digit it's a float.
+        if (isDecDigit(next)) return scanNumericLiteral();
+        if (46 === next) {
+          if (46 === input.charCodeAt(index + 2)) return scanVarargLiteral();
+          return scanPunctuator('..');
+        }
+        return scanPunctuator('.');
+
+      case 61: // =
+        if (61 === next) return scanPunctuator('==');
+        return scanPunctuator('=');
+
+      case 62: // >
+        if (features.bitwiseOperators)
+          if (62 === next) return scanPunctuator('>>');
+        if (61 === next) return scanPunctuator('>=');
+        return scanPunctuator('>');
+
+      case 60: // <
+        if (features.bitwiseOperators)
+          if (60 === next) return scanPunctuator('<<');
+        if (61 === next) return scanPunctuator('<=');
+        return scanPunctuator('<');
+
+      case 126: // ~
+        if (61 === next) return scanPunctuator('~=');
+        if (!features.bitwiseOperators)
+          break;
+        return scanPunctuator('~');
+
+      case 58: // :
+        if (features.labels)
+          if (58 === next) return scanPunctuator('::');
+        return scanPunctuator(':');
+
+      case 91: // [
+        // Check for a multiline string, they begin with [= or [[
+        if (91 === next || 61 === next) return scanLongStringLiteral();
+        return scanPunctuator('[');
+
+      case 47: // /
+        // Check for integer division op (//)
+        if (features.integerDivision)
+          if (47 === next) return scanPunctuator('//');
+        return scanPunctuator('/');
+
+      case 38: case 124: // & |
+        if (!features.bitwiseOperators)
+          break;
+
+        /* fall through */
+      case 42: case 94: case 37: case 44: case 123: case 125:
+      case 93: case 40: case 41: case 59: case 35: case 45:
+      case 43: // * ^ % , { } ] ( ) ; # - +
+        return scanPunctuator(input.charAt(index));
+    }
+
+    return unexpected(input.charAt(index));
+  }
+
+  // Whitespace has no semantic meaning in lua so simply skip ahead while
+  // tracking the encounted newlines. Any kind of eol sequence is counted as a
+  // single line.
+
+  function consumeEOL() {
+    var charCode = input.charCodeAt(index)
+      , peekCharCode = input.charCodeAt(index + 1);
+
+    if (isLineTerminator(charCode)) {
+      // Count \n\r and \r\n as one newline.
+      if (10 === charCode && 13 === peekCharCode) ++index;
+      if (13 === charCode && 10 === peekCharCode) ++index;
+      ++line;
+      lineStart = ++index;
+
+      return true;
+    }
+    return false;
+  }
+
+  function skipWhiteSpace() {
+    while (index < length) {
+      var charCode = input.charCodeAt(index);
+      if (isWhiteSpace(charCode)) {
+        ++index;
+      } else if (!consumeEOL()) {
+        break;
+      }
+    }
+  }
+
+  // Identifiers, keywords, booleans and nil all look the same syntax wise. We
+  // simply go through them one by one and defaulting to an identifier if no
+  // previous case matched.
+
+  function scanIdentifierOrKeyword() {
+    var value, type;
+
+    // Slicing the input string is prefered before string concatenation in a
+    // loop for performance reasons.
+    while (isIdentifierPart(input.charCodeAt(++index)));
+    value = encodingMode.fixup(input.slice(tokenStart, index));
+
+    // Decide on the token type and possibly cast the value.
+    if (isKeyword(value)) {
+      type = Keyword;
+    } else if ('true' === value || 'false' === value) {
+      type = BooleanLiteral;
+      value = ('true' === value);
+    } else if ('nil' === value) {
+      type = NilLiteral;
+      value = null;
+    } else {
+      type = Identifier;
+    }
+
+    return {
+        type: type
+      , value: value
+      , line: line
+      , lineStart: lineStart
+      , range: [tokenStart, index]
+    };
+  }
+
+  // Once a punctuator reaches this function it should already have been
+  // validated so we simply return it as a token.
+
+  function scanPunctuator(value) {
+    index += value.length;
+    return {
+        type: Punctuator
+      , value: value
+      , line: line
+      , lineStart: lineStart
+      , range: [tokenStart, index]
+    };
+  }
+
+  // A vararg literal consists of three dots.
+
+  function scanVarargLiteral() {
+    index += 3;
+    return {
+        type: VarargLiteral
+      , value: '...'
+      , line: line
+      , lineStart: lineStart
+      , range: [tokenStart, index]
+    };
+  }
+
+  // Find the string literal by matching the delimiter marks used.
+
+  function scanStringLiteral() {
+    var delimiter = input.charCodeAt(index++)
+      , beginLine = line
+      , beginLineStart = lineStart
+      , stringStart = index
+      , string = encodingMode.discardStrings ? null : ''
+      , charCode;
+
+    for (;;) {
+      charCode = input.charCodeAt(index++);
+      if (delimiter === charCode) break;
+      // EOF or `\n` terminates a string literal. If we haven't found the
+      // ending delimiter by now, raise an exception.
+      if (index > length || isLineTerminator(charCode)) {
+        string += input.slice(stringStart, index - 1);
+        raise(null, errors.unfinishedString, input.slice(tokenStart, index - 1));
+      }
+      if (92 === charCode) { // backslash
+        if (!encodingMode.discardStrings) {
+          var beforeEscape = input.slice(stringStart, index - 1);
+          string += encodingMode.fixup(beforeEscape);
+        }
+        var escapeValue = readEscapeSequence();
+        if (!encodingMode.discardStrings)
+          string += escapeValue;
+        stringStart = index;
+      }
+    }
+    if (!encodingMode.discardStrings) {
+      string += encodingMode.encodeByte(null);
+      string += encodingMode.fixup(input.slice(stringStart, index - 1));
+    }
+
+    return {
+        type: StringLiteral
+      , value: string
+      , line: beginLine
+      , lineStart: beginLineStart
+      , lastLine: line
+      , lastLineStart: lineStart
+      , range: [tokenStart, index]
+    };
+  }
+
+  // Expect a multiline string literal and return it as a regular string
+  // literal, if it doesn't validate into a valid multiline string, throw an
+  // exception.
+
+  function scanLongStringLiteral() {
+    var beginLine = line
+      , beginLineStart = lineStart
+      , string = readLongString(false);
+    // Fail if it's not a multiline literal.
+    if (false === string) raise(token, errors.expected, '[', tokenValue(token));
+
+    return {
+        type: StringLiteral
+      , value: encodingMode.discardStrings ? null : encodingMode.fixup(string)
+      , line: beginLine
+      , lineStart: beginLineStart
+      , lastLine: line
+      , lastLineStart: lineStart
+      , range: [tokenStart, index]
+    };
+  }
+
+  // Numeric literals will be returned as floating-point numbers instead of
+  // strings. The raw value should be retrieved from slicing the input string
+  // later on in the process.
+  //
+  // If a hexadecimal number is encountered, it will be converted.
+
+  function scanNumericLiteral() {
+    var character = input.charAt(index)
+      , next = input.charAt(index + 1);
+
+    var literal = ('0' === character && 'xX'.indexOf(next || null) >= 0) ?
+      readHexLiteral() : readDecLiteral();
+
+    var foundImaginaryUnit = readImaginaryUnitSuffix()
+      , foundInt64Suffix = readInt64Suffix();
+
+    if (foundInt64Suffix && (foundImaginaryUnit || literal.hasFractionPart)) {
+      raise(null, errors.malformedNumber, input.slice(tokenStart, index));
+    }
+
+    return {
+        type: NumericLiteral
+      , value: literal.value
+      , line: line
+      , lineStart: lineStart
+      , range: [tokenStart, index]
+    };
+  }
+
+  function readImaginaryUnitSuffix() {
+    if (!features.imaginaryNumbers) return;
+
+    // Imaginary unit number suffix is optional.
+    // See http://luajit.org/ext_ffi_api.html#literals
+    if ('iI'.indexOf(input.charAt(index) || null) >= 0) {
+      ++index;
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  function readInt64Suffix() {
+    if (!features.integerSuffixes) return;
+
+    // Int64/uint64 number suffix is optional.
+    // See http://luajit.org/ext_ffi_api.html#literals
+
+    if ('uU'.indexOf(input.charAt(index) || null) >= 0) {
+      ++index;
+      if ('lL'.indexOf(input.charAt(index) || null) >= 0) {
+        ++index;
+        if ('lL'.indexOf(input.charAt(index) || null) >= 0) {
+          ++index;
+          return 'ULL';
+        } else {
+          // UL but no L
+          raise(null, errors.malformedNumber, input.slice(tokenStart, index));
+        }
+      } else {
+        // U but no L
+        raise(null, errors.malformedNumber, input.slice(tokenStart, index));
+      }
+    } else if ('lL'.indexOf(input.charAt(index) || null) >= 0) {
+        ++index;
+        if ('lL'.indexOf(input.charAt(index) || null) >= 0) {
+          ++index;
+          return 'LL';
+        } else {
+          // First L but no second L
+          raise(null, errors.malformedNumber, input.slice(tokenStart, index));
+        }
+    }
+  }
+
+  // Lua hexadecimals have an optional fraction part and an optional binary
+  // exoponent part. These are not included in JavaScript so we will compute
+  // all three parts separately and then sum them up at the end of the function
+  // with the following algorithm.
+  //
+  //     Digit := toDec(digit)
+  //     Fraction := toDec(fraction) / 16 ^ fractionCount
+  //     BinaryExp := 2 ^ binaryExp
+  //     Number := ( Digit + Fraction ) * BinaryExp
+
+  function readHexLiteral() {
+    var fraction = 0 // defaults to 0 as it gets summed
+      , binaryExponent = 1 // defaults to 1 as it gets multiplied
+      , binarySign = 1 // positive
+      , digit, fractionStart, exponentStart, digitStart;
+
+    digitStart = index += 2; // Skip 0x part
+
+    // A minimum of one hex digit is required.
+    if (!isHexDigit(input.charCodeAt(index)))
+      raise(null, errors.malformedNumber, input.slice(tokenStart, index));
+
+    while (isHexDigit(input.charCodeAt(index))) ++index;
+    // Convert the hexadecimal digit to base 10.
+    digit = parseInt(input.slice(digitStart, index), 16);
+
+    // Fraction part is optional.
+    var foundFraction = false;
+    if ('.' === input.charAt(index)) {
+      foundFraction = true;
+      fractionStart = ++index;
+
+      while (isHexDigit(input.charCodeAt(index))) ++index;
+      fraction = input.slice(fractionStart, index);
+
+      // Empty fraction parts should default to 0, others should be converted
+      // 0.x form so we can use summation at the end.
+      fraction = (fractionStart === index) ? 0
+        : parseInt(fraction, 16) / Math.pow(16, index - fractionStart);
+    }
+
+    // Binary exponents are optional
+    var foundBinaryExponent = false;
+    if ('pP'.indexOf(input.charAt(index) || null) >= 0) {
+      foundBinaryExponent = true;
+      ++index;
+
+      // Sign part is optional and defaults to 1 (positive).
+      if ('+-'.indexOf(input.charAt(index) || null) >= 0)
+        binarySign = ('+' === input.charAt(index++)) ? 1 : -1;
+
+      exponentStart = index;
+
+      // The binary exponent sign requires a decimal digit.
+      if (!isDecDigit(input.charCodeAt(index)))
+        raise(null, errors.malformedNumber, input.slice(tokenStart, index));
+
+      while (isDecDigit(input.charCodeAt(index))) ++index;
+      binaryExponent = input.slice(exponentStart, index);
+
+      // Calculate the binary exponent of the number.
+      binaryExponent = Math.pow(2, binaryExponent * binarySign);
+    }
+
+    return {
+      value: (digit + fraction) * binaryExponent,
+      hasFractionPart: foundFraction || foundBinaryExponent
+    };
+  }
+
+  // Decimal numbers are exactly the same in Lua and in JavaScript, because of
+  // this we check where the token ends and then parse it with native
+  // functions.
+
+  function readDecLiteral() {
+    while (isDecDigit(input.charCodeAt(index))) ++index;
+    // Fraction part is optional
+    var foundFraction = false;
+    if ('.' === input.charAt(index)) {
+      foundFraction = true;
+      ++index;
+      // Fraction part defaults to 0
+      while (isDecDigit(input.charCodeAt(index))) ++index;
+    }
+
+    // Exponent part is optional.
+    var foundExponent = false;
+    if ('eE'.indexOf(input.charAt(index) || null) >= 0) {
+      foundExponent = true;
+      ++index;
+      // Sign part is optional.
+      if ('+-'.indexOf(input.charAt(index) || null) >= 0) ++index;
+      // An exponent is required to contain at least one decimal digit.
+      if (!isDecDigit(input.charCodeAt(index)))
+        raise(null, errors.malformedNumber, input.slice(tokenStart, index));
+
+      while (isDecDigit(input.charCodeAt(index))) ++index;
+    }
+
+    return {
+      value: parseFloat(input.slice(tokenStart, index)),
+      hasFractionPart: foundFraction || foundExponent
+    };
+  }
+
+  function readUnicodeEscapeSequence() {
+    var sequenceStart = index++;
+
+    if (input.charAt(index++) !== '{')
+      raise(null, errors.braceExpected, '{', '\\' + input.slice(sequenceStart, index));
+    if (!isHexDigit(input.charCodeAt(index)))
+      raise(null, errors.hexadecimalDigitExpected, '\\' + input.slice(sequenceStart, index));
+
+    while (input.charCodeAt(index) === 0x30) ++index;
+    var escStart = index;
+
+    while (isHexDigit(input.charCodeAt(index))) {
+      ++index;
+      if (index - escStart > 6)
+        raise(null, errors.tooLargeCodepoint, '\\' + input.slice(sequenceStart, index));
+    }
+
+    var b = input.charAt(index++);
+    if (b !== '}') {
+      if ((b === '"') || (b === "'"))
+        raise(null, errors.braceExpected, '}', '\\' + input.slice(sequenceStart, index--));
+      else
+        raise(null, errors.hexadecimalDigitExpected, '\\' + input.slice(sequenceStart, index));
+    }
+
+    var codepoint = parseInt(input.slice(escStart, index - 1) || '0', 16);
+    var frag = '\\' + input.slice(sequenceStart, index);
+
+    if (codepoint > 0x10ffff) {
+      raise(null, errors.tooLargeCodepoint, frag);
+    }
+
+    return encodingMode.encodeUTF8(codepoint, frag);
+  }
+
+  // Translate escape sequences to the actual characters.
+  function readEscapeSequence() {
+    var sequenceStart = index;
+    switch (input.charAt(index)) {
+      // Lua allow the following escape sequences.
+      case 'a': ++index; return '\x07';
+      case 'n': ++index; return '\n';
+      case 'r': ++index; return '\r';
+      case 't': ++index; return '\t';
+      case 'v': ++index; return '\x0b';
+      case 'b': ++index; return '\b';
+      case 'f': ++index; return '\f';
+
+      // Backslash at the end of the line. We treat all line endings as equivalent,
+      // and as representing the [LF] character (code 10). Lua 5.1 through 5.3
+      // have been verified to behave the same way.
+      case '\r':
+      case '\n':
+        consumeEOL();
+        return '\n';
+
+      case '0': case '1': case '2': case '3': case '4':
+      case '5': case '6': case '7': case '8': case '9':
+        // \ddd, where ddd is a sequence of up to three decimal digits.
+        while (isDecDigit(input.charCodeAt(index)) && index - sequenceStart < 3) ++index;
+
+        var frag = input.slice(sequenceStart, index);
+        var ddd = parseInt(frag, 10);
+        if (ddd > 255) {
+          raise(null, errors.decimalEscapeTooLarge, '\\' + ddd);
+        }
+        return encodingMode.encodeByte(ddd, '\\' + frag);
+
+      case 'z':
+        if (features.skipWhitespaceEscape) {
+          ++index;
+          skipWhiteSpace();
+          return '';
+        }
+        break;
+
+      case 'x':
+        if (features.hexEscapes) {
+          // \xXX, where XX is a sequence of exactly two hexadecimal digits
+          if (isHexDigit(input.charCodeAt(index + 1)) &&
+              isHexDigit(input.charCodeAt(index + 2))) {
+            index += 3;
+            return encodingMode.encodeByte(parseInt(input.slice(sequenceStart + 1, index), 16), '\\' + input.slice(sequenceStart, index));
+          }
+          raise(null, errors.hexadecimalDigitExpected, '\\' + input.slice(sequenceStart, index + 2));
+        }
+        break;
+
+      case 'u':
+        if (features.unicodeEscapes)
+          return readUnicodeEscapeSequence();
+        break;
+
+      case '\\': case '"': case "'":
+        return input.charAt(index++);
+    }
+
+    if (features.strictEscapes)
+      raise(null, errors.invalidEscape, '\\' + input.slice(sequenceStart, index + 1));
+    return input.charAt(index++);
+  }
+
+  // Comments begin with -- after which it will be decided if they are
+  // multiline comments or not.
+  //
+  // The multiline functionality works the exact same way as with string
+  // literals so we reuse the functionality.
+
+  function scanComment() {
+    tokenStart = index;
+    index += 2; // --
+
+    var character = input.charAt(index)
+      , content = ''
+      , isLong = false
+      , commentStart = index
+      , lineStartComment = lineStart
+      , lineComment = line;
+
+    if ('[' === character) {
+      content = readLongString(true);
+      // This wasn't a multiline comment after all.
+      if (false === content) content = character;
+      else isLong = true;
+    }
+    // Scan until next line as long as it's not a multiline comment.
+    if (!isLong) {
+      while (index < length) {
+        if (isLineTerminator(input.charCodeAt(index))) break;
+        ++index;
+      }
+      if (options.comments) content = input.slice(commentStart, index);
+    }
+
+    if (options.comments) {
+      var node = ast.comment(content, input.slice(tokenStart, index));
+
+      // `Marker`s depend on tokens available in the parser and as comments are
+      // intercepted in the lexer all location data is set manually.
+      if (options.locations) {
+        node.loc = {
+            start: { line: lineComment, column: tokenStart - lineStartComment }
+          , end: { line: line, column: index - lineStart }
+        };
+      }
+      if (options.ranges) {
+        node.range = [tokenStart, index];
+      }
+      if (options.onCreateNode) options.onCreateNode(node);
+      comments.push(node);
+    }
+  }
+
+  // Read a multiline string by calculating the depth of `=` characters and
+  // then appending until an equal depth is found.
+
+  function readLongString(isComment) {
+    var level = 0
+      , content = ''
+      , terminator = false
+      , character, stringStart, firstLine = line;
+
+    ++index; // [
+
+    // Calculate the depth of the comment.
+    while ('=' === input.charAt(index + level)) ++level;
+    // Exit, this is not a long string afterall.
+    if ('[' !== input.charAt(index + level)) return false;
+
+    index += level + 1;
+
+    // If the first character is a newline, ignore it and begin on next line.
+    if (isLineTerminator(input.charCodeAt(index))) consumeEOL();
+
+    stringStart = index;
+    while (index < length) {
+      // To keep track of line numbers run the `consumeEOL()` which increments
+      // its counter.
+      while (isLineTerminator(input.charCodeAt(index))) consumeEOL();
+
+      character = input.charAt(index++);
+
+      // Once the delimiter is found, iterate through the depth count and see
+      // if it matches.
+      if (']' === character) {
+        terminator = true;
+        for (var i = 0; i < level; ++i) {
+          if ('=' !== input.charAt(index + i)) terminator = false;
+        }
+        if (']' !== input.charAt(index + level)) terminator = false;
+      }
+
+      // We reached the end of the multiline string. Get out now.
+      if (terminator) {
+        content += input.slice(stringStart, index - 1);
+        index += level + 1;
+        return content;
+      }
+    }
+
+    raise(null, isComment ?
+                errors.unfinishedLongComment :
+                errors.unfinishedLongString,
+          firstLine, '<eof>');
+  }
+
+  // ## Lex functions and helpers.
+
+  // Read the next token.
+  //
+  // This is actually done by setting the current token to the lookahead and
+  // reading in the new lookahead token.
+
+  function next() {
+    previousToken = token;
+    token = lookahead;
+    lookahead = lex();
+  }
+
+  // Consume a token if its value matches. Once consumed or not, return the
+  // success of the operation.
+
+  function consume(value) {
+    if (value === token.value) {
+      next();
+      return true;
+    }
+    return false;
+  }
+
+  // Expect the next token value to match. If not, throw an exception.
+
+  function expect(value) {
+    if (value === token.value) next();
+    else raise(token, errors.expected, value, tokenValue(token));
+  }
+
+  // ### Validation functions
+
+  function isWhiteSpace(charCode) {
+    return 9 === charCode || 32 === charCode || 0xB === charCode || 0xC === charCode;
+  }
+
+  function isLineTerminator(charCode) {
+    return 10 === charCode || 13 === charCode;
+  }
+
+  function isDecDigit(charCode) {
+    return charCode >= 48 && charCode <= 57;
+  }
+
+  function isHexDigit(charCode) {
+    return (charCode >= 48 && charCode <= 57) || (charCode >= 97 && charCode <= 102) || (charCode >= 65 && charCode <= 70);
+  }
+
+  // From [Lua 5.2](http://www.lua.org/manual/5.2/manual.html#8.1) onwards
+  // identifiers cannot use 'locale-dependent' letters (i.e. dependent on the C locale).
+  // On the other hand, LuaJIT allows arbitrary octets ≥ 128 in identifiers.
+
+  function isIdentifierStart(charCode) {
+    if ((charCode >= 65 && charCode <= 90) || (charCode >= 97 && charCode <= 122) || 95 === charCode)
+      return true;
+    if (features.extendedIdentifiers && charCode >= 128)
+      return true;
+    return false;
+  }
+
+  function isIdentifierPart(charCode) {
+    if ((charCode >= 65 && charCode <= 90) || (charCode >= 97 && charCode <= 122) || 95 === charCode || (charCode >= 48 && charCode <= 57))
+      return true;
+    if (features.extendedIdentifiers && charCode >= 128)
+      return true;
+    return false;
+  }
+
+  // [3.1 Lexical Conventions](http://www.lua.org/manual/5.2/manual.html#3.1)
+  //
+  // `true`, `false` and `nil` will not be considered keywords, but literals.
+
+  function isKeyword(id) {
+    switch (id.length) {
+      case 2:
+        return 'do' === id || 'if' === id || 'in' === id || 'or' === id;
+      case 3:
+        return 'and' === id || 'end' === id || 'for' === id || 'not' === id;
+      case 4:
+        if ('else' === id || 'then' === id)
+          return true;
+        if (features.labels && !features.contextualGoto)
+          return ('goto' === id);
+        return false;
+      case 5:
+        return 'break' === id || 'local' === id || 'until' === id || 'while' === id;
+      case 6:
+        return 'elseif' === id || 'repeat' === id || 'return' === id;
+      case 8:
+        return 'function' === id;
+    }
+    return false;
+  }
+
+  function isUnary(token) {
+    if (Punctuator === token.type) return '#-~'.indexOf(token.value) >= 0;
+    if (Keyword === token.type) return 'not' === token.value;
+    return false;
+  }
+
+  // Check if the token syntactically closes a block.
+
+  function isBlockFollow(token) {
+    if (EOF === token.type) return true;
+    if (Keyword !== token.type) return false;
+    switch (token.value) {
+      case 'else': case 'elseif':
+      case 'end': case 'until':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  // Scope
+  // -----
+
+  // Store each block scope as a an array of identifier names. Each scope is
+  // stored in an FILO-array.
+  var scopes
+    // The current scope index
+    , scopeDepth
+    // A list of all global identifier nodes.
+    , globals;
+
+  // Create a new scope inheriting all declarations from the previous scope.
+  function createScope() {
+    var scope = scopes[scopeDepth++].slice();
+    scopes.push(scope);
+    if (options.onCreateScope) options.onCreateScope();
+  }
+
+  // Exit and remove the current scope.
+  function destroyScope() {
+    var scope = scopes.pop();
+    --scopeDepth;
+    if (options.onDestroyScope) options.onDestroyScope();
+  }
+
+  // Add identifier name to the current scope if it doesnt already exist.
+  function scopeIdentifierName(name) {
+    if (options.onLocalDeclaration) options.onLocalDeclaration(name);
+    if (-1 !== indexOf(scopes[scopeDepth], name)) return;
+    scopes[scopeDepth].push(name);
+  }
+
+  // Add identifier to the current scope
+  function scopeIdentifier(node) {
+    scopeIdentifierName(node.name);
+    attachScope(node, true);
+  }
+
+  // Attach scope information to node. If the node is global, store it in the
+  // globals array so we can return the information to the user.
+  function attachScope(node, isLocal) {
+    if (!isLocal && -1 === indexOfObject(globals, 'name', node.name))
+      globals.push(node);
+
+    node.isLocal = isLocal;
+  }
+
+  // Is the identifier name available in this scope.
+  function scopeHasName(name) {
+    return (-1 !== indexOf(scopes[scopeDepth], name));
+  }
+
+  // Location tracking
+  // -----------------
+  //
+  // Locations are stored in FILO-array as a `Marker` object consisting of both
+  // `loc` and `range` data. Once a `Marker` is popped off the list an end
+  // location is added and the data is attached to a syntax node.
+
+  var locations = []
+    , trackLocations;
+
+  function createLocationMarker() {
+    return new Marker(token);
+  }
+
+  function Marker(token) {
+    if (options.locations) {
+      this.loc = {
+          start: {
+            line: token.line
+          , column: token.range[0] - token.lineStart
+        }
+        , end: {
+            line: 0
+          , column: 0
+        }
+      };
+    }
+    if (options.ranges) this.range = [token.range[0], 0];
+  }
+
+  // Complete the location data stored in the `Marker` by adding the location
+  // of the *previous token* as an end location.
+  Marker.prototype.complete = function() {
+    if (options.locations) {
+      this.loc.end.line = previousToken.lastLine || previousToken.line;
+      this.loc.end.column = previousToken.range[1] - (previousToken.lastLineStart || previousToken.lineStart);
+    }
+    if (options.ranges) {
+      this.range[1] = previousToken.range[1];
+    }
+  };
+
+  Marker.prototype.bless = function (node) {
+    if (this.loc) {
+      var loc = this.loc;
+      node.loc = {
+        start: {
+          line: loc.start.line,
+          column: loc.start.column
+        },
+        end: {
+          line: loc.end.line,
+          column: loc.end.column
+        }
+      };
+    }
+    if (this.range) {
+      node.range = [
+        this.range[0],
+        this.range[1]
+      ];
+    }
+  };
+
+  // Create a new `Marker` and add it to the FILO-array.
+  function markLocation() {
+    if (trackLocations) locations.push(createLocationMarker());
+  }
+
+  // Push an arbitrary `Marker` object onto the FILO-array.
+  function pushLocation(marker) {
+    if (trackLocations) locations.push(marker);
+  }
+
+  // Control flow tracking
+  // ---------------------
+  // A context object that validates loop breaks and `goto`-based control flow.
+
+  function FullFlowContext() {
+    this.scopes = [];
+    this.pendingGotos = [];
+  }
+
+  FullFlowContext.prototype.isInLoop = function () {
+    var i = this.scopes.length;
+    while (i --> 0) {
+      if (this.scopes[i].isLoop)
+        return true;
+    }
+    return false;
+  };
+
+  FullFlowContext.prototype.pushScope = function (isLoop) {
+    var scope = {
+      labels: {},
+      locals: [],
+      deferredGotos: [],
+      isLoop: !!isLoop
+    };
+    this.scopes.push(scope);
+  };
+
+  FullFlowContext.prototype.popScope = function () {
+    for (var i = 0; i < this.pendingGotos.length; ++i) {
+      var theGoto = this.pendingGotos[i];
+      if (theGoto.maxDepth >= this.scopes.length)
+        if (--theGoto.maxDepth <= 0)
+          raise(theGoto.token, errors.labelNotVisible, theGoto.target);
+    }
+
+    this.scopes.pop();
+  };
+
+  FullFlowContext.prototype.addGoto = function (target, token) {
+    var localCounts = [];
+
+    for (var i = 0; i < this.scopes.length; ++i) {
+      var scope = this.scopes[i];
+      localCounts.push(scope.locals.length);
+      if (Object.prototype.hasOwnProperty.call(scope.labels, target))
+        return;
+    }
+
+    this.pendingGotos.push({
+      maxDepth: this.scopes.length,
+      target: target,
+      token: token,
+      localCounts: localCounts
+    });
+  };
+
+  FullFlowContext.prototype.addLabel = function (name, token) {
+    var scope = this.currentScope();
+
+    if (Object.prototype.hasOwnProperty.call(scope.labels, name)) {
+      raise(token, errors.labelAlreadyDefined, name, scope.labels[name].line);
+    } else {
+      var newGotos = [];
+
+      for (var i = 0; i < this.pendingGotos.length; ++i) {
+        var theGoto = this.pendingGotos[i];
+
+        if (theGoto.maxDepth >= this.scopes.length && theGoto.target === name) {
+          if (theGoto.localCounts[this.scopes.length - 1] < scope.locals.length) {
+            scope.deferredGotos.push(theGoto);
+          }
+          continue;
+        }
+
+        newGotos.push(theGoto);
+      }
+
+      this.pendingGotos = newGotos;
+    }
+
+    scope.labels[name] = {
+      localCount: scope.locals.length,
+      line: token.line
+    };
+  };
+
+  FullFlowContext.prototype.addLocal = function (name, token) {
+    this.currentScope().locals.push({
+      name: name,
+      token: token
+    });
+  };
+
+  FullFlowContext.prototype.currentScope = function () {
+    return this.scopes[this.scopes.length - 1];
+  };
+
+  FullFlowContext.prototype.raiseDeferredErrors = function () {
+    var scope = this.currentScope();
+    var bads = scope.deferredGotos;
+    for (var i = 0; i < bads.length; ++i) {
+      var theGoto = bads[i];
+      raise(theGoto.token, errors.gotoJumpInLocalScope, theGoto.target, scope.locals[theGoto.localCounts[this.scopes.length - 1]].name);
+    }
+    // Would be dead code currently, but may be useful later
+    // if (bads.length)
+    //   scope.deferredGotos = [];
+  };
+
+  // Simplified context that only checks the validity of loop breaks.
+
+  function LoopFlowContext() {
+    this.level = 0;
+    this.loopLevels = [];
+  }
+
+  LoopFlowContext.prototype.isInLoop = function () {
+    return !!this.loopLevels.length;
+  };
+
+  LoopFlowContext.prototype.pushScope = function (isLoop) {
+    ++this.level;
+    if (isLoop)
+      this.loopLevels.push(this.level);
+  };
+
+  LoopFlowContext.prototype.popScope = function () {
+    var levels = this.loopLevels;
+    var levlen = levels.length;
+    if (levlen) {
+      if (levels[levlen - 1] === this.level)
+        levels.pop();
+    }
+    --this.level;
+  };
+
+  LoopFlowContext.prototype.addGoto =
+  LoopFlowContext.prototype.addLabel =
+  /* istanbul ignore next */
+  function () { throw new Error('This should never happen'); };
+
+  LoopFlowContext.prototype.addLocal =
+  LoopFlowContext.prototype.raiseDeferredErrors =
+  function () {};
+
+  function makeFlowContext() {
+    return features.labels ? new FullFlowContext() : new LoopFlowContext();
+  }
+
+  // Parse functions
+  // ---------------
+
+  // Chunk is the main program object. Syntactically it's the same as a block.
+  //
+  //     chunk ::= block
+
+  function parseChunk() {
+    next();
+    markLocation();
+    if (options.scope) createScope();
+    var flowContext = makeFlowContext();
+    flowContext.allowVararg = true;
+    flowContext.pushScope();
+    var body = parseBlock(flowContext);
+    flowContext.popScope();
+    if (options.scope) destroyScope();
+    if (EOF !== token.type) unexpected(token);
+    // If the body is empty no previousToken exists when finishNode runs.
+    if (trackLocations && !body.length) previousToken = token;
+    return finishNode(ast.chunk(body));
+  }
+
+  // A block contains a list of statements with an optional return statement
+  // as its last statement.
+  //
+  //     block ::= {stat} [retstat]
+
+  function parseBlock(flowContext) {
+    var block = []
+      , statement;
+
+    while (!isBlockFollow(token)) {
+      // Return has to be the last statement in a block.
+      // Likewise 'break' in Lua older than 5.2
+      if ('return' === token.value || (!features.relaxedBreak && 'break' === token.value)) {
+        block.push(parseStatement(flowContext));
+        break;
+      }
+      statement = parseStatement(flowContext);
+      consume(';');
+      // Statements are only added if they are returned, this allows us to
+      // ignore some statements, such as EmptyStatement.
+      if (statement) block.push(statement);
+    }
+
+    // Doesn't really need an ast node
+    return block;
+  }
+
+  // There are two types of statements, simple and compound.
+  //
+  //     statement ::= break | goto | do | while | repeat | return
+  //          | if | for | function | local | label | assignment
+  //          | functioncall | ';'
+
+  function parseStatement(flowContext) {
+    markLocation();
+
+    if (Punctuator === token.type) {
+      if (consume('::')) return parseLabelStatement(flowContext);
+    }
+
+    // When a `;` is encounted, simply eat it without storing it.
+    if (features.emptyStatement) {
+      if (consume(';')) {
+        if (trackLocations) locations.pop();
+        return;
+      }
+    }
+
+    flowContext.raiseDeferredErrors();
+
+    if (Keyword === token.type) {
+      switch (token.value) {
+        case 'local':    next(); return parseLocalStatement(flowContext);
+        case 'if':       next(); return parseIfStatement(flowContext);
+        case 'return':   next(); return parseReturnStatement(flowContext);
+        case 'function': next();
+          var name = parseFunctionName();
+          return parseFunctionDeclaration(name);
+        case 'while':    next(); return parseWhileStatement(flowContext);
+        case 'for':      next(); return parseForStatement(flowContext);
+        case 'repeat':   next(); return parseRepeatStatement(flowContext);
+        case 'break':    next();
+          if (!flowContext.isInLoop())
+            raise(token, errors.noLoopToBreak, token.value);
+          return parseBreakStatement();
+        case 'do':       next(); return parseDoStatement(flowContext);
+        case 'goto':     next(); return parseGotoStatement(flowContext);
+      }
+    }
+
+    if (features.contextualGoto &&
+        token.type === Identifier && token.value === 'goto' &&
+        lookahead.type === Identifier && lookahead.value !== 'goto') {
+      next(); return parseGotoStatement(flowContext);
+    }
+
+    // Assignments memorizes the location and pushes it manually for wrapper nodes.
+    if (trackLocations) locations.pop();
+
+    return parseAssignmentOrCallStatement(flowContext);
+  }
+
+  // ## Statements
+
+  //     label ::= '::' Name '::'
+
+  function parseLabelStatement(flowContext) {
+    var nameToken = token
+      , label = parseIdentifier();
+
+    if (options.scope) {
+      scopeIdentifierName('::' + nameToken.value + '::');
+      attachScope(label, true);
+    }
+
+    expect('::');
+
+    flowContext.addLabel(nameToken.value, nameToken);
+    return finishNode(ast.labelStatement(label));
+  }
+
+  //     break ::= 'break'
+
+  function parseBreakStatement() {
+    return finishNode(ast.breakStatement());
+  }
+
+  //     goto ::= 'goto' Name
+
+  function parseGotoStatement(flowContext) {
+    var name = token.value
+      , gotoToken = previousToken
+      , label = parseIdentifier();
+
+    flowContext.addGoto(name, gotoToken);
+    return finishNode(ast.gotoStatement(label));
+  }
+
+  //     do ::= 'do' block 'end'
+
+  function parseDoStatement(flowContext) {
+    if (options.scope) createScope();
+    flowContext.pushScope();
+    var body = parseBlock(flowContext);
+    flowContext.popScope();
+    if (options.scope) destroyScope();
+    expect('end');
+    return finishNode(ast.doStatement(body));
+  }
+
+  //     while ::= 'while' exp 'do' block 'end'
+
+  function parseWhileStatement(flowContext) {
+    var condition = parseExpectedExpression(flowContext);
+    expect('do');
+    if (options.scope) createScope();
+    flowContext.pushScope(true);
+    var body = parseBlock(flowContext);
+    flowContext.popScope();
+    if (options.scope) destroyScope();
+    expect('end');
+    return finishNode(ast.whileStatement(condition, body));
+  }
+
+  //     repeat ::= 'repeat' block 'until' exp
+
+  function parseRepeatStatement(flowContext) {
+    if (options.scope) createScope();
+    flowContext.pushScope(true);
+    var body = parseBlock(flowContext);
+    expect('until');
+    flowContext.raiseDeferredErrors();
+    var condition = parseExpectedExpression(flowContext);
+    flowContext.popScope();
+    if (options.scope) destroyScope();
+    return finishNode(ast.repeatStatement(condition, body));
+  }
+
+  //     retstat ::= 'return' [exp {',' exp}] [';']
+
+  function parseReturnStatement(flowContext) {
+    var expressions = [];
+
+    if ('end' !== token.value) {
+      var expression = parseExpression(flowContext);
+      if (null != expression) expressions.push(expression);
+      while (consume(',')) {
+        expression = parseExpectedExpression(flowContext);
+        expressions.push(expression);
+      }
+      consume(';'); // grammar tells us ; is optional here.
+    }
+    return finishNode(ast.returnStatement(expressions));
+  }
+
+  //     if ::= 'if' exp 'then' block {elif} ['else' block] 'end'
+  //     elif ::= 'elseif' exp 'then' block
+
+  function parseIfStatement(flowContext) {
+    var clauses = []
+      , condition
+      , body
+      , marker;
+
+    // IfClauses begin at the same location as the parent IfStatement.
+    // It ends at the start of `end`, `else`, or `elseif`.
+    if (trackLocations) {
+      marker = locations[locations.length - 1];
+      locations.push(marker);
+    }
+    condition = parseExpectedExpression(flowContext);
+    expect('then');
+    if (options.scope) createScope();
+    flowContext.pushScope();
+    body = parseBlock(flowContext);
+    flowContext.popScope();
+    if (options.scope) destroyScope();
+    clauses.push(finishNode(ast.ifClause(condition, body)));
+
+    if (trackLocations) marker = createLocationMarker();
+    while (consume('elseif')) {
+      pushLocation(marker);
+      condition = parseExpectedExpression(flowContext);
+      expect('then');
+      if (options.scope) createScope();
+      flowContext.pushScope();
+      body = parseBlock(flowContext);
+      flowContext.popScope();
+      if (options.scope) destroyScope();
+      clauses.push(finishNode(ast.elseifClause(condition, body)));
+      if (trackLocations) marker = createLocationMarker();
+    }
+
+    if (consume('else')) {
+      // Include the `else` in the location of ElseClause.
+      if (trackLocations) {
+        marker = new Marker(previousToken);
+        locations.push(marker);
+      }
+      if (options.scope) createScope();
+      flowContext.pushScope();
+      body = parseBlock(flowContext);
+      flowContext.popScope();
+      if (options.scope) destroyScope();
+      clauses.push(finishNode(ast.elseClause(body)));
+    }
+
+    expect('end');
+    return finishNode(ast.ifStatement(clauses));
+  }
+
+  // There are two types of for statements, generic and numeric.
+  //
+  //     for ::= Name '=' exp ',' exp [',' exp] 'do' block 'end'
+  //     for ::= namelist 'in' explist 'do' block 'end'
+  //     namelist ::= Name {',' Name}
+  //     explist ::= exp {',' exp}
+
+  function parseForStatement(flowContext) {
+    var variable = parseIdentifier()
+      , body;
+
+    // The start-identifier is local.
+
+    if (options.scope) {
+      createScope();
+      scopeIdentifier(variable);
+    }
+
+    // If the first expression is followed by a `=` punctuator, this is a
+    // Numeric For Statement.
+    if (consume('=')) {
+      // Start expression
+      var start = parseExpectedExpression(flowContext);
+      expect(',');
+      // End expression
+      var end = parseExpectedExpression(flowContext);
+      // Optional step expression
+      var step = consume(',') ? parseExpectedExpression(flowContext) : null;
+
+      expect('do');
+      flowContext.pushScope(true);
+      body = parseBlock(flowContext);
+      flowContext.popScope();
+      expect('end');
+      if (options.scope) destroyScope();
+
+      return finishNode(ast.forNumericStatement(variable, start, end, step, body));
+    }
+    // If not, it's a Generic For Statement
+    else {
+      // The namelist can contain one or more identifiers.
+      var variables = [variable];
+      while (consume(',')) {
+        variable = parseIdentifier();
+        // Each variable in the namelist is locally scoped.
+        if (options.scope) scopeIdentifier(variable);
+        variables.push(variable);
+      }
+      expect('in');
+      var iterators = [];
+
+      // One or more expressions in the explist.
+      do {
+        var expression = parseExpectedExpression(flowContext);
+        iterators.push(expression);
+      } while (consume(','));
+
+      expect('do');
+      flowContext.pushScope(true);
+      body = parseBlock(flowContext);
+      flowContext.popScope();
+      expect('end');
+      if (options.scope) destroyScope();
+
+      return finishNode(ast.forGenericStatement(variables, iterators, body));
+    }
+  }
+
+  // Local statements can either be variable assignments or function
+  // definitions. If a function definition is found, it will be delegated to
+  // `parseFunctionDeclaration()` with the isLocal flag.
+  //
+  // This AST structure might change into a local assignment with a function
+  // child.
+  //
+  //     local ::= 'local' 'function' Name funcdecl
+  //        | 'local' Name {',' Name} ['=' exp {',' exp}]
+
+  function parseLocalStatement(flowContext) {
+    var name
+      , declToken = previousToken;
+
+    if (Identifier === token.type) {
+      var variables = []
+        , init = [];
+
+      do {
+        name = parseIdentifier();
+
+        variables.push(name);
+        flowContext.addLocal(name.name, declToken);
+      } while (consume(','));
+
+      if (consume('=')) {
+        do {
+          var expression = parseExpectedExpression(flowContext);
+          init.push(expression);
+        } while (consume(','));
+      }
+
+      // Declarations doesn't exist before the statement has been evaluated.
+      // Therefore assignments can't use their declarator. And the identifiers
+      // shouldn't be added to the scope until the statement is complete.
+      if (options.scope) {
+        for (var i = 0, l = variables.length; i < l; ++i) {
+          scopeIdentifier(variables[i]);
+        }
+      }
+
+      return finishNode(ast.localStatement(variables, init));
+    }
+    if (consume('function')) {
+      name = parseIdentifier();
+      flowContext.addLocal(name.name, declToken);
+
+      if (options.scope) {
+        scopeIdentifier(name);
+        createScope();
+      }
+
+      // MemberExpressions are not allowed in local function statements.
+      return parseFunctionDeclaration(name, true);
+    } else {
+      raiseUnexpectedToken('<name>', token);
+    }
+  }
+
+  //     assignment ::= varlist '=' explist
+  //     var ::= Name | prefixexp '[' exp ']' | prefixexp '.' Name
+  //     varlist ::= var {',' var}
+  //     explist ::= exp {',' exp}
+  //
+  //     call ::= callexp
+  //     callexp ::= prefixexp args | prefixexp ':' Name args
+
+  function parseAssignmentOrCallStatement(flowContext) {
+    // Keep a reference to the previous token for better error messages in case
+    // of invalid statement
+    var previous = token
+      , marker, startMarker;
+    var lvalue, base, name;
+
+    var targets = [];
+
+    if (trackLocations) startMarker = createLocationMarker();
+
+    do {
+      if (trackLocations) marker = createLocationMarker();
+
+      if (Identifier === token.type) {
+        name = token.value;
+        base = parseIdentifier();
+        // Set the parent scope.
+        if (options.scope) attachScope(base, scopeHasName(name));
+        lvalue = true;
+      } else if ('(' === token.value) {
+        next();
+        base = parseExpectedExpression(flowContext);
+        expect(')');
+        lvalue = false;
+      } else {
+        return unexpected(token);
+      }
+
+      both: for (;;) {
+        var newBase;
+
+        switch (StringLiteral === token.type ? '"' : token.value) {
+        case '.':
+        case '[':
+          lvalue = true;
+          break;
+        case ':':
+        case '(':
+        case '{':
+        case '"':
+          lvalue = null;
+          break;
+        default:
+          break both;
+        }
+
+        base = parsePrefixExpressionPart(base, marker, flowContext);
+      }
+
+      targets.push(base);
+
+      if (',' !== token.value)
+        break;
+
+      if (!lvalue) {
+        return unexpected(token);
+      }
+
+      next();
+    } while (true);
+
+    if (targets.length === 1 && lvalue === null) {
+      pushLocation(marker);
+      return finishNode(ast.callStatement(targets[0]));
+    } else if (!lvalue) {
+      return unexpected(token);
+    }
+
+    expect('=');
+
+    var values = [];
+
+    do {
+      values.push(parseExpectedExpression(flowContext));
+    } while (consume(','));
+
+    pushLocation(startMarker);
+    return finishNode(ast.assignmentStatement(targets, values));
+  }
+
+  // ### Non-statements
+
+  //     Identifier ::= Name
+
+  function parseIdentifier() {
+    markLocation();
+    var identifier = token.value;
+    if (Identifier !== token.type) raiseUnexpectedToken('<name>', token);
+    next();
+    return finishNode(ast.identifier(identifier));
+  }
+
+  // Parse the functions parameters and body block. The name should already
+  // have been parsed and passed to this declaration function. By separating
+  // this we allow for anonymous functions in expressions.
+  //
+  // For local functions there's a boolean parameter which needs to be set
+  // when parsing the declaration.
+  //
+  //     funcdecl ::= '(' [parlist] ')' block 'end'
+  //     parlist ::= Name {',' Name} | [',' '...'] | '...'
+
+  function parseFunctionDeclaration(name, isLocal) {
+    var flowContext = makeFlowContext();
+    flowContext.pushScope();
+
+    var parameters = [];
+    expect('(');
+
+    // The declaration has arguments
+    if (!consume(')')) {
+      // Arguments are a comma separated list of identifiers, optionally ending
+      // with a vararg.
+      while (true) {
+        if (Identifier === token.type) {
+          var parameter = parseIdentifier();
+          // Function parameters are local.
+          if (options.scope) scopeIdentifier(parameter);
+
+          parameters.push(parameter);
+
+          if (consume(',')) continue;
+        }
+        // No arguments are allowed after a vararg.
+        else if (VarargLiteral === token.type) {
+          flowContext.allowVararg = true;
+          parameters.push(parsePrimaryExpression(flowContext));
+        } else {
+          raiseUnexpectedToken('<name> or \'...\'', token);
+        }
+        expect(')');
+        break;
+      }
+    }
+
+    var body = parseBlock(flowContext);
+    flowContext.popScope();
+    expect('end');
+    if (options.scope) destroyScope();
+
+    isLocal = isLocal || false;
+    return finishNode(ast.functionStatement(name, parameters, isLocal, body));
+  }
+
+  // Parse the function name as identifiers and member expressions.
+  //
+  //     Name {'.' Name} [':' Name]
+
+  function parseFunctionName() {
+    var base, name, marker;
+
+    if (trackLocations) marker = createLocationMarker();
+    base = parseIdentifier();
+
+    if (options.scope) {
+      attachScope(base, scopeHasName(base.name));
+      createScope();
+    }
+
+    while (consume('.')) {
+      pushLocation(marker);
+      name = parseIdentifier();
+      base = finishNode(ast.memberExpression(base, '.', name));
+    }
+
+    if (consume(':')) {
+      pushLocation(marker);
+      name = parseIdentifier();
+      base = finishNode(ast.memberExpression(base, ':', name));
+      if (options.scope) scopeIdentifierName('self');
+    }
+
+    return base;
+  }
+
+  //     tableconstructor ::= '{' [fieldlist] '}'
+  //     fieldlist ::= field {fieldsep field} fieldsep
+  //     field ::= '[' exp ']' '=' exp | Name = 'exp' | exp
+  //
+  //     fieldsep ::= ',' | ';'
+
+  function parseTableConstructor(flowContext) {
+    var fields = []
+      , key, value;
+
+    while (true) {
+      markLocation();
+      if (Punctuator === token.type && consume('[')) {
+        key = parseExpectedExpression(flowContext);
+        expect(']');
+        expect('=');
+        value = parseExpectedExpression(flowContext);
+        fields.push(finishNode(ast.tableKey(key, value)));
+      } else if (Identifier === token.type) {
+        if ('=' === lookahead.value) {
+          key = parseIdentifier();
+          next();
+          value = parseExpectedExpression(flowContext);
+          fields.push(finishNode(ast.tableKeyString(key, value)));
+        } else {
+          value = parseExpectedExpression(flowContext);
+          fields.push(finishNode(ast.tableValue(value)));
+        }
+      } else {
+        if (null == (value = parseExpression(flowContext))) {
+          locations.pop();
+          break;
+        }
+        fields.push(finishNode(ast.tableValue(value)));
+      }
+      if (',;'.indexOf(token.value) >= 0) {
+        next();
+        continue;
+      }
+      break;
+    }
+    expect('}');
+    return finishNode(ast.tableConstructorExpression(fields));
+  }
+
+  // Expression parser
+  // -----------------
+  //
+  // Expressions are evaluated and always return a value. If nothing is
+  // matched null will be returned.
+  //
+  //     exp ::= (unop exp | primary | prefixexp ) { binop exp }
+  //
+  //     primary ::= nil | false | true | Number | String | '...'
+  //          | functiondef | tableconstructor
+  //
+  //     prefixexp ::= (Name | '(' exp ')' ) { '[' exp ']'
+  //          | '.' Name | ':' Name args | args }
+  //
+
+  function parseExpression(flowContext) {
+    var expression = parseSubExpression(0, flowContext);
+    return expression;
+  }
+
+  // Parse an expression expecting it to be valid.
+
+  function parseExpectedExpression(flowContext) {
+    var expression = parseExpression(flowContext);
+    if (null == expression) raiseUnexpectedToken('<expression>', token);
+    else return expression;
+  }
+
+
+  // Return the precedence priority of the operator.
+  //
+  // As unary `-` can't be distinguished from binary `-`, unary precedence
+  // isn't described in this table but in `parseSubExpression()` itself.
+  //
+  // As this function gets hit on every expression it's been optimized due to
+  // the expensive CompareICStub which took ~8% of the parse time.
+
+  function binaryPrecedence(operator) {
+    var charCode = operator.charCodeAt(0)
+      , length = operator.length;
+
+    if (1 === length) {
+      switch (charCode) {
+        case 94: return 12; // ^
+        case 42: case 47: case 37: return 10; // * / %
+        case 43: case 45: return 9; // + -
+        case 38: return 6; // &
+        case 126: return 5; // ~
+        case 124: return 4; // |
+        case 60: case 62: return 3; // < >
+      }
+    } else if (2 === length) {
+      switch (charCode) {
+        case 47: return 10; // //
+        case 46: return 8; // ..
+        case 60: case 62:
+            if('<<' === operator || '>>' === operator) return 7; // << >>
+            return 3; // <= >=
+        case 61: case 126: return 3; // == ~=
+        case 111: return 1; // or
+      }
+    } else if (97 === charCode && 'and' === operator) return 2;
+    return 0;
+  }
+
+  // Implement an operator-precedence parser to handle binary operator
+  // precedence.
+  //
+  // We use this algorithm because it's compact, it's fast and Lua core uses
+  // the same so we can be sure our expressions are parsed in the same manner
+  // without excessive amounts of tests.
+  //
+  //     exp ::= (unop exp | primary | prefixexp ) { binop exp }
+
+  function parseSubExpression(minPrecedence, flowContext) {
+    var operator = token.value
+    // The left-hand side in binary operations.
+      , expression, marker;
+
+    if (trackLocations) marker = createLocationMarker();
+
+    // UnaryExpression
+    if (isUnary(token)) {
+      markLocation();
+      next();
+      var argument = parseSubExpression(10, flowContext);
+      if (argument == null) raiseUnexpectedToken('<expression>', token);
+      expression = finishNode(ast.unaryExpression(operator, argument));
+    }
+    if (null == expression) {
+      // PrimaryExpression
+      expression = parsePrimaryExpression(flowContext);
+
+      // PrefixExpression
+      if (null == expression) {
+        expression = parsePrefixExpression(flowContext);
+      }
+    }
+    // This is not a valid left hand expression.
+    if (null == expression) return null;
+
+    var precedence;
+    while (true) {
+      operator = token.value;
+
+      precedence = (Punctuator === token.type || Keyword === token.type) ?
+        binaryPrecedence(operator) : 0;
+
+      if (precedence === 0 || precedence <= minPrecedence) break;
+      // Right-hand precedence operators
+      if ('^' === operator || '..' === operator) --precedence;
+      next();
+      var right = parseSubExpression(precedence, flowContext);
+      if (null == right) raiseUnexpectedToken('<expression>', token);
+      // Push in the marker created before the loop to wrap its entirety.
+      if (trackLocations) locations.push(marker);
+      expression = finishNode(ast.binaryExpression(operator, expression, right));
+
+    }
+    return expression;
+  }
+
+  //     prefixexp ::= prefix {suffix}
+  //     prefix ::= Name | '(' exp ')'
+  //     suffix ::= '[' exp ']' | '.' Name | ':' Name args | args
+  //
+  //     args ::= '(' [explist] ')' | tableconstructor | String
+
+  function parsePrefixExpressionPart(base, marker, flowContext) {
+    var expression, identifier;
+
+    if (Punctuator === token.type) {
+      switch (token.value) {
+        case '[':
+          pushLocation(marker);
+          next();
+          expression = parseExpectedExpression(flowContext);
+          expect(']');
+          return finishNode(ast.indexExpression(base, expression));
+        case '.':
+          pushLocation(marker);
+          next();
+          identifier = parseIdentifier();
+          return finishNode(ast.memberExpression(base, '.', identifier));
+        case ':':
+          pushLocation(marker);
+          next();
+          identifier = parseIdentifier();
+          base = finishNode(ast.memberExpression(base, ':', identifier));
+          // Once a : is found, this has to be a CallExpression, otherwise
+          // throw an error.
+          pushLocation(marker);
+          return parseCallExpression(base, flowContext);
+        case '(': case '{': // args
+          pushLocation(marker);
+          return parseCallExpression(base, flowContext);
+      }
+    } else if (StringLiteral === token.type) {
+      pushLocation(marker);
+      return parseCallExpression(base, flowContext);
+    }
+
+    return null;
+  }
+
+  function parsePrefixExpression(flowContext) {
+    var base, name, marker;
+
+    if (trackLocations) marker = createLocationMarker();
+
+    // The prefix
+    if (Identifier === token.type) {
+      name = token.value;
+      base = parseIdentifier();
+      // Set the parent scope.
+      if (options.scope) attachScope(base, scopeHasName(name));
+    } else if (consume('(')) {
+      base = parseExpectedExpression(flowContext);
+      expect(')');
+    } else {
+      return null;
+    }
+
+    // The suffix
+    for (;;) {
+      var newBase = parsePrefixExpressionPart(base, marker, flowContext);
+      if (newBase === null)
+        break;
+      base = newBase;
+    }
+
+    return base;
+  }
+
+  //     args ::= '(' [explist] ')' | tableconstructor | String
+
+  function parseCallExpression(base, flowContext) {
+    if (Punctuator === token.type) {
+      switch (token.value) {
+        case '(':
+          if (!features.emptyStatement) {
+            if (token.line !== previousToken.line)
+              raise(null, errors.ambiguousSyntax, token.value);
+          }
+          next();
+
+          // List of expressions
+          var expressions = [];
+          var expression = parseExpression(flowContext);
+          if (null != expression) expressions.push(expression);
+          while (consume(',')) {
+            expression = parseExpectedExpression(flowContext);
+            expressions.push(expression);
+          }
+
+          expect(')');
+          return finishNode(ast.callExpression(base, expressions));
+
+        case '{':
+          markLocation();
+          next();
+          var table = parseTableConstructor(flowContext);
+          return finishNode(ast.tableCallExpression(base, table));
+      }
+    } else if (StringLiteral === token.type) {
+      return finishNode(ast.stringCallExpression(base, parsePrimaryExpression(flowContext)));
+    }
+
+    raiseUnexpectedToken('function arguments', token);
+  }
+
+  //     primary ::= String | Numeric | nil | true | false
+  //          | functiondef | tableconstructor | '...'
+
+  function parsePrimaryExpression(flowContext) {
+    var literals = StringLiteral | NumericLiteral | BooleanLiteral | NilLiteral | VarargLiteral
+      , value = token.value
+      , type = token.type
+      , marker;
+
+    if (trackLocations) marker = createLocationMarker();
+
+    if (type === VarargLiteral && !flowContext.allowVararg) {
+      raise(token, errors.cannotUseVararg, token.value);
+    }
+
+    if (type & literals) {
+      pushLocation(marker);
+      var raw = input.slice(token.range[0], token.range[1]);
+      next();
+      return finishNode(ast.literal(type, value, raw));
+    } else if (Keyword === type && 'function' === value) {
+      pushLocation(marker);
+      next();
+      if (options.scope) createScope();
+      return parseFunctionDeclaration(null);
+    } else if (consume('{')) {
+      pushLocation(marker);
+      return parseTableConstructor(flowContext);
+    }
+  }
+
+  // Parser
+  // ------
+
+  // Export the main parser.
+  //
+  //   - `wait` Hold parsing until end() is called. Defaults to false
+  //   - `comments` Store comments. Defaults to true.
+  //   - `scope` Track identifier scope. Defaults to false.
+  //   - `locations` Store location information. Defaults to false.
+  //   - `ranges` Store the start and end character locations. Defaults to
+  //     false.
+  //   - `onCreateNode` Callback which will be invoked when a syntax node is
+  //     created.
+  //   - `onCreateScope` Callback which will be invoked when a new scope is
+  //     created.
+  //   - `onDestroyScope` Callback which will be invoked when the current scope
+  //     is destroyed.
+  //
+  // Example:
+  //
+  //     var parser = require('luaparser');
+  //     parser.parse('i = 0');
+
+  exports.parse = parse;
+
+  var versionFeatures = {
+    '5.1': {
+    },
+    '5.2': {
+      labels: true,
+      emptyStatement: true,
+      hexEscapes: true,
+      skipWhitespaceEscape: true,
+      strictEscapes: true,
+      relaxedBreak: true
+    },
+    '5.3': {
+      labels: true,
+      emptyStatement: true,
+      hexEscapes: true,
+      skipWhitespaceEscape: true,
+      strictEscapes: true,
+      unicodeEscapes: true,
+      bitwiseOperators: true,
+      integerDivision: true,
+      relaxedBreak: true
+    },
+    'LuaJIT': {
+      // XXX: LuaJIT language features may depend on compilation options; may need to
+      // rethink how to handle this. Specifically, there is a LUAJIT_ENABLE_LUA52COMPAT
+      // that removes contextual goto. Maybe add 'LuaJIT-5.2compat' as well?
+      labels: true,
+      contextualGoto: true,
+      hexEscapes: true,
+      skipWhitespaceEscape: true,
+      strictEscapes: true,
+      unicodeEscapes: true,
+      imaginaryNumbers: true,
+      integerSuffixes: true
+    }
+  };
+
+  function parse(_input, _options) {
+    if ('undefined' === typeof _options && 'object' === typeof _input) {
+      _options = _input;
+      _input = undefined;
+    }
+    if (!_options) _options = {};
+
+    input = _input || '';
+    options = assign({}, defaultOptions, _options);
+
+    // Rewind the lexer
+    index = 0;
+    line = 1;
+    lineStart = 0;
+    length = input.length;
+    // When tracking identifier scope, initialize with an empty scope.
+    scopes = [[]];
+    scopeDepth = 0;
+    globals = [];
+    locations = [];
+
+    if (!Object.prototype.hasOwnProperty.call(versionFeatures, options.luaVersion)) {
+      throw new Error(sprintf("Lua version '%1' not supported", options.luaVersion));
+    }
+
+    features = assign({}, versionFeatures[options.luaVersion]);
+    if (options.extendedIdentifiers !== void 0)
+      features.extendedIdentifiers = !!options.extendedIdentifiers;
+
+    if (!Object.prototype.hasOwnProperty.call(encodingModes, options.encodingMode)) {
+      throw new Error(sprintf("Encoding mode '%1' not supported", options.encodingMode));
+    }
+
+    encodingMode = encodingModes[options.encodingMode];
+
+    if (options.comments) comments = [];
+    if (!options.wait) return end();
+    return exports;
+  }
+
+  // Write to the source code buffer without beginning the parse.
+  exports.write = write;
+
+  function write(_input) {
+    input += String(_input);
+    length = input.length;
+    return exports;
+  }
+
+  // Send an EOF and begin parsing.
+  exports.end = end;
+
+  function end(_input) {
+    if ('undefined' !== typeof _input) write(_input);
+
+    // Ignore shebangs.
+    if (input && input.substr(0, 2) === '#!') input = input.replace(/^.*/, function (line) {
+      return line.replace(/./g, ' ');
+    });
+
+    length = input.length;
+    trackLocations = options.locations || options.ranges;
+    // Initialize with a lookahead token.
+    lookahead = lex();
+
+    var chunk = parseChunk();
+    if (options.comments) chunk.comments = comments;
+    if (options.scope) chunk.globals = globals;
+
+    /* istanbul ignore if */
+    if (locations.length > 0)
+      throw new Error('Location tracking failed. This is most likely a bug in luaparse');
+
+    return chunk;
+  }
+
+}));
+/* vim: set sw=2 ts=2 et tw=79 : */
+
+</script>
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  VOID::VM v7.0 — AST hardener + polymorphic bytecode VM
+//  Every build emits a UNIQUE opcode map, cipher and VM architecture.
+//  Targets Roblox Luau (uses bit32.* — no Lua 5.3-only operators).
+// ═══════════════════════════════════════════════════════════════════
+(function(){
+'use strict';
+
+function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
+
+// ── helpers ──
+const rand  = (a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+const delay = ms=>new Promise(r=>setTimeout(r,ms));
+function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=rand(0,i);[a[i],a[j]]=[a[j],a[i]];} return a; }
+function distinctInts(count,lo,hi){ const s=new Set(); while(s.size<count) s.add(rand(lo,hi)); return [...s]; }
+
+// ── lookalike identifier generator (l / I / i / 1 confusables) ──
+// All digits are EXACTLY one char so the positional encoding is a clean
+// bijection — guarantees every counter value maps to a unique name.
+let _counter=0;
+const LOOK=['l','I','i','1'];
+function uid(){ let n=_counter++,s=''; do{ s=LOOK[n%LOOK.length]+s; n=Math.floor(n/LOOK.length);}while(n>0); return '_'+s; }
+
+// ───────────────────────────────────────────────────────────────────
+//  CODE GENERATION  (AST -> Lua source)
+// ───────────────────────────────────────────────────────────────────
+function gen(node){
+  if(node==null) return '';
+  switch(node.type){
+    case 'Chunk': return node.body.map(gen).join('\n');
+    case 'LocalStatement':
+      return 'local '+node.variables.map(gen).join(', ')+
+        (node.init&&node.init.length?' = '+node.init.map(gen).join(', '):'');
+    case 'AssignmentStatement':
+      return node.variables.map(gen).join(', ')+' = '+node.init.map(gen).join(', ');
+    case 'CallStatement': return gen(node.expression);
+    case 'Identifier': return node.name;
+    case 'StringLiteral': return node.raw;
+    case 'NumericLiteral': return node.raw!==undefined?node.raw:String(node.value);
+    case 'BooleanLiteral': return node.raw!==undefined?node.raw:String(node.value);
+    case 'NilLiteral': return 'nil';
+    case 'VarargLiteral': return '...';
+    case 'BinaryExpression':
+    case 'LogicalExpression':
+      return '('+gen(node.left)+' '+node.operator+' '+gen(node.right)+')';
+    case 'UnaryExpression':
+      return '('+node.operator+(node.operator.match(/[a-z]/)?' ':'')+gen(node.argument)+')';
+    case 'MemberExpression':
+      return gen(node.base)+node.indexer+gen(node.identifier);
+    case 'IndexExpression':
+      return gen(node.base)+'['+gen(node.index)+']';
+    case 'CallExpression':
+      return gen(node.base)+'('+node.arguments.map(gen).join(', ')+')';
+    case 'TableCallExpression':
+      return gen(node.base)+gen(node.arguments);
+    case 'StringCallExpression':
+      return gen(node.base)+gen(node.argument);
+    case 'FunctionDeclaration':{
+      const id=node.identifier?gen(node.identifier):'';
+      const params=node.parameters.map(gen).join(', ');
+      const localKw=node.isLocal?'local ':'';
+      const name=id?' '+id:'';
+      return localKw+'function'+name+'('+params+')\n'+node.body.map(gen).join('\n')+'\nend';
+    }
+    case 'TableConstructorExpression':
+      return '{'+node.fields.map(gen).join(', ')+'}';
+    case 'TableKey': return '['+gen(node.key)+'] = '+gen(node.value);
+    case 'TableKeyString': return gen(node.key)+' = '+gen(node.value);
+    case 'TableValue': return gen(node.value);
+    case 'ReturnStatement': return 'return '+node.arguments.map(gen).join(', ');
+    case 'BreakStatement': return 'break';
+    case 'ContinueStatement': return 'continue';
+    case 'GotoStatement': return 'goto '+gen(node.label);
+    case 'LabelStatement': return '::'+gen(node.label)+'::';
+    case 'DoStatement': return 'do\n'+node.body.map(gen).join('\n')+'\nend';
+    case 'WhileStatement':
+      return 'while '+gen(node.condition)+' do\n'+node.body.map(gen).join('\n')+'\nend';
+    case 'RepeatStatement':
+      return 'repeat\n'+node.body.map(gen).join('\n')+'\nuntil '+gen(node.condition);
+    case 'IfStatement': return node.clauses.map(gen).join('\n')+'\nend';
+    case 'IfClause': return 'if '+gen(node.condition)+' then\n'+node.body.map(gen).join('\n');
+    case 'ElseifClause': return 'elseif '+gen(node.condition)+' then\n'+node.body.map(gen).join('\n');
+    case 'ElseClause': return 'else\n'+node.body.map(gen).join('\n');
+    case 'ForNumericStatement':
+      return 'for '+gen(node.variable)+' = '+gen(node.start)+', '+gen(node.end)+
+        (node.step?', '+gen(node.step):'')+' do\n'+node.body.map(gen).join('\n')+'\nend';
+    case 'ForGenericStatement':
+      return 'for '+node.variables.map(gen).join(', ')+' in '+node.iterators.map(gen).join(', ')+
+        ' do\n'+node.body.map(gen).join('\n')+'\nend';
+    case 'FunctionExpression':
+      return 'function('+node.parameters.map(gen).join(', ')+')\n'+node.body.map(gen).join('\n')+'\nend';
+    default:
+      throw new Error('Unhandled node type: '+node.type);
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 1 — scope-aware local rename
+// ───────────────────────────────────────────────────────────────────
+function renameLocals(ast){
+  const scopeStack=[new Map()];
+  const lookup=name=>{ for(let i=scopeStack.length-1;i>=0;i--) if(scopeStack[i].has(name)) return scopeStack[i].get(name); return null; };
+  const declare=name=>{ const id=uid(); scopeStack[scopeStack.length-1].set(name,id); return id; };
+  const push=()=>scopeStack.push(new Map());
+  const pop =()=>scopeStack.pop();
+  function walk(node){
+    if(!node||typeof node!=='object') return;
+    switch(node.type){
+      case 'Chunk': node.body.forEach(walk); break;
+      case 'LocalStatement':
+        (node.init||[]).forEach(walk);
+        node.variables.forEach(v=>v.name=declare(v.name));
+        break;
+      case 'FunctionDeclaration':
+        if(node.identifier){
+          if(node.identifier.type==='Identifier'&&node.isLocal) node.identifier.name=declare(node.identifier.name);
+          else walk(node.identifier);
+        }
+        push();
+        node.parameters.forEach(p=>{ if(p.type==='Identifier') p.name=declare(p.name); });
+        node.body.forEach(walk); pop();
+        break;
+      case 'FunctionExpression':
+        push();
+        node.parameters.forEach(p=>{ if(p.type==='Identifier') p.name=declare(p.name); });
+        node.body.forEach(walk); pop();
+        break;
+      case 'Identifier':
+        if(node.isLocal!==false){ const r=lookup(node.name); if(r) node.name=r; }
+        break;
+      case 'ForNumericStatement':
+        walk(node.start); walk(node.end); if(node.step) walk(node.step);
+        push(); node.variable.name=declare(node.variable.name); node.body.forEach(walk); pop();
+        break;
+      case 'ForGenericStatement':
+        node.iterators.forEach(walk);
+        push(); node.variables.forEach(v=>v.name=declare(v.name)); node.body.forEach(walk); pop();
+        break;
+      case 'DoStatement': push(); node.body.forEach(walk); pop(); break;
+      case 'WhileStatement': walk(node.condition); push(); node.body.forEach(walk); pop(); break;
+      case 'RepeatStatement': push(); node.body.forEach(walk); walk(node.condition); pop(); break;
+      case 'IfStatement':
+        node.clauses.forEach(c=>{ if(c.condition) walk(c.condition); push(); c.body.forEach(walk); pop(); });
+        break;
+      default:
+        for(const k in node){ const v=node[k]; if(Array.isArray(v)) v.forEach(walk); else if(v&&typeof v==='object'&&v.type) walk(v); }
+    }
+  }
+  walk(ast);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 2 — string vault (shuffled table + decoys, Luau bit32 decoder)
+// ───────────────────────────────────────────────────────────────────
+function encryptStrings(ast, decFn){
+  const realStrings=[]; const key=rand(40,200);
+  function collect(node){
+    if(!node||typeof node!=='object') return;
+    if(Array.isArray(node)){ node.forEach(collect); return; }
+    if(node.type==='StringLiteral'){
+      let val;
+      try{ const raw=node.raw; val=raw[0]==='"'?JSON.parse(raw):JSON.parse('"'+raw.slice(1,-1).replace(/\\'/g,"'").replace(/"/g,'\\"')+'"'); }catch(e){ val=node.value||''; }
+      node.__si=realStrings.length; realStrings.push(String(val==null?'':val)); return;
+    }
+    for(const k in node){ const v=node[k]; if(v&&typeof v==='object') collect(v); }
+  }
+  collect(ast);
+  const entries=realStrings.map((s,i)=>({s,realIdx:i}));
+  const decoyCount=Math.max(3,Math.floor(realStrings.length*0.7));
+  for(let i=0;i<decoyCount;i++){ const len=rand(3,14); let s=''; for(let j=0;j<len;j++) s+=String.fromCharCode(rand(33,126)); entries.push({s,realIdx:null}); }
+  shuffle(entries);
+  const posOf={}; entries.forEach((e,pos)=>{ if(e.realIdx!==null) posOf[e.realIdx]=pos+1; });
+  // UTF-8 safe byte encoding
+  const enc=new TextEncoder();
+  const strings=entries.map(e=>Array.from(enc.encode(e.s)).map(c=>(c^key)&0xFF));
+  function replace(node){
+    if(!node||typeof node!=='object') return;
+    if(Array.isArray(node)){ node.forEach(replace); return; }
+    if(node.type==='StringLiteral'&&node.__si!==undefined){
+      const pos=posOf[node.__si];
+      Object.keys(node).forEach(k=>delete node[k]);
+      Object.assign(node,{type:'CallExpression',base:{type:'Identifier',name:decFn,isLocal:true},arguments:[{type:'NumericLiteral',value:pos,raw:String(pos)}]});
+      return;
+    }
+    for(const k in node){ const v=node[k]; if(v&&typeof v==='object') replace(v); }
+  }
+  replace(ast);
+  return { strings, key };
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 3 — numeric encoding (additive split + bit32.bxor mix)
+// ───────────────────────────────────────────────────────────────────
+function bit32xorNode(enc, mask){
+  return { type:'CallExpression',
+    base:{ type:'MemberExpression', indexer:'.', base:{type:'Identifier',name:'bit32'}, identifier:{type:'Identifier',name:'bxor'} },
+    arguments:[ {type:'NumericLiteral',value:enc,raw:String(enc)}, {type:'NumericLiteral',value:mask,raw:String(mask)} ] };
+}
+function encodeNumbers(ast){
+  function walk(node){
+    if(!node||typeof node!=='object') return;
+    if(Array.isArray(node)){ node.forEach(walk); return; }
+    if(node.type==='NumericLiteral'&&node.value!==undefined){
+      const n=node.value;
+      if(Number.isInteger(n)&&n>=2&&n<=99999){
+        if(rand(0,1)===0){
+          const a=rand(1,Math.max(2,Math.floor(n/2))); const b=n-a;
+          Object.keys(node).forEach(k=>delete node[k]);
+          Object.assign(node,{type:'BinaryExpression',operator:'+',
+            left:{type:'NumericLiteral',value:a,raw:String(a)},
+            right:{type:'NumericLiteral',value:b,raw:String(b)}});
+        }else{
+          const mask=rand(1,65535); const enc=n^mask;
+          const repl=bit32xorNode(enc,mask);
+          Object.keys(node).forEach(k=>delete node[k]);
+          Object.assign(node,repl);
+        }
+        return;
+      }
+    }
+    for(const k in node){ const v=node[k]; if(v&&typeof v==='object') walk(v); }
+  }
+  walk(ast);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 4a — Control-Flow Flattening (function bodies only)
+//
+//  Rewrites each function body into a state-machine dispatch loop:
+//    local _state = S1
+//    while true do
+//      if _state == S1 then stmt1; _state = S2
+//      elseif _state == S2 then stmt2; _state = S3  ...
+//      elseif _state == SN then stmtN; break
+//      end
+//    end
+//  All local declarations are hoisted above the loop so cross-clause
+//  references work correctly. Runs after SCOPE RENAME so state-var names
+//  are uid()-mangled confusables just like every other local.
+// ───────────────────────────────────────────────────────────────────
+function flattenControlFlow(ast){
+  function collectLocals(stmts){
+    const names=[];
+    for(const s of stmts){
+      if(s.type==='LocalStatement') for(const v of s.variables) names.push(v.name);
+      else if(s.type==='FunctionDeclaration'&&s.isLocal&&s.identifier&&s.identifier.type==='Identifier') names.push(s.identifier.name);
+    }
+    return names;
+  }
+  function convertLocal(s){
+    // local function f()...end  →  make non-local (assigns to already-hoisted local f)
+    if(s.type==='FunctionDeclaration'&&s.isLocal){ s.isLocal=false; return s; }
+    // local x,y = expr  →  x,y = expr   (hoisted vars already declared above loop)
+    if(!s.init||s.init.length===0) return null;
+    return {type:'AssignmentStatement',variables:s.variables.map(v=>({type:'Identifier',name:v.name})),init:s.init};
+  }
+  function flattenBody(stmts){
+    if(stmts.length<3) return;
+    const localNames=collectLocals(stmts);
+    const converted=stmts.map(s=>(s.type==='LocalStatement'||(s.type==='FunctionDeclaration'&&s.isLocal))?convertLocal(s):s).filter(Boolean);
+    if(converted.length<2) return;
+    const stateIds=converted.map(()=>rand(100000,999999));
+    const sv=uid();
+    const clauses=converted.map((stmt,i)=>{
+      const isLast=i===converted.length-1;
+      const body=[stmt];
+      if(isLast){
+        // ReturnStatement already exits the function — adding break after it is a syntax error in Lua.
+        if(stmt.type!=='ReturnStatement') body.push({type:'BreakStatement'});
+      } else body.push({type:'AssignmentStatement',variables:[{type:'Identifier',name:sv}],init:[{type:'NumericLiteral',value:stateIds[i+1],raw:String(stateIds[i+1])}]});
+      return {type:i===0?'IfClause':'ElseifClause',
+        condition:{type:'BinaryExpression',operator:'==',left:{type:'Identifier',name:sv},right:{type:'NumericLiteral',value:stateIds[i],raw:String(stateIds[i])}},
+        body};
+    });
+    const newStmts=[];
+    if(localNames.length>0) newStmts.push({type:'LocalStatement',variables:localNames.map(n=>({type:'Identifier',name:n})),init:[]});
+    newStmts.push({type:'LocalStatement',variables:[{type:'Identifier',name:sv}],init:[{type:'NumericLiteral',value:stateIds[0],raw:String(stateIds[0])}]});
+    newStmts.push({type:'WhileStatement',condition:{type:'BooleanLiteral',value:true,raw:'true'},body:[{type:'IfStatement',clauses}]});
+    stmts.length=0; for(const s of newStmts) stmts.push(s);
+  }
+  function walk(node){
+    if(!node||typeof node!=='object') return;
+    switch(node.type){
+      case 'FunctionDeclaration':case 'FunctionExpression':
+        flattenBody(node.body); node.body.forEach(walk); break;
+      case 'IfStatement': node.clauses.forEach(c=>{if(c.condition)walk(c.condition);c.body.forEach(walk);}); break;
+      case 'WhileStatement': walk(node.condition); node.body.forEach(walk); break;
+      case 'RepeatStatement': node.body.forEach(walk); walk(node.condition); break;
+      case 'ForNumericStatement': walk(node.start);walk(node.end);if(node.step)walk(node.step);node.body.forEach(walk); break;
+      case 'ForGenericStatement': node.iterators.forEach(walk);node.body.forEach(walk); break;
+      case 'DoStatement': node.body.forEach(walk); break;
+      case 'Chunk': node.body.forEach(walk); break;
+      default: for(const k in node){const v=node[k];if(Array.isArray(v))v.forEach(walk);else if(v&&typeof v==='object'&&v.type)walk(v);}
+    }
+  }
+  walk(ast);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 4b — Dead Code / Junk Code Injection
+//
+//  Sprinkles unreachable blocks between real statements. Every block
+//  uses a condition that is provably always-false at Lua runtime:
+//    0 ~= 0  /  1 == 2  /  false  /  v == v+1 (integer literals)
+//  All injected names are uid()-generated confusables. Side-effect
+//  free: no global writes, no function calls.
+// ───────────────────────────────────────────────────────────────────
+function injectDeadCode(code){
+  const lines=code.split('\n');
+  const out=[];
+  // Patterns that are ALWAYS false → block never executes
+  const pats=[
+    ()=>`if (0 ~= 0) then local ${uid()} = ${rand(1,9999)} end`,
+    ()=>`if (1 == 2) then local ${uid()} = nil end`,
+    ()=>`while (false) do local ${uid()} = "" break end`,
+    ()=>{const v=rand(10,9990);return `if (${v} == ${v+1}) then local ${uid()} = ${rand(1,99)} end`;},
+    ()=>`do local ${uid()} = nil end`,
+    ()=>{const v=rand(2,9998);return `if (${v} ~= ${v}) then local ${uid()} = "${rand(100,999)}" end`;},
+    ()=>`if (nil == false) then local ${uid()} = 0 end`,
+  ];
+  for(const line of lines){
+    out.push(line);
+    const tr=line.trim();
+    // Never inject after 'return' — Lua forbids statements after return in the same block
+    if(tr&&!/^return(\s|$)/.test(tr)&&Math.random()<0.28){
+      out.push(pats[rand(0,pats.length-1)]());
+    }
+  }
+  return out.join('\n');
+}
+
+// ── minify ──
+// Strips Lua comments (line `--` and long `--[[ ]]`) while respecting string
+// literals so a `-- note` at the end of a code line can never comment out the
+// rest of the program once everything is collapsed onto a single line.
+function stripLuaComments(code){
+  let out='',i=0;const n=code.length;
+  while(i<n){
+    const c=code[i];
+    // short/long string literals — copy through untouched
+    if(c==='"'||c==="'"){
+      const q=c;out+=c;i++;
+      while(i<n){const d=code[i];out+=d;if(d==='\\'){out+=code[i+1]||'';i+=2;continue;}i++;if(d===q)break;}
+      continue;
+    }
+    // long-bracket string  [[ ... ]] / [=[ ... ]=]
+    if(c==='['){
+      const m=/^\[(=*)\[/.exec(code.slice(i));
+      if(m){const close=']'+m[1]+']';const end=code.indexOf(close,i+m[0].length);const seg=end===-1?code.slice(i):code.slice(i,end+close.length);out+=seg;i+=seg.length;continue;}
+    }
+    // comment
+    if(c==='-'&&code[i+1]==='-'){
+      const m=/^--\[(=*)\[/.exec(code.slice(i));
+      if(m){const close=']'+m[1]+']';const end=code.indexOf(close,i+m[0].length);i=end===-1?n:end+close.length;continue;}
+      let j=i+2;while(j<n&&code[j]!=='\n')j++;i=j;continue; // line comment → drop to EOL, keep newline
+    }
+    out+=c;i++;
+  }
+  return out;
+}
+function minify(code){ return stripLuaComments(code).split('\n').map(l=>l.replace(/\s+/g,' ').trim()).filter(Boolean).join(' '); }
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 5 — VM VIRTUALIZATION  (the headline)
+//
+//  The whole hardened script is compiled into encrypted bytecode and a
+//  tiny stack-less VM rebuilds + load()s it at runtime. Per build:
+//    • randomized opcode numbers (polymorphic dispatch)
+//    • randomized reversible cipher pipeline (xor-key / xor-index /
+//      xor-const / add-const / sub-const), unique order & constants
+//    • rolling key of random length, per-index mixing
+//    • anti-tamper Adler-style checksum (refuses to run if modified)
+//    • light anti-hook guard on bit32 / string.char
+//  Output runs on Roblox Luau (bit32.bxor, no 5.3-only operators).
+// ───────────────────────────────────────────────────────────────────
+function virtualize(src){
+  const enc=new TextEncoder();
+  const bytes=Array.from(enc.encode(src));
+  const N=bytes.length;
+
+  // rolling key
+  const kn=rand(8,16);
+  const KEY=[]; for(let i=0;i<kn;i++) KEY.push(rand(1,255));
+
+  // reversible decode pipeline (executed per byte, in order)
+  const TYPES=['xork','xori','xorc','addc','subc'];
+  const numSteps=rand(4,7);
+  const steps=[]; let hasKey=false;
+  for(let i=0;i<numSteps;i++){
+    const t=TYPES[rand(0,TYPES.length-1)];
+    if(t==='xork') hasKey=true;
+    steps.push({t, c:(t==='xorc'||t==='addc'||t==='subc')?rand(1,255):null});
+  }
+  if(!hasKey) steps.push({t:'xork',c:null});
+
+  // opcode map — distinct random ints (polymorphic)
+  const usedOps=['HALT', ...new Set(steps.map(s=>s.t))];
+  const codes=distinctInts(usedOps.length,17,239);
+  const OP={}; usedOps.forEach((o,i)=>OP[o]=codes[i]);
+
+  // flat bytecode program
+  const PROG=[];
+  for(const s of steps){ PROG.push(OP[s.t]); if(s.c!=null) PROG.push(s.c); }
+  PROG.push(OP['HALT']);
+
+  // encrypt: invert the decode pipeline (reverse order, inverse op)
+  const E=[];
+  for(let i=1;i<=N;i++){
+    let acc=bytes[i-1];
+    for(let s=steps.length-1;s>=0;s--){
+      const st=steps[s];
+      if(st.t==='xork')      acc^=KEY[(i-1)%kn];
+      else if(st.t==='xori') acc^=((i-1)&255);
+      else if(st.t==='xorc') acc^=st.c;
+      else if(st.t==='addc') acc=(((acc-st.c)%256)+256)%256; // inverse of +c
+      else if(st.t==='subc') acc=(acc+st.c)%256;             // inverse of -c
+      acc&=255;
+    }
+    E.push(acc&255);
+  }
+
+  // anti-tamper checksum (must match Lua-side recompute)
+  let CK=0;
+  for(const v of E)    CK=(CK+v)%65521;
+  for(const v of PROG) CK=(CK+v)%65521;
+
+  // names
+  const nB=uid(),nK=uid(),nKN=uid(),nP=uid(),nE=uid(),nOut=uid(),nLd=uid(),nFn=uid(),nCk=uid(),nJ=uid(),nI=uid(),nPc=uid(),nOp=uid(),nAcc=uid();
+
+  // dispatch branches for used ops, randomized order
+  const branch={
+    HALT:`${nOp}==${OP.HALT} then break`,
+    xork:`${nOp}==${OP.xork} then ${nAcc}=${nB}(${nAcc},${nK}[((${nI}-1)%${nKN})+1])`,
+    xori:`${nOp}==${OP.xori} then ${nAcc}=${nB}(${nAcc},(${nI}-1)%256)`,
+    xorc:`${nOp}==${OP.xorc} then ${nAcc}=${nB}(${nAcc},${nP}[${nPc}]) ${nPc}=${nPc}+1`,
+    addc:`${nOp}==${OP.addc} then ${nAcc}=(${nAcc}+${nP}[${nPc}])%256 ${nPc}=${nPc}+1`,
+    subc:`${nOp}==${OP.subc} then ${nAcc}=(${nAcc}-${nP}[${nPc}])%256 ${nPc}=${nPc}+1`,
+  };
+  const order=shuffle(usedOps.slice());
+  let dispatch='';
+  order.forEach((o,idx)=>{ dispatch+=(idx===0?'      if ':'      elseif ')+branch[o]+'\n'; });
+  dispatch+='      end';
+
+  // emit Lua (Luau-safe)
+  const L=[];
+  L.push(`local ${nB}=bit32.bxor`);
+  L.push(`local ${nK}={${KEY.join(',')}}`);
+  L.push(`local ${nKN}=#${nK}`);
+  L.push(`local ${nP}={${PROG.join(',')}}`);
+  L.push(`local ${nE}={${E.join(',')}}`);
+  // anti-hook guard
+  L.push(`if type(bit32)~="table" or type(string.char)~="function" then return end`);
+  // anti-tamper
+  L.push(`local ${nCk}=0`);
+  L.push(`for ${nJ}=1,#${nE} do ${nCk}=(${nCk}+${nE}[${nJ}])%65521 end`);
+  L.push(`for ${nJ}=1,#${nP} do ${nCk}=(${nCk}+${nP}[${nJ}])%65521 end`);
+  L.push(`if ${nCk}~=${CK} then return end`);
+  // VM execute
+  L.push(`local ${nOut}={}`);
+  L.push(`for ${nI}=1,#${nE} do`);
+  L.push(`  local ${nAcc}=${nE}[${nI}]`);
+  L.push(`  local ${nPc}=1`);
+  L.push(`  while true do`);
+  L.push(`    local ${nOp}=${nP}[${nPc}] ${nPc}=${nPc}+1`);
+  L.push(dispatch);
+  L.push(`  end`);
+  L.push(`  ${nOut}[${nI}]=string.char(${nAcc}%256)`);
+  L.push(`end`);
+  L.push(`local ${nLd}=loadstring or load`);
+  L.push(`local ${nFn}=${nLd}(table.concat(${nOut}),"=?")`);
+  L.push(`if ${nFn} then return ${nFn}() end`);
+  return L.join('\n');
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 6 — DEEP VM  (true virtualization · source is NEVER rebuilt)
+//
+//  Compiles the script into an INSTRUCTION TREE (pure data) plus a
+//  tree-walking VM that executes it directly. There is no load() of
+//  your source anywhere — the logic only exists as opcodes + a constant
+//  pool. To recover the script an attacker must reverse the whole VM,
+//  exactly like commercial VM obfuscators. Per build: randomized opcode
+//  ids, randomized constant cipher, mangled VM internals.
+//  Trade-off: tree-walking is slower than native — best for logic that
+//  isn't in a hot per-frame loop. Runs on Roblox Luau (bit32/getfenv).
+// ───────────────────────────────────────────────────────────────────
+function compileDeepVM(src){
+  const luaparse=window.luaparse||(typeof globalThis!=="undefined"&&globalThis.luaparse)||null;
+  const OPN=['NIL','TRUE','FALSE','NUM','STR','VARARG','NAME','INDEX','CALL','MCALL','BIN','UN','AND','OR','TABLE','FUNC',
+    'LOCALDECL','ASSIGN','CALLSTAT','IF','WHILE','REPEAT','NUMFOR','GENFOR','RETURN','BREAK','DO','LOCALFUNC'];
+  const BINL=['ADD','SUB','MUL','DIV','MOD','POW','CONCAT','EQ','NE','LT','LE','GT','GE','IDIV','BAND','BOR','BXOR','SHL','SHR'];
+  const UNL=['NEG','NOT','LEN','BNOT'];
+  const ALL=[...OPN,...BINL.map(x=>'B_'+x),...UNL.map(x=>'U_'+x),'SRET','SBRK'];
+  const codes=distinctInts(ALL.length,2,4000);
+  const O={}; ALL.forEach((n,i)=>O[n]=codes[i]);
+  const binId={'+':O.B_ADD,'-':O.B_SUB,'*':O.B_MUL,'/':O.B_DIV,'%':O.B_MOD,'^':O.B_POW,'..':O.B_CONCAT,
+    '==':O.B_EQ,'~=':O.B_NE,'<':O.B_LT,'<=':O.B_LE,'>':O.B_GT,'>=':O.B_GE,'//':O.B_IDIV,
+    '&':O.B_BAND,'|':O.B_BOR,'~':O.B_BXOR,'<<':O.B_SHL,'>>':O.B_SHR};
+  const unId={'-':O.U_NEG,'not':O.U_NOT,'#':O.U_LEN,'~':O.U_BNOT};
+  const pool=[]; const numMap=new Map(), strMap=new Map();
+  function poolNum(v){ if(numMap.has(v))return numMap.get(v); const i=pool.length+1; pool.push({t:'n',v}); numMap.set(v,i); return i; }
+  function decodeStr(raw){ try{ return raw[0]==='"'?JSON.parse(raw):JSON.parse('"'+raw.slice(1,-1).replace(/\\'/g,"'").replace(/"/g,'\\"')+'"'); }catch(e){ return raw.slice(1,-1); } }
+  function poolStr(s){ if(strMap.has(s))return strMap.get(s); const i=pool.length+1; pool.push({t:'s',v:s}); strMap.set(s,i); return i; }
+  function cExpr(n){
+    switch(n.type){
+      case 'NilLiteral': return [O.NIL];
+      case 'BooleanLiteral': return [n.value?O.TRUE:O.FALSE];
+      case 'NumericLiteral': return [O.NUM, poolNum(n.value)];
+      case 'StringLiteral': return [O.STR, poolStr(decodeStr(n.raw))];
+      case 'VarargLiteral': return [O.VARARG];
+      case 'Identifier': return [O.NAME, poolStr(n.name)];
+      case 'MemberExpression': return [O.INDEX, cExpr(n.base), [O.STR, poolStr(n.identifier.name)]];
+      case 'IndexExpression': return [O.INDEX, cExpr(n.base), cExpr(n.index)];
+      case 'CallExpression':
+        if(n.base.type==='MemberExpression' && n.base.indexer===':')
+          return [O.MCALL, cExpr(n.base.base), poolStr(n.base.identifier.name), n.arguments.map(cExpr)];
+        return [O.CALL, cExpr(n.base), n.arguments.map(cExpr)];
+      case 'TableCallExpression': return [O.CALL, cExpr(n.base), [cExpr(n.arguments)]];
+      case 'StringCallExpression': return [O.CALL, cExpr(n.base), [cExpr(n.argument)]];
+      case 'BinaryExpression': return [O.BIN, binId[n.operator], cExpr(n.left), cExpr(n.right)];
+      case 'LogicalExpression': return [n.operator==='and'?O.AND:O.OR, cExpr(n.left), cExpr(n.right)];
+      case 'UnaryExpression': return [O.UN, unId[n.operator], cExpr(n.argument)];
+      case 'TableConstructorExpression':
+        return [O.TABLE, n.fields.map(f=>{
+          if(f.type==='TableValue') return [0, cExpr(f.value)];
+          if(f.type==='TableKey') return [1, cExpr(f.key), cExpr(f.value)];
+          return [2, poolStr(f.key.name), cExpr(f.value)];
+        })];
+      case 'FunctionDeclaration': {
+        let varg=0; const ps=[];
+        n.parameters.forEach(p=>{ if(p.type==='VarargLiteral') varg=1; else ps.push(poolStr(p.name)); });
+        return [O.FUNC, ps, varg, n.body.map(cStat)];
+      }
+      default: throw new Error('deepvm expr '+n.type);
+    }
+  }
+  function cStat(n){
+    switch(n.type){
+      case 'LocalStatement': return [O.LOCALDECL, n.variables.map(v=>poolStr(v.name)), (n.init||[]).map(cExpr)];
+      case 'AssignmentStatement': return [O.ASSIGN, n.variables.map(cExpr), n.init.map(cExpr)];
+      case 'CallStatement': return [O.CALLSTAT, cExpr(n.expression)];
+      case 'IfStatement': return [O.IF, n.clauses.map(c=>{
+        if(c.type==='ElseClause') return [0, c.body.map(cStat)];
+        return [cExpr(c.condition), c.body.map(cStat)];
+      })];
+      case 'WhileStatement': return [O.WHILE, cExpr(n.condition), n.body.map(cStat)];
+      case 'RepeatStatement': return [O.REPEAT, n.body.map(cStat), cExpr(n.condition)];
+      case 'ForNumericStatement': return [O.NUMFOR, poolStr(n.variable.name), cExpr(n.start), cExpr(n.end), n.step?cExpr(n.step):0, n.body.map(cStat)];
+      case 'ForGenericStatement': return [O.GENFOR, n.variables.map(v=>poolStr(v.name)), n.iterators.map(cExpr), n.body.map(cStat)];
+      case 'ReturnStatement': return [O.RETURN, n.arguments.map(cExpr)];
+      case 'BreakStatement': return [O.BREAK];
+      case 'DoStatement': return [O.DO, n.body.map(cStat)];
+      case 'FunctionDeclaration': {
+        let varg=0; const ps=[];
+        n.parameters.forEach(p=>{ if(p.type==='VarargLiteral') varg=1; else ps.push(poolStr(p.name)); });
+        if(n.isLocal) return [O.LOCALFUNC, poolStr(n.identifier.name), [O.FUNC, ps, varg, n.body.map(cStat)]];
+        let idn=n.identifier;
+        if(idn.type==='MemberExpression' && idn.indexer===':'){ ps.unshift(poolStr('self')); idn={type:'MemberExpression',indexer:'.',base:idn.base,identifier:idn.identifier}; }
+        return [O.ASSIGN, [cExpr(idn)], [[O.FUNC, ps, varg, n.body.map(cStat)]]];
+      }
+      default: throw new Error('deepvm stat '+n.type);
+    }
+  }
+  function lit(x){ if(Array.isArray(x)) return '{'+x.map(lit).join(',')+'}'; if(typeof x==='number') return String(x); throw new Error('deepvm lit'); }
+  function luaNum(v){ if(Number.isInteger(v)) return String(v); let s=String(v); if(!/[.eE]/.test(s))s+='.0'; return s; }
+
+  const ast=luaparse.parse(src,{scope:false,luaVersion:'5.3',comments:false});
+  const PROG=ast.body.map(cStat);
+  const progLit=lit(PROG);
+  const skey=rand(40,200);
+  const N={}; ['dstr','K','G','getV','setV','evE','evM','evL','exB','exS','mkC','luVA','PROG','RET','BRK','bit','main'].forEach(k=>N[k]=uid());
+  const opNames={}; ALL.forEach(a=>opNames[a]=uid());
+  const opDecl='local '+ALL.map(a=>opNames[a]).join(',')+'='+ALL.map(a=>O[a]).join(',');
+  const $=k=>opNames[k];
+  let poolSrc='local '+N.dstr+'=function(b)local r={} for i=1,#b do r[i]=string.char('+N.bit+'.bxor(b[i],'+skey+'))end return table.concat(r)end\nlocal '+N.K+'={}\n';
+  pool.forEach((e,i)=>{
+    if(e.t==='n') poolSrc+=N.K+'['+(i+1)+']='+luaNum(e.v)+'\n';
+    else { const bytes=Array.from(new TextEncoder().encode(e.v)).map(c=>(c^skey)&255); poolSrc+=N.K+'['+(i+1)+']='+N.dstr+'({'+bytes.join(',')+'})\n'; }
+  });
+
+  // Junk opcode branches — IDs in 5000-9999 never appear in PROG but bloat & confuse the dispatcher
+  const junkCount=rand(14,22);
+  const junkIds=distinctInts(junkCount,5000,9999);
+  const junkBranchE=junkIds.map(id=>`  elseif t==${id} then local ${uid()}=nil`).join('\n');
+  const junkBranchS=junkIds.map(id=>`  elseif t==${id} then local ${uid()}=nil`).join('\n');
+
+  const RT=`
+local ${N.getV},${N.setV},${N.evE},${N.evM},${N.evL},${N.exB},${N.exS},${N.mkC},${N.luVA}
+${N.getV}=function(env,name) local e=env while e do if e.d[name] then return e.v[name] end e=e.up end return ${N.G}[name] end
+${N.setV}=function(env,name,val) local e=env while e do if e.d[name] then e.v[name]=val return end e=e.up end ${N.G}[name]=val end
+${N.luVA}=function(env) local e=env while e do if e.va then return e.va end e=e.up end return {n=0} end
+${N.evM}=function(node,env) local t=node[1]
+  if t==${$('CALL')} then local f=${N.evE}(node[2],env) local a=${N.evL}(node[3],env) return f(table.unpack(a,1,a.n))
+  elseif t==${$('MCALL')} then local b=${N.evE}(node[2],env) local m=b[${N.K}[node[3]]] local a=${N.evL}(node[4],env) local args={b} for i=1,a.n do args[i+1]=a[i] end return m(table.unpack(args,1,a.n+1))
+  elseif t==${$('VARARG')} then local va=${N.luVA}(env) return table.unpack(va,1,va.n)
+  else return ${N.evE}(node,env) end end
+${N.evL}=function(list,env) local out,n={},0 local len=#list
+  for i=1,len do if i==len then local nd=list[i] local t=nd[1]
+      if t==${$('CALL')} or t==${$('MCALL')} or t==${$('VARARG')} then local vs=table.pack(${N.evM}(nd,env)) for j=1,vs.n do n=n+1 out[n]=vs[j] end
+      else n=n+1 out[n]=${N.evE}(nd,env) end
+    else n=n+1 out[n]=${N.evE}(list[i],env) end end
+  out.n=n return out end
+${N.evE}=function(node,env) local t=node[1]
+  if t==${$('NIL')} then return nil
+  elseif t==${$('TRUE')} then return true
+  elseif t==${$('FALSE')} then return false
+  elseif t==${$('NUM')} then return ${N.K}[node[2]]
+  elseif t==${$('STR')} then return ${N.K}[node[2]]
+  elseif t==${$('NAME')} then return ${N.getV}(env,${N.K}[node[2]])
+  elseif t==${$('VARARG')} then local va=${N.luVA}(env) return va[1]
+  elseif t==${$('INDEX')} then local b=${N.evE}(node[2],env) return b[${N.evE}(node[3],env)]
+  elseif t==${$('CALL')} or t==${$('MCALL')} then local r=table.pack(${N.evM}(node,env)) return r[1]
+  elseif t==${$('AND')} then local l=${N.evE}(node[2],env) if not l then return l end return ${N.evE}(node[3],env)
+  elseif t==${$('OR')} then local l=${N.evE}(node[2],env) if l then return l end return ${N.evE}(node[3],env)
+  elseif t==${$('UN')} then local o=node[2] local a=${N.evE}(node[3],env)
+    if o==${$('U_NEG')} then return -a elseif o==${$('U_NOT')} then return not a elseif o==${$('U_LEN')} then return #a else return ${N.bit}.bnot(a) end
+  elseif t==${$('BIN')} then local o=node[2] local a=${N.evE}(node[3],env) local b=${N.evE}(node[4],env)
+    if o==${$('B_ADD')} then return a+b elseif o==${$('B_SUB')} then return a-b elseif o==${$('B_MUL')} then return a*b
+    elseif o==${$('B_DIV')} then return a/b elseif o==${$('B_MOD')} then return a%b elseif o==${$('B_POW')} then return a^b
+    elseif o==${$('B_CONCAT')} then return a..b elseif o==${$('B_EQ')} then return a==b elseif o==${$('B_NE')} then return a~=b
+    elseif o==${$('B_LT')} then return a<b elseif o==${$('B_LE')} then return a<=b elseif o==${$('B_GT')} then return a>b
+    elseif o==${$('B_GE')} then return a>=b elseif o==${$('B_IDIV')} then return math.floor(a/b)
+    elseif o==${$('B_BAND')} then return ${N.bit}.band(a,b) elseif o==${$('B_BOR')} then return ${N.bit}.bor(a,b)
+    elseif o==${$('B_BXOR')} then return ${N.bit}.bxor(a,b) elseif o==${$('B_SHL')} then return ${N.bit}.lshift(a,b) else return ${N.bit}.rshift(a,b) end
+  elseif t==${$('TABLE')} then local tb={} local fl=node[2] local ai=1
+    for i=1,#fl do local f=fl[i] local k=f[1]
+      if k==0 then if i==#fl then local nd=f[2] local tt=nd[1]
+          if tt==${$('CALL')} or tt==${$('MCALL')} or tt==${$('VARARG')} then local vs=table.pack(${N.evM}(nd,env)) for j=1,vs.n do tb[ai]=vs[j] ai=ai+1 end
+          else tb[ai]=${N.evE}(nd,env) ai=ai+1 end
+        else tb[ai]=${N.evE}(f[2],env) ai=ai+1 end
+      elseif k==1 then tb[${N.evE}(f[2],env)]=${N.evE}(f[3],env)
+      else tb[${N.K}[f[2]]]=${N.evE}(f[3],env) end end
+    return tb
+  elseif t==${$('FUNC')} then return ${N.mkC}(node,env)
+${junkBranchE}  end end
+${N.mkC}=function(node,defEnv) local params=node[2] local varg=node[3] local body=node[4]
+  return function(...) local sc={v={},d={},up=defEnv} local args=table.pack(...)
+    for i=1,#params do local nm=${N.K}[params[i]] sc.d[nm]=true sc.v[nm]=args[i] end
+    if varg==1 then local va={} local c=0 for i=#params+1,args.n do c=c+1 va[c]=args[i] end va.n=c sc.va=va end
+    local sig,vals=${N.exB}(body,sc)
+    if sig==${N.RET} then return table.unpack(vals,1,vals.n) end end end
+${N.exB}=function(body,env) for i=1,#body do local sig,vals=${N.exS}(body[i],env) if sig then return sig,vals end end end
+${N.exS}=function(node,env) local t=node[1]
+  if t==${$('CALLSTAT')} then ${N.evM}(node[2],env)
+  elseif t==${$('LOCALDECL')} then local names=node[2] local vals=${N.evL}(node[3],env)
+    for i=1,#names do local nm=${N.K}[names[i]] env.d[nm]=true env.v[nm]=vals[i] end
+  elseif t==${$('ASSIGN')} then local tg=node[2] local vals=${N.evL}(node[3],env)
+    for i=1,#tg do local tn=tg[i] if tn[1]==${$('NAME')} then ${N.setV}(env,${N.K}[tn[2]],vals[i])
+      else local b=${N.evE}(tn[2],env) b[${N.evE}(tn[3],env)]=vals[i] end end
+  elseif t==${$('IF')} then local cl=node[2]
+    for i=1,#cl do local c=cl[i] if type(c[1])=='table' then if ${N.evE}(c[1],env) then return ${N.exB}(c[2],{v={},d={},up=env}) end
+      else return ${N.exB}(c[2],{v={},d={},up=env}) end end
+  elseif t==${$('WHILE')} then while ${N.evE}(node[2],env) do local sig,vals=${N.exB}(node[3],{v={},d={},up=env})
+      if sig==${N.BRK} then break elseif sig==${N.RET} then return sig,vals end end
+  elseif t==${$('REPEAT')} then repeat local sc={v={},d={},up=env} local sig,vals=${N.exB}(node[2],sc)
+      if sig==${N.BRK} then break elseif sig==${N.RET} then return sig,vals end until ${N.evE}(node[3],sc)
+  elseif t==${$('NUMFOR')} then local nm=${N.K}[node[2]] local a=${N.evE}(node[3],env) local b=${N.evE}(node[4],env)
+    local st=1 if node[5]~=0 then st=${N.evE}(node[5],env) end local i=a
+    while (st>0 and i<=b) or (st<0 and i>=b) do local sc={v={},d={},up=env} sc.d[nm]=true sc.v[nm]=i
+      local sig,vals=${N.exB}(node[6],sc) if sig==${N.BRK} then break elseif sig==${N.RET} then return sig,vals end i=i+st end
+  elseif t==${$('GENFOR')} then local names=node[2] local it=${N.evL}(node[3],env) local f,s,ctl=it[1],it[2],it[3]
+    while true do local rs=table.pack(f(s,ctl)) if rs[1]==nil then break end ctl=rs[1]
+      local sc={v={},d={},up=env} for i=1,#names do local nm=${N.K}[names[i]] sc.d[nm]=true sc.v[nm]=rs[i] end
+      local sig,vals=${N.exB}(node[4],sc) if sig==${N.BRK} then break elseif sig==${N.RET} then return sig,vals end end
+  elseif t==${$('DO')} then return ${N.exB}(node[2],{v={},d={},up=env})
+  elseif t==${$('LOCALFUNC')} then local nm=${N.K}[node[2]] env.d[nm]=true env.v[nm]=${N.evE}(node[3],env)
+  elseif t==${$('RETURN')} then return ${N.RET},${N.evL}(node[2],env)
+  elseif t==${$('BREAK')} then return ${N.BRK}
+${junkBranchS}  end end
+local ${N.main}={v={},d={},up=nil,va={n=0}} ${N.exB}(${N.PROG},${N.main})
+`;
+  return minify(`local ${N.bit}=bit32
+local ${N.G}=(getfenv and getfenv(0)) or _G or _ENV
+${opDecl}
+local ${N.RET},${N.BRK}=${$('SRET')},${$('SBRK')}
+${poolSrc}local ${N.PROG}=${progLit}
+${RT}`);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  LAYER 7 — FLAT BYTECODE VM
+//
+//  Compiles the script to a FLAT instruction array — every instruction
+//  is a short tuple {op, a, b, c} with small randomized opcode IDs.
+//  A per-build dispatch-table VM executes them; there is no source
+//  reconstruction and no load() call.  Output looks like:
+//    {{5,1},{4,2},{10,1},{13,0},...}
+//  which AI and humans alike cannot easily map back to logic.
+//  Stack-based: values accumulate on a Lua array; function calls, math,
+//  table ops, control flow, closures all fully supported.
+// ───────────────────────────────────────────────────────────────────
+function compileFlatVM(src){
+  const luaparse=window.luaparse||(typeof globalThis!=='undefined'&&globalThis.luaparse)||null;
+
+  // ── opcodes (randomized per build) ──────────────────────────────
+  const OPN=['LNIL','LTRUE','LFALSE','LK','LNAME','GETI',
+    'SETI','SETIEXP','STORE','STOREM','EXTEND','EXPAND',
+    'CALL','CALLM','CSTAT','MCALL','MCALLM','MSTAT',
+    'ADD','SUB','MUL','DIV','MOD','POW','CAT',
+    'EQ','NE','LT','LE','GT','GE','IDF',
+    'BAND','BOR','BXOR','BLSH','BRSH',
+    'NEG','NOT','LEN','BNOT','AND','OR',
+    'JMP','JF','JT',
+    'NEWTAB','TSETA','TSETK','TSETE','TSETM',
+    'DECL','MKF','VA','VAM','RET','BRK',
+    'FNUMPREP','FNUMCHK','FNUMSTP','FGENPREP','FGENCHK','PDECL'];
+  const codes=distinctInts(OPN.length,3,254);
+  const O={}; OPN.forEach((n,i)=>O[n]=codes[i]);
+
+  // ── constant pool ───────────────────────────────────────────────
+  const pool=[]; const numMap=new Map(); const strMap=new Map();
+  function poolNum(v){if(numMap.has(v))return numMap.get(v);const i=pool.length+1;pool.push({t:'n',v});numMap.set(v,i);return i;}
+  function dstr(raw){try{return raw[0]==='"'?JSON.parse(raw):JSON.parse('"'+raw.slice(1,-1).replace(/\\'/g,"'").replace(/"/g,'\\"')+'"');}catch(e){return raw.slice(1,-1);}}
+  function poolStr(s){if(strMap.has(s))return strMap.get(s);const i=pool.length+1;pool.push({t:'s',v:s});strMap.set(s,i);return i;}
+
+  // ── per-function (proto) compiler ───────────────────────────────
+  const protos=[];
+
+  function buildProto(params,hasVararg,bodyStmts){
+    const I=[]; // flat instruction array
+    const bp=[]; // break-target patch stack
+
+    const emit=(...args)=>{I.push(args);return I.length-1;};
+    const patch=(idx,pos,v)=>{I[idx][pos]=v;};
+    const here=()=>I.length;
+
+    // ── expression: pushes exactly ONE value ──
+    function cExpr(n){
+      switch(n.type){
+        case 'NilLiteral': emit(O.LNIL); break;
+        case 'BooleanLiteral': emit(n.value?O.LTRUE:O.LFALSE); break;
+        case 'NumericLiteral': emit(O.LK,poolNum(n.value)); break;
+        case 'StringLiteral': emit(O.LK,poolStr(dstr(n.raw))); break;
+        case 'VarargLiteral': emit(O.VA); break;
+        case 'Identifier': emit(O.LNAME,poolStr(n.name)); break;
+        case 'MemberExpression':
+          cExpr(n.base); emit(O.LK,poolStr(n.identifier.name)); emit(O.GETI); break;
+        case 'IndexExpression':
+          cExpr(n.base); cExpr(n.index); emit(O.GETI); break;
+        case 'CallExpression':
+        case 'TableCallExpression':
+        case 'StringCallExpression':
+          cCallSingle(n); break;
+        case 'BinaryExpression':{
+          const bm={'+':O.ADD,'-':O.SUB,'*':O.MUL,'/':O.DIV,'%':O.MOD,'^':O.POW,'..':O.CAT,
+            '==':O.EQ,'~=':O.NE,'<':O.LT,'<=':O.LE,'>':O.GT,'>=':O.GE,'//':O.IDF,
+            '&':O.BAND,'|':O.BOR,'~':O.BXOR,'<<':O.BLSH,'>>':O.BRSH};
+          cExpr(n.left); cExpr(n.right); emit(bm[n.operator]); break;
+        }
+        case 'UnaryExpression':{
+          const um={'-':O.NEG,'not':O.NOT,'#':O.LEN,'~':O.BNOT};
+          cExpr(n.argument); emit(um[n.operator]); break;
+        }
+        case 'LogicalExpression':{
+          cExpr(n.left);
+          const j=emit(n.operator==='and'?O.AND:O.OR,0);
+          cExpr(n.right);
+          patch(j,1,here()-j-1); break;
+        }
+        case 'TableConstructorExpression':{
+          emit(O.NEWTAB);
+          const fl=n.fields;
+          for(let i=0;i<fl.length;i++){
+            const f=fl[i],last=i===fl.length-1;
+            if(f.type==='TableValue'){ if(last&&isMulti(f.value)){cExprM(f.value);emit(O.TSETM);}else{cExpr(f.value);emit(O.TSETA);} }
+            else if(f.type==='TableKey'){ cExpr(f.key);cExpr(f.value);emit(O.TSETE); }
+            else{ cExpr(f.value);emit(O.TSETK,poolStr(f.key.name)); }
+          } break;
+        }
+        case 'FunctionExpression':
+        case 'FunctionDeclaration':{
+          let varg=0;const ps=[];
+          n.parameters.forEach(p=>{if(p.type==='VarargLiteral')varg=1;else ps.push(poolStr(p.name));});
+          emit(O.MKF,buildProto(ps,varg,n.body)); break;
+        }
+        default: throw new Error('flatvm expr: '+n.type);
+      }
+    }
+
+    // true when an expression yields a dynamic number of values at runtime
+    function isMulti(n){
+      return !!n&&(n.type==='CallExpression'||n.type==='TableCallExpression'||
+        n.type==='StringCallExpression'||n.type==='VarargLiteral');
+    }
+    // multi-value expression (for last in arg/rhs list)
+    function cExprM(n){
+      if(n.type==='VarargLiteral'){emit(O.VAM);return;}
+      if(n.type==='CallExpression'||n.type==='TableCallExpression'||n.type==='StringCallExpression'){cCallMulti(n);return;}
+      cExpr(n);
+    }
+
+    // push fn/obj + args, emit single-return CALL
+    function cCallSingle(n){
+      if(n.type==='TableCallExpression'){cExpr(n.base);cExpr(n.arguments);emit(O.CALL,1);return;}
+      if(n.type==='StringCallExpression'){cExpr(n.base);cExpr(n.argument);emit(O.CALL,1);return;}
+      if(n.base.type==='MemberExpression'&&n.base.indexer===':'){
+        cExpr(n.base.base);const na=cArgs(n.arguments);emit(O.MCALL,poolStr(n.base.identifier.name),na);
+      }else{cExpr(n.base);const na=cArgs(n.arguments);emit(O.CALL,na);}
+    }
+
+    // multi-return CALL variant
+    function cCallMulti(n){
+      if(n.type==='TableCallExpression'){cExpr(n.base);cExpr(n.arguments);emit(O.CALLM,1);return;}
+      if(n.type==='StringCallExpression'){cExpr(n.base);cExpr(n.argument);emit(O.CALLM,1);return;}
+      if(n.base.type==='MemberExpression'&&n.base.indexer===':'){
+        cExpr(n.base.base);const na=cArgs(n.arguments);emit(O.MCALLM,poolStr(n.base.identifier.name),na);
+      }else{cExpr(n.base);const na=cArgs(n.arguments);emit(O.CALLM,na);}
+    }
+
+    // compile arg list; returns arg count (negative if last is multi)
+    function cArgs(args){
+      const n=args.length; if(n===0) return 0;
+      for(let i=0;i<n-1;i++) cExpr(args[i]);
+      const last=args[n-1];
+      if(last.type==='CallExpression'||last.type==='TableCallExpression'||
+         last.type==='StringCallExpression'||last.type==='VarargLiteral'){
+        cExprM(last); return -(n); // negative = (n-1) fixed + multi last
+      }
+      cExpr(last); return n;
+    }
+
+    // ── assignment helper: evaluates rhs, assigns to targets right-to-left ──
+    function cAssign(targets,vals,isLocal){
+      const vc=vals.length,tc=targets.length;
+      for(let i=0;i<vc-1;i++) cExpr(vals[i]);
+      if(vc>0){
+        const last=vals[vc-1];
+        const isM=last.type==='CallExpression'||last.type==='TableCallExpression'||
+          last.type==='StringCallExpression'||last.type==='VarargLiteral';
+        if(isM){cExprM(last);emit(O.EXPAND,tc,vc-1);}
+        else{cExpr(last);emit(O.EXTEND,tc,vc);}
+      }else emit(O.EXTEND,tc,0);
+
+      // assign right-to-left (so leftmost value ends up at bottom for leftmost target)
+      for(let i=tc-1;i>=0;i--){
+        const t=targets[i];
+        if(isLocal||t.type==='Identifier'){
+          emit(O.STORE,poolStr(isLocal?t.name:(t.name||t.identifier?.name)));
+        }else if(t.type==='MemberExpression'){
+          cExpr(t.base); emit(O.SETI,poolStr(t.identifier.name));
+        }else if(t.type==='IndexExpression'){
+          cExpr(t.base);cExpr(t.index); emit(O.SETIEXP);
+        }
+      }
+    }
+
+    // ── statements ──
+    function cBody(stmts){stmts.forEach(cStat);}
+
+    function cStat(n){
+      switch(n.type){
+        case 'LocalStatement':
+          cAssign(n.variables,n.init||[],true);
+          // convert STOREs to DECLs: the last tc STORE instrs should be DECL
+          // Actually, use DECL opcode: declare names and pop values
+          // Re-emit: instead of STORE, emit DECL for each name
+          // But cAssign already emitted STORE... let me use a different approach:
+          // Just mark them as local declarations by emitting DECL after
+          {
+            // undo last tc STORE instrs, replace with DECL + names
+            const tc=n.variables.length;
+            const names=n.variables.map(v=>poolStr(v.name));
+            // Remove the tc STORE instrs we just added (they were for isLocal targets)
+            for(let i=0;i<tc;i++) I.pop();
+            // Emit DECL: pops tc values (right-to-left order), declares them
+            I.push([O.DECL,tc,...names]);
+          }
+          break;
+        case 'AssignmentStatement':
+          cAssign(n.variables,n.init,false);
+          break;
+        case 'CallStatement':
+          if(n.expression.type==='CallExpression'||n.expression.type==='TableCallExpression'||n.expression.type==='StringCallExpression'){
+            if(n.expression.type==='TableCallExpression'){cExpr(n.expression.base);cExpr(n.expression.arguments);emit(O.CSTAT,1);}
+            else if(n.expression.type==='StringCallExpression'){cExpr(n.expression.base);cExpr(n.expression.argument);emit(O.CSTAT,1);}
+            else if(n.expression.base.type==='MemberExpression'&&n.expression.base.indexer===':'){
+              cExpr(n.expression.base.base);const na=cArgs(n.expression.arguments);emit(O.MSTAT,poolStr(n.expression.base.identifier.name),na);
+            }else{cExpr(n.expression.base);const na=cArgs(n.expression.arguments);emit(O.CSTAT,na);}
+          }
+          break;
+        case 'IfStatement':{
+          const endPs=[];
+          for(const cl of n.clauses){
+            let cj=-1;
+            if(cl.type!=='ElseClause'){cExpr(cl.condition);cj=emit(O.JF,0);}
+            cBody(cl.body);
+            endPs.push(emit(O.JMP,0));
+            if(cj>=0) patch(cj,1,here()-cj-1);
+          }
+          endPs.forEach(p=>patch(p,1,here()-p-1)); break;
+        }
+        case 'WhileStatement':{
+          const ls=here(); cExpr(n.condition);const cj=emit(O.JF,0);
+          bp.push({p:[]}); cBody(n.body);
+          emit(O.JMP,ls-here()-1); patch(cj,1,here()-cj-1);
+          bp.pop().p.forEach(p=>patch(p,1,here()-p-1)); break;
+        }
+        case 'RepeatStatement':{
+          const ls=here(); bp.push({p:[]});
+          cBody(n.body); cExpr(n.condition); emit(O.JF,ls-here()-1);
+          bp.pop().p.forEach(p=>patch(p,1,here()-p-1)); break;
+        }
+        case 'ForNumericStatement':{
+          cExpr(n.start);cExpr(n.end);
+          if(n.step)cExpr(n.step);else emit(O.LK,poolNum(1));
+          const vn=poolStr(n.variable.name);
+          emit(O.FNUMPREP,vn); // pops step,limit,start; stores in hidden state; declares var
+          const ck=here(); const cj=emit(O.FNUMCHK,vn,0); // jump if done
+          bp.push({p:[]}); cBody(n.body);
+          emit(O.FNUMSTP,vn); emit(O.JMP,ck-here()-1);
+          patch(cj,2,here()-cj-1);
+          bp.pop().p.forEach(p=>patch(p,1,here()-p-1)); break;
+        }
+        case 'ForGenericStatement':{
+          // the iterator list yields the 3 control values f,s,ctl (last expr
+          // may be multi); normalise to exactly 3 values on the stack
+          const its=n.iterators,ic=its.length;
+          const dyn=ic>0&&isMulti(its[ic-1]);
+          for(let i=0;i<ic-1;i++) cExpr(its[i]);
+          if(ic>0){ if(dyn){cExprM(its[ic-1]);emit(O.EXPAND,3,ic-1);} else {cExpr(its[ic-1]);emit(O.EXTEND,3,ic);} }
+          else emit(O.EXTEND,3,0);
+          const names=n.variables.map(v=>poolStr(v.name));
+          I.push([O.FGENPREP,names.length,...names]); // pops the 3 control values
+          const ck=here(); const cj=I.push([O.FGENCHK,names[0],0])-1; // jump if done
+          bp.push({p:[]}); cBody(n.body);
+          emit(O.JMP,ck-here()-1); patch(cj,2,here()-cj-1);
+          bp.pop().p.forEach(p=>patch(p,1,here()-p-1)); break;
+        }
+        case 'ReturnStatement':{
+          const args=n.arguments,ac=args.length;
+          const dyn=ac>0&&isMulti(args[ac-1]);
+          for(let i=0;i<ac-1;i++) cExpr(args[i]);
+          if(ac>0){ if(dyn) cExprM(args[ac-1]); else cExpr(args[ac-1]); }
+          emit(O.RET,ac,dyn?1:0); break;
+        }
+        case 'BreakStatement':{
+          const p=emit(O.JMP,0);
+          if(bp.length>0) bp[bp.length-1].p.push(p); break;
+        }
+        case 'DoStatement': cBody(n.body); break;
+        case 'FunctionDeclaration':{
+          let varg=0;const ps=[];
+          // colon syntax `function T:m()` implies an initial `self` parameter
+          const isMethod=n.identifier&&n.identifier.type==='MemberExpression'&&n.identifier.indexer===':';
+          if(isMethod) ps.push(poolStr('self'));
+          n.parameters.forEach(p=>{if(p.type==='VarargLiteral')varg=1;else ps.push(poolStr(p.name));});
+          const pid=buildProto(ps,varg,n.body);
+          emit(O.MKF,pid);
+          if(n.isLocal){
+            I.push([O.DECL,1,poolStr(n.identifier.name)]);
+          }else if(n.identifier.type==='Identifier'){
+            emit(O.STORE,poolStr(n.identifier.name));
+          }else if(n.identifier.type==='MemberExpression'){
+            cExpr(n.identifier.base);emit(O.SETI,poolStr(n.identifier.identifier.name));
+          } break;
+        }
+        default: throw new Error('flatvm stat: '+n.type);
+      }
+    }
+
+    // emit parameter setup at function entry (dedicated PDECL opcode binds
+    // from call args, distinct from a regular `local` DECL that pops the stack)
+    if(params.length>0||hasVararg){
+      I.push([O.PDECL,params.length,...params,hasVararg?1:0]);
+    }
+    cBody(bodyStmts);
+    if(!I.length||I[I.length-1][0]!==O.RET) emit(O.RET,0,0);
+
+    const pid=protos.length+1; protos.push(I); return pid;
+  }
+
+  // ── parse + compile ────────────────────────────────────────────
+  const ast=luaparse.parse(src,{scope:false,luaVersion:'5.3',comments:false});
+  // top-level chunk is vararg; nested functions are pushed first, so capture
+  // the real pid of main rather than assuming it is proto 1.
+  const mainPid=buildProto([],1,ast.body);
+
+  // ── emit constant pool ─────────────────────────────────────────
+  const skey=rand(30,220);
+  const N={}; ['G','K','dstr','F','vm','env','bit','S','VA'].forEach(k=>N[k]=uid());
+  let poolSrc=`local ${N.dstr}=function(b)local r={}for i=1,#b do r[i]=string.char(bit32.bxor(b[i],${skey}))end return table.concat(r)end\nlocal ${N.K}={}\n`;
+  pool.forEach((e,i)=>{
+    if(e.t==='n') poolSrc+=`${N.K}[${i+1}]=${Number.isInteger(e.v)?e.v:e.v%1===0?e.v:e.v.toString().includes('.')?e.v:e.v+'.0'}\n`;
+    else{const bytes=Array.from(new TextEncoder().encode(e.v)).map(c=>(c^skey)&255);poolSrc+=`${N.K}[${i+1}]=${N.dstr}({${bytes.join(',')}})\n`;}
+  });
+
+  // ── emit proto tables ──────────────────────────────────────────
+  const protoLit='{'+protos.map(p=>'{'+p.map(ins=>'{'+ins.join(',')+'}'). join(',')+'}'). join(',\n')+'}';
+
+  // ── emit VM runtime (dispatch-table based) ─────────────────────
+  const $ = k => O[k]; // opcode ID
+  // Randomize dispatch table key order for extra confusion
+  const dispKeys=shuffle(Object.keys(O).slice());
+
+  const RT=`local ${N.G}=(getfenv and getfenv(0))or _G or _ENV
+local ${N.bit}=bit32
+local ${N.S}={}
+${poolSrc}
+local ${N.F}=${protoLit}
+local ${N.vm}
+${N.vm}=function(pid,env,...)
+  local prog=${N.F}[pid] local pc=1 local stk={} local sp=0
+  local K=${N.K} local G=${N.G} local bit=${N.bit} local F=${N.F}
+  local function getV(e,k) while e do if e.d[k] then return e.v[k] end e=e.up end return G[k] end
+  local function setV(e,k,v) while e do if e.d[k] then e.v[k]=v return end e=e.up end G[k]=v end
+  local function decl(e,k,v) e.d[k]=true e.v[k]=v end
+  local function mksc(up) return{v={},d={},up=up} end
+  local function callF(pid2,sc,...) return ${N.vm}(pid2,sc,...) end
+  local function packM(f,...) local r=table.pack(f(...)) return r end
+  -- Pop a call's argument list off the stack and return {args}, count.
+  -- na>=0 : na fixed args.  na<0 : (-na-1) fixed args + a multi-value last
+  -- (values then a count marker on top of the stack).  Leaves sp pointing at
+  -- the slot just below the args (the fn / obj slot).
+  local function popArgs(na)
+    if na>=0 then
+      local a={} for i=1,na do a[i]=stk[sp-na+i] end sp=sp-na return a,na
+    end
+    local fixed=(-na)-1
+    local cnt=stk[sp] sp=sp-1
+    local mv={} for i=1,cnt do mv[i]=stk[sp-cnt+i] end sp=sp-cnt
+    local a={} for i=1,fixed do a[i]=stk[sp-fixed+i] end sp=sp-fixed
+    for i=1,cnt do a[fixed+i]=mv[i] end
+    return a,fixed+cnt
+  end
+  local bit=bit32
+  -- stash all incoming call args; PDECL (if present) rebinds params/varargs
+  local _va=table.pack(...) env.va=_va
+  local done=false local retv
+  while not done do
+    local ins=prog[pc] pc=pc+1 local op=ins[1]
+    if op==${$('LNIL')} then sp=sp+1 stk[sp]=nil
+    elseif op==${$('LTRUE')} then sp=sp+1 stk[sp]=true
+    elseif op==${$('LFALSE')} then sp=sp+1 stk[sp]=false
+    elseif op==${$('LK')} then sp=sp+1 stk[sp]=K[ins[2]]
+    elseif op==${$('LNAME')} then sp=sp+1 stk[sp]=getV(env,K[ins[2]])
+    elseif op==${$('VA')} then sp=sp+1 stk[sp]=(env.va or{n=0})[1]
+    elseif op==${$('VAM')} then local va=env.va or{n=0} for i=1,va.n do sp=sp+1 stk[sp]=va[i] end sp=sp+1 stk[sp]=va.n -- multi-return marker
+    elseif op==${$('GETI')} then local k=stk[sp] sp=sp-1 stk[sp]=stk[sp][k]
+    elseif op==${$('NEWTAB')} then sp=sp+1 stk[sp]={}
+    elseif op==${$('TSETA')} then local v=stk[sp] sp=sp-1 local t=stk[sp] t[#t+1]=v
+    elseif op==${$('TSETK')} then local v=stk[sp] sp=sp-1 stk[sp][K[ins[2]]]=v
+    elseif op==${$('TSETE')} then local v=stk[sp] sp=sp-1 local k=stk[sp] sp=sp-1 stk[sp][k]=v
+    elseif op==${$('TSETM')} then
+      -- append a multi-value tail into the table's array section
+      -- stack: [t, v1..vN, count];  t sits just below the N values
+      local cnt=stk[sp] sp=sp-1
+      local t=stk[sp-cnt]
+      for i=1,cnt do t[#t+1]=stk[sp-cnt+i] end
+      sp=sp-cnt
+    elseif op==${$('MKF')} then
+      local pid2=ins[2] local sc=mksc(env)
+      sp=sp+1 stk[sp]=function(...) return callF(pid2,mksc(env),...) end
+    elseif op==${$('CALL')} then
+      local na=ins[2] local a,m=popArgs(na) local fn=stk[sp]
+      stk[sp]=fn(table.unpack(a,1,m))
+    elseif op==${$('CALLM')} then
+      local na=ins[2] local a,m=popArgs(na) local fn=stk[sp] sp=sp-1
+      local r=table.pack(fn(table.unpack(a,1,m)))
+      for i=1,r.n do sp=sp+1 stk[sp]=r[i] end sp=sp+1 stk[sp]=r.n
+    elseif op==${$('CSTAT')} then
+      local na=ins[2] local a,m=popArgs(na) local fn=stk[sp] sp=sp-1
+      fn(table.unpack(a,1,m))
+    elseif op==${$('MCALL')} then
+      local meth=K[ins[2]] local na=ins[3] local a,m=popArgs(na) local obj=stk[sp]
+      local full={obj} for i=1,m do full[i+1]=a[i] end
+      stk[sp]=obj[meth](table.unpack(full,1,m+1))
+    elseif op==${$('MCALLM')} then
+      local meth=K[ins[2]] local na=ins[3] local a,m=popArgs(na) local obj=stk[sp] sp=sp-1
+      local full={obj} for i=1,m do full[i+1]=a[i] end
+      local r=table.pack(obj[meth](table.unpack(full,1,m+1)))
+      for i=1,r.n do sp=sp+1 stk[sp]=r[i] end sp=sp+1 stk[sp]=r.n
+    elseif op==${$('MSTAT')} then
+      local meth=K[ins[2]] local na=ins[3] local a,m=popArgs(na) local obj=stk[sp] sp=sp-1
+      local full={obj} for i=1,m do full[i+1]=a[i] end obj[meth](table.unpack(full,1,m+1))
+    elseif op==${$('EXTEND')} then
+      local tc=ins[2] local vc=ins[3]
+      while vc<tc do sp=sp+1 stk[sp]=nil vc=vc+1 end
+      -- pop excess
+      if vc>tc then sp=sp-(vc-tc) end
+    elseif op==${$('EXPAND')} then
+      -- stack: [fixed1..fixedF, v1..vN, count].  Pop count; the remaining
+      -- F+N values are already in target order — pad or trim to exactly tc.
+      local tc=ins[2] local fixed=ins[3]
+      local cnt=stk[sp] sp=sp-1
+      local total=fixed+cnt
+      if total<tc then for i=total+1,tc do sp=sp+1 stk[sp]=nil end
+      elseif total>tc then sp=sp-(total-tc) end
+    elseif op==${$('STORE')} then local v=stk[sp] sp=sp-1 setV(env,K[ins[2]],v)
+    elseif op==${$('SETI')} then local base=stk[sp] sp=sp-1 local v=stk[sp] sp=sp-1 base[K[ins[2]]]=v
+    elseif op==${$('SETIEXP')} then local k=stk[sp] sp=sp-1 local base=stk[sp] sp=sp-1 local v=stk[sp] sp=sp-1 base[k]=v
+    elseif op==${$('DECL')} then
+      local n=ins[2] for i=n,1,-1 do decl(env,K[ins[2+i]],stk[sp-n+i]) end sp=sp-n
+    elseif op==${$('PDECL')} then
+      -- bind named params from the stashed call args (_va); set up vararg tail
+      local n=ins[2] for i=1,n do decl(env,K[ins[2+i]],_va[i]) end
+      if ins[2+n+1]==1 then
+        local va={} local c=0 for i=n+1,_va.n do c=c+1 va[c]=_va[i] end va.n=c env.va=va
+      else env.va={n=0} end
+    elseif op==${$('ADD')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]+b
+    elseif op==${$('SUB')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]-b
+    elseif op==${$('MUL')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]*b
+    elseif op==${$('DIV')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]/b
+    elseif op==${$('MOD')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]%b
+    elseif op==${$('POW')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]^b
+    elseif op==${$('CAT')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]..b
+    elseif op==${$('EQ')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]==b
+    elseif op==${$('NE')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]~=b
+    elseif op==${$('LT')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]<b
+    elseif op==${$('LE')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]<=b
+    elseif op==${$('GT')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]>b
+    elseif op==${$('GE')} then local b=stk[sp] sp=sp-1 stk[sp]=stk[sp]>=b
+    elseif op==${$('IDF')} then local b=stk[sp] sp=sp-1 stk[sp]=math.floor(stk[sp]/b)
+    elseif op==${$('BAND')} then local b=stk[sp] sp=sp-1 stk[sp]=bit.band(stk[sp],b)
+    elseif op==${$('BOR')} then local b=stk[sp] sp=sp-1 stk[sp]=bit.bor(stk[sp],b)
+    elseif op==${$('BXOR')} then local b=stk[sp] sp=sp-1 stk[sp]=bit.bxor(stk[sp],b)
+    elseif op==${$('BLSH')} then local b=stk[sp] sp=sp-1 stk[sp]=bit.lshift(stk[sp],b)
+    elseif op==${$('BRSH')} then local b=stk[sp] sp=sp-1 stk[sp]=bit.rshift(stk[sp],b)
+    elseif op==${$('NEG')} then stk[sp]=-stk[sp]
+    elseif op==${$('NOT')} then stk[sp]=not stk[sp]
+    elseif op==${$('LEN')} then stk[sp]=#stk[sp]
+    elseif op==${$('BNOT')} then stk[sp]=bit.bnot(stk[sp])
+    elseif op==${$('AND')} then if not stk[sp] then pc=pc+ins[2] else sp=sp-1 end
+    elseif op==${$('OR')} then if stk[sp] then pc=pc+ins[2] else sp=sp-1 end
+    elseif op==${$('JMP')} then pc=pc+ins[2]
+    elseif op==${$('JF')} then local v=stk[sp] sp=sp-1 if not v then pc=pc+ins[2] end
+    elseif op==${$('JT')} then local v=stk[sp] sp=sp-1 if v then pc=pc+ins[2] end
+    elseif op==${$('FNUMPREP')} then
+      local nm=K[ins[2]] local st=stk[sp] local lim=stk[sp-1] local s2=stk[sp-2] sp=sp-3
+      local cell={i=s2,lim=lim,st=st} env.d[nm]=true env.v[nm]=s2 env['_fn_'..nm]=cell
+    elseif op==${$('FNUMCHK')} then
+      local nm=K[ins[2]] local cell=env['_fn_'..nm]
+      local ok=(cell.st>0 and cell.i<=cell.lim)or(cell.st<0 and cell.i>=cell.lim)
+      if not ok then pc=pc+ins[3] end
+    elseif op==${$('FNUMSTP')} then
+      local nm=K[ins[2]] local cell=env['_fn_'..nm]
+      cell.i=cell.i+cell.st env.v[nm]=cell.i
+    elseif op==${$('FGENPREP')} then
+      local nn=ins[2] local names={}
+      for i=1,nn do names[i]=K[ins[2+i]] end
+      local ctl=stk[sp] local s=stk[sp-1] local f=stk[sp-2] sp=sp-3
+      env['_fgi']={f=f,s=s,ctl=ctl,names=names}
+      for _,nm in ipairs(names) do env.d[nm]=true env.v[nm]=nil end
+    elseif op==${$('FGENCHK')} then
+      local gi=env['_fgi'] local rs=table.pack(gi.f(gi.s,gi.ctl))
+      if rs[1]==nil then pc=pc+ins[3]
+      else gi.ctl=rs[1] for i,nm in ipairs(gi.names) do env.v[nm]=rs[i] end end
+    elseif op==${$('RET')} then
+      local n=ins[2] local dyn=ins[3]
+      if n==0 then retv={n=0}
+      elseif dyn==1 then
+        -- last value is multi: a count marker sits on top of the stack
+        local cnt=stk[sp] sp=sp-1
+        local fixed=n-1
+        retv={n=0}
+        for i=1,fixed do retv.n=retv.n+1 retv[retv.n]=stk[sp-cnt-fixed+i] end
+        for i=1,cnt do retv.n=retv.n+1 retv[retv.n]=stk[sp-cnt+i] end
+        sp=sp-cnt-fixed
+      else
+        retv={n=n} for i=1,n do retv[i]=stk[sp-n+i] end sp=sp-n
+      end
+      done=true
+    end
+  end
+  if retv then return table.unpack(retv,1,retv.n) end
+end
+${N.vm}(${mainPid},{v={},d={},up=nil,va=table.pack()})`;
+
+  return minify(RT);
+}
+
+// ── split loader ──
+// Hosting suggestions — different service per chunk for maximum distribution
+const _SPLIT_SVC=[
+  (i)=>`https://pastefy.app/CHUNK${i}REPLACE/raw`,
+  (i)=>`https://raw.githubusercontent.com/YOUR_USER/YOUR_REPO/main/v${i}.bin`,
+  (i)=>`https://rentry.co/voidvm${i}/raw`,
+  (i)=>`https://paste.ee/r/VOIDCHUNK${i}`,
+  (i)=>`https://pastebin.com/raw/VOID${i}XXXX`,
+  (i)=>`https://ghostbin.com/paste/VOIDX${i}`,
+  (i)=>`https://dpaste.com/VOIDVM${i}.txt`,
+];
+
+// Chaotic XOR used everywhere in the split loader.
+//   r = key; for each byte: out = in ^ r; r = (r*31 + salt + pos) % 251 + 3
+// XOR is self-inverse so the same routine encrypts and decrypts.
+function _splitXor(str,key,salt){
+  const bytes=[]; let r=key;
+  for(let j=0;j<str.length;j++){ bytes.push((str.charCodeAt(j)^r)&0xFF); r=(r*31+salt+j)%251+3; }
+  return bytes;
+}
+
+// Compute the chunk data for a payload: split → shuffle → per-chunk encrypt.
+function computeSplit(code){
+  const N=rand(7,12);
+  const baseSz=Math.floor(code.length/N);
+  const pieces=[]; let pos=0;
+  for(let i=0;i<N;i++){
+    if(i===N-1){ pieces.push(code.slice(pos)); break; }
+    const wobble=rand(0,Math.max(1,Math.floor(baseSz*0.15)));
+    const sz=Math.max(1,baseSz+(i%2===0?wobble:-wobble));
+    pieces.push(code.slice(pos,pos+sz)); pos+=sz;
+    if(pos>=code.length){ for(let k=i+1;k<N;k++) pieces.push(''); break; }
+  }
+  const M=pieces.length;
+  const order=[...Array(M).keys()];
+  for(let i=order.length-1;i>0;i--){const j=rand(0,i);[order[i],order[j]]=[order[j],order[i]];}
+  const keys=Array.from({length:M},()=>rand(17,239));
+  const salts=Array.from({length:M},()=>rand(5,127));
+  const chunkFiles=[];
+  for(let i=0;i<M;i++) chunkFiles.push(_splitXor(pieces[order[i]],keys[i],salts[i]).join(','));
+  return {M,order,keys,salts,chunkFiles};
+}
+
+// Build the runtime loader. realUrls are baked in as plain strings (no encryption).
+function buildSplitLoader(data,realUrls){
+  const {M,order,keys,salts}=data;
+  const vG=uid(),vU=uid(),vK=uid(),vS=uid(),vO=uid();
+  const vD=uid(),vP=uid(),vN=uid(),vC=uid(),vR=uid(),vB=uid(),vJ=uid(),vi=uid();
+  const urls=realUrls||Array.from({length:M},(_,i)=>_SPLIT_SVC[i%_SPLIT_SVC.length](i+1));
+  const urlSetup=`local ${vU}={${urls.map(u=>`"${u}"`).join(',')}}`;
+  const loader=
+`local ${vG}=game
+${urlSetup}
+local ${vK}={${keys.join(',')}}
+local ${vS}={${salts.join(',')}}
+local ${vO}={${order.map(x=>x+1).join(',')}}
+local function ${vD}(${vC},${vN})
+local ${vR},${vB},${vJ}={},{${vC}:byte(1,-1)},${vK}[${vN}]
+for ${vi}=1,#${vB} do
+${vR}[${vi}]=string.char(bit32.band(bit32.bxor(${vB}[${vi}],${vJ}),255))
+${vJ}=(${vJ}*31+${vS}[${vN}]+${vi}-1)%251+3
+end
+return table.concat(${vR})
+end
+local ${vP}={}
+for ${vN}=1,#${vU} do
+${vP}[${vO}[${vN}]]=${vD}(${vG}:HttpGet(${vU}[${vN}]),${vN})
+end
+loadstring(table.concat(${vP}))()`;
+  return loader;
+}
+
+// Manual split output: encrypted chunk files + a loader the user wires up.
+function compileSplitLoader(code){
+  const data=computeSplit(code);
+  const {M,keys,salts,chunkFiles}=data;
+  const loader=buildSplitLoader(data,null);
+  const urlPlaceholders=Array.from({length:M},(_,i)=>_SPLIT_SVC[i%_SPLIT_SVC.length](i+1));
+  const sep='═'.repeat(64);
+  const out=[
+    '--[[ '+sep,
+    '     VOID VM — HYPER DISTRIBUTED SPLIT LOADER  v2',
+    '     '+M+' ENCRYPTED CHUNKS · CHAOTIC XOR (key*31+salt+pos) % 251',
+    '     '+M+' DIFFERENT HOSTING SERVICES · SHUFFLED FETCH ORDER',
+    '     SOURCE CANNOT BE RECONSTRUCTED WITHOUT ALL '+M+' CHUNK FILES + KEYS',
+    '     TIP: turn on AUTO HOST too and the URLs are uploaded + baked in ENCRYPTED',
+    '     '+sep+' ]]',
+    '',
+    '--[[ ═══ LOADER SCRIPT — paste into Roblox executor ═══ ]]',
+    loader,
+    '',
+    '--[[ ═══ CHUNK FILES — host each raw content at its URL, then update URLs above ═══ ]]',
+    '',
+  ];
+  for(let i=0;i<M;i++){
+    out.push(`--[[ CHUNK ${i+1}/${M}  key=${keys[i]}  salt=${salts[i]}  ]]`);
+    out.push(`--[[ SUGGESTED HOST: ${urlPlaceholders[i]} ]]`);
+    out.push('--[[ RAW FILE CONTENT — paste ONLY this line (no comments): ]]');
+    out.push(chunkFiles[i]);
+    out.push('');
+  }
+  out.push('--[[ HOW TO USE:');
+  out.push('  1. For each CHUNK above, open the suggested hosting site and create a new paste.');
+  out.push('  2. Paste ONLY the comma-numbers line as the file content (no comments, no spaces).');
+  out.push('  3. Get the raw/direct URL (not the page URL).');
+  out.push('  4. In the LOADER SCRIPT above, replace the placeholder URL with your real URL.');
+  out.push('  5. Repeat for all '+M+' chunks across '+M+' different sites.');
+  out.push('  6. Run the LOADER SCRIPT from your Roblox executor.');
+  out.push('  Or: enable AUTO HOST to upload every chunk automatically and bake the URLs in encrypted. ]]');
+  return out.join('\n');
+}
+
+// Automatic split: upload every chunk to a paste host, then bake the real URLs
+// into the loader ENCRYPTED. Returns the finished loader, or null on failure.
+async function compileSplitLoaderAuto(code){
+  const data=computeSplit(code);
+  const realUrls=new Array(data.chunkFiles.length);
+  for(let i=0;i<data.chunkFiles.length;i++){
+    const r=await uploadToPaste(data.chunkFiles[i]);
+    if(!r) return null;
+    realUrls[i]=r.url;
+  }
+  return buildSplitLoader(data,realUrls);
+}
+
+// ── progress/status ──
+function setProgress(p){ const el=document.getElementById('progressBar'); if(el) el.style.width=p+'%'; }
+function setStatus(t,d,proc){ const a=document.getElementById('statusText'),b=document.getElementById('statusDetail'),c=document.getElementById('statusbar'); if(a)a.textContent=t; if(b)b.textContent=d; if(c)c.className='statusbar'+(proc?' processing':''); }
+function showToast(msg,cyan=true){ const t=document.getElementById('toast'); if(!t)return; t.textContent=msg; t.className='toast'+(cyan?'':' pink')+' show'; setTimeout(()=>t.classList.remove('show'),2800); }
+const on=id=>document.getElementById(id)?.classList.contains('on');
+
+// ───────────────────────────────────────────────────────────────────
+//  MAIN PIPELINE
+// ───────────────────────────────────────────────────────────────────
+async function runObfuscate(){
+  const luaparse=window.luaparse||(typeof globalThis!=="undefined"&&globalThis.luaparse)||null;
+  const inputEl=document.getElementById('input');
+  const outEl=document.getElementById('output');
+  if(!luaparse){ showToast('PARSER NOT LOADED — CHECK CONNECTION',false); setStatus('NO PARSER','luaparse failed to load from CDN',false); return; }
+  const src=(inputEl.value||'').trim();
+  if(!src){ showToast('NO SOURCE CODE',false); return; }
+  _counter=0;
+
+  let ast;
+  try{ ast=luaparse.parse(src,{scope:false,luaVersion:'5.3',comments:false}); }
+  catch(e){
+    outEl.textContent='-- PARSE ERROR:\n-- '+e.message+'\n\n-- Check your Lua syntax and try again.';
+    outEl.className='output-box error';
+    setStatus('PARSE ERROR',e.message,false); showToast('SYNTAX ERROR — SEE OUTPUT',false); return;
+  }
+
+  setProgress(8); setStatus('COMPILING...','parsing AST',true); await delay(5);
+
+  const applied=[];
+  const decFn=uid();
+  let strData=null;
+
+  if(on('t-strenc')){ strData=encryptStrings(ast,decFn); applied.push('STRING-VAULT'); setProgress(20); setStatus('COMPILING...','ENCRYPTING STRING VAULT',true); await delay(5); }
+  if(on('t-numenc')){ encodeNumbers(ast); applied.push('NUM-ENCODE'); setProgress(34); setStatus('COMPILING...','ENCODING NUMBERS',true); await delay(5); }
+  if(on('t-rename')){ renameLocals(ast); applied.push('SCOPE-RENAME'); setProgress(46); setStatus('COMPILING...','SCOPE-AWARE RENAME',true); await delay(5); }
+  if(on('t-cff')){
+    try{ flattenControlFlow(ast); applied.push('FLOW-FLATTEN'); setProgress(58); setStatus('COMPILING...','CONTROL FLOW FLATTENING',true); await delay(5); }
+    catch(e){ showToast('CFF SKIPPED: '+e.message,false); }
+  }
+
+  let body;
+  try{ body=gen(ast); }
+  catch(e){
+    outEl.textContent='-- CODEGEN ERROR: '+e.message+'\n-- This construct is not supported yet. Try without it.';
+    outEl.className='output-box error';
+    setStatus('CODEGEN ERROR',e.message,false); showToast('UNSUPPORTED CONSTRUCT',false); return;
+  }
+
+  // string vault decryptor header (Luau bit32)
+  let header='';
+  if(strData){
+    const tableLit='{'+strData.strings.map(b=>'{'+b.join(',')+'}').join(',')+'}';
+    const tbl=uid(), p=uid(), bb=uid(), rr=uid(), jj=uid();
+    header=
+`local ${tbl}=${tableLit}
+local function ${decFn}(${p})
+local ${bb}=${tbl}[${p}]
+local ${rr}={}
+for ${jj}=1,#${bb} do ${rr}[${jj}]=string.char(bit32.band(bit32.bxor(${bb}[${jj}],${strData.key}),255)) end
+return table.concat(${rr})
+end
+`;
+  }
+
+  let finalCode=header+body;
+
+  if(on('t-wrap')){
+    const f=uid(),e2=uid();
+    finalCode=`local ${f} = function()\n${finalCode}\nend\nlocal ${e2} = pcall(${f})\n`;
+    applied.push('BOOTSTRAP');
+  }
+
+  if(on('t-junk')){ finalCode=injectDeadCode(finalCode); applied.push('JUNK-CODE'); setProgress(66); setStatus('COMPILING...','INJECTING JUNK CODE',true); await delay(5); }
+  if(on('t-minify')){ finalCode=minify(finalCode); applied.push('MINIFY'); setProgress(72); setStatus('COMPILING...','MINIFYING',true); await delay(5); }
+
+  // VM layers — Deep VM > Flat VM > Classic VM (in priority order)
+  if(on('t-deepvm')){
+    setProgress(80); setStatus('COMPILING...','DEEP VM → INSTRUCTION TREE (no source)',true); await delay(8);
+    try{ finalCode=compileDeepVM(finalCode); applied.push('DEEP-VM'); }
+    catch(e){
+      outEl.textContent='-- DEEP VM ERROR: '+e.message+'\n-- This construct is not supported by the Deep VM yet.\n-- Try toggling off DEEP VM, or remove the construct.';
+      outEl.className='output-box error';
+      setStatus('DEEP VM ERROR',e.message,false); showToast('DEEP VM: UNSUPPORTED CONSTRUCT',false); return;
+    }
+  } else if(on('t-flatvm')){
+    setProgress(80); setStatus('COMPILING...','FLAT BYTECODE VM → STACK TUPLES',true); await delay(8);
+    try{ finalCode=compileFlatVM(finalCode); applied.push('FLAT-VM'); }
+    catch(e){
+      outEl.textContent='-- FLAT VM ERROR: '+e.message+'\n-- This construct is not supported yet.\n-- Try toggling off FLAT BYTECODE, or use DEEP VM instead.';
+      outEl.className='output-box error';
+      setStatus('FLAT VM ERROR',e.message,false); showToast('FLAT VM: UNSUPPORTED CONSTRUCT',false); return;
+    }
+  } else if(on('t-vm')){
+    setProgress(80); setStatus('COMPILING...','VIRTUALIZING → BYTECODE',true); await delay(8);
+    finalCode=virtualize(finalCode);
+    applied.push('VM');
+    if(on('t-vm2')){ setProgress(92); setStatus('COMPILING...','NESTING VM LAYER ×2',true); await delay(8); finalCode=virtualize(finalCode); applied.push('VM²'); }
+  }
+
+  if(on('t-split')){
+    setProgress(95); setStatus('COMPILING...','GENERATING SPLIT DISTRIBUTED LOADER',true); await delay(5);
+    try{ finalCode=compileSplitLoader(finalCode); applied.push('SPLIT-LOADER'); }
+    catch(e){ showToast('SPLIT LOADER FAILED: '+e.message,false); }
+  }
+
+  setProgress(100); await delay(10); setProgress(0);
+
+  outEl.textContent=finalCode; outEl.className='output-box';
+  const ratio=((finalCode.length/src.length)*100).toFixed(0);
+  document.getElementById('outStats').textContent=`${finalCode.length} CHARS · ${ratio}% SIZE`;
+  setStatus('DONE',applied.join(' → ')+' · runnable Luau',false);
+  showToast('COMPILED ✓ — '+applied.length+' LAYERS',true);
+
+  // AUTO HOST: upload to pastefy.app and hand back a ready loadstring.
+  // Skipped when SPLIT LOADER is on (that output is meant for manual multi-host distribution).
+  if(on('t-host')&&!on('t-split')){
+    const loader=await autoHost();
+    if(loader) applied.push('AUTO-HOST');
+  }
+}
+
+function copyOutput(){
+  const elText=document.getElementById('output').textContent;
+  if(!elText||elText.startsWith('-- ')&&elText.includes('appears here')){ showToast('NOTHING TO COPY YET',false); return; }
+  navigator.clipboard.writeText(elText)
+    .then(()=>showToast('OUTPUT COPIED ✓',true))
+    .catch(()=>{
+      const sel=window.getSelection(),r=document.createRange();
+      r.selectNodeContents(document.getElementById('output'));
+      sel.removeAllRanges(); sel.addRange(r);
+      try{ document.execCommand('copy'); showToast('COPIED ✓',true); }catch(e){ showToast('SELECT MANUALLY',false); }
+    });
+}
+
+// ── auto-host ──
+// Uploads the given code to a paste service and returns the RAW url.
+// Tries pastefy.app first (the user's preferred host), then falls back to
+// other services that accept anonymous cross-origin uploads.
+async function uploadToPaste(code){
+  // 1) pastefy.app — JSON API v2, anonymous UNLISTED paste
+  try{
+    const res=await fetch('https://pastefy.app/api/v2/paste',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({title:'VoidVM',content:code,visibility:'UNLISTED',type:'PASTE'})
+    });
+    if(res.ok){
+      const j=await res.json();
+      const id=(j&&(j.paste&&j.paste.id||j.id));
+      if(id) return {url:'https://pastefy.app/'+id+'/raw', host:'pastefy.app'};
+    }
+  }catch(e){/* CORS or network — fall through */}
+
+  // 2) paste.rs — plain-text POST, returns the url in the body
+  try{
+    const res=await fetch('https://paste.rs/',{method:'POST',body:code});
+    if(res.ok){
+      const u=(await res.text()).trim();
+      if(/^https?:\/\//.test(u)) return {url:u, host:'paste.rs'};
+    }
+  }catch(e){/* fall through */}
+
+  // 3) dpaste.com — form POST, raw url = returned url + '.txt'
+  try{
+    const body=new URLSearchParams();
+    body.set('content',code); body.set('syntax','text'); body.set('expiry_days','365');
+    const res=await fetch('https://dpaste.com/api/v2/',{method:'POST',body});
+    if(res.ok){
+      const u=(await res.text()).trim();
+      if(/^https?:\/\//.test(u)) return {url:u.replace(/\/?$/,'')+'.txt', host:'dpaste.com'};
+    }
+  }catch(e){/* fall through */}
+
+  return null;
+}
+
+let _lastHosted='';
+async function autoHost(){
+  const outEl=document.getElementById('output');
+  const code=outEl.textContent;
+  if(!code||code.startsWith('-- ')&&code.includes('appears here')){ showToast('COMPILE SOMETHING FIRST',false); return null; }
+  const btn=document.querySelector('.btn-host');
+  if(btn){ btn.disabled=true; btn.textContent='☁ HOSTING...'; }
+  setStatus('HOSTING...','uploading to paste service',true);
+  let result=null;
+  try{ result=await uploadToPaste(code); }catch(e){ result=null; }
+  if(btn){ btn.disabled=false; btn.textContent='☁ HOST → LOADSTRING'; }
+  if(!result){
+    setStatus('HOST FAILED','paste services unreachable (CORS/network) — use SPLIT LOADER manually',false);
+    showToast('AUTO-HOST FAILED — HOST MANUALLY',false);
+    return null;
+  }
+  const loader='loadstring(game:HttpGet("'+result.url+'"))()';
+  _lastHosted=loader;
+  // Show the ready loadstring at the very top of the output, keep the code below as reference
+  outEl.textContent='-- ✓ HOSTED ON '+result.host.toUpperCase()+' — paste this ONE line into your executor:\n'+loader+'\n\n--[[ ─── original obfuscated payload (already uploaded) ─── ]]\n'+code;
+  outEl.className='output-box';
+  // Copy the loadstring straight to the clipboard for convenience
+  try{ await navigator.clipboard.writeText(loader); showToast('HOSTED ✓ — LOADSTRING COPIED',true); }
+  catch(e){ showToast('HOSTED ✓ — '+result.host,true); }
+  setStatus('HOSTED ✓',result.host+' · loadstring ready · copied to clipboard',false);
+  return loader;
+}
+
+// ── wiring ──
+ready(function(){
+  document.querySelectorAll('.toggle').forEach(b=>b.addEventListener('click',()=>b.classList.toggle('on')));
+  const inputEl=document.getElementById('input');
+  const upd=()=>document.getElementById('lineCount').textContent=inputEl.value.split('\n').length+' LINES';
+  inputEl.addEventListener('input',upd); upd();
+  // parser load status
+  if(window.luaparse){ setStatus('READY','AST → instruction tree · Deep VM · 100% offline · client-side',false); }
+  else{
+    setStatus('LOADING PARSER...','fetching luaparse from CDN',true);
+    setStatus('PARSER ERROR','bundled luaparse failed to initialize — reload the page',false);
+  }
+  // expose for inline onclick handlers
+  window.runObfuscate=runObfuscate;
+  window.copyOutput=copyOutput;
+  window.autoHost=autoHost;
+});
+
+})();
+</script>
+</body>
+</html>
