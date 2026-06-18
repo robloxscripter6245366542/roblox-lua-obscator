@@ -4556,14 +4556,22 @@ local window = mk("Frame", {
     Parent = screen,
     AnchorPoint = Vector2.new(0.5, 0.5),
     Position = UDim2.new(0.5, 0, 0.5, 0),
-    Size = UDim2.new(0, 0, 0, 0),     -- animate up from 0
+    Size = UDim2.new(0, winW, 0, winH),   -- correct size from the start
     BackgroundColor3 = UI.Theme.Bg,
     BorderSizePixel = 0,
     ClipsDescendants = true,
+    Visible = true,
 })
 corner(window, 14)
 stroke(window, UI.Theme.Stroke, 1.5)
 UI.window = window
+-- Spring-bounce open immediately — not deferred until after tabs build
+task.defer(function()
+    window.Size = UDim2.new(0, 0, 0, 0)
+    task.wait()
+    local ti = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+    TS:Create(window, ti, { Size = UDim2.new(0, winW, 0, winH) }):Play()
+end)
 
 -- subtle inner gradient
 local bgGrad = mk("Frame", {
@@ -5678,7 +5686,9 @@ end)
 
 -- ============================================================
 -- §32  TAB CONTENT  –  Building all 10 tabs
+--      Wrapped in pcall: a bad widget never kills the whole UI
 -- ============================================================
+local _tabBuildOk, _tabBuildErr = pcall(function()
 
 -- ── TAB 1: PARRY ──────────────────────────────────────────
 local tabParry = UI.addTab("Parry", "⚔")
@@ -6194,13 +6204,29 @@ end
 -- activate first tab
 if UI._tabs[1] then UI._tabs[1].activate() end
 
+end) -- end §32 pcall
+
+if not _tabBuildOk then
+    warn("[WindHub] Tab build error: " .. tostring(_tabBuildErr))
+    -- Show error inside the window so user sees it
+    pcall(function()
+        local errLbl = Instance.new("TextLabel")
+        errLbl.Size = UDim2.new(1, -20, 0, 80)
+        errLbl.Position = UDim2.new(0, 10, 0.5, -40)
+        errLbl.BackgroundTransparency = 1
+        errLbl.Font = Enum.Font.Code
+        errLbl.TextSize = 12
+        errLbl.TextColor3 = Color3.fromRGB(255, 100, 100)
+        errLbl.TextWrapped = true
+        errLbl.TextXAlignment = Enum.TextXAlignment.Left
+        errLbl.Text = "UI build error (tabs):\n" .. tostring(_tabBuildErr)
+        errLbl.Parent = window
+    end)
+end
 
 -- ============================================================
--- §33  OPEN ANIMATION + PC HOTKEYS
+-- §33  PC HOTKEYS  (open animation already fired in §31)
 -- ============================================================
--- Spring-bounce the window open from zero size.
-window.Visible = true
-springTween(window, { Size = UDim2.new(0, winW, 0, winH) }, 0.5)
 
 -- ── PC keyboard hotkeys ───────────────────────────────────
 local function keyMatches(input, name)
