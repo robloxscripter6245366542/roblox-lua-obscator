@@ -2819,13 +2819,33 @@ local REMOTE_DEFS = {
     },
     {
         name    = "ParrySuccessAll",
-        handler = function(player, ball, ...)
-            GameRemotes.onParrySuccess:Fire(player, ball, ...)
-            -- If local player succeeded, record it
-            if player == lp then
+        handler = function(effectType, hrp, extra, ...)
+            -- Cobalt confirmed: ParrySuccessAll(effectType, hrp, extra)
+            -- effectType = "SlashEffect", hrp = HumanoidRootPart of the parrying player
+            -- Resolve the Player from the HRP's parent character
+            local resolvedPlayer = nil
+            pcall(function()
+                if typeof(hrp) == "Instance" then
+                    local char = hrp.Parent
+                    if char then
+                        resolvedPlayer = Plrs:GetPlayerFromCharacter(char)
+                    end
+                end
+            end)
+            -- Fire with real Player instance so downstream listeners work correctly
+            GameRemotes.onParrySuccess:Fire(resolvedPlayer, hrp, effectType, ...)
+            local isLocal = resolvedPlayer == lp
+            if isLocal then
                 _G.WindHub_LastSuccessAt = os.clock()
                 AccuracyTracker:success()
             end
+            -- Cache for VisualFX/EventBus listener defined later (§88)
+            _G._WindHub_LastParrySuccess = {
+                effectType = effectType,
+                hrp        = hrp,
+                isLocal    = isLocal,
+                t          = os.clock(),
+            }
         end,
     },
     {
@@ -18499,6 +18519,35 @@ EventBus:subscribe("combo_milestone", function(data)
 end)
 
 if Console then Console.info("VisualFX", "Visual FX system ready") end
+
+-- ParrySuccessAll visual + EventBus wiring (deferred here because VisualFX and
+-- EventBus are both defined before this point but after REMOTE_DEFS at §18).
+-- Reads _G._WindHub_LastParrySuccess cached by the remote handler.
+GameRemotes.onParrySuccess:Connect(function(resolvedPlayer, hrp, effectType)
+    local data = _G._WindHub_LastParrySuccess
+    if not data or (os.clock() - data.t) > 1 then return end
+
+    if data.isLocal then
+        EventBus:publish("parry_success", { effectType = effectType, source = "ParrySuccessAll" })
+    end
+
+    if Config.visualFX and typeof(hrp) == "Instance" then
+        pcall(function()
+            local cam = workspace.CurrentCamera
+            if not cam then return end
+            local pos3, onScreen = cam:WorldToScreenPoint(hrp.Position)
+            local sp = onScreen
+                and Vector2.new(pos3.X, pos3.Y)
+                or  Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
+            if data.isLocal then
+                VisualFX:parrySuccess(sp)
+            else
+                -- Other players' parries: dim blue impact ring
+                VisualFX:impactRing(sp, Color3.fromRGB(80, 160, 255))
+            end
+        end)
+    end
+end)
 
 -- §89 ─── EXTENDED HITBOX ENGINE v2 ───────────────────────────────────────────
 local HitboxV2Extended = {}
