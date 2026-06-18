@@ -5,53 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Loadstring Share</title>
 <style>
-/* ── Toast notifications ── */
-#toast-container{
-  position:fixed;
-  bottom:24px;
-  right:24px;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  z-index:9999;
-  pointer-events:none;
-}
-.toast{
-  display:flex;
-  align-items:flex-start;
-  gap:10px;
-  min-width:260px;
-  max-width:340px;
-  background:#111118;
-  border-radius:11px;
-  padding:13px 16px;
-  box-shadow:0 8px 32px rgba(0,0,0,.6);
-  border:1.5px solid #1e1e30;
-  pointer-events:all;
-  animation:slideIn .22s ease;
-  cursor:default;
-}
-.toast.removing{animation:slideOut .22s ease forwards}
-.toast-icon{font-size:16px;line-height:1.4;flex-shrink:0}
-.toast-body{flex:1}
-.toast-title{font-size:13px;font-weight:700;margin-bottom:2px}
-.toast-msg{font-size:12px;color:#6b7280;line-height:1.5}
-.toast-close{
-  background:none;border:none;color:#4b5563;cursor:pointer;
-  font-size:15px;line-height:1;padding:0;flex-shrink:0;
-  pointer-events:all;
-}
-.toast-close:hover{color:#e5e7eb}
-
-/* variants */
-.toast.error  {border-color:#3f1515;} .toast.error  .toast-title{color:#f87171}
-.toast.success{border-color:#14532d;} .toast.success .toast-title{color:#4ade80}
-.toast.info   {border-color:#1e3050;} .toast.info   .toast-title{color:#60a5fa}
-.toast.warn   {border-color:#3f2f10;} .toast.warn   .toast-title{color:#fbbf24}
-
-@keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
-@keyframes slideOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(20px)}}
-</style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{
   background:#09090f;
@@ -61,195 +14,189 @@ body{
   display:flex;
   flex-direction:column;
   align-items:center;
-  justify-content:flex-start;
   padding:48px 16px 64px;
 }
-
 h1{
-  font-size:28px;
-  font-weight:800;
+  font-size:28px;font-weight:800;
   background:linear-gradient(135deg,#5e84ff,#9b6eff);
-  -webkit-background-clip:text;
-  -webkit-text-fill-color:transparent;
-  background-clip:text;
-  margin-bottom:6px;
-  text-align:center;
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  margin-bottom:6px;text-align:center;
 }
 .tagline{color:#6b7280;font-size:13px;margin-bottom:36px;text-align:center}
 
-/* ── card ── */
+/* cards */
 .card{
-  width:100%;
-  max-width:660px;
-  background:#111118;
-  border:1.5px solid #1e1e30;
-  border-radius:14px;
-  padding:24px;
-  margin-bottom:18px;
+  width:100%;max-width:660px;
+  background:#111118;border:1.5px solid #1e1e30;border-radius:14px;
+  padding:24px;margin-bottom:18px;
 }
 .card-label{
-  font-size:11px;
-  text-transform:uppercase;
-  letter-spacing:1.5px;
-  color:#5e84ff;
-  font-weight:700;
-  margin-bottom:10px;
+  font-size:11px;text-transform:uppercase;letter-spacing:1.5px;
+  color:#5e84ff;font-weight:700;margin-bottom:10px;
 }
 
-/* ── textarea ── */
+/* textarea */
 textarea{
-  width:100%;
-  min-height:100px;
-  background:#07070e;
-  border:1.5px solid #1e1e30;
-  border-radius:10px;
-  color:#a5b4fc;
-  font-family:'Consolas','Fira Code',monospace;
-  font-size:13px;
-  padding:12px 14px;
-  resize:vertical;
-  outline:none;
-  transition:border-color .2s;
-  line-height:1.6;
+  width:100%;min-height:100px;
+  background:#07070e;border:1.5px solid #1e1e30;border-radius:10px;
+  color:#a5b4fc;font-family:'Consolas','Fira Code',monospace;font-size:13px;
+  padding:12px 14px;resize:vertical;outline:none;transition:border-color .2s;line-height:1.6;
 }
+textarea.error{border-color:#7f1d1d!important}
 textarea:focus{border-color:#3b4baa}
 textarea::placeholder{color:#3a3a5a}
 
-/* ── buttons ── */
+/* buttons */
 .btn{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  padding:10px 22px;
-  border-radius:9px;
-  font-size:13px;
-  font-weight:700;
-  cursor:pointer;
-  border:none;
-  transition:opacity .15s,transform .1s;
+  display:inline-flex;align-items:center;gap:6px;
+  padding:10px 22px;border-radius:9px;font-size:13px;font-weight:700;
+  cursor:pointer;border:none;transition:opacity .15s,transform .1s;
 }
 .btn:active{transform:scale(.97)}
 .btn-primary{background:linear-gradient(135deg,#3b5bdb,#7048e8);color:#fff}
 .btn-primary:hover{opacity:.88}
 .btn-secondary{background:#1a1a2c;color:#a5b4fc;border:1.5px solid #2a2a44}
 .btn-secondary:hover{background:#222238}
-.btn-green{background:#14532d;color:#4ade80;border:1.5px solid #166534}
-
 .btn-row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
 
-/* ── result box ── */
+/* result / code boxes */
 .result-box{
-  background:#07070e;
-  border:1.5px solid #1e3a5a;
-  border-radius:10px;
-  padding:14px 16px;
-  display:flex;
-  align-items:center;
-  gap:10px;
-  margin-top:16px;
+  background:#07070e;border:1.5px solid #1e3a5a;border-radius:10px;
+  padding:14px 16px;display:flex;align-items:center;gap:10px;margin-top:16px;
 }
-.result-box a, .result-box code{
-  flex:1;
-  font-family:'Consolas','Fira Code',monospace;
-  font-size:13px;
-  color:#60a5fa;
-  word-break:break-all;
-  text-decoration:none;
+.result-box a,.result-box code{
+  flex:1;font-family:'Consolas','Fira Code',monospace;font-size:13px;
+  color:#60a5fa;word-break:break-all;text-decoration:none;
 }
 .result-box a:hover{text-decoration:underline}
-
 .copy-btn{
-  flex-shrink:0;
-  background:#1a2a4a;
-  border:1px solid #2a3a6a;
-  color:#60a5fa;
-  font-size:12px;
-  font-weight:700;
-  padding:7px 14px;
-  border-radius:8px;
-  cursor:pointer;
-  transition:background .15s;
-  white-space:nowrap;
+  flex-shrink:0;background:#1a2a4a;border:1px solid #2a3a6a;color:#60a5fa;
+  font-size:12px;font-weight:700;padding:7px 14px;border-radius:8px;
+  cursor:pointer;transition:background .15s;white-space:nowrap;
 }
 .copy-btn:hover{background:#223055}
 .copy-btn.ok{background:#14532d;color:#4ade80;border-color:#166534}
 
-/* ── view mode (shared link opened) ── */
+/* view mode */
 .view-card{
-  width:100%;
-  max-width:660px;
-  background:#111118;
-  border:1.5px solid #1e3a25;
-  border-radius:14px;
-  padding:26px;
+  width:100%;max-width:660px;
+  background:#111118;border:1.5px solid #1e3a25;border-radius:14px;padding:26px;
 }
-.view-tag{
-  font-size:11px;
-  text-transform:uppercase;
-  letter-spacing:1.5px;
-  color:#4ade80;
-  font-weight:700;
-  margin-bottom:12px;
-}
+.view-tag{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:#4ade80;font-weight:700;margin-bottom:12px}
 .view-code{
-  background:#07070e;
-  border:1.5px solid #1e1e30;
-  border-radius:10px;
-  padding:14px 16px;
-  font-family:'Consolas','Fira Code',monospace;
-  font-size:13px;
-  color:#a5b4fc;
-  word-break:break-all;
-  white-space:pre-wrap;
-  margin-bottom:14px;
-  user-select:all;
+  background:#07070e;border:1.5px solid #1e1e30;border-radius:10px;
+  padding:14px 16px;font-family:'Consolas','Fira Code',monospace;font-size:13px;
+  color:#a5b4fc;word-break:break-all;white-space:pre-wrap;margin-bottom:14px;user-select:all;
 }
 .view-hint{font-size:12px;color:#4b5563;margin-top:16px}
 
-/* ── divider ── */
-hr{width:100%;max-width:660px;border:none;border-top:1px solid #1a1a28;margin:8px 0 20px}
-
-/* ── hidden ── */
+hr{width:100%;max-width:660px;border:none;border-top:1px solid #1a1a28;margin:4px 0 18px}
 .hidden{display:none!important}
+
+/* ── inline error banner (below input) ── */
+.err-banner{
+  display:none;align-items:flex-start;gap:10px;
+  background:#1a0808;border:1.5px solid #7f1d1d;border-radius:10px;
+  padding:12px 14px;margin-top:12px;
+}
+.err-banner.show{display:flex}
+.err-banner-icon{font-size:16px;flex-shrink:0;margin-top:1px}
+.err-banner-body{}
+.err-banner-title{font-size:13px;font-weight:700;color:#f87171;margin-bottom:2px}
+.err-banner-msg{font-size:12px;color:#9b4444;line-height:1.5}
+
+/* ── Log panel (shows steps / failures) ── */
+.log-panel{
+  background:#07070e;border:1.5px solid #1e1e30;border-radius:10px;
+  padding:10px 14px;margin-top:14px;max-height:180px;overflow-y:auto;
+  font-family:'Consolas','Fira Code',monospace;font-size:12px;line-height:1.7;
+}
+.log-panel:empty::before{content:'No events yet.';color:#3a3a5a}
+.log-line{display:flex;gap:8px;align-items:flex-start}
+.log-line .ts{color:#374151;flex-shrink:0}
+.log-line .msg{flex:1;word-break:break-all}
+.log-line.ok   .msg{color:#4ade80}
+.log-line.fail .msg{color:#f87171}
+.log-line.info .msg{color:#60a5fa}
+.log-line.warn .msg{color:#fbbf24}
+
+/* ── Toast notifications (bottom-right) ── */
+#toast-wrap{
+  position:fixed;bottom:24px;right:24px;
+  display:flex;flex-direction:column;gap:10px;
+  z-index:9999;pointer-events:none;
+}
+.toast{
+  display:flex;align-items:flex-start;gap:10px;
+  min-width:270px;max-width:340px;
+  background:#111118;border-radius:11px;padding:13px 16px;
+  box-shadow:0 8px 32px rgba(0,0,0,.6);border:1.5px solid #1e1e30;
+  pointer-events:all;animation:tIn .22s ease;
+}
+.toast.out{animation:tOut .22s ease forwards}
+.toast-ico{font-size:16px;line-height:1.4;flex-shrink:0}
+.toast-body{flex:1}
+.toast-title{font-size:13px;font-weight:700;margin-bottom:2px}
+.toast-sub{font-size:12px;color:#6b7280;line-height:1.5}
+.toast-x{background:none;border:none;color:#4b5563;cursor:pointer;font-size:16px;line-height:1;padding:0;flex-shrink:0}
+.toast-x:hover{color:#e5e7eb}
+.toast.err  {border-color:#3f1515}.toast.err   .toast-title{color:#f87171}
+.toast.ok   {border-color:#14532d}.toast.ok    .toast-title{color:#4ade80}
+.toast.info {border-color:#1e3050}.toast.info  .toast-title{color:#60a5fa}
+.toast.warn {border-color:#3f2f10}.toast.warn  .toast-title{color:#fbbf24}
+@keyframes tIn {from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:translateX(0)}}
+@keyframes tOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(18px)}}
 </style>
 </head>
 <body>
 
-<!-- ═══════════════ PASTE MODE ═══════════════ -->
+<!-- ═══ PASTE MODE ═══ -->
 <div id="paste-mode">
   <h1>Loadstring Share</h1>
   <p class="tagline">Paste any Roblox loadstring → get a shareable link</p>
 
   <div class="card">
     <div class="card-label">Your Loadstring</div>
-    <textarea id="ls-input" placeholder='Paste your loadstring here...&#10;&#10;Example:&#10;loadstring(game:HttpGet("https://..."))()' spellcheck="false"></textarea>
+    <textarea id="ls-input" spellcheck="false"
+      placeholder='Paste your loadstring here...&#10;&#10;Example:&#10;loadstring(game:HttpGet("https://..."))()'>
+    </textarea>
+
+    <!-- inline error banner -->
+    <div class="err-banner" id="main-err">
+      <span class="err-banner-icon">⚠</span>
+      <div class="err-banner-body">
+        <div class="err-banner-title" id="main-err-title">Error</div>
+        <div class="err-banner-msg"  id="main-err-msg"></div>
+      </div>
+    </div>
 
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="createLink()">&#128279; Generate Link</button>
+      <button class="btn btn-primary" onclick="createLink()">🔗 Generate Link</button>
       <button class="btn btn-secondary" onclick="clearAll()">Clear</button>
     </div>
   </div>
 
-  <!-- Result appears here -->
+  <!-- result -->
   <div class="card hidden" id="result-card">
-    <div class="card-label">Your Shareable Link</div>
+    <div class="card-label">✓ Your Shareable Link</div>
     <div class="result-box">
       <a id="share-url" href="#" target="_blank"></a>
       <button class="copy-btn" id="copy-link-btn" onclick="copyLink()">Copy Link</button>
     </div>
     <p style="font-size:12px;color:#6b7280;margin-top:10px">
-      Anyone who opens this link will see your loadstring with a one-click copy button.
+      Anyone who opens this link sees your loadstring with a one-click copy button.
     </p>
+
+    <!-- activity log -->
+    <div class="card-label" style="margin-top:18px">Activity Log</div>
+    <div class="log-panel" id="main-log"></div>
   </div>
 
   <hr/>
 
-  <!-- WindHub quick-load section -->
   <div class="card">
     <div class="card-label">WindHub v6.0 — Quick Load</div>
-    <p style="font-size:13px;color:#6b7280;margin-bottom:12px">
-      Already have WindHub? Copy the official loadstring below:
-    </p>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:12px">Copy the official WindHub loadstring:</p>
     <div class="result-box">
       <code id="wh-ls">loadstring(game:HttpGet("https://roblox-lua-obscator-git-claude-rem-b354df-saguine-opus-projects.vercel.app/WindHub_Loader.lua"))()</code>
       <button class="copy-btn" onclick="copyEl('wh-ls',this)">Copy</button>
@@ -257,106 +204,244 @@ hr{width:100%;max-width:660px;border:none;border-top:1px solid #1a1a28;margin:8p
   </div>
 </div>
 
-<!-- ═══════════════ VIEW MODE (shared link) ═══════════════ -->
+<!-- ═══ VIEW MODE ═══ -->
 <div id="view-mode" class="hidden">
   <h1>Loadstring</h1>
   <p class="tagline">Click Copy then paste into your executor</p>
 
   <div class="view-card">
-    <div class="view-tag">&#10003; Ready to paste</div>
+    <div class="view-tag">✓ Ready to paste</div>
     <div class="view-code" id="view-code"></div>
-    <div class="btn-row">
-      <button class="btn btn-primary" onclick="copyView()">&#128203; Copy Loadstring</button>
-      <button class="btn btn-secondary" onclick="goHome()">&#8592; Create your own</button>
+
+    <!-- inline decode error -->
+    <div class="err-banner hidden" id="decode-err">
+      <span class="err-banner-icon">✕</span>
+      <div class="err-banner-body">
+        <div class="err-banner-title">Failed to decode link</div>
+        <div class="err-banner-msg" id="decode-err-msg"></div>
+      </div>
     </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="copyView()">📋 Copy Loadstring</button>
+      <button class="btn btn-secondary" onclick="goHome()">← Create your own</button>
+    </div>
+
+    <!-- copy log -->
+    <div class="card-label" style="margin-top:18px">Log</div>
+    <div class="log-panel" id="view-log"></div>
+
     <p class="view-hint">Supported executors: Delta · Codex · Xeno · Wave · Optimware · Volt · Potassium</p>
   </div>
 </div>
 
+<!-- toast container -->
+<div id="toast-wrap"></div>
+
 <script>
-// ── Encode / Decode using URL-safe base64 ──────────────────
-function encode(str){
-  try{ return btoa(unescape(encodeURIComponent(str)))
-          .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'') }
-  catch(e){ return btoa(str) }
+// ── Toast system ───────────────────────────────────────────
+var _tid = 0;
+function toast(type, title, sub, dur){
+  dur = dur || 4000;
+  var icons = {err:'✕', ok:'✓', info:'ℹ', warn:'⚠'};
+  var wrap = document.getElementById('toast-wrap');
+  var el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.innerHTML =
+    '<span class="toast-ico">' + (icons[type]||'·') + '</span>' +
+    '<div class="toast-body">' +
+      '<div class="toast-title">' + title + '</div>' +
+      (sub ? '<div class="toast-sub">' + sub + '</div>' : '') +
+    '</div>' +
+    '<button class="toast-x" onclick="removeToast(this.parentElement)">×</button>';
+  wrap.appendChild(el);
+  var t = setTimeout(function(){ removeToast(el); }, dur);
+  el._t = t;
+  return el;
 }
-function decode(b64){
-  try{ return decodeURIComponent(escape(atob(b64.replace(/-/g,'+').replace(/_/g,'/')))) }
-  catch(e){ try{ return atob(b64) } catch(e2){ return null } }
+function removeToast(el){
+  if(!el || !el.parentElement) return;
+  clearTimeout(el._t);
+  el.classList.add('out');
+  setTimeout(function(){ if(el.parentElement) el.parentElement.removeChild(el); }, 230);
 }
 
-// ── On load: check if we're opening a shared link ─────────
+// ── Log panel ─────────────────────────────────────────────
+function logLine(panelId, type, msg){
+  var panel = document.getElementById(panelId);
+  if(!panel) return;
+  var now = new Date();
+  var ts = now.getHours().toString().padStart(2,'0') + ':' +
+           now.getMinutes().toString().padStart(2,'0') + ':' +
+           now.getSeconds().toString().padStart(2,'0');
+  var row = document.createElement('div');
+  row.className = 'log-line ' + type;
+  row.innerHTML = '<span class="ts">[' + ts + ']</span><span class="msg">' + escHtml(msg) + '</span>';
+  panel.appendChild(row);
+  panel.scrollTop = panel.scrollHeight;
+}
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── Inline error banner ────────────────────────────────────
+function showErr(bannerId, titleId, msgId, title, msg){
+  document.getElementById(bannerId).classList.add('show');
+  if(titleId) document.getElementById(titleId).textContent = title;
+  if(msgId)   document.getElementById(msgId).textContent   = msg;
+}
+function hideErr(bannerId){
+  document.getElementById(bannerId).classList.remove('show');
+}
+
+// ── Encode / Decode ────────────────────────────────────────
+function encode(str){
+  try{ return btoa(unescape(encodeURIComponent(str))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+  catch(e){ return btoa(str); }
+}
+function decode(b64){
+  try{ return decodeURIComponent(escape(atob(b64.replace(/-/g,'+').replace(/_/g,'/')))); }
+  catch(e){ try{ return atob(b64); } catch(e2){ return null; } }
+}
+
+// ── On load ────────────────────────────────────────────────
 window.addEventListener('load', function(){
-  const hash = location.hash.slice(1);
+  var hash = location.hash.slice(1);
   if(hash && hash.startsWith('s=')){
-    const encoded = hash.slice(2);
-    const text = decode(encoded);
-    if(text){
-      document.getElementById('paste-mode').classList.add('hidden');
-      document.getElementById('view-mode').classList.remove('hidden');
-      document.getElementById('view-code').textContent = text;
-      return;
+    document.getElementById('paste-mode').classList.add('hidden');
+    document.getElementById('view-mode').classList.remove('hidden');
+    var encoded = hash.slice(2);
+    logLine('view-log','info','Decoding shared link...');
+    var text = null;
+    try{ text = decode(encoded); } catch(e){ text = null; }
+    if(text && text.trim().length > 0){
+      document.getElementById('view-code').textContent = text.trim();
+      logLine('view-log','ok','Decoded successfully — ' + text.trim().length + ' characters');
+      toast('ok','Link loaded','Ready to copy and paste into your executor');
+    } else {
+      document.getElementById('view-code').textContent = '';
+      var msg = 'The link data could not be decoded. It may be corrupted or truncated.';
+      logLine('view-log','fail','Decode failed: invalid or empty payload');
+      showErr('decode-err', null, 'decode-err-msg', null, msg);
+      document.getElementById('decode-err').classList.remove('hidden');
+      toast('err','Decode failed', msg);
     }
+    return;
   }
-  // No valid hash — show paste mode
   document.getElementById('paste-mode').classList.remove('hidden');
 });
 
-// ── Create shareable link ──────────────────────────────────
+// ── Create link ────────────────────────────────────────────
 function createLink(){
-  const text = document.getElementById('ls-input').value.trim();
-  if(!text){ alert('Paste your loadstring first!'); return; }
+  hideErr('main-err');
+  document.getElementById('ls-input').classList.remove('error');
 
-  const encoded = encode(text);
-  const url = location.origin + location.pathname + '#s=' + encoded;
+  var text = document.getElementById('ls-input').value.trim();
+
+  // ── Validation with specific error messages ──
+  if(!text){
+    document.getElementById('ls-input').classList.add('error');
+    showErr('main-err','main-err-title','main-err-msg',
+      'Nothing to share', 'Paste your loadstring into the text box above first.');
+    toast('err','Empty input','Paste your loadstring first');
+    logLine('main-log','fail','Generate failed: input was empty');
+    return;
+  }
+  if(text.length < 10){
+    document.getElementById('ls-input').classList.add('error');
+    showErr('main-err','main-err-title','main-err-msg',
+      'Too short', 'That doesn\'t look like a loadstring. Paste the full loadstring including loadstring(...)().');
+    toast('warn','Too short','Does not look like a valid loadstring');
+    logLine('main-log','warn','Generate failed: input too short ('+text.length+' chars)');
+    return;
+  }
+
+  logLine('main-log','info','Encoding loadstring ('+text.length+' chars)...');
+
+  var encoded;
+  try{
+    encoded = encode(text);
+  } catch(e){
+    showErr('main-err','main-err-title','main-err-msg',
+      'Encoding failed', 'Could not encode your loadstring: ' + e.message);
+    toast('err','Encoding failed', e.message);
+    logLine('main-log','fail','Encoding error: ' + e.message);
+    return;
+  }
+
+  var url = location.origin + location.pathname + '#s=' + encoded;
+
+  // Check URL length (browsers cap at ~2000 for safe sharing)
+  if(url.length > 2000){
+    toast('warn','Link is very long',
+      'URL is '+url.length+' chars. Some apps may truncate it. Consider shortening your loadstring.');
+    logLine('main-log','warn','Warning: generated URL is '+url.length+' characters');
+  }
 
   document.getElementById('share-url').textContent = url;
   document.getElementById('share-url').href = url;
   document.getElementById('result-card').classList.remove('hidden');
-
-  // scroll to result
   document.getElementById('result-card').scrollIntoView({behavior:'smooth',block:'nearest'});
+
+  logLine('main-log','ok','Link generated — '+url.length+' chars');
+  toast('ok','Link ready!','Click "Copy Link" and share it');
 }
 
 // ── Copy helpers ───────────────────────────────────────────
 function copyLink(){
-  const url = document.getElementById('share-url').textContent;
-  copyText(url, document.getElementById('copy-link-btn'));
+  var url = document.getElementById('share-url').textContent;
+  doCopy(url, document.getElementById('copy-link-btn'),
+    function(){ logLine('main-log','ok','Link copied to clipboard'); toast('ok','Copied!','Link is in your clipboard'); },
+    function(e){ logLine('main-log','fail','Copy failed: '+e); toast('err','Copy failed','Could not access clipboard: '+e); }
+  );
 }
 function copyView(){
-  const text = document.getElementById('view-code').textContent;
-  const btn = document.querySelector('#view-mode .btn-primary');
-  copyText(text, btn);
+  var text = document.getElementById('view-code').textContent;
+  var btn = document.querySelector('#view-mode .btn-primary');
+  doCopy(text, btn,
+    function(){ logLine('view-log','ok','Loadstring copied to clipboard'); toast('ok','Copied!','Paste into your executor now'); },
+    function(e){ logLine('view-log','fail','Copy failed: '+e); toast('err','Copy failed','Try selecting the text manually: '+e); }
+  );
 }
 function copyEl(id, btn){
-  copyText(document.getElementById(id).textContent, btn);
+  var text = document.getElementById(id).textContent;
+  doCopy(text, btn,
+    function(){ toast('ok','Copied!','Paste into your executor'); },
+    function(e){ toast('err','Copy failed', e); }
+  );
 }
-function copyText(text, btn){
-  const original = btn ? btn.textContent : '';
-  navigator.clipboard.writeText(text).catch(()=>{
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
-    document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); document.body.removeChild(ta);
-  });
-  if(btn){
-    btn.textContent = 'Copied!';
-    btn.classList.add('ok');
-    setTimeout(()=>{ btn.textContent=original; btn.classList.remove('ok'); }, 2000);
-  }
+function doCopy(text, btn, onOk, onFail){
+  var orig = btn ? btn.textContent : '';
+  var ok = function(){
+    if(btn){ btn.textContent='Copied!'; btn.classList.add('ok');
+      setTimeout(function(){ btn.textContent=orig; btn.classList.remove('ok'); }, 2000); }
+    if(onOk) onOk();
+  };
+  var fail = function(e){
+    if(onFail) onFail(e);
+    // fallback
+    try{
+      var ta = document.createElement('textarea');
+      ta.value=text; ta.style.cssText='position:fixed;opacity:0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      ok();
+    } catch(e2){ if(onFail) onFail(e2); }
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(ok).catch(fail);
+  } else { fail('Clipboard API not available'); }
 }
 
 function clearAll(){
   document.getElementById('ls-input').value='';
+  document.getElementById('ls-input').classList.remove('error');
+  hideErr('main-err');
   document.getElementById('result-card').classList.add('hidden');
+  var log = document.getElementById('main-log');
+  if(log) log.innerHTML='';
+  toast('info','Cleared','Ready for a new loadstring');
 }
-function goHome(){
-  location.hash='';
-  location.reload();
-}
+function goHome(){ location.hash=''; location.reload(); }
 </script>
-<!-- Toast container -->
-<div id="toast-container"></div>
-
 </body>
 </html>
