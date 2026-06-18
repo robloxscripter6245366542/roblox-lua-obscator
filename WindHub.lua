@@ -264,6 +264,167 @@ local EX = {
 local isMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled
 
 -- ════════════════════════════════════════════════════════════════════════════
+--  §04b  UNC CAPABILITY REPORT
+--         Runs immediately after EX is built.
+--         Categorises every missing UNC function, prints to warn(), and
+--         shows a colour-coded on-screen panel so the user knows exactly
+--         which features are degraded — no more silent failures.
+-- ════════════════════════════════════════════════════════════════════════════
+do
+    -- Map each UNC function to the feature it gates and its severity
+    -- severity: "critical" | "important" | "optional"
+    local UNC_MAP = {
+        { fn="hookfunction",       feat="Auto-parry namecall hook",     sev="critical"  },
+        { fn="newcclosure",        feat="Safe C-closure wrappers",       sev="critical"  },
+        { fn="getrawmetatable",    feat="Metatable intercept (parry)",   sev="critical"  },
+        { fn="setreadonly",        feat="Metatable write unlock",        sev="critical"  },
+        { fn="getnamecallmethod",  feat="__namecall method detection",   sev="critical"  },
+        { fn="getgc",              feat="GC heap ball scanner",          sev="important" },
+        { fn="getnilinstances",    feat="Nil-instance pre-arm scanner",  sev="important" },
+        { fn="getinstances",       feat="Full instance dump scanner",    sev="important" },
+        { fn="getaddress",         feat="Memory address resolution",     sev="important" },
+        { fn="readprocessmemory",  feat="Direct memory read (CFrame/vel)",sev="important"},
+        { fn="getupvalues",        feat="Upvalue inspection",            sev="optional"  },
+        { fn="getconstants",       feat="Bytecode constant read",        sev="optional"  },
+        { fn="getconnections",     feat="Signal connection inspector",   sev="optional"  },
+        { fn="writeprocessmemory", feat="Memory write (hitbox expand)",  sev="optional"  },
+        { fn="clonefunction",      feat="Function cloning",              sev="optional"  },
+    }
+
+    local missing_critical  = {}
+    local missing_important = {}
+    local missing_optional  = {}
+    local all_ok = true
+
+    for _, entry in ipairs(UNC_MAP) do
+        if type(EF[entry.fn]) ~= "function" then
+            all_ok = false
+            if entry.sev == "critical" then
+                table.insert(missing_critical,  "  [CRIT]  " .. entry.fn .. "  ->  " .. entry.feat)
+            elseif entry.sev == "important" then
+                table.insert(missing_important, "  [WARN]  " .. entry.fn .. "  ->  " .. entry.feat)
+            else
+                table.insert(missing_optional,  "  [INFO]  " .. entry.fn .. "  ->  " .. entry.feat)
+            end
+        end
+    end
+
+    -- Always print summary to executor output
+    if all_ok then
+        print("[WindHub] UNC check PASSED — all functions available")
+    else
+        warn("[WindHub] ═══════════════════════════════════════════════")
+        warn("[WindHub] UNC CAPABILITY REPORT  (" .. ExecName .. ")")
+        warn("[WindHub] ═══════════════════════════════════════════════")
+        for _, line in ipairs(missing_critical)  do warn("[WindHub]" .. line) end
+        for _, line in ipairs(missing_important) do warn("[WindHub]" .. line) end
+        for _, line in ipairs(missing_optional)  do warn("[WindHub]" .. line) end
+        warn("[WindHub] ═══════════════════════════════════════════════")
+        if #missing_critical > 0 then
+            warn("[WindHub] CRITICAL functions missing — auto-parry hook and namecall intercept WILL NOT WORK.")
+            warn("[WindHub] Switch to Delta, Codex, Xeno, Wave, Optimware, Volt, or Potassium for full support.")
+        end
+    end
+
+    -- On-screen panel (shown for 12 s if anything is missing)
+    if not all_ok then
+        task.spawn(function()
+            task.wait(1.5)   -- wait for UI to settle
+            pcall(function()
+                local sg = Instance.new("ScreenGui")
+                sg.Name          = "WindHubUNCReport"
+                sg.ResetOnSpawn  = false
+                sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+                pcall(function() sg.Parent = CoreGui end)
+
+                -- Build lines to display
+                local lines = {}
+                if #missing_critical > 0 then
+                    table.insert(lines, { text="MISSING CRITICAL UNC FUNCTIONS:", col=Color3.fromRGB(255,70,70) })
+                    for _, l in ipairs(missing_critical) do
+                        table.insert(lines, { text=l:gsub("^%s+",""), col=Color3.fromRGB(255,120,120) })
+                    end
+                end
+                if #missing_important > 0 then
+                    table.insert(lines, { text="DEGRADED (important):", col=Color3.fromRGB(255,180,50) })
+                    for _, l in ipairs(missing_important) do
+                        table.insert(lines, { text=l:gsub("^%s+",""), col=Color3.fromRGB(255,200,100) })
+                    end
+                end
+                if #missing_optional > 0 then
+                    table.insert(lines, { text="OPTIONAL (not critical):", col=Color3.fromRGB(160,160,160) })
+                    for _, l in ipairs(missing_optional) do
+                        table.insert(lines, { text=l:gsub("^%s+",""), col=Color3.fromRGB(200,200,200) })
+                    end
+                end
+
+                local ROW_H   = 18
+                local PAD     = 10
+                local W       = 480
+                local H       = PAD*2 + 26 + #lines * ROW_H
+
+                local frame = Instance.new("Frame", sg)
+                frame.Size            = UDim2.fromOffset(W, H)
+                frame.Position        = UDim2.new(0.5, -W/2, 0, 60)
+                frame.BackgroundColor3= Color3.fromRGB(10, 10, 16)
+                frame.BorderSizePixel = 0
+                Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+                local stroke = Instance.new("UIStroke", frame)
+                stroke.Color     = (#missing_critical > 0) and Color3.fromRGB(220,60,60)
+                                or Color3.fromRGB(220,160,40)
+                stroke.Thickness = 1.8
+
+                -- Title
+                local title = Instance.new("TextLabel", frame)
+                title.Size              = UDim2.new(1,-PAD*2, 0, 22)
+                title.Position          = UDim2.fromOffset(PAD, PAD)
+                title.BackgroundTransparency = 1
+                title.Font              = Enum.Font.GothamBold
+                title.TextSize          = 13
+                title.TextColor3        = Color3.fromRGB(255,255,255)
+                title.TextXAlignment    = Enum.TextXAlignment.Left
+                title.Text              = "WindHub v6.0  |  UNC Capability Report  |  Executor: " .. ExecName
+
+                -- Rows
+                for i, row in ipairs(lines) do
+                    local lbl = Instance.new("TextLabel", frame)
+                    lbl.Size            = UDim2.new(1,-PAD*2, 0, ROW_H)
+                    lbl.Position        = UDim2.fromOffset(PAD, PAD + 24 + (i-1)*ROW_H)
+                    lbl.BackgroundTransparency = 1
+                    lbl.Font            = Enum.Font.Code
+                    lbl.TextSize        = 11
+                    lbl.TextColor3      = row.col
+                    lbl.TextXAlignment  = Enum.TextXAlignment.Left
+                    lbl.Text            = row.text
+                end
+
+                -- Close button
+                local btn = Instance.new("TextButton", frame)
+                btn.Size            = UDim2.fromOffset(24, 24)
+                btn.Position        = UDim2.new(1,-PAD-24, 0, PAD-2)
+                btn.BackgroundTransparency = 1
+                btn.Font            = Enum.Font.GothamBold
+                btn.TextSize        = 16
+                btn.TextColor3      = Color3.fromRGB(200,200,200)
+                btn.Text            = "x"
+                btn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+                -- Auto-destroy after 15 s
+                task.delay(15, function() pcall(function() sg:Destroy() end) end)
+            end)
+        end)
+    end
+
+    -- Store for later introspection (e.g. console `unc` command)
+    _G._WindHub_UNCReport = {
+        ok               = all_ok,
+        missing_critical = missing_critical,
+        missing_important= missing_important,
+        missing_optional = missing_optional,
+    }
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
 --  §05  SIGNAL  (custom event system — OOP · closures · coroutines)
 -- ════════════════════════════════════════════════════════════════════════════
 local Signal = {}
@@ -2448,29 +2609,51 @@ local namecallHooked   = false
 local _namecallOrig    = nil
 
 do
-    if EX.hook and EX.ncc and EX.grmt and EX.ncm then
+    local missing = {}
+    if not EX.hook then table.insert(missing, "hookfunction") end
+    if not EX.ncc  then table.insert(missing, "newcclosure")  end
+    if not EX.grmt then table.insert(missing, "getrawmetatable") end
+    if not EX.ncm  then table.insert(missing, "getnamecallmethod") end
+
+    if #missing > 0 then
+        -- Not a silent skip — always warn so the user knows why parry hook is off
+        warn("[WindHub] __namecall hook DISABLED — missing UNC: " .. table.concat(missing, ", "))
+        warn("[WindHub] Auto-parry will use event-based fallback only (may be slower).")
+        namecallHooked = false
+    else
         local mt = EF.getrawmetatable(game)
-        if EX.sro then pcall(EF.setreadonly, mt, false) end
+        if not mt then
+            warn("[WindHub] getrawmetatable returned nil — hook skipped.")
+        else
+            if EX.sro then pcall(EF.setreadonly, mt, false) end
 
-        local orig = rawget(mt, "__namecall")
-        if orig then
-            local hooked = EF.newcclosure(function(self, ...)
-                local method = EF.getnamecallmethod()
-                -- Only fire signal for relevant calls
-                if typeof(self) == "Instance" then
-                    NamecallSignal:FireImmediate(self, method, ...)
+            local orig = rawget(mt, "__namecall")
+            if not orig then
+                warn("[WindHub] __namecall is nil on game metatable — hook skipped.")
+            else
+                local hooked = EF.newcclosure(function(self, ...)
+                    local method = EF.getnamecallmethod()
+                    if typeof(self) == "Instance" then
+                        NamecallSignal:FireImmediate(self, method, ...)
+                    end
+                    return orig(self, ...)
+                end)
+
+                local ok, hookErr = pcall(function()
+                    EF.hookfunction(orig, hooked)
+                    _namecallOrig = orig
+                end)
+                namecallHooked = ok
+                if not ok then
+                    warn("[WindHub] hookfunction failed on __namecall: " .. tostring(hookErr))
+                    warn("[WindHub] Auto-parry will use event-based fallback only.")
+                else
+                    print("[WindHub] __namecall hook installed successfully.")
                 end
-                return orig(self, ...)
-            end)
+            end
 
-            local ok = pcall(function()
-                EF.hookfunction(orig, hooked)
-                _namecallOrig = orig
-            end)
-            namecallHooked = ok
+            if EX.sro then pcall(EF.setreadonly, mt, true) end
         end
-
-        if EX.sro then pcall(EF.setreadonly, mt, true) end
     end
 end
 
@@ -2802,13 +2985,23 @@ end)
 local AnimFix = { track = nil, lastAt = 0 }
 
 task.defer(function()
-    if not (EX.hook and EX.ncc and EX.grmt) then return end
+    if not (EX.hook and EX.ncc and EX.grmt) then
+        local m2 = {}
+        if not EX.hook then table.insert(m2, "hookfunction") end
+        if not EX.ncc  then table.insert(m2, "newcclosure") end
+        if not EX.grmt then table.insert(m2, "getrawmetatable") end
+        warn("[WindHub] AnimFix hook DISABLED — missing: " .. table.concat(m2, ", "))
+        return
+    end
 
     local dummy = Instance.new("Animation")
     local mt
     pcall(function() mt = EF.getrawmetatable(dummy) end)
     dummy:Destroy()
-    if not mt then return end
+    if not mt then
+        warn("[WindHub] AnimFix: getrawmetatable returned nil — hook skipped.")
+        return
+    end
 
     if EX.sro then pcall(EF.setreadonly, mt, false) end
     local orig = rawget(mt, "__index")
@@ -8199,6 +8392,38 @@ COMMANDS["help"] = function()
     table.sort(list)
     Console.info("Commands: " .. table.concat(list, ", "))
 end
+
+COMMANDS["unc"] = function()
+    local r = _G._WindHub_UNCReport
+    if not r then Console.info("UNC report not available yet."); return end
+    if r.ok then
+        Console.info("[UNC] All functions present — full capability.")
+        return
+    end
+    Console.info("[UNC] ═══ UNC CAPABILITY REPORT ═══")
+    if #r.missing_critical > 0 then
+        Console.info("[UNC] CRITICAL MISSING (" .. #r.missing_critical .. "):")
+        for _, l in ipairs(r.missing_critical) do Console.info("  " .. l) end
+    end
+    if #r.missing_important > 0 then
+        Console.info("[UNC] IMPORTANT MISSING (" .. #r.missing_important .. "):")
+        for _, l in ipairs(r.missing_important) do Console.info("  " .. l) end
+    end
+    if #r.missing_optional > 0 then
+        Console.info("[UNC] OPTIONAL MISSING (" .. #r.missing_optional .. "):")
+        for _, l in ipairs(r.missing_optional) do Console.info("  " .. l) end
+    end
+    Console.info("[UNC] Features affected:")
+    if #r.missing_critical > 0 then
+        Console.info("  * Auto-parry HOOK and __namecall intercept DISABLED")
+        Console.info("  * Switch to Delta/Codex/Xeno/Wave/Optimware/Volt/Potassium")
+    end
+    if #r.missing_important > 0 then
+        Console.info("  * Memory scanner in degraded mode (event-based fallback only)")
+    end
+end
+
+COMMANDS["unc_check"] = COMMANDS["unc"]
 
 COMMANDS["status"] = function()
     local tr = _G._WindTracker
