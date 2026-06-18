@@ -2817,6 +2817,7 @@ local GameRemotes = {
     onRoundEnded     = Signal.new(),
     onVisualCD       = Signal.new(),
     onEndCD          = Signal.new(),
+    onSyncDragonSpirit = Signal.new(),
     connected        = {},
 }
 
@@ -2999,13 +3000,24 @@ local REMOTE_DEFS = {
         name    = "EndCD",
         handler = function(player, ability, ...)
             -- Cobalt confirmed: EndCD fires when a cooldown finishes (companion to VisualCD).
-            -- Clear the cooldown entry so WindHub knows the ability is available again.
             GameRemotes.onEndCD:Fire(player, ability, ...)
             if typeof(player) == "Instance" then
                 local cdMap = _G._WindHub_CooldownMap
                 if cdMap and cdMap[player] then
                     cdMap[player][tostring(ability)] = nil
                 end
+            end
+        end,
+    },
+    {
+        name    = "SyncDragonSpirit",
+        handler = function(player, active, ...)
+            -- Cobalt confirmed: SyncDragonSpirit syncs the Dragon Spirit ability state.
+            -- When active, the player has enhanced abilities — factor into threat scoring.
+            GameRemotes.onSyncDragonSpirit:Fire(player, active, ...)
+            if typeof(player) == "Instance" then
+                _G._WindHub_DragonSpirit = _G._WindHub_DragonSpirit or {}
+                _G._WindHub_DragonSpirit[player] = active and os.clock() or nil
             end
         end,
     },
@@ -3068,7 +3080,7 @@ if EX.hook and EX.conns then
             -- Core Remotes folder
             local coreFld = RepStor:FindFirstChild("Remotes")
             if coreFld then
-                for _, name in ipairs({ "BallAdded", "ParrySuccessAll", "ParryAttemptAll", "BallExplode", "StandoffStart", "StandoffEnd", "SecondaryEndCD", "DisableReaper", "WinnerText", "SetMessage", "PlrDashed", "RoundEnded", "VisualCD", "EndCD" }) do
+                for _, name in ipairs({ "BallAdded", "ParrySuccessAll", "ParryAttemptAll", "BallExplode", "StandoffStart", "StandoffEnd", "SecondaryEndCD", "DisableReaper", "WinnerText", "SetMessage", "PlrDashed", "RoundEnded", "VisualCD", "EndCD", "SyncDragonSpirit" }) do
                     local r = coreFld:FindFirstChild(name)
                     if r and r:IsA("RemoteEvent") then _hookRemoteEvent(r, name) end
                 end
