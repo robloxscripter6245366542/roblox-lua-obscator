@@ -2816,6 +2816,7 @@ local GameRemotes = {
     onPlrDashed      = Signal.new(),
     onRoundEnded     = Signal.new(),
     onVisualCD       = Signal.new(),
+    onEndCD          = Signal.new(),
     connected        = {},
 }
 
@@ -2994,6 +2995,20 @@ local REMOTE_DEFS = {
             end
         end,
     },
+    {
+        name    = "EndCD",
+        handler = function(player, ability, ...)
+            -- Cobalt confirmed: EndCD fires when a cooldown finishes (companion to VisualCD).
+            -- Clear the cooldown entry so WindHub knows the ability is available again.
+            GameRemotes.onEndCD:Fire(player, ability, ...)
+            if typeof(player) == "Instance" then
+                local cdMap = _G._WindHub_CooldownMap
+                if cdMap and cdMap[player] then
+                    cdMap[player][tostring(ability)] = nil
+                end
+            end
+        end,
+    },
 }
 
 task.spawn(function()
@@ -3053,7 +3068,7 @@ if EX.hook and EX.conns then
             -- Core Remotes folder
             local coreFld = RepStor:FindFirstChild("Remotes")
             if coreFld then
-                for _, name in ipairs({ "BallAdded", "ParrySuccessAll", "ParryAttemptAll", "BallExplode", "StandoffStart", "StandoffEnd", "SecondaryEndCD", "DisableReaper", "WinnerText", "SetMessage", "PlrDashed", "RoundEnded", "VisualCD" }) do
+                for _, name in ipairs({ "BallAdded", "ParrySuccessAll", "ParryAttemptAll", "BallExplode", "StandoffStart", "StandoffEnd", "SecondaryEndCD", "DisableReaper", "WinnerText", "SetMessage", "PlrDashed", "RoundEnded", "VisualCD", "EndCD" }) do
                     local r = coreFld:FindFirstChild(name)
                     if r and r:IsA("RemoteEvent") then _hookRemoteEvent(r, name) end
                 end
