@@ -3011,11 +3011,15 @@ if EX.hook and EX.conns then
                 end
             end
 
-            -- conch_networking (role sync)
+            -- conch_networking (role/user sync — Cobalt confirmed: update_user_roles, create_user)
             local conch = RepStor:FindFirstChild("conch_networking")
             if conch then
-                local r = conch:FindFirstChild("update_user_roles")
-                if r and r:IsA("RemoteEvent") then _hookRemoteEvent(r, "update_user_roles") end
+                for _, rName in ipairs({ "update_user_roles", "create_user" }) do
+                    local r = conch:FindFirstChild(rName)
+                    if r and r:IsA("RemoteEvent") then
+                        _hookRemoteEvent(r, "conch." .. rName)
+                    end
+                end
             end
 
             -- Replion replication remote (deep path)
@@ -3023,6 +3027,16 @@ if EX.hook and EX.conns then
                 local r = RepStor.Packages._Index["ytrev_replion@2.0.0-rc.1"].replion.Remotes.UpdateReplicateTo
                 if r and r:IsA("RemoteEvent") then _hookRemoteEvent(r, "Replion.UpdateReplicateTo") end
             end)
+
+            -- Store remotes (Cobalt confirmed: Store.UpdateCrateKeys)
+            local storeFld = coreFld and coreFld:FindFirstChild("Store")
+            if storeFld then
+                for _, child in ipairs(storeFld:GetChildren()) do
+                    if child:IsA("RemoteEvent") then
+                        _hookRemoteEvent(child, "Store." .. child.Name)
+                    end
+                end
+            end
 
             -- sleitnick_net internal remotes (obfuscated names, Cobalt-confirmed)
             pcall(function()
