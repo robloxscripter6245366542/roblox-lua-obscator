@@ -2814,6 +2814,8 @@ local GameRemotes = {
     onWinnerText     = Signal.new(),
     onSetMessage     = Signal.new(),
     onPlrDashed      = Signal.new(),
+    onRoundEnded     = Signal.new(),
+    onVisualCD       = Signal.new(),
     connected        = {},
 }
 
@@ -2957,11 +2959,38 @@ local REMOTE_DEFS = {
             if typeof(player) == "Instance" then
                 _G._WindHub_LastDash = _G._WindHub_LastDash or {}
                 _G._WindHub_LastDash[player] = os.clock()
-                -- If the local player just dashed, flag it so the parry engine
-                -- can recalculate target position on the next heartbeat.
                 if player == lp then
                     _G.WindHub_LocalDashedAt = os.clock()
                 end
+            end
+        end,
+    },
+    {
+        name    = "RoundEnded",
+        handler = function(...)
+            -- Cobalt confirmed: RoundEnded fires when the current round concludes.
+            GameRemotes.onRoundEnded:Fire(...)
+            _G._WindHub_RoundEndAt = os.clock()
+            -- Reset per-round state
+            _G.WindHub_LocalDied      = false
+            _G.WindHub_Standoff       = false
+            _G.WindHub_SecondaryReady = true
+            _G._WindHub_LastDash      = {}
+        end,
+    },
+    {
+        name    = "VisualCD",
+        handler = function(player, ability, duration, ...)
+            -- Cobalt confirmed: VisualCD fires to show a cooldown timer on a player's
+            -- ability (dash, sword skill, etc.). Tracking this tells WindHub exactly
+            -- when each player's ability comes off cooldown.
+            GameRemotes.onVisualCD:Fire(player, ability, duration, ...)
+            if typeof(player) == "Instance" then
+                _G._WindHub_CooldownMap = _G._WindHub_CooldownMap or {}
+                _G._WindHub_CooldownMap[player] = _G._WindHub_CooldownMap[player] or {}
+                _G._WindHub_CooldownMap[player][tostring(ability)] = {
+                    endsAt = os.clock() + (tonumber(duration) or 0),
+                }
             end
         end,
     },
@@ -3024,7 +3053,7 @@ if EX.hook and EX.conns then
             -- Core Remotes folder
             local coreFld = RepStor:FindFirstChild("Remotes")
             if coreFld then
-                for _, name in ipairs({ "BallAdded", "ParrySuccessAll", "ParryAttemptAll", "BallExplode", "StandoffStart", "StandoffEnd", "SecondaryEndCD", "DisableReaper", "WinnerText", "SetMessage", "PlrDashed" }) do
+                for _, name in ipairs({ "BallAdded", "ParrySuccessAll", "ParryAttemptAll", "BallExplode", "StandoffStart", "StandoffEnd", "SecondaryEndCD", "DisableReaper", "WinnerText", "SetMessage", "PlrDashed", "RoundEnded", "VisualCD" }) do
                     local r = coreFld:FindFirstChild(name)
                     if r and r:IsA("RemoteEvent") then _hookRemoteEvent(r, name) end
                 end
