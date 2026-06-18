@@ -132,21 +132,28 @@ do
         end
     end
 
-    -- 3. Whitelist check
+    -- 3. Whitelist check — unknown executors get a WARNING but still load
     local allowed = false
+    local warnOnly = false
     for _, w in ipairs(WHITELIST) do
         if ExecName:find(w, 1, true) then allowed = true; break end
     end
+    if not allowed and ExecName == "unknown" then
+        -- Can't identify executor — allow with warning (may be a supported one
+        -- that doesn't expose its global name)
+        warnOnly = true
+        allowed = true
+    end
 
     if not allowed then
-        -- Build a minimal error UI then stop
+        -- Known unsupported executor — show error UI then stop
         pcall(function()
             local g = Instance.new("ScreenGui")
             g.Name = "WindHubErr"; g.ResetOnSpawn = false
             g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
             g.Parent = CoreGui
             local f = Instance.new("Frame", g)
-            f.Size = UDim2.fromOffset(380, 88)
+            f.Size = UDim2.fromOffset(420, 90)
             f.Position = UDim2.fromOffset(16, 16)
             f.BackgroundColor3 = Color3.fromRGB(20, 5, 5)
             f.BorderSizePixel = 0
@@ -160,13 +167,16 @@ do
             t.TextSize = 12
             t.TextColor3 = Color3.fromRGB(255, 80, 80)
             t.TextWrapped = true
-            t.Text = "⛔  WindHub — Unsupported executor: '"..ExecName.."'\n"
-                   .."Supported: Delta · Codex · Xeno · Wave · Optimware · Volt · Potassium"
+            t.Text = "WindHub — Unsupported executor: '"..ExecName.."'\nSupported: Delta, Codex, Xeno, Wave, Optimware, Volt, Potassium"
             task.delay(7, function() pcall(function() g:Destroy() end) end)
         end)
         warn("[WindHub] Blocked — unsupported executor: " .. ExecName)
         _G.WindHubActive = false
-        return   -- exits the loadstring'd function cleanly
+        return
+    end
+
+    if warnOnly then
+        warn("[WindHub] Executor not identified — loading anyway. Use Delta/Codex/Xeno/Wave/Optimware/Volt/Potassium for full support.")
     end
 end
 

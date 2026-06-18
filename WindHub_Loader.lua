@@ -1,139 +1,106 @@
 -- ============================================================
---  WINDHUB v6.0  --  Universal Loadstring Loader
+--  WINDHUB v6.0  --  Universal Loader
 --
---  Paste ONE of these into your executor:
+--  PASTE THIS ONE LINE into your executor:
 --
---  FULL (main branch, stable):
---    loadstring(game:HttpGet("https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/WindHub.lua"))()
+--    loadstring(game:HttpGet("https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/claude/remove-key-system-qxfa4f/WindHub_Loader.lua"))()
 --
---  LATEST (dev branch, bleeding edge):
---    loadstring(game:HttpGet("https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/claude/remove-key-system-qxfa4f/WindHub.lua"))()
---
---  SUPPORTED EXECUTORS:
---    Delta  |  Codex  |  Xeno  |  Wave  |  Optimware/Opium  |  Volt  |  Potassium
---
+--  SUPPORTED: Delta, Codex, Xeno, Wave, Optimware/Opium, Volt, Potassium
 --  NO KEY SYSTEM. Just paste and run.
 -- ============================================================
 
 local WINDHUB_URL = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/claude/remove-key-system-qxfa4f/WindHub.lua"
 
--- Executor detection
-local _exec = "Unknown"
-if delta then _exec = "Delta"
-elseif codex then _exec = "Codex"
-elseif XENO_LOADED or xeno then _exec = "Xeno"
-elseif wave then _exec = "Wave"
-elseif optimware or opium then _exec = "Optimware"
-elseif volt then _exec = "Volt"
-elseif potassium then _exec = "Potassium"
-elseif syn then _exec = "Synapse (unsupported)"
-elseif fluxus then _exec = "Fluxus (unsupported)"
-end
-
-local SUPPORTED = { Delta=true, Codex=true, Xeno=true, Wave=true, Optimware=true, Volt=true, Potassium=true }
-
-if not SUPPORTED[_exec] then
-    local sg = Instance.new("ScreenGui")
-    sg.Name = "WindHubError"
-    sg.ResetOnSpawn = false
-    pcall(function() sg.Parent = game:GetService("CoreGui") end)
-    local f = Instance.new("Frame", sg)
-    f.Size = UDim2.new(0, 400, 0, 120)
-    f.Position = UDim2.new(0.5, -200, 0.5, -60)
-    f.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    f.BorderSizePixel = 0
-    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 10)
-    local t = Instance.new("TextLabel", f)
-    t.Size = UDim2.new(1, -20, 1, -20)
-    t.Position = UDim2.new(0, 10, 0, 10)
-    t.BackgroundTransparency = 1
-    t.TextColor3 = Color3.fromRGB(255, 80, 80)
-    t.Font = Enum.Font.GothamBold
-    t.TextSize = 16
-    t.TextWrapped = true
-    t.RichText = true
-    t.Text = "<b>WindHub v6.0</b>\n\nUnsupported executor: <b>" .. _exec .. "</b>\n\nSupported: Delta, Codex, Xeno, Wave, Optimware, Volt, Potassium"
-    game:GetService("Debris"):AddItem(sg, 6)
-    warn("[WindHub] Unsupported executor: " .. _exec .. ". Use Delta, Codex, Xeno, Wave, Optimware, Volt, or Potassium.")
-    return
-end
-
--- Loading notification
-local function showLoadingToast(msg)
+-- Toast helper
+local function toast(msg, col)
     pcall(function()
         local sg = Instance.new("ScreenGui")
-        sg.Name = "WindHubLoader"
+        sg.Name = "_WHToast"
         sg.ResetOnSpawn = false
         pcall(function() sg.Parent = game:GetService("CoreGui") end)
+        if not sg.Parent then
+            pcall(function() sg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui") end)
+        end
         local f = Instance.new("Frame", sg)
-        f.Size = UDim2.new(0, 360, 0, 70)
-        f.Position = UDim2.new(0.5, -180, 0, 20)
-        f.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+        f.Size = UDim2.new(0, 380, 0, 62)
+        f.Position = UDim2.new(0.5, -190, 0, 18)
+        f.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
         f.BorderSizePixel = 0
-        Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
-        local stroke = Instance.new("UIStroke", f)
-        stroke.Color = Color3.fromRGB(100, 180, 255)
-        stroke.Thickness = 1.5
+        Instance.new("UICorner", f).CornerRadius = UDim.new(0, 9)
+        local s = Instance.new("UIStroke", f)
+        s.Color = col or Color3.fromRGB(80, 160, 255)
+        s.Thickness = 1.5
         local t = Instance.new("TextLabel", f)
-        t.Size = UDim2.new(1, -20, 1, 0)
-        t.Position = UDim2.new(0, 10, 0, 0)
+        t.Size = UDim2.new(1, -16, 1, 0)
+        t.Position = UDim2.new(0, 8, 0, 0)
         t.BackgroundTransparency = 1
-        t.TextColor3 = Color3.fromRGB(100, 200, 255)
+        t.TextColor3 = col or Color3.fromRGB(80, 200, 255)
         t.Font = Enum.Font.GothamBold
-        t.TextSize = 15
+        t.TextSize = 14
         t.TextXAlignment = Enum.TextXAlignment.Left
-        t.RichText = true
-        t.Text = "<b>WindHub v6.0</b>  |  " .. msg
-        game:GetService("Debris"):AddItem(sg, 4)
+        t.TextWrapped = true
+        t.Text = "WindHub v6.0  |  " .. msg
+        game:GetService("Debris"):AddItem(sg, 5)
     end)
 end
 
-showLoadingToast("Loading on " .. _exec .. "...")
+toast("Fetching script...", Color3.fromRGB(80, 180, 255))
 
--- HTTP fetch with fallback
+-- HTTP fetch — try multiple methods
 local body = nil
-local ok, err = pcall(function()
+
+-- Method 1: game:HttpGet
+local ok1 = pcall(function()
     body = game:HttpGet(WINDHUB_URL, true)
 end)
 
-if not ok or not body or body == "" then
-    local req = (syn and syn.request)
-        or (http and http.request)
-        or http_request
-        or request
-        or (fluxus and fluxus.request)
+-- Method 2: executor request table
+if not ok1 or not body or #body < 200 then
+    body = nil
+    local req = rawget(_G, "syn") and rawget(_G,"syn").request
+        or rawget(_G, "http_request")
+        or rawget(_G, "request")
+        or rawget(_G, "http") and rawget(_G,"http").request
+        or rawget(_G, "fluxus") and rawget(_G,"fluxus").request
     if req then
-        local r = pcall(function()
-            local res = req({ Url = WINDHUB_URL, Method = "GET" })
-            if res and res.Body and #res.Body > 100 then
-                body = res.Body
+        pcall(function()
+            local r = req({ Url = WINDHUB_URL, Method = "GET" })
+            if r and r.Body and #r.Body > 200 then
+                body = r.Body
             end
         end)
     end
 end
 
-if not body or #body < 100 then
-    warn("[WindHub] Failed to fetch WindHub.lua. Check your internet or HTTP permissions.")
-    showLoadingToast("ERROR: Could not fetch script!")
+-- Method 3: HttpService
+if not body or #body < 200 then
+    pcall(function()
+        body = game:GetService("HttpService"):GetAsync(WINDHUB_URL, true)
+    end)
+end
+
+if not body or #body < 200 then
+    toast("ERROR: Could not download script.\nEnable HTTP in executor settings.", Color3.fromRGB(255, 80, 80))
+    warn("[WindHub] Download failed. Make sure HTTP is enabled in your executor.")
     return
 end
+
+toast("Compiling " .. math.floor(#body/1024) .. " KB...", Color3.fromRGB(80, 180, 255))
 
 -- Compile
 local fn, compErr = loadstring(body)
 if not fn then
+    toast("Compile error — check output", Color3.fromRGB(255, 80, 80))
     warn("[WindHub] Compile error: " .. tostring(compErr))
-    showLoadingToast("ERROR: Compile failed!")
     return
 end
+
+toast("Running WindHub v6.0...", Color3.fromRGB(80, 220, 80))
 
 -- Execute
-showLoadingToast("Executing WindHub v6.0...")
 local ran, runErr = pcall(fn)
 if not ran then
+    toast("Runtime error — check output", Color3.fromRGB(255, 80, 80))
     warn("[WindHub] Runtime error: " .. tostring(runErr))
-    showLoadingToast("ERROR: Runtime error!")
     return
 end
-
--- Done
-showLoadingToast("Loaded successfully!")
