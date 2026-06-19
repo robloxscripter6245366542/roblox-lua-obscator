@@ -49,15 +49,17 @@ local fpsWalk = { v = nil, vel = 0, lastTarget = nil }
 
 local function naturalFPS(target)
 	if fpsWalk.lastTarget ~= target then
-		fpsWalk.v          = target * 0.93
+		fpsWalk.v          = target * 0.97  -- start near the top on change
 		fpsWalk.vel        = 0
 		fpsWalk.lastTarget = target
 	end
-	local pullTo = target * (0.88 + math.random() * 0.08)
-	local spring = (pullTo - fpsWalk.v) * 0.13
-	local noise  = (math.random() - 0.48) * 4
-	fpsWalk.vel  = fpsWalk.vel * 0.70 + spring + noise
-	fpsWalk.v    = math.clamp(fpsWalk.v + fpsWalk.vel, target * 0.80, target - 1)
+	-- Pull toward 95–99% of cap; noise is ±1% of target so it scales with value
+	local pullTo = target * (0.95 + math.random() * 0.04)
+	local spring = (pullTo - fpsWalk.v) * 0.12
+	local noise  = (math.random() - 0.5) * (target * 0.01)
+	fpsWalk.vel  = fpsWalk.vel * 0.75 + spring + noise
+	-- Never drops below 94% of target, never hits cap exactly
+	fpsWalk.v    = math.clamp(fpsWalk.v + fpsWalk.vel, target * 0.94, target - 1)
 	return math.floor(fpsWalk.v)
 end
 
