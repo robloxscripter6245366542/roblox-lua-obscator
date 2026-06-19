@@ -3066,13 +3066,13 @@ if EX.hook and EX.cbv and EX.meta then
     end)
 end
 
--- Auto-switch to Ultra during Standoff
-RS.Heartbeat:Connect(function()
-    if not _G.WindHubActive then return end
-    if _G.WindHub_Standoff and Config.standoffUltra then
-        if Config.parryMode ~= "Ultra" then
+-- Auto-switch to Ultra during Standoff (2 Hz — standoff changes rarely)
+task.spawn(function()
+    while _G.WindHubActive ~= false do
+        if _G.WindHub_Standoff and Config.standoffUltra and Config.parryMode ~= "Ultra" then
             Config.parryMode = "Ultra"
         end
+        task.wait(0.5)
     end
 end)
 
@@ -9956,11 +9956,17 @@ TickHist = {
     total    = 0,
 }
 
-RS.Heartbeat:Connect(function(dt)
-    local fps  = math.floor(1 / math.max(dt, 0.001) / 5 + 0.5) * 5
-    fps = math.clamp(fps, 5, 130)
-    TickHist._buckets[fps] = (TickHist._buckets[fps] or 0) + 1
-    TickHist.total = TickHist.total + 1
+-- TickHist sampled at 10 Hz (accurate enough for FPS histogram)
+task.spawn(function()
+    local _last = tick()
+    while _G.WindHubActive ~= false do
+        task.wait(0.1)
+        local now = tick(); local dt = now - _last; _last = now
+        local fps = math.floor(1 / math.max(dt, 0.001) / 5 + 0.5) * 5
+        fps = math.clamp(fps, 5, 130)
+        TickHist._buckets[fps] = (TickHist._buckets[fps] or 0) + 1
+        TickHist.total = TickHist.total + 1
+    end
 end)
 
 function TickHist.mode()
@@ -10967,12 +10973,16 @@ end
 -- ── §52.3  Latency percentile table ──────────────────────
 LatencyPercentiles = { _samples = {} }
 
-RS.Heartbeat:Connect(function()
-    local ping = PingComp.pingMs or 0
-    if ping > 0 then
-        table.insert(LatencyPercentiles._samples, ping)
-        if #LatencyPercentiles._samples > 300 then
-            table.remove(LatencyPercentiles._samples, 1)
+-- Latency samples at 5 Hz (ping updates slower than per-frame)
+task.spawn(function()
+    while _G.WindHubActive ~= false do
+        task.wait(0.2)
+        local ping = PingComp.pingMs or 0
+        if ping > 0 then
+            table.insert(LatencyPercentiles._samples, ping)
+            if #LatencyPercentiles._samples > 300 then
+                table.remove(LatencyPercentiles._samples, 1)
+            end
         end
     end
 end)
@@ -16698,12 +16708,15 @@ function _buildTournamentPanel(parent)
         Font = Enum.Font.Gotham, TextSize = 12,
         TextColor3 = UI.Theme.TextDim, ZIndex = 12,
     })
-    -- update score label
-    RunService.Heartbeat:Connect(function()
-        local s = TournamentMode:getStats()
-        pcall(function()
-            scoreLabel.Text = string.format("Score: %d - %d | Round %d", s.score, s.opponentScore, s.round)
-        end)
+    -- update score label at 2 Hz
+    task.spawn(function()
+        while _G.WindHubActive ~= false do
+            local s = TournamentMode:getStats()
+            pcall(function()
+                scoreLabel.Text = string.format("Score: %d - %d | Round %d", s.score, s.opponentScore, s.round)
+            end)
+            task.wait(0.5)
+        end
     end)
 end
 
@@ -16927,18 +16940,20 @@ function MainLoopV2:_processParryResult(success, bs, etaError)
 end
 
 function MainLoopV2:start()
-    RunService.Heartbeat:Connect(function(dt)
-        if not self._active then return end
-        self._frameN = self._frameN + 1
-        local now = tick()
-        PerfBench:mark("MainLoop")
-        self:_updateFPS(dt)
-        self:_runScheduled(now)
-        self:_integrateBallSystems(nil)
-        self:_updateTargeting()
-        PerfBench:measure("MainLoop", "MainLoop")
+    -- 30 Hz cap: inner schedule self-throttles; no benefit running at 60 Hz
+    task.spawn(function()
+        while _G.WindHubActive ~= false do
+            task.wait(1/30)
+            if not self._active then break end
+            self._frameN = self._frameN + 1
+            local now = tick()
+            pcall(function(dt) self:_updateFPS(1/30) end)
+            pcall(function() self:_runScheduled(now) end)
+            pcall(function() self:_integrateBallSystems(nil) end)
+            pcall(function() self:_updateTargeting() end)
+        end
     end)
-    if Console then Console.info("MainLoopV2", "Extended main loop running") end
+    if Console then Console.info("MainLoopV2", "Extended main loop running at 30 Hz") end
 end
 
 function MainLoopV2:stop()
@@ -17509,12 +17524,12 @@ function NetLayerV2:getStats()
     }
 end
 
--- Integrate with PingComp heartbeat
-RunService.Heartbeat:Connect(function()
-    if PingComp then
-        local now = tick()
-        if now - NetLayerV2._lastPingT >= NetLayerV2._pingInterval then
-            NetLayerV2._lastPingT = now
+-- Integrate with PingComp at reduced rate (already internally rate-limited)
+task.spawn(function()
+    while _G.WindHubActive ~= false do
+        task.wait(NetLayerV2._pingInterval or 1)
+        if PingComp then
+            NetLayerV2._lastPingT = tick()
             local ping = PingComp:get()
             NetLayerV2:_recordPing(ping)
         end
@@ -17567,8 +17582,12 @@ function PacketScheduler:flush()
     end
 end
 
-RunService.Heartbeat:Connect(function()
-    PacketScheduler:flush()
+-- PacketScheduler at 20 Hz (20 packets/s max rate anyway)
+task.spawn(function()
+    while _G.WindHubActive ~= false do
+        task.wait(0.05)
+        PacketScheduler:flush()
+    end
 end)
 
 if Console then Console.info("PacketScheduler", "Packet scheduler ready") end
@@ -18095,9 +18114,14 @@ function ServerProfileV2:getReportString()
     )
 end
 
--- Record server ticks
-RunService.Heartbeat:Connect(function(dt)
-    ServerProfileV2:recordTick(dt)
+-- Record server ticks at 5 Hz (lag detection doesn't need per-frame precision)
+task.spawn(function()
+    local _last = tick()
+    while _G.WindHubActive ~= false do
+        task.wait(0.2)
+        local now = tick(); local dt = now - _last; _last = now
+        ServerProfileV2:recordTick(dt)
+    end
 end)
 
 ServerProfileV2:collect()
@@ -18271,31 +18295,26 @@ task.delay(1.0, function()
     )
 end)
 
--- §86.2 Heartbeat integration — final master loop
-masterConn = RunService.Heartbeat:Connect(function(dt)
-    -- integrate all per-frame systems
-    pcall(function()
-        -- update parry frame data based on recent accuracy
-        local stats = CombatAnalytics:getCurrentStats()
-        if stats and stats.accuracy > 0 then
-            DebugTools:addOverlayLine(string.format(
-                "Acc:%.0f%% Streak:%d Mode:%s",
-                stats.accuracy, stats.currentStreak, Config.parryMode or "?"
-            ), UI and UI.Theme and UI.Theme.Accent or Color3.fromRGB(80,255,150))
-        end
-    end)
-    -- update stealth engine timing
-    pcall(function()
-        if StealthEngine._active and Config.parryActive then
-            -- no-op: actual delays applied at parry-fire time
-        end
-    end)
-    -- network monitoring
-    pcall(function()
-        if NetLayerV2:detectCongestion() then
-            BypassLayer:recordDetectionEvent("network_congestion")
-        end
-    end)
+-- §86.2 Master integration loop at 5 Hz (was per-frame, no benefit at 60 Hz)
+masterConn = nil  -- kept for compatibility (referenced elsewhere)
+task.spawn(function()
+    while _G.WindHubActive ~= false do
+        task.wait(0.2)
+        pcall(function()
+            local stats = CombatAnalytics:getCurrentStats()
+            if stats and stats.accuracy > 0 then
+                DebugTools:addOverlayLine(string.format(
+                    "Acc:%.0f%% Streak:%d Mode:%s",
+                    stats.accuracy, stats.currentStreak, Config.parryMode or "?"
+                ), UI and UI.Theme and UI.Theme.Accent or Color3.fromRGB(80,255,150))
+            end
+        end)
+        pcall(function()
+            if NetLayerV2:detectCongestion() then
+                BypassLayer:recordDetectionEvent("network_congestion")
+            end
+        end)
+    end
 end)
 
 if Console then Console.info("MasterLoop", "Final master heartbeat connected") end
@@ -20510,8 +20529,12 @@ WatchdogTimer._lastBeat    = tick()
 WatchdogTimer._timeout     = 5  -- seconds without heartbeat = frozen
 WatchdogTimer._frozenCount = 0
 
-RunService.Heartbeat:Connect(function()
-    WatchdogTimer._lastBeat = tick()
+-- WatchdogTimer at 1 Hz (5s timeout doesn't need per-frame updates)
+task.spawn(function()
+    while true do
+        task.wait(1)
+        WatchdogTimer._lastBeat = tick()
+    end
 end)
 
 task.spawn(function()
