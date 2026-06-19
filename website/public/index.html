@@ -1,1120 +1,675 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Builder · Roblox Lua</title>
-<link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/25/25231.png" />
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>@</title>
+<script src="https://cdn.tailwindcss.com"></script>
 <style>
-  :root {
-    --bg: #000000;
-    --glass: rgba(255,255,255,0.02);
-    --glass2: rgba(255,255,255,0.04);
-    --glass3: rgba(255,255,255,0.06);
-    --hairline: rgba(255,255,255,0.08);
-    --hairline2: rgba(255,255,255,0.14);
-    --text: #ffffff;
-    --text-soft: rgba(255,255,255,0.72);
-    --text-muted: rgba(255,255,255,0.42);
-    --text-faint: rgba(255,255,255,0.26);
-    --accent: #ffffff;
-    --blue: #3b82f6;
-    --green: #34d399;
-    --purple: #c084fc;
-    --amber: #fbbf24;
-    --orange: #fb923c;
-    --red: #f87171;
-    --pill: 9999px;
-    --r-lg: 22px;
-    --r-md: 16px;
-    --r-sm: 11px;
-    --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --font-mono: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Monaco, Consolas, monospace;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body {
-    height: 100%; overflow: hidden;
-    font-family: var(--font-sans);
-    background: var(--bg); color: var(--text);
-    -webkit-font-smoothing: antialiased;
-  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{background:#000;color:#fff;min-height:100vh;font-family:ui-sans-serif,system-ui,sans-serif;overflow-x:hidden}
+  #bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;width:100%;height:100%}
+  ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#ffffff22;border-radius:2px}
 
-  /* ── Grid background ── */
-  #grid-bg {
-    position: fixed; inset: 0; z-index: 0; pointer-events: none;
-    background-image:
-      linear-gradient(to right, rgba(255,255,255,0.025) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(255,255,255,0.025) 1px, transparent 1px);
-    background-size: 44px 44px;
-    mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, #000 40%, transparent 100%);
-    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, #000 40%, transparent 100%);
-  }
-  #glow {
-    position: fixed; top: -200px; left: 50%; transform: translateX(-50%);
-    width: 700px; height: 400px; z-index: 0; pointer-events: none;
-    background: radial-gradient(ellipse at center, rgba(255,255,255,0.06), transparent 70%);
-    filter: blur(40px);
-  }
+  /* ── draggable box ── */
+  .drag-box{position:fixed;z-index:300;min-width:160px;min-height:80px;border-radius:16px;border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(24px);background:rgba(255,255,255,.04);overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+  .drag-head{cursor:grab;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.07);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.6);user-select:none}
+  .drag-head:active{cursor:grabbing}
+  .drag-body{padding:14px}
+  .drag-resize{position:absolute;bottom:4px;right:4px;width:14px;height:14px;cursor:se-resize;opacity:.3}
+  .drag-resize:hover{opacity:.8}
+  .drag-close{cursor:pointer;opacity:.4;transition:.15s;background:none;border:none;color:#fff;font-size:14px;line-height:1}
+  .drag-close:hover{opacity:1}
 
-  /* ── Top Bar ── */
-  #topbar {
-    position: relative; z-index: 10;
-    height: 56px;
-    background: rgba(0,0,0,0.6);
-    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid var(--hairline);
-    display: flex; align-items: center; padding: 0 18px; gap: 14px;
-    flex-shrink: 0;
-  }
-  .logo { display: flex; align-items: center; gap: 10px; }
-  .logo-icon {
-    width: 30px; height: 30px;
-    background: #fff; color: #000;
-    border-radius: 9px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 15px; font-weight: 800;
-  }
-  .logo span {
-    font-weight: 600; font-size: 15px; letter-spacing: -0.3px;
-    background: linear-gradient(45deg, #fff, rgba(255,255,255,0.65));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-  }
-  .topbar-sep { width: 1px; height: 22px; background: var(--hairline2); }
-  #model-select {
-    background: var(--glass2);
-    border: 1px solid var(--hairline);
-    color: var(--text-soft);
-    padding: 7px 14px; border-radius: var(--pill);
-    font-size: 12px; font-family: var(--font-mono); cursor: pointer; outline: none;
-    transition: all 0.2s;
-  }
-  #model-select:hover { background: var(--glass3); border-color: var(--hairline2); }
-  #model-select:focus { border-color: rgba(255,255,255,0.3); color: var(--text); }
-  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-  .badge {
-    font-size: 11px; padding: 5px 12px; border-radius: var(--pill); font-weight: 500;
-    background: var(--glass2); border: 1px solid var(--hairline); color: var(--text-soft);
-    display: flex; align-items: center; gap: 5px;
-  }
-  #status-indicator {
-    width: 7px; height: 7px; border-radius: 50%; background: var(--green);
-    box-shadow: 0 0 8px var(--green);
-  }
-  .btn {
-    display: flex; align-items: center; gap: 7px;
-    padding: 8px 16px; border-radius: var(--pill); border: 1px solid var(--hairline);
-    background: var(--glass2); color: var(--text-soft); font-size: 12.5px;
-    cursor: pointer; transition: all 0.2s; font-family: var(--font-sans);
-  }
-  .btn:hover { background: var(--glass3); border-color: var(--hairline2); color: var(--text); }
-  .btn-primary {
-    background: #fff; color: #000; border-color: #fff; font-weight: 600;
-  }
-  .btn-primary:hover { background: rgba(255,255,255,0.88); border-color: rgba(255,255,255,0.88); color: #000; }
+  /* ── mini player ── */
+  .mini-player-icon{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9999px;background:#ffffff1f;border:1px solid rgba(255,255,255,.22);flex-shrink:0;cursor:pointer;transition:.15s}
+  .mini-player-icon:hover{background:#ffffff33}
+  .mini-player-bars{display:flex;align-items:flex-end;gap:2px;height:14px;flex-shrink:0}
+  .mini-player-bar{width:3px;border-radius:2px;background:#fff;animation:bar-bounce 1s ease-in-out infinite}
+  .mini-player-bar:nth-child(2){animation-delay:.15s}
+  .mini-player-bar:nth-child(3){animation-delay:.3s}
+  .mini-player-bar:nth-child(4){animation-delay:.1s}
+  @keyframes bar-bounce{0%,100%{height:4px}50%{height:14px}}
+  .mini-player-bars.paused .mini-player-bar{animation:none;height:4px}
+  .mini-player-label{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.88)}
+  .mini-player-title{font-size:12px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+  .mini-player-time{font-size:10px;color:rgba(255,255,255,.5)}
+  .player-range{-webkit-appearance:none;appearance:none;background:rgba(255,255,255,.15);border-radius:4px;height:3px;outline:none;cursor:pointer}
+  .player-range::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;border-radius:50%;background:#fff;cursor:pointer}
+  .ctrl-btn{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:9999px;color:#fff;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;transition:.15s;flex-shrink:0}
+  .ctrl-btn:hover{background:rgba(255,255,255,.25)}
 
-  /* ── Main 3-panel layout ── */
-  #main { position: relative; z-index: 5; display: flex; height: calc(100vh - 56px); overflow: hidden; padding: 12px; gap: 0; }
+  /* ── color picker ── */
+  input[type=color]{-webkit-appearance:none;appearance:none;width:24px;height:24px;border:none;border-radius:6px;cursor:pointer;padding:0;background:none}
+  input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+  input[type=color]::-webkit-color-swatch{border:none;border-radius:6px}
 
-  /* ── Resizer ── */
-  .resizer {
-    width: 12px; cursor: col-resize; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .resizer::after {
-    content: ''; width: 2px; height: 38px; border-radius: 2px;
-    background: var(--hairline); transition: all 0.2s;
-  }
-  .resizer:hover::after, .resizer.active::after { background: rgba(255,255,255,0.4); height: 56px; }
+  /* ── chat ── */
+  #chat-wrap{scrollbar-width:thin;scrollbar-color:#ffffff22 transparent}
+  .msg-user{background:rgba(88,166,255,.15);border:1px solid rgba(88,166,255,.25);border-radius:12px 12px 4px 12px;padding:10px 14px;font-size:13.5px;line-height:1.55;max-width:85%;align-self:flex-end}
+  .msg-ai{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px 12px 12px 4px;padding:10px 14px;font-size:13.5px;line-height:1.55;max-width:95%}
+  .msg-ai pre{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px 12px;overflow-x:auto;font-size:12px;font-family:ui-monospace,monospace;margin:6px 0}
+  .msg-ai code:not(pre code){background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-family:ui-monospace,monospace;font-size:12px}
+  .msg-ai strong{color:#58a6ff}
+  .typing-dot{width:6px;height:6px;border-radius:50%;background:#58a6ff;animation:tdot 1.2s infinite}
+  .typing-dot:nth-child(2){animation-delay:.2s}.typing-dot:nth-child(3){animation-delay:.4s}
+  @keyframes tdot{0%,60%,100%{opacity:.3;transform:scale(.8)}30%{opacity:1;transform:scale(1)}}
+  .apply-btn{font-size:11px;padding:3px 10px;border-radius:20px;background:rgba(88,166,255,.15);border:1px solid rgba(88,166,255,.4);color:#58a6ff;cursor:pointer;font-weight:600;transition:.15s;white-space:nowrap}
+  .apply-btn:hover{background:#58a6ff;color:#000}
 
-  /* ── Panel base (glass card) ── */
-  .panel {
-    display: flex; flex-direction: column; overflow: hidden; min-width: 220px;
-    background: var(--glass);
-    border: 1px solid var(--hairline);
-    border-radius: var(--r-lg);
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  }
+  /* ── code editor ── */
+  .code-tab{padding:8px 16px;font-size:12px;cursor:pointer;color:rgba(255,255,255,.4);border-bottom:2px solid transparent;transition:.15s;white-space:nowrap;display:flex;align-items:center;gap:6px}
+  .code-tab.active{color:#fff;border-bottom-color:#58a6ff}
+  .code-tab:hover:not(.active){color:rgba(255,255,255,.7)}
 
-  .panel-header {
-    height: 46px; border-bottom: 1px solid var(--hairline);
-    display: flex; align-items: center; padding: 0 18px; gap: 9px;
-    font-size: 12px; font-weight: 500; color: var(--text-muted);
-    letter-spacing: 0.3px; flex-shrink: 0;
-    font-family: var(--font-mono);
-  }
-  .panel-header svg { opacity: 0.5; }
+  /* ── preview toolbar ── */
+  .tl{width:11px;height:11px;border-radius:50%}
 
-  /* ══ CHAT PANEL ══ */
-  #chat-panel { width: 360px; flex-shrink: 0; }
-  #chat-messages {
-    flex: 1; overflow-y: auto; padding: 16px;
-    display: flex; flex-direction: column; gap: 14px;
-    scrollbar-width: thin;
-  }
-  .msg { display: flex; flex-direction: column; gap: 5px; max-width: 100%; }
-  .msg-user { align-items: flex-end; }
-  .msg-ai { align-items: flex-start; }
-  .msg-bubble {
-    max-width: 92%; padding: 12px 15px; border-radius: 18px;
-    font-size: 13.5px; line-height: 1.6; word-break: break-word;
-  }
-  .msg-user .msg-bubble {
-    background: #fff; color: #000;
-    border-bottom-right-radius: 5px; font-weight: 450;
-  }
-  .msg-ai .msg-bubble {
-    background: var(--glass2); color: var(--text-soft);
-    border: 1px solid var(--hairline); border-bottom-left-radius: 5px;
-  }
-  .msg-ai .msg-bubble pre {
-    background: rgba(0,0,0,0.5); border: 1px solid var(--hairline);
-    border-radius: 12px; padding: 12px; overflow-x: auto; margin: 9px 0;
-    font-family: var(--font-mono); font-size: 12px; line-height: 1.55;
-  }
-  .msg-ai .msg-bubble code:not(pre code) {
-    background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 5px;
-    font-family: var(--font-mono); font-size: 12px;
-  }
-  .msg-ai .msg-bubble p { margin: 6px 0; }
-  .msg-ai .msg-bubble ul, .msg-ai .msg-bubble ol { padding-left: 18px; margin: 6px 0; }
-  .msg-ai .msg-bubble li { margin: 4px 0; }
-  .msg-ai .msg-bubble strong { color: #fff; font-weight: 600; }
-  .msg-ai .msg-bubble h1, .msg-ai .msg-bubble h2, .msg-ai .msg-bubble h3 {
-    font-size: 14px; margin: 10px 0 4px; color: #fff;
-  }
-  .msg-meta { font-size: 10px; color: var(--text-faint); padding: 0 6px; font-family: var(--font-mono); }
-  .code-apply-bar { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-  .code-apply-btn {
-    font-size: 11.5px; padding: 7px 14px; border-radius: var(--pill);
-    background: #fff; border: none; color: #000; cursor: pointer; font-weight: 600;
-    transition: all 0.2s;
-  }
-  .code-apply-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(255,255,255,0.15); }
+  /* ── panel resize ── */
+  .resizer{background:rgba(255,255,255,.06);cursor:col-resize;transition:.15s;flex-shrink:0}
+  .resizer:hover,.resizer.active{background:#58a6ff}
 
-  .typing-indicator { display: flex; gap: 5px; padding: 14px 16px; align-items: center; }
-  .typing-dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.6); animation: typing 1.2s infinite; }
-  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
-  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes typing { 0%,60%,100% { opacity: 0.25; transform: scale(0.8); } 30% { opacity: 1; transform: scale(1); } }
+  /* ── scrollbar in code area ── */
+  #code-area{scrollbar-width:thin;scrollbar-color:#ffffff18 transparent}
+  #chat-messages-inner{display:flex;flex-direction:column;gap:8px}
 
-  #chat-input-area { padding: 14px; border-top: 1px solid var(--hairline); flex-shrink: 0; }
-  #chat-input-wrap {
-    display: flex; gap: 9px; align-items: flex-end;
-    background: var(--glass2); border: 1px solid var(--hairline);
-    border-radius: var(--r-md); padding: 10px 12px; transition: all 0.2s;
-  }
-  #chat-input-wrap:focus-within { border-color: rgba(255,255,255,0.28); background: var(--glass3); }
-  #chat-input {
-    flex: 1; background: none; border: none; outline: none; color: var(--text);
-    font-size: 13.5px; line-height: 1.5; resize: none; max-height: 120px; font-family: inherit;
-  }
-  #chat-input::placeholder { color: var(--text-faint); }
-  #send-btn {
-    width: 36px; height: 36px; border-radius: 50%; background: #fff; border: none;
-    cursor: pointer; display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0; transition: all 0.2s; color: #000;
-  }
-  #send-btn:hover { transform: scale(1.08); box-shadow: 0 4px 16px rgba(255,255,255,0.2); }
-  #send-btn:disabled { background: var(--glass3); color: var(--text-faint); cursor: not-allowed; transform: none; box-shadow: none; }
-  .quick-actions { display: flex; gap: 7px; margin-bottom: 11px; flex-wrap: wrap; }
-  .quick-btn {
-    font-size: 11.5px; padding: 6px 13px; border-radius: var(--pill);
-    background: var(--glass2); border: 1px solid var(--hairline); color: var(--text-muted);
-    cursor: pointer; transition: all 0.2s; white-space: nowrap;
-  }
-  .quick-btn:hover { border-color: var(--hairline2); color: var(--text); background: var(--glass3); }
+  /* ── quick btns ── */
+  .quick-btn{font-size:11px;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5);cursor:pointer;transition:.15s;white-space:nowrap;flex-shrink:0}
+  .quick-btn:hover{border-color:#58a6ff;color:#58a6ff}
 
-  /* Lua file drawer */
-  #lua-drawer { border-top: 1px solid var(--hairline); flex-shrink: 0; }
-  #lua-drawer-header {
-    padding: 11px 18px; font-size: 11px; color: var(--text-muted);
-    display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
-    font-weight: 500; letter-spacing: 0.3px; font-family: var(--font-mono);
-  }
-  #lua-drawer-header:hover { color: var(--text); }
-  #lua-drawer-chevron { transition: transform 0.25s; margin-left: auto; }
-  #lua-file-list { max-height: 170px; overflow-y: auto; padding: 4px 10px 10px; scrollbar-width: thin; }
-  .lua-file-item {
-    display: flex; align-items: center; gap: 9px; padding: 7px 10px;
-    border-radius: var(--r-sm); cursor: pointer; font-size: 12px; transition: background 0.15s;
-  }
-  .lua-file-item:hover { background: var(--glass3); }
-  .lua-file-name { color: var(--text-soft); flex: 1; font-family: var(--font-mono); }
-  .lua-file-size { color: var(--text-faint); font-size: 10px; font-family: var(--font-mono); }
-  .lua-file-load {
-    font-size: 10px; color: var(--text-muted); padding: 2px 9px; border: 1px solid var(--hairline);
-    border-radius: var(--pill); flex-shrink: 0;
-  }
-  .lua-file-load:hover { background: #fff; color: #000; border-color: #fff; }
+  /* ── lua file ── */
+  .lua-item{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;transition:.1s}
+  .lua-item:hover{background:rgba(255,255,255,.06)}
 
-  /* ══ PREVIEW PANEL ══ */
-  #preview-panel { flex: 1; margin: 0 0px; }
-  .preview-toolbar {
-    height: 46px; border-bottom: 1px solid var(--hairline);
-    display: flex; align-items: center; gap: 10px; padding: 0 14px; flex-shrink: 0;
-  }
-  .traffic-light { display: flex; gap: 7px; align-items: center; flex-shrink: 0; }
-  .tl { width: 11px; height: 11px; border-radius: 50%; opacity: 0.9; }
-  .tl-red { background: #ff5f57; } .tl-yellow { background: #ffbd2e; } .tl-green { background: #28c940; }
-  #preview-url {
-    flex: 1; background: var(--glass2); border: 1px solid var(--hairline); color: var(--text-muted);
-    border-radius: var(--pill); padding: 6px 14px; font-size: 12px; font-family: var(--font-mono); outline: none;
-  }
-  #preview-url:focus { border-color: var(--hairline2); color: var(--text-soft); }
-  #preview-refresh {
-    background: var(--glass2); border: 1px solid var(--hairline); border-radius: 50%;
-    width: 30px; height: 30px; color: var(--text-muted); cursor: pointer; font-size: 14px;
-    transition: all 0.2s; display: flex; align-items: center; justify-content: center;
-  }
-  #preview-refresh:hover { border-color: var(--hairline2); color: var(--text); transform: rotate(90deg); }
-  .device-btns { display: flex; gap: 5px; }
-  .device-btn {
-    background: var(--glass2); border: 1px solid transparent; border-radius: var(--pill);
-    color: var(--text-muted); padding: 5px 10px; cursor: pointer; font-size: 12px; transition: all 0.2s;
-  }
-  .device-btn.active, .device-btn:hover { border-color: var(--hairline2); color: var(--text); background: var(--glass3); }
-  #preview-frame-wrap {
-    flex: 1; overflow: hidden; background: #fff; position: relative;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 0 0 var(--r-lg) var(--r-lg);
-  }
-  #preview-iframe { width: 100%; height: 100%; border: none; display: block; background: #fff; }
-  #preview-overlay {
-    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    background: var(--bg); flex-direction: column; gap: 16px; color: var(--text-muted); font-size: 13.5px;
-  }
-  #preview-overlay svg { opacity: 0.18; }
-  #preview-overlay span { opacity: 0.4; font-family: var(--font-mono); }
+  /* ── toast ── */
+  #toast{position:fixed;bottom:20px;right:20px;z-index:9999;background:rgba(22,27,34,.95);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 16px;font-size:13px;transform:translateY(60px);opacity:0;transition:.25s;pointer-events:none;backdrop-filter:blur(20px)}
+  #toast.show{transform:translateY(0);opacity:1}
 
-  /* ══ CODE PANEL ══ */
-  #code-panel { width: 440px; flex-shrink: 0; }
-  .code-tabs { display: flex; border-bottom: 1px solid var(--hairline); flex-shrink: 0; overflow-x: auto; padding: 0 6px; }
-  .code-tab {
-    padding: 13px 16px; font-size: 12px; cursor: pointer; color: var(--text-muted);
-    border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap;
-    display: flex; align-items: center; gap: 7px; font-family: var(--font-mono);
-  }
-  .code-tab:hover { color: var(--text-soft); }
-  .code-tab.active { color: var(--text); border-bottom-color: #fff; }
-  .tab-dot { width: 6px; height: 6px; border-radius: 50%; }
-  .dot-html { background: var(--orange); } .dot-css { background: var(--blue); }
-  .dot-js { background: var(--amber); } .dot-lua { background: var(--purple); }
-  #code-editor-wrap { flex: 1; position: relative; overflow: hidden; }
-  #code-editor { width: 100%; height: 100%; }
-  .code-actions {
-    padding: 11px 14px; border-top: 1px solid var(--hairline);
-    display: flex; gap: 9px; align-items: center; flex-shrink: 0; flex-wrap: wrap;
-  }
-  .code-stat { font-size: 11px; color: var(--text-faint); margin-left: auto; font-family: var(--font-mono); }
-
-  /* ── Scrollbars ── */
-  ::-webkit-scrollbar { width: 7px; height: 7px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--hairline2); border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
-
-  /* ── Toast ── */
-  #toast {
-    position: fixed; bottom: 24px; left: 50%; transform: translate(-50%, 80px); z-index: 1000;
-    background: rgba(20,20,20,0.9); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--hairline2); border-radius: var(--pill); padding: 11px 22px;
-    font-size: 13px; color: var(--text); opacity: 0; transition: all 0.3s cubic-bezier(0.2,0.8,0.2,1);
-    pointer-events: none; display: flex; align-items: center; gap: 9px;
-  }
-  #toast.show { transform: translate(-50%, 0); opacity: 1; }
-  #toast.success { border-color: rgba(52,211,153,0.5); }
-  #toast.error { border-color: rgba(248,113,113,0.5); }
-
-  .welcome-msg .msg-bubble {
-    background: var(--glass3); border: 1px solid var(--hairline2);
-  }
-
-  /* ── Lua modal ── */
-  #lua-modal {
-    display: none; position: fixed; inset: 0; z-index: 500;
-    background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    align-items: center; justify-content: center;
-  }
-  #lua-modal.open { display: flex; }
-  #lua-modal-inner {
-    background: rgba(12,12,12,0.95); border: 1px solid var(--hairline2);
-    border-radius: var(--r-lg); width: 760px; max-width: 95vw; max-height: 82vh;
-    display: flex; flex-direction: column; overflow: hidden;
-  }
-  #lua-modal-header {
-    padding: 16px 20px; border-bottom: 1px solid var(--hairline);
-    display: flex; align-items: center; gap: 11px; font-weight: 500; font-size: 14px;
-    font-family: var(--font-mono);
-  }
-  #lua-modal-close {
-    margin-left: auto; background: var(--glass2); border: 1px solid var(--hairline); color: var(--text-muted);
-    cursor: pointer; font-size: 16px; line-height: 1; width: 28px; height: 28px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-  }
-  #lua-modal-close:hover { background: var(--glass3); color: var(--text); }
-  #lua-modal-content {
-    flex: 1; overflow: auto; padding: 18px; font-family: var(--font-mono); font-size: 12px;
-    line-height: 1.65; color: var(--text-soft); background: rgba(0,0,0,0.4); white-space: pre; tab-size: 2;
-  }
-  #lua-modal-footer { padding: 13px 18px; border-top: 1px solid var(--hairline); display: flex; gap: 9px; }
-
-  /* Syntax highlight in Lua modal */
-  .kw { color: var(--purple); } .str { color: var(--green); }
-  .cmt { color: var(--text-faint); font-style: italic; } .num { color: var(--orange); }
+  /* ── modal ── */
+  #lua-modal{display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.75);align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+  #lua-modal.open{display:flex}
 </style>
 </head>
 <body>
 
-<div id="grid-bg"></div>
-<div id="glow"></div>
+<!-- WebGL animated background -->
+<canvas id="bg-canvas"></canvas>
 
-<!-- ── Top Bar ── -->
-<div id="topbar">
-  <div class="logo">
-    <div class="logo-icon">@</div>
+<!-- ══ TOP BAR ══ -->
+<div class="fixed top-0 left-0 right-0 z-50 h-11 flex items-center px-4 gap-3 border-b border-white/[0.06]" style="background:rgba(0,0,0,.7);backdrop-filter:blur(20px)">
+  <div class="flex items-center gap-2 font-semibold text-sm select-none">
+    <div class="w-6 h-6 rounded-md flex items-center justify-center text-xs" style="background:linear-gradient(135deg,#58a6ff,#bc8cff)">⚡</div>
     <span>AI Builder</span>
   </div>
-  <div class="topbar-sep"></div>
-  <select id="model-select">
-    <option value="glm-4.7">GLM-4.7 · Balanced</option>
-    <option value="glm-4.7-flash">GLM-4.7 Flash · Free</option>
-    <option value="glm-4.5">GLM-4.5</option>
-    <option value="glm-4.5-flash">GLM-4.5 Flash · Free</option>
-    <option value="glm-5-turbo">GLM-5 Turbo</option>
+  <div class="w-px h-5 bg-white/10"></div>
+  <select id="model-sel" class="text-xs bg-white/5 border border-white/10 rounded-md px-2 py-1 text-white/60 outline-none cursor-pointer">
+    <option value="glm-4.7">glm-4.7</option>
+    <option value="glm-4-plus">glm-4-plus</option>
+    <option value="glm-4-flash">glm-4-flash</option>
   </select>
-  <div class="topbar-right">
-    <span class="badge">🔮 Roblox Lua</span>
-    <span class="badge">Z.ai GLM</span>
-    <div id="status-indicator" title="Connected"></div>
+  <div class="ml-auto flex items-center gap-2">
+    <span class="text-xs px-2 py-0.5 rounded-full border font-semibold" style="background:#1a2a3a;color:#58a6ff;border-color:#1f3a5f">Roblox Lua</span>
+    <span class="text-xs px-2 py-0.5 rounded-full border font-semibold" style="background:#1a3a2a;color:#3fb950;border-color:#2a5a3a">Z.ai</span>
+    <div id="status-dot" class="w-2 h-2 rounded-full" style="background:#3fb950;box-shadow:0 0 6px #3fb950"></div>
+    <!-- bg color toggle -->
+    <div class="flex items-center gap-1 ml-2">
+      <span class="text-xs text-white/30">BG</span>
+      <input type="color" id="bg-color" value="#000000" title="Background color" class="w-6 h-6 cursor-pointer rounded"/>
+      <button onclick="resetBg()" class="text-xs text-white/30 hover:text-white/70 transition px-1" title="Reset">↺</button>
+    </div>
+    <button onclick="addBox()" class="quick-btn ml-1">＋ Box</button>
   </div>
 </div>
 
-<!-- ── Main Layout ── -->
-<div id="main">
+<!-- ══ MAIN 3-PANEL ══ -->
+<div id="main" class="flex pt-11" style="height:100vh">
 
-  <!-- ═══ CHAT PANEL ═══ -->
-  <div class="panel" id="chat-panel">
-    <div class="panel-header">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-      </svg>
-      AI CHAT
+  <!-- ═ CHAT PANEL ═ -->
+  <div id="chat-panel" class="flex flex-col border-r border-white/[0.06]" style="width:340px;min-width:200px">
+    <!-- header -->
+    <div class="h-9 flex items-center px-4 gap-2 border-b border-white/[0.06] flex-shrink-0" style="background:rgba(255,255,255,.02)">
+      <svg class="opacity-50" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <span class="text-xs font-semibold uppercase tracking-wider text-white/40">AI Chat</span>
     </div>
-
-    <div id="chat-messages"></div>
-
-    <!-- Lua file drawer -->
-    <div id="lua-drawer">
-      <div id="lua-drawer-header" onclick="toggleLuaDrawer()">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-        </svg>
-        LUA FILES
-        <svg id="lua-drawer-chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </div>
-      <div id="lua-file-list" style="display:none;"></div>
+    <!-- messages -->
+    <div id="chat-wrap" class="flex-1 overflow-y-auto p-3">
+      <div id="chat-messages-inner"></div>
     </div>
-
-    <!-- Chat input -->
-    <div id="chat-input-area">
-      <div class="quick-actions" id="quick-actions">
-        <button class="quick-btn" onclick="quickMsg('Add a draggable, resizable glass box/card that I can move around, with a color picker so I can set its background to any color or gradient')">＋ Box</button>
-        <button class="quick-btn" onclick="quickMsg('Add a background color picker with preset swatches and a gradient mode, so the page background can be set to any color')">🎨 Background</button>
-        <button class="quick-btn" onclick="quickMsg('Add a background music player widget (bottom-left glass card) with play/pause, track name, and a volume slider, looping a sample lofi track I can swap out')">🎵 Music</button>
-        <button class="quick-btn" onclick="quickMsg('Create a dark glassmorphic dashboard UI with sidebar nav')">Dashboard</button>
-        <button class="quick-btn" onclick="quickMsg('Create a clean landing page with hero section and features')">Landing</button>
-        <button class="quick-btn" onclick="quickMsg('Add a Lua obfuscator form to the website')">Obfuscator</button>
-        <button class="quick-btn" onclick="quickMsg('List all available Lua files and show me the obfuscate.lua tool')">Lua Tools</button>
+    <!-- lua drawer -->
+    <div id="lua-drawer" class="border-t border-white/[0.06] flex-shrink-0" style="background:rgba(255,255,255,.01)">
+      <div onclick="toggleLua()" class="flex items-center gap-2 px-3 py-2 cursor-pointer text-xs font-semibold uppercase tracking-wider text-white/40 hover:text-white/70 transition select-none">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Lua Files
+        <svg id="lua-chevron" class="ml-auto transition-transform duration-200" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
-      <div id="chat-input-wrap">
-        <textarea id="chat-input" placeholder="Describe what to build…" rows="1"></textarea>
-        <button id="send-btn" onclick="sendMessage()" title="Send (Enter)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-          </svg>
+      <div id="lua-list" class="hidden overflow-y-auto pb-2" style="max-height:150px;scrollbar-width:thin;scrollbar-color:#ffffff18 transparent"></div>
+    </div>
+    <!-- input -->
+    <div class="flex-shrink-0 p-2.5 border-t border-white/[0.06]" style="background:rgba(0,0,0,.3)">
+      <div class="flex gap-1.5 mb-2 flex-wrap">
+        <button class="quick-btn" onclick="q('Build a dark landing page with animated WebGL background, draggable boxes, and a music player')">Full Site</button>
+        <button class="quick-btn" onclick="q('Add a draggable resizable glass box with a color picker')">＋ Box</button>
+        <button class="quick-btn" onclick="q('Add a background music player widget with play/pause, track name, volume slider, and animated bars')">🎵 Music</button>
+        <button class="quick-btn" onclick="q('Add a background color picker with presets and gradient mode')">🎨 BG</button>
+        <button class="quick-btn" onclick="q('Build a Roblox Lua obfuscator web UI with a code input, obfuscate button, and output display')">Obfuscator</button>
+      </div>
+      <div class="flex gap-2 items-end rounded-xl border border-white/10 px-3 py-2 focus-within:border-blue-500/50 transition" style="background:rgba(255,255,255,.04)">
+        <textarea id="chat-in" rows="1" placeholder="Tell the AI what to build…" class="flex-1 bg-transparent border-none outline-none text-sm text-white placeholder-white/30 resize-none" style="max-height:100px;line-height:1.5"></textarea>
+        <button id="send-btn" onclick="sendMsg()" class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition" style="background:#58a6ff;color:#000">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
       </div>
     </div>
   </div>
 
-  <div class="resizer" id="resizer-1"></div>
+  <div class="resizer w-1" id="r1"></div>
 
-  <!-- ═══ PREVIEW PANEL ═══ -->
-  <div class="panel" id="preview-panel">
-    <div class="preview-toolbar">
-      <div class="traffic-light">
-        <div class="tl tl-red"></div>
-        <div class="tl tl-yellow"></div>
-        <div class="tl tl-green"></div>
+  <!-- ═ PREVIEW PANEL ═ -->
+  <div id="preview-panel" class="flex flex-col flex-1" style="min-width:200px">
+    <!-- preview toolbar -->
+    <div class="h-9 flex items-center gap-2 px-3 border-b border-white/[0.06] flex-shrink-0" style="background:rgba(255,255,255,.02)">
+      <div class="flex gap-1.5">
+        <div class="tl" style="background:#ff5f57"></div>
+        <div class="tl" style="background:#ffbd2e"></div>
+        <div class="tl" style="background:#28c940"></div>
       </div>
-      <input id="preview-url" readonly value="about:blank" />
-      <button id="preview-refresh" onclick="refreshPreview()" title="Refresh">↺</button>
-      <div class="device-btns">
-        <button class="device-btn active" onclick="setDevice('desktop', this)" title="Desktop">🖥</button>
-        <button class="device-btn" onclick="setDevice('tablet', this)" title="Tablet">📱</button>
-        <button class="device-btn" onclick="setDevice('mobile', this)" title="Mobile">📲</button>
+      <input id="preview-url" readonly value="about:blank" class="flex-1 text-xs bg-white/5 border border-white/10 rounded-md px-2 py-1 text-white/40 font-mono outline-none"/>
+      <button onclick="applyCode()" class="text-sm text-white/40 hover:text-white/80 transition px-1" title="Refresh">↺</button>
+      <div class="flex gap-1">
+        <button class="quick-btn active" onclick="device('desktop',this)">🖥</button>
+        <button class="quick-btn" onclick="device('tablet',this)">📱</button>
+        <button class="quick-btn" onclick="device('mobile',this)">📲</button>
       </div>
     </div>
-    <div id="preview-frame-wrap">
-      <div id="preview-overlay">
-        <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-          <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
-        </svg>
-        <span>describe what to build →</span>
+    <div id="preview-wrap" class="flex-1 relative overflow-hidden" style="background:#fff">
+      <div id="preview-empty" class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/20" style="background:#000">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        <span class="text-sm">Ask the AI to build something</span>
       </div>
-      <iframe id="preview-iframe" sandbox="allow-scripts allow-same-origin allow-forms" style="display:none;"></iframe>
+      <iframe id="preview-frame" sandbox="allow-scripts allow-same-origin allow-forms allow-modals" class="w-full h-full border-none hidden"></iframe>
     </div>
   </div>
 
-  <div class="resizer" id="resizer-2"></div>
+  <div class="resizer w-1" id="r2"></div>
 
-  <!-- ═══ CODE PANEL ═══ -->
-  <div class="panel" id="code-panel">
-    <div class="code-tabs">
-      <div class="code-tab active" data-lang="html" onclick="switchTab('html', this)">
-        <span class="tab-dot dot-html"></span>index.html
-      </div>
-      <div class="code-tab" data-lang="css" onclick="switchTab('css', this)">
-        <span class="tab-dot dot-css"></span>style.css
-      </div>
-      <div class="code-tab" data-lang="javascript" onclick="switchTab('javascript', this)">
-        <span class="tab-dot dot-js"></span>app.js
-      </div>
-      <div class="code-tab" data-lang="lua" onclick="switchTab('lua', this)">
-        <span class="tab-dot dot-lua"></span>script.lua
-      </div>
+  <!-- ═ CODE PANEL ═ -->
+  <div id="code-panel" class="flex flex-col border-l border-white/[0.06]" style="width:420px;min-width:200px">
+    <!-- tabs -->
+    <div class="flex border-b border-white/[0.06] flex-shrink-0 overflow-x-auto" style="background:rgba(255,255,255,.02)">
+      <div class="code-tab active" data-lang="html" onclick="switchTab('html',this)"><span style="background:#f0883e;width:6px;height:6px;border-radius:50%;display:inline-block"></span>index.html</div>
+      <div class="code-tab" data-lang="css" onclick="switchTab('css',this)"><span style="background:#58a6ff;width:6px;height:6px;border-radius:50%;display:inline-block"></span>style.css</div>
+      <div class="code-tab" data-lang="js" onclick="switchTab('js',this)"><span style="background:#d29922;width:6px;height:6px;border-radius:50%;display:inline-block"></span>app.js</div>
+      <div class="code-tab" data-lang="lua" onclick="switchTab('lua',this)"><span style="background:#bc8cff;width:6px;height:6px;border-radius:50%;display:inline-block"></span>script.lua</div>
     </div>
-    <div id="code-editor-wrap">
-      <div id="code-editor"></div>
+    <!-- editor area -->
+    <div id="code-area" class="flex-1 overflow-auto" style="background:#0d1117;scrollbar-width:thin;scrollbar-color:#ffffff18 transparent">
+      <textarea id="code-editor" spellcheck="false" class="w-full h-full bg-transparent border-none outline-none p-4 text-xs font-mono text-green-400/90 resize-none leading-relaxed" style="tab-size:2;min-height:100%;caret-color:#58a6ff"></textarea>
     </div>
-    <div class="code-actions">
-      <button class="btn btn-primary" onclick="applyCode()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
-        Apply & Preview
+    <!-- actions -->
+    <div class="flex gap-2 items-center p-2.5 border-t border-white/[0.06] flex-shrink-0" style="background:rgba(255,255,255,.02)">
+      <button onclick="applyCode()" class="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition" style="background:#58a6ff;color:#000">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Apply
       </button>
-      <button class="btn" onclick="copyCode()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-        </svg>
-        Copy
-      </button>
-      <button class="btn" onclick="downloadCode()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        Download
-      </button>
-      <button class="btn" onclick="clearCode()">Clear</button>
-      <span class="code-stat" id="code-stat">0 lines</span>
+      <button onclick="copyCode()" class="quick-btn">Copy</button>
+      <button onclick="dlCode()" class="quick-btn">Download</button>
+      <span id="code-stat" class="text-xs text-white/25 ml-auto font-mono">0 lines</span>
     </div>
   </div>
 </div>
 
-<!-- Lua file modal -->
+<!-- ══ MUSIC PLAYER (fixed bottom-left) ══ -->
+<div id="music-player" class="fixed bottom-4 left-4 z-50 rounded-2xl border border-white/10 p-3 flex flex-col gap-2.5" style="width:260px;background:rgba(255,255,255,.04);backdrop-filter:blur(24px);display:none!important">
+  <div class="flex items-center gap-2.5">
+    <div class="mini-player-icon" id="play-btn" onclick="togglePlay()">▶</div>
+    <div class="flex flex-col gap-0.5 min-w-0 flex-1">
+      <span class="mini-player-label">Now Playing</span>
+      <span class="mini-player-title" id="track-name">—</span>
+    </div>
+    <div class="mini-player-bars" id="vis-bars">
+      <div class="mini-player-bar"></div>
+      <div class="mini-player-bar"></div>
+      <div class="mini-player-bar"></div>
+      <div class="mini-player-bar"></div>
+    </div>
+  </div>
+  <div class="flex flex-col gap-1">
+    <input type="range" id="seek-bar" class="player-range w-full" min="0" max="100" value="0"/>
+    <div class="flex justify-between">
+      <span class="mini-player-time" id="cur-time">0:00</span>
+      <span class="mini-player-time" id="dur-time">0:00</span>
+    </div>
+  </div>
+  <div class="flex items-center gap-2">
+    <span class="text-xs text-white/40">Vol</span>
+    <input type="range" id="vol-bar" class="player-range flex-1" min="0" max="1" step="0.01" value="0.5"/>
+    <button onclick="prevTrack()" class="ctrl-btn">‹</button>
+    <button onclick="nextTrack()" class="ctrl-btn">›</button>
+    <button onclick="document.getElementById('music-player').style.display='none'" class="ctrl-btn opacity-40 hover:opacity-100">✕</button>
+  </div>
+</div>
+
+<!-- ══ ADD MUSIC BUTTON ══ -->
+<button id="music-toggle" onclick="openMusic()" class="fixed bottom-4 left-4 z-50 flex items-center gap-2 text-xs px-3 py-2 rounded-xl border border-white/10 transition" style="background:rgba(255,255,255,.04);backdrop-filter:blur(20px);color:rgba(255,255,255,.6)">
+  🎵 Music
+</button>
+
+<!-- ══ LUA MODAL ══ -->
 <div id="lua-modal">
-  <div id="lua-modal-inner">
-    <div id="lua-modal-header">
-      <span>📄</span>
-      <span id="lua-modal-title">file.lua</span>
-      <button id="lua-modal-close" onclick="closeLuaModal()">×</button>
+  <div class="rounded-2xl border border-white/10 flex flex-col overflow-hidden" style="width:700px;max-width:95vw;max-height:80vh;background:rgba(13,17,23,.97);backdrop-filter:blur(30px)">
+    <div class="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06]">
+      <span class="text-sm font-semibold" id="lua-modal-title">file.lua</span>
+      <button onclick="closeLuaModal()" class="ml-auto text-white/40 hover:text-white transition text-lg leading-none bg-transparent border-none cursor-pointer">×</button>
     </div>
-    <div id="lua-modal-content"></div>
-    <div id="lua-modal-footer">
-      <button class="btn btn-primary" onclick="loadLuaToEditor()">Load into Editor</button>
-      <button class="btn" onclick="askAIAboutLua()">Ask AI About This</button>
-      <button class="btn" onclick="closeLuaModal()">Close</button>
+    <pre id="lua-modal-content" class="flex-1 overflow-auto p-4 text-xs font-mono text-green-400/80 leading-relaxed" style="scrollbar-width:thin;scrollbar-color:#ffffff18 transparent;white-space:pre;tab-size:2"></pre>
+    <div class="flex gap-2 p-3 border-t border-white/[0.06]">
+      <button onclick="loadLuaToEditor()" class="text-xs font-semibold px-3 py-1.5 rounded-lg transition" style="background:#58a6ff;color:#000">Load into Editor</button>
+      <button onclick="askAboutLua()" class="quick-btn">Ask AI About This</button>
+      <button onclick="closeLuaModal()" class="quick-btn">Close</button>
     </div>
   </div>
 </div>
 
-<!-- Toast -->
+<!-- ══ TOAST ══ -->
 <div id="toast"></div>
 
-<!-- Monaco Editor loader -->
-<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+<!-- ══ AUDIO ══ -->
+<audio id="audio" loop></audio>
+
 <script>
-// ─────────────────────────────────────────────────────────────────────────────
-//  APP STATE
-// ─────────────────────────────────────────────────────────────────────────────
-const state = {
-  chatHistory: [],
-  currentLang: 'html',
-  editors: {},
-  code: {
-    html: '<!-- Your HTML will appear here -->\n',
-    css:  '/* Your CSS will appear here */\n',
-    javascript: '// Your JavaScript will appear here\n',
-    lua: '-- Your Lua script will appear here\n'
-  },
-  isGenerating: false,
-  currentLuaFile: null,
-  luaFileContent: null,
-  previewLive: false
-};
+// ─────────────────────────────── WEBGL BACKGROUND ────────────────────────────
+(function(){
+  const canvas=document.getElementById('bg-canvas');
+  const gl=canvas.getContext('webgl');
+  if(!gl)return;
+  const vs=`attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}`;
+  const fs=`precision mediump float;
+uniform float time;uniform vec2 res;uniform vec3 uCol;
+float rnd(vec2 p){p=fract(p*vec2(12.9898,78.233));p+=dot(p,p+34.56);return fract(p.x*p.y);}
+float noise(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.-2.*f);
+  return mix(mix(rnd(i),rnd(i+vec2(1,0)),u.x),mix(rnd(i+vec2(0,1)),rnd(i+1.),u.x),u.y);}
+float fbm(vec2 p){float t=0.,a=.5;for(int i=0;i<5;i++){t+=a*noise(p);p*=2.1;a*=.5;}return t;}
+void main(){
+  vec2 uv=(gl_FragCoord.xy-.5*res)/min(res.x,res.y);
+  float f=fbm(uv*2.+vec2(time*.07,time*.05));
+  f=fbm(uv*3.+f+vec2(time*.04,-time*.06));
+  vec3 col=mix(vec3(0.),uCol,clamp(f*1.4-.3,0.,1.));
+  col*=min(time*.4,1.);
+  gl_FragColor=vec4(col,1.);
+}`;
+  function shader(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s;}
+  const prog=gl.createProgram();
+  gl.attachShader(prog,shader(gl.VERTEX_SHADER,vs));
+  gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,fs));
+  gl.linkProgram(prog);gl.useProgram(prog);
+  const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(prog,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const uTime=gl.getUniformLocation(prog,'time');
+  const uRes=gl.getUniformLocation(prog,'res');
+  const uCol=gl.getUniformLocation(prog,'uCol');
+  window._setShaderColor=function(hex){
+    const r=parseInt(hex.slice(1,3),16)/255,g=parseInt(hex.slice(3,5),16)/255,b=parseInt(hex.slice(5,7),16)/255;
+    gl.uniform3f(uCol,r,g,b);
+  };
+  window._setShaderColor('#0a1a2e');
+  function resize(){canvas.width=innerWidth;canvas.height=innerHeight;gl.viewport(0,0,canvas.width,canvas.height);gl.uniform2f(uRes,canvas.width,canvas.height);}
+  window.addEventListener('resize',resize);resize();
+  let t=0;(function loop(){t+=.016;gl.uniform1f(uTime,t);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);requestAnimationFrame(loop);})();
+})();
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  MONACO EDITOR SETUP
-// ─────────────────────────────────────────────────────────────────────────────
-require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
-
-require(['vs/editor/editor.main'], function () {
-  monaco.editor.defineTheme('pure-black', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: 'comment', foreground: '5a5a5a', fontStyle: 'italic' },
-      { token: 'keyword', foreground: 'c084fc' },
-      { token: 'string', foreground: '34d399' },
-      { token: 'number', foreground: 'fb923c' },
-    ],
-    colors: {
-      'editor.background': '#00000000',
-      'editor.foreground': '#ffffff',
-      'editor.lineHighlightBackground': '#ffffff08',
-      'editorCursor.foreground': '#ffffff',
-      'editor.selectionBackground': '#ffffff22',
-      'editorLineNumber.foreground': '#ffffff30',
-      'editorLineNumber.activeForeground': '#ffffff70',
-    }
-  });
-
-  const langs = ['html', 'css', 'javascript', 'lua'];
-  langs.forEach(lang => {
-    const container = document.createElement('div');
-    container.style.cssText = 'width:100%;height:100%;display:none;position:absolute;top:0;left:0;';
-    container.id = 'editor-' + lang;
-    document.getElementById('code-editor').appendChild(container);
-
-    const ed = monaco.editor.create(container, {
-      value: state.code[lang],
-      language: lang === 'lua' ? 'lua' : lang,
-      theme: 'pure-black',
-      automaticLayout: true,
-      fontSize: 13,
-      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
-      fontLigatures: true,
-      minimap: { enabled: false },
-      scrollBeyondLastLine: false,
-      renderLineHighlight: 'line',
-      lineNumbers: 'on',
-      tabSize: 2,
-      wordWrap: 'off',
-      padding: { top: 14 },
-      bracketPairColorization: { enabled: true }
-    });
-
-    ed.onDidChangeModelContent(() => {
-      state.code[lang] = ed.getValue();
-      updateCodeStat();
-    });
-
-    state.editors[lang] = ed;
-  });
-
-  document.getElementById('editor-html').style.display = 'block';
-  showWelcome();
-  loadLuaFiles();
+// Background color picker
+document.getElementById('bg-color').addEventListener('input',function(e){
+  const hex=e.target.value;
+  if(hex==='#000000'){window._setShaderColor('#0a1a2e');document.body.style.background='#000';}
+  else{window._setShaderColor(hex);document.body.style.background=hex;}
 });
+function resetBg(){document.getElementById('bg-color').value='#000000';window._setShaderColor('#0a1a2e');document.body.style.background='#000';}
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  TAB SWITCHING
-// ─────────────────────────────────────────────────────────────────────────────
-function switchTab(lang, el) {
-  state.currentLang = lang;
-  document.querySelectorAll('.code-tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  Object.keys(state.editors).forEach(l => {
-    document.getElementById('editor-' + l).style.display = l === lang ? 'block' : 'none';
+// ─────────────────────────────── TYPING TITLE ────────────────────────────────
+(function(){const T='AI Builder';let i=1,a=true;function u(){document.title=a?T.slice(0,i):T.slice(0,i);if(a){i++;if(i>T.length){a=false;setTimeout(u,1500);return;}}else{i--;if(i===0){a=true;}}setTimeout(u,140);}setTimeout(u,800);})();
+
+// ─────────────────────────────── STATE ───────────────────────────────────────
+const state={
+  history:[],generating:false,
+  code:{html:'',css:'',js:'',lua:''},
+  lang:'html',
+  luaFile:null,luaContent:null,
+  previewLive:false
+};
+const TRACKS=[
+  {n:'Regretful - Leverfall (Slowed)',s:null},
+  {n:'Swing Lynn (Slowed to Perfection)',s:null},
+  {n:'wifiskeleton - Nope your too late',s:null}
+];
+let trackIdx=0;
+
+// ─────────────────────────────── MUSIC ───────────────────────────────────────
+const audio=document.getElementById('audio');
+const playBtn=document.getElementById('play-btn');
+const trackName=document.getElementById('track-name');
+const seekBar=document.getElementById('seek-bar');
+const curTime=document.getElementById('cur-time');
+const durTime=document.getElementById('dur-time');
+const volBar=document.getElementById('vol-bar');
+const visBars=document.getElementById('vis-bars');
+
+function fmt(s){if(!isFinite(s))return'0:00';return`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;}
+function loadTrack(i){
+  const t=TRACKS[i];trackName.textContent=t.n;
+  if(t.s){audio.src=t.s;}
+  seekBar.value=0;curTime.textContent='0:00';durTime.textContent='0:00';
+}
+function togglePlay(){
+  if(audio.paused){audio.play().then(()=>{playBtn.textContent='⏸';visBars.classList.remove('paused');}).catch(()=>{});}
+  else{audio.pause();playBtn.textContent='▶';visBars.classList.add('paused');}
+}
+function prevTrack(){trackIdx=(trackIdx-1+TRACKS.length)%TRACKS.length;loadTrack(trackIdx);}
+function nextTrack(){trackIdx=(trackIdx+1)%TRACKS.length;loadTrack(trackIdx);}
+audio.addEventListener('timeupdate',()=>{if(!isFinite(audio.duration))return;seekBar.value=audio.currentTime/audio.duration*100;curTime.textContent=fmt(audio.currentTime);durTime.textContent=fmt(audio.duration);});
+seekBar.addEventListener('input',()=>{if(isFinite(audio.duration))audio.currentTime=seekBar.value/100*audio.duration;});
+volBar.addEventListener('input',()=>{audio.volume=volBar.value;});
+audio.addEventListener('ended',nextTrack);
+loadTrack(0);
+
+function openMusic(){
+  const pl=document.getElementById('music-player');
+  document.getElementById('music-toggle').style.display='none';
+  pl.style.cssText='display:flex!important;flex-direction:column;gap:10px;width:260px;position:fixed;bottom:16px;left:16px;z-index:50;border-radius:16px;border:1px solid rgba(255,255,255,.1);padding:12px;background:rgba(255,255,255,.04);backdrop-filter:blur(24px)';
+}
+
+// ─────────────────────────────── DRAGGABLE BOXES ─────────────────────────────
+let boxN=0;
+function addBox(title,content,color){
+  boxN++;
+  const box=document.createElement('div');
+  box.className='drag-box';
+  const bg=color||'rgba(255,255,255,.04)';
+  box.style.cssText=`left:${80+boxN*30}px;top:${120+boxN*30}px;width:220px;${color?'background:'+color:''};border:1px solid rgba(255,255,255,.12)`;
+  box.innerHTML=`
+    <div class="drag-head">
+      <span>${title||'Box '+boxN}</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <input type="color" value="#8844ff" title="Box color" style="width:18px;height:18px;border-radius:4px;cursor:pointer;border:none;padding:0;background:none"/>
+        <button class="drag-close" onclick="this.closest('.drag-box').remove()">✕</button>
+      </div>
+    </div>
+    <div class="drag-body" style="font-size:12px;color:rgba(255,255,255,.6)">${content||'Drag me around!'}</div>
+    <svg class="drag-resize" viewBox="0 0 10 10" fill="rgba(255,255,255,.5)"><path d="M9 1L1 9M5 1L1 5M9 5L5 9"/></svg>
+  `;
+  const colorIn=box.querySelector('input[type=color]');
+  colorIn.addEventListener('input',e=>{box.style.background=e.target.value;box.style.backdropFilter='blur(24px)';});
+  // drag
+  box.querySelector('.drag-head').addEventListener('pointerdown',e=>{
+    if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON'||e.target.closest('button'))return;
+    const ox=e.clientX-box.offsetLeft,oy=e.clientY-box.offsetTop;
+    const move=e=>{box.style.left=(e.clientX-ox)+'px';box.style.top=(e.clientY-oy)+'px';};
+    const up=()=>{removeEventListener('pointermove',move);removeEventListener('pointerup',up);};
+    addEventListener('pointermove',move);addEventListener('pointerup',up);e.preventDefault();
   });
-  updateCodeStat();
+  // resize
+  box.querySelector('.drag-resize').addEventListener('pointerdown',e=>{
+    const sx=e.clientX,sy=e.clientY,sw=box.offsetWidth,sh=box.offsetHeight;
+    const move=e=>{box.style.width=Math.max(160,sw+e.clientX-sx)+'px';box.style.height=Math.max(80,sh+e.clientY-sy)+'px';};
+    const up=()=>{removeEventListener('pointermove',move);removeEventListener('pointerup',up);};
+    addEventListener('pointermove',move);addEventListener('pointerup',up);e.preventDefault();
+  });
+  document.body.appendChild(box);
 }
 
-function updateCodeStat() {
-  const lines = (state.code[state.currentLang] || '').split('\n').length;
-  const chars = (state.code[state.currentLang] || '').length;
-  document.getElementById('code-stat').textContent = `${lines} lines · ${chars} chars`;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  PREVIEW
-// ─────────────────────────────────────────────────────────────────────────────
-function buildPreviewDoc() {
-  const html = state.code.html;
-  const css = state.code.css;
-  const js = state.code.javascript;
-
-  if (/<html/i.test(html)) {
-    let doc = html;
-    if (!/<style/i.test(doc) && css.trim()) {
-      doc = doc.replace('</head>', `<style>\n${css}\n</style>\n</head>`);
-    }
-    if (!/<script/i.test(doc) && js.trim()) {
-      doc = doc.replace('</body>', `<script>\n${js}\n<\/script>\n</body>`);
-    }
-    return doc;
-  }
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-${css}
-</style>
-</head>
-<body>
-${html}
-<script>
-${js}
-<\/script>
-</body>
-</html>`;
-}
-
-function applyCode() {
-  const doc = buildPreviewDoc();
-  const iframe = document.getElementById('preview-iframe');
-  const overlay = document.getElementById('preview-overlay');
-
-  iframe.style.display = 'block';
-  overlay.style.display = 'none';
-  state.previewLive = true;
-
-  iframe.srcdoc = doc;
-  document.getElementById('preview-url').value = 'preview://localhost/index.html';
-  showToast('Preview updated', 'success');
-}
-
-function refreshPreview() {
-  if (!state.previewLive) return;
-  applyCode();
-}
-
-function setDevice(device, el) {
-  document.querySelectorAll('.device-btn').forEach(b => b.classList.remove('active'));
+// ─────────────────────────────── CODE EDITOR ─────────────────────────────────
+const codeEditor=document.getElementById('code-editor');
+const langColors={html:'#f0883e',css:'#58a6ff',js:'#d29922',lua:'#bc8cff'};
+function switchTab(lang,el){
+  state.code[state.lang]=codeEditor.value;
+  state.lang=lang;
+  document.querySelectorAll('.code-tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  const wrap = document.getElementById('preview-frame-wrap');
-  const iframe = document.getElementById('preview-iframe');
-  if (device === 'desktop') {
-    iframe.style.width = '100%'; iframe.style.height = '100%';
-    wrap.style.padding = '0'; wrap.style.background = '#fff';
-  } else if (device === 'tablet') {
-    iframe.style.width = '768px'; iframe.style.height = '95%';
-    wrap.style.padding = '14px'; wrap.style.background = '#0a0a0a';
-  } else {
-    iframe.style.width = '390px'; iframe.style.height = '95%';
-    wrap.style.padding = '14px'; wrap.style.background = '#0a0a0a';
+  codeEditor.value=state.code[lang]||'';
+  codeEditor.style.color=langColors[lang]+'cc';
+  updateStat();
+}
+codeEditor.addEventListener('input',()=>{state.code[state.lang]=codeEditor.value;updateStat();});
+function updateStat(){const v=codeEditor.value;document.getElementById('code-stat').textContent=v.split('\n').length+' lines · '+v.length+' ch';}
+codeEditor.style.color='#f0883ecc';
+
+function setCode(lang,val){
+  state.code[lang]=val;
+  if(state.lang===lang)codeEditor.value=val;
+  updateStat();
+}
+
+// ─────────────────────────────── PREVIEW ─────────────────────────────────────
+function applyCode(){
+  state.code[state.lang]=codeEditor.value;
+  const h=state.code.html,c=state.code.css,j=state.code.js;
+  if(!h&&!c&&!j)return;
+  let doc=h;
+  if(!/<html/i.test(doc)){
+    doc=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${c||''}</style></head><body>${doc}<script>${j||''}<\/script></body></html>`;
+  }else{
+    if(c&&!/<style/i.test(doc))doc=doc.replace('</head>',`<style>${c}</style></head>`);
+    if(j&&!/<script/i.test(doc))doc=doc.replace('</body>',`<script>${j}<\/script></body>`);
   }
+  const frame=document.getElementById('preview-frame');
+  const empty=document.getElementById('preview-empty');
+  frame.classList.remove('hidden');empty.style.display='none';
+  frame.srcdoc=doc;
+  document.getElementById('preview-url').value='preview://localhost/index.html';
+  state.previewLive=true;
+  toast('Preview updated','success');
+}
+function device(d,el){
+  document.querySelectorAll('#preview-panel .quick-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  const f=document.getElementById('preview-frame');
+  const w=document.getElementById('preview-wrap');
+  if(d==='desktop'){f.style.width='100%';w.style.padding='0';w.style.background='#fff';}
+  else if(d==='tablet'){f.style.width='768px';w.style.padding='12px';w.style.background='#111';}
+  else{f.style.width='390px';w.style.padding='12px';w.style.background='#111';}
+}
+function copyCode(){navigator.clipboard.writeText(codeEditor.value);toast('Copied!');}
+function dlCode(){const e={html:'html',css:'css',js:'js',lua:'lua'};const b=new Blob([codeEditor.value],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='code.'+e[state.lang];a.click();toast('Downloaded!');}
+
+// ─────────────────────────────── CHAT ────────────────────────────────────────
+const chatIn=document.getElementById('chat-in');
+const sendBtn=document.getElementById('send-btn');
+const msgWrap=document.getElementById('chat-messages-inner');
+const chatWrap=document.getElementById('chat-wrap');
+
+function md(text){
+  return text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/```(\w*)\n([\s\S]*?)```/g,(_,l,c)=>`<pre><code>${c}</code></pre>`)
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g,'<em>$1</em>')
+    .replace(/^[\-•] (.+)$/gm,'<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/gs,m=>`<ul style="padding-left:16px;margin:4px 0">${m}</ul>`)
+    .replace(/\n\n/g,'<br><br>').replace(/\n/g,'<br>');
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  CODE ACTIONS
-// ─────────────────────────────────────────────────────────────────────────────
-function clearCode() {
-  const ed = state.editors[state.currentLang];
-  ed.setValue('');
-  showToast('Editor cleared');
+function addMsg(role,text,extra){
+  const d=document.createElement('div');
+  d.style.cssText='display:flex;flex-direction:column;gap:3px;align-items:'+(role==='user'?'flex-end':'flex-start');
+  const bubble=document.createElement('div');
+  bubble.className=role==='user'?'msg-user':'msg-ai';
+  bubble.innerHTML=role==='ai'?md(text):text.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  d.appendChild(bubble);
+  if(extra){d.appendChild(extra);}
+  msgWrap.appendChild(d);
+  chatWrap.scrollTop=chatWrap.scrollHeight;
+  return {el:d,bubble};
 }
 
-function copyCode() {
-  navigator.clipboard.writeText(state.code[state.currentLang]);
-  showToast('Copied to clipboard', 'success');
+function extractCode(text){
+  const r={html:null,css:null,js:null,lua:null};
+  const re=/```(html|css|javascript|js|lua)\s*\n([\s\S]*?)```/gi;
+  let m;while((m=re.exec(text))!==null){
+    const l=m[1].toLowerCase(),c=m[2];
+    if(l==='html')r.html=c;
+    else if(l==='css')r.css=c;
+    else if(l==='javascript'||l==='js')r.js=c;
+    else if(l==='lua')r.lua=c;
+  }
+  return r;
 }
 
-function downloadCode() {
-  const ext = { html: 'html', css: 'css', javascript: 'js', lua: 'lua' };
-  const blob = new Blob([state.code[state.currentLang]], { type: 'text/plain' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = `website.${ext[state.currentLang]}`; a.click();
-  showToast('Downloaded', 'success');
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  CHAT
-// ─────────────────────────────────────────────────────────────────────────────
-const chatEl = document.getElementById('chat-messages');
-const inputEl = document.getElementById('chat-input');
-const sendBtn = document.getElementById('send-btn');
-
-function showWelcome() {
-  addMessage('ai', `**Welcome — I build websites & Lua tools.**
-
-Powered by **Z.ai GLM**, I can:
-
-• Build complete websites (HTML + CSS + JS)
-• Use Roblox Lua obfuscation tools
-• Add backend API calls & endpoints
-• Import and modify Lua scripts
-
-**Try:**
-- *"Create a cyberpunk dashboard with charts"*
-- *"Build a Lua obfuscator web UI"*
-- *"Show me the available Lua files"*
-
-What shall we build?`);
-}
-
-function addMessage(role, content, extracted = null) {
-  const div = document.createElement('div');
-  div.className = `msg msg-${role}`;
-  if (role === 'ai' && state.chatHistory.length === 0) div.classList.add('welcome-msg');
-  const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  let html = `<div class="msg-bubble">${role === 'ai' ? renderMarkdown(content) : escapeHtml(content)}</div>`;
-  html += `<div class="msg-meta">${now}</div>`;
-  div.innerHTML = html;
-  chatEl.appendChild(div);
-  chatEl.scrollTop = chatEl.scrollHeight;
-  return div;
-}
-
-function applyExtracted(ex) {
-  if (ex.html) { state.code.html = ex.html; state.editors.html.setValue(ex.html); }
-  if (ex.css)  { state.code.css  = ex.css;  state.editors.css.setValue(ex.css); }
-  if (ex.js)   { state.code.javascript = ex.js; state.editors.javascript.setValue(ex.js); }
+function applyExtracted(ex){
+  if(ex.html)setCode('html',ex.html);
+  if(ex.css)setCode('css',ex.css);
+  if(ex.js)setCode('js',ex.js);
   applyCode();
 }
 
-function loadExtractedLua(lua) {
-  state.code.lua = lua;
-  state.editors.lua.setValue(lua);
-  switchTab('lua', document.querySelector('[data-lang="lua"]'));
-  showToast('Lua code loaded', 'success');
-}
-
-function extractCode(text) {
-  const result = { html: null, css: null, js: null, lua: null };
-  const blockRe = /```(html|css|javascript|js|lua|javascript-backend)\s*\n([\s\S]*?)```/gi;
-  let m;
-  while ((m = blockRe.exec(text)) !== null) {
-    const lang = m[1].toLowerCase();
-    const code = m[2];
-    if (lang === 'html') result.html = code;
-    else if (lang === 'css') result.css = code;
-    else if (lang === 'javascript' || lang === 'js') result.js = code;
-    else if (lang === 'lua') result.lua = code;
+function mkApplyBar(ex){
+  const bar=document.createElement('div');
+  bar.style.cssText='display:flex;gap:6px;margin-top:6px;flex-wrap:wrap';
+  if(ex.html||ex.css||ex.js){
+    const b=document.createElement('button');b.className='apply-btn';b.textContent='⚡ Apply to Preview';
+    b.onclick=()=>applyExtracted(ex);bar.appendChild(b);
   }
-  return result;
+  if(ex.lua){
+    const b=document.createElement('button');b.className='apply-btn';b.textContent='🔮 Load Lua';
+    b.onclick=()=>{setCode('lua',ex.lua);switchTab('lua',document.querySelector('[data-lang="lua"]'));toast('Lua loaded!');};
+    bar.appendChild(b);
+  }
+  return bar;
 }
 
-function renderMarkdown(text) {
-  return text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
-      `<pre><code class="lang-${lang}">${code}</code></pre>`)
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/^[\-•] (.+)$/gm, '<li>$1</li>')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/^(?!<[hlu]|<pre|<li)(.+)$/gm, (match) => match.startsWith('<') ? match : `<p>${match}</p>`)
-    .replace(/<li>.*<\/li>/gs, m => `<ul>${m}</ul>`);
+let typing=null;
+function showTyping(){
+  typing=document.createElement('div');
+  typing.style.cssText='display:flex;gap:4px;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px 12px 12px 4px;width:fit-content';
+  typing.innerHTML='<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+  msgWrap.appendChild(typing);chatWrap.scrollTop=chatWrap.scrollHeight;
 }
+function hideTyping(){if(typing){typing.remove();typing=null;}}
 
-function escapeHtml(t) {
-  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-let typingEl = null;
-function showTyping() {
-  typingEl = document.createElement('div');
-  typingEl.className = 'msg msg-ai';
-  typingEl.innerHTML = `<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>`;
-  chatEl.appendChild(typingEl);
-  chatEl.scrollTop = chatEl.scrollHeight;
-}
-function hideTyping() {
-  if (typingEl) { typingEl.remove(); typingEl = null; }
-}
-
-async function sendMessage() {
-  const text = inputEl.value.trim();
-  if (!text || state.isGenerating) return;
-
-  inputEl.value = '';
-  autoResizeInput();
-  addMessage('user', text);
-  state.chatHistory.push({ role: 'user', content: text });
-
+async function sendMsg(){
+  const text=chatIn.value.trim();
+  if(!text||state.generating)return;
+  chatIn.value='';chatIn.style.height='auto';
+  addMsg('user',text);
+  state.history.push({role:'user',content:text});
   await generate();
 }
 
-async function generate() {
-  state.isGenerating = true;
-  sendBtn.disabled = true;
-  showTyping();
-
-  const model = document.getElementById('model-select').value || 'glm-4.7';
-
-  try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: state.chatHistory, model })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      hideTyping();
-      addMessage('ai', `❌ Error: ${err.error || res.statusText}`);
-      return;
-    }
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let fullText = '';
-    let buffer = '';
-
+async function generate(){
+  state.generating=true;sendBtn.disabled=true;showTyping();
+  const model=document.getElementById('model-sel').value;
+  try{
+    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({messages:state.history,model})});
+    if(!res.ok){const e=await res.json().catch(()=>({error:res.statusText}));hideTyping();addMsg('ai','❌ Error: '+(e.error||res.statusText));return;}
+    const reader=res.body.getReader();const dec=new TextDecoder();
+    let full='',buf='';
     hideTyping();
-    const msgEl = document.createElement('div');
-    msgEl.className = 'msg msg-ai';
-    const bubble = document.createElement('div');
-    bubble.className = 'msg-bubble';
-    const meta = document.createElement('div');
-    meta.className = 'msg-meta';
-    meta.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    msgEl.appendChild(bubble);
-    msgEl.appendChild(meta);
-    chatEl.appendChild(msgEl);
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') break;
-        try {
-          const parsed = JSON.parse(data);
-          const delta = parsed.choices?.[0]?.delta?.content || '';
-          fullText += delta;
-          bubble.innerHTML = renderMarkdown(fullText);
-          chatEl.scrollTop = chatEl.scrollHeight;
-        } catch {}
+    const {el,bubble}=addMsg('ai','');
+    while(true){
+      const{done,value}=await reader.read();if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split('\n');buf=lines.pop();
+      for(const line of lines){
+        if(!line.startsWith('data: '))continue;
+        const d=line.slice(6).trim();if(d==='[DONE]')break;
+        try{const p=JSON.parse(d);const delta=p.choices?.[0]?.delta?.content||'';full+=delta;bubble.innerHTML=md(full);chatWrap.scrollTop=chatWrap.scrollHeight;}catch{}
       }
     }
-
-    const extracted = extractCode(fullText);
-    const hasCode = extracted.html || extracted.css || extracted.js || extracted.lua;
-
-    if (hasCode) {
-      const bar = document.createElement('div');
-      bar.className = 'code-apply-bar';
-      if (extracted.html || extracted.css || extracted.js) {
-        const btn = document.createElement('button');
-        btn.className = 'code-apply-btn';
-        btn.textContent = '⚡ Apply & Preview';
-        btn.onclick = () => applyExtracted(extracted);
-        bar.appendChild(btn);
-      }
-      if (extracted.lua) {
-        const btn = document.createElement('button');
-        btn.className = 'code-apply-btn';
-        btn.textContent = '🔮 Load Lua';
-        btn.onclick = () => loadExtractedLua(extracted.lua);
-        bar.appendChild(btn);
-      }
-      msgEl.appendChild(bar);
-    }
-
-    state.chatHistory.push({ role: 'assistant', content: fullText });
-
-    if (extracted.html && !state.previewLive) {
-      applyExtracted(extracted);
-    }
-
-  } catch (err) {
-    hideTyping();
-    addMessage('ai', `❌ Network error: ${err.message}`);
-  } finally {
-    state.isGenerating = false;
-    sendBtn.disabled = false;
-    inputEl.focus();
-  }
+    const ex=extractCode(full);
+    if(ex.html||ex.css||ex.js||ex.lua){el.appendChild(mkApplyBar(ex));}
+    if(ex.html&&!state.previewLive)applyExtracted(ex);
+    state.history.push({role:'assistant',content:full});
+  }catch(err){hideTyping();addMsg('ai','❌ '+err.message);}
+  finally{state.generating=false;sendBtn.disabled=false;chatIn.focus();}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  LUA FILE BROWSER
-// ─────────────────────────────────────────────────────────────────────────────
-let luaDrawerOpen = false;
+function q(msg){chatIn.value=msg;sendMsg();}
 
-async function loadLuaFiles() {
-  try {
-    const res = await fetch('/api/lua-files');
-    const { files } = await res.json();
-    const list = document.getElementById('lua-file-list');
-    list.innerHTML = files.map(f => `
-      <div class="lua-file-item" onclick="openLuaFile('${f.name}')">
-        <span>📄</span>
-        <span class="lua-file-name">${f.name}</span>
-        <span class="lua-file-size">${formatBytes(f.size)}</span>
-        <span class="lua-file-load">view</span>
-      </div>`).join('');
-  } catch {}
+chatIn.addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px';});
+chatIn.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}});
+
+// ─────────────────────────────── LUA FILES ───────────────────────────────────
+async function loadLuaFiles(){
+  try{
+    const r=await fetch('/api/lua-files');const{files}=await r.json();
+    const list=document.getElementById('lua-list');
+    list.innerHTML=files.map(f=>`<div class="lua-item" onclick="openLua('${f.name}')">
+      <span style="opacity:.4;font-size:11px">📄</span>
+      <span style="flex:1;color:rgba(255,255,255,.7);font-family:ui-monospace,monospace;font-size:11px">${f.name}</span>
+      <span style="font-size:10px;color:rgba(255,255,255,.3)">${fmtBytes(f.size)}</span>
+    </div>`).join('');
+  }catch{}
 }
-
-function toggleLuaDrawer() {
-  luaDrawerOpen = !luaDrawerOpen;
-  document.getElementById('lua-file-list').style.display = luaDrawerOpen ? 'block' : 'none';
-  document.getElementById('lua-drawer-chevron').style.transform = luaDrawerOpen ? 'rotate(180deg)' : '';
+function fmtBytes(b){return b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toFixed(1)+'MB';}
+let luaDrawerOpen=false;
+function toggleLua(){
+  luaDrawerOpen=!luaDrawerOpen;
+  document.getElementById('lua-list').classList.toggle('hidden',!luaDrawerOpen);
+  document.getElementById('lua-chevron').style.transform=luaDrawerOpen?'rotate(180deg)':'';
 }
-
-async function openLuaFile(name) {
-  try {
-    const res = await fetch(`/api/lua-file?name=${encodeURIComponent(name)}`);
-    if (!res.ok) { showToast('Could not load file', 'error'); return; }
-    const { content, truncated } = await res.json();
-    state.currentLuaFile = name;
-    state.luaFileContent = content;
-
-    document.getElementById('lua-modal-title').textContent = name + (truncated ? ' (truncated)' : '');
-    document.getElementById('lua-modal-content').innerHTML = highlightLua(content);
+async function openLua(name){
+  try{
+    const r=await fetch('/api/lua-file?name='+encodeURIComponent(name));
+    const{content,truncated}=await r.json();
+    state.luaFile=name;state.luaContent=content;
+    document.getElementById('lua-modal-title').textContent=name+(truncated?' (truncated)':'');
+    document.getElementById('lua-modal-content').textContent=content;
     document.getElementById('lua-modal').classList.add('open');
-  } catch (e) {
-    showToast('Error: ' + e.message, 'error');
-  }
+  }catch(e){toast('Error: '+e.message,'error');}
 }
+function closeLuaModal(){document.getElementById('lua-modal').classList.remove('open');}
+function loadLuaToEditor(){if(!state.luaContent)return;setCode('lua',state.luaContent);switchTab('lua',document.querySelector('[data-lang="lua"]'));closeLuaModal();toast(state.luaFile+' loaded!');}
+function askAboutLua(){if(!state.luaFile)return;closeLuaModal();const snip=(state.luaContent||'').slice(0,2000);chatIn.value=`Tell me about ${state.luaFile} and build a web UI for it:\n\`\`\`lua\n${snip}\n\`\`\``;sendMsg();}
+document.getElementById('lua-modal').addEventListener('click',e=>{if(e.target===document.getElementById('lua-modal'))closeLuaModal();});
 
-function closeLuaModal() {
-  document.getElementById('lua-modal').classList.remove('open');
-}
-
-function loadLuaToEditor() {
-  if (!state.luaFileContent) return;
-  state.code.lua = state.luaFileContent;
-  state.editors.lua.setValue(state.luaFileContent);
-  switchTab('lua', document.querySelector('[data-lang="lua"]'));
-  closeLuaModal();
-  showToast(`${state.currentLuaFile} loaded`, 'success');
-}
-
-function askAIAboutLua() {
-  if (!state.currentLuaFile) return;
-  closeLuaModal();
-  const snippet = (state.luaFileContent || '').slice(0, 2000);
-  const msg = `Tell me about this Lua file: **${state.currentLuaFile}**\n\nHere's the beginning:\n\`\`\`lua\n${snippet}\n\`\`\`\n\nWhat does it do, how can I use it, and can you build a web UI to interact with it?`;
-  inputEl.value = msg;
-  sendMessage();
-}
-
-function highlightLua(code) {
-  const kws = /\b(local|function|end|if|then|else|elseif|for|do|while|repeat|until|return|break|not|and|or|in|nil|true|false)\b/g;
-  return escapeHtml(code)
-    .replace(kws, '<span class="kw">$1</span>')
-    .replace(/(--[^\n]*)/g, '<span class="cmt">$1</span>')
-    .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, '<span class="str">$1</span>')
-    .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="num">$1</span>');
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  QUICK ACTIONS
-// ─────────────────────────────────────────────────────────────────────────────
-function quickMsg(msg) {
-  inputEl.value = msg;
-  sendMessage();
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  RESIZER
-// ─────────────────────────────────────────────────────────────────────────────
-function makeResizer(resizerId, panelAId, panelBId) {
-  const resizer = document.getElementById(resizerId);
-  const panelA = document.getElementById(panelAId);
-  const panelB = document.getElementById(panelBId);
-  let startX, startAW, startBW;
-
-  resizer.addEventListener('mousedown', e => {
-    startX = e.clientX;
-    startAW = panelA.offsetWidth;
-    startBW = panelB.offsetWidth;
-    resizer.classList.add('active');
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'col-resize';
-
-    const onMove = e => {
-      const dx = e.clientX - startX;
-      const newAW = Math.max(220, startAW + dx);
-      const newBW = Math.max(220, startBW - dx);
-      panelA.style.width = newAW + 'px';
-      panelA.style.flex = 'none';
-      panelB.style.width = newBW + 'px';
-      panelB.style.flex = 'none';
-    };
-    const onUp = () => {
-      resizer.classList.remove('active');
-      document.body.style.userSelect = '';
-      document.body.style.cursor = '';
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-    e.preventDefault();
+// ─────────────────────────────── RESIZERS ────────────────────────────────────
+function mkResizer(id,aId,bId){
+  const r=document.getElementById(id),a=document.getElementById(aId),b=document.getElementById(bId);
+  r.addEventListener('mousedown',e=>{
+    const sx=e.clientX,saw=a.offsetWidth,sbw=b.offsetWidth;
+    r.classList.add('active');document.body.style.userSelect='none';document.body.style.cursor='col-resize';
+    const mv=e=>{const dx=e.clientX-sx;a.style.width=Math.max(180,saw+dx)+'px';a.style.flex='none';b.style.width=Math.max(180,sbw-dx)+'px';b.style.flex='none';};
+    const up=()=>{r.classList.remove('active');document.body.style.userSelect='';document.body.style.cursor='';removeEventListener('mousemove',mv);removeEventListener('mouseup',up);};
+    addEventListener('mousemove',mv);addEventListener('mouseup',up);e.preventDefault();
   });
 }
+mkResizer('r1','chat-panel','preview-panel');
+mkResizer('r2','preview-panel','code-panel');
 
-makeResizer('resizer-1', 'chat-panel', 'preview-panel');
-makeResizer('resizer-2', 'preview-panel', 'code-panel');
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  UTILS
-// ─────────────────────────────────────────────────────────────────────────────
-function showToast(msg, type = '') {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'show ' + type;
-  clearTimeout(t._timeout);
-  t._timeout = setTimeout(() => t.className = '', 2500);
+// ─────────────────────────────── TOAST ───────────────────────────────────────
+function toast(msg,type=''){
+  const t=document.getElementById('toast');t.textContent=msg;
+  t.className='show'+(type?' '+type:'');
+  if(type==='success')t.style.borderColor='#3fb950';
+  else if(type==='error')t.style.borderColor='#f85149';
+  else t.style.borderColor='rgba(255,255,255,.12)';
+  clearTimeout(t._t);t._t=setTimeout(()=>{t.className='';},2500);
 }
 
-function formatBytes(b) {
-  if (b < 1024) return b + 'B';
-  if (b < 1024*1024) return (b/1024).toFixed(1) + 'KB';
-  return (b/1024/1024).toFixed(1) + 'MB';
+// ─────────────────────────────── WELCOME ─────────────────────────────────────
+function welcome(){
+  addMsg('ai',`👋 **Welcome to AI Builder**
+
+Powered by **Z.ai GLM** — I build websites using the exact **mxx3x stack**:
+
+🟦 **React 18** + **Vite** + **Tailwind CSS**
+🎨 **WebGL shaders** for animated backgrounds
+📦 **Draggable colored boxes** (pure pointer events)
+🎵 **Native Audio API** music player
+⚡ Pure black glass aesthetic
+
+**Try the quick buttons below, or just type anything:**
+- *"Build me a portfolio like mxx3x"*
+- *"Create a Roblox script hub UI"*
+- *"Add a WebGL particle background"*
+- *"Make a glass dashboard with charts"*`);
 }
 
-function autoResizeInput() {
-  inputEl.style.height = 'auto';
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
-}
-
-inputEl.addEventListener('input', autoResizeInput);
-inputEl.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
-});
-
-document.getElementById('lua-modal').addEventListener('click', e => {
-  if (e.target === document.getElementById('lua-modal')) closeLuaModal();
-});
-
-fetch('/api/health').then(r => r.json()).then(d => {
-  const ind = document.getElementById('status-indicator');
-  if (d.status === 'ok') {
-    ind.style.background = 'var(--green)';
-    ind.style.boxShadow = '0 0 8px var(--green)';
-  }
-}).catch(() => {
-  const ind = document.getElementById('status-indicator');
-  ind.style.background = 'var(--red)';
-  ind.style.boxShadow = '0 0 8px var(--red)';
-});
+// ─────────────────────────────── INIT ────────────────────────────────────────
+welcome();
+loadLuaFiles();
+fetch('/api/health').catch(()=>{document.getElementById('status-dot').style.background='#f85149';});
 </script>
 </body>
 </html>
