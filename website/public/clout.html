@@ -3,348 +3,111 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>@clout</title>
+<title>@</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --p:#b16fff;--c:#22d3ee;--pk:#f472b6;--g:#4ade80;
-  --glass:rgba(255,255,255,.04);--glass2:rgba(255,255,255,.07);
-  --border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.14);
-  --muted:rgba(255,255,255,.38);--text:rgba(255,255,255,.9);
-}
-html{scroll-behavior:smooth}
-body{background:#000;color:var(--text);font-family:'Inter',ui-sans-serif,system-ui,sans-serif;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-#bg{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.9}
+html,body{background:#000;color:#fff;font-family:ui-sans-serif,system-ui,sans-serif;height:100%;overflow:hidden;-webkit-font-smoothing:antialiased}
+#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
 
-/* scrollbar */
-::-webkit-scrollbar{width:2px}::-webkit-scrollbar-thumb{background:rgba(177,111,255,.3);border-radius:2px}
+/* ── draggable boxes ── */
+.box{position:fixed;z-index:100;min-width:200px;min-height:80px;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.07)}
+.box-head{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.5);cursor:grab;user-select:none;border-bottom:1px solid rgba(255,255,255,.06);gap:8px;background:rgba(0,0,0,.25)}
+.box-head:active{cursor:grabbing}
+.box-body{padding:14px;font-size:12px;color:rgba(255,255,255,.65);line-height:1.7;overflow:auto;max-height:280px}
+.box-resize{position:absolute;bottom:3px;right:3px;width:13px;height:13px;cursor:se-resize;opacity:.18;transition:.15s}
+.box-resize:hover{opacity:.7}
+.box-resize svg{width:13px;height:13px}
+.box-close{background:none;border:none;color:rgba(255,255,255,.3);cursor:pointer;font-size:13px;line-height:1;padding:0;transition:.15s;flex-shrink:0}
+.box-close:hover{color:#fff}
+input[type=color]{-webkit-appearance:none;width:17px;height:17px;border:none;border-radius:4px;cursor:pointer;padding:0;background:none;flex-shrink:0}
+input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+input[type=color]::-webkit-color-swatch{border:none;border-radius:4px}
 
-/* nav */
-#nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:0 max(24px,5vw);height:60px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,.4);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid var(--border)}
-.nav-logo{font-size:15px;font-weight:800;letter-spacing:-.02em;background:linear-gradient(90deg,var(--p),var(--c));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.nav-links{display:flex;gap:28px}
-.nav-links a{font-size:12px;color:var(--muted);text-decoration:none;letter-spacing:.04em;text-transform:uppercase;font-weight:500;transition:.2s}
-.nav-links a:hover{color:#fff}
-.nav-dot{width:7px;height:7px;border-radius:50%;background:var(--g);box-shadow:0 0 10px var(--g);animation:pulse-dot 2s infinite}
-@keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.8)}}
+/* ── tags ── */
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:100px;font-size:10.5px;font-weight:600;border:1px solid;margin:3px 2px;transition:.15s}
+.tag:hover{opacity:.8}
 
-/* sections */
-.section{position:relative;z-index:1;padding:100px max(24px,5vw);max-width:1100px;margin:0 auto}
-
-/* hero */
-#hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding-top:120px;padding-bottom:60px}
-.hero-eyebrow{display:flex;align-items:center;gap:10px;margin-bottom:24px}
-.eyebrow-line{width:28px;height:1px;background:linear-gradient(90deg,transparent,var(--p))}
-.eyebrow-text{font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:var(--p);font-weight:600}
-.hero-title{font-size:clamp(4rem,13vw,9rem);font-weight:900;line-height:.9;letter-spacing:-.05em;margin-bottom:28px}
-.hero-title span{display:block}
-.t-white{color:#fff}
-.t-grad{background:linear-gradient(135deg,var(--p) 0%,var(--c) 50%,var(--pk) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.hero-sub{font-size:clamp(14px,2vw,17px);color:var(--muted);line-height:1.7;max-width:500px;margin-bottom:40px;font-weight:300}
-.hero-sub strong{color:var(--c);font-weight:500}
-.hero-btns{display:flex;gap:12px;flex-wrap:wrap}
-.btn-main{display:inline-flex;align-items:center;gap:8px;padding:13px 26px;border-radius:12px;font-size:13px;font-weight:700;text-decoration:none;background:linear-gradient(135deg,var(--p),var(--c));color:#fff;transition:all .25s;box-shadow:0 0 30px rgba(177,111,255,.25)}
-.btn-main:hover{transform:translateY(-2px);box-shadow:0 8px 40px rgba(177,111,255,.45)}
-.btn-ghost{display:inline-flex;align-items:center;gap:8px;padding:13px 26px;border-radius:12px;font-size:13px;font-weight:600;text-decoration:none;background:var(--glass);color:var(--muted);border:1px solid var(--border2);transition:all .25s;backdrop-filter:blur(12px)}
-.btn-ghost:hover{color:#fff;border-color:rgba(177,111,255,.4);background:rgba(177,111,255,.08)}
-
-/* section headers */
-.sec-label{font-size:9.5px;text-transform:uppercase;letter-spacing:.2em;font-weight:700;margin-bottom:6px}
-.sec-title{font-size:clamp(1.6rem,3.5vw,2.4rem);font-weight:800;letter-spacing:-.03em;margin-bottom:40px;line-height:1.1}
-
-/* glass card */
-.card{background:var(--glass);border:1px solid var(--border);border-radius:18px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);transition:all .3s}
-.card:hover{background:var(--glass2);border-color:var(--border2);transform:translateY(-3px);box-shadow:0 16px 48px rgba(0,0,0,.4)}
-
-/* skills */
-.skill-group{margin-bottom:32px}
-.skill-label{font-size:9.5px;text-transform:uppercase;letter-spacing:.16em;color:var(--muted);font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:10px}
-.skill-label::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent)}
-.tags{display:flex;flex-wrap:wrap;gap:8px}
-.tag{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:100px;font-size:11.5px;font-weight:600;border:1px solid;letter-spacing:.01em;transition:all .2s;cursor:default}
-.tag:hover{transform:translateY(-2px)}
-.tag-p{background:rgba(177,111,255,.1);border-color:rgba(177,111,255,.25);color:var(--p)}
-.tag-c{background:rgba(34,211,238,.08);border-color:rgba(34,211,238,.22);color:var(--c)}
-.tag-pk{background:rgba(244,114,182,.08);border-color:rgba(244,114,182,.22);color:var(--pk)}
-.tag-g{background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.22);color:var(--g)}
-.tag-w{background:rgba(255,255,255,.04);border-color:var(--border2);color:rgba(255,255,255,.55)}
-
-/* projects */
-.proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
-.proj-card{border-radius:18px;padding:24px;background:var(--glass);border:1px solid var(--border);backdrop-filter:blur(20px);transition:all .3s;cursor:default;position:relative;overflow:hidden}
-.proj-card::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 80% 20%,rgba(177,111,255,.07),transparent 60%);opacity:0;transition:.3s}
-.proj-card:hover{transform:translateY(-4px);border-color:rgba(177,111,255,.3);box-shadow:0 12px 48px rgba(177,111,255,.12)}
-.proj-card:hover::before{opacity:1}
-.proj-icon{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:16px;border:1px solid var(--border)}
-.proj-name{font-size:14px;font-weight:700;color:#fff;margin-bottom:8px;letter-spacing:-.01em}
-.proj-desc{font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:16px}
-.proj-tags{display:flex;gap:6px;flex-wrap:wrap}
-.ptag{font-size:10px;padding:2px 9px;border-radius:100px;font-weight:600}
-
-/* stat */
-.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:80px}
-.stat-card{padding:24px 20px;border-radius:16px;text-align:center;background:var(--glass);border:1px solid var(--border);backdrop-filter:blur(20px);position:relative;overflow:hidden}
-.stat-card::after{content:'';position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:60%;height:1px;background:linear-gradient(90deg,transparent,var(--p),transparent)}
-.stat-n{font-size:2.4rem;font-weight:900;letter-spacing:-.04em;background:linear-gradient(135deg,var(--p),var(--c));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1}
-.stat-l{font-size:9.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-top:6px;font-weight:500}
-
-/* divider */
-.divider{width:100%;height:1px;background:linear-gradient(90deg,transparent,var(--border2),transparent);margin:0 auto}
-
-/* music player — fixed right */
-#player{position:fixed;right:20px;top:50%;transform:translateY(-50%);z-index:200;width:230px;border-radius:20px;padding:18px;background:rgba(8,0,20,.7);border:1px solid rgba(177,111,255,.2);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);box-shadow:0 0 60px rgba(177,111,255,.08);display:flex;flex-direction:column;gap:11px}
-.p-label{font-size:8.5px;text-transform:uppercase;letter-spacing:.2em;color:rgba(255,255,255,.28);font-weight:700}
-.p-track{display:flex;align-items:center;gap:10px}
-.p-art{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--p),var(--c));display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;box-shadow:0 0 16px rgba(177,111,255,.35)}
-.p-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
-.p-artist{font-size:10px;color:rgba(255,255,255,.3);margin-top:1px}
-.p-bars{display:flex;align-items:flex-end;gap:2px;height:16px;flex-shrink:0}
-.bar{width:2.5px;border-radius:2px;animation:bu 1s ease-in-out infinite}
-.bar:nth-child(1){background:var(--p);animation-delay:0s}.bar:nth-child(2){background:var(--c);animation-delay:.13s}.bar:nth-child(3){background:var(--pk);animation-delay:.27s}.bar:nth-child(4){background:var(--p);animation-delay:.08s}.bar:nth-child(5){background:var(--c);animation-delay:.22s}
+/* ── music player ── */
+#player{position:fixed;bottom:16px;left:16px;z-index:300;width:260px;border-radius:18px;padding:14px;background:rgba(6,0,14,.85);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);box-shadow:0 8px 40px rgba(0,0,0,.6)}
+.mini-player-label{font-size:9px;text-transform:uppercase;letter-spacing:.18em;color:rgba(255,255,255,.3);font-weight:700;margin-bottom:8px}
+.mini-player-track{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.mini-player-icon{width:32px;height:32px;border-radius:9999px;background:#ffffff1f;border:1px solid rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.mini-player-info{flex:1;min-width:0}
+.mini-player-title{font-size:12px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.mini-player-label2{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.88)}
+.mini-player-bars{display:flex;align-items:flex-end;gap:3px;height:16px;flex-shrink:0}
+.bar{width:3px;border-radius:2px;animation:bu 1s ease-in-out infinite}
+.bar:nth-child(1){background:#a855f7;animation-delay:0s}.bar:nth-child(2){background:#06b6d4;animation-delay:.15s}.bar:nth-child(3){background:#ec4899;animation-delay:.3s}.bar:nth-child(4){background:#a855f7;animation-delay:.09s}.bar:nth-child(5){background:#06b6d4;animation-delay:.24s}
 @keyframes bu{0%,100%{height:3px}50%{height:14px}}
-.bars-paused .bar{animation:none!important;height:3px!important}
-.p-seek{-webkit-appearance:none;appearance:none;width:100%;height:2.5px;border-radius:2px;background:rgba(255,255,255,.1);outline:none;cursor:pointer;transition:.2s}
-.p-seek::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;border-radius:50%;background:var(--p);cursor:pointer;box-shadow:0 0 8px rgba(177,111,255,.8)}
-.p-ctrls{display:flex;align-items:center;justify-content:center;gap:8px}
-.pc{width:28px;height:28px;border-radius:50%;border:1px solid rgba(177,111,255,.25);background:rgba(177,111,255,.08);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .15s;flex-shrink:0}
-.pc:hover{background:rgba(177,111,255,.25);box-shadow:0 0 10px rgba(177,111,255,.35)}
-.pc.main{width:34px;height:34px;background:linear-gradient(135deg,var(--p),var(--c));border:none;font-size:13px;box-shadow:0 0 16px rgba(177,111,255,.4)}
-.pc.main:hover{box-shadow:0 0 24px rgba(177,111,255,.6);transform:scale(1.08)}
-.p-vol{display:flex;align-items:center;gap:6px}
-.p-time{font-size:9.5px;color:rgba(255,255,255,.3);min-width:28px;text-align:right}
-.p-url{width:100%;background:rgba(0,0,0,.5);border:1px solid rgba(177,111,255,.15);border-radius:7px;color:rgba(255,255,255,.6);font-size:9.5px;padding:5px 9px;outline:none;font-family:inherit;transition:.2s}
-.p-url:focus{border-color:rgba(177,111,255,.4);color:#fff}
-.p-url::placeholder{color:rgba(255,255,255,.2)}
+.bars-off .bar{animation:none!important;height:3px!important}
+.seek{-webkit-appearance:none;appearance:none;width:100%;height:2.5px;border-radius:2px;background:rgba(255,255,255,.12);outline:none;cursor:pointer;margin-bottom:8px}
+.seek::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;border-radius:50%;background:#a855f7;cursor:pointer;box-shadow:0 0 8px rgba(168,85,247,.8)}
+.p-ctrls{display:flex;align-items:center;gap:7px}
+.pc{width:28px;height:28px;border-radius:50%;border:1px solid rgba(168,85,247,.25);background:rgba(168,85,247,.1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .15s;flex-shrink:0}
+.pc:hover{background:rgba(168,85,247,.3);box-shadow:0 0 10px rgba(168,85,247,.4)}
+.pc.play{width:34px;height:34px;background:linear-gradient(135deg,#a855f7,#3b82f6);border:none;font-size:13px;box-shadow:0 0 16px rgba(168,85,247,.4)}
+.pc.play:hover{box-shadow:0 0 24px rgba(168,85,247,.6);transform:scale(1.07)}
+.mini-player-time{font-size:10px;color:rgba(255,255,255,.6);margin-left:auto}
+.vol{-webkit-appearance:none;appearance:none;width:52px;height:2.5px;border-radius:2px;background:rgba(255,255,255,.12);outline:none;cursor:pointer}
+.vol::-webkit-slider-thumb{-webkit-appearance:none;width:9px;height:9px;border-radius:50%;background:#a855f7;cursor:pointer}
+.url-in{width:100%;background:rgba(0,0,0,.5);border:1px solid rgba(168,85,247,.18);border-radius:6px;color:rgba(255,255,255,.7);font-size:10px;padding:5px 9px;outline:none;font-family:inherit;margin-top:8px;transition:.2s}
+.url-in:focus{border-color:rgba(168,85,247,.5);color:#fff}
+.url-in::placeholder{color:rgba(255,255,255,.2)}
 
-/* typing cursor */
-.cur{display:inline-block;width:3px;height:.85em;background:var(--p);margin-left:2px;animation:cb .75s infinite;vertical-align:middle;border-radius:1px}
-@keyframes cb{0%,100%{opacity:1}50%{opacity:0}}
+/* ── add box btn ── */
+#add-btn{position:fixed;top:16px;left:16px;z-index:300;background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.3);color:rgba(168,85,247,.9);padding:7px 16px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;transition:.2s;backdrop-filter:blur(12px)}
+#add-btn:hover{background:rgba(168,85,247,.25);box-shadow:0 0 16px rgba(168,85,247,.35);color:#fff}
 
-/* about */
-.about-grid{display:grid;grid-template-columns:1fr auto;gap:40px;align-items:center}
-.about-avatar{width:90px;height:90px;border-radius:22px;background:linear-gradient(135deg,var(--p),var(--c),var(--pk));display:flex;align-items:center;justify-content:center;font-size:40px;box-shadow:0 0 40px rgba(177,111,255,.35),0 0 80px rgba(177,111,255,.12);flex-shrink:0}
+/* ── textbox panel ── */
+#txtbox{position:fixed;bottom:16px;right:16px;z-index:300;width:260px;border-radius:16px;background:rgba(6,0,14,.85);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(30px);padding:12px;display:flex;flex-direction:column;gap:8px}
+#txtbox .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.18em;color:rgba(255,255,255,.3);font-weight:700}
+#txt-area{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;color:#fff;font-size:12px;padding:10px 12px;font-family:inherit;resize:none;outline:none;line-height:1.6;transition:.2s;min-height:72px}
+#txt-area:focus{border-color:rgba(168,85,247,.4);background:rgba(168,85,247,.04)}
+#txt-area::placeholder{color:rgba(255,255,255,.2)}
+#txt-send{background:linear-gradient(135deg,#a855f7,#3b82f6);border:none;color:#fff;padding:7px 14px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;transition:.2s;align-self:flex-end}
+#txt-send:hover{box-shadow:0 0 16px rgba(168,85,247,.5);transform:translateY(-1px)}
 
-/* footer */
-footer{position:relative;z-index:1;text-align:center;padding:48px 24px;border-top:1px solid var(--border)}
-footer p{font-size:11px;color:rgba(255,255,255,.18);letter-spacing:.04em}
-footer strong{color:var(--p)}
-
-/* mobile */
-@media(max-width:900px){
-  #player{right:8px;top:auto;bottom:12px;transform:none;width:calc(100vw - 16px)}
-  .about-grid{grid-template-columns:1fr}
-  .about-avatar{display:none}
-  .nav-links{display:none}
-  .stat-n{font-size:1.8rem}
-}
-@media(max-width:600px){
-  .stat-grid{grid-template-columns:repeat(3,1fr)}
-  .proj-grid{grid-template-columns:1fr}
-}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:rgba(168,85,247,.2);border-radius:3px}
 </style>
 </head>
 <body>
-
 <canvas id="bg"></canvas>
 
-<!-- NAV -->
-<nav id="nav">
-  <div class="nav-logo">clout</div>
-  <div class="nav-links">
-    <a href="#skills">Stack</a>
-    <a href="#projects">Projects</a>
-    <a href="#about">About</a>
-  </div>
-  <div class="nav-dot"></div>
-</nav>
+<button id="add-btn" onclick="addBox()">＋ Box</button>
 
 <!-- MUSIC PLAYER -->
 <div id="player">
-  <div class="p-label">Now Playing</div>
-  <div class="p-track">
-    <div class="p-art">🎵</div>
-    <div style="min-width:0;flex:1">
-      <div class="p-name" id="p-name">Ambient I</div>
-      <div class="p-artist">clout · lofi</div>
+  <div class="mini-player-label">Now Playing</div>
+  <div class="mini-player-track">
+    <div class="mini-player-icon">🎵</div>
+    <div class="mini-player-info">
+      <div class="mini-player-label2">clout</div>
+      <div class="mini-player-title" id="p-name">Ambient I</div>
     </div>
-    <div class="p-bars" id="p-bars">
+    <div class="mini-player-bars" id="p-bars">
       <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
     </div>
   </div>
-  <input type="range" class="p-seek" id="p-seek" value="0" min="0" max="100" step="0.1"/>
+  <input type="range" class="seek" id="p-seek" value="0" min="0" max="100" step="0.1"/>
   <div class="p-ctrls">
     <button class="pc" id="p-prev">⏮</button>
-    <button class="pc main" id="p-play">▶</button>
+    <button class="pc play" id="p-play">▶</button>
     <button class="pc" id="p-next">⏭</button>
-    <input type="range" class="p-seek" id="p-vol" min="0" max="1" step="0.01" value="0.5" style="width:50px;margin-left:4px"/>
-    <span class="p-time" id="p-time">0:00</span>
+    <input type="range" class="vol" id="p-vol" min="0" max="1" step="0.01" value="0.5"/>
+    <span class="mini-player-time" id="p-time">0:00</span>
   </div>
-  <input class="p-url" id="p-url" placeholder="Paste any .mp3 URL + Enter"/>
+  <input class="url-in" id="p-url" placeholder="Paste .mp3 URL + Enter to play"/>
 </div>
 
-<!-- HERO -->
-<section class="section" id="hero">
-  <div class="hero-eyebrow">
-    <div class="eyebrow-line"></div>
-    <span class="eyebrow-text">Developer · Creator · Builder</span>
-  </div>
-  <h1 class="hero-title">
-    <span class="t-white">I'm</span>
-    <span class="t-grad">clout.</span>
-  </h1>
-  <p class="hero-sub">
-    <span id="type-sub" style="color:var(--c);font-weight:500"></span><span class="cur"></span><br/>
-    Full-stack developer obsessed with <strong>clean code</strong>, dark UIs, Roblox Lua, and making things that feel alive.
-  </p>
-  <div class="hero-btns">
-    <a href="#projects" class="btn-main">View Projects →</a>
-    <a href="#skills" class="btn-ghost">My Stack</a>
-  </div>
-</section>
-
-<!-- STATS -->
-<div class="section" style="padding-top:0;padding-bottom:0">
-  <div class="stat-grid">
-    <div class="stat-card"><div class="stat-n">50+</div><div class="stat-l">Projects</div></div>
-    <div class="stat-card"><div class="stat-n">∞</div><div class="stat-l">Lines of Code</div></div>
-    <div class="stat-card"><div class="stat-n">24/7</div><div class="stat-l">Building</div></div>
-  </div>
+<!-- TEXTBOX -->
+<div id="txtbox">
+  <div class="lbl">Leave a note</div>
+  <textarea id="txt-area" placeholder="Say something…" rows="3"></textarea>
+  <button id="txt-send">Send ↗</button>
 </div>
-
-<div class="divider"></div>
-
-<!-- SKILLS -->
-<section class="section" id="skills">
-  <div class="sec-label" style="color:var(--p)">What I Use</div>
-  <h2 class="sec-title">My Stack</h2>
-
-  <div class="skill-group">
-    <div class="skill-label">Frontend</div>
-    <div class="tags">
-      <span class="tag tag-p">⚡ JavaScript</span>
-      <span class="tag tag-c">⚛ React</span>
-      <span class="tag tag-c">🌊 Tailwind CSS</span>
-      <span class="tag tag-w">🔷 TypeScript</span>
-      <span class="tag tag-g">▲ Next.js</span>
-      <span class="tag tag-pk">🎨 WebGL / GLSL</span>
-    </div>
-  </div>
-
-  <div class="skill-group">
-    <div class="skill-label">Backend</div>
-    <div class="tags">
-      <span class="tag tag-g">⬡ Node.js</span>
-      <span class="tag tag-w">⚡ Express</span>
-      <span class="tag tag-c">🐍 Python</span>
-      <span class="tag tag-w">🐘 PostgreSQL</span>
-      <span class="tag tag-pk">🍃 MongoDB</span>
-      <span class="tag tag-w">🔴 Redis</span>
-    </div>
-  </div>
-
-  <div class="skill-group">
-    <div class="skill-label">Roblox / Lua</div>
-    <div class="tags">
-      <span class="tag tag-p">🎮 Roblox Studio</span>
-      <span class="tag tag-p">📜 Lua 5.1</span>
-      <span class="tag tag-c">🔒 Script Obfuscation</span>
-      <span class="tag tag-g">🛡 Anti-Cheat</span>
-      <span class="tag tag-pk">🎯 FE Scripts</span>
-      <span class="tag tag-w">🧩 Module Scripts</span>
-    </div>
-  </div>
-
-  <div class="skill-group">
-    <div class="skill-label">Tools & Cloud</div>
-    <div class="tags">
-      <span class="tag tag-w">🐙 Git / GitHub</span>
-      <span class="tag tag-w">▲ Vercel</span>
-      <span class="tag tag-w">🐳 Docker</span>
-      <span class="tag tag-w">☁ Cloudflare</span>
-      <span class="tag tag-c">🤖 AI / LLMs</span>
-    </div>
-  </div>
-</section>
-
-<div class="divider"></div>
-
-<!-- PROJECTS -->
-<section class="section" id="projects">
-  <div class="sec-label" style="color:var(--c)">What I've Built</div>
-  <h2 class="sec-title">Projects</h2>
-
-  <div class="proj-grid">
-
-    <div class="proj-card">
-      <div class="proj-icon" style="background:rgba(177,111,255,.1);border-color:rgba(177,111,255,.2)">🔮</div>
-      <div class="proj-name">AI Website Builder</div>
-      <div class="proj-desc">Full-stack AI that generates, previews, and edits websites live. Streaming AI, WebGL background, code editor.</div>
-      <div class="proj-tags">
-        <span class="ptag" style="background:rgba(177,111,255,.12);color:var(--p);border:1px solid rgba(177,111,255,.25)">Next.js</span>
-        <span class="ptag" style="background:rgba(34,211,238,.08);color:var(--c);border:1px solid rgba(34,211,238,.2)">AI</span>
-        <span class="ptag" style="background:rgba(74,222,128,.08);color:var(--g);border:1px solid rgba(74,222,128,.2)">WebGL</span>
-      </div>
-    </div>
-
-    <div class="proj-card">
-      <div class="proj-icon" style="background:rgba(34,211,238,.08);border-color:rgba(34,211,238,.18)">🎮</div>
-      <div class="proj-name">Lua Obfuscator</div>
-      <div class="proj-desc">Advanced Roblox script protection. XOR encryption, string splitting, control flow obfuscation, VM-style loader.</div>
-      <div class="proj-tags">
-        <span class="ptag" style="background:rgba(177,111,255,.12);color:var(--p);border:1px solid rgba(177,111,255,.25)">Lua</span>
-        <span class="ptag" style="background:rgba(244,114,182,.08);color:var(--pk);border:1px solid rgba(244,114,182,.2)">Security</span>
-      </div>
-    </div>
-
-    <div class="proj-card">
-      <div class="proj-icon" style="background:rgba(74,222,128,.06);border-color:rgba(74,222,128,.16)">⚡</div>
-      <div class="proj-name">Claude Hub</div>
-      <div class="proj-desc">AI-powered Roblox script hub. Real-time game detection, auto-execution, and a polished dark Lua UI.</div>
-      <div class="proj-tags">
-        <span class="ptag" style="background:rgba(177,111,255,.12);color:var(--p);border:1px solid rgba(177,111,255,.25)">Lua</span>
-        <span class="ptag" style="background:rgba(34,211,238,.08);color:var(--c);border:1px solid rgba(34,211,238,.2)">Roblox</span>
-        <span class="ptag" style="background:rgba(74,222,128,.08);color:var(--g);border:1px solid rgba(74,222,128,.2)">AI</span>
-      </div>
-    </div>
-
-    <div class="proj-card">
-      <div class="proj-icon" style="background:rgba(244,114,182,.06);border-color:rgba(244,114,182,.16)">🌊</div>
-      <div class="proj-name">WebGL Shader Art</div>
-      <div class="proj-desc">Real-time GLSL fragment shaders. Fractal Brownian Motion nebula, animated fog, pure GPU rendering.</div>
-      <div class="proj-tags">
-        <span class="ptag" style="background:rgba(244,114,182,.08);color:var(--pk);border:1px solid rgba(244,114,182,.2)">GLSL</span>
-        <span class="ptag" style="background:rgba(177,111,255,.12);color:var(--p);border:1px solid rgba(177,111,255,.25)">WebGL</span>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-<div class="divider"></div>
-
-<!-- ABOUT -->
-<section class="section" id="about">
-  <div class="sec-label" style="color:var(--pk)">Who I Am</div>
-  <h2 class="sec-title">About</h2>
-  <div class="card about-grid" style="padding:32px">
-    <div>
-      <p style="font-size:15px;color:rgba(255,255,255,.6);line-height:1.9;margin-bottom:16px;font-weight:300">
-        Started in <strong style="color:var(--p);font-weight:600">Roblox Studio</strong>, fell in love with Lua, then expanded to the full web stack. I live for dark UIs, animated interfaces, and pushing limits in both Lua and JavaScript.
-      </p>
-      <p style="font-size:15px;color:rgba(255,255,255,.6);line-height:1.9;font-weight:300">
-        Currently building <strong style="color:var(--c);font-weight:600">AI-powered tools</strong>, WebGL visual art, and Roblox scripts that are actually worth using.
-      </p>
-    </div>
-    <div class="about-avatar">👾</div>
-  </div>
-</section>
-
-<footer>
-  <p>built by <strong>clout</strong> · pure code · no limits</p>
-</footer>
 
 <script>
-// ══ WEBGL — vivid nebula ══════════════════════════════════════════════════════
+// ══ WEBGL ════════════════════════════════════════════════════════════════════
 (function(){
   const c=document.getElementById('bg'),gl=c.getContext('webgl');
   if(!gl)return;
@@ -358,49 +121,96 @@ float fbm(vec2 p){float v=0.,a=.5;mat2 m=mat2(.8,.6,-.6,.8);
   for(int i=0;i<7;i++){v+=a*n(p);p=m*p*2.2;a*=.48;}return v;}
 void main(){
   vec2 uv=(gl_FragCoord.xy-.5*r)/r.y;
-  float tm=t*.12;
+  float tm=t*.1;
   vec2 q=vec2(fbm(uv+vec2(0,0)),fbm(uv+vec2(5.2,1.3)));
-  vec2 s=vec2(fbm(uv+3.*q+vec2(1.7+tm,9.2)),fbm(uv+3.*q+vec2(8.3,2.8+tm*.7)));
-  float f=fbm(uv+2.8*s);
-  f=pow(clamp(f,0.,1.),1.3);
-  vec3 col=mix(vec3(.02,.0,.08),vec3(.45,.1,.8),f);
-  col=mix(col,vec3(.0,.5,.9),pow(f,2.5));
-  col=mix(col,vec3(.9,.2,.6),pow(max(f-.5,0.)*2.,3.));
-  col+=.04*vec3(.6,.3,1.)*fbm(uv*8.+t*.3);
-  col*=min(t*.25,1.);
+  vec2 s=vec2(fbm(uv+2.8*q+vec2(1.7+tm,9.2)),fbm(uv+2.8*q+vec2(8.3,2.8+tm*.7)));
+  float f=fbm(uv+2.5*s);
+  f=pow(clamp(f,0.,1.),1.2);
+  vec3 col=mix(vec3(.01,.0,.05),vec3(.38,.07,.75),f);
+  col=mix(col,vec3(.0,.45,.85),pow(f,2.5));
+  col=mix(col,vec3(.8,.15,.55),pow(max(f-.55,0.)*2.,3.));
+  col*=min(t*.2,1.);col*=.65;
   gl_FragColor=vec4(col,1.);}`;
-  const mk=(t,s)=>{const sh=gl.createShader(t);gl.shaderSource(sh,s);gl.compileShader(sh);return sh;};
-  const prog=gl.createProgram();
-  gl.attachShader(prog,mk(gl.VERTEX_SHADER,vs));
-  gl.attachShader(prog,mk(gl.FRAGMENT_SHADER,fs));
-  gl.linkProgram(prog);gl.useProgram(prog);
-  const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
-  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const mk=(type,src)=>{const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s;};
+  const prog=gl.createProgram();gl.attachShader(prog,mk(gl.VERTEX_SHADER,vs));gl.attachShader(prog,mk(gl.FRAGMENT_SHADER,fs));gl.linkProgram(prog);gl.useProgram(prog);
+  const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
   const loc=gl.getAttribLocation(prog,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
   const tL=gl.getUniformLocation(prog,'t'),rL=gl.getUniformLocation(prog,'r');
   const resize=()=>{c.width=innerWidth;c.height=innerHeight;gl.viewport(0,0,innerWidth,innerHeight);gl.uniform2f(rL,innerWidth,innerHeight);};
   window.addEventListener('resize',resize);resize();
-  let s=0;(function loop(now){requestAnimationFrame(loop);if(!s)s=now;gl.uniform1f(tL,(now-s)/1000);gl.drawArrays(gl.TRIANGLES,0,3);})(0);
+  let s0=0;(function loop(now){requestAnimationFrame(loop);if(!s0)s0=now;gl.uniform1f(tL,(now-s0)/1000);gl.drawArrays(gl.TRIANGLES,0,3);})(0);
 })();
 
-// ══ TYPING TITLE ══════════════════════════════════════════════════════════════
+// ══ TITLE TYPING ═════════════════════════════════════════════════════════════
 (function(){
   const T='@clout';let i=1,fwd=true;
-  (function tick(){document.title=T.slice(0,i);if(fwd){i++;if(i>T.length){fwd=false;setTimeout(tick,2000);return;}}else{i--;if(i<1)fwd=true;}setTimeout(tick,fwd?130:70);})();
+  (function tick(){document.title=T.slice(0,i);if(fwd){i++;if(i>T.length){fwd=false;setTimeout(tick,2200);return;}}else{i--;if(i<1)fwd=true;}setTimeout(tick,fwd?130:65);})();
 })();
 
-// ══ SUBTITLE TYPEWRITER ═══════════════════════════════════════════════════════
-(function(){
-  const lines=['Full-Stack Developer','Roblox Lua Expert','WebGL Shader Artist','AI Tool Builder','Dark UI Obsessed'];
-  let li=0,ci=0,del=false,el=document.getElementById('type-sub');
-  (function tick(){const w=lines[li];if(!del){el.textContent=w.slice(0,++ci);if(ci>=w.length){del=true;setTimeout(tick,1600);return;}}else{el.textContent=w.slice(0,--ci);if(ci<=0){del=false;li=(li+1)%lines.length;}}setTimeout(tick,del?40:85);})();
-})();
+// ══ DRAGGABLE BOXES ══════════════════════════════════════════════════════════
+let zTop=100;
+function makeDraggable(box){
+  const head=box.querySelector('.box-head');
+  head.addEventListener('pointerdown',e=>{
+    if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON')return;
+    box.style.zIndex=++zTop;
+    const ox=e.clientX-box.offsetLeft,oy=e.clientY-box.offsetTop;
+    const mv=e=>{box.style.left=Math.max(0,Math.min(innerWidth-box.offsetWidth,e.clientX-ox))+'px';box.style.top=Math.max(0,Math.min(innerHeight-box.offsetHeight,e.clientY-oy))+'px';};
+    const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);};
+    addEventListener('pointermove',mv);addEventListener('pointerup',up);head.setPointerCapture(e.pointerId);
+  });
+  const res=box.querySelector('.box-resize');
+  if(res)res.addEventListener('pointerdown',e=>{
+    e.stopPropagation();
+    const ox=e.clientX-box.offsetWidth,oy=e.clientY-box.offsetHeight;
+    const mv=e=>{box.style.width=Math.max(180,e.clientX-ox)+'px';box.style.height=Math.max(70,e.clientY-oy)+'px';};
+    const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);};
+    addEventListener('pointermove',mv);addEventListener('pointerup',up);res.setPointerCapture(e.pointerId);
+  });
+  const ci=box.querySelector('input[type=color]');
+  if(ci)ci.addEventListener('input',e=>{const v=e.target.value;box.style.background=v;box.querySelector('.box-head').style.background='rgba(0,0,0,.3)';});
+  box.querySelector('.box-close').addEventListener('click',()=>box.remove());
+  box.addEventListener('pointerdown',()=>box.style.zIndex=++zTop);
+}
 
-// ══ MUSIC PLAYER ══════════════════════════════════════════════════════════════
+const PRESETS=[
+  {title:'about.clout',color:'rgba(168,85,247,.08)',w:260,h:'auto',content:`<div style="margin-bottom:10px"><span style="font-size:22px">👾</span></div><div style="font-size:14px;font-weight:800;color:#fff;margin-bottom:6px">clout</div><div style="color:rgba(255,255,255,.5);font-size:12px;line-height:1.7">Full-stack dev · Roblox Lua expert · WebGL nerd. I build dark UIs, AI tools, and scripts that actually work.</div>`},
+  {title:'skills.lua',color:'rgba(6,182,212,.06)',w:280,h:'auto',content:`<div class="tags"><span class="tag" style="background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.3);color:#a855f7">⚡ JavaScript</span><span class="tag" style="background:rgba(34,211,238,.08);border-color:rgba(34,211,238,.25);color:#22d3ee">⚛ React</span><span class="tag" style="background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.22);color:#4ade80">▲ Next.js</span><span class="tag" style="background:rgba(168,85,247,.1);border-color:rgba(168,85,247,.28);color:#a855f7">📜 Lua</span><span class="tag" style="background:rgba(244,114,182,.08);border-color:rgba(244,114,182,.22);color:#f472b6">🎨 WebGL</span><span class="tag" style="background:rgba(168,85,247,.08);border-color:rgba(168,85,247,.2);color:#a855f7">🎮 Roblox</span><span class="tag" style="background:rgba(34,211,238,.06);border-color:rgba(34,211,238,.18);color:#22d3ee">🤖 AI/LLMs</span><span class="tag" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12);color:rgba(255,255,255,.55)">🐳 Docker</span></div>`},
+  {title:'projects.exe',color:'rgba(236,72,153,.06)',w:270,h:'auto',content:`<div style="display:flex;flex-direction:column;gap:10px"><div style="padding:10px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07)"><div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:3px">🔮 AI Website Builder</div><div style="font-size:11px;color:rgba(255,255,255,.4)">Streaming AI · WebGL · Live Preview</div></div><div style="padding:10px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07)"><div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:3px">🎮 Lua Obfuscator</div><div style="font-size:11px;color:rgba(255,255,255,.4)">XOR encryption · Script protection</div></div><div style="padding:10px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07)"><div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:3px">⚡ Claude Hub</div><div style="font-size:11px;color:rgba(255,255,255,.4)">AI-powered Roblox script hub</div></div></div>`},
+  {title:'contact.txt',color:'rgba(74,222,128,.06)',w:230,h:'auto',content:`<div style="display:flex;flex-direction:column;gap:8px"><a href="https://github.com/robloxscripter6245366542" target="_blank" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);text-decoration:none;color:rgba(255,255,255,.7);font-size:12px;transition:.15s" onmouseover="this.style.borderColor='rgba(168,85,247,.4)';this.style.color='#fff'" onmouseout="this.style.borderColor='rgba(255,255,255,.08)';this.style.color='rgba(255,255,255,.7)'"><span style="font-size:15px">🐙</span>GitHub</a></div>`},
+];
+
+const POSITIONS=[[72,80],[360,100],[660,80],[940,200]];
+
+function spawnBox({title,color,w,content},pos){
+  const box=document.createElement('div');
+  box.className='box';
+  box.style.cssText=`left:${pos[0]}px;top:${pos[1]}px;width:${w}px;background:${color};backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)`;
+  box.innerHTML=`
+    <div class="box-head">
+      <input type="color" value="#a855f7" title="Color"/>
+      <span style="flex:1">${title}</span>
+      <button class="box-close">✕</button>
+    </div>
+    <div class="box-body">${content}</div>
+    <div class="box-resize"><svg viewBox="0 0 16 16" fill="none"><path d="M14 2L2 14M14 8L8 14M14 14L14 14" stroke="rgba(255,255,255,.5)" stroke-width="1.5" stroke-linecap="round"/></svg></div>`;
+  document.body.appendChild(box);
+  makeDraggable(box);
+}
+
+PRESETS.forEach((p,i)=>spawnBox(p,POSITIONS[i]||[100+i*40,100+i*40]));
+
+let boxN=0;
+function addBox(){
+  const colors=['rgba(168,85,247,.1)','rgba(6,182,212,.08)','rgba(236,72,153,.08)','rgba(74,222,128,.07)'];
+  spawnBox({title:`box_${++boxN}.txt`,color:colors[boxN%colors.length],w:220,content:`<div contenteditable="true" style="outline:none;min-height:48px;color:rgba(255,255,255,.6);font-size:12px" placeholder="Type anything…">New box — drag me, resize me, color me.</div>`},[Math.random()*(innerWidth-260)+20,Math.random()*(innerHeight-200)+60]);
+}
+
+// ══ MUSIC PLAYER ═════════════════════════════════════════════════════════════
 const TRACKS=[
   {n:'SoundHelix Ambient',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3'},
   {n:'SoundHelix Lofi',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},
-  {n:'SoundHelix Vibes',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'},
+  {n:'SoundHelix Night',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'},
   {n:'SoundHelix Chill',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3'},
 ];
 let ti=0,playing=false,audio=null;
@@ -413,13 +223,13 @@ function mkAudio(url){
     const m=Math.floor(audio.currentTime/60),s=Math.floor(audio.currentTime%60);
     document.getElementById('p-time').textContent=m+':'+(s<10?'0':'')+s;
   });
-  audio.addEventListener('ended',()=>nextT());
+  audio.addEventListener('ended',nextT);
 }
 function loadT(i){ti=i;document.getElementById('p-name').textContent=TRACKS[i].n;mkAudio(TRACKS[i].url);if(playing)audio.play().catch(()=>{});}
 function togglePlay(){
   if(!audio)loadT(ti);
-  if(playing){audio.pause();playing=false;document.getElementById('p-play').textContent='▶';document.getElementById('p-bars').classList.add('bars-paused');}
-  else{audio.play().then(()=>{playing=true;document.getElementById('p-play').textContent='⏸';document.getElementById('p-bars').classList.remove('bars-paused');}).catch(()=>{});}
+  if(playing){audio.pause();playing=false;document.getElementById('p-play').textContent='▶';document.getElementById('p-bars').classList.add('bars-off');}
+  else{audio.play().then(()=>{playing=true;document.getElementById('p-play').textContent='⏸';document.getElementById('p-bars').classList.remove('bars-off');}).catch(()=>{});}
 }
 function nextT(){ti=(ti+1)%TRACKS.length;loadT(ti);}
 function prevT(){ti=(ti-1+TRACKS.length)%TRACKS.length;loadT(ti);}
@@ -429,12 +239,22 @@ document.getElementById('p-prev').onclick=prevT;
 document.getElementById('p-seek').addEventListener('input',function(){if(audio&&audio.duration)audio.currentTime=this.value/100*audio.duration;});
 document.getElementById('p-vol').addEventListener('input',function(){if(audio)audio.volume=+this.value;});
 document.getElementById('p-url').addEventListener('keydown',function(e){
-  if(e.key==='Enter'&&this.value.trim()){
-    TRACKS.unshift({n:'Custom',url:this.value.trim()});ti=0;loadT(0);playing=true;audio.play().catch(()=>{});
-    document.getElementById('p-play').textContent='⏸';document.getElementById('p-bars').classList.remove('bars-paused');this.value='';
-  }
+  if(e.key!=='Enter'||!this.value.trim())return;
+  TRACKS.unshift({n:'Custom',url:this.value.trim()});ti=0;
+  loadT(0);playing=true;audio.play().catch(()=>{});
+  document.getElementById('p-play').textContent='⏸';
+  document.getElementById('p-bars').classList.remove('bars-off');
+  this.value='';
 });
 loadT(0);
+
+// textbox send
+document.getElementById('txt-send').addEventListener('click',()=>{
+  const v=document.getElementById('txt-area').value.trim();
+  if(!v)return;
+  spawnBox({title:'note.txt',color:'rgba(168,85,247,.1)',w:220,content:`<div style="font-size:12px;color:rgba(255,255,255,.7);line-height:1.7">${v.replace(/</g,'&lt;')}</div>`},[Math.random()*(innerWidth-240)+20,Math.random()*(innerHeight-160)+60]);
+  document.getElementById('txt-area').value='';
+});
 </script>
 </body>
 </html>
