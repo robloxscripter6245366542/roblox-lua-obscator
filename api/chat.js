@@ -63,12 +63,13 @@ Always generate:
 Lua tool files available: Claude_Hub.lua, FE_Hub.lua, Claude_Hub_Lite.lua, Claude_Loader.lua, Full_Combined.lua, MurderMystery2_Hub.lua, obfuscate.lua, SS_Executor.lua, executor_gui.lua, SpellingBee_NerdZone.lua, WindHub.lua, SangraHub.lua, IndraHub_Lite.lua`;
 
 const MODEL_MAP = {
-  'glm-4.7': 'openai-large',
-  'glm-4-plus': 'openai-large',
+  'glm-4.7': 'openai',
+  'glm-4-plus': 'openai',
   'glm-4-flash': 'openai',
-  'openai-fast': 'openai',   // Pollinations uses 'openai' for the mini/fast model
+  'openai-large': 'openai',  // legacy name removed by Pollinations → use 'openai'
+  'openai-fast': 'openai',
   'gpt-4o-mini': 'openai',
-  'gpt-4o': 'openai-large',
+  'gpt-4o': 'openai',
 };
 
 const CORS = {
