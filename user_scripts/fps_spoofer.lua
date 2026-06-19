@@ -103,7 +103,7 @@ local function startSpoofLoop()
 	spoofLoop = RunService.Heartbeat:Connect(function(dt)
 		local target = tonumber(textBox and textBox.Text) -- textBox declared below
 		if not target or target < 1 then return end
-		target = math.clamp(math.floor(target), 1, 360)
+		target = math.clamp(math.floor(target), 1, 50000)
 
 		stepAccum = stepAccum + dt
 		if not currentSpoof or stepAccum >= STEP_RATE then
@@ -181,7 +181,7 @@ local textBox = Instance.new("TextBox")
 textBox.Size              = UDim2.new(0, 108, 0, 28)
 textBox.Position          = UDim2.new(0, 54, 0, 78)
 textBox.BackgroundColor3  = Color3.fromRGB(42, 42, 42)
-textBox.PlaceholderText   = "e.g. 60"
+textBox.PlaceholderText   = "e.g. 50000"
 textBox.Text              = ""
 textBox.TextColor3        = Color3.fromRGB(255, 255, 255)
 textBox.PlaceholderColor3 = Color3.fromRGB(110, 110, 110)
@@ -242,7 +242,7 @@ local function setEnabled(state)
 		button.Text = "Enabled"
 		local v = tonumber(textBox.Text)
 		if v and v >= 1 then
-			local capped = math.clamp(math.floor(v), 1, 360)
+			local capped = math.clamp(math.floor(v), 1, 50000)
 			applyFPSCap(capped)
 			liveLabel.Text       = "Cap active: " .. capped .. " FPS"
 			liveLabel.TextColor3 = Color3.fromRGB(100, 180, 255)
@@ -271,7 +271,7 @@ textBox:GetPropertyChangedSignal("Text"):Connect(function()
 	if not enabled then return end
 	local v = tonumber(clean)
 	if v and v >= 1 then
-		local capped = math.clamp(math.floor(v), 1, 360)
+		local capped = math.clamp(math.floor(v), 1, 50000)
 		applyFPSCap(capped)
 		liveLabel.Text       = "Cap active: " .. capped .. " FPS"
 		liveLabel.TextColor3 = Color3.fromRGB(100, 180, 255)
@@ -302,7 +302,7 @@ evtRecv.OnClientEvent:Connect(function(data)
 		statusLabel.TextColor3 = Color3.fromRGB(240, 90, 90)
 		return
 	end
-	target = math.clamp(math.floor(target), 1, 360)
+	target = math.clamp(math.floor(target), 1, 50000)
 
 	-- Use whatever the loop is already showing; fall back to a fresh step
 	local spoofedFPS = currentSpoof or naturalFPS(target)
