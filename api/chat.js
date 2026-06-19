@@ -1,16 +1,5 @@
-// ── Obfuscated credential (XOR-rotate → base64 → reversed → 4-way split) ──────
-// Decoded only at runtime; not stored in plaintext anywhere in source.
-function _0xk() {
-  const _p = ['==AmYnCiwdQBZlmmp', 'bXGTjf3vi16pAJuRa', 'Jrm7XoaLkWdN38HQe', 'AcNOuodiyV8U1+v/w'];
-  const _r = (_p[0] + _p[1] + _p[2] + _p[3]).split('').reverse().join('');
-  const _b = Buffer.from(_r, 'base64');
-  let _s = 0x5A;
-  const _o = Buffer.alloc(_b.length);
-  for (let i = 0; i < _b.length; i++) { _s = (_s * 33 + 7) & 0xFF; _o[i] = _b[i] ^ _s; }
-  return _o.toString('utf-8');
-}
-const API_KEY = process.env.ZAI_API_KEY || _0xk();
-const ZAI_API_URL = 'https://api.z.ai/api/paas/v4/chat/completions';
+// Free AI via Pollinations.ai — no API key, no account, no payment ever
+const POLLINATIONS_URL = 'https://api.pollinations.ai/v1/chat/completions';
 
 const SYSTEM_PROMPT = `You are an elite AI software engineering assistant with the following core principles:
 
@@ -171,24 +160,26 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
   if (req.method !== 'POST') { res.status(405).end(); return; }
 
-  const { messages, model = 'glm-4.7' } = req.body || {};
+  const { messages, model = 'openai-large' } = req.body || {};
   if (!Array.isArray(messages)) {
     return res.status(400).json({ error: 'messages must be an array' });
   }
 
+  // Map old Z.ai model names to Pollinations model names
+  const modelMap = { 'glm-4.7': 'openai-large', 'glm-4-plus': 'openai-large', 'glm-4-flash': 'openai-fast' };
+  const resolvedModel = modelMap[model] || model;
+
   try {
-    const upstream = await fetch(ZAI_API_URL, {
+    const upstream = await fetch(POLLINATIONS_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model,
+        model: resolvedModel,
         messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
         stream: true,
         temperature: 0.7,
-        max_tokens: 8192
+        max_tokens: 8192,
+        private: true
       })
     });
 

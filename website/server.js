@@ -6,18 +6,8 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── Obfuscated credential (XOR-rotate → base64 → reversed → 4-way split) ──────
-function _0xk() {
-  const _p = ['==AmYnCiwdQBZlmmp', 'bXGTjf3vi16pAJuRa', 'Jrm7XoaLkWdN38HQe', 'AcNOuodiyV8U1+v/w'];
-  const _r = (_p[0] + _p[1] + _p[2] + _p[3]).split('').reverse().join('');
-  const _b = Buffer.from(_r, 'base64');
-  let _s = 0x5A;
-  const _o = Buffer.alloc(_b.length);
-  for (let i = 0; i < _b.length; i++) { _s = (_s * 33 + 7) & 0xFF; _o[i] = _b[i] ^ _s; }
-  return _o.toString('utf-8');
-}
-const API_KEY = process.env.ZAI_API_KEY || _0xk();
-const ZAI_API_URL = 'https://api.z.ai/api/paas/v4/chat/completions';
+// Free AI via Pollinations.ai — no API key, no account, no payment ever
+const POLLINATIONS_URL = 'https://api.pollinations.ai/v1/chat/completions';
 const REPO_ROOT = path.join(__dirname, '..');
 
 // Shared system prompt — mirrors api/chat.js for local dev parity
@@ -34,26 +24,26 @@ if (!SYSTEM_PROMPT) {
   SYSTEM_PROMPT = `You are an elite AI software engineering assistant. Think like a CTO, architect like a Principal Engineer, code like a Senior Developer. Always generate production-quality, complete, executable code. Return website code in \`\`\`html, \`\`\`css, \`\`\`javascript blocks.`;
 }
 
-// Chat endpoint - proxies to Z.ai GLM with streaming
+// Chat endpoint - proxies to Pollinations.ai (free, no key needed)
 app.post('/api/chat', async (req, res) => {
-  const { messages, model = 'glm-4.7' } = req.body;
+  const { messages, model = 'openai-large' } = req.body;
+  const modelMap = { 'glm-4.7': 'openai-large', 'glm-4-plus': 'openai-large', 'glm-4-flash': 'openai-fast' };
+  const resolvedModel = modelMap[model] || model;
 
   try {
-    const response = await fetch(ZAI_API_URL, {
+    const response = await fetch(POLLINATIONS_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model,
+        model: resolvedModel,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           ...messages
         ],
         stream: true,
         temperature: 0.7,
-        max_tokens: 8192
+        max_tokens: 8192,
+        private: true
       })
     });
 
