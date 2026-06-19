@@ -566,7 +566,8 @@ function mobPanel(name){
 const S={history:[],gen:false,code:{html:'',css:'',js:'',lua:''},lang:'html',luaFile:null,luaContent:null,abort:null};
 
 // ══ AI PROVIDERS ══════════════════════════════════════════════════════════════
-const POLLINATIONS_URL='https://api.pollinations.ai/v1/chat/completions';
+// text.pollinations.ai/openai is the browser-CORS-enabled endpoint
+const POLLINATIONS_URL='https://text.pollinations.ai/openai';
 const SYS_PROMPT=`You are an elite AI software engineering assistant.
 MXX3X STACK — USE THIS FOR EVERY PROJECT:
 - Pure black background (#000000), Tailwind CDN for standalone HTML
@@ -795,44 +796,64 @@ async function generate(){
   const ctrl=new AbortController();
   S.abort=ctrl;
   try{
-    // Call Pollinations.ai directly from the browser (supports CORS, no proxy needed)
     const resolvedModel=model==='openai-fast'?'openai':model;
-    const res=await fetch(POLLINATIONS_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:resolvedModel,
-        messages:[{role:'system',content:SYS_PROMPT},...S.history],
-        stream:true,temperature:0.7,max_tokens:8192,private:true
-      }),
-      signal:ctrl.signal
-    });
-    if(!res.ok){
-      const t=await res.text().catch(()=>res.statusText);
-      hideTyping();appendMsg('ai','❌ AI error '+res.status+': '+t);return;
+    const body={
+      model:resolvedModel,
+      messages:[{role:'system',content:SYS_PROMPT},...S.history],
+      temperature:0.7,
+      max_tokens:8192,
+      stream:true
+    };
+
+    // ── Attempt 1: streaming ─────────────────────────────────────────────────
+    let full='';
+    let streamOk=false;
+    try{
+      const res=await fetch(POLLINATIONS_URL,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(body),signal:ctrl.signal
+      });
+      if(res.ok){
+        streamOk=true;
+        hideTyping();
+        const d=document.createElement('div');d.className='msg msg-ai';
+        const bub=document.createElement('div');bub.className='bubble bubble-ai';
+        d.appendChild(bub);
+        d.appendChild(Object.assign(document.createElement('div'),{className:'msg-time',textContent:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}));
+        msgWrap.appendChild(d);
+        full=await streamSSE(res,bub,msgWrap);
+        if(!full)bub.innerHTML='<span style="color:rgba(255,255,255,.4)">No response — try again.</span>';
+        const ex=extractCode(full);
+        if(ex.html||ex.css||ex.js||ex.lua)d.appendChild(mkBar(ex));
+        if(ex.html||ex.css||ex.js){if(ex.html)setCode('html',ex.html);if(ex.css)setCode('css',ex.css);if(ex.js)setCode('js',ex.js);applyCode();}
+      }
+    }catch(e){if(e.name==='AbortError')throw e;}
+
+    // ── Attempt 2: non-streaming fallback ────────────────────────────────────
+    if(!streamOk){
+      const res2=await fetch(POLLINATIONS_URL,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({...body,stream:false}),signal:ctrl.signal
+      });
+      if(!res2.ok){
+        const t=await res2.text().catch(()=>res2.statusText);
+        hideTyping();appendMsg('ai','❌ AI error '+res2.status+': '+t);return;
+      }
+      const data=await res2.json();
+      full=data.choices?.[0]?.message?.content||'';
+      hideTyping();
+      const d=document.createElement('div');d.className='msg msg-ai';
+      const bub=document.createElement('div');bub.className='bubble bubble-ai';
+      bub.innerHTML=full?md(full):'<span style="color:rgba(255,255,255,.4)">No response — try again.</span>';
+      d.appendChild(bub);
+      d.appendChild(Object.assign(document.createElement('div'),{className:'msg-time',textContent:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}));
+      msgWrap.appendChild(d);msgWrap.scrollTop=msgWrap.scrollHeight;
+      const ex=extractCode(full);
+      if(ex.html||ex.css||ex.js||ex.lua)d.appendChild(mkBar(ex));
+      if(ex.html||ex.css||ex.js){if(ex.html)setCode('html',ex.html);if(ex.css)setCode('css',ex.css);if(ex.js)setCode('js',ex.js);applyCode();}
     }
 
-    hideTyping();
-    const d=document.createElement('div');d.className='msg msg-ai';
-    const bub=document.createElement('div');bub.className='bubble bubble-ai';
-    d.appendChild(bub);
-    d.appendChild(Object.assign(document.createElement('div'),{className:'msg-time',textContent:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}));
-    msgWrap.appendChild(d);
-
-    const full=await streamSSE(res,bub,msgWrap);
-
-    if(!full){
-      bub.innerHTML='<span style="color:rgba(255,255,255,.4)">No response — try again or switch models.</span>';
-    }
-    const ex=extractCode(full);
-    if(ex.html||ex.css||ex.js||ex.lua)d.appendChild(mkBar(ex));
-    if(ex.html||ex.css||ex.js){
-      if(ex.html)setCode('html',ex.html);
-      if(ex.css)setCode('css',ex.css);
-      if(ex.js)setCode('js',ex.js);
-      applyCode();
-    }
-    S.history.push({role:'assistant',content:full});
+    if(full)S.history.push({role:'assistant',content:full});
   }catch(err){
     if(err.name==='AbortError')return;
     hideTyping();
