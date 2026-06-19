@@ -452,8 +452,14 @@ end)
 --  RAYFIELD-STYLE GUI
 -- ═══════════════════════════════════════════════════════════════════════
 
-local old=PGui:FindFirstChild("__PrepSpellHub__")
-if old then old:Destroy() end
+-- clean up any previous instance from gethui, CoreGui, and PlayerGui
+local CoreGui=game:GetService("CoreGui")
+for _,container in ipairs({gethui(),CoreGui,PGui}) do
+    pcall(function()
+        local old=container:FindFirstChild("__PrepSpellHub__")
+        if old then old:Destroy() end
+    end)
+end
 
 local SG=Instance.new("ScreenGui")
 SG.Name="__PrepSpellHub__";SG.ResetOnSpawn=false
