@@ -334,7 +334,45 @@ local function hookGameEvent()
     hookOne(GameEvent)
 end
 
+-- ── RS.Events.MusicEvent dedicated hook (Cobalt-style) ──────────────────
+-- MusicEvent carries round-start/stop signals; intercepting it lets us
+-- trigger a re-scan for the current word the moment a new round begins.
+local function hookMusicEvent()
+    local evFolder = RS:FindFirstChild("Events") or RS:WaitForChild("Events",5)
+    if not evFolder then return end
+    local MusicEvent = evFolder:FindFirstChild("MusicEvent") or evFolder:WaitForChild("MusicEvent",5)
+    if not MusicEvent then return end
+
+    local function onMusicPayload(...)
+        -- extract any word carried in the payload
+        local w = extractWord({...})
+        if w then task.spawn(onWordFound, w) end
+        -- regardless, re-scan GUI/workspace for the new word
+        task.delay(0.15, function()
+            if not botEnabled then return end
+            local found = scanLabels(PGui) or scanLabels(WS)
+            if found then onWordFound(found) end
+        end)
+    end
+
+    -- Cobalt-style: wrap every existing connection
+    if getconnections and hookfunction and newcclosure then
+        pcall(function()
+            for _,conn in ipairs(getconnections(MusicEvent.OnClientEvent)) do
+                local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
+                    onMusicPayload(...)
+                    return orig(...)
+                end))
+            end
+        end)
+    end
+
+    -- plain listener fallback
+    MusicEvent.OnClientEvent:Connect(onMusicPayload)
+end
+
 task.spawn(hookGameEvent)
+task.spawn(hookMusicEvent)
 
 hookIncoming()
 for _,root in ipairs(SCAN_ROOTS) do pcall(function()hookSVs(root)end) end
