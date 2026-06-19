@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>@</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:#000;color:#fff;font-family:ui-sans-serif,system-ui,sans-serif;height:100%;overflow:hidden;-webkit-font-smoothing:antialiased}
+#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+
+/* ── draggable boxes ── */
+.box{position:fixed;z-index:100;min-width:200px;min-height:80px;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.07)}
+.box-head{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.5);cursor:grab;user-select:none;border-bottom:1px solid rgba(255,255,255,.06);gap:8px;background:rgba(0,0,0,.25)}
+.box-head:active{cursor:grabbing}
+.box-body{padding:14px;font-size:12px;color:rgba(255,255,255,.65);line-height:1.7;overflow:auto;max-height:280px}
+.box-resize{position:absolute;bottom:3px;right:3px;width:13px;height:13px;cursor:se-resize;opacity:.18;transition:.15s}
+.box-resize:hover{opacity:.7}
+.box-resize svg{width:13px;height:13px}
+.box-close{background:none;border:none;color:rgba(255,255,255,.3);cursor:pointer;font-size:13px;line-height:1;padding:0;transition:.15s;flex-shrink:0}
+.box-close:hover{color:#fff}
+input[type=color]{-webkit-appearance:none;width:17px;height:17px;border:none;border-radius:4px;cursor:pointer;padding:0;background:none;flex-shrink:0}
+input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+input[type=color]::-webkit-color-swatch{border:none;border-radius:4px}
+
+/* ── tags ── */
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:100px;font-size:10.5px;font-weight:600;border:1px solid;margin:3px 2px;transition:.15s}
+.tag:hover{opacity:.8}
+
+/* ── music player ── */
+#player{position:fixed;bottom:16px;left:16px;z-index:300;width:260px;border-radius:18px;padding:14px;background:rgba(6,0,14,.85);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);box-shadow:0 8px 40px rgba(0,0,0,.6)}
+.mini-player-label{font-size:9px;text-transform:uppercase;letter-spacing:.18em;color:rgba(255,255,255,.3);font-weight:700;margin-bottom:8px}
+.mini-player-track{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.mini-player-icon{width:32px;height:32px;border-radius:9999px;background:#ffffff1f;border:1px solid rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.mini-player-info{flex:1;min-width:0}
+.mini-player-title{font-size:12px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.mini-player-label2{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.88)}
+.mini-player-bars{display:flex;align-items:flex-end;gap:3px;height:16px;flex-shrink:0}
+.bar{width:3px;border-radius:2px;animation:bu 1s ease-in-out infinite}
+.bar:nth-child(1){background:#a855f7;animation-delay:0s}.bar:nth-child(2){background:#06b6d4;animation-delay:.15s}.bar:nth-child(3){background:#ec4899;animation-delay:.3s}.bar:nth-child(4){background:#a855f7;animation-delay:.09s}.bar:nth-child(5){background:#06b6d4;animation-delay:.24s}
+@keyframes bu{0%,100%{height:3px}50%{height:14px}}
+.bars-off .bar{animation:none!important;height:3px!important}
+.seek{-webkit-appearance:none;appearance:none;width:100%;height:2.5px;border-radius:2px;background:rgba(255,255,255,.12);outline:none;cursor:pointer;margin-bottom:8px}
+.seek::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;border-radius:50%;background:#a855f7;cursor:pointer;box-shadow:0 0 8px rgba(168,85,247,.8)}
+.p-ctrls{display:flex;align-items:center;gap:7px}
+.pc{width:28px;height:28px;border-radius:50%;border:1px solid rgba(168,85,247,.25);background:rgba(168,85,247,.1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .15s;flex-shrink:0}
+.pc:hover{background:rgba(168,85,247,.3);box-shadow:0 0 10px rgba(168,85,247,.4)}
+.pc.play{width:34px;height:34px;background:linear-gradient(135deg,#a855f7,#3b82f6);border:none;font-size:13px;box-shadow:0 0 16px rgba(168,85,247,.4)}
+.pc.play:hover{box-shadow:0 0 24px rgba(168,85,247,.6);transform:scale(1.07)}
+.mini-player-time{font-size:10px;color:rgba(255,255,255,.6);margin-left:auto}
+.vol{-webkit-appearance:none;appearance:none;width:52px;height:2.5px;border-radius:2px;background:rgba(255,255,255,.12);outline:none;cursor:pointer}
+.vol::-webkit-slider-thumb{-webkit-appearance:none;width:9px;height:9px;border-radius:50%;background:#a855f7;cursor:pointer}
+.url-in{width:100%;background:rgba(0,0,0,.5);border:1px solid rgba(168,85,247,.18);border-radius:6px;color:rgba(255,255,255,.7);font-size:10px;padding:5px 9px;outline:none;font-family:inherit;margin-top:8px;transition:.2s}
+.url-in:focus{border-color:rgba(168,85,247,.5);color:#fff}
+.url-in::placeholder{color:rgba(255,255,255,.2)}
+
+/* ── add box btn ── */
+#add-btn{position:fixed;top:16px;left:16px;z-index:300;background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.3);color:rgba(168,85,247,.9);padding:7px 16px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;transition:.2s;backdrop-filter:blur(12px)}
+#add-btn:hover{background:rgba(168,85,247,.25);box-shadow:0 0 16px rgba(168,85,247,.35);color:#fff}
+
+/* ── textbox panel ── */
+#txtbox{position:fixed;bottom:16px;right:16px;z-index:300;width:260px;border-radius:16px;background:rgba(6,0,14,.85);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(30px);padding:12px;display:flex;flex-direction:column;gap:8px}
+#txtbox .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.18em;color:rgba(255,255,255,.3);font-weight:700}
+#txt-area{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;color:#fff;font-size:12px;padding:10px 12px;font-family:inherit;resize:none;outline:none;line-height:1.6;transition:.2s;min-height:72px}
+#txt-area:focus{border-color:rgba(168,85,247,.4);background:rgba(168,85,247,.04)}
+#txt-area::placeholder{color:rgba(255,255,255,.2)}
+#txt-send{background:linear-gradient(135deg,#a855f7,#3b82f6);border:none;color:#fff;padding:7px 14px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;transition:.2s;align-self:flex-end}
+#txt-send:hover{box-shadow:0 0 16px rgba(168,85,247,.5);transform:translateY(-1px)}
+
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:rgba(168,85,247,.2);border-radius:3px}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<button id="add-btn" onclick="addBox()">＋ Box</button>
+
+<!-- MUSIC PLAYER -->
+<div id="player">
+  <div class="mini-player-label">Now Playing</div>
+  <div class="mini-player-track">
+    <div class="mini-player-icon">🎵</div>
+    <div class="mini-player-info">
+      <div class="mini-player-label2">clout</div>
+      <div class="mini-player-title" id="p-name">Ambient I</div>
+    </div>
+    <div class="mini-player-bars" id="p-bars">
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    </div>
+  </div>
+  <input type="range" class="seek" id="p-seek" value="0" min="0" max="100" step="0.1"/>
+  <div class="p-ctrls">
+    <button class="pc" id="p-prev">⏮</button>
+    <button class="pc play" id="p-play">▶</button>
+    <button class="pc" id="p-next">⏭</button>
+    <input type="range" class="vol" id="p-vol" min="0" max="1" step="0.01" value="0.5"/>
+    <span class="mini-player-time" id="p-time">0:00</span>
+  </div>
+  <input class="url-in" id="p-url" placeholder="Paste .mp3 URL + Enter to play"/>
+</div>
+
+<!-- TEXTBOX -->
+<div id="txtbox">
+  <div class="lbl">Leave a note</div>
+  <textarea id="txt-area" placeholder="Say something…" rows="3"></textarea>
+  <button id="txt-send">Send ↗</button>
+</div>
+
+<script>
+// ══ WEBGL ════════════════════════════════════════════════════════════════════
+(function(){
+  const c=document.getElementById('bg'),gl=c.getContext('webgl');
+  if(!gl)return;
+  const vs=`attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
+  const fs=`precision highp float;
+uniform float t;uniform vec2 r;
+float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float n(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.-2.*f);
+  return mix(mix(h(i),h(i+vec2(1,0)),u.x),mix(h(i+vec2(0,1)),h(i+1.),u.x),u.y);}
+float fbm(vec2 p){float v=0.,a=.5;mat2 m=mat2(.8,.6,-.6,.8);
+  for(int i=0;i<7;i++){v+=a*n(p);p=m*p*2.2;a*=.48;}return v;}
+void main(){
+  vec2 uv=(gl_FragCoord.xy-.5*r)/r.y;
+  float tm=t*.1;
+  vec2 q=vec2(fbm(uv+vec2(0,0)),fbm(uv+vec2(5.2,1.3)));
+  vec2 s=vec2(fbm(uv+2.8*q+vec2(1.7+tm,9.2)),fbm(uv+2.8*q+vec2(8.3,2.8+tm*.7)));
+  float f=fbm(uv+2.5*s);
+  f=pow(clamp(f,0.,1.),1.2);
+  vec3 col=mix(vec3(.01,.0,.05),vec3(.38,.07,.75),f);
+  col=mix(col,vec3(.0,.45,.85),pow(f,2.5));
+  col=mix(col,vec3(.8,.15,.55),pow(max(f-.55,0.)*2.,3.));
+  col*=min(t*.2,1.);col*=.65;
+  gl_FragColor=vec4(col,1.);}`;
+  const mk=(type,src)=>{const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s;};
+  const prog=gl.createProgram();gl.attachShader(prog,mk(gl.VERTEX_SHADER,vs));gl.attachShader(prog,mk(gl.FRAGMENT_SHADER,fs));gl.linkProgram(prog);gl.useProgram(prog);
+  const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(prog,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const tL=gl.getUniformLocation(prog,'t'),rL=gl.getUniformLocation(prog,'r');
+  const resize=()=>{c.width=innerWidth;c.height=innerHeight;gl.viewport(0,0,innerWidth,innerHeight);gl.uniform2f(rL,innerWidth,innerHeight);};
+  window.addEventListener('resize',resize);resize();
+  let s0=0;(function loop(now){requestAnimationFrame(loop);if(!s0)s0=now;gl.uniform1f(tL,(now-s0)/1000);gl.drawArrays(gl.TRIANGLES,0,3);})(0);
+})();
+
+// ══ TITLE TYPING ═════════════════════════════════════════════════════════════
+(function(){
+  const T='@clout';let i=1,fwd=true;
+  (function tick(){document.title=T.slice(0,i);if(fwd){i++;if(i>T.length){fwd=false;setTimeout(tick,2200);return;}}else{i--;if(i<1)fwd=true;}setTimeout(tick,fwd?130:65);})();
+})();
+
+// ══ DRAGGABLE BOXES ══════════════════════════════════════════════════════════
+let zTop=100;
+function makeDraggable(box){
+  const head=box.querySelector('.box-head');
+  head.addEventListener('pointerdown',e=>{
+    if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON')return;
+    box.style.zIndex=++zTop;
+    const ox=e.clientX-box.offsetLeft,oy=e.clientY-box.offsetTop;
+    const mv=e=>{box.style.left=Math.max(0,Math.min(innerWidth-box.offsetWidth,e.clientX-ox))+'px';box.style.top=Math.max(0,Math.min(innerHeight-box.offsetHeight,e.clientY-oy))+'px';};
+    const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);};
+    addEventListener('pointermove',mv);addEventListener('pointerup',up);head.setPointerCapture(e.pointerId);
+  });
+  const res=box.querySelector('.box-resize');
+  if(res)res.addEventListener('pointerdown',e=>{
+    e.stopPropagation();
+    const ox=e.clientX-box.offsetWidth,oy=e.clientY-box.offsetHeight;
+    const mv=e=>{box.style.width=Math.max(180,e.clientX-ox)+'px';box.style.height=Math.max(70,e.clientY-oy)+'px';};
+    const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);};
+    addEventListener('pointermove',mv);addEventListener('pointerup',up);res.setPointerCapture(e.pointerId);
+  });
+  const ci=box.querySelector('input[type=color]');
+  if(ci)ci.addEventListener('input',e=>{const v=e.target.value;box.style.background=v;box.querySelector('.box-head').style.background='rgba(0,0,0,.3)';});
+  box.querySelector('.box-close').addEventListener('click',()=>box.remove());
+  box.addEventListener('pointerdown',()=>box.style.zIndex=++zTop);
+}
+
+const PRESETS=[
+  {title:'about.clout',color:'rgba(168,85,247,.08)',w:260,h:'auto',content:`<div style="margin-bottom:10px"><span style="font-size:22px">👾</span></div><div style="font-size:14px;font-weight:800;color:#fff;margin-bottom:6px">clout</div><div style="color:rgba(255,255,255,.5);font-size:12px;line-height:1.7">Full-stack dev · Roblox Lua expert · WebGL nerd. I build dark UIs, AI tools, and scripts that actually work.</div>`},
+  {title:'skills.lua',color:'rgba(6,182,212,.06)',w:280,h:'auto',content:`<div class="tags"><span class="tag" style="background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.3);color:#a855f7">⚡ JavaScript</span><span class="tag" style="background:rgba(34,211,238,.08);border-color:rgba(34,211,238,.25);color:#22d3ee">⚛ React</span><span class="tag" style="background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.22);color:#4ade80">▲ Next.js</span><span class="tag" style="background:rgba(168,85,247,.1);border-color:rgba(168,85,247,.28);color:#a855f7">📜 Lua</span><span class="tag" style="background:rgba(244,114,182,.08);border-color:rgba(244,114,182,.22);color:#f472b6">🎨 WebGL</span><span class="tag" style="background:rgba(168,85,247,.08);border-color:rgba(168,85,247,.2);color:#a855f7">🎮 Roblox</span><span class="tag" style="background:rgba(34,211,238,.06);border-color:rgba(34,211,238,.18);color:#22d3ee">🤖 AI/LLMs</span><span class="tag" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12);color:rgba(255,255,255,.55)">🐳 Docker</span></div>`},
+  {title:'projects.exe',color:'rgba(236,72,153,.06)',w:270,h:'auto',content:`<div style="display:flex;flex-direction:column;gap:10px"><div style="padding:10px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07)"><div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:3px">🔮 AI Website Builder</div><div style="font-size:11px;color:rgba(255,255,255,.4)">Streaming AI · WebGL · Live Preview</div></div><div style="padding:10px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07)"><div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:3px">🎮 Lua Obfuscator</div><div style="font-size:11px;color:rgba(255,255,255,.4)">XOR encryption · Script protection</div></div><div style="padding:10px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07)"><div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:3px">⚡ Claude Hub</div><div style="font-size:11px;color:rgba(255,255,255,.4)">AI-powered Roblox script hub</div></div></div>`},
+  {title:'contact.txt',color:'rgba(74,222,128,.06)',w:230,h:'auto',content:`<div style="display:flex;flex-direction:column;gap:8px"><a href="https://github.com/robloxscripter6245366542" target="_blank" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);text-decoration:none;color:rgba(255,255,255,.7);font-size:12px;transition:.15s" onmouseover="this.style.borderColor='rgba(168,85,247,.4)';this.style.color='#fff'" onmouseout="this.style.borderColor='rgba(255,255,255,.08)';this.style.color='rgba(255,255,255,.7)'"><span style="font-size:15px">🐙</span>GitHub</a></div>`},
+];
+
+const POSITIONS=[[72,80],[360,100],[660,80],[940,200]];
+
+function spawnBox({title,color,w,content},pos){
+  const box=document.createElement('div');
+  box.className='box';
+  box.style.cssText=`left:${pos[0]}px;top:${pos[1]}px;width:${w}px;background:${color};backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)`;
+  box.innerHTML=`
+    <div class="box-head">
+      <input type="color" value="#a855f7" title="Color"/>
+      <span style="flex:1">${title}</span>
+      <button class="box-close">✕</button>
+    </div>
+    <div class="box-body">${content}</div>
+    <div class="box-resize"><svg viewBox="0 0 16 16" fill="none"><path d="M14 2L2 14M14 8L8 14M14 14L14 14" stroke="rgba(255,255,255,.5)" stroke-width="1.5" stroke-linecap="round"/></svg></div>`;
+  document.body.appendChild(box);
+  makeDraggable(box);
+}
+
+PRESETS.forEach((p,i)=>spawnBox(p,POSITIONS[i]||[100+i*40,100+i*40]));
+
+let boxN=0;
+function addBox(){
+  const colors=['rgba(168,85,247,.1)','rgba(6,182,212,.08)','rgba(236,72,153,.08)','rgba(74,222,128,.07)'];
+  spawnBox({title:`box_${++boxN}.txt`,color:colors[boxN%colors.length],w:220,content:`<div contenteditable="true" style="outline:none;min-height:48px;color:rgba(255,255,255,.6);font-size:12px" placeholder="Type anything…">New box — drag me, resize me, color me.</div>`},[Math.random()*(innerWidth-260)+20,Math.random()*(innerHeight-200)+60]);
+}
+
+// ══ MUSIC PLAYER ═════════════════════════════════════════════════════════════
+const TRACKS=[
+  {n:'SoundHelix Ambient',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3'},
+  {n:'SoundHelix Lofi',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},
+  {n:'SoundHelix Night',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'},
+  {n:'SoundHelix Chill',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3'},
+];
+let ti=0,playing=false,audio=null;
+function mkAudio(url){
+  if(audio){audio.pause();audio.src='';}
+  audio=new Audio(url);audio.volume=+document.getElementById('p-vol').value;
+  audio.addEventListener('timeupdate',()=>{
+    if(!audio.duration)return;
+    document.getElementById('p-seek').value=audio.currentTime/audio.duration*100;
+    const m=Math.floor(audio.currentTime/60),s=Math.floor(audio.currentTime%60);
+    document.getElementById('p-time').textContent=m+':'+(s<10?'0':'')+s;
+  });
+  audio.addEventListener('ended',nextT);
+}
+function loadT(i){ti=i;document.getElementById('p-name').textContent=TRACKS[i].n;mkAudio(TRACKS[i].url);if(playing)audio.play().catch(()=>{});}
+function togglePlay(){
+  if(!audio)loadT(ti);
+  if(playing){audio.pause();playing=false;document.getElementById('p-play').textContent='▶';document.getElementById('p-bars').classList.add('bars-off');}
+  else{audio.play().then(()=>{playing=true;document.getElementById('p-play').textContent='⏸';document.getElementById('p-bars').classList.remove('bars-off');}).catch(()=>{});}
+}
+function nextT(){ti=(ti+1)%TRACKS.length;loadT(ti);}
+function prevT(){ti=(ti-1+TRACKS.length)%TRACKS.length;loadT(ti);}
+document.getElementById('p-play').onclick=togglePlay;
+document.getElementById('p-next').onclick=nextT;
+document.getElementById('p-prev').onclick=prevT;
+document.getElementById('p-seek').addEventListener('input',function(){if(audio&&audio.duration)audio.currentTime=this.value/100*audio.duration;});
+document.getElementById('p-vol').addEventListener('input',function(){if(audio)audio.volume=+this.value;});
+document.getElementById('p-url').addEventListener('keydown',function(e){
+  if(e.key!=='Enter'||!this.value.trim())return;
+  TRACKS.unshift({n:'Custom',url:this.value.trim()});ti=0;
+  loadT(0);playing=true;audio.play().catch(()=>{});
+  document.getElementById('p-play').textContent='⏸';
+  document.getElementById('p-bars').classList.remove('bars-off');
+  this.value='';
+});
+loadT(0);
+
+// textbox send
+document.getElementById('txt-send').addEventListener('click',()=>{
+  const v=document.getElementById('txt-area').value.trim();
+  if(!v)return;
+  spawnBox({title:'note.txt',color:'rgba(168,85,247,.1)',w:220,content:`<div style="font-size:12px;color:rgba(255,255,255,.7);line-height:1.7">${v.replace(/</g,'&lt;')}</div>`},[Math.random()*(innerWidth-240)+20,Math.random()*(innerHeight-160)+60]);
+  document.getElementById('txt-area').value='';
+});
+</script>
+</body>
+</html>

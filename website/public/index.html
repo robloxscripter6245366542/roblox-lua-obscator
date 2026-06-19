@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>@</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+:root{
+  --bg:#000;--surface:rgba(255,255,255,.03);--border:rgba(255,255,255,.09);
+  --purple:#a855f7;--cyan:#06b6d4;--pink:#ec4899;--blue:#3b82f6;--green:#22c55e;
+  --muted:rgba(255,255,255,.4);--text:#f0f0ff;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:var(--bg);color:var(--text);height:100%;overflow:hidden;font-family:ui-sans-serif,system-ui,sans-serif}
+#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+
+/* scrollbar */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(168,85,247,.3);border-radius:4px}
+
+/* glass */
+.glass{background:var(--surface);backdrop-filter:blur(20px);border:1px solid var(--border)}
+.glass-deep{background:rgba(168,85,247,.06);backdrop-filter:blur(24px);border:1px solid rgba(168,85,247,.18)}
+
+/* glow effects */
+.glow-purple{box-shadow:0 0 20px rgba(168,85,247,.25),inset 0 1px 0 rgba(255,255,255,.05)}
+.glow-cyan{box-shadow:0 0 20px rgba(6,182,212,.25)}
+.btn-glow{transition:all .2s;border:1px solid rgba(168,85,247,.3);background:rgba(168,85,247,.1);color:var(--purple);border-radius:8px;cursor:pointer;font-size:12px;padding:5px 12px}
+.btn-glow:hover{background:rgba(168,85,247,.25);box-shadow:0 0 14px rgba(168,85,247,.4);border-color:var(--purple);color:#fff}
+.btn-primary{background:linear-gradient(135deg,var(--purple),var(--blue));border:none;color:#fff;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;padding:6px 14px;transition:all .2s}
+.btn-primary:hover{opacity:.85;box-shadow:0 0 20px rgba(168,85,247,.5);transform:translateY(-1px)}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;cursor:pointer;font-size:11px;padding:4px 10px;transition:all .15s}
+.btn-ghost:hover{border-color:rgba(168,85,247,.5);color:var(--purple)}
+
+/* icon sidebar */
+#icon-sidebar{width:48px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:2px;background:rgba(0,0,0,.6);z-index:10}
+.sidebar-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:all .2s;color:var(--muted);border:1px solid transparent;position:relative}
+.sidebar-icon:hover{background:rgba(168,85,247,.12);color:var(--purple);border-color:rgba(168,85,247,.2)}
+.sidebar-icon.active{background:rgba(168,85,247,.18);color:var(--purple);border-color:rgba(168,85,247,.35);box-shadow:0 0 12px rgba(168,85,247,.3)}
+.sidebar-icon::after{content:attr(data-tip);position:absolute;left:44px;background:rgba(0,0,0,.9);color:#fff;font-size:11px;padding:3px 8px;border-radius:5px;white-space:nowrap;opacity:0;pointer-events:none;transition:.15s;border:1px solid var(--border);z-index:100}
+.sidebar-icon:hover::after{opacity:1}
+.sidebar-bottom{margin-top:auto}
+
+/* left panel */
+#left-panel{width:320px;min-width:180px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
+.panel-header{height:38px;display:flex;align-items:center;padding:0 12px;gap:8px;border-bottom:1px solid var(--border);flex-shrink:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:rgba(0,0,0,.3)}
+.panel-view{display:none;flex:1;flex-direction:column;overflow:hidden}
+.panel-view.active{display:flex}
+
+/* chat */
+#chat-messages{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px;scrollbar-width:thin;scrollbar-color:rgba(168,85,247,.2) transparent}
+.msg{display:flex;flex-direction:column;gap:3px}
+.msg-user{align-items:flex-end}
+.msg-ai{align-items:flex-start}
+.bubble{padding:9px 13px;border-radius:12px;font-size:13px;line-height:1.6;max-width:92%;word-break:break-word}
+.bubble-user{background:linear-gradient(135deg,rgba(168,85,247,.3),rgba(59,130,246,.25));border:1px solid rgba(168,85,247,.3);border-bottom-right-radius:3px;color:#f0f0ff}
+.bubble-ai{background:rgba(255,255,255,.04);border:1px solid var(--border);border-bottom-left-radius:3px}
+.bubble-ai pre{background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:10px 12px;overflow-x:auto;font-family:ui-monospace,monospace;font-size:11.5px;margin:6px 0;line-height:1.55}
+.bubble-ai code:not(pre code){background:rgba(168,85,247,.15);color:var(--purple);padding:1px 5px;border-radius:3px;font-family:ui-monospace,monospace;font-size:11px}
+.bubble-ai strong{color:var(--purple)}
+.bubble-ai em{color:var(--cyan);font-style:normal}
+.msg-time{font-size:10px;color:rgba(255,255,255,.25);padding:0 3px}
+.apply-btn{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;cursor:pointer;transition:all .15s;border:1px solid rgba(168,85,247,.4);background:rgba(168,85,247,.1);color:var(--purple)}
+.apply-btn:hover{background:var(--purple);color:#fff;box-shadow:0 0 12px rgba(168,85,247,.4)}
+.apply-bar{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+
+/* typing */
+.typing-wrap{display:flex;gap:4px;padding:10px 13px;border:1px solid var(--border);border-radius:12px;width:fit-content;background:rgba(255,255,255,.03)}
+.tdot{width:6px;height:6px;border-radius:50%;background:var(--purple);animation:td 1.2s infinite}
+.tdot:nth-child(2){animation-delay:.2s}.tdot:nth-child(3){animation-delay:.4s}
+@keyframes td{0%,60%,100%{opacity:.25;transform:scale(.75)}30%{opacity:1;transform:scale(1)}}
+
+/* quick buttons */
+.qbtn{font-size:11px;padding:3px 9px;border-radius:20px;cursor:pointer;transition:all .15s;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--muted);white-space:nowrap;flex-shrink:0}
+.qbtn:hover{border-color:rgba(168,85,247,.5);color:var(--purple);background:rgba(168,85,247,.08)}
+
+/* chat input */
+#input-area{padding:10px;border-top:1px solid var(--border);flex-shrink:0;background:rgba(0,0,0,.4)}
+#input-wrap{display:flex;gap:8px;align-items:flex-end;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px;padding:8px 10px;transition:border-color .2s}
+#input-wrap:focus-within{border-color:rgba(168,85,247,.5);box-shadow:0 0 20px rgba(168,85,247,.1)}
+#chat-in{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:13px;resize:none;max-height:100px;font-family:inherit;line-height:1.5}
+#chat-in::placeholder{color:rgba(255,255,255,.25)}
+#send-btn{width:32px;height:32px;border-radius:8px;border:none;cursor:pointer;flex-shrink:0;transition:all .2s;background:linear-gradient(135deg,var(--purple),var(--blue));color:#fff;display:flex;align-items:center;justify-content:center}
+#send-btn:hover{box-shadow:0 0 16px rgba(168,85,247,.6);transform:scale(1.05)}
+#send-btn:disabled{background:rgba(255,255,255,.08);box-shadow:none;transform:none;cursor:not-allowed}
+
+/* files view */
+.lua-item{display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;transition:background .1s;border-radius:6px;margin:1px 6px}
+.lua-item:hover{background:rgba(168,85,247,.1)}
+.lua-name{flex:1;font-family:ui-monospace,monospace;font-size:11.5px;color:rgba(255,255,255,.75)}
+.lua-size{font-size:10px;color:rgba(255,255,255,.3)}
+
+/* resizer */
+.resizer{width:3px;background:var(--border);cursor:col-resize;flex-shrink:0;transition:background .15s;z-index:5}
+.resizer:hover,.resizer.active{background:var(--purple)}
+
+/* preview panel */
+#preview-panel{flex:1;min-width:200px;display:flex;flex-direction:column}
+.prev-toolbar{height:38px;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--border);flex-shrink:0;background:rgba(0,0,0,.4)}
+.tl{width:11px;height:11px;border-radius:50%}
+#preview-url{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:3px 10px;font-size:11px;font-family:ui-monospace,monospace;outline:none;transition:.2s}
+#preview-url:focus{border-color:rgba(168,85,247,.4);color:var(--text)}
+#preview-wrap{flex:1;position:relative;overflow:hidden;background:#111}
+#preview-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#000;color:rgba(255,255,255,.15)}
+#preview-empty svg{opacity:.15}
+#preview-frame{width:100%;height:100%;border:none;display:none}
+
+/* code panel */
+#code-panel{width:400px;min-width:200px;display:flex;flex-direction:column;border-left:1px solid var(--border)}
+.code-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;background:rgba(0,0,0,.4);overflow-x:auto}
+.ctab{padding:9px 15px;font-size:11.5px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.ctab:hover{color:var(--text)}
+.ctab.active{color:var(--text);border-bottom-color:var(--purple)}
+.tab-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+#code-ed{flex:1;background:#060810;border:none;outline:none;width:100%;padding:14px;font-family:ui-monospace,'Cascadia Code',monospace;font-size:12.5px;line-height:1.7;color:#c9d1d9;resize:none;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(168,85,247,.2) transparent;tab-size:2;caret-color:var(--purple)}
+.code-actions{padding:8px 10px;border-top:1px solid var(--border);display:flex;gap:6px;align-items:center;flex-shrink:0;background:rgba(0,0,0,.4)}
+#code-stat{font-size:10.5px;color:rgba(255,255,255,.2);font-family:ui-monospace,monospace;margin-left:auto}
+
+/* music player */
+#music-player{position:fixed;bottom:16px;left:64px;z-index:200;width:270px;border-radius:18px;padding:14px;display:none;flex-direction:column;gap:10px}
+.music-open{display:flex!important}
+.player-track{font-size:11px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.player-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.5)}
+.bar-wrap{display:flex;align-items:flex-end;gap:2px;height:16px}
+.bar{width:3px;border-radius:2px;animation:bar-up 1s ease-in-out infinite;flex-shrink:0}
+.bar:nth-child(1){background:var(--purple);animation-delay:0s}
+.bar:nth-child(2){background:var(--cyan);animation-delay:.15s}
+.bar:nth-child(3){background:var(--pink);animation-delay:.3s}
+.bar:nth-child(4){background:var(--purple);animation-delay:.1s}
+.bar:nth-child(5){background:var(--cyan);animation-delay:.25s}
+@keyframes bar-up{0%,100%{height:4px}50%{height:16px}}
+.bars-paused .bar{animation:none!important;height:4px!important}
+.p-range{-webkit-appearance:none;appearance:none;width:100%;height:3px;border-radius:3px;background:rgba(255,255,255,.15);outline:none;cursor:pointer;transition:.2s}
+.p-range::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--purple);cursor:pointer;box-shadow:0 0 8px rgba(168,85,247,.7)}
+.p-range:hover{background:rgba(168,85,247,.3)}
+.ctrl{width:28px;height:28px;border-radius:50%;border:1px solid rgba(168,85,247,.3);background:rgba(168,85,247,.1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .15s;flex-shrink:0}
+.ctrl:hover{background:rgba(168,85,247,.3);box-shadow:0 0 10px rgba(168,85,247,.4)}
+.ctrl.play-main{width:34px;height:34px;background:linear-gradient(135deg,var(--purple),var(--blue));border:none;font-size:13px;box-shadow:0 0 16px rgba(168,85,247,.4)}
+.ctrl.play-main:hover{box-shadow:0 0 24px rgba(168,85,247,.6);transform:scale(1.05)}
+
+/* music url input */
+.url-input{width:100%;background:rgba(0,0,0,.4);border:1px solid rgba(168,85,247,.2);border-radius:6px;color:#fff;font-size:10px;padding:4px 8px;outline:none;font-family:ui-monospace,monospace;transition:.2s}
+.url-input:focus{border-color:rgba(168,85,247,.5);box-shadow:0 0 8px rgba(168,85,247,.2)}
+.url-input::placeholder{color:rgba(255,255,255,.25)}
+
+/* topbar */
+#topbar{position:relative;z-index:50;height:44px;display:flex;align-items:center;padding:0 12px;gap:10px;border-bottom:1px solid var(--border);flex-shrink:0;background:rgba(0,0,0,.8)}
+.topbar-logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;letter-spacing:-.3px}
+.logo-icon{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--purple),var(--blue));display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 0 12px rgba(168,85,247,.5)}
+.badge{font-size:10.5px;padding:2px 8px;border-radius:20px;font-weight:600}
+
+/* drag boxes */
+.drag-box{position:fixed;z-index:300;min-width:150px;min-height:70px;border-radius:14px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08)}
+.dbox-head{display:flex;align-items:center;justify-content:space-between;padding:8px 11px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.6);cursor:grab;user-select:none;border-bottom:1px solid rgba(255,255,255,.07)}
+.dbox-head:active{cursor:grabbing}
+.dbox-body{padding:12px;font-size:12px;color:rgba(255,255,255,.7)}
+.dbox-resize{position:absolute;bottom:3px;right:3px;width:14px;height:14px;cursor:se-resize;opacity:.25;transition:.15s}
+.dbox-resize:hover{opacity:.8}
+.dbox-close{background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:14px;line-height:1;padding:0;transition:.15s}
+.dbox-close:hover{color:#fff}
+input[type=color]{-webkit-appearance:none;width:20px;height:20px;border:none;border-radius:4px;cursor:pointer;padding:0;background:none}
+input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+input[type=color]::-webkit-color-swatch{border:none;border-radius:4px}
+
+/* lua modal */
+#lua-modal{display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.8);align-items:center;justify-content:center;backdrop-filter:blur(6px)}
+#lua-modal.open{display:flex}
+#lua-modal-inner{width:720px;max-width:95vw;max-height:82vh;border-radius:16px;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(168,85,247,.25);background:rgba(6,8,16,.97);box-shadow:0 0 60px rgba(168,85,247,.15)}
+
+/* toast */
+#toast{position:fixed;bottom:20px;right:20px;z-index:9999;backdrop-filter:blur(20px);border-radius:10px;padding:10px 16px;font-size:12.5px;transform:translateY(60px);opacity:0;transition:all .25s;pointer-events:none;background:rgba(13,17,23,.95);border:1px solid var(--border)}
+#toast.show{transform:translateY(0);opacity:1}
+
+/* animated gradient border on panels */
+#left-panel::after,#code-panel::before{content:'';position:absolute;top:0;bottom:0;width:1px;opacity:.5;background:linear-gradient(180deg,transparent,var(--purple),var(--cyan),var(--purple),transparent);animation:border-flow 4s linear infinite}
+#left-panel{position:relative}#left-panel::after{right:0}
+#code-panel{position:relative}#code-panel::before{left:0}
+@keyframes border-flow{0%{background-position:0 0}100%{background-position:0 200%}}
+
+/* ── Mobile / iPad responsive ── */
+#mobile-tabs{display:none}
+@media(max-width:1100px){
+  html,body{height:100%;overflow:hidden}
+  body{height:100dvh!important}
+  #icon-sidebar{display:none!important}
+  .resizer{display:none!important}
+  #left-panel{width:100%!important;min-width:0!important;border-right:none!important;display:none!important;height:100%!important}
+  #preview-panel{display:none!important;min-width:0!important}
+  #code-panel{width:100%!important;min-width:0!important;border-left:none!important;display:none!important}
+  /* active mobile panel */
+  #left-panel.mob-active,#preview-panel.mob-active,#code-panel.mob-active{display:flex!important;flex:1!important;min-height:0!important}
+  /* bottom tab bar */
+  #mobile-tabs{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:400;height:56px;background:rgba(0,0,0,.95);border-top:1px solid var(--border);backdrop-filter:blur(20px)}
+  .mob-tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);cursor:pointer;transition:all .15s;-webkit-tap-highlight-color:transparent}
+  .mob-tab svg{width:20px;height:20px}
+  .mob-tab.active{color:var(--purple)}
+  .mob-tab.active svg{filter:drop-shadow(0 0 6px var(--purple))}
+  /* shrink topbar on mobile */
+  #topbar{padding:0 10px;gap:6px;height:44px}
+  .topbar-logo span{font-size:12px}
+  /* push chat messages above tab bar so input stays visible */
+  #chat-messages{padding-bottom:64px!important}
+  #input-area{position:sticky;bottom:56px;z-index:10;background:rgba(0,0,0,.95)!important}
+  /* touch scroll fix */
+  #chat-messages,#lua-list,#code-ed,.p-4{-webkit-overflow-scrolling:touch;overflow-y:auto}
+  /* music player position on mobile */
+  #music-player{left:8px!important;bottom:72px!important;width:calc(100vw - 16px)!important}
+}
+</style>
+</head>
+<body class="flex flex-col" style="height:100dvh;height:100vh">
+
+<!-- WebGL background -->
+<canvas id="bg"></canvas>
+
+<!-- ══ TOPBAR ══ -->
+<div id="topbar">
+  <div class="topbar-logo">
+    <div class="logo-icon">⚡</div>
+    <span>AI Builder</span>
+  </div>
+  <div style="width:1px;height:20px;background:var(--border)"></div>
+  <select id="model-sel" style="background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.2);color:rgba(255,255,255,.7);padding:3px 8px;border-radius:6px;font-size:11px;outline:none;cursor:pointer">
+    <option value="openai">GPT-4o (Free)</option>
+    <option value="mistral">Mistral (Free)</option>
+    <option value="deepseek">DeepSeek (Free)</option>
+  </select>
+  <div class="ml-auto flex items-center gap-2">
+    <span class="badge" style="background:rgba(168,85,247,.15);color:var(--purple);border:1px solid rgba(168,85,247,.25)">🔮 Lua</span>
+    <span class="badge" style="background:rgba(6,182,212,.1);color:var(--cyan);border:1px solid rgba(6,182,212,.2)">Free AI</span>
+    <div id="status-dot" style="width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)"></div>
+    <!-- bg color -->
+    <div class="flex items-center gap-1.5 ml-2">
+      <span style="font-size:10px;color:var(--muted)">BG</span>
+      <input type="color" id="bg-color" value="#000000" title="Tint background"/>
+      <button onclick="resetBg()" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer" title="Reset">↺</button>
+    </div>
+    <button onclick="addBox()" class="btn-glow ml-1">＋ Box</button>
+    <button onclick="toggleMusic()" class="btn-glow" id="music-btn">🎵 Music</button>
+  </div>
+</div>
+
+<!-- ══ MAIN LAYOUT ══ -->
+<div class="flex flex-1 overflow-hidden" style="position:relative;z-index:1">
+
+  <!-- ─ Icon Sidebar ─ -->
+  <nav id="icon-sidebar">
+    <div class="sidebar-icon active" id="si-chat" data-tip="AI Chat" onclick="showView('chat')">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </div>
+    <div class="sidebar-icon" id="si-files" data-tip="Lua Files" onclick="showView('files')">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+    </div>
+    <div class="sidebar-icon" id="si-settings" data-tip="Settings" onclick="showView('settings')">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </div>
+    <div class="sidebar-bottom flex flex-col items-center gap-2 pb-2">
+      <div class="sidebar-icon" data-tip="GitHub" onclick="window.open('https://github.com/robloxscripter6245366542/roblox-lua-obscator','_blank')">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ─ Left Panel ─ -->
+  <div id="left-panel">
+
+    <!-- CHAT VIEW -->
+    <div class="panel-view active" id="view-chat">
+      <div class="panel-header">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        AI Chat
+        <div id="gen-badge" style="display:none;margin-left:auto;font-size:9px;padding:2px 7px;border-radius:20px;background:rgba(168,85,247,.2);color:var(--purple);border:1px solid rgba(168,85,247,.3);animation:pulse 1.5s infinite">generating</div>
+      </div>
+      <div id="chat-messages"></div>
+      <div id="input-area">
+        <div class="flex gap-1.5 mb-2 flex-wrap">
+          <button class="qbtn" onclick="q('Build a full portfolio site with WebGL background, draggable boxes, animated hero, and a music player in the mxx3x style')">Full Site</button>
+          <button class="qbtn" onclick="q('Add a draggable resizable glass card with color picker')">＋ Box</button>
+          <button class="qbtn" onclick="q('Build a Roblox Lua obfuscator UI with code input and output')">Obfuscator</button>
+          <button class="qbtn" onclick="q('Add a WebGL particle background with purple and cyan colors')">WebGL</button>
+          <button class="qbtn" onclick="q('Create a dark gaming dashboard with stats cards and sidebar')">Dashboard</button>
+        </div>
+        <div id="input-wrap">
+          <textarea id="chat-in" rows="1" placeholder="Ask the AI to build anything…"></textarea>
+          <button id="send-btn" onclick="send()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FILES VIEW -->
+    <div class="panel-view" id="view-files">
+      <div class="panel-header">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Lua Files
+        <span id="lua-count" style="margin-left:auto;font-size:10px;background:rgba(168,85,247,.15);color:var(--purple);padding:1px 7px;border-radius:20px;border:1px solid rgba(168,85,247,.2)">0</span>
+      </div>
+      <div class="flex-1 overflow-y-auto pt-1" id="lua-list" style="scrollbar-width:thin;scrollbar-color:rgba(168,85,247,.2) transparent"></div>
+    </div>
+
+    <!-- SETTINGS VIEW -->
+    <div class="panel-view" id="view-settings">
+      <div class="panel-header">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        Settings
+      </div>
+      <div class="p-4 flex flex-col gap-4">
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">AI Model</div>
+          <select id="model-sel2" onchange="document.getElementById('model-sel').value=this.value" style="width:100%;background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.2);color:#fff;padding:6px 10px;border-radius:8px;font-size:12px;outline:none">
+            <option value="openai">GPT-4o — Best Quality (Free)</option>
+            <option value="mistral">Mistral — Fast (Free)</option>
+            <option value="deepseek">DeepSeek (Free)</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Theme Color</div>
+          <div class="flex gap-2 flex-wrap">
+            <div onclick="setTheme('#a855f7','#3b82f6')" style="width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#a855f7,#3b82f6);cursor:pointer;border:2px solid rgba(255,255,255,.3)"></div>
+            <div onclick="setTheme('#06b6d4','#8b5cf6')" style="width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#06b6d4,#8b5cf6);cursor:pointer;border:2px solid transparent"></div>
+            <div onclick="setTheme('#ec4899','#f97316')" style="width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#ec4899,#f97316);cursor:pointer;border:2px solid transparent"></div>
+            <div onclick="setTheme('#22c55e','#06b6d4')" style="width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#22c55e,#06b6d4);cursor:pointer;border:2px solid transparent"></div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Clear Chat</div>
+          <button onclick="clearChat()" class="btn-glow w-full" style="width:100%;text-align:center">Clear conversation</button>
+        </div>
+        <div style="padding:10px;border-radius:10px;background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.15)">
+          <div style="font-size:11px;color:var(--purple);font-weight:700;margin-bottom:4px">Status</div>
+          <div style="font-size:11px;color:var(--muted)">Provider: <span style="color:#fff">Pollinations.ai (Free)</span></div>
+          <div style="font-size:11px;color:var(--muted)">Stack: <span style="color:#fff">Edge Function + SSE Stream</span></div>
+          <div style="font-size:11px;color:var(--muted)">WebGL: <span id="gl-status" style="color:var(--green)">Active</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="resizer" id="r1"></div>
+
+  <!-- ─ Preview Panel ─ -->
+  <div id="preview-panel">
+    <div class="prev-toolbar">
+      <div class="flex gap-1.5"><div class="tl" style="background:#ff5f57"></div><div class="tl" style="background:#ffbd2e"></div><div class="tl" style="background:#28c940"></div></div>
+      <input id="preview-url" readonly value="about:blank"/>
+      <button onclick="applyCode()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;transition:.15s;padding:2px 6px" title="Refresh" onmouseover="this.style.color='var(--purple)'" onmouseout="this.style.color='var(--muted)'">↺</button>
+      <div class="flex gap-1">
+        <button class="qbtn" id="dv-d" onclick="setDevice('d',this)">🖥</button>
+        <button class="qbtn" onclick="setDevice('t',this)">📱</button>
+        <button class="qbtn" onclick="setDevice('m',this)">📲</button>
+      </div>
+    </div>
+    <div id="preview-wrap">
+      <div id="preview-empty">
+        <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=".6"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        <span style="font-size:13px">Ask the AI to build something</span>
+        <span style="font-size:11px;opacity:.6">Try "Build a full site with music and boxes"</span>
+      </div>
+      <iframe id="preview-frame" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"></iframe>
+    </div>
+  </div>
+
+  <div class="resizer" id="r2"></div>
+
+  <!-- ─ Code Panel ─ -->
+  <div id="code-panel">
+    <div class="code-tabs">
+      <div class="ctab active" data-l="html" onclick="switchTab('html',this)"><span class="tab-dot" style="background:#f0883e"></span>index.html</div>
+      <div class="ctab" data-l="css" onclick="switchTab('css',this)"><span class="tab-dot" style="background:var(--blue)"></span>style.css</div>
+      <div class="ctab" data-l="js" onclick="switchTab('js',this)"><span class="tab-dot" style="background:#d29922"></span>app.js</div>
+      <div class="ctab" data-l="lua" onclick="switchTab('lua',this)"><span class="tab-dot" style="background:var(--purple)"></span>script.lua</div>
+    </div>
+    <textarea id="code-ed" spellcheck="false" placeholder="// Code generated by AI will appear here…"></textarea>
+    <div class="code-actions">
+      <button class="btn-primary" onclick="applyCode()">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline;vertical-align:-1px;margin-right:5px"><polyline points="20 6 9 17 4 12"/></svg>
+        Apply & Preview
+      </button>
+      <button class="btn-ghost" onclick="copyCode()">Copy</button>
+      <button class="btn-ghost" onclick="dlCode()">Download</button>
+      <span id="code-stat">0 lines</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══ MUSIC PLAYER ══ -->
+<div id="music-player" class="glass-deep glow-purple">
+  <div class="flex items-center gap-2.5">
+    <div class="bar-wrap" id="vis-bars">
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      <div class="bar"></div><div class="bar"></div>
+    </div>
+    <div class="flex flex-col gap-0.5 flex-1 min-w-0">
+      <span class="player-label">Now Playing</span>
+      <span class="player-track" id="track-name">—</span>
+    </div>
+    <button class="dbox-close" onclick="closeMusic()" style="font-size:16px">×</button>
+  </div>
+  <!-- seek -->
+  <div class="flex flex-col gap-1">
+    <input type="range" id="seek-bar" class="p-range" min="0" max="100" value="0"/>
+    <div class="flex justify-between">
+      <span style="font-size:10px;color:rgba(255,255,255,.4)" id="cur-time">0:00</span>
+      <span style="font-size:10px;color:rgba(255,255,255,.4)" id="dur-time">0:00</span>
+    </div>
+  </div>
+  <!-- controls -->
+  <div class="flex items-center gap-2">
+    <button class="ctrl" onclick="prevTrack()" title="Previous">⏮</button>
+    <button class="ctrl play-main" id="play-btn" onclick="togglePlay()">▶</button>
+    <button class="ctrl" onclick="nextTrack()" title="Next">⏭</button>
+    <span style="font-size:10px;color:var(--muted);margin-left:2px">Vol</span>
+    <input type="range" id="vol-bar" class="p-range flex-1" min="0" max="1" step="0.01" value="0.5"/>
+  </div>
+  <!-- custom url -->
+  <div class="flex flex-col gap-1.5">
+    <span style="font-size:10px;color:var(--muted)">Custom track URL</span>
+    <div class="flex gap-1.5">
+      <input type="text" id="custom-url" class="url-input flex-1" placeholder="https://…/track.mp3"/>
+      <button onclick="loadCustomUrl()" class="btn-glow" style="white-space:nowrap;font-size:11px">Load</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ LUA MODAL ══ -->
+<div id="lua-modal">
+  <div id="lua-modal-inner">
+    <div class="flex items-center gap-3 px-4 py-3" style="border-bottom:1px solid rgba(168,85,247,.15)">
+      <span style="font-size:13px;font-weight:600;color:var(--purple)">📄</span>
+      <span id="lua-modal-title" style="font-size:13px;font-weight:600"></span>
+      <button onclick="closeLuaModal()" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1">×</button>
+    </div>
+    <pre id="lua-modal-content" style="flex:1;overflow:auto;padding:14px;font-family:ui-monospace,monospace;font-size:11.5px;line-height:1.7;color:rgba(100,210,140,.9);background:rgba(0,0,0,.5);white-space:pre;tab-size:2;scrollbar-width:thin;scrollbar-color:rgba(168,85,247,.2) transparent"></pre>
+    <div class="flex gap-2 p-3" style="border-top:1px solid rgba(168,85,247,.15)">
+      <button class="btn-primary" onclick="loadLuaToEditor()">Load into Editor</button>
+      <button class="btn-ghost" onclick="askAboutLua()">Ask AI About This</button>
+      <button class="btn-ghost" onclick="closeLuaModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- ── Mobile bottom tab bar ── -->
+<div id="mobile-tabs">
+  <div class="mob-tab active" id="mtab-chat" onclick="mobPanel('chat')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    Chat
+  </div>
+  <div class="mob-tab" id="mtab-preview" onclick="mobPanel('preview')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+    Preview
+  </div>
+  <div class="mob-tab" id="mtab-code" onclick="mobPanel('code')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    Code
+  </div>
+  <div class="mob-tab" id="mtab-files" onclick="showView('files');mobPanel('chat')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+    Files
+  </div>
+</div>
+<audio id="audio" loop></audio>
+
+<style>
+@keyframes pulse{0%,100%{opacity:.7}50%{opacity:1}}
+</style>
+
+<script>
+// ══ WEBGL BACKGROUND ══════════════════════════════════════════════════════════
+(function(){
+  const c=document.getElementById('bg'),gl=c.getContext('webgl');
+  if(!gl){document.getElementById('gl-status').textContent='Unsupported';return;}
+  const vs=`attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}`;
+  const fs=`precision mediump float;
+uniform float t;uniform vec2 r;uniform vec3 ca,cb;
+float hash(vec2 p){p=fract(p*vec2(12.98,78.23));p+=dot(p,p+34.5);return fract(p.x*p.y);}
+float noise(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),mix(hash(i+vec2(0,1)),hash(i+1.),u.x),u.y);}
+float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<6;i++){v+=a*noise(p);p=p*2.1+vec2(1.7,9.2);a*=.5;}return v;}
+void main(){
+  vec2 uv=(gl_FragCoord.xy-.5*r)/min(r.x,r.y);
+  float f=fbm(uv*2.5+vec2(t*.06,t*.04));
+  f=fbm(uv*3.+f*1.2+vec2(-t*.05,t*.07));
+  vec3 col=mix(ca,cb,clamp(f*1.6-.3,0.,1.));
+  col*=clamp(f*2.,0.,1.)*min(t*.5,1.);
+  gl_FragColor=vec4(col,1.);
+}`;
+  const sh=(type,src)=>{const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s;};
+  const pg=gl.createProgram();
+  gl.attachShader(pg,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pg,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pg);gl.useProgram(pg);
+  const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(pg,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const uT=gl.getUniformLocation(pg,'t'),uR=gl.getUniformLocation(pg,'r');
+  const uCa=gl.getUniformLocation(pg,'ca'),uCb=gl.getUniformLocation(pg,'cb');
+  window._gl={gl,pg,uCa,uCb};
+  window.setGlColors=function(c1,c2){
+    const h=h=>{const r=parseInt(h.slice(1,3),16)/255,g=parseInt(h.slice(3,5),16)/255,b=parseInt(h.slice(5,7),16)/255;return[r,g,b];};
+    gl.uniform3fv(uCa,h(c1));gl.uniform3fv(uCb,h(c2));
+  };
+  setGlColors('#0d0520','#0a1a35');
+  function resize(){c.width=innerWidth;c.height=innerHeight;gl.viewport(0,0,c.width,c.height);gl.uniform2f(uR,c.width,c.height);}
+  window.addEventListener('resize',resize);resize();
+  let time=0;(function loop(){time+=.016;gl.uniform1f(uT,time);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);requestAnimationFrame(loop);})();
+})();
+
+// ══ TYPING TITLE ══════════════════════════════════════════════════════════════
+(function(){const T='⚡ AI Builder';let i=1,fw=true;
+function step(){document.title=T.slice(0,i);if(fw){i++;if(i>T.length){fw=false;setTimeout(step,2000);return;}}else{i--;if(i<1){fw=true;}}setTimeout(step,120);}
+setTimeout(step,1000);})();
+
+// ══ THEME ═════════════════════════════════════════════════════════════════════
+function setTheme(c1,c2){
+  document.documentElement.style.setProperty('--purple',c1);
+  if(window.setGlColors)setGlColors('#000',c2+'22');
+}
+document.getElementById('bg-color').addEventListener('input',function(){
+  const h=this.value;if(h==='#000000'){setGlColors('#0d0520','#0a1a35');document.body.style.background='#000';}
+  else{document.body.style.background=h;}
+});
+function resetBg(){document.getElementById('bg-color').value='#000000';setGlColors('#0d0520','#0a1a35');document.body.style.background='#000';}
+
+// ══ SIDEBAR NAVIGATION ════════════════════════════════════════════════════════
+function showView(name){
+  document.querySelectorAll('.panel-view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.sidebar-icon').forEach(i=>i.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  const si=document.getElementById('si-'+name);
+  if(si)si.classList.add('active');
+}
+
+// ── Mobile panel switcher ──────────────────────────────────────────────────
+function mobPanel(name){
+  ['#left-panel','#preview-panel','#code-panel'].forEach(sel=>{
+    document.querySelector(sel).classList.remove('mob-active');
+  });
+  const map={chat:'#left-panel',preview:'#preview-panel',code:'#code-panel'};
+  if(map[name])document.querySelector(map[name]).classList.add('mob-active');
+  // update tab highlight
+  document.querySelectorAll('.mob-tab').forEach(t=>t.classList.remove('active'));
+  const mt=document.getElementById('mtab-'+name);
+  if(mt)mt.classList.add('active');
+  // add padding to scrollable content above tab bar
+  document.querySelectorAll('#chat-messages,#code-ed').forEach(el=>el.style.paddingBottom='60px');
+}
+// init mobile on load
+(function initMob(){
+  if(window.innerWidth<=1100){
+    document.getElementById('left-panel').classList.add('mob-active');
+    document.querySelectorAll('#chat-messages,#code-ed').forEach(el=>el.style.paddingBottom='60px');
+  }
+  window.addEventListener('resize',()=>{
+    if(window.innerWidth<=1100&&!document.querySelector('.mob-active')){
+      document.getElementById('left-panel').classList.add('mob-active');
+    }
+  });
+})()
+
+// ══ STATE ═════════════════════════════════════════════════════════════════════
+const S={history:[],gen:false,code:{html:'',css:'',js:'',lua:''},lang:'html',luaFile:null,luaContent:null,abort:null};
+
+// ══ AI PROVIDERS ══════════════════════════════════════════════════════════════
+// text.pollinations.ai/openai is the browser-CORS-enabled endpoint
+const POLLINATIONS_URL='https://text.pollinations.ai/openai';
+const SYS_PROMPT=`You are an elite AI software engineering assistant.
+MXX3X STACK — USE THIS FOR EVERY PROJECT:
+- Pure black background (#000000), Tailwind CDN for standalone HTML
+- WebGL fbm GLSL shader for animated nebula background (canvas#bg, fixed inset-0)
+- Glass cards: bg-white/[0.02] backdrop-blur-xl border border-white/5
+- Native new Audio() for music, pure pointerdown/move/up for draggable boxes
+- Typing document.title animation
+When asked to create/modify a website return code in \`\`\`html \`\`\`css \`\`\`javascript blocks.
+For Lua: \`\`\`lua block. Always generate complete, production-ready, executable code only.`;
+
+// ══ MUSIC ═════════════════════════════════════════════════════════════════════
+const TRACKS=[
+  {n:'SoundHelix – Ambient I',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3'},
+  {n:'SoundHelix – Lofi Dream',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},
+  {n:'SoundHelix – Night Vibes',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'},
+];
+let trackIdx=0,musicOpen=false;
+const audio=document.getElementById('audio');
+const playBtn=document.getElementById('play-btn');
+const trackName=document.getElementById('track-name');
+const seekBar=document.getElementById('seek-bar');
+const curTimeEl=document.getElementById('cur-time');
+const durTimeEl=document.getElementById('dur-time');
+const volBar=document.getElementById('vol-bar');
+const visBars=document.getElementById('vis-bars');
+
+function fmt(s){if(!isFinite(s)||s<0)return'0:00';return`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;}
+function loadTrack(i){
+  const t=TRACKS[i];trackName.textContent=t.n;audio.src=t.url;
+  seekBar.value=0;curTimeEl.textContent='0:00';durTimeEl.textContent='0:00';
+}
+function togglePlay(){
+  if(audio.paused){audio.play().then(()=>{playBtn.textContent='⏸';visBars.classList.remove('bars-paused');}).catch(e=>{toast('Could not play — paste a direct MP3 URL below','error');});}
+  else{audio.pause();playBtn.textContent='▶';visBars.classList.add('bars-paused');}
+}
+function prevTrack(){trackIdx=(trackIdx-1+TRACKS.length)%TRACKS.length;loadTrack(trackIdx);if(!audio.paused)audio.play();}
+function nextTrack(){trackIdx=(trackIdx+1)%TRACKS.length;loadTrack(trackIdx);if(!audio.paused)audio.play();}
+function loadCustomUrl(){const url=document.getElementById('custom-url').value.trim();if(!url)return;audio.src=url;trackName.textContent=url.split('/').pop()||'Custom Track';audio.play().then(()=>{playBtn.textContent='⏸';visBars.classList.remove('bars-paused');}).catch(()=>toast('Could not load URL','error'));}
+function toggleMusic(){musicOpen=!musicOpen;document.getElementById('music-player').classList.toggle('music-open',musicOpen);document.getElementById('music-btn').style.background=musicOpen?'rgba(168,85,247,.2)':'';}
+function closeMusic(){musicOpen=false;document.getElementById('music-player').classList.remove('music-open');document.getElementById('music-btn').style.background='';}
+
+audio.addEventListener('timeupdate',()=>{if(!isFinite(audio.duration))return;seekBar.value=audio.currentTime/audio.duration*100;curTimeEl.textContent=fmt(audio.currentTime);durTimeEl.textContent=fmt(audio.duration);});
+seekBar.addEventListener('input',()=>{if(isFinite(audio.duration))audio.currentTime=seekBar.value/100*audio.duration;});
+volBar.addEventListener('input',()=>{audio.volume=+volBar.value;});
+audio.addEventListener('ended',nextTrack);
+loadTrack(0);
+
+// ══ DRAGGABLE BOXES ═══════════════════════════════════════════════════════════
+let boxN=0;
+function addBox(title,content,color){
+  boxN++;
+  const b=document.createElement('div');
+  b.className='drag-box glass-deep';
+  b.style.cssText=`left:${90+boxN*28}px;top:${110+boxN*28}px;width:210px;${color?'background:'+color:''}`;
+  b.innerHTML=`<div class="dbox-head">
+    <span>${title||'Box '+boxN}</span>
+    <div style="display:flex;align-items:center;gap:6px">
+      <input type="color" value="#a855f7" title="Box color"/>
+      <button class="dbox-close" onclick="this.closest('.drag-box').remove()">×</button>
+    </div>
+  </div>
+  <div class="dbox-body">${content||'Drag · Resize · Colorize'}</div>
+  <svg class="dbox-resize" viewBox="0 0 10 10" fill="rgba(255,255,255,.4)"><path d="M9 1L1 9M5 1L1 5M9 5L5 9"/></svg>`;
+  b.querySelector('input[type=color]').addEventListener('input',e=>{b.style.background=e.target.value;b.style.backdropFilter='blur(24px)';});
+  b.querySelector('.dbox-head').addEventListener('pointerdown',e=>{
+    if(e.target.closest('input,button'))return;
+    const ox=e.clientX-b.offsetLeft,oy=e.clientY-b.offsetTop;
+    const mv=e=>{b.style.left=(e.clientX-ox)+'px';b.style.top=(e.clientY-oy)+'px';};
+    const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);};
+    addEventListener('pointermove',mv);addEventListener('pointerup',up);e.preventDefault();
+  });
+  b.querySelector('.dbox-resize').addEventListener('pointerdown',e=>{
+    const sx=e.clientX,sy=e.clientY,sw=b.offsetWidth,sh=b.offsetHeight;
+    const mv=e=>{b.style.width=Math.max(150,sw+e.clientX-sx)+'px';b.style.height=Math.max(70,sh+e.clientY-sy)+'px';};
+    const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);};
+    addEventListener('pointermove',mv);addEventListener('pointerup',up);e.preventDefault();
+  });
+  document.body.appendChild(b);
+}
+
+// ══ CODE EDITOR ══════════════════════════════════════════════════════════════
+const edEl=document.getElementById('code-ed');
+const tabColors={html:'#f0883e',css:'#3b82f6',js:'#d29922',lua:'#a855f7'};
+function switchTab(lang,el){
+  S.code[S.lang]=edEl.value;S.lang=lang;
+  document.querySelectorAll('.ctab').forEach(t=>t.classList.remove('active'));el.classList.add('active');
+  edEl.value=S.code[lang]||'';edEl.style.color=tabColors[lang]+'cc';updateStat();
+}
+edEl.addEventListener('input',()=>{S.code[S.lang]=edEl.value;updateStat();});
+edEl.style.color=tabColors.html+'cc';
+function setCode(lang,val){S.code[lang]=val;if(S.lang===lang){edEl.value=val;updateStat();}}
+function updateStat(){const v=edEl.value;document.getElementById('code-stat').textContent=v.split('\n').length+' ln · '+v.length+' ch';}
+
+// ══ PREVIEW ══════════════════════════════════════════════════════════════════
+function buildDoc(){
+  S.code[S.lang]=edEl.value;
+  const h=S.code.html,c=S.code.css,j=S.code.js;
+  if(!h&&!c&&!j)return null;
+  if(/<html/i.test(h)){
+    let d=h;
+    if(c&&!/<style/i.test(d))d=d.replace('</head>',`<style>${c}</style></head>`);
+    if(j&&!/<script/i.test(d))d=d.replace('</body>',`<script>${j}<\/script></body>`);
+    return d;
+  }
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{margin:0;padding:0;box-sizing:border-box}${c||''}</style></head><body>${h||''}<script>${j||''}<\/script></body></html>`;
+}
+function applyCode(){
+  const doc=buildDoc();if(!doc)return;
+  const fr=document.getElementById('preview-frame');
+  document.getElementById('preview-empty').style.display='none';
+  fr.style.display='block';fr.srcdoc=doc;
+  document.getElementById('preview-url').value='preview://localhost/';
+  toast('Preview updated','ok');
+}
+function setDevice(d,el){
+  document.querySelectorAll('#preview-panel .qbtn').forEach(b=>b.style.borderColor='');
+  el.style.borderColor='var(--purple)';
+  const f=document.getElementById('preview-frame'),w=document.getElementById('preview-wrap');
+  if(d==='d'){f.style.width='100%';w.style.padding='0';w.style.background='#111';}
+  else if(d==='t'){f.style.width='768px';w.style.padding='12px';w.style.background='#0a0a0a';}
+  else{f.style.width='390px';w.style.padding='12px';w.style.background='#0a0a0a';}
+}
+function copyCode(){navigator.clipboard.writeText(edEl.value);toast('Copied to clipboard');}
+function dlCode(){const e={html:'html',css:'css',js:'js',lua:'lua'};const b=new Blob([edEl.value],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='code.'+e[S.lang];a.click();}
+
+// ══ CHAT ═════════════════════════════════════════════════════════════════════
+const msgWrap=document.getElementById('chat-messages');
+const chatWrap=msgWrap;
+
+function md(t){
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/```(\w*)\n([\s\S]*?)```/g,(_,l,c)=>`<pre><code>${c}</code></pre>`)
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g,'<em>$1</em>')
+    .replace(/^[\-•] (.+)$/gm,'<li style="margin:2px 0">$1</li>')
+    .replace(/(<li[^>]*>.*?<\/li>)/gs,m=>`<ul style="padding-left:14px;margin:4px 0">${m}</ul>`)
+    .replace(/\n\n/g,'<br><br>').replace(/\n/g,'<br>');
+}
+
+function appendMsg(role,html,extra){
+  const d=document.createElement('div');d.className='msg msg-'+role;
+  const t=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const bub=document.createElement('div');bub.className='bubble bubble-'+role;bub.innerHTML=html;
+  d.appendChild(bub);
+  d.appendChild(Object.assign(document.createElement('div'),{className:'msg-time',textContent:t}));
+  if(extra)d.appendChild(extra);
+  msgWrap.appendChild(d);msgWrap.scrollTop=msgWrap.scrollHeight;
+  return bub;
+}
+
+function extractCode(text){
+  const r={html:null,css:null,js:null,lua:null};
+  const re=/```(html|css|javascript|js|lua)\s*\n([\s\S]*?)```/gi;
+  let m;while((m=re.exec(text))!==null){
+    const l=m[1].toLowerCase();
+    if(l==='html')r.html=m[2];
+    else if(l==='css')r.css=m[2];
+    else if(l==='javascript'||l==='js')r.js=m[2];
+    else if(l==='lua')r.lua=m[2];
+  }
+  return r;
+}
+
+function mkBar(ex){
+  const bar=document.createElement('div');bar.className='apply-bar';
+  if(ex.html||ex.css||ex.js){
+    const b=document.createElement('button');b.className='apply-btn';b.textContent='⚡ Apply & Preview';
+    b.onclick=()=>{if(ex.html)setCode('html',ex.html);if(ex.css)setCode('css',ex.css);if(ex.js)setCode('js',ex.js);applyCode();};
+    bar.appendChild(b);
+  }
+  if(ex.lua){
+    const b=document.createElement('button');b.className='apply-btn';b.textContent='🔮 Load Lua';
+    b.onclick=()=>{setCode('lua',ex.lua);switchTab('lua',document.querySelector('[data-l="lua"]'));toast('Lua loaded into editor');};
+    bar.appendChild(b);
+  }
+  return bar;
+}
+
+let typingEl=null;
+function showTyping(){
+  typingEl=document.createElement('div');typingEl.className='msg msg-ai';
+  const wrap=document.createElement('div');wrap.className='typing-wrap';
+  wrap.innerHTML='<div class="tdot"></div><div class="tdot"></div><div class="tdot"></div>';
+  typingEl.appendChild(wrap);msgWrap.appendChild(typingEl);msgWrap.scrollTop=msgWrap.scrollHeight;
+}
+function hideTyping(){if(typingEl){typingEl.remove();typingEl=null;}}
+
+async function send(){
+  const text=document.getElementById('chat-in').value.trim();
+  if(!text||S.gen)return;
+  document.getElementById('chat-in').value='';document.getElementById('chat-in').style.height='auto';
+  appendMsg('user',text.replace(/</g,'&lt;').replace(/>/g,'&gt;'));
+  S.history.push({role:'user',content:text});
+  await generate();
+}
+
+async function streamSSE(res,bub,msgWrap){
+  const reader=res.body.getReader(),dec=new TextDecoder();
+  let full='',buf='',done_stream=false;
+  while(!done_stream){
+    const{done,value}=await reader.read();
+    if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    const lines=buf.split('\n');buf=lines.pop();
+    for(const line of lines){
+      if(!line.startsWith('data: '))continue;
+      const data=line.slice(6).trim();
+      if(data==='[DONE]'){done_stream=true;break;}
+      try{
+        const p=JSON.parse(data);
+        const delta=p.choices?.[0]?.delta?.content;
+        if(delta){full+=delta;bub.innerHTML=md(full);msgWrap.scrollTop=msgWrap.scrollHeight;}
+      }catch{}
+    }
+  }
+  return full;
+}
+
+async function generate(){
+  S.gen=true;
+  document.getElementById('send-btn').disabled=true;
+  document.getElementById('gen-badge').style.display='block';
+  showTyping();
+  const model=document.getElementById('model-sel').value;
+  const ctrl=new AbortController();
+  S.abort=ctrl;
+  try{
+    // Map any legacy/removed model names to the current valid 'openai'
+    const LEGACY={'openai-large':'openai','openai-fast':'openai','glm-4.7':'openai','gpt-4o':'openai','gpt-4o-mini':'openai'};
+    const resolvedModel=LEGACY[model]||model;
+    const body={
+      model:resolvedModel,
+      messages:[{role:'system',content:SYS_PROMPT},...S.history],
+      temperature:0.7,
+      max_tokens:8192,
+      stream:true
+    };
+
+    // ── Attempt 1: streaming ─────────────────────────────────────────────────
+    let full='';
+    let streamOk=false;
+    try{
+      const res=await fetch(POLLINATIONS_URL,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(body),signal:ctrl.signal
+      });
+      if(res.ok){
+        streamOk=true;
+        hideTyping();
+        const d=document.createElement('div');d.className='msg msg-ai';
+        const bub=document.createElement('div');bub.className='bubble bubble-ai';
+        d.appendChild(bub);
+        d.appendChild(Object.assign(document.createElement('div'),{className:'msg-time',textContent:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}));
+        msgWrap.appendChild(d);
+        full=await streamSSE(res,bub,msgWrap);
+        if(!full)bub.innerHTML='<span style="color:rgba(255,255,255,.4)">No response — try again.</span>';
+        const ex=extractCode(full);
+        if(ex.html||ex.css||ex.js||ex.lua)d.appendChild(mkBar(ex));
+        if(ex.html||ex.css||ex.js){if(ex.html)setCode('html',ex.html);if(ex.css)setCode('css',ex.css);if(ex.js)setCode('js',ex.js);applyCode();}
+      }
+    }catch(e){if(e.name==='AbortError')throw e;}
+
+    // ── Attempt 2: non-streaming fallback ────────────────────────────────────
+    if(!streamOk){
+      const res2=await fetch(POLLINATIONS_URL,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({...body,stream:false}),signal:ctrl.signal
+      });
+      if(!res2.ok){
+        const t=await res2.text().catch(()=>res2.statusText);
+        hideTyping();appendMsg('ai','❌ AI error '+res2.status+': '+t);return;
+      }
+      const data=await res2.json();
+      full=data.choices?.[0]?.message?.content||'';
+      hideTyping();
+      const d=document.createElement('div');d.className='msg msg-ai';
+      const bub=document.createElement('div');bub.className='bubble bubble-ai';
+      bub.innerHTML=full?md(full):'<span style="color:rgba(255,255,255,.4)">No response — try again.</span>';
+      d.appendChild(bub);
+      d.appendChild(Object.assign(document.createElement('div'),{className:'msg-time',textContent:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}));
+      msgWrap.appendChild(d);msgWrap.scrollTop=msgWrap.scrollHeight;
+      const ex=extractCode(full);
+      if(ex.html||ex.css||ex.js||ex.lua)d.appendChild(mkBar(ex));
+      if(ex.html||ex.css||ex.js){if(ex.html)setCode('html',ex.html);if(ex.css)setCode('css',ex.css);if(ex.js)setCode('js',ex.js);applyCode();}
+    }
+
+    if(full)S.history.push({role:'assistant',content:full});
+  }catch(err){
+    if(err.name==='AbortError')return;
+    hideTyping();
+    appendMsg('ai','❌ '+err.message);
+  }finally{
+    S.gen=false;S.abort=null;
+    document.getElementById('send-btn').disabled=false;
+    document.getElementById('gen-badge').style.display='none';
+    document.getElementById('chat-in').focus();
+  }
+}
+
+function q(msg){document.getElementById('chat-in').value=msg;send();}
+function clearChat(){msgWrap.innerHTML='';S.history=[];toast('Chat cleared');welcome();}
+
+document.getElementById('chat-in').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px';});
+document.getElementById('chat-in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
+
+// ══ LUA FILES ════════════════════════════════════════════════════════════════
+async function loadLuaFiles(){
+  try{
+    const r=await fetch('/api/lua-files');const{files}=await r.json();
+    document.getElementById('lua-count').textContent=files.length;
+    document.getElementById('lua-list').innerHTML=files.map(f=>`
+      <div class="lua-item" onclick="openLua('${f.name}')">
+        <span style="color:var(--purple);font-size:12px">📄</span>
+        <span class="lua-name">${f.name}</span>
+        <span class="lua-size">${fmtB(f.size)}</span>
+      </div>`).join('');
+  }catch{}
+}
+function fmtB(b){return b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toFixed(1)+'MB';}
+
+async function openLua(name){
+  try{
+    const r=await fetch('/api/lua-file?name='+encodeURIComponent(name));
+    const{content,truncated}=await r.json();
+    S.luaFile=name;S.luaContent=content;
+    document.getElementById('lua-modal-title').textContent=name+(truncated?' (truncated)':'');
+    document.getElementById('lua-modal-content').textContent=content;
+    document.getElementById('lua-modal').classList.add('open');
+  }catch(e){toast('Error: '+e.message,'error');}
+}
+function closeLuaModal(){document.getElementById('lua-modal').classList.remove('open');}
+function loadLuaToEditor(){if(!S.luaContent)return;setCode('lua',S.luaContent);switchTab('lua',document.querySelector('[data-l="lua"]'));closeLuaModal();toast(S.luaFile+' loaded into editor');}
+function askAboutLua(){if(!S.luaFile)return;closeLuaModal();document.getElementById('chat-in').value=`Explain ${S.luaFile} and build a web UI for it:\n\`\`\`lua\n${(S.luaContent||'').slice(0,2000)}\n\`\`\``;send();}
+document.getElementById('lua-modal').addEventListener('click',e=>{if(e.target===document.getElementById('lua-modal'))closeLuaModal();});
+
+// ══ RESIZERS ═════════════════════════════════════════════════════════════════
+function mkResizer(id,aId,bId){
+  const r=document.getElementById(id),a=document.getElementById(aId),b=document.getElementById(bId);
+  r.addEventListener('mousedown',e=>{
+    const sx=e.clientX,saw=a.offsetWidth,sbw=b.offsetWidth;
+    r.classList.add('active');document.body.style.userSelect='none';document.body.style.cursor='col-resize';
+    const mv=e=>{const dx=e.clientX-sx;a.style.cssText+=`;width:${Math.max(180,saw+dx)}px;flex:none`;b.style.cssText+=`;width:${Math.max(180,sbw-dx)}px;flex:none`;};
+    const up=()=>{r.classList.remove('active');document.body.style.cssText='';removeEventListener('mousemove',mv);removeEventListener('mouseup',up);};
+    addEventListener('mousemove',mv);addEventListener('mouseup',up);e.preventDefault();
+  });
+}
+mkResizer('r1','left-panel','preview-panel');
+mkResizer('r2','preview-panel','code-panel');
+
+// ══ TOAST ════════════════════════════════════════════════════════════════════
+function toast(msg,type=''){
+  const t=document.getElementById('toast');t.textContent=msg;
+  const c={ok:'rgba(34,197,94,.4)',error:'rgba(239,68,68,.4)','':'var(--border)'};
+  t.style.borderColor=c[type]||c[''];t.className='show';
+  clearTimeout(t._t);t._t=setTimeout(()=>t.className='',2500);
+}
+
+// ══ WELCOME ══════════════════════════════════════════════════════════════════
+function welcome(){
+  appendMsg('ai',`👋 <strong>Welcome to AI Builder</strong><br><br>
+I use the exact <strong>mxx3x stack</strong> — React 18, Vite, Tailwind CSS, WebGL shaders, native Audio API, pure pointer-drag — for every project.<br><br>
+⚡ Auto-preview updates every time I generate code<br>
+📦 Click <strong>＋ Box</strong> in the topbar to add draggable colored boxes<br>
+🎵 Click <strong>🎵 Music</strong> to open the player (or paste any MP3 URL)<br>
+📁 Click the <strong>folder icon</strong> in the sidebar to browse Lua files<br><br>
+What shall we build?`);
+}
+
+// ══ INIT ═════════════════════════════════════════════════════════════════════
+welcome();
+loadLuaFiles();
+document.getElementById('dv-d').style.borderColor='var(--purple)';
+fetch('/api/health').catch(()=>{document.getElementById('status-dot').style.background='#ef4444';document.getElementById('status-dot').style.boxShadow='0 0 8px #ef4444';});
+</script>
+</body>
+</html>
