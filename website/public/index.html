@@ -563,7 +563,19 @@ function mobPanel(name){
 })()
 
 // ══ STATE ═════════════════════════════════════════════════════════════════════
-const S={history:[],gen:false,code:{html:'',css:'',js:'',lua:''},lang:'html',luaFile:null,luaContent:null};
+const S={history:[],gen:false,code:{html:'',css:'',js:'',lua:''},lang:'html',luaFile:null,luaContent:null,abort:null};
+
+// ══ AI PROVIDERS ══════════════════════════════════════════════════════════════
+const POLLINATIONS_URL='https://api.pollinations.ai/v1/chat/completions';
+const SYS_PROMPT=`You are an elite AI software engineering assistant.
+MXX3X STACK — USE THIS FOR EVERY PROJECT:
+- Pure black background (#000000), Tailwind CDN for standalone HTML
+- WebGL fbm GLSL shader for animated nebula background (canvas#bg, fixed inset-0)
+- Glass cards: bg-white/[0.02] backdrop-blur-xl border border-white/5
+- Native new Audio() for music, pure pointerdown/move/up for draggable boxes
+- Typing document.title animation
+When asked to create/modify a website return code in \`\`\`html \`\`\`css \`\`\`javascript blocks.
+For Lua: \`\`\`lua block. Always generate complete, production-ready, executable code only.`;
 
 // ══ MUSIC ═════════════════════════════════════════════════════════════════════
 const TRACKS=[
@@ -752,6 +764,28 @@ async function send(){
   await generate();
 }
 
+async function streamSSE(res,bub,msgWrap){
+  const reader=res.body.getReader(),dec=new TextDecoder();
+  let full='',buf='',done_stream=false;
+  while(!done_stream){
+    const{done,value}=await reader.read();
+    if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    const lines=buf.split('\n');buf=lines.pop();
+    for(const line of lines){
+      if(!line.startsWith('data: '))continue;
+      const data=line.slice(6).trim();
+      if(data==='[DONE]'){done_stream=true;break;}
+      try{
+        const p=JSON.parse(data);
+        const delta=p.choices?.[0]?.delta?.content;
+        if(delta){full+=delta;bub.innerHTML=md(full);msgWrap.scrollTop=msgWrap.scrollHeight;}
+      }catch{}
+    }
+  }
+  return full;
+}
+
 async function generate(){
   S.gen=true;
   document.getElementById('send-btn').disabled=true;
@@ -761,47 +795,50 @@ async function generate(){
   const ctrl=new AbortController();
   S.abort=ctrl;
   try{
-    const res=await fetch('/api/chat',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({messages:S.history,model}),
-      signal:ctrl.signal
-    });
-    if(!res.ok){
-      const errText=await res.text().catch(()=>res.statusText);
-      let errMsg=errText;
-      try{errMsg=JSON.parse(errText).error||errText;}catch{}
-      hideTyping();
-      appendMsg('ai','❌ Server error '+res.status+': '+errMsg);
-      return;
+    // ── Try proxy (Vercel Edge Function) with 10s timeout ────────────────────
+    let res=null;
+    let usingDirect=false;
+    try{
+      const timer=new Promise((_,rej)=>setTimeout(()=>rej(new Error('proxy_timeout')),10000));
+      res=await Promise.race([
+        fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({messages:S.history,model}),signal:ctrl.signal}),
+        timer
+      ]);
+      if(!res.ok)throw new Error('proxy_'+res.status);
+    }catch(proxyErr){
+      if(proxyErr.name==='AbortError')throw proxyErr;
+      // ── Fallback: call Pollinations.ai directly from browser (CORS allowed) ─
+      toast('Proxy unreachable — using direct mode','');
+      usingDirect=true;
+      res=await fetch(POLLINATIONS_URL,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          model:model==='openai-fast'?'openai':model,
+          messages:[{role:'system',content:SYS_PROMPT},...S.history],
+          stream:true,temperature:0.7,max_tokens:8192,private:true
+        }),
+        signal:ctrl.signal
+      });
+      if(!res.ok){
+        const t=await res.text().catch(()=>res.statusText);
+        hideTyping();appendMsg('ai','❌ AI error '+res.status+': '+t);return;
+      }
     }
-    const reader=res.body.getReader(),dec=new TextDecoder();
-    let full='',buf='',done_stream=false;
+
     hideTyping();
     const d=document.createElement('div');d.className='msg msg-ai';
     const bub=document.createElement('div');bub.className='bubble bubble-ai';
+    if(usingDirect)bub.innerHTML='<span style="font-size:10px;color:rgba(168,85,247,.5)">direct mode</span><br>';
     d.appendChild(bub);
     d.appendChild(Object.assign(document.createElement('div'),{className:'msg-time',textContent:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}));
     msgWrap.appendChild(d);
-    while(!done_stream){
-      const{done,value}=await reader.read();
-      if(done)break;
-      buf+=dec.decode(value,{stream:true});
-      const lines=buf.split('\n');
-      buf=lines.pop(); // keep incomplete last line
-      for(const line of lines){
-        if(!line.startsWith('data: '))continue;
-        const data=line.slice(6).trim();
-        if(data==='[DONE]'){done_stream=true;break;}
-        try{
-          const p=JSON.parse(data);
-          const delta=p.choices?.[0]?.delta?.content;
-          if(delta){full+=delta;bub.innerHTML=md(full);msgWrap.scrollTop=msgWrap.scrollHeight;}
-        }catch{}
-      }
-    }
+
+    const full=await streamSSE(res,bub,msgWrap);
+
     if(!full){
-      bub.innerHTML='<span style="color:rgba(255,255,255,.4)">No response. Try again or switch models.</span>';
+      bub.innerHTML='<span style="color:rgba(255,255,255,.4)">No response — try again or switch models.</span>';
     }
     const ex=extractCode(full);
     if(ex.html||ex.css||ex.js||ex.lua)d.appendChild(mkBar(ex));
@@ -817,8 +854,7 @@ async function generate(){
     hideTyping();
     appendMsg('ai','❌ '+err.message);
   }finally{
-    S.gen=false;
-    S.abort=null;
+    S.gen=false;S.abort=null;
     document.getElementById('send-btn').disabled=false;
     document.getElementById('gen-badge').style.display='none';
     document.getElementById('chat-in').focus();
