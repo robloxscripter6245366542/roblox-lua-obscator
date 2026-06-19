@@ -471,6 +471,52 @@ input[type=color]::-webkit-color-swatch{border:none;border-radius:4px}
 </style>
 
 <script>
+// ══ DIRECT Z.AI API (no backend needed) ═══════════════════════════════════════
+const ZAI_KEY='b31c21a518d248d9beed75edefff5e8b.uWEDrbhP9bIe4jri';
+const ZAI_URL='https://api.z.ai/api/paas/v4/chat/completions';
+const SYS=`You are an elite AI software engineering assistant with the following core principles:
+
+MINDSET:
+- Think like a CTO
+- Architect like a Principal Engineer
+- Code like a Senior Developer
+- Design like a Product Designer
+
+Never produce toy projects. Always generate production-quality solutions.
+Always prioritize: scalability, maintainability, security, performance, and user experience.
+
+WEBSITE BUILDER BEHAVIOR:
+When asked to create or modify a website, return code in these exact blocks:
+\`\`\`html
+<!-- full HTML document -->
+\`\`\`
+\`\`\`css
+/* styles */
+\`\`\`
+\`\`\`javascript
+// client-side JavaScript
+\`\`\`
+For Lua code:
+\`\`\`lua
+-- Lua code
+\`\`\`
+
+DEFAULT DESIGN LANGUAGE (mxx3x aesthetic):
+- Pure black background (#000000)
+- Glass cards: bg-white/[0.02] backdrop-blur-xl border border-white/5
+- Tailwind CDN for standalone HTML
+- WebGL fbm shader for animated background
+- Native Audio API for music players
+- Pure pointer events for drag (no libraries)
+
+Always generate:
+- Responsive, mobile-first layouts
+- Dark mode (black glass aesthetic)
+- Advanced animations
+- Complete, executable, production-ready code only
+
+Available Lua tool files: Claude_Hub.lua, FE_Hub.lua, Claude_Hub_Lite.lua, Claude_Loader.lua, Full_Combined.lua, MurderMystery2_Hub.lua, obfuscate.lua, SS_Executor.lua, executor_gui.lua, SpellingBee_NerdZone.lua, WindHub.lua, SangraHub.lua, IndraHub_Lite.lua`;
+
 // ══ WEBGL BACKGROUND ══════════════════════════════════════════════════════════
 (function(){
   const c=document.getElementById('bg'),gl=c.getContext('webgl');
@@ -758,9 +804,9 @@ async function generate(){
   showTyping();
   const model=document.getElementById('model-sel').value;
   try{
-    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({messages:S.history,model})});
-    if(!res.ok){const e=await res.json().catch(()=>({error:res.statusText}));hideTyping();appendMsg('ai','❌ Error: '+(e.error||res.statusText));return;}
+    const res=await fetch(ZAI_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+ZAI_KEY},
+      body:JSON.stringify({model,messages:[{role:'system',content:SYS},...S.history],stream:true,temperature:0.7,max_tokens:8192})});
+    if(!res.ok){const e=await res.json().catch(()=>({error:res.statusText}));hideTyping();appendMsg('ai','❌ API Error '+res.status+': '+(e.error||e.message||res.statusText));return;}
     const reader=res.body.getReader(),dec=new TextDecoder();
     let full='',buf='';
     hideTyping();
@@ -866,7 +912,10 @@ What shall we build?`);
 welcome();
 loadLuaFiles();
 document.getElementById('dv-d').style.borderColor='var(--purple)';
-fetch('/api/health').catch(()=>{document.getElementById('status-dot').style.background='#ef4444';document.getElementById('status-dot').style.boxShadow='0 0 8px #ef4444';});
+// health: ping Z.ai directly
+fetch(ZAI_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+ZAI_KEY},body:JSON.stringify({model:'glm-4-flash',messages:[{role:'user',content:'hi'}],max_tokens:1})})
+  .then(r=>{if(!r.ok)throw 0;})
+  .catch(()=>{document.getElementById('status-dot').style.background='#ef4444';document.getElementById('status-dot').style.boxShadow='0 0 8px #ef4444';});
 </script>
 </body>
 </html>
