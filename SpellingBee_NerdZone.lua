@@ -34,6 +34,7 @@ local botEnabled=true
 local submitDelay=0.05
 local currentWord=""
 local answerRemote=nil
+local knownAnswerRemotes={} -- confirmed FireServer remotes
 local antiAFK=false
 local infJump=false
 local sessionStart=os.clock()
@@ -100,13 +101,15 @@ local function extractWord(args)
     end
 end
 
--- ── specific RS.Events path from ReplicatedStorage ─────────────────────
-local RS_EVENTS = RS:FindFirstChild("Events")
+-- ── specific RS.Events / RS.Modules paths ───────────────────────────────
+local RS_EVENTS   = RS:FindFirstChild("Events")
+local RS_MODULES  = RS:FindFirstChild("Modules")
 
 local SCAN_ROOTS={RS,WS,game:GetService("ReplicatedFirst"),PGui,LP}
 pcall(function()table.insert(SCAN_ROOTS,LP.Backpack)end)
 pcall(function()table.insert(SCAN_ROOTS,LP.Character)end)
-if RS_EVENTS then table.insert(SCAN_ROOTS,RS_EVENTS) end
+if RS_EVENTS  then table.insert(SCAN_ROOTS,RS_EVENTS) end
+if RS_MODULES then table.insert(SCAN_ROOTS,RS_MODULES) end
 
 local ANSWER_KEYS={"submit","answer","spell","type","guess","check","input","word","attempt","confirm","enter","send","fire","respond","bean","can","scary","horror","spook","round","solve"}
 local function isAnswerRemote(name)
@@ -152,6 +155,10 @@ local function fireAnswer(word)
     task.wait(math.min(#word*CHAR_MS_BASE,3))
     local r=findAnswerRemote()
     if r then pcall(function()r:FireServer(word)end);return true end
+    -- try confirmed FireServer remotes (GameEvent, MusicEvent)
+    for _,kr in ipairs(knownAnswerRemotes) do
+        if kr and kr.Parent then pcall(function()kr:FireServer(word)end);return true end
+    end
     return fireAllRemotes(word)
 end
 
@@ -302,17 +309,9 @@ local function hookGameEvent()
     local GameEvent = evFolder:FindFirstChild("GameEvent") or evFolder:WaitForChild("GameEvent",5)
     if not GameEvent then return end
 
-    -- register it as the preferred answer remote if it has an outgoing twin
-    local function sniffAnswerTwin()
-        for _,sib in ipairs(evFolder:GetChildren()) do
-            if sib:IsA("RemoteEvent") and sib~=GameEvent and isAnswerRemote(sib.Name) then
-                answerRemote=sib;return
-            end
-        end
-        -- fallback: the same event might be used both ways
-        if isAnswerRemote(GameEvent.Name) then answerRemote=GameEvent end
-    end
-    sniffAnswerTwin()
+    -- confirmed: GameEvent:FireServer() is used for answer submission
+    answerRemote = GameEvent
+    table.insert(knownAnswerRemotes, GameEvent)
     evFolder.ChildAdded:Connect(function(ch)
         if ch:IsA("RemoteEvent") and isAnswerRemote(ch.Name) then answerRemote=ch end
     end)
@@ -366,6 +365,9 @@ local function hookMusicEvent()
             end
         end)
     end
+
+    -- confirmed: MusicEvent:FireServer() is also used — register as fallback answer remote
+    table.insert(knownAnswerRemotes, MusicEvent)
 
     -- plain listener fallback
     MusicEvent.OnClientEvent:Connect(onMusicPayload)
