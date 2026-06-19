@@ -178,9 +178,38 @@ input[type=color]::-webkit-color-swatch{border:none;border-radius:4px}
 #left-panel{position:relative}#left-panel::after{right:0}
 #code-panel{position:relative}#code-panel::before{left:0}
 @keyframes border-flow{0%{background-position:0 0}100%{background-position:0 200%}}
+
+/* ── Mobile / iPad responsive ── */
+#mobile-tabs{display:none}
+@media(max-width:900px){
+  html,body{height:100%;overflow:hidden}
+  body{height:100dvh!important}
+  #icon-sidebar{display:none!important}
+  .resizer{display:none!important}
+  #left-panel{width:100%!important;min-width:0!important;border-right:none!important;display:none!important}
+  #preview-panel{display:none!important;min-width:0!important}
+  #code-panel{width:100%!important;min-width:0!important;border-left:none!important;display:none!important}
+  /* active mobile panel */
+  #left-panel.mob-active,#preview-panel.mob-active,#code-panel.mob-active{display:flex!important;flex:1!important}
+  /* bottom tab bar */
+  #mobile-tabs{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:400;height:56px;background:rgba(0,0,0,.95);border-top:1px solid var(--border);backdrop-filter:blur(20px)}
+  .mob-tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);cursor:pointer;transition:all .15s;-webkit-tap-highlight-color:transparent}
+  .mob-tab svg{width:20px;height:20px}
+  .mob-tab.active{color:var(--purple)}
+  .mob-tab.active svg{filter:drop-shadow(0 0 6px var(--purple))}
+  /* shrink topbar on mobile */
+  #topbar{padding:0 10px;gap:6px;height:44px}
+  .topbar-logo span{display:none}
+  /* push content above tab bar */
+  .mob-pad{padding-bottom:56px!important}
+  /* touch scroll fix */
+  #chat-messages,#lua-list,#code-ed,.p-4{-webkit-overflow-scrolling:touch}
+  /* music player position on mobile */
+  #music-player{left:8px!important;bottom:72px!important;width:calc(100vw - 16px)!important}
+}
 </style>
 </head>
-<body class="flex flex-col" style="height:100vh">
+<body class="flex flex-col" style="height:100dvh;height:100vh">
 
 <!-- WebGL background -->
 <canvas id="bg"></canvas>
@@ -415,6 +444,26 @@ input[type=color]::-webkit-color-swatch{border:none;border-radius:4px}
 </div>
 
 <div id="toast"></div>
+
+<!-- ── Mobile bottom tab bar ── -->
+<div id="mobile-tabs">
+  <div class="mob-tab active" id="mtab-chat" onclick="mobPanel('chat')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    Chat
+  </div>
+  <div class="mob-tab" id="mtab-preview" onclick="mobPanel('preview')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+    Preview
+  </div>
+  <div class="mob-tab" id="mtab-code" onclick="mobPanel('code')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    Code
+  </div>
+  <div class="mob-tab" id="mtab-files" onclick="showView('files');mobPanel('chat')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+    Files
+  </div>
+</div>
 <audio id="audio" loop></audio>
 
 <style>
@@ -481,8 +530,36 @@ function showView(name){
   document.querySelectorAll('.panel-view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('.sidebar-icon').forEach(i=>i.classList.remove('active'));
   document.getElementById('view-'+name).classList.add('active');
-  document.getElementById('si-'+name).classList.add('active');
+  const si=document.getElementById('si-'+name);
+  if(si)si.classList.add('active');
 }
+
+// ── Mobile panel switcher ──────────────────────────────────────────────────
+function mobPanel(name){
+  ['#left-panel','#preview-panel','#code-panel'].forEach(sel=>{
+    document.querySelector(sel).classList.remove('mob-active');
+  });
+  const map={chat:'#left-panel',preview:'#preview-panel',code:'#code-panel'};
+  if(map[name])document.querySelector(map[name]).classList.add('mob-active');
+  // update tab highlight
+  document.querySelectorAll('.mob-tab').forEach(t=>t.classList.remove('active'));
+  const mt=document.getElementById('mtab-'+name);
+  if(mt)mt.classList.add('active');
+  // add padding to scrollable content above tab bar
+  document.querySelectorAll('#chat-messages,#code-ed').forEach(el=>el.style.paddingBottom='60px');
+}
+// init mobile on load
+(function initMob(){
+  if(window.innerWidth<=900){
+    document.getElementById('left-panel').classList.add('mob-active');
+    document.querySelectorAll('#chat-messages,#code-ed').forEach(el=>el.style.paddingBottom='60px');
+  }
+  window.addEventListener('resize',()=>{
+    if(window.innerWidth<=900&&!document.querySelector('.mob-active')){
+      document.getElementById('left-panel').classList.add('mob-active');
+    }
+  });
+})()
 
 // ══ STATE ═════════════════════════════════════════════════════════════════════
 const S={history:[],gen:false,code:{html:'',css:'',js:'',lua:''},lang:'html',luaFile:null,luaContent:null};
