@@ -795,42 +795,26 @@ async function generate(){
   const ctrl=new AbortController();
   S.abort=ctrl;
   try{
-    // ── Try proxy (Vercel Edge Function) with 10s timeout ────────────────────
-    let res=null;
-    let usingDirect=false;
-    try{
-      const timer=new Promise((_,rej)=>setTimeout(()=>rej(new Error('proxy_timeout')),10000));
-      res=await Promise.race([
-        fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({messages:S.history,model}),signal:ctrl.signal}),
-        timer
-      ]);
-      if(!res.ok)throw new Error('proxy_'+res.status);
-    }catch(proxyErr){
-      if(proxyErr.name==='AbortError')throw proxyErr;
-      // ── Fallback: call Pollinations.ai directly from browser (CORS allowed) ─
-      toast('Proxy unreachable — using direct mode','');
-      usingDirect=true;
-      res=await fetch(POLLINATIONS_URL,{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          model:model==='openai-fast'?'openai':model,
-          messages:[{role:'system',content:SYS_PROMPT},...S.history],
-          stream:true,temperature:0.7,max_tokens:8192,private:true
-        }),
-        signal:ctrl.signal
-      });
-      if(!res.ok){
-        const t=await res.text().catch(()=>res.statusText);
-        hideTyping();appendMsg('ai','❌ AI error '+res.status+': '+t);return;
-      }
+    // Call Pollinations.ai directly from the browser (supports CORS, no proxy needed)
+    const resolvedModel=model==='openai-fast'?'openai':model;
+    const res=await fetch(POLLINATIONS_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:resolvedModel,
+        messages:[{role:'system',content:SYS_PROMPT},...S.history],
+        stream:true,temperature:0.7,max_tokens:8192,private:true
+      }),
+      signal:ctrl.signal
+    });
+    if(!res.ok){
+      const t=await res.text().catch(()=>res.statusText);
+      hideTyping();appendMsg('ai','❌ AI error '+res.status+': '+t);return;
     }
 
     hideTyping();
     const d=document.createElement('div');d.className='msg msg-ai';
     const bub=document.createElement('div');bub.className='bubble bubble-ai';
-    if(usingDirect)bub.innerHTML='<span style="font-size:10px;color:rgba(168,85,247,.5)">direct mode</span><br>';
     d.appendChild(bub);
     d.appendChild(Object.assign(document.createElement('div'),{className:'msg-time',textContent:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}));
     msgWrap.appendChild(d);
