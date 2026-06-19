@@ -223,9 +223,9 @@ input[type=color]::-webkit-color-swatch{border:none;border-radius:4px}
   </div>
   <div style="width:1px;height:20px;background:var(--border)"></div>
   <select id="model-sel" style="background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.2);color:rgba(255,255,255,.7);padding:3px 8px;border-radius:6px;font-size:11px;outline:none;cursor:pointer">
-    <option value="openai-large">GPT-4o (Free)</option>
-    <option value="openai-fast">GPT-4o Mini ⚡</option>
-    <option value="mistral">Mistral</option>
+    <option value="openai-large">GPT-4o Large (Free)</option>
+    <option value="openai">GPT-4o Mini ⚡</option>
+    <option value="mistral">Mistral (Free)</option>
   </select>
   <div class="ml-auto flex items-center gap-2">
     <span class="badge" style="background:rgba(168,85,247,.15);color:var(--purple);border:1px solid rgba(168,85,247,.25)">🔮 Lua</span>
@@ -311,8 +311,8 @@ input[type=color]::-webkit-color-swatch{border:none;border-radius:4px}
         <div>
           <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">AI Model</div>
           <select id="model-sel2" onchange="document.getElementById('model-sel').value=this.value" style="width:100%;background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.2);color:#fff;padding:6px 10px;border-radius:8px;font-size:12px;outline:none">
-            <option value="openai-large">GPT-4o — Best Quality (Free)</option>
-            <option value="openai-fast">GPT-4o Mini — Fastest (Free)</option>
+            <option value="openai-large">GPT-4o Large — Best Quality (Free)</option>
+            <option value="openai">GPT-4o Mini — Fastest (Free)</option>
             <option value="mistral">Mistral (Free)</option>
           </select>
         </div>
@@ -331,8 +331,8 @@ input[type=color]::-webkit-color-swatch{border:none;border-radius:4px}
         </div>
         <div style="padding:10px;border-radius:10px;background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.15)">
           <div style="font-size:11px;color:var(--purple);font-weight:700;margin-bottom:4px">Status</div>
-          <div style="font-size:11px;color:var(--muted)">Provider: <span style="color:#fff">Z.ai GLM</span></div>
-          <div style="font-size:11px;color:var(--muted)">Stack: <span style="color:#fff">React 18 + Vite + Tailwind</span></div>
+          <div style="font-size:11px;color:var(--muted)">Provider: <span style="color:#fff">Pollinations.ai (Free)</span></div>
+          <div style="font-size:11px;color:var(--muted)">Stack: <span style="color:#fff">Edge Function + SSE Stream</span></div>
           <div style="font-size:11px;color:var(--muted)">WebGL: <span id="gl-status" style="color:var(--green)">Active</span></div>
         </div>
       </div>
@@ -472,52 +472,6 @@ input[type=color]::-webkit-color-swatch{border:none;border-radius:4px}
 </style>
 
 <script>
-// ══ DIRECT Z.AI API (no backend needed) ═══════════════════════════════════════
-const ZAI_KEY='b31c21a518d248d9beed75edefff5e8b.uWEDrbhP9bIe4jri';
-const ZAI_URL='https://api.z.ai/api/paas/v4/chat/completions';
-const SYS=`You are an elite AI software engineering assistant with the following core principles:
-
-MINDSET:
-- Think like a CTO
-- Architect like a Principal Engineer
-- Code like a Senior Developer
-- Design like a Product Designer
-
-Never produce toy projects. Always generate production-quality solutions.
-Always prioritize: scalability, maintainability, security, performance, and user experience.
-
-WEBSITE BUILDER BEHAVIOR:
-When asked to create or modify a website, return code in these exact blocks:
-\`\`\`html
-<!-- full HTML document -->
-\`\`\`
-\`\`\`css
-/* styles */
-\`\`\`
-\`\`\`javascript
-// client-side JavaScript
-\`\`\`
-For Lua code:
-\`\`\`lua
--- Lua code
-\`\`\`
-
-DEFAULT DESIGN LANGUAGE (mxx3x aesthetic):
-- Pure black background (#000000)
-- Glass cards: bg-white/[0.02] backdrop-blur-xl border border-white/5
-- Tailwind CDN for standalone HTML
-- WebGL fbm shader for animated background
-- Native Audio API for music players
-- Pure pointer events for drag (no libraries)
-
-Always generate:
-- Responsive, mobile-first layouts
-- Dark mode (black glass aesthetic)
-- Advanced animations
-- Complete, executable, production-ready code only
-
-Available Lua tool files: Claude_Hub.lua, FE_Hub.lua, Claude_Hub_Lite.lua, Claude_Loader.lua, Full_Combined.lua, MurderMystery2_Hub.lua, obfuscate.lua, SS_Executor.lua, executor_gui.lua, SpellingBee_NerdZone.lua, WindHub.lua, SangraHub.lua, IndraHub_Lite.lua`;
-
 // ══ WEBGL BACKGROUND ══════════════════════════════════════════════════════════
 (function(){
   const c=document.getElementById('bg'),gl=c.getContext('webgl');
@@ -597,12 +551,12 @@ function mobPanel(name){
 }
 // init mobile on load
 (function initMob(){
-  if(window.innerWidth<=900){
+  if(window.innerWidth<=1100){
     document.getElementById('left-panel').classList.add('mob-active');
     document.querySelectorAll('#chat-messages,#code-ed').forEach(el=>el.style.paddingBottom='60px');
   }
   window.addEventListener('resize',()=>{
-    if(window.innerWidth<=900&&!document.querySelector('.mob-active')){
+    if(window.innerWidth<=1100&&!document.querySelector('.mob-active')){
       document.getElementById('left-panel').classList.add('mob-active');
     }
   });
@@ -804,31 +758,53 @@ async function generate(){
   document.getElementById('gen-badge').style.display='block';
   showTyping();
   const model=document.getElementById('model-sel').value;
+  const ctrl=new AbortController();
+  S.abort=ctrl;
   try{
-    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({messages:S.history,model})});
-    if(!res.ok){const e=await res.json().catch(()=>({error:res.statusText}));hideTyping();appendMsg('ai','❌ Error '+(e.error||res.statusText));return;}
+    const res=await fetch('/api/chat',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({messages:S.history,model}),
+      signal:ctrl.signal
+    });
+    if(!res.ok){
+      const errText=await res.text().catch(()=>res.statusText);
+      let errMsg=errText;
+      try{errMsg=JSON.parse(errText).error||errText;}catch{}
+      hideTyping();
+      appendMsg('ai','❌ Server error '+res.status+': '+errMsg);
+      return;
+    }
     const reader=res.body.getReader(),dec=new TextDecoder();
-    let full='',buf='';
+    let full='',buf='',done_stream=false;
     hideTyping();
     const d=document.createElement('div');d.className='msg msg-ai';
     const bub=document.createElement('div');bub.className='bubble bubble-ai';
     d.appendChild(bub);
     d.appendChild(Object.assign(document.createElement('div'),{className:'msg-time',textContent:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}));
     msgWrap.appendChild(d);
-    while(true){
-      const{done,value}=await reader.read();if(done)break;
+    while(!done_stream){
+      const{done,value}=await reader.read();
+      if(done)break;
       buf+=dec.decode(value,{stream:true});
-      const lines=buf.split('\n');buf=lines.pop();
+      const lines=buf.split('\n');
+      buf=lines.pop(); // keep incomplete last line
       for(const line of lines){
         if(!line.startsWith('data: '))continue;
-        const data=line.slice(6).trim();if(data==='[DONE]')break;
-        try{const p=JSON.parse(data);const delta=p.choices?.[0]?.delta?.content||'';full+=delta;bub.innerHTML=md(full);msgWrap.scrollTop=msgWrap.scrollHeight;}catch{}
+        const data=line.slice(6).trim();
+        if(data==='[DONE]'){done_stream=true;break;}
+        try{
+          const p=JSON.parse(data);
+          const delta=p.choices?.[0]?.delta?.content;
+          if(delta){full+=delta;bub.innerHTML=md(full);msgWrap.scrollTop=msgWrap.scrollHeight;}
+        }catch{}
       }
+    }
+    if(!full){
+      bub.innerHTML='<span style="color:rgba(255,255,255,.4)">No response. Try again or switch models.</span>';
     }
     const ex=extractCode(full);
     if(ex.html||ex.css||ex.js||ex.lua)d.appendChild(mkBar(ex));
-    // AUTO-APPLY EVERY TIME the AI generates code
     if(ex.html||ex.css||ex.js){
       if(ex.html)setCode('html',ex.html);
       if(ex.css)setCode('css',ex.css);
@@ -836,8 +812,17 @@ async function generate(){
       applyCode();
     }
     S.history.push({role:'assistant',content:full});
-  }catch(err){hideTyping();appendMsg('ai','❌ '+err.message);}
-  finally{S.gen=false;document.getElementById('send-btn').disabled=false;document.getElementById('gen-badge').style.display='none';document.getElementById('chat-in').focus();}
+  }catch(err){
+    if(err.name==='AbortError')return;
+    hideTyping();
+    appendMsg('ai','❌ '+err.message);
+  }finally{
+    S.gen=false;
+    S.abort=null;
+    document.getElementById('send-btn').disabled=false;
+    document.getElementById('gen-badge').style.display='none';
+    document.getElementById('chat-in').focus();
+  }
 }
 
 function q(msg){document.getElementById('chat-in').value=msg;send();}

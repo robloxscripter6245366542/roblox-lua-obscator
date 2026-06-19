@@ -65,7 +65,10 @@ Lua tool files available: Claude_Hub.lua, FE_Hub.lua, Claude_Hub_Lite.lua, Claud
 const MODEL_MAP = {
   'glm-4.7': 'openai-large',
   'glm-4-plus': 'openai-large',
-  'glm-4-flash': 'openai-fast',
+  'glm-4-flash': 'openai',
+  'openai-fast': 'openai',   // Pollinations uses 'openai' for the mini/fast model
+  'gpt-4o-mini': 'openai',
+  'gpt-4o': 'openai-large',
 };
 
 const CORS = {
