@@ -371,8 +371,39 @@ local function hookMusicEvent()
     MusicEvent.OnClientEvent:Connect(onMusicPayload)
 end
 
+-- ── RS.Events.UIEvent dedicated hook (Cobalt-style) ─────────────────────
+-- UIEvent pushes display updates to the client; the word to spell is
+-- almost always embedded here as a plain string argument.
+local function hookUIEvent()
+    local evFolder = RS:FindFirstChild("Events") or RS:WaitForChild("Events",5)
+    if not evFolder then return end
+    local UIEvent = evFolder:FindFirstChild("UIEvent") or evFolder:WaitForChild("UIEvent",5)
+    if not UIEvent then return end
+
+    local function onUIPayload(...)
+        local w = extractWord({...})
+        if w then task.spawn(onWordFound, w) end
+    end
+
+    -- Cobalt-style: wrap every existing connection
+    if getconnections and hookfunction and newcclosure then
+        pcall(function()
+            for _,conn in ipairs(getconnections(UIEvent.OnClientEvent)) do
+                local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
+                    onUIPayload(...)
+                    return orig(...)
+                end))
+            end
+        end)
+    end
+
+    -- plain listener fallback
+    UIEvent.OnClientEvent:Connect(onUIPayload)
+end
+
 task.spawn(hookGameEvent)
 task.spawn(hookMusicEvent)
+task.spawn(hookUIEvent)
 
 hookIncoming()
 for _,root in ipairs(SCAN_ROOTS) do pcall(function()hookSVs(root)end) end
