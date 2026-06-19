@@ -11,9 +11,9 @@
 
 warn("[WindHub Loader] Starting...")
 
--- Primary: Vercel CDN (fast, reliable, no GitHub rate limits)
--- Fallback: raw.githubusercontent.com
+-- CDN priority: jsDelivr (fastest global edge) → Vercel → GitHub raw
 local URLS = {
+    "https://cdn.jsdelivr.net/gh/robloxscripter6245366542/roblox-lua-obscator@claude/remove-key-system-qxfa4f/WindHub.lua",
     "https://roblox-lua-obscator-git-claude-rem-b354df-saguine-opus-projects.vercel.app/WindHub.lua",
     "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/claude/remove-key-system-qxfa4f/WindHub.lua",
 }
@@ -93,7 +93,7 @@ local body = nil
 local usedURL = ""
 
 for i, url in ipairs(URLS) do
-    local label = (i == 1) and "Vercel CDN" or "GitHub mirror"
+    local label = (i == 1) and "jsDelivr CDN" or (i == 2) and "Vercel CDN" or "GitHub mirror"
     toast("Fetching from " .. label .. "...", Color3.fromRGB(80, 160, 255))
     body = fetchURL(url)
     if body and #body > 500 then
