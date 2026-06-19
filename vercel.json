@@ -1,0 +1,10 @@
+{
+  "outputDirectory": "website/public",
+  "framework": null,
+  "functions": {
+    "api/*.js": {
+      "memory": 512,
+      "maxDuration": 30
+    }
+  }
+}

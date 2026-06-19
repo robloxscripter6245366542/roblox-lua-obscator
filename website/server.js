@@ -6,42 +6,23 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const API_KEY = 'b31c21a518d248d9beed75edefff5e8b.uWEDrbhP9bIe4jri';
+const API_KEY = process.env.ZAI_API_KEY || 'b31c21a518d248d9beed75edefff5e8b.uWEDrbhP9bIe4jri';
 const ZAI_API_URL = 'https://api.z.ai/api/paas/v4/chat/completions';
 const REPO_ROOT = path.join(__dirname, '..');
 
-const SYSTEM_PROMPT = `You are an expert AI web developer and Roblox Lua assistant, powered by Z.ai GLM, for the Roblox Lua Obfuscator project. You help users build and modify websites, write Lua scripts, and use the obfuscation tools.
+// Shared system prompt — mirrors api/chat.js for local dev parity
+const { readFileSync } = require('fs');
+let SYSTEM_PROMPT;
+try {
+  // Try to load from the shared api/chat.js to stay in sync
+  const chatSrc = readFileSync(path.join(REPO_ROOT, 'api', 'chat.js'), 'utf-8');
+  const m = chatSrc.match(/const SYSTEM_PROMPT = `([\s\S]*?)`;/);
+  SYSTEM_PROMPT = m ? m[1] : null;
+} catch {}
 
-When asked to create or modify a website, return code in these blocks:
-\`\`\`html
-<!-- full HTML document here -->
-\`\`\`
-\`\`\`css
-/* styles here */
-\`\`\`
-\`\`\`javascript
-// client-side JS here
-\`\`\`
-
-When asked to write or modify Lua/backend code, use:
-\`\`\`lua
--- lua code here
-\`\`\`
-\`\`\`javascript-backend
-// code to add to server.js backend
-\`\`\`
-
-You have access to these backend API endpoints the user can call:
-- GET /api/lua-files - lists all Lua files in the repository
-- GET /api/lua-file?name=filename.lua - reads a Lua file (up to 50KB)
-- POST /api/chat - AI chat (streaming)
-- POST /api/obfuscate-text - obfuscates text/code with XOR + base64
-
-Available Lua tools in the repo: Claude_Hub.lua, FE_Hub.lua, Claude_Hub_Lite.lua, Claude_Loader.lua, Full_Combined.lua, MurderMystery2_Hub.lua, obfuscate.lua, SS_Executor.lua, executor_gui.lua, SpellingBee_NerdZone.lua, WindHub.lua, SangraHub.lua, IndraHub_Lite.lua
-
-When adding backend functionality, explain exactly what endpoint/code to add to server.js and how to call it from the frontend.
-
-Always be helpful, creative, and produce complete working code. Explain what changes you're making.`;
+if (!SYSTEM_PROMPT) {
+  SYSTEM_PROMPT = `You are an elite AI software engineering assistant. Think like a CTO, architect like a Principal Engineer, code like a Senior Developer. Always generate production-quality, complete, executable code. Return website code in \`\`\`html, \`\`\`css, \`\`\`javascript blocks.`;
+}
 
 // Chat endpoint - proxies to Z.ai GLM with streaming
 app.post('/api/chat', async (req, res) => {
