@@ -55,9 +55,30 @@ end
 
 -- ── helpers ───────────────────────────────────────────────────────────────────
 
-local function jitterFPS(target)
-	-- Natural ±3 fluctuation so the server value never looks pinned
-	return math.clamp(target + math.random(-3, 3), 1, 360)
+-- Smooth random-walk that drifts realistically BELOW the cap.
+-- Real FPS never exceeds the cap and hovers at ~88-96% of it with gradual variation.
+local fpsWalk = { v = nil, vel = 0, lastTarget = nil }
+
+local function naturalFPS(target)
+	-- Reset smoothly whenever the target changes
+	if fpsWalk.lastTarget ~= target then
+		fpsWalk.v          = target * 0.93
+		fpsWalk.vel        = 0
+		fpsWalk.lastTarget = target
+	end
+
+	-- Spring toward 88–96% of cap; slight downward noise bias
+	local pullTo    = target * (0.88 + math.random() * 0.08)
+	local spring    = (pullTo - fpsWalk.v) * 0.13
+	local noise     = (math.random() - 0.48) * 4  -- slightly skewed low
+
+	fpsWalk.vel = fpsWalk.vel * 0.70 + spring + noise
+	fpsWalk.v   = fpsWalk.v + fpsWalk.vel
+
+	-- Ceiling is cap-1 (never exactly at cap), floor is 80%
+	fpsWalk.v = math.clamp(fpsWalk.v, target * 0.80, target - 1)
+
+	return math.floor(fpsWalk.v)
 end
 
 local function realisticMemory()
@@ -254,8 +275,8 @@ evtRecv.OnClientEvent:Connect(function(data)
 
 	target = math.clamp(math.floor(target), 1, 360)
 
-	-- Jitter so the reported value matches what a real CPU would vary by
-	local spoofedFPS = jitterFPS(target)
+	-- Smooth drift below cap — matches how real FPS behaves under a limiter
+	local spoofedFPS = naturalFPS(target)
 	local spoofedMem = realisticMemory()
 	local viewport   = workspace.CurrentCamera.ViewportSize
 
