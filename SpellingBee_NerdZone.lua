@@ -73,10 +73,27 @@ local function looksLikeWord(s)
     return not UI_BL[trimmed:lower()]
 end
 
+-- Reassemble a word from a table of single-letter keys (keyboard layout payload).
+local function assembleFromKeys(t)
+    local letters={}
+    for _,v in pairs(t) do
+        if type(v)=="string" and v:match("^%a$") then
+            letters[#letters+1]=v
+        end
+    end
+    if #letters>=2 then
+        -- try every ordering — shortest plausible first, then sorted by key order
+        table.sort(letters)
+        local combined=table.concat(letters)
+        if looksLikeWord(combined) then return combined end
+    end
+end
+
 local function extractWord(args)
     for _,v in ipairs(args) do
         if looksLikeWord(v) then return v end
         if type(v)=="table" then
+            -- first pass: look for a full word value
             for _,tv in pairs(v) do
                 if looksLikeWord(tv) then return tv end
                 if type(tv)=="string" then
@@ -84,6 +101,9 @@ local function extractWord(args)
                     if w and looksLikeWord(w) then return w end
                 end
             end
+            -- second pass: reassemble from single-letter keys (keyboard payload)
+            local assembled=assembleFromKeys(v)
+            if assembled then return assembled end
         end
         if type(v)=="string" then
             local trimmed=v:match("^%s*(.-)%s*$")
@@ -98,6 +118,15 @@ local function extractWord(args)
                 end
             end)
         end
+    end
+    -- last resort: reassemble from all string args that are single letters
+    local letters={}
+    for _,v in ipairs(args) do
+        if type(v)=="string" and v:match("^%a$") then letters[#letters+1]=v end
+    end
+    if #letters>=2 then
+        local combined=table.concat(letters)
+        if looksLikeWord(combined) then return combined end
     end
 end
 
@@ -187,10 +216,20 @@ submitAnswer=function(word)
     end
 end
 
--- ── hooks ───────────────────────────────────────────────────────────────
+-- ── hooks (Delta) ───────────────────────────────────────────────────────
 local _hooked={}
 local function hookOne(remote)
     if _hooked[remote] then return end;_hooked[remote]=true
+    -- wrap every existing connection with hookfunction
+    pcall(function()
+        for _,conn in ipairs(getconnections(remote.OnClientEvent)) do
+            local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
+                local w=extractWord({...});if w then task.spawn(onWordFound,w) end
+                return orig(...)
+            end))
+        end
+    end)
+    -- also add our own listener for events with no prior connections
     remote.OnClientEvent:Connect(function(...)
         local w=extractWord({...});if w then task.spawn(onWordFound,w) end
     end)
@@ -199,6 +238,14 @@ end
 local _hookedRF={}
 local function hookOneRF(rf)
     if _hookedRF[rf] then return end;_hookedRF[rf]=true
+    pcall(function()
+        for _,conn in ipairs(getconnections(rf.OnClientInvoke)) do
+            local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
+                local w=extractWord({...});if w then task.spawn(onWordFound,w) end
+                return orig(...)
+            end))
+        end
+    end)
     rf.OnClientInvoke=function(...)
         local w=extractWord({...});if w then task.spawn(onWordFound,w) end
     end
@@ -215,28 +262,6 @@ local function hookIncoming()
     end
 end
 
-local function installNamecallHook()
-    if not hookmetamethod or not newcclosure or not getnamecallmethod then return false end
-    local ok=pcall(function()
-        local _old;_old=hookmetamethod(game,"__namecall",newcclosure(function(self,...)
-            local m=getnamecallmethod()
-            if m=="FireServer" or m=="InvokeServer" then
-                local isRE=pcall(function()return self:IsA("RemoteEvent")end)
-                local isRF=pcall(function()return self:IsA("RemoteFunction")end)
-                if isRE or isRF then
-                    local rname=tostring(self):match("^(.+) %(") or tostring(self)
-                    local lw=extractWord({...})
-                    if lw and self:IsA("RemoteEvent") then answerRemote=self end
-                    if isAnswerRemote(rname) and botEnabled and currentWord~="" then
-                        if self:IsA("RemoteEvent") then answerRemote=self;return _old(self,currentWord) end
-                    end
-                end
-            end
-            return _old(self,...)
-        end))
-    end)
-    return ok
-end
 
 local SV_KEYS={"word","spell","current","target","prompt","letter","round","question","answer","display","show","text","challenge","bean","scary"}
 local function isSVKey(name)
@@ -316,20 +341,6 @@ local function hookGameEvent()
         if ch:IsA("RemoteEvent") and isAnswerRemote(ch.Name) then answerRemote=ch end
     end)
 
-    -- Cobalt-style: wrap every existing connection so we can read the payload
-    if getconnections and hookfunction and newcclosure then
-        pcall(function()
-            for _,conn in ipairs(getconnections(GameEvent.OnClientEvent)) do
-                local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
-                    local w = extractWord({...})
-                    if w then task.spawn(onWordFound, w) end
-                    return orig(...)
-                end))
-            end
-        end)
-    end
-
-    -- always add our own listener as a fallback / for executors without hookfunction
     hookOne(GameEvent)
 end
 
@@ -354,22 +365,17 @@ local function hookMusicEvent()
         end)
     end
 
-    -- Cobalt-style: wrap every existing connection
-    if getconnections and hookfunction and newcclosure then
-        pcall(function()
-            for _,conn in ipairs(getconnections(MusicEvent.OnClientEvent)) do
-                local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
-                    onMusicPayload(...)
-                    return orig(...)
-                end))
-            end
-        end)
-    end
-
     -- confirmed: MusicEvent:FireServer() is also used — register as fallback answer remote
     table.insert(knownAnswerRemotes, MusicEvent)
 
-    -- plain listener fallback
+    pcall(function()
+        for _,conn in ipairs(getconnections(MusicEvent.OnClientEvent)) do
+            local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
+                onMusicPayload(...)
+                return orig(...)
+            end))
+        end
+    end)
     MusicEvent.OnClientEvent:Connect(onMusicPayload)
 end
 
@@ -387,19 +393,14 @@ local function hookUIEvent()
         if w then task.spawn(onWordFound, w) end
     end
 
-    -- Cobalt-style: wrap every existing connection
-    if getconnections and hookfunction and newcclosure then
-        pcall(function()
-            for _,conn in ipairs(getconnections(UIEvent.OnClientEvent)) do
-                local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
-                    onUIPayload(...)
-                    return orig(...)
-                end))
-            end
-        end)
-    end
-
-    -- plain listener fallback
+    pcall(function()
+        for _,conn in ipairs(getconnections(UIEvent.OnClientEvent)) do
+            local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
+                onUIPayload(...)
+                return orig(...)
+            end))
+        end
+    end)
     UIEvent.OnClientEvent:Connect(onUIPayload)
 end
 
@@ -409,7 +410,6 @@ task.spawn(hookUIEvent)
 
 hookIncoming()
 for _,root in ipairs(SCAN_ROOTS) do pcall(function()hookSVs(root)end) end
-local _h2ok=installNamecallHook()
 startLiveWatch()
 
 LP.CharacterAdded:Connect(function(char)
@@ -508,7 +508,7 @@ hubLbl.TextXAlignment=Enum.TextXAlignment.Left
 
 local subLbl=Instance.new("TextLabel",TOP)
 subLbl.Size=UDim2.new(0,220,0,14);subLbl.Position=UDim2.new(0,24,0.5,4)
-subLbl.BackgroundTransparency=1;subLbl.Text=GAME_NAME.."  •  v2.3"
+subLbl.BackgroundTransparency=1;subLbl.Text=GAME_NAME.."  •  Delta"
 subLbl.TextColor3=R.MUTED;subLbl.Font=Enum.Font.Gotham;subLbl.TextSize=10
 subLbl.TextXAlignment=Enum.TextXAlignment.Left
 
@@ -816,4 +816,3 @@ end)
 tabs["Bot"].btn.MouseButton1Click:Fire()
 
 notify("Spelling Bee Hub",GAME_NAME.." — Ready",4)
-if not _h2ok then notify("Spelling Bee Hub","Event hooks only (no __namecall)",3) end
