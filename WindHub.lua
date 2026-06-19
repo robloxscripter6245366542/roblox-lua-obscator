@@ -332,94 +332,6 @@ do
         end
     end
 
-    -- On-screen panel (shown for 12 s if anything is missing)
-    if not all_ok then
-        task.spawn(function()
-            task.wait(1.5)   -- wait for UI to settle
-            pcall(function()
-                local sg = Instance.new("ScreenGui")
-                sg.Name          = "WindHubUNCReport"
-                sg.ResetOnSpawn  = false
-                sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                pcall(function() sg.Parent = CoreGui end)
-
-                -- Build lines to display
-                local lines = {}
-                if #missing_critical > 0 then
-                    table.insert(lines, { text="MISSING CRITICAL UNC FUNCTIONS:", col=Color3.fromRGB(255,70,70) })
-                    for _, l in ipairs(missing_critical) do
-                        table.insert(lines, { text=l:gsub("^%s+",""), col=Color3.fromRGB(255,120,120) })
-                    end
-                end
-                if #missing_important > 0 then
-                    table.insert(lines, { text="DEGRADED (important):", col=Color3.fromRGB(255,180,50) })
-                    for _, l in ipairs(missing_important) do
-                        table.insert(lines, { text=l:gsub("^%s+",""), col=Color3.fromRGB(255,200,100) })
-                    end
-                end
-                if #missing_optional > 0 then
-                    table.insert(lines, { text="OPTIONAL (not critical):", col=Color3.fromRGB(160,160,160) })
-                    for _, l in ipairs(missing_optional) do
-                        table.insert(lines, { text=l:gsub("^%s+",""), col=Color3.fromRGB(200,200,200) })
-                    end
-                end
-
-                local ROW_H   = 18
-                local PAD     = 10
-                local W       = 480
-                local H       = PAD*2 + 26 + #lines * ROW_H
-
-                local frame = Instance.new("Frame", sg)
-                frame.Size            = UDim2.fromOffset(W, H)
-                frame.Position        = UDim2.new(0.5, -W/2, 0, 60)
-                frame.BackgroundColor3= Color3.fromRGB(10, 10, 16)
-                frame.BorderSizePixel = 0
-                Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
-                local stroke = Instance.new("UIStroke", frame)
-                stroke.Color     = (#missing_critical > 0) and Color3.fromRGB(220,60,60)
-                                or Color3.fromRGB(220,160,40)
-                stroke.Thickness = 1.8
-
-                -- Title
-                local title = Instance.new("TextLabel", frame)
-                title.Size              = UDim2.new(1,-PAD*2, 0, 22)
-                title.Position          = UDim2.fromOffset(PAD, PAD)
-                title.BackgroundTransparency = 1
-                title.Font              = Enum.Font.GothamBold
-                title.TextSize          = 13
-                title.TextColor3        = Color3.fromRGB(255,255,255)
-                title.TextXAlignment    = Enum.TextXAlignment.Left
-                title.Text              = "WindHub v6.0  |  UNC Capability Report  |  Executor: " .. ExecName
-
-                -- Rows
-                for i, row in ipairs(lines) do
-                    local lbl = Instance.new("TextLabel", frame)
-                    lbl.Size            = UDim2.new(1,-PAD*2, 0, ROW_H)
-                    lbl.Position        = UDim2.fromOffset(PAD, PAD + 24 + (i-1)*ROW_H)
-                    lbl.BackgroundTransparency = 1
-                    lbl.Font            = Enum.Font.Code
-                    lbl.TextSize        = 11
-                    lbl.TextColor3      = row.col
-                    lbl.TextXAlignment  = Enum.TextXAlignment.Left
-                    lbl.Text            = row.text
-                end
-
-                -- Close button
-                local btn = Instance.new("TextButton", frame)
-                btn.Size            = UDim2.fromOffset(24, 24)
-                btn.Position        = UDim2.new(1,-PAD-24, 0, PAD-2)
-                btn.BackgroundTransparency = 1
-                btn.Font            = Enum.Font.GothamBold
-                btn.TextSize        = 16
-                btn.TextColor3      = Color3.fromRGB(200,200,200)
-                btn.Text            = "x"
-                btn.MouseButton1Click:Connect(function() sg:Destroy() end)
-
-                -- Auto-destroy after 15 s
-                task.delay(15, function() pcall(function() sg:Destroy() end) end)
-            end)
-        end)
-    end
 
     -- Store for later introspection (e.g. console `unc` command)
     _G._WindHub_UNCReport = {
@@ -4724,10 +4636,17 @@ UI.Theme = {
     TextFaint     = Color3.fromRGB(96, 100, 122),
     Toggle        = Color3.fromRGB(48, 48, 66),
 }
-UI._tweens   = {}
-UI._registry = {}      -- name -> widget refresh fn
-UI._tabs     = {}
-UI._activeTab= nil
+UI._tweens       = {}
+UI._registry     = {}      -- name -> widget refresh fn
+UI._tabs         = {}
+UI._activeTab    = nil
+UI._sliderUpdate = nil     -- single shared slot; only one slider drags at a time
+UIS.InputChanged:Connect(function(inp)
+    if UI._sliderUpdate and (inp.UserInputType == Enum.UserInputType.MouseMovement
+    or inp.UserInputType == Enum.UserInputType.Touch) then
+        UI._sliderUpdate(inp.Position)
+    end
+end)
 
 -- ── Tween helper ──────────────────────────────────────────
 local function tween(obj, props, dur, style, dir)
@@ -5548,7 +5467,6 @@ function UI.slider(parent, opts)
         if opts.callback then pcall(opts.callback, val) end
     end
 
-    local dragging = false
     local function update(inputPos)
         local a = (inputPos.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X
         setFromAlpha(a)
@@ -5556,25 +5474,20 @@ function UI.slider(parent, opts)
     hit.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1
         or inp.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
+            UI._sliderUpdate = update
             update(inp.Position)
         end
     end)
     hit.InputEnded:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1
         or inp.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
-    UIS.InputChanged:Connect(function(inp)
-        if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
-        or inp.UserInputType == Enum.UserInputType.Touch) then
-            update(inp.Position)
+            if UI._sliderUpdate == update then UI._sliderUpdate = nil end
         end
     end)
 
     local api = {
         set = function(v)
+            if type(v) ~= "number" then return end
             setFromAlpha((v - minV) / (maxV - minV))
         end,
         get = function() return val end,
@@ -16846,8 +16759,8 @@ function _buildAdvancedPanel(parent)
     UI.toggle(parent, "Use Jerk Model",        Config.useJerkModel    or false, function(v) Config.useJerkModel    = v end)
     UI.toggle(parent, "Wind Physics",          Config.windPhysics     or false, function(v) Config.windPhysics     = v end)
     UI.toggle(parent, "Magnus Force",          Config.magnusForce     or true,  function(v) Config.magnusForce     = v end)
-    UI.slider(parent, "Prediction Steps",      20, 5, 60, function(v)  Config.predSteps     = v end)
-    UI.slider(parent, "Monte Carlo Samples",   64, 16, 256, function(v) Config.monteCarloSamples = v end)
+    UI.slider(parent, { text = "Prediction Steps",    min = 5,   max = 60,  default = 20,  step = 1,   callback = function(v) Config.predSteps          = v end })
+    UI.slider(parent, { text = "Monte Carlo Samples", min = 16,  max = 256, default = 64,  step = 8,   callback = function(v) Config.monteCarloSamples  = v end })
     _tab2Section(parent, "Bypass Layer")
     UI.toggle(parent, "Call Freq Masking", BypassLayer._callFreqMask, function(v)
         BypassLayer._callFreqMask = v
@@ -16855,13 +16768,13 @@ function _buildAdvancedPanel(parent)
     UI.toggle(parent, "Signature Masking", BypassLayer._signatureMask, function(v)
         BypassLayer._signatureMask = v
     end)
-    UI.slider(parent, "Max Calls/Frame",   2, 1, 8, function(v)
+    UI.slider(parent, { text = "Max Calls/Frame", min = 1, max = 8, default = 2, step = 1, callback = function(v)
         BypassLayer._maxPerFrame = math.floor(v)
-    end)
+    end })
     _tab2Section(parent, "Memory Scanner")
     UI.toggle(parent, "Auto-Calibrate", Config.autoCalibrate or true, function(v) Config.autoCalibrate = v end)
     UI.toggle(parent, "Write-Barrier Watch", Config.writeBarrierWatch or true, function(v) Config.writeBarrierWatch = v end)
-    UI.slider(parent, "Scan Interval (s)", 0.5, 0.1, 5, function(v) Config.scanInterval = v end)
+    UI.slider(parent, { text = "Scan Interval (s)", min = 0.1, max = 5, default = 0.5, step = 0.1, suffix = " s", callback = function(v) Config.scanInterval = v end })
     UI.button(parent, "Manual Calibrate", function()
         if MemScanner then MemScanner:calibrate() end
         UI.notify("MemScanner", "Calibration triggered")
