@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Website Builder · Roblox Lua Obfuscator</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #21262d;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent-dim: #1f6feb33;
+    --green: #3fb950;
+    --purple: #bc8cff;
+    --red: #f85149;
+    --yellow: #d29922;
+    --orange: #f0883e;
+    --chat-user: #1f6feb;
+    --chat-ai: #21262d;
+    --radius: 8px;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); }
+
+  /* ── Top Bar ── */
+  #topbar {
+    height: 48px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    z-index: 100;
+    flex-shrink: 0;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--text);
+    letter-spacing: -0.3px;
+  }
+  .logo-icon {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .topbar-sep { width: 1px; height: 24px; background: var(--border); }
+  #model-select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+  }
+  #model-select:focus { border-color: var(--accent); color: var(--text); }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+  .badge-green { background: #1a3a2a; color: var(--green); border: 1px solid #2a5a3a; }
+  .badge-purple { background: #2a1a3a; color: var(--purple); border: 1px solid #4a2a6a; }
+  #status-indicator { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text); font-size: 12px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+  .btn-primary:hover { background: #79bcff; border-color: #79bcff; color: #000; }
+
+  /* ── Main 3-panel layout ── */
+  #main { display: flex; height: calc(100vh - 48px); overflow: hidden; }
+
+  /* ── Resizer ── */
+  .resizer {
+    width: 4px; background: var(--border); cursor: col-resize; flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .resizer:hover, .resizer.active { background: var(--accent); }
+
+  /* ── Panel base ── */
+  .panel { display: flex; flex-direction: column; overflow: hidden; min-width: 200px; }
+
+  /* ══ CHAT PANEL ══ */
+  #chat-panel { width: 340px; border-right: none; }
+  .panel-header {
+    height: 40px; background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 14px; gap: 8px;
+    font-size: 12px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0;
+  }
+  .panel-header svg { opacity: 0.6; }
+  #chat-messages {
+    flex: 1; overflow-y: auto; padding: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  .msg { display: flex; flex-direction: column; gap: 4px; }
+  .msg-user { align-items: flex-end; }
+  .msg-ai { align-items: flex-start; }
+  .msg-bubble {
+    max-width: 90%; padding: 10px 13px; border-radius: 12px;
+    font-size: 13.5px; line-height: 1.55; word-break: break-word;
+  }
+  .msg-user .msg-bubble {
+    background: var(--chat-user);
+    color: #fff;
+    border-bottom-right-radius: 3px;
+  }
+  .msg-ai .msg-bubble {
+    background: var(--chat-ai);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 3px;
+  }
+  .msg-ai .msg-bubble pre {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    overflow-x: auto;
+    margin: 8px 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .msg-ai .msg-bubble code:not(pre code) {
+    background: #0d1117;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    border: 1px solid var(--border);
+  }
+  .msg-ai .msg-bubble p { margin: 5px 0; }
+  .msg-ai .msg-bubble ul, .msg-ai .msg-bubble ol { padding-left: 18px; margin: 5px 0; }
+  .msg-ai .msg-bubble li { margin: 3px 0; }
+  .msg-ai .msg-bubble strong { color: var(--accent); }
+  .msg-meta { font-size: 10px; color: var(--text-muted); padding: 0 4px; }
+  .code-apply-bar {
+    display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;
+  }
+  .code-apply-btn {
+    font-size: 11px; padding: 3px 9px; border-radius: 4px;
+    background: var(--accent-dim); border: 1px solid var(--accent);
+    color: var(--accent); cursor: pointer; font-weight: 600;
+    transition: all 0.15s;
+  }
+  .code-apply-btn:hover { background: var(--accent); color: #000; }
+  .typing-indicator { display: flex; gap: 4px; padding: 12px 16px; align-items: center; }
+  .typing-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+    animation: typing 1.2s infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typing { 0%,60%,100% { opacity: 0.3; transform: scale(0.8); } 30% { opacity: 1; transform: scale(1); } }
+
+  #chat-input-area {
+    padding: 10px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  #chat-input-wrap {
+    display: flex; gap: 8px; align-items: flex-end;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px;
+    transition: border-color 0.15s;
+  }
+  #chat-input-wrap:focus-within { border-color: var(--accent); }
+  #chat-input {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--text); font-size: 13.5px; line-height: 1.5;
+    resize: none; max-height: 120px; font-family: inherit;
+  }
+  #chat-input::placeholder { color: var(--text-muted); }
+  #send-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    background: var(--accent); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all 0.15s; color: #000;
+  }
+  #send-btn:hover { background: #79bcff; transform: scale(1.05); }
+  #send-btn:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; transform: none; }
+  .quick-actions {
+    display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap;
+  }
+  .quick-btn {
+    font-size: 11px; padding: 3px 9px; border-radius: 20px;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text-muted); cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .quick-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Lua file drawer */
+  #lua-drawer {
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  #lua-drawer-header {
+    padding: 8px 14px; font-size: 11px; color: var(--text-muted);
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    user-select: none; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  #lua-drawer-header:hover { color: var(--text); }
+  #lua-drawer-chevron { transition: transform 0.2s; }
+  #lua-file-list {
+    max-height: 160px; overflow-y: auto; padding: 4px 8px 8px;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  .lua-file-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 8px; border-radius: 5px; cursor: pointer;
+    font-size: 12px; transition: background 0.1s;
+  }
+  .lua-file-item:hover { background: var(--surface2); }
+  .lua-file-name { color: var(--text); flex: 1; font-family: var(--font-mono); }
+  .lua-file-size { color: var(--text-muted); font-size: 10px; }
+  .lua-file-load { font-size: 10px; color: var(--accent); padding: 1px 5px; border: 1px solid var(--accent); border-radius: 3px; flex-shrink: 0; }
+  .lua-file-load:hover { background: var(--accent); color: #000; }
+
+  /* ══ PREVIEW PANEL ══ */
+  #preview-panel { flex: 1; }
+  .preview-toolbar {
+    height: 40px; background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; padding: 0 12px; flex-shrink: 0;
+  }
+  .traffic-light {
+    display: flex; gap: 6px; align-items: center; flex-shrink: 0;
+  }
+  .tl { width: 11px; height: 11px; border-radius: 50%; }
+  .tl-red { background: #ff5f57; }
+  .tl-yellow { background: #ffbd2e; }
+  .tl-green { background: #28c940; }
+  #preview-url {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text-muted); border-radius: 6px; padding: 4px 10px;
+    font-size: 12px; font-family: var(--font-mono); outline: none;
+  }
+  #preview-url:focus { border-color: var(--accent); color: var(--text); }
+  #preview-refresh {
+    background: none; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text-muted); padding: 4px 8px; cursor: pointer; font-size: 13px;
+    transition: all 0.15s;
+  }
+  #preview-refresh:hover { border-color: var(--accent); color: var(--accent); }
+  .device-btns { display: flex; gap: 4px; }
+  .device-btn {
+    background: none; border: 1px solid transparent; border-radius: 5px;
+    color: var(--text-muted); padding: 4px 6px; cursor: pointer; font-size: 12px;
+    transition: all 0.15s;
+  }
+  .device-btn.active, .device-btn:hover { border-color: var(--border); color: var(--accent); }
+  #preview-frame-wrap { flex: 1; overflow: hidden; background: #fff; position: relative; }
+  #preview-iframe { width: 100%; height: 100%; border: none; display: block; }
+  #preview-overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: var(--bg); flex-direction: column; gap: 12px; color: var(--text-muted);
+    font-size: 14px;
+  }
+  #preview-overlay svg { opacity: 0.3; }
+  #preview-overlay span { opacity: 0.5; }
+
+  /* ══ CODE PANEL ══ */
+  #code-panel { width: 420px; border-left: 1px solid var(--border); }
+  .code-tabs {
+    display: flex; background: var(--surface); border-bottom: 1px solid var(--border);
+    flex-shrink: 0; overflow-x: auto;
+  }
+  .code-tab {
+    padding: 10px 16px; font-size: 12px; cursor: pointer;
+    color: var(--text-muted); border-right: 1px solid var(--border);
+    border-bottom: 2px solid transparent; transition: all 0.15s;
+    white-space: nowrap; display: flex; align-items: center; gap: 6px;
+  }
+  .code-tab:hover { color: var(--text); }
+  .code-tab.active { color: var(--text); border-bottom-color: var(--accent); background: var(--bg); }
+  .tab-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .dot-html { background: var(--orange); }
+  .dot-css { background: var(--accent); }
+  .dot-js { background: var(--yellow); }
+  .dot-lua { background: var(--purple); }
+  #code-editor-wrap { flex: 1; position: relative; overflow: hidden; }
+  #code-editor { width: 100%; height: 100%; }
+  .code-actions {
+    padding: 8px 12px; background: var(--surface); border-top: 1px solid var(--border);
+    display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+  }
+  .code-stat { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+
+  /* ── Scrollbars ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed; bottom: 20px; right: 20px; z-index: 1000;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 16px;
+    font-size: 13px; color: var(--text);
+    transform: translateY(60px); opacity: 0;
+    transition: all 0.25s; pointer-events: none;
+    display: flex; align-items: center; gap: 8px;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.success { border-color: var(--green); }
+  #toast.error { border-color: var(--red); }
+
+  /* ── Welcome ── */
+  .welcome-msg .msg-bubble {
+    background: linear-gradient(135deg, #1a2a3a, #1a1a2a);
+    border: 1px solid var(--accent);
+  }
+
+  /* ── Lua modal ── */
+  #lua-modal {
+    display: none; position: fixed; inset: 0; z-index: 500;
+    background: rgba(0,0,0,0.7); align-items: center; justify-content: center;
+  }
+  #lua-modal.open { display: flex; }
+  #lua-modal-inner {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; width: 700px; max-width: 95vw; max-height: 80vh;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  #lua-modal-header {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 600; font-size: 14px;
+  }
+  #lua-modal-close {
+    margin-left: auto; background: none; border: none; color: var(--text-muted);
+    cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 6px;
+    border-radius: 4px;
+  }
+  #lua-modal-close:hover { background: var(--surface2); color: var(--text); }
+  #lua-modal-content {
+    flex: 1; overflow: auto; padding: 14px;
+    font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
+    color: var(--text); background: var(--bg);
+    white-space: pre; tab-size: 2;
+  }
+  #lua-modal-footer {
+    padding: 10px 14px; border-top: 1px solid var(--border);
+    display: flex; gap: 8px; background: var(--surface);
+  }
+
+  /* Syntax highlight in Lua modal */
+  .kw { color: var(--purple); }
+  .str { color: var(--green); }
+  .cmt { color: #484f58; font-style: italic; }
+  .num { color: var(--orange); }
+</style>
+</head>
+<body>
+
+<!-- ── Top Bar ── -->
+<div id="topbar">
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <span>AI Website Builder</span>
+  </div>
+  <div class="topbar-sep"></div>
+  <select id="model-select">
+    <option value="glm-4.7">GLM-4.7 (Balanced)</option>
+    <option value="glm-4.7-flash">GLM-4.7 Flash (Free/Fast)</option>
+    <option value="glm-4.5">GLM-4.5</option>
+    <option value="glm-4.5-flash">GLM-4.5 Flash (Free)</option>
+    <option value="glm-5-turbo">GLM-5 Turbo</option>
+  </select>
+  <div class="topbar-right">
+    <span class="badge badge-purple">🔮 Roblox Lua</span>
+    <span class="badge badge-green">Z.ai GLM</span>
+    <div id="status-indicator" title="Connected"></div>
+  </div>
+</div>
+
+<!-- ── Main Layout ── -->
+<div id="main">
+
+  <!-- ═══ CHAT PANEL ═══ -->
+  <div class="panel" id="chat-panel">
+    <div class="panel-header">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      AI Chat
+    </div>
+
+    <div id="chat-messages"></div>
+
+    <!-- Lua file drawer -->
+    <div id="lua-drawer">
+      <div id="lua-drawer-header" onclick="toggleLuaDrawer()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        Lua Files
+        <svg id="lua-drawer-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <div id="lua-file-list" style="display:none;"></div>
+    </div>
+
+    <!-- Chat input -->
+    <div id="chat-input-area">
+      <div class="quick-actions" id="quick-actions">
+        <button class="quick-btn" onclick="quickMsg('Create a dark dashboard UI with sidebar nav')">Dashboard</button>
+        <button class="quick-btn" onclick="quickMsg('Create a landing page with hero section and features')">Landing</button>
+        <button class="quick-btn" onclick="quickMsg('Add a Lua obfuscator form to the website')">Obfuscator</button>
+        <button class="quick-btn" onclick="quickMsg('List all available Lua files and show me the obfuscate.lua tool')">Lua Tools</button>
+      </div>
+      <div id="chat-input-wrap">
+        <textarea id="chat-input" placeholder="Ask AI to build something... (Shift+Enter for newline)" rows="1"></textarea>
+        <button id="send-btn" onclick="sendMessage()" title="Send (Enter)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="resizer" id="resizer-1"></div>
+
+  <!-- ═══ PREVIEW PANEL ═══ -->
+  <div class="panel" id="preview-panel">
+    <div class="preview-toolbar">
+      <div class="traffic-light">
+        <div class="tl tl-red"></div>
+        <div class="tl tl-yellow"></div>
+        <div class="tl tl-green"></div>
+      </div>
+      <input id="preview-url" readonly value="about:blank" />
+      <button id="preview-refresh" onclick="refreshPreview()" title="Refresh">↺</button>
+      <div class="device-btns">
+        <button class="device-btn active" onclick="setDevice('desktop', this)" title="Desktop">🖥</button>
+        <button class="device-btn" onclick="setDevice('tablet', this)" title="Tablet">📱</button>
+        <button class="device-btn" onclick="setDevice('mobile', this)" title="Mobile">📲</button>
+      </div>
+    </div>
+    <div id="preview-frame-wrap">
+      <div id="preview-overlay">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+        </svg>
+        <span>Ask the AI to build a website</span>
+      </div>
+      <iframe id="preview-iframe" sandbox="allow-scripts allow-same-origin allow-forms" style="display:none;"></iframe>
+    </div>
+  </div>
+
+  <div class="resizer" id="resizer-2"></div>
+
+  <!-- ═══ CODE PANEL ═══ -->
+  <div class="panel" id="code-panel">
+    <div class="code-tabs">
+      <div class="code-tab active" data-lang="html" onclick="switchTab('html', this)">
+        <span class="tab-dot dot-html"></span>index.html
+      </div>
+      <div class="code-tab" data-lang="css" onclick="switchTab('css', this)">
+        <span class="tab-dot dot-css"></span>style.css
+      </div>
+      <div class="code-tab" data-lang="javascript" onclick="switchTab('javascript', this)">
+        <span class="tab-dot dot-js"></span>app.js
+      </div>
+      <div class="code-tab" data-lang="lua" onclick="switchTab('lua', this)">
+        <span class="tab-dot dot-lua"></span>script.lua
+      </div>
+    </div>
+    <div id="code-editor-wrap">
+      <div id="code-editor"></div>
+    </div>
+    <div class="code-actions">
+      <button class="btn btn-primary" onclick="applyCode()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Apply & Preview
+      </button>
+      <button class="btn" onclick="clearCode()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        </svg>
+        Clear
+      </button>
+      <button class="btn" onclick="copyCode()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        Copy
+      </button>
+      <button class="btn" onclick="downloadCode()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download
+      </button>
+      <span class="code-stat" id="code-stat">0 lines</span>
+    </div>
+  </div>
+</div>
+
+<!-- Lua file modal -->
+<div id="lua-modal">
+  <div id="lua-modal-inner">
+    <div id="lua-modal-header">
+      <span>📄</span>
+      <span id="lua-modal-title">file.lua</span>
+      <button id="lua-modal-close" onclick="closeLuaModal()">×</button>
+    </div>
+    <div id="lua-modal-content"></div>
+    <div id="lua-modal-footer">
+      <button class="btn btn-primary" onclick="loadLuaToEditor()">Load into Editor</button>
+      <button class="btn" onclick="askAIAboutLua()">Ask AI About This</button>
+      <button class="btn" onclick="closeLuaModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Monaco Editor loader -->
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+//  APP STATE
+// ─────────────────────────────────────────────────────────────────────────────
+const state = {
+  chatHistory: [],
+  currentLang: 'html',
+  editors: {},      // lang → editor instance
+  code: {
+    html: '<!-- Your HTML will appear here -->\n',
+    css:  '/* Your CSS will appear here */\n',
+    javascript: '// Your JavaScript will appear here\n',
+    lua: '-- Your Lua script will appear here\n'
+  },
+  isGenerating: false,
+  currentLuaFile: null,
+  luaFileContent: null,
+  previewLive: false
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  MONACO EDITOR SETUP
+// ─────────────────────────────────────────────────────────────────────────────
+require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+
+require(['vs/editor/editor.main'], function () {
+  monaco.editor.defineTheme('dark-custom', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '484f58', fontStyle: 'italic' },
+      { token: 'keyword', foreground: 'bc8cff' },
+      { token: 'string', foreground: '3fb950' },
+      { token: 'number', foreground: 'f0883e' },
+    ],
+    colors: {
+      'editor.background': '#0d1117',
+      'editor.foreground': '#e6edf3',
+      'editor.lineHighlightBackground': '#161b22',
+      'editorCursor.foreground': '#58a6ff',
+      'editor.selectionBackground': '#1f6feb44',
+      'editorLineNumber.foreground': '#484f58',
+      'editorLineNumber.activeForeground': '#8b949e',
+    }
+  });
+
+  const langs = ['html', 'css', 'javascript', 'lua'];
+  langs.forEach(lang => {
+    // Each lang gets its own editor but only one is visible
+    const container = document.createElement('div');
+    container.style.cssText = 'width:100%;height:100%;display:none;position:absolute;top:0;left:0;';
+    container.id = 'editor-' + lang;
+    document.getElementById('code-editor').appendChild(container);
+
+    const ed = monaco.editor.create(container, {
+      value: state.code[lang],
+      language: lang === 'lua' ? 'lua' : lang,
+      theme: 'dark-custom',
+      automaticLayout: true,
+      fontSize: 13,
+      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+      fontLigatures: true,
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      renderLineHighlight: 'line',
+      lineNumbers: 'on',
+      tabSize: 2,
+      wordWrap: 'off',
+      bracketPairColorization: { enabled: true }
+    });
+
+    ed.onDidChangeModelContent(() => {
+      state.code[lang] = ed.getValue();
+      updateCodeStat();
+    });
+
+    state.editors[lang] = ed;
+  });
+
+  // Show HTML editor by default
+  document.getElementById('editor-html').style.display = 'block';
+
+  // Initial welcome
+  showWelcome();
+  loadLuaFiles();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  TAB SWITCHING
+// ─────────────────────────────────────────────────────────────────────────────
+function switchTab(lang, el) {
+  state.currentLang = lang;
+  document.querySelectorAll('.code-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  Object.keys(state.editors).forEach(l => {
+    document.getElementById('editor-' + l).style.display = l === lang ? 'block' : 'none';
+  });
+  updateCodeStat();
+}
+
+function updateCodeStat() {
+  const lines = (state.code[state.currentLang] || '').split('\n').length;
+  const chars = (state.code[state.currentLang] || '').length;
+  document.getElementById('code-stat').textContent = `${lines} lines · ${chars} chars`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  PREVIEW
+// ─────────────────────────────────────────────────────────────────────────────
+function buildPreviewDoc() {
+  const html = state.code.html;
+  const css = state.code.css;
+  const js = state.code.javascript;
+
+  // If HTML already has full doc structure, inject CSS/JS
+  if (/<html/i.test(html)) {
+    let doc = html;
+    if (!/<style/i.test(doc) && css.trim()) {
+      doc = doc.replace('</head>', `<style>\n${css}\n</style>\n</head>`);
+    }
+    if (!/<script/i.test(doc) && js.trim()) {
+      doc = doc.replace('</body>', `<script>\n${js}\n<\/script>\n</body>`);
+    }
+    return doc;
+  }
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+${css}
+</style>
+</head>
+<body>
+${html}
+<script>
+${js}
+<\/script>
+</body>
+</html>`;
+}
+
+function applyCode() {
+  const doc = buildPreviewDoc();
+  const iframe = document.getElementById('preview-iframe');
+  const overlay = document.getElementById('preview-overlay');
+
+  iframe.style.display = 'block';
+  overlay.style.display = 'none';
+  state.previewLive = true;
+
+  iframe.srcdoc = doc;
+  document.getElementById('preview-url').value = 'preview://localhost/index.html';
+  showToast('Preview updated!', 'success');
+}
+
+function refreshPreview() {
+  if (!state.previewLive) return;
+  applyCode();
+}
+
+function setDevice(device, el) {
+  document.querySelectorAll('.device-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  const wrap = document.getElementById('preview-frame-wrap');
+  const iframe = document.getElementById('preview-iframe');
+  if (device === 'desktop') {
+    iframe.style.width = '100%';
+    wrap.style.padding = '0';
+  } else if (device === 'tablet') {
+    iframe.style.width = '768px';
+    wrap.style.padding = '12px';
+    wrap.style.background = '#1a1a2a';
+  } else {
+    iframe.style.width = '390px';
+    wrap.style.padding = '12px';
+    wrap.style.background = '#1a1a2a';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  CODE ACTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+function clearCode() {
+  const ed = state.editors[state.currentLang];
+  ed.setValue('');
+  showToast('Editor cleared');
+}
+
+function copyCode() {
+  navigator.clipboard.writeText(state.code[state.currentLang]);
+  showToast('Copied to clipboard!', 'success');
+}
+
+function downloadCode() {
+  const ext = { html: 'html', css: 'css', javascript: 'js', lua: 'lua' };
+  const blob = new Blob([state.code[state.currentLang]], { type: 'text/plain' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `website.${ext[state.currentLang]}`; a.click();
+  showToast('Downloaded!', 'success');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  CHAT
+// ─────────────────────────────────────────────────────────────────────────────
+const chatEl = document.getElementById('chat-messages');
+const inputEl = document.getElementById('chat-input');
+const sendBtn = document.getElementById('send-btn');
+
+function showWelcome() {
+  addMessage('ai', `👋 **Welcome to AI Website Builder!**
+
+I'm powered by **Z.ai GLM** and can help you:
+
+• 🌐 Build complete websites (HTML + CSS + JS)
+• 🔮 Use Roblox Lua obfuscation tools
+• ⚡ Add backend API calls & endpoints
+• 📦 Import and modify Lua scripts
+
+**Try asking:**
+- *"Create a cyberpunk dashboard with charts"*
+- *"Build a Lua obfuscator web UI"*
+- *"Show me the available Lua files"*
+- *"Add a dark code editor with syntax highlighting"*
+
+What shall we build today?`);
+}
+
+function addMessage(role, content, extracted = null) {
+  const div = document.createElement('div');
+  div.className = `msg msg-${role}`;
+  const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  let html = `<div class="msg-bubble">${role === 'ai' ? renderMarkdown(content) : escapeHtml(content)}</div>`;
+  html += `<div class="msg-meta">${now}</div>`;
+
+  if (extracted && (extracted.html || extracted.css || extracted.js)) {
+    html += '<div class="code-apply-bar">';
+    if (extracted.html) html += `<button class="code-apply-btn" onclick="applyExtracted(${JSON.stringify(extracted).replace(/"/g, '&quot;')})">⚡ Apply Code</button>`;
+    if (extracted.lua) html += `<button class="code-apply-btn" onclick="loadExtractedLua(${JSON.stringify(extracted.lua).replace(/"/g, '&quot;')})">🔮 Load Lua</button>`;
+    html += '</div>';
+  }
+
+  div.innerHTML = html;
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return div;
+}
+
+function applyExtracted(ex) {
+  if (ex.html) { state.code.html = ex.html; state.editors.html.setValue(ex.html); }
+  if (ex.css)  { state.code.css  = ex.css;  state.editors.css.setValue(ex.css); }
+  if (ex.js)   { state.code.javascript = ex.js; state.editors.javascript.setValue(ex.js); }
+  applyCode();
+}
+
+function loadExtractedLua(lua) {
+  state.code.lua = lua;
+  state.editors.lua.setValue(lua);
+  switchTab('lua', document.querySelector('[data-lang="lua"]'));
+  showToast('Lua code loaded!', 'success');
+}
+
+// Parse & extract code blocks from AI response
+function extractCode(text) {
+  const result = { html: null, css: null, js: null, lua: null };
+  const blockRe = /```(html|css|javascript|js|lua|javascript-backend)\s*\n([\s\S]*?)```/gi;
+  let m;
+  while ((m = blockRe.exec(text)) !== null) {
+    const lang = m[1].toLowerCase();
+    const code = m[2];
+    if (lang === 'html') result.html = code;
+    else if (lang === 'css') result.css = code;
+    else if (lang === 'javascript' || lang === 'js') result.js = code;
+    else if (lang === 'lua') result.lua = code;
+  }
+  return result;
+}
+
+function renderMarkdown(text) {
+  // Basic markdown rendering
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
+      `<pre><code class="lang-${lang}">${code}</code></pre>`)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^[\-•] (.+)$/gm, '<li>$1</li>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/^(?!<[hlu]|<pre|<li)(.+)$/gm, (match) => match.startsWith('<') ? match : `<p>${match}</p>`)
+    .replace(/<li>.*<\/li>/gs, m => `<ul>${m}</ul>`);
+}
+
+function escapeHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+let typingEl = null;
+function showTyping() {
+  typingEl = document.createElement('div');
+  typingEl.className = 'msg msg-ai';
+  typingEl.innerHTML = `<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>`;
+  chatEl.appendChild(typingEl);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+function hideTyping() {
+  if (typingEl) { typingEl.remove(); typingEl = null; }
+}
+
+async function sendMessage() {
+  const text = inputEl.value.trim();
+  if (!text || state.isGenerating) return;
+
+  inputEl.value = '';
+  autoResizeInput();
+  addMessage('user', text);
+  state.chatHistory.push({ role: 'user', content: text });
+
+  await generate();
+}
+
+async function generate() {
+  state.isGenerating = true;
+  sendBtn.disabled = true;
+  showTyping();
+
+  const model = document.getElementById('model-select').value || 'glm-4.7';
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: state.chatHistory, model })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      hideTyping();
+      addMessage('ai', `❌ Error: ${err.error || res.statusText}`);
+      return;
+    }
+
+    // Stream response
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let buffer = '';
+
+    hideTyping();
+    const msgEl = document.createElement('div');
+    msgEl.className = 'msg msg-ai';
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    meta.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    msgEl.appendChild(bubble);
+    msgEl.appendChild(meta);
+    chatEl.appendChild(msgEl);
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') break;
+        try {
+          const parsed = JSON.parse(data);
+          const delta = parsed.choices?.[0]?.delta?.content || '';
+          fullText += delta;
+          bubble.innerHTML = renderMarkdown(fullText);
+          chatEl.scrollTop = chatEl.scrollHeight;
+        } catch {}
+      }
+    }
+
+    // Extract code blocks from response
+    const extracted = extractCode(fullText);
+    const hasCode = extracted.html || extracted.css || extracted.js || extracted.lua;
+
+    if (hasCode) {
+      const bar = document.createElement('div');
+      bar.className = 'code-apply-bar';
+      if (extracted.html || extracted.css || extracted.js) {
+        const btn = document.createElement('button');
+        btn.className = 'code-apply-btn';
+        btn.textContent = '⚡ Apply to Editor & Preview';
+        btn.onclick = () => applyExtracted(extracted);
+        bar.appendChild(btn);
+      }
+      if (extracted.lua) {
+        const btn = document.createElement('button');
+        btn.className = 'code-apply-btn';
+        btn.textContent = '🔮 Load Lua to Editor';
+        btn.onclick = () => loadExtractedLua(extracted.lua);
+        bar.appendChild(btn);
+      }
+      msgEl.appendChild(bar);
+    }
+
+    state.chatHistory.push({ role: 'assistant', content: fullText });
+
+    // Auto-apply if only HTML (simple response)
+    if (extracted.html && !state.previewLive) {
+      applyExtracted(extracted);
+    }
+
+  } catch (err) {
+    hideTyping();
+    addMessage('ai', `❌ Network error: ${err.message}`);
+  } finally {
+    state.isGenerating = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  LUA FILE BROWSER
+// ─────────────────────────────────────────────────────────────────────────────
+let luaDrawerOpen = false;
+
+async function loadLuaFiles() {
+  try {
+    const res = await fetch('/api/lua-files');
+    const { files } = await res.json();
+    const list = document.getElementById('lua-file-list');
+    list.innerHTML = files.map(f => `
+      <div class="lua-file-item" onclick="openLuaFile('${f.name}')">
+        <span>📄</span>
+        <span class="lua-file-name">${f.name}</span>
+        <span class="lua-file-size">${formatBytes(f.size)}</span>
+        <span class="lua-file-load">view</span>
+      </div>`).join('');
+  } catch {}
+}
+
+function toggleLuaDrawer() {
+  luaDrawerOpen = !luaDrawerOpen;
+  document.getElementById('lua-file-list').style.display = luaDrawerOpen ? 'block' : 'none';
+  document.getElementById('lua-drawer-chevron').style.transform = luaDrawerOpen ? 'rotate(180deg)' : '';
+}
+
+async function openLuaFile(name) {
+  try {
+    const res = await fetch(`/api/lua-file?name=${encodeURIComponent(name)}`);
+    if (!res.ok) { showToast('Could not load file', 'error'); return; }
+    const { content, truncated } = await res.json();
+    state.currentLuaFile = name;
+    state.luaFileContent = content;
+
+    document.getElementById('lua-modal-title').textContent = name + (truncated ? ' (truncated)' : '');
+    document.getElementById('lua-modal-content').innerHTML = highlightLua(content);
+    document.getElementById('lua-modal').classList.add('open');
+  } catch (e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+function closeLuaModal() {
+  document.getElementById('lua-modal').classList.remove('open');
+}
+
+function loadLuaToEditor() {
+  if (!state.luaFileContent) return;
+  state.code.lua = state.luaFileContent;
+  state.editors.lua.setValue(state.luaFileContent);
+  switchTab('lua', document.querySelector('[data-lang="lua"]'));
+  closeLuaModal();
+  showToast(`${state.currentLuaFile} loaded into editor!`, 'success');
+}
+
+function askAIAboutLua() {
+  if (!state.currentLuaFile) return;
+  closeLuaModal();
+  const snippet = (state.luaFileContent || '').slice(0, 2000);
+  const msg = `Tell me about this Lua file: **${state.currentLuaFile}**\n\nHere's the beginning:\n\`\`\`lua\n${snippet}\n\`\`\`\n\nWhat does it do, how can I use it, and can you build a web UI to interact with it?`;
+  inputEl.value = msg;
+  sendMessage();
+}
+
+// Simple Lua syntax highlighting
+function highlightLua(code) {
+  const kws = /\b(local|function|end|if|then|else|elseif|for|do|while|repeat|until|return|break|not|and|or|in|nil|true|false)\b/g;
+  return escapeHtml(code)
+    .replace(kws, '<span class="kw">$1</span>')
+    .replace(/(--[^\n]*)/g, '<span class="cmt">$1</span>')
+    .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, '<span class="str">$1</span>')
+    .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="num">$1</span>');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  QUICK ACTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+function quickMsg(msg) {
+  inputEl.value = msg;
+  sendMessage();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  RESIZER
+// ─────────────────────────────────────────────────────────────────────────────
+function makeResizer(resizerId, panelAId, panelBId) {
+  const resizer = document.getElementById(resizerId);
+  const panelA = document.getElementById(panelAId);
+  const panelB = document.getElementById(panelBId);
+  let startX, startAW, startBW;
+
+  resizer.addEventListener('mousedown', e => {
+    startX = e.clientX;
+    startAW = panelA.offsetWidth;
+    startBW = panelB.offsetWidth;
+    resizer.classList.add('active');
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+
+    const onMove = e => {
+      const dx = e.clientX - startX;
+      const newAW = Math.max(180, startAW + dx);
+      const newBW = Math.max(180, startBW - dx);
+      panelA.style.width = newAW + 'px';
+      panelA.style.flex = 'none';
+      panelB.style.width = newBW + 'px';
+      panelB.style.flex = 'none';
+    };
+    const onUp = () => {
+      resizer.classList.remove('active');
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    e.preventDefault();
+  });
+}
+
+makeResizer('resizer-1', 'chat-panel', 'preview-panel');
+makeResizer('resizer-2', 'preview-panel', 'code-panel');
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  UTILS
+// ─────────────────────────────────────────────────────────────────────────────
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  clearTimeout(t._timeout);
+  t._timeout = setTimeout(() => t.className = '', 2500);
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + 'B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + 'KB';
+  return (b/1024/1024).toFixed(1) + 'MB';
+}
+
+// Auto-resize textarea
+function autoResizeInput() {
+  inputEl.style.height = 'auto';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+}
+
+inputEl.addEventListener('input', autoResizeInput);
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+// Close modal on backdrop
+document.getElementById('lua-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('lua-modal')) closeLuaModal();
+});
+
+// Check server health
+fetch('/api/health').then(r => r.json()).then(d => {
+  if (d.status === 'ok') {
+    document.getElementById('status-indicator').style.background = 'var(--green)';
+    document.getElementById('status-indicator').style.boxShadow = '0 0 6px var(--green)';
+  }
+}).catch(() => {
+  document.getElementById('status-indicator').style.background = 'var(--red)';
+  document.getElementById('status-indicator').style.boxShadow = '0 0 6px var(--red)';
+});
+</script>
+</body>
+</html>
