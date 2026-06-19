@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
+<title>@clout</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+:root{--purple:#a855f7;--cyan:#06b6d4;--pink:#ec4899;--green:#22c55e;--bg:#000}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:#000;color:#fff;font-family:ui-sans-serif,system-ui,sans-serif;overflow-x:hidden}
+#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+.z1{position:relative;z-index:1}
+
+/* scrollbar */
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(168,85,247,.3);border-radius:4px}
+
+/* glass */
+.glass{background:rgba(255,255,255,.03);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.08)}
+.glass-p{background:rgba(168,85,247,.06);backdrop-filter:blur(24px);border:1px solid rgba(168,85,247,.18)}
+
+/* glow text */
+.glow-text{text-shadow:0 0 40px rgba(168,85,247,.8),0 0 80px rgba(168,85,247,.4)}
+.glow-cyan{text-shadow:0 0 30px rgba(6,182,212,.8)}
+
+/* skill badge */
+.skill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:11.5px;font-weight:600;border:1px solid;transition:all .2s;cursor:default}
+.skill:hover{transform:translateY(-2px);box-shadow:0 4px 20px rgba(168,85,247,.3)}
+
+/* project card */
+.proj{border-radius:16px;padding:20px;transition:all .3s;cursor:default}
+.proj:hover{transform:translateY(-4px);box-shadow:0 8px 40px rgba(168,85,247,.2)}
+
+/* music player */
+#player{position:fixed;right:20px;top:50%;transform:translateY(-50%);z-index:200;width:240px;border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.bar{width:3px;border-radius:2px;animation:bar-up 1s ease-in-out infinite;flex-shrink:0}
+.bar:nth-child(1){background:var(--purple);animation-delay:0s}
+.bar:nth-child(2){background:var(--cyan);animation-delay:.15s}
+.bar:nth-child(3){background:var(--pink);animation-delay:.3s}
+.bar:nth-child(4){background:var(--purple);animation-delay:.1s}
+.bar:nth-child(5){background:var(--cyan);animation-delay:.25s}
+@keyframes bar-up{0%,100%{height:4px}50%{height:18px}}
+.bars-paused .bar{animation:none!important;height:4px!important}
+.p-range{-webkit-appearance:none;appearance:none;width:100%;height:3px;border-radius:3px;background:rgba(255,255,255,.12);outline:none;cursor:pointer}
+.p-range::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--purple);cursor:pointer;box-shadow:0 0 8px rgba(168,85,247,.7)}
+.ctrl{width:30px;height:30px;border-radius:50%;border:1px solid rgba(168,85,247,.3);background:rgba(168,85,247,.1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;transition:all .15s;flex-shrink:0}
+.ctrl:hover{background:rgba(168,85,247,.3);box-shadow:0 0 10px rgba(168,85,247,.4)}
+.ctrl.main{width:36px;height:36px;background:linear-gradient(135deg,var(--purple),var(--cyan));border:none;font-size:14px;box-shadow:0 0 16px rgba(168,85,247,.4)}
+.ctrl.main:hover{box-shadow:0 0 24px rgba(168,85,247,.6);transform:scale(1.05)}
+
+/* animated gradient border */
+.grad-border{position:relative}
+.grad-border::before{content:'';position:absolute;inset:-1px;border-radius:inherit;padding:1px;background:linear-gradient(135deg,var(--purple),var(--cyan),var(--pink),var(--purple));-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:grad-spin 4s linear infinite;background-size:200% 200%}
+@keyframes grad-spin{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+
+/* typing cursor */
+.cursor{display:inline-block;width:3px;height:1em;background:var(--purple);margin-left:2px;animation:blink .8s infinite;vertical-align:text-bottom}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* stat counter */
+.stat-num{font-size:2.5rem;font-weight:800;background:linear-gradient(135deg,var(--purple),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+
+/* mobile */
+@media(max-width:768px){
+  #player{right:8px;top:auto;bottom:16px;transform:none;width:calc(100vw - 16px)}
+  .hero-name{font-size:3.5rem!important}
+}
+</style>
+</head>
+<body>
+
+<!-- WebGL Background -->
+<canvas id="bg"></canvas>
+
+<!-- ══ MUSIC PLAYER ══ -->
+<div id="player" class="glass-p">
+  <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.4);font-weight:700">Now Playing</div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--purple),var(--cyan));display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🎵</div>
+    <div style="min-width:0">
+      <div id="p-title" style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Lofi Dream</div>
+      <div style="font-size:10px;color:rgba(255,255,255,.4)">clout · ambient</div>
+    </div>
+    <div class="bar-wrap" id="bars" style="display:flex;align-items:flex-end;gap:2px;height:18px;flex-shrink:0">
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    </div>
+  </div>
+  <input type="range" class="p-range" id="seek" value="0" min="0" max="100" step="0.1"/>
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:6px">
+      <button class="ctrl" id="prev-btn" title="Prev">⏮</button>
+      <button class="ctrl main" id="play-btn" title="Play/Pause">▶</button>
+      <button class="ctrl" id="next-btn" title="Next">⏭</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span style="font-size:10px;color:rgba(255,255,255,.4)" id="p-time">0:00</span>
+      <input type="range" class="p-range" id="vol" min="0" max="1" step="0.01" value="0.5" style="width:55px"/>
+    </div>
+  </div>
+  <input id="custom-url" placeholder="Paste MP3 URL…" style="width:100%;background:rgba(0,0,0,.4);border:1px solid rgba(168,85,247,.2);border-radius:6px;color:#fff;font-size:10px;padding:4px 8px;outline:none;font-family:inherit"/>
+</div>
+
+<!-- ══ MAIN CONTENT ══ -->
+<div class="z1" style="max-width:900px;margin:0 auto;padding:0 24px 120px">
+
+  <!-- HERO -->
+  <section style="min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:80px 0 40px">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--purple);font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+      <span style="width:32px;height:1px;background:var(--purple);display:inline-block"></span>
+      DEVELOPER · CREATOR · BUILDER
+    </div>
+    <h1 class="hero-name glow-text" style="font-size:6rem;font-weight:900;line-height:1;letter-spacing:-.04em;margin-bottom:8px">
+      clout<span class="cursor"></span>
+    </h1>
+    <div style="font-size:1.4rem;color:rgba(255,255,255,.5);font-weight:300;margin-bottom:32px">
+      <span id="type-sub" style="color:var(--cyan)"></span>
+    </div>
+    <p style="font-size:15px;color:rgba(255,255,255,.55);line-height:1.8;max-width:540px;margin-bottom:40px">
+      I build things for the web, Roblox, and beyond. Full-stack developer obsessed with clean code, sick UIs, and pushing what's possible in Lua and JavaScript.
+    </p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <a href="#projects" style="background:linear-gradient(135deg,var(--purple),var(--cyan));color:#fff;padding:12px 28px;border-radius:12px;font-size:13px;font-weight:700;text-decoration:none;transition:all .2s;box-shadow:0 0 30px rgba(168,85,247,.4)" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 0 50px rgba(168,85,247,.6)'" onmouseout="this.style.transform='';this.style.boxShadow='0 0 30px rgba(168,85,247,.4)'">View Projects</a>
+      <a href="#skills" style="background:rgba(255,255,255,.04);color:rgba(255,255,255,.7);padding:12px 28px;border-radius:12px;font-size:13px;font-weight:600;text-decoration:none;border:1px solid rgba(255,255,255,.1);transition:all .2s" onmouseover="this.style.borderColor='rgba(168,85,247,.5)';this.style.color='var(--purple)'" onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.color='rgba(255,255,255,.7)'">My Stack</a>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:80px">
+    <div class="glass grad-border" style="border-radius:16px;padding:24px;text-align:center">
+      <div class="stat-num">50+</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-top:4px">Projects Built</div>
+    </div>
+    <div class="glass grad-border" style="border-radius:16px;padding:24px;text-align:center">
+      <div class="stat-num">∞</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-top:4px">Lines of Code</div>
+    </div>
+    <div class="glass grad-border" style="border-radius:16px;padding:24px;text-align:center">
+      <div class="stat-num">24/7</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-top:4px">Always Building</div>
+    </div>
+  </section>
+
+  <!-- SKILLS -->
+  <section id="skills" style="margin-bottom:80px">
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.18em;color:var(--purple);font-weight:700;margin-bottom:8px">What I Use</div>
+    <h2 style="font-size:2.2rem;font-weight:800;margin-bottom:32px">My Stack</h2>
+
+    <div style="display:flex;flex-direction:column;gap:20px">
+
+      <div>
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.3);margin-bottom:12px;font-weight:600">Frontend</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <span class="skill" style="background:rgba(168,85,247,.1);border-color:rgba(168,85,247,.3);color:var(--purple)">⚡ JavaScript</span>
+          <span class="skill" style="background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.3);color:#60a5fa">⚛ React</span>
+          <span class="skill" style="background:rgba(6,182,212,.1);border-color:rgba(6,182,212,.3);color:var(--cyan)">🌊 Tailwind CSS</span>
+          <span class="skill" style="background:rgba(168,85,247,.08);border-color:rgba(168,85,247,.2);color:rgba(255,255,255,.6)">🔷 TypeScript</span>
+          <span class="skill" style="background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.2);color:var(--green)">▲ Next.js</span>
+          <span class="skill" style="background:rgba(236,72,153,.08);border-color:rgba(236,72,153,.2);color:var(--pink)">🎨 WebGL / GLSL</span>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.3);margin-bottom:12px;font-weight:600">Backend</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <span class="skill" style="background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.3);color:var(--green)">⬡ Node.js</span>
+          <span class="skill" style="background:rgba(168,85,247,.08);border-color:rgba(168,85,247,.2);color:rgba(255,255,255,.6)">⚡ Express</span>
+          <span class="skill" style="background:rgba(6,182,212,.08);border-color:rgba(6,182,212,.2);color:var(--cyan)">🐍 Python</span>
+          <span class="skill" style="background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.2);color:#60a5fa">🐘 PostgreSQL</span>
+          <span class="skill" style="background:rgba(236,72,153,.08);border-color:rgba(236,72,153,.2);color:var(--pink)">🍃 MongoDB</span>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.3);margin-bottom:12px;font-weight:600">Roblox / Lua</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <span class="skill" style="background:rgba(168,85,247,.15);border-color:rgba(168,85,247,.4);color:var(--purple)">🎮 Roblox Studio</span>
+          <span class="skill" style="background:rgba(168,85,247,.1);border-color:rgba(168,85,247,.3);color:var(--purple)">📜 Lua 5.1</span>
+          <span class="skill" style="background:rgba(6,182,212,.08);border-color:rgba(6,182,212,.2);color:var(--cyan)">🔒 Obfuscation</span>
+          <span class="skill" style="background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.2);color:var(--green)">🛡 Anti-Cheat</span>
+          <span class="skill" style="background:rgba(236,72,153,.08);border-color:rgba(236,72,153,.2);color:var(--pink)">🎯 FE Scripts</span>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.3);margin-bottom:12px;font-weight:600">Tools & DevOps</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <span class="skill" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12);color:rgba(255,255,255,.6)">🐙 Git / GitHub</span>
+          <span class="skill" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12);color:rgba(255,255,255,.6)">▲ Vercel</span>
+          <span class="skill" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12);color:rgba(255,255,255,.6)">🐳 Docker</span>
+          <span class="skill" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12);color:rgba(255,255,255,.6)">☁ Cloudflare</span>
+          <span class="skill" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12);color:rgba(255,255,255,.6)">🤖 AI / LLMs</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- PROJECTS -->
+  <section id="projects" style="margin-bottom:80px">
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.18em;color:var(--cyan);font-weight:700;margin-bottom:8px">What I've Built</div>
+    <h2 style="font-size:2.2rem;font-weight:800;margin-bottom:32px">Projects</h2>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">
+
+      <div class="proj glass-p grad-border">
+        <div style="font-size:22px;margin-bottom:12px">🔮</div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:6px;color:#fff">AI Website Builder</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.45);line-height:1.6;margin-bottom:14px">Full-stack AI chat that generates, previews, and edits websites in real time. WebGL background, streaming AI, Monaco editor.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(168,85,247,.15);color:var(--purple);border:1px solid rgba(168,85,247,.25)">Next.js</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(6,182,212,.1);color:var(--cyan);border:1px solid rgba(6,182,212,.2)">AI</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)">WebGL</span>
+        </div>
+      </div>
+
+      <div class="proj glass-p grad-border">
+        <div style="font-size:22px;margin-bottom:12px">🎮</div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:6px;color:#fff">Roblox Lua Obfuscator</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.45);line-height:1.6;margin-bottom:14px">Advanced Lua script protection tool. XOR encryption, string splitting, control flow obfuscation to protect Roblox scripts.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(168,85,247,.15);color:var(--purple);border:1px solid rgba(168,85,247,.25)">Lua</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(236,72,153,.1);color:var(--pink);border:1px solid rgba(236,72,153,.2)">Security</span>
+        </div>
+      </div>
+
+      <div class="proj glass-p grad-border">
+        <div style="font-size:22px;margin-bottom:12px">⚡</div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:6px;color:#fff">Claude Hub</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.45);line-height:1.6;margin-bottom:14px">AI-powered Roblox script hub with real-time execution, game detection, and a sleek dark UI built entirely in Lua.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(168,85,247,.15);color:var(--purple);border:1px solid rgba(168,85,247,.25)">Lua</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(6,182,212,.1);color:var(--cyan);border:1px solid rgba(6,182,212,.2)">Roblox</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)">AI</span>
+        </div>
+      </div>
+
+      <div class="proj glass-p grad-border">
+        <div style="font-size:22px;margin-bottom:12px">🌊</div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:6px;color:#fff">WebGL Shader Art</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.45);line-height:1.6;margin-bottom:14px">Real-time GLSL fragment shader backgrounds. Fractal Brownian Motion noise, animated nebula effects, pure GPU rendering.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(236,72,153,.1);color:var(--pink);border:1px solid rgba(236,72,153,.2)">GLSL</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(168,85,247,.15);color:var(--purple);border:1px solid rgba(168,85,247,.25)">WebGL</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ABOUT -->
+  <section style="margin-bottom:80px">
+    <div class="glass grad-border" style="border-radius:20px;padding:32px;display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center">
+      <div>
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.18em;color:var(--pink);font-weight:700;margin-bottom:8px">About Me</div>
+        <h2 style="font-size:1.8rem;font-weight:800;margin-bottom:16px">I build with passion.</h2>
+        <p style="font-size:13px;color:rgba(255,255,255,.5);line-height:1.9">
+          Started coding in Roblox Studio, fell in love with Lua, then expanded to the full web stack. I love dark UIs, animated interfaces, and making things that feel alive. Currently focused on AI-powered tools and Roblox script development.
+        </p>
+      </div>
+      <div style="text-align:center;flex-shrink:0">
+        <div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,var(--purple),var(--cyan));display:flex;align-items:center;justify-content:center;font-size:36px;box-shadow:0 0 30px rgba(168,85,247,.5);margin:0 auto 8px">👾</div>
+        <div style="font-size:12px;font-weight:700;color:#fff">clout</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.3)">developer</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer style="text-align:center;padding:40px 0;border-top:1px solid rgba(255,255,255,.06)">
+    <div style="font-size:11px;color:rgba(255,255,255,.2);letter-spacing:.04em">built by <span style="color:var(--purple);font-weight:700">clout</span> · powered by pure code</div>
+  </footer>
+
+</div>
+
+<script>
+// ══ WEBGL BACKGROUND ══════════════════════════════════════════════════════════
+(function(){
+  const c=document.getElementById('bg'),gl=c.getContext('webgl');
+  if(!gl)return;
+  const vs=`attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}`;
+  const fs=`precision mediump float;
+uniform float t;uniform vec2 r;uniform vec3 ca,cb;
+float hash(vec2 p){p=fract(p*vec2(12.98,78.23));p+=dot(p,p+34.5);return fract(p.x*p.y);}
+float noise(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),mix(hash(i+vec2(0,1)),hash(i+1.),u.x),u.y);}
+float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<6;i++){v+=a*noise(p);p=p*2.1+vec2(1.7,9.2);a*=.5;}return v;}
+void main(){
+  vec2 uv=(gl_FragCoord.xy-.5*r)/min(r.x,r.y);
+  float f=fbm(uv*2.5+vec2(t*.06,t*.04));
+  f=fbm(uv*3.+f*1.2+vec2(-t*.05,t*.07));
+  vec3 col=mix(ca,cb,clamp(f*1.6-.3,0.,1.));
+  col*=min(t*.3,1.);col*=.55;
+  gl_FragColor=vec4(col,1.);}`;
+  function sh(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s;}
+  const prog=gl.createProgram();
+  gl.attachShader(prog,sh(gl.VERTEX_SHADER,vs));gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,fs));
+  gl.linkProgram(prog);gl.useProgram(prog);
+  const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(prog,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const tL=gl.getUniformLocation(prog,'t'),rL=gl.getUniformLocation(prog,'r');
+  const caL=gl.getUniformLocation(prog,'ca'),cbL=gl.getUniformLocation(prog,'cb');
+  gl.uniform3f(caL,.3,.05,.5);gl.uniform3f(cbL,.0,.4,.6);
+  function resize(){c.width=innerWidth;c.height=innerHeight;gl.viewport(0,0,c.width,c.height);gl.uniform2f(rL,c.width,c.height);}
+  window.addEventListener('resize',resize);resize();
+  let st=0;
+  (function loop(now){requestAnimationFrame(loop);if(!st)st=now;gl.uniform1f(tL,(now-st)/1000);gl.drawArrays(gl.TRIANGLES,0,3);})(0);
+})();
+
+// ══ TYPING TITLE EFFECT ═══════════════════════════════════════════════════════
+(function(){
+  const T='@clout';let i=1,fwd=true;
+  function tick(){
+    document.title=T.slice(0,i);
+    if(fwd){i++;if(i>T.length){fwd=false;setTimeout(tick,1800);return;}}
+    else{i--;if(i<1){fwd=true;}}
+    setTimeout(tick,fwd?120:80);
+  }
+  tick();
+})();
+
+// ══ TYPING SUBTITLE ═══════════════════════════════════════════════════════════
+(function(){
+  const lines=['Full-Stack Developer.','Roblox / Lua Expert.','WebGL Shader Artist.','AI Tool Builder.','Dark UI Obsessed.'];
+  let li=0,ci=0,del=false,el=document.getElementById('type-sub');
+  function tick(){
+    const w=lines[li];
+    if(!del){el.textContent=w.slice(0,++ci);if(ci>=w.length){del=true;setTimeout(tick,1400);return;}}
+    else{el.textContent=w.slice(0,--ci);if(ci<=0){del=false;li=(li+1)%lines.length;}}
+    setTimeout(tick,del?45:90);
+  }
+  setTimeout(tick,600);
+})();
+
+// ══ MUSIC PLAYER ═════════════════════════════════════════════════════════════
+const TRACKS=[
+  {n:'SoundHelix Ambient',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3'},
+  {n:'SoundHelix Lofi',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},
+  {n:'SoundHelix Vibes',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'},
+  {n:'SoundHelix Chill',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3'},
+];
+let ti=0,playing=false,audio=null;
+function mkAudio(url){
+  if(audio){audio.pause();audio.src='';}
+  audio=new Audio(url);audio.volume=parseFloat(document.getElementById('vol').value);
+  audio.addEventListener('timeupdate',()=>{
+    if(!audio.duration)return;
+    document.getElementById('seek').value=audio.currentTime/audio.duration*100;
+    const m=Math.floor(audio.currentTime/60),s=Math.floor(audio.currentTime%60);
+    document.getElementById('p-time').textContent=m+':'+(s<10?'0':'')+s;
+  });
+  audio.addEventListener('ended',()=>nextTrack());
+}
+function loadTrack(i){
+  ti=i;const t=TRACKS[i];
+  document.getElementById('p-title').textContent=t.n;
+  mkAudio(t.url);
+  if(playing)audio.play().catch(()=>{});
+}
+function togglePlay(){
+  if(!audio)loadTrack(ti);
+  if(playing){audio.pause();playing=false;document.getElementById('play-btn').textContent='▶';document.getElementById('bars').classList.add('bars-paused');}
+  else{audio.play().then(()=>{playing=true;document.getElementById('play-btn').textContent='⏸';document.getElementById('bars').classList.remove('bars-paused');}).catch(()=>{});}
+}
+function nextTrack(){ti=(ti+1)%TRACKS.length;loadTrack(ti);if(playing)audio.play().catch(()=>{});}
+function prevTrack(){ti=(ti-1+TRACKS.length)%TRACKS.length;loadTrack(ti);if(playing)audio.play().catch(()=>{});}
+document.getElementById('play-btn').onclick=togglePlay;
+document.getElementById('next-btn').onclick=nextTrack;
+document.getElementById('prev-btn').onclick=prevTrack;
+document.getElementById('seek').addEventListener('input',function(){if(audio&&audio.duration)audio.currentTime=this.value/100*audio.duration;});
+document.getElementById('vol').addEventListener('input',function(){if(audio)audio.volume=this.value;});
+document.getElementById('custom-url').addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&this.value.trim()){
+    TRACKS.unshift({n:'Custom Track',url:this.value.trim()});
+    ti=0;loadTrack(0);playing=true;audio.play().catch(()=>{});
+    document.getElementById('play-btn').textContent='⏸';
+    document.getElementById('bars').classList.remove('bars-paused');
+    this.value='';
+  }
+});
+loadTrack(0);
+</script>
+</body>
+</html>
