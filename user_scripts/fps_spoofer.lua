@@ -210,10 +210,13 @@ local function setEnabled(state)
 	if enabled then
 		button.BackgroundColor3 = Color3.fromRGB(45, 170, 75)
 		button.Text = "Enabled"
-		-- Re-apply whatever is in the box right now
+		-- Re-apply cap and restore the status label
 		local v = tonumber(textBox.Text)
 		if v and v >= 1 then
-			applyFPSCap(math.clamp(math.floor(v), 1, 360))
+			local capped = math.clamp(math.floor(v), 1, 360)
+			applyFPSCap(capped)
+			liveLabel.Text       = "Cap active: " .. capped .. " FPS"
+			liveLabel.TextColor3 = Color3.fromRGB(100, 180, 255)
 		end
 	else
 		button.BackgroundColor3 = Color3.fromRGB(190, 45, 45)
@@ -253,6 +256,29 @@ textBox:GetPropertyChangedSignal("Text"):Connect(function()
 	end
 end)
 
+-- ── fpsGui hook ──────────────────────────────────────────────────────────────
+-- Blade Ball keeps the displayed FPS in Character > Head > fpsGui > FPS.
+-- The game's own reporter reads from that label, so we patch it too.
+
+local fpsGuiLabel = nil
+
+local function hookFpsGui(char)
+	fpsGuiLabel = nil
+	local head = char:WaitForChild("Head", 10)
+	if not head then return end
+	local g = head:WaitForChild("fpsGui", 10)
+	if not g then return end
+	fpsGuiLabel = g:WaitForChild("FPS", 5)
+end
+
+task.spawn(function()
+	local char = player.Character or player.CharacterAdded:Wait()
+	hookFpsGui(char)
+end)
+player.CharacterAdded:Connect(function(char)
+	task.spawn(hookFpsGui, char)
+end)
+
 -- ── server spoofing ───────────────────────────────────────────────────────────
 
 -- Mid-tier quality: always sending max quality every frame is suspicious
@@ -279,6 +305,11 @@ evtRecv.OnClientEvent:Connect(function(data)
 	local spoofedFPS = naturalFPS(target)
 	local spoofedMem = realisticMemory()
 	local viewport   = workspace.CurrentCamera.ViewportSize
+
+	-- Patch the in-game label so the game's own reporter also reads our value
+	if fpsGuiLabel and fpsGuiLabel.Parent then
+		fpsGuiLabel.Text = tostring(spoofedFPS)
+	end
 
 	evtSend:FireServer({
 		token = data.token,
