@@ -459,9 +459,7 @@ local SG=Instance.new("ScreenGui")
 SG.Name="__PrepSpellHub__";SG.ResetOnSpawn=false
 SG.IgnoreGuiInset=true;SG.DisplayOrder=999
 SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
-local guiParent=PGui
-pcall(function()if gethui then guiParent=gethui() end end)
-SG.Parent=guiParent
+SG.Parent=gethui()
 
 local R={
     BG    =Color3.fromRGB(25,  25,  35),
