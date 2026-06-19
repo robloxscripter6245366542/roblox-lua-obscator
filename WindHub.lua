@@ -969,6 +969,7 @@ local MemScanner = {
     _callbacks     = {},   -- called when a new ball is found: fn(ball)
 }
 
+do  -- §10 block 1: IEEE-754 decoders and calibration helpers (registers freed after block)
 -- ── §10.1  IEEE-754 Decoders ──────────────────────────────────────────────
 
 -- Read a 32-bit little-endian IEEE-754 single-precision float from byte string
@@ -1004,37 +1005,6 @@ local function readF32(s, i)
     else
         -- Normalised number: value = sign × (1 + mant/2^23) × 2^(exp-127)
         return sign * (1 + mant / 0x800000) * (2 ^ (exp - 127))
-    end
-end
-
--- Read a 64-bit little-endian IEEE-754 double-precision float from byte string
-local function readF64(s, i)
-    -- Read as two 32-bit words (low word first for little-endian)
-    local lo = string.byte(s,i)   + string.byte(s,i+1)*0x100
-             + string.byte(s,i+2)*0x10000 + string.byte(s,i+3)*0x1000000
-    local hi = string.byte(s,i+4) + string.byte(s,i+5)*0x100
-             + string.byte(s,i+6)*0x10000 + string.byte(s,i+7)*0x1000000
-
-    if not (lo and hi) then return nil end
-
-    local sign = 1
-    if hi >= 0x80000000 then
-        sign = -1
-        hi   = hi - 0x80000000
-    end
-
-    local exp  = bit32.rshift(hi, 20)
-    local mantHi = bit32.band(hi, 0xFFFFF)
-    -- Full 52-bit mantissa = mantHi * 2^32 + lo  (but Lua can't do that exactly)
-    -- We approximate: use mantHi and a portion of lo for significant digits
-    local mant = mantHi + lo / 0x100000000  -- ~52-bit precision in double
-
-    if exp == 0 then
-        return sign * mant * (2 ^ -1074)
-    elseif exp == 2047 then
-        return sign * (mant == 0 and math.huge or 0 / 0)
-    else
-        return sign * (1 + mant / 0x100000) * (2 ^ (exp - 1023))
     end
 end
 
@@ -1242,7 +1212,7 @@ local function _runWatchdog()
         MemScanner._posOffset = nil
         MemScanner._velOffset = nil
         MemScanner._addrCache = {}
-        pcall(_calibrate)
+        pcall(MemScanner._calibrate)
     end
 end
 
@@ -1303,6 +1273,12 @@ function MemScanner.rawCFrame(ball)
     return readCFrameF32(data, 1)
 end
 
+-- Expose helpers needed by §39 extended calibration
+MemScanner._calibrate      = _calibrate
+MemScanner._verifyVtable   = _verifyVtable
+MemScanner._runWatchdog    = _runWatchdog
+end  -- §10 block 1
+
 -- ── §10.7  Ball Identifier ────────────────────────────────────────────────
 --  Decides whether a Roblox Instance is a Blade Ball ball.
 --  Multiple heuristics in priority order (cheapest first).
@@ -1342,26 +1318,6 @@ local function _isBall(obj)
     if ok7 and par == nil and ok6 and nm and nm:match("^%d+$") then return true end
 
     return false
-end
-
--- ── §10.7b  GetNil — targeted nil-instance lookup (Cobalt pattern) ─────────
---  Finds a specific nil-parented instance by Name + DebugId.
---  Used as a direct complement to the BallAdded remote: the server fires
---  BallAdded and the argument IS the nil instance, but this helper lets
---  us verify or re-fetch it when needed.
-local function GetNil(name, debugId)
-    if not EX.nil_ then return nil end
-    local found = nil
-    pcall(function()
-        for _, obj in ipairs(EF.getnilinstances()) do
-            local okN, n = pcall(function() return obj.Name end)
-            local okD, d = pcall(function() return obj:GetDebugId() end)
-            if okN and okD and n == name and d == debugId then
-                found = obj
-            end
-        end
-    end)
-    return found
 end
 
 -- ── §10.8  New Ball Handler ───────────────────────────────────────────────
@@ -1488,6 +1444,7 @@ function MemScanner.instScan(tracker_ref)
     MemScanner.instScanMs = (os.clock() - t0) * 1000
 end
 
+do  -- §10 block 2: heap-walk and signature scanner helpers (registers freed after block)
 -- ── §10.12  Heap Walk Coroutine ───────────────────────────────────────────
 --  A cooperative coroutine that walks the GC heap in chunks of 500 objects
 --  per frame, yielding between chunks to avoid stalling the main thread.
@@ -1617,7 +1574,7 @@ function MemScanner.init(tracker_ref)
     -- Step 1: attempt raw-memory calibration
     task.spawn(function()
         task.wait(1)  -- wait for game to finish loading
-        pcall(_calibrate)
+        pcall(MemScanner._calibrate)
         if MemScanner.calibrated then
             if Config.debugMemory then
                 print(("[WindHub] MemScanner calibrated. posOffset=0x%X"):format(
@@ -1647,7 +1604,7 @@ function MemScanner.init(tracker_ref)
     task.spawn(function()
         while _G.WindHubActive do
             MemScanner.gcScan(tracker_ref)
-            _runWatchdog()
+            MemScanner._runWatchdog()
             task.wait(0.05)
         end
     end)
@@ -1669,6 +1626,7 @@ function MemScanner.init(tracker_ref)
         end
     end)
 end
+end  -- §10 block 2
 
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -7061,6 +7019,7 @@ print("[WindHub] v6.0 fully loaded — executor: " .. execName .. (isMobile and 
 
 local UNC = {}   -- public registry: name → function (or nil if absent)
 
+do  -- §38 setup helpers; _env/_pick/_safeCall/UNC_MANDATORY/UNC_OPTIONAL/sUNCcheck freed after block
 -- ── §38.1  Discovery helpers ─────────────────────────────
 local function _env()
     -- Returns the global environment table.
@@ -7325,6 +7284,7 @@ EX.console      = UNC.rconsolecreate ~= nil
 EX.clipboard    = UNC.setclipboard ~= nil
 EX.fflag        = UNC.setfflag ~= nil
 EX.hiddenProp   = UNC.gethiddenproperty ~= nil
+end  -- §38 helpers freed
 
 
 -- ============================================================
@@ -7334,64 +7294,9 @@ EX.hiddenProp   = UNC.gethiddenproperty ~= nil
 --      tracking, cache telemetry, and byte-level diagnostics.
 -- ============================================================
 
--- ── §39.1  Extended IEEE-754 readers ─────────────────────
-local function readF16(bytes, offset)
-    -- Half-precision float (IEEE 754-2008) stored at bytes[offset..offset+1]
-    if #bytes < offset + 1 then return nil end
-    local lo = bytes:byte(offset)   or 0
-    local hi = bytes:byte(offset+1) or 0
-    local raw = hi * 256 + lo
-    local sign = (raw >= 0x8000) and -1 or 1
-    local exp  = math.floor(raw / 0x400) % 32
-    local frac = raw % 0x400
-    if exp == 0 then
-        return sign * (frac / 0x400) * 2^(-14)
-    elseif exp == 31 then
-        return frac == 0 and (sign * math.huge) or (0/0)
-    else
-        return sign * (1 + frac / 0x400) * 2^(exp - 15)
-    end
-end
-
-local function readU8 (bytes, off) return bytes:byte(off) or 0 end
-local function readU16(bytes, off)
-    local lo = readU8(bytes, off) ; local hi = readU8(bytes, off+1)
-    return hi*256 + lo
-end
-local function readU32(bytes, off)
-    local a, b, c, d = bytes:byte(off, off+3)
-    a, b, c, d = a or 0, b or 0, c or 0, d or 0
-    return d*0x1000000 + c*0x10000 + b*0x100 + a
-end
-local function readI32(bytes, off)
-    local u = readU32(bytes, off)
-    return u >= 0x80000000 and u - 0x100000000 or u
-end
-
--- Full 64-bit float decoder (IEEE 754 binary64, little-endian).
-local function readF64_ext(bytes, off)
-    if #bytes < off + 7 then return nil end
-    local a,b,c,d,e,f,g,h = bytes:byte(off, off+7)
-    a,b,c,d,e,f,g,h = a or 0,b or 0,c or 0,d or 0,
-                       e or 0,f or 0,g or 0,h or 0
-    local sign = h >= 128 and -1 or 1
-    local expo = (h % 128)*16 + math.floor(g/16)
-    local frac = (g%16)*2^48 + f*2^40 + e*2^32 + d*2^24 + c*2^16 + b*2^8 + a
-    if expo == 0     then return sign * frac * 2^(-1074) end
-    if expo == 2047  then return frac == 0 and sign*math.huge or 0/0 end
-    return sign * (1 + frac*2^(-52)) * 2^(expo-1023)
-end
-
 -- ── §39.2  Raw-memory read helpers (per-executor) ─────────
--- Strategy 1: readprocessmemory (standard UNC)
--- Strategy 2: getgcaddress + readprocessmemory
--- Strategy 3: memory mapped via debug.getinfo upvalue scan
--- Strategy 4: proxy read through a sentinel Instance
--- Strategy 5: bit-manipulation on userdata (some executors)
--- Strategy 6: Roblox property path (fallback, no raw access)
-
+do  -- §39 extended scanner internals; registers freed after block
 local _RPM = EF.readprocessmemory or UNC.readprocessmemory
-local _WPM = EF.writeprocessmemory or UNC.writeprocessmemory
 local _ADDR= EF.getaddress or UNC.getaddress
 
 -- Try to read `count` bytes at `addr` using the best available method.
@@ -7637,7 +7542,8 @@ local DiffGC = {
 local function _diffGCStep(tracker_ref)
     if not (EF.getgc and EF.getgc ~= nil) then return end
     DiffGC._curr = {}
-    local items = _safeCall(EF.getgc, true) or {}
+    local _gcOk, _gcResult = pcall(EF.getgc, true)
+    local items = (_gcOk and type(_gcResult) == "table") and _gcResult or {}
     for _, obj in ipairs(items) do
         if typeof(obj) == "Instance" then
             local key = tostring(obj)
@@ -7886,6 +7792,8 @@ task.spawn(function()
         for _, b in ipairs(toRemove) do RawVelBuffer[b] = nil end
     end
 end)
+MemScanner._extendedCalibrate = _extendedCalibrate
+end  -- §39 internals freed
 
 
 -- ============================================================
@@ -7896,6 +7804,7 @@ end)
 -- ============================================================
 
 -- ── §40.1  Physical constants & air model ─────────────────
+do  -- §40 physics engine internals; registers freed after block
 local PHYSICS = {
     G         = Vector3.new(0, -196.2, 0),  -- Roblox gravity (studs/s²) ≈ 20×real
     RHO       = 1.225,                       -- air density  (kg/m³, nominal)
@@ -8256,6 +8165,7 @@ task.spawn(function()
         print("[WindHub] Physics self-test " .. (ok and "PASS" or "FAIL") .. ": " .. msg)
     end
 end)
+end  -- §40 physics engine internals freed
 
 
 -- ============================================================
@@ -8266,6 +8176,7 @@ end)
 -- ============================================================
 
 -- ── §41.1  Drawing-API wrapper ────────────────────────────
+do  -- §41 ESP drawing internals; registers freed after block
 local Draw = {}
 
 local _drawingSupported = Drawing ~= nil
@@ -8595,7 +8506,7 @@ function DrawingArcESP.update(ball, state)
     local bestVel = state.physics and state.physics.bestVel and state.physics:bestVel()
     if not bestVel then return end
 
-    local pts = buildArcHighRes(ball.Position, bestVel, spin, 2.5, 20)
+    local pts = PhysicsEngineExt.buildArcHighRes(ball.Position, bestVel, spin, 2.5, 20)
     local nPts = #pts
 
     if not chain or #chain ~= nPts - 1 then
@@ -8663,6 +8574,8 @@ task.spawn(function()
         task.wait(1/30)
     end
 end)
+Draw.worldToScreen = worldToScreen  -- expose for external use
+end  -- §41 ESP drawing internals freed
 
 
 -- ============================================================
@@ -8672,7 +8585,7 @@ end)
 --      severity tags (info / warn / error / debug).
 -- ============================================================
 
-local Console = {
+Console = {
     _buffer  = {},      -- { text, level, t }
     _maxBuf  = 300,
     _filter  = nil,     -- current filter string
@@ -8706,7 +8619,7 @@ function Console.log(msg, level)
     Console._addLine(entry)
 end
 
-local function _fmtMsg(tag, msg)
+function _fmtMsg(tag, msg)
     if msg ~= nil then return "[" .. tostring(tag) .. "] " .. tostring(msg) end
     return tostring(tag)
 end
@@ -8717,7 +8630,7 @@ function Console.debug(tag, msg) Console.log(_fmtMsg(tag, msg), "debug") end
 function Console.good (tag, msg) Console.log(_fmtMsg(tag, msg), "good")  end
 
 -- ── §42.1  Console UI ─────────────────────────────────────
-local function _buildConsoleUI()
+function _buildConsoleUI()
     if Console._page then return end
 
     local tabConsole = UI.addTab("Console", "≡")
@@ -8937,7 +8850,7 @@ function Console.rebuild()
 end
 
 -- ── §42.2  Built-in commands ──────────────────────────────
-local COMMANDS = {}
+COMMANDS = {}
 
 COMMANDS["help"] = function()
     local list = {}
@@ -8992,7 +8905,7 @@ end
 COMMANDS["calibrate"] = function()
     Console.info("Starting extended memory calibration…")
     task.spawn(function()
-        local ok = _extendedCalibrate()
+        local ok = MemScanner._extendedCalibrate and MemScanner._extendedCalibrate() or false
         Console[ok and "good" or "error"]("Calibration " .. (ok and "succeeded" or "failed") ..
             (ok and (" · offset 0x" .. string.format("%X", MemScanner._posOffset or 0)) or ""))
     end)
@@ -9084,7 +8997,7 @@ task.spawn(function()
 end)
 
 -- Forward all print() calls to the console too.
-local _origPrint = print
+_origPrint = print
 print = function(...)
     _origPrint(...)
     local parts = {}
@@ -9102,7 +9015,7 @@ end
 --      and server-side tick alignment helper.
 -- ============================================================
 
-local NetMon = {
+NetMon = {
     -- Packet timestamp ring-buffer (Heartbeat deltas)
     _deltas   = {},    -- ring buffer of heartbeat deltas
     _maxDelta = 120,
@@ -9197,8 +9110,8 @@ end
 -- During a lag spike, the effective parry window should be widened
 -- to compensate for unpredictable packet delivery.
 
-local _spikeActive = false
-local _spikeUntil  = 0
+_spikeActive = false
+_spikeUntil  = 0
 
 RS.Heartbeat:Connect(function(dt)
     if dt > NetMon._spikeThr * 2 then
@@ -9210,7 +9123,7 @@ RS.Heartbeat:Connect(function(dt)
 end)
 
 -- Patch effectiveWindow to include spike compensation
-local _origEffWin = PingComp.effectiveWindow
+_origEffWin = PingComp.effectiveWindow
 function PingComp:effectiveWindow()
     local w = _origEffWin(self)
     if _spikeActive then w = w + 0.08 end
@@ -9221,7 +9134,7 @@ end
 -- Estimates how many milliseconds until the next server tick.
 -- Used to schedule parry inputs to land exactly on tick boundaries.
 
-local TickAligner = {
+TickAligner = {
     phase   = 0,    -- estimated phase offset within tick (0-1)
     period  = 1/60, -- estimated server tick period (seconds)
     _ema    = 0,
@@ -9276,7 +9189,7 @@ end)
 -- Counts how many Heartbeat deltas are anomalously large (>2× mean)
 -- which indicates a dropped frame/packet.
 
-local PacketLossEst = {
+PacketLossEst = {
     totalFrames = 0,
     lostFrames  = 0,
     rate        = 0,
@@ -9324,13 +9237,13 @@ end)
 -- can classify incoming balls as "slow / medium / fast / ultra"
 -- and set tighter default windows for each class.
 
-local SpeedCluster = {
+SpeedCluster = {
     buckets   = {},   -- speed bucket (floor(spd/10)) → count
     totalSeen = 0,
     _classes  = { slow = nil, medium = nil, fast = nil, ultra = nil },
 }
 
-local function _speedBucket(spd)
+function _speedBucket(spd)
     return math.floor(spd / 10)
 end
 
@@ -9377,7 +9290,7 @@ end)
 -- A per-ball regression keeps a running estimate of the
 -- *actual* latency between fire-command and server-side registration.
 
-local TimingFeedback = {
+TimingFeedback = {
     _records = {},   -- { eta, success, t }
     _maxRec  = 200,
     biasMs   = 0,    -- current bias estimate (ms) – positive = fire too early
@@ -9410,13 +9323,13 @@ end
 -- moment.  If we detect the approach angle changing sharply,
 -- cancel the queued parry.
 
-local FalseStartSuppressor = {
+FalseStartSuppressor = {
     _angleHistory = {},   -- ball → { angle (deg), t }[]
     _maxHistory   = 8,
     _sharpThresh  = 25,   -- degrees per second to count as a false start
 }
 
-local function _dotToAngle(a, b)
+function _dotToAngle(a, b)
     local dot = math.clamp(a:Dot(b) / (a.Magnitude * b.Magnitude + 1e-9), -1, 1)
     return math.acos(dot) * (180 / math.pi)
 end
@@ -9473,7 +9386,7 @@ end
 -- The net starts with random small weights and is updated with
 -- gradient descent after each parry result (supervised learning).
 
-local MiniNet = {
+MiniNet = {
     -- Layer 1: 6 inputs → 8 hidden (ReLU)
     W1 = {}, b1 = {},
     -- Layer 2: 8 hidden → 4 hidden (ReLU)
@@ -9489,7 +9402,7 @@ local MiniNet = {
 }
 
 -- Xavier initialisation
-local function _xavier(fanIn, fanOut)
+function _xavier(fanIn, fanOut)
     local scale = math.sqrt(6 / (fanIn + fanOut))
     return (math.random() * 2 - 1) * scale
 end
@@ -9511,10 +9424,10 @@ do
     MiniNet.b3[1] = 0
 end
 
-local function _relu(x) return math.max(0, x) end
-local function _sigmoid(x) return 1 / (1 + math.exp(-x)) end
+function _relu(x) return math.max(0, x) end
+function _sigmoid(x) return 1 / (1 + math.exp(-x)) end
 
-local function _matVec(W, b, x)
+function _matVec(W, b, x)
     local out = {}
     for i = 1, #W do
         local sum = b[i]
@@ -9560,7 +9473,7 @@ function MiniNet.train(success)
 end
 
 -- Build inputs from current ball state
-local function _buildNetInputs(ball, state)
+function _buildNetInputs(ball, state)
     local char = lp.Character
     local hrp  = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return nil end
@@ -9598,7 +9511,7 @@ end)
 -- Tracks whether accuracy is improving or degrading over the
 -- last N windows of time (each 30 seconds).
 
-local TrendAnalyser = {
+TrendAnalyser = {
     _windows   = {},
     _windowSz  = 30,    -- seconds per window
     _windowStart = os.clock(),
@@ -9607,8 +9520,8 @@ local TrendAnalyser = {
     trend      = "stable",   -- "improving" | "degrading" | "stable"
 }
 
-local AccuracyTracker_origFired   = AccuracyTracker.fired
-local AccuracyTracker_origSuccess = AccuracyTracker.success
+AccuracyTracker_origFired   = AccuracyTracker.fired
+AccuracyTracker_origSuccess = AccuracyTracker.success
 function AccuracyTracker:fired()
     AccuracyTracker_origFired(self)
     TrendAnalyser._curShots = TrendAnalyser._curShots + 1
@@ -9656,7 +9569,7 @@ end)
 -- ============================================================
 
 -- ── §45.1  Token-bucket rate limiter ─────────────────────
-local TokenBucket = {}
+TokenBucket = {}
 TokenBucket.__index = TokenBucket
 
 function TokenBucket.new(capacity, refillRate)
@@ -9690,7 +9603,7 @@ end
 -- Named timing profiles that drive human-like reaction delays.
 -- Each profile has a mean, standard-deviation, and optional skew.
 
-local JITTER_PROFILES = {
+JITTER_PROFILES = {
     Pro       = { mean = 0.010, sd = 0.008, skew =  0.0 },
     Average   = { mean = 0.028, sd = 0.014, skew =  0.3 },
     Casual    = { mean = 0.055, sd = 0.022, skew =  0.5 },
@@ -9698,7 +9611,7 @@ local JITTER_PROFILES = {
     Random    = { mean = 0.035, sd = 0.030, skew =  0.8 },
 }
 
-local function _jitterSample(profileName)
+function _jitterSample(profileName)
     local p = JITTER_PROFILES[profileName] or JITTER_PROFILES.Average
     -- Skewed normal via Box-Muller + clamp
     local u1 = math.max(1e-9, math.random())
@@ -9713,14 +9626,14 @@ end
 -- pixel coordinates in a convincing way:  mostly near centre (where
 -- the player's hand rests), with occasional slight drift.
 
-local ClickPattern = {
+ClickPattern = {
     _lastX = 0,
     _lastY = 0,
     _drift = Vector2.zero,
     _driftTimer = 0,
 }
 
-local function _humanClickPos()
+function _humanClickPos()
     local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
     local cx  = vp.X * 0.5
     local cy  = vp.Y * 0.5
@@ -9748,12 +9661,12 @@ end
 -- Move the virtual mouse along a curved path to the target
 -- click position instead of teleporting (looks human).
 
-local function _bezierPoint(p0, p1, p2, t)
+function _bezierPoint(p0, p1, p2, t)
     local mt = 1 - t
     return p0 * mt * mt + p1 * 2 * mt * t + p2 * t * t
 end
 
-local function _moveMouse(fromX, fromY, toX, toY, steps)
+function _moveMouse(fromX, fromY, toX, toY, steps)
     steps = steps or math.random(4, 8)
     -- Control point slightly off the straight line
     local cpX = (fromX + toX) * 0.5 + (math.random() - 0.5) * 40
@@ -9776,10 +9689,10 @@ end
 --   3. Execute the click
 --   4. Randomly NOT fire ~2% of the time (misclick simulation)
 
-local AD_BUCKET = TokenBucket.new(Config.maxParryRate or 18, Config.maxParryRate or 18)
+AD_BUCKET = TokenBucket.new(Config.maxParryRate or 18, Config.maxParryRate or 18)
 
-local _origClickParry = clickParry   -- saved before override
-local function _cloakedClickParry()
+_origClickParry = clickParry   -- saved before override
+function _cloakedClickParry()
     if not Config.antiDetect then
         _origClickParry()
         return
@@ -9829,11 +9742,11 @@ clickParry = _cloakedClickParry
 -- If the executor supports hookfunction we can intercept and delay
 -- our own FireServer calls slightly (avoids perfectly-timed patterns).
 
-local function _randomDelay()
+function _randomDelay()
     return 0.001 + math.random() * 0.006
 end
 
-local function _patchFireServer()
+function _patchFireServer()
     if not (EX.hook and EF.hookfunction and EF.newcclosure and EF.getrawmetatable) then return end
     local mt = EF.getrawmetatable(game)
     if not mt then return end
@@ -9862,7 +9775,7 @@ end)
 -- Occasionally perform tiny random camera movements and mouse
 -- micro-jitters so the input stream looks like a live human.
 
-local IdleSynth = {
+IdleSynth = {
     _lastIdle = 0,
     _interval = function() return 2 + math.random() * 4 end,
     _nextAt   = os.clock() + 3,
@@ -9903,7 +9816,7 @@ end)
 -- ============================================================
 
 -- ── §46.1  Argument serialiser ───────────────────────────
-local function _serializeArg(v, depth)
+function _serializeArg(v, depth)
     depth = depth or 0
     if depth > 4 then return "..." end
     local t = typeof(v)
@@ -9932,7 +9845,7 @@ local function _serializeArg(v, depth)
     end
 end
 
-local function _serializeArgs(args)
+function _serializeArgs(args)
     local parts = {}
     for _, a in ipairs(args) do
         parts[#parts+1] = _serializeArg(a)
@@ -9942,12 +9855,12 @@ end
 
 -- ── §46.2  Diff tracker ───────────────────────────────────
 -- Keeps the last call signature per remote and flags when args change.
-local RemoteSpyDiff = {
+RemoteSpyDiff = {
     _lastSig = {},   -- remote name → last serialized args
     _changed = {},   -- remote name → count of arg changes
 }
 
-local function _trackDiff(name, argsStr)
+function _trackDiff(name, argsStr)
     local prev = RemoteSpyDiff._lastSig[name]
     if prev and prev ~= argsStr then
         RemoteSpyDiff._changed[name] = (RemoteSpyDiff._changed[name] or 0) + 1
@@ -9959,7 +9872,7 @@ end
 -- Augment the existing RemoteSpy._watchRemote path with rich entries.
 -- We store a table keyed by log index so the UI can query specific entries.
 
-local SpyV3 = {
+SpyV3 = {
     log       = {},     -- array of {name, path, kind, argsStr, diff, t, idx}
     maxLog    = 200,
     onEntry   = Signal.new(),
@@ -9967,8 +9880,8 @@ local SpyV3 = {
     _callGraph= {},     -- remote name → list of calling remote names (best-effort)
 }
 
-local _spyHookActive = false
-local function _spyV3Watch(remote)
+_spyHookActive = false
+function _spyV3Watch(remote)
     if not (remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction")) then return end
     local name = remote.Name
     local kind = remote:IsA("RemoteEvent") and "Event" or "Function"
@@ -10073,7 +9986,7 @@ COMMANDS["spy"] = function(args)
 end
 
 -- ── §46.6  Heatmap by time-of-day (call frequency binned by second) ───
-local SpyHeatmap = {
+SpyHeatmap = {
     _bins = {},   -- second-of-session → call count
 }
 SpyV3.onEntry:Connect(function(entry)
@@ -10125,7 +10038,7 @@ end)
 -- ============================================================
 
 -- ── §47.1  Tick-rate histogram ────────────────────────────
-local TickHist = {
+TickHist = {
     _buckets = {},    -- bucket (fps rounded to nearest 5) → count
     total    = 0,
 }
@@ -10166,7 +10079,7 @@ end
 -- ── §47.2  Latency → success correlation ─────────────────
 -- Record (ping, success) pairs to see if higher ping kills accuracy.
 
-local LatencyCorrel = {
+LatencyCorrel = {
     _data  = {},   -- { ping, success }
     _maxN  = 100,
     corr   = 0,    -- Pearson r  (-1 to 1)
@@ -10206,7 +10119,7 @@ end)
 -- We track the player count over time and correlate it with
 -- the tick-rate stability coefficient.
 
-local LoadModel = {
+LoadModel = {
     _samples = {},    -- { players, tickRate, time }
     _maxN    = 60,
 }
@@ -10317,7 +10230,7 @@ end)
 -- ============================================================
 
 -- ── §48.1  Sound asset catalogue ─────────────────────────
-local AUDIO_CATALOGUE = {
+AUDIO_CATALOGUE = {
     -- Parry feedback
     parry_success  = { id = "rbxassetid://9120394925", vol = 0.55, pitch = 1.10 },
     parry_miss     = { id = "rbxassetid://9120394925", vol = 0.30, pitch = 0.70 },
@@ -10342,7 +10255,7 @@ local AUDIO_CATALOGUE = {
 }
 
 -- ── §48.2  Sound pool (re-use Sounds to avoid GC churn) ───
-local SoundPool = {
+SoundPool = {
     _pool = {},     -- name → { sound, inUse, def }
     _parent = SoundSvc,
 }
@@ -10380,7 +10293,7 @@ end
 
 -- ── §48.3  Positional audio (approach warning) ────────────
 -- Volume scales with how close the ball is to the player.
-local function _posAudioVolume(dist, maxDist)
+function _posAudioVolume(dist, maxDist)
     maxDist = maxDist or 60
     local frac = 1 - math.clamp(dist / maxDist, 0, 1)
     return frac * frac   -- quadratic falloff
@@ -10406,7 +10319,7 @@ end)
 
 -- ── §48.4  Dynamic ducking ────────────────────────────────
 -- When a parry fires, briefly lower the volume of ambient sounds.
-local _duckActive = false
+_duckActive = false
 task.spawn(function()
     while _G.WindHubActive do
         task.wait(0.05)
@@ -10437,7 +10350,7 @@ end)
 
 -- ── §48.5  Beat-sync combo chimes ─────────────────────────
 -- The combo chime pitches form a pentatonic scale.
-local PENTATONIC = { 0.90, 1.00, 1.12, 1.26, 1.41, 1.59, 1.78, 2.00 }
+PENTATONIC = { 0.90, 1.00, 1.12, 1.26, 1.41, 1.59, 1.78, 2.00 }
 
 ComboTracker.onCombo:Connect(function(n)
     if not Config.audioCombo then return end
@@ -10450,11 +10363,11 @@ end)
 
 -- ── §48.6  UI audio feedback ──────────────────────────────
 -- Play subtle click sounds on button presses.
-local _uiSoundReady = false
+_uiSoundReady = false
 task.spawn(function() task.wait(2); _uiSoundReady = true end)
 
-local function uiClick() if _uiSoundReady then SoundPool.play("ui_click") end end
-local function uiMode()  if _uiSoundReady then SoundPool.play("mode_change") end end
+function uiClick() if _uiSoundReady then SoundPool.play("ui_click") end end
+function uiMode()  if _uiSoundReady then SoundPool.play("mode_change") end end
 
 -- Wire into config changes
 Config.Changed:Connect(function(k, v)
@@ -10498,7 +10411,7 @@ end)
 -- Instead of dodging purely perpendicular we predict where the
 -- ball will be in `leadTime` seconds and dodge away from that point.
 
-local PredictiveDodge = {
+PredictiveDodge = {
     leadTime = 0.22,   -- seconds ahead to look
     active   = false,
 }
@@ -10515,7 +10428,7 @@ function PredictiveDodge.attempt(hrp, ball, state)
 
     -- Predict where the ball will be at leadTime
     local spin  = (state.physics._spinEst and state.physics._spinEst.spin) or Vector3.zero
-    local futurePos = select(1, rk4StepV4(bPos, bVel, spin, PredictiveDodge.leadTime))
+    local futurePos = select(1, PhysicsEngineExt.rk4StepV4(bPos, bVel, spin, PredictiveDodge.leadTime))
 
     -- Dodge direction = away from future ball position
     local awayDir = (hrp.Position - futurePos)
@@ -10539,12 +10452,12 @@ function PredictiveDodge.attempt(hrp, ball, state)
 end
 
 -- ── §49.2  Hitbox Expander v2 (per-limb) ─────────────────
-local HitboxV2 = {
+HitboxV2 = {
     _origSizes = {},    -- part → original size
     _expanded  = false,
 }
 
-local LIMB_NAMES = {
+LIMB_NAMES = {
     "HumanoidRootPart", "Head",
     "LeftUpperArm","LeftLowerArm","LeftHand",
     "RightUpperArm","RightLowerArm","RightHand",
@@ -10591,7 +10504,7 @@ end
 -- Detects when multiple balls are simultaneously targeting us
 -- (server-side CC) and triggers an evasive burst.
 
-local CCDetector = {
+CCDetector = {
     _threatCount = 0,
     _threshold   = 2,
     _burst       = false,
@@ -10638,7 +10551,7 @@ end)
 -- Tracks the cooldown of the player's secondary skill and auto-fires
 -- it when: (a) we're in a standoff, or (b) we're taking a lot of damage.
 
-local SecondaryManager = {
+SecondaryManager = {
     ready       = false,
     _lastFire   = 0,
     cooldown    = 8,     -- estimated cooldown (seconds) — adjusted from events
@@ -10663,7 +10576,7 @@ end)
 -- A special composite mode: combines Ultra parry + hitbox expand +
 -- predictive dodge + secondary auto-fire for maximum defence.
 
-local function _setBlazeBarrier(on)
+function _setBlazeBarrier(on)
     if on then
         Config.parryMode   = "Ultra"
         Config.hitboxExpand = true
@@ -10697,13 +10610,13 @@ end
 -- ============================================================
 
 -- ── §50.1  Minimap geometry helpers ──────────────────────
-local MM = {
+MM = {
     SIZE    = 150,
     RANGE   = Config.minimapRange or 200,
     BORDER  = 4,
 }
 
-local function _mmCenter()
+function _mmCenter()
     if not Minimap._frame then return Vector2.zero end
     local ap = Minimap._frame.AbsolutePosition
     local as = Minimap._frame.AbsoluteSize
@@ -10711,7 +10624,7 @@ local function _mmCenter()
 end
 
 -- World position → minimap 0-1 UV space (camera-yaw aligned)
-local function _worldToMM(wPos, refPos, yaw)
+function _worldToMM(wPos, refPos, yaw)
     local dx = wPos.X - refPos.X
     local dz = wPos.Z - refPos.Z
     local cos_y =  math.cos(yaw)
@@ -10725,9 +10638,9 @@ local function _worldToMM(wPos, refPos, yaw)
 end
 
 -- ── §50.2  Heading arrow (shows which way player faces) ───
-local MMArrow = { _parts = {} }
+MMArrow = { _parts = {} }
 
-local function _mmEnsurePart(key, color, sz)
+function _mmEnsurePart(key, color, sz)
     if not Minimap._frame then return nil end
     if not MMArrow._parts[key] then
         local f = Instance.new("Frame")
@@ -10747,7 +10660,7 @@ end
 -- Draw concentric circles around the player-dot sized by ETA.
 -- Close balls = small tight ring (red); far balls = large ring (blue).
 
-local MMHeatRings = {
+MMHeatRings = {
     _drawing = {},   -- ball → Drawing.Circle (if Drawing API available)
 }
 
@@ -10798,9 +10711,9 @@ function MMHeatRings.update(tracker)
 end
 
 -- ── §50.4  Trajectory preview dots on minimap ─────────────
-local MMTrajDots = { _dots = {} }
+MMTrajDots = { _dots = {} }
 
-local function _ensureMMDot(key, color)
+function _ensureMMDot(key, color)
     if not Minimap._frame then return nil end
     if not MMTrajDots._dots[key] then
         local f = Instance.new("Frame")
@@ -10816,7 +10729,7 @@ local function _ensureMMDot(key, color)
     return MMTrajDots._dots[key]
 end
 
-local function _updateMMTraj(tracker, refPos, camYaw)
+function _updateMMTraj(tracker, refPos, camYaw)
     if not Config.arcESP or not Config.minimap then return end
     for ball, state in pairs(tracker.states) do
         if not (ball and ball.Parent) then continue end
@@ -10827,7 +10740,7 @@ local function _updateMMTraj(tracker, refPos, camYaw)
         local p, v = ball.Position, bestVel
         local dt   = 0.15
         for step = 1, 5 do
-            p, v = rk4StepV4(p, v, spin, dt)
+            p, v = PhysicsEngineExt.rk4StepV4(p, v, spin, dt)
             local key = tostring(ball) .. "_traj_" .. step
             local frac = step / 5
             local col  = Color3.fromRGB(
@@ -10926,7 +10839,7 @@ end
 -- ============================================================
 
 -- ── §51.1  Profile diff viewer ───────────────────────────
-local function _profileDiff(nameA, nameB)
+function _profileDiff(nameA, nameB)
     local a = ProfileManager._store[nameA] or ProfileManager.PRESETS[nameA]
     local b = ProfileManager._store[nameB] or ProfileManager.PRESETS[nameB]
     if not a then return "Profile '" .. nameA .. "' not found" end
@@ -10975,7 +10888,7 @@ end)
 -- A profile can specify a `_base` key pointing to another profile.
 -- When loading, we merge the base first, then the override.
 
-local function _loadWithInheritance(name, depth)
+function _loadWithInheritance(name, depth)
     depth = depth or 0
     if depth > 5 then return false end  -- circular inheritance guard
     local snap = ProfileManager._store[name] or ProfileManager.PRESETS[name]
@@ -11001,7 +10914,7 @@ end
 -- Captures the full runtime state (parry count, accuracy, window)
 -- into a profile called "_Session_<timestamp>".
 
-local function _snapshotSession()
+function _snapshotSession()
     local snap = Config.snapshot()
     snap._parryCount  = _G.WindHub_ParryCount or 0
     snap._accuracy    = math.floor(AccuracyTracker:rate() * 100)
@@ -11090,7 +11003,7 @@ end
 -- ============================================================
 
 -- ── §52.1  Per-mode accuracy breakdown ───────────────────
-local ModeAccuracy = {
+ModeAccuracy = {
     _data = {},   -- mode → { hits, shots }
 }
 
@@ -11139,7 +11052,7 @@ function SpeedCluster.chart(width)
 end
 
 -- ── §52.3  Latency percentile table ──────────────────────
-local LatencyPercentiles = { _samples = {} }
+LatencyPercentiles = { _samples = {} }
 
 RS.Heartbeat:Connect(function()
     local ping = PingComp.pingMs or 0
@@ -11166,7 +11079,7 @@ end
 
 -- ── §52.4  Parry ETA sparkline ────────────────────────────
 -- Shows how the ETA-at-fire has changed across the last N parries.
-local ETASparkline = { _etas = {} }
+ETASparkline = { _etas = {} }
 
 task.spawn(function()
     task.wait(2)
@@ -11265,12 +11178,12 @@ end)
 -- ============================================================
 
 -- ── §53.1  Per-player state ───────────────────────────────
-local PlayerTracker = {
+PlayerTracker = {
     _players  = {},   -- plr → PlayerState
     _maxHist  = 32,   -- position history length
 }
 
-local PlayerState = {}
+PlayerState = {}
 PlayerState.__index = PlayerState
 
 function PlayerState.new(plr)
@@ -11333,13 +11246,13 @@ function PlayerState:updateThreat()
 end
 
 -- ── §53.2  Track all players ──────────────────────────────
-local function _trackPlayer(plr)
+function _trackPlayer(plr)
     if plr == lp then return end
     if PlayerTracker._players[plr] then return end
     PlayerTracker._players[plr] = PlayerState.new(plr)
 end
 
-local function _untrackPlayer(plr)
+function _untrackPlayer(plr)
     PlayerTracker._players[plr] = nil
 end
 
@@ -11380,7 +11293,7 @@ GameRemotes.onParrySuccess:Connect(function(plr, ball)
 end)
 
 -- ── §53.4  Enhanced PlayerESP with tracker data ───────────
-local function _updatePlayerESPV2()
+function _updatePlayerESPV2()
     for plr, pstate in pairs(PlayerTracker._players) do
         local char = plr.Character
         local hrp  = char and char:FindFirstChild("HumanoidRootPart")
@@ -11389,7 +11302,7 @@ local function _updatePlayerESPV2()
         -- Prediction dot at expected position in 0.5s
         local futurePos = pstate:predictPos(0.5)
         if _drawingSupported and Config.playerESP then
-            local sp, vis = worldToScreen(futurePos)
+            local sp, vis = Draw.worldToScreen(futurePos)
             if vis and sp then
                 -- (future-position indicator drawn as small ghost dot via BillboardGui)
             end
@@ -11398,7 +11311,7 @@ local function _updatePlayerESPV2()
 end
 
 -- Wire into player ESP loop
-local _origPlayerESP = PlayerESP.update
+_origPlayerESP = PlayerESP.update
 PlayerESP.update = function()
     _origPlayerESP()
     if Config.playerESP then pcall(_updatePlayerESPV2) end
@@ -11432,13 +11345,13 @@ end
 -- A ball signature captures key observable properties at spawn-time
 -- and updates them over the ball's lifetime.
 
-local BallSigDB = {
+BallSigDB = {
     _entries  = {},    -- ball → BallSigEntry
     _archive  = {},    -- completed entries (ball removed from world)
     _maxArchive = 500,
 }
 
-local BallSigEntry = {}
+BallSigEntry = {}
 BallSigEntry.__index = BallSigEntry
 
 function BallSigEntry.new(ball)
@@ -11618,7 +11531,7 @@ end)
 -- ============================================================
 
 -- ── §55.1  Kill type registry ─────────────────────────────
-local KILL_TYPES = {
+KILL_TYPES = {
     Parry    = { icon = "⚔",  color = Color3.fromRGB(80,  220, 140) },
     Dodge    = { icon = "≫",  color = Color3.fromRGB(140, 200, 80)  },
     Reflect  = { icon = "⟲",  color = Color3.fromRGB(94,  132, 255) },
@@ -11628,15 +11541,15 @@ local KILL_TYPES = {
 }
 
 -- ── §55.2  Session leaderboard ────────────────────────────
-local Leaderboard = {
+Leaderboard = {
     _kills  = {},   -- player name → kill count
     _deaths = {},   -- player name → death count
 }
 
-local function _lbKill(name, killType)
+function _lbKill(name, killType)
     Leaderboard._kills[name] = (Leaderboard._kills[name] or 0) + 1
 end
-local function _lbDeath(name)
+function _lbDeath(name)
     Leaderboard._deaths[name] = (Leaderboard._deaths[name] or 0) + 1
 end
 
@@ -11652,20 +11565,20 @@ function Leaderboard.sorted()
 end
 
 -- ── §55.3  Multi-kill detector ────────────────────────────
-local MultiKill = {
+MultiKill = {
     _recent  = {},   -- timestamps of kills in the last 10 seconds
     _window  = 10,
     onMultiKill = Signal.new(),
 }
 
-local MULTI_KILL_NAMES = {
+MULTI_KILL_NAMES = {
     [2] = "Double Kill",
     [3] = "Triple Kill",
     [4] = "Quadra Kill",
     [5] = "Penta Kill",
 }
 
-local function _registerMultiKill()
+function _registerMultiKill()
     local now = os.clock()
     table.insert(MultiKill._recent, now)
     -- Remove old entries
@@ -11686,13 +11599,13 @@ local function _registerMultiKill()
 end
 
 -- ── §55.4  Kill-streak tracker ────────────────────────────
-local KillStreak = {
+KillStreak = {
     streak   = 0,
     best     = 0,
     onStreak = Signal.new(),
 }
 
-local STREAK_NAMES = {
+STREAK_NAMES = {
     [3]  = "Killing Spree",
     [5]  = "Rampage",
     [7]  = "Unstoppable",
@@ -11700,7 +11613,7 @@ local STREAK_NAMES = {
     [15] = "Beyond Godlike",
 }
 
-local function _registerKillStreak()
+function _registerKillStreak()
     KillStreak.streak = KillStreak.streak + 1
     if KillStreak.streak > KillStreak.best then
         KillStreak.best = KillStreak.streak
@@ -11756,7 +11669,7 @@ end)
 -- Each consecutive parry within 6 seconds increases the multiplier.
 -- Score = parries × multiplier.
 
-local ComboMult = {
+ComboMult = {
     multiplier = 1,
     score      = 0,
     _lastParry = 0,
@@ -11809,14 +11722,14 @@ end
 -- ============================================================
 
 -- ── §56.1  Event log ──────────────────────────────────────
-local SessionLog = {
+SessionLog = {
     _events = {},   -- chronological array of events
     _maxEvents = 1000,
     sessionId   = tostring(math.floor(os.clock() * 1000)),
     startTime   = os.clock(),
 }
 
-local function _logEvent(kind, data)
+function _logEvent(kind, data)
     data       = data or {}
     data.kind  = kind
     data.t     = os.clock() - SessionLog.startTime
@@ -12321,21 +12234,21 @@ end
 
 
 -- §58 ─── EXTENDED ANIMATION HOOK SYSTEM ─────────────────────────────────────
-local AnimHook = {}
+AnimHook = {}
 AnimHook._hooks    = {}
 AnimHook._originals = {}
 AnimHook._blocked  = {}
 AnimHook._log      = {}
 AnimHook._active   = false
 
-local ANIM_NAMES = {
+ANIM_NAMES = {
     "Parry", "Block", "Dodge", "Roll", "Jump",
     "Land", "Idle", "Run", "Walk", "Swing",
     "Hit", "Death", "Emote", "Taunt", "Special",
     "Dash", "Charge", "Release", "Windup", "Recover"
 }
 
-local ANIM_INTERCEPT_MODES = {
+ANIM_INTERCEPT_MODES = {
     NONE      = 0,
     LOG_ONLY  = 1,
     SPEED_MOD = 2,
@@ -12484,7 +12397,7 @@ AnimHook:start()
 if Console then Console.info("AnimHook", "Animation hook system online") end
 
 -- §58.1 Animation state machine tracker
-local AnimState = {}
+AnimState = {}
 AnimState._states = {}
 AnimState._transitions = {}
 AnimState.STATES = {
@@ -12538,7 +12451,7 @@ function AnimState:isParrying(player)
 end
 
 -- §58.2 Parry frame data
-local ParryFrameData = {}
+ParryFrameData = {}
 ParryFrameData._data = {}
 ParryFrameData.DEFAULT_STARTUP  = 3   -- frames
 ParryFrameData.DEFAULT_ACTIVE   = 5   -- frames
@@ -12620,7 +12533,7 @@ end
 if Console then Console.info("AnimHook", "Parry frame data module ready") end
 
 -- §59 ─── FULL UNC DRAWING LAYER v2 ──────────────────────────────────────────
-local Draw2 = {}
+Draw2 = {}
 Draw2._objects  = {}
 Draw2._groups   = {}
 Draw2._visible  = true
@@ -12638,7 +12551,7 @@ Draw2._theme    = {
 }
 
 -- Drawing object constructor helper
-local function _newDrawing(kind, props)
+function _newDrawing(kind, props)
     if not _drawingSupported then return nil end
     local ok, obj = pcall(function() return Drawing.new(kind) end)
     if not ok or not obj then return nil end
@@ -12904,7 +12817,7 @@ end
 if Console then Console.info("Draw2", "UNC Drawing layer v2 ready. Supported="..tostring(_drawingSupported)) end
 
 -- §60 ─── MULTI-BALL VISUALIZER + TRAJECTORY PLANNER ─────────────────────────
-local BallViz = {}
+BallViz = {}
 BallViz._drawObjects = {}
 BallViz._active      = false
 BallViz._maxBalls    = 8
@@ -12925,7 +12838,7 @@ BallViz._showArrows  = true
 BallViz._showETA     = true
 BallViz._showSpeed   = true
 
-local function _vizWorldToScreen(pos)
+function _vizWorldToScreen(pos)
     local cam = workspace.CurrentCamera
     if not cam then return nil, false end
     local sp, vis = cam:WorldToViewportPoint(pos)
@@ -13065,7 +12978,7 @@ function BallViz:toggleETA()        self._showETA     = not self._showETA    end
 function BallViz:toggleSpeed()      self._showSpeed   = not self._showSpeed  end
 
 -- §60.1 Trajectory intersection finder
-local TrajIntersect = {}
+TrajIntersect = {}
 
 function TrajIntersect:findLandingPoint(pos, vel, groundY)
     groundY = groundY or 0
@@ -13128,14 +13041,14 @@ if Console then Console.info("BallViz", "Multi-ball visualizer ready") end
 BallViz:start()
 
 -- §61 ─── COMPREHENSIVE COMBAT ANALYTICS ─────────────────────────────────────
-local CombatAnalytics = {}
+CombatAnalytics = {}
 CombatAnalytics._sessions     = {}
 CombatAnalytics._currentRound = nil
 CombatAnalytics._roundHistory = {}
 CombatAnalytics._MAX_ROUNDS   = 50
 
 -- Per-round data structure
-local function _newRound()
+function _newRound()
     return {
         startTime    = tick(),
         endTime      = nil,
@@ -13362,7 +13275,7 @@ CombatAnalytics:startRound()
 if Console then Console.info("CombatAnalytics", "Combat analytics tracking active") end
 
 -- §61.1 Performance benchmark module
-local PerfBench = {}
+PerfBench = {}
 PerfBench._marks = {}
 PerfBench._results = {}
 
@@ -13420,7 +13333,7 @@ end
 if Console then Console.info("PerfBench", "Performance benchmark module ready") end
 
 -- §62 ─── EXTENDED SERVER-SIDE PREDICTION ENGINE ──────────────────────────────
-local ServerPredict = {}
+ServerPredict = {}
 ServerPredict._snapshots      = {}  -- ring of {t, states}
 ServerPredict._maxSnapshots   = 32
 ServerPredict._serverTickRate = 20  -- Hz estimate
@@ -13554,7 +13467,7 @@ end
 if Console then Console.info("ServerPredict", "Server-side prediction engine v2 ready") end
 
 -- §62.1 Client-side rollback system
-local Rollback = {}
+Rollback = {}
 Rollback._history   = {}  -- ring of {t, pos, vel}
 Rollback._maxHistory = 64
 Rollback._active    = false
@@ -13609,13 +13522,13 @@ end
 if Console then Console.info("Rollback", "Client-side rollback system ready") end
 
 -- §63 ─── INPUT RECORDER & PLAYBACK ──────────────────────────────────────────
-local InputRecorder = {}
+InputRecorder = {}
 InputRecorder._recordings = {}
 InputRecorder._current    = nil
 InputRecorder._playing    = false
 InputRecorder._playConn   = nil
 
-local INPUT_TYPES = {
+INPUT_TYPES = {
     CLICK      = "click",
     KEY_DOWN   = "key_down",
     KEY_UP     = "key_up",
@@ -13760,7 +13673,7 @@ end
 if Console then Console.info("InputRecorder", "Input recorder & playback ready") end
 
 -- §63.1 Macro system built on InputRecorder
-local Macros = {}
+Macros = {}
 Macros._macros = {}
 
 function Macros:define(name, fn)
@@ -13828,7 +13741,7 @@ end)
 if Console then Console.info("Macros", "Macro system ready. "..#Macros:list().." built-in macros") end
 
 -- §64 ─── AUTO-UPDATER & VERSION CONTROL ──────────────────────────────────────
-local Updater = {}
+Updater = {}
 Updater.VERSION        = "6.0.0"
 Updater.BUILD          = "20260618"
 Updater.CHANNEL        = "stable"
@@ -13840,7 +13753,7 @@ Updater._changelog     = {}
 Updater._autoCheck     = true
 
 -- Version comparison utility
-local function _parseVersion(vstr)
+function _parseVersion(vstr)
     local parts = {}
     for n in vstr:gmatch("%d+") do
         parts[#parts+1] = tonumber(n)
@@ -13848,7 +13761,7 @@ local function _parseVersion(vstr)
     return parts
 end
 
-local function _versionLess(a, b)
+function _versionLess(a, b)
     local pa, pb = _parseVersion(a), _parseVersion(b)
     for i = 1, math.max(#pa, #pb) do
         local ai = pa[i] or 0
@@ -13943,11 +13856,11 @@ end
 if Console then Console.info("Updater", Updater:getVersionString()) end
 
 -- §64.1 Feature flag system
-local FeatureFlags = {}
+FeatureFlags = {}
 FeatureFlags._flags   = {}
 FeatureFlags._overrides = {}
 
-local DEFAULT_FLAGS = {
+DEFAULT_FLAGS = {
     ENABLE_MININET        = true,
     ENABLE_MONTE_CARLO    = true,
     ENABLE_RK4_ADAPTIVE   = true,
@@ -14024,7 +13937,7 @@ end
 if Console then Console.info("FeatureFlags", #FeatureFlags:listEnabled().." features enabled") end
 
 -- §65 ─── EXTENDED HITBOX VISUALIZATION ───────────────────────────────────────
-local HitboxViz = {}
+HitboxViz = {}
 HitboxViz._active       = false
 HitboxViz._drawObjects  = {}
 HitboxViz._showPlayers  = true
@@ -14035,7 +13948,7 @@ HitboxViz._expandColor  = Color3.fromRGB(255, 200, 40)
 HitboxViz._opacity      = 1
 HitboxViz._style        = "brackets"  -- "brackets", "box", "circle", "skeleton"
 
-local PLAYER_PARTS = {
+PLAYER_PARTS = {
     "Head", "UpperTorso", "LowerTorso",
     "LeftUpperArm", "LeftLowerArm", "LeftHand",
     "RightUpperArm", "RightLowerArm", "RightHand",
@@ -14044,7 +13957,7 @@ local PLAYER_PARTS = {
     "HumanoidRootPart",
 }
 
-local function _getCharBoundingBox(char)
+function _getCharBoundingBox(char)
     local cam = workspace.CurrentCamera
     if not cam then return nil end
     local hrp = char:FindFirstChild("HumanoidRootPart")
@@ -14222,7 +14135,7 @@ if Console then Console.info("HitboxViz", "Hitbox viz ready (style="..HitboxViz.
 
 -- §66 ─── WIND PHYSICS EXTENSION ──────────────────────────────────────────────
 -- Models environmental wind effects on ball trajectory
-local WindPhysics = {}
+WindPhysics = {}
 WindPhysics._enabled     = false
 WindPhysics._windVector  = Vector3.new(0, 0, 0)
 WindPhysics._gustPower   = 0
@@ -14234,7 +14147,7 @@ WindPhysics._MAX_SAMPLES = 128
 WindPhysics._calibrated  = false
 WindPhysics._confidence  = 0
 
-local function _gaussNoise(sigma)
+function _gaussNoise(sigma)
     -- Box-Muller
     local u1 = math.random()
     local u2 = math.random()
@@ -14373,7 +14286,7 @@ end
 if Console then Console.info("WindPhysics", "Wind physics module ready") end
 
 -- §66.1 Spin physics extension
-local SpinPhysics = {}
+SpinPhysics = {}
 SpinPhysics._spinEstimates   = {}  -- per-ball spin vectors
 SpinPhysics._MAGNUS_COEFF    = 0.0006  -- Magnus force coefficient
 SpinPhysics._SPIN_DECAY      = 0.98    -- per-frame spin decay
@@ -14434,7 +14347,7 @@ end
 if Console then Console.info("SpinPhysics", "Spin physics extension ready") end
 
 -- §67 ─── FULL CONFIGURATION EXPORT/IMPORT SYSTEM ─────────────────────────────
-local ConfigIO = {}
+ConfigIO = {}
 ConfigIO._savedSlots   = {}
 ConfigIO._MAX_SLOTS    = 20
 ConfigIO._currentSlot  = nil
@@ -14634,12 +14547,12 @@ end)
 if Console then Console.info("ConfigIO", "Config export/import system ready") end
 
 -- §68 ─── EXTENDED PLAYER ANALYSIS ────────────────────────────────────────────
-local PlayerAnalysis = {}
+PlayerAnalysis = {}
 PlayerAnalysis._players     = {}
 PlayerAnalysis._events      = {}
 PlayerAnalysis._MAX_EVENTS  = 500
 
-local PLAYER_TIERS = {
+PLAYER_TIERS = {
     NOOB         = { name = "Noob",         minParries = 0,   maxParries = 2   },
     BEGINNER     = { name = "Beginner",     minParries = 3,   maxParries = 8   },
     INTERMEDIATE = { name = "Intermediate", minParries = 9,   maxParries = 20  },
@@ -14649,7 +14562,7 @@ local PLAYER_TIERS = {
     GODLIKE      = { name = "Godlike",      minParries = 301, maxParries = math.huge },
 }
 
-local function _newPlayerData(player)
+function _newPlayerData(player)
     return {
         player         = player,
         name           = player.Name,
@@ -14853,7 +14766,7 @@ end
 PlayerAnalysis:start()
 
 -- §69 ─── TOURNAMENT MODE ──────────────────────────────────────────────────────
-local TournamentMode = {}
+TournamentMode = {}
 TournamentMode._active      = false
 TournamentMode._round       = 0
 TournamentMode._maxRounds   = 10
@@ -14868,7 +14781,7 @@ TournamentMode._startTime   = 0
 TournamentMode._bonusActive = false
 TournamentMode._bonusWindow = 5  -- seconds of bonus parry speed
 
-local TOURNAMENT_MODES = {
+TOURNAMENT_MODES = {
     BEST_OF_3   = "best_of_3",
     BEST_OF_5   = "best_of_5",
     TIMED       = "timed",
@@ -14876,7 +14789,7 @@ local TOURNAMENT_MODES = {
     LADDER      = "ladder",
 }
 
-local function _newRoundResult(round, playerParries, opponentParries, winner)
+function _newRoundResult(round, playerParries, opponentParries, winner)
     return {
         round            = round,
         t                = tick(),
@@ -15006,7 +14919,7 @@ end
 if Console then Console.info("TournamentMode", "Tournament mode system ready") end
 
 -- §69.1 Ranked matchmaking tier
-local RankedSystem = {}
+RankedSystem = {}
 RankedSystem._elo       = 1000  -- starting ELO
 RankedSystem._wins      = 0
 RankedSystem._losses    = 0
@@ -15014,7 +14927,7 @@ RankedSystem._draws     = 0
 RankedSystem._history   = {}
 RankedSystem._K         = 32    -- ELO K factor
 
-local RANKED_TIERS = {
+RANKED_TIERS = {
     { name = "Bronze",      minElo = 0    },
     { name = "Silver",      minElo = 1100 },
     { name = "Gold",        minElo = 1300 },
@@ -15096,7 +15009,7 @@ if Console then Console.info("Ranked", string.format(
 )) end
 
 -- §70 ─── COMPREHENSIVE DEBUG TOOLS ───────────────────────────────────────────
-local DebugTools = {}
+DebugTools = {}
 DebugTools._enabled     = true
 DebugTools._watchList   = {}
 DebugTools._breakpoints = {}
@@ -15105,7 +15018,7 @@ DebugTools._logLevel    = 3  -- 0=off 1=error 2=warn 3=info 4=debug 5=trace
 DebugTools._overlayLines = {}
 DebugTools._maxOverlay   = 20
 
-local LOG_LEVELS = { "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE" }
+LOG_LEVELS = { "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE" }
 
 function DebugTools:setLogLevel(level)
     if type(level) == "string" then
@@ -15296,7 +15209,7 @@ DebugTools:startMemoryPoll(60)
 if Console then Console.info("DebugTools", "Debug tools ready (level="..LOG_LEVELS[DebugTools._logLevel+1]..")") end
 
 -- §70.1 Event bus (pub/sub)
-local EventBus = {}
+EventBus = {}
 EventBus._listeners = {}
 EventBus._history   = {}
 EventBus._MAX_HIST  = 200
@@ -15365,7 +15278,7 @@ end)
 if Console then Console.info("EventBus", "Event bus pub/sub system ready") end
 
 -- §71 ─── EXTENDED NOTIFICATION SYSTEM ────────────────────────────────────────
-local NotifyV2 = {}
+NotifyV2 = {}
 NotifyV2._queue    = {}
 NotifyV2._active   = {}
 NotifyV2._maxShown = 5
@@ -15402,7 +15315,7 @@ NotifyV2._colors = {
     update  = Color3.fromRGB(180, 80,  255),
 }
 
-local function _playNotifySound(kind)
+function _playNotifySound(kind)
     if not Config.audioEnabled then return end
     local id = NotifyV2._sounds[kind] or NotifyV2._sounds.info
     pcall(function()
@@ -15494,7 +15407,7 @@ function NotifyV2:getActiveCount()
 end
 
 -- §71.1 Toast renderer (uses existing Notify system, extending it)
-local ToastRenderer = {}
+ToastRenderer = {}
 ToastRenderer._shown = {}
 ToastRenderer._maxShown = 6
 
@@ -15532,7 +15445,7 @@ function ToastRenderer:getToasts()
 end
 
 -- §71.2 Announcement banner
-local Banner = {}
+Banner = {}
 Banner._active   = false
 Banner._text     = ""
 Banner._color    = Color3.fromRGB(255, 220, 40)
@@ -15597,7 +15510,7 @@ if Console then Console.info("NotifyV2", "Extended notification system ready") e
 if Console then Console.info("Banner", "Announcement banner ready") end
 
 -- §72 ─── EXTENDED COMBO SYSTEM v2 ────────────────────────────────────────────
-local ComboV2 = {}
+ComboV2 = {}
 ComboV2._streak      = 0
 ComboV2._multiplier  = 1.0
 ComboV2._maxMult     = 5.0
@@ -15614,7 +15527,7 @@ ComboV2._comboBreaks = 0
 ComboV2._milestones  = { 5, 10, 15, 20, 25, 30, 50, 75, 100 }
 ComboV2._hitMilestones = {}
 
-local COMBO_NAMES = {
+COMBO_NAMES = {
     [2]   = "Double Kill",
     [3]   = "Triple Kill",
     [4]   = "Quad Kill",
@@ -15727,7 +15640,7 @@ EventBus:subscribe("parry_fail",    function() ComboV2:onMiss()  end)
 if Console then Console.info("ComboV2", "Extended combo system v2 ready") end
 
 -- §72.1 Extended kill feed v2
-local KillFeedV2 = {}
+KillFeedV2 = {}
 KillFeedV2._entries  = {}
 KillFeedV2._MAX      = 30
 KillFeedV2._drawObjs = {}
@@ -15778,7 +15691,7 @@ end
 if Console then Console.info("KillFeedV2", "Kill feed v2 ready") end
 
 -- §73 ─── SMART TARGET SELECTOR ───────────────────────────────────────────────
-local TargetSelector = {}
+TargetSelector = {}
 TargetSelector._mode         = "auto"   -- auto, nearest, threat, manual
 TargetSelector._manualTarget = nil
 TargetSelector._lockTarget   = nil
@@ -15899,7 +15812,7 @@ end
 if Console then Console.info("TargetSelector", "Smart target selector ready (mode="..TargetSelector._mode..")") end
 
 -- §73.1 Parry timing optimizer
-local TimingOptimizer = {}
+TimingOptimizer = {}
 TimingOptimizer._samples     = {}
 TimingOptimizer._MAX         = 100
 TimingOptimizer._offset      = 0      -- current optimal offset (seconds)
@@ -16220,7 +16133,7 @@ if Console and Console._commands then
 end
 
 -- §75 ─── ADVANCED BALL PREDICTION v2 ─────────────────────────────────────────
-local BallPredictionV2 = {}
+BallPredictionV2 = {}
 BallPredictionV2._predictions  = {}
 BallPredictionV2._accuracy     = {}
 BallPredictionV2._MAX_PRED     = 64
@@ -16229,7 +16142,7 @@ BallPredictionV2._jerkModel    = {}  -- rate of acceleration change
 BallPredictionV2._confidenceMap = {}
 
 -- State per ball: ring buffer of (t, pos, vel, acc)
-local function _newBallModel(id)
+function _newBallModel(id)
     return {
         id       = id,
         states   = {},  -- ring buffer
@@ -16367,7 +16280,7 @@ end
 if Console then Console.info("BallPredictionV2", "Advanced ball prediction v2 ready") end
 
 -- §75.1 Ball classification v2
-local BallClassV2 = {}
+BallClassV2 = {}
 BallClassV2._classes = {
     FASTBALL  = { name = "Fastball",   minSpeed = 80,  maxCurv = 0.5  },
     CURVEBALL = { name = "Curveball",  minSpeed = 40,  maxCurv = 3.0  },
@@ -16409,7 +16322,7 @@ end
 if Console then Console.info("BallClassV2", "Ball classification v2 ready") end
 
 -- §76 ─── EXTENDED REMOTE SPY v4 ──────────────────────────────────────────────
-local RemoteSpyV4 = {}
+RemoteSpyV4 = {}
 RemoteSpyV4._log        = {}
 RemoteSpyV4._MAX        = 500
 RemoteSpyV4._blocked    = {}
@@ -16422,7 +16335,7 @@ RemoteSpyV4._bytesUsed  = 0
 RemoteSpyV4._byteResetT = tick()
 RemoteSpyV4._stats      = { total = 0, blocked = 0, filtered = 0 }
 
-local function _deepSerialize(v, depth)
+function _deepSerialize(v, depth)
     depth = depth or 3
     local t = type(v)
     if t == "nil" then return "nil"
@@ -16673,7 +16586,7 @@ if Console then Console.info("SpyV4", "Remote spy v4 ready") end
 
 -- §77 ─── ADVANCED ANTI-CHEAT BYPASS LAYER ────────────────────────────────────
 -- (Detection evasion only — does not bypass legitimate security or crash the server)
-local BypassLayer = {}
+BypassLayer = {}
 BypassLayer._active         = false
 BypassLayer._methodSpoofing = true
 BypassLayer._callFreqMask   = true
@@ -16772,7 +16685,7 @@ if FeatureFlags:isEnabled("ENABLE_ANTI_DETECT") then
 end
 
 -- §77.1 Memory scanner rate limiter
-local ScanRateLimit = {}
+ScanRateLimit = {}
 ScanRateLimit._buckets = {}  -- per-scan-type token buckets
 ScanRateLimit.DEFAULTS = {
     calibrate   = { capacity = 3,  refillRate = 0.1 },
@@ -16815,11 +16728,11 @@ if Console then Console.info("ScanRateLimit", "Scan rate limiter active") end
 
 -- §78 ─── EXTENDED UI TABS v2 (Additional tabs: Combat / Analysis / Advanced) ─
 -- These extend the existing 10-tab UI with more content
-local UITabs2 = {}
+UITabs2 = {}
 UITabs2._tabs = {}
 
 -- Helper (re-use mk/corner/springTween from existing scope)
-local function _tab2Section(parent, title)
+function _tab2Section(parent, title)
     local header = mk("TextLabel", {
         Parent = parent, Size = UDim2.new(1,0,0,22),
         BackgroundTransparency = 1,
@@ -16832,7 +16745,7 @@ local function _tab2Section(parent, title)
 end
 
 -- §78.1 Tournament UI panel
-local function _buildTournamentPanel(parent)
+function _buildTournamentPanel(parent)
     _tab2Section(parent, "Tournament")
     local modeRow = mk("Frame", { Parent = parent, Size = UDim2.new(1,0,0,30),
         BackgroundTransparency = 1, ZIndex = 12 })
@@ -16882,7 +16795,7 @@ local function _buildTournamentPanel(parent)
 end
 
 -- §78.2 Ball Analysis panel
-local function _buildBallAnalysisPanel(parent)
+function _buildBallAnalysisPanel(parent)
     _tab2Section(parent, "Ball Analysis")
     local infoLabel = mk("TextLabel", {
         Parent = parent, Size = UDim2.new(1,0,0,60),
@@ -16928,7 +16841,7 @@ local function _buildBallAnalysisPanel(parent)
 end
 
 -- §78.3 Advanced settings panel
-local function _buildAdvancedPanel(parent)
+function _buildAdvancedPanel(parent)
     _tab2Section(parent, "Prediction Engine")
     UI.toggle(parent, "Use Jerk Model",        Config.useJerkModel    or false, function(v) Config.useJerkModel    = v end)
     UI.toggle(parent, "Wind Physics",          Config.windPhysics     or false, function(v) Config.windPhysics     = v end)
@@ -17014,14 +16927,14 @@ if Console then Console.info("UITabs2", "Extended UI panels registered") end
 
 -- §79 ─── EXTENDED MAIN LOOP v2 ────────────────────────────────────────────────
 -- Integrates all new systems into the existing heartbeat/parry loop
-local MainLoopV2 = {}
+MainLoopV2 = {}
 MainLoopV2._active    = true
 MainLoopV2._frameN    = 0
 MainLoopV2._lastFPS   = 60
 MainLoopV2._fpsSmooth = 60
 
 -- Systems to update at various frame rates
-local UPDATE_SCHEDULE = {
+UPDATE_SCHEDULE = {
     { interval = 0,    name = "BallPrediction",  fn = function(dt) end }, -- every frame
     { interval = 0.05, name = "BallVizUpdate",   fn = function(dt) end }, -- 20 Hz
     { interval = 0.1,  name = "PlayerAnalysis",  fn = function(dt) end }, -- 10 Hz
@@ -17129,7 +17042,7 @@ end
 MainLoopV2:start()
 
 -- §79.1 Graceful shutdown handler
-local Shutdown = {}
+Shutdown = {}
 Shutdown._handlers = {}
 Shutdown._fired    = false
 
@@ -17166,10 +17079,10 @@ end)
 if Console then Console.info("Shutdown", "Shutdown handlers registered ("..#Shutdown._handlers..")") end
 
 -- §80 ─── COMPREHENSIVE HELP SYSTEM ───────────────────────────────────────────
-local Help = {}
+Help = {}
 Help._topics = {}
 
-local function _topic(name, content)
+function _topic(name, content)
     Help._topics[name:lower()] = { name = name, content = content }
 end
 
@@ -17400,7 +17313,7 @@ end
 if Console then Console.info("Help", "Help system ready ("..#Help:list().." topics)") end
 
 -- §81 ─── EXTENDED PHYSICS CALIBRATION ────────────────────────────────────────
-local PhysicsCalib = {}
+PhysicsCalib = {}
 PhysicsCalib._gravity        = workspace.Gravity
 PhysicsCalib._airDensity     = 1.225  -- kg/m³
 PhysicsCalib._ballMass       = 0.145  -- kg (approx)
@@ -17415,7 +17328,7 @@ PhysicsCalib._dragEst        = 0.02   -- effective drag per unit speed
 PhysicsCalib._calibConfidence = 0
 
 -- Pre-computed constants
-local function _computeConstants(self)
+function _computeConstants(self)
     self._area         = math.pi * self._ballRadius^2
     self._dragFactor   = self._airDensity * self._dragCoeff * self._area / (2 * self._ballMass)
     self._liftFactor   = self._airDensity * self._liftCoeff * self._area / (2 * self._ballMass)
@@ -17509,7 +17422,7 @@ if Console then Console.info("PhysicsCalib", string.format(
 )) end
 
 -- §81.1 Bounce predictor
-local BouncePredict = {}
+BouncePredict = {}
 BouncePredict._restitution   = 0.6   -- coefficient of restitution
 BouncePredict._groundY       = 0
 BouncePredict._wallPlanes    = {}    -- list of {normal, d} for half-spaces
@@ -17569,7 +17482,7 @@ end
 if Console then Console.info("BouncePredict", "Bounce predictor ready (maxBounces="..BouncePredict._maxBounces..")") end
 
 -- §82 ─── EXTENDED NETWORK LAYER v2 ──────────────────────────────────────────
-local NetLayerV2 = {}
+NetLayerV2 = {}
 NetLayerV2._pings          = {}  -- ring buffer (capacity 120)
 NetLayerV2._MAX_PINGS      = 120
 NetLayerV2._jitterHistory  = {}
@@ -17698,7 +17611,7 @@ end)
 if Console then Console.info("NetLayerV2", "Extended network layer v2 ready") end
 
 -- §82.1 Packet scheduler
-local PacketScheduler = {}
+PacketScheduler = {}
 PacketScheduler._pending   = {}
 PacketScheduler._rateLimit = 20  -- max packets per second
 PacketScheduler._tokens    = 20
@@ -17748,7 +17661,7 @@ end)
 if Console then Console.info("PacketScheduler", "Packet scheduler ready") end
 
 -- §83 ─── EXTENDED STEALTH ENGINE ─────────────────────────────────────────────
-local StealthEngine = {}
+StealthEngine = {}
 StealthEngine._active       = false
 StealthEngine._profile      = "Average"
 StealthEngine._reactionMin  = 0.08   -- seconds
@@ -17762,7 +17675,7 @@ StealthEngine._burstLimit    = 3
 StealthEngine._idleJitter    = true
 StealthEngine._mouseSmoothing = true
 
-local STEALTH_PROFILES = {
+STEALTH_PROFILES = {
     Invisible = {
         reactionMin   = 0.12, reactionMax   = 0.40,
         missRate      = 0.03, clickVariance = 0.03,
@@ -17900,7 +17813,7 @@ if FeatureFlags:isEnabled("ENABLE_ANTI_DETECT") then
 end
 
 -- §83.1 Behavioral fingerprint randomizer
-local FingerprintRand = {}
+FingerprintRand = {}
 FingerprintRand._seed        = math.random(1000000, 9999999)
 FingerprintRand._clickStyle  = "center"   -- center, random, spread
 FingerprintRand._releaseTime = 0.08       -- hold duration before release
@@ -17942,7 +17855,7 @@ FingerprintRand:newSession()
 if Console then Console.info("FingerprintRand", "Fingerprint randomizer ready") end
 
 -- §84 ─── EXTENDED LEARNING ENGINE v2 ─────────────────────────────────────────
-local LearningV2 = {}
+LearningV2 = {}
 LearningV2._successHistory   = {}   -- ring of {eta, ping, mode, success}
 LearningV2._MAX              = 200
 LearningV2._modelVersion     = 0
@@ -17959,18 +17872,18 @@ LearningV2._models           = {}   -- per-mode models
 -- 7. distance (player to ball, studs)
 -- 8. streak (current parry streak)
 
-local FEATURE_NAMES = { "eta", "ping", "speed", "angle", "spinMag", "jitter", "distance", "streak" }
+FEATURE_NAMES = { "eta", "ping", "speed", "angle", "spinMag", "jitter", "distance", "streak" }
 
-local function _dot(a, b)
+function _dot(a, b)
     local s = 0
     for i = 1, #a do s = s + a[i] * (b[i] or 0) end
     return s
 end
 
-local function _relu(x) return math.max(0, x) end
-local function _sigmoid(x) return 1 / (1 + math.exp(-x)) end
+function _relu(x) return math.max(0, x) end
+function _sigmoid(x) return 1 / (1 + math.exp(-x)) end
 
-local function _newNeuron(inputN)
+function _newNeuron(inputN)
     local w = {}
     local scale = math.sqrt(2 / inputN)
     for i = 1, inputN do
@@ -17979,7 +17892,7 @@ local function _newNeuron(inputN)
     return { w = w, b = 0 }
 end
 
-local function _newNet(layers)
+function _newNet(layers)
     local net = { layers = {} }
     for i = 1, #layers - 1 do
         local layer = {}
@@ -17991,7 +17904,7 @@ local function _newNet(layers)
     return net
 end
 
-local function _forwardNet(net, input)
+function _forwardNet(net, input)
     local current = input
     for l, layer in ipairs(net.layers) do
         local next = {}
@@ -18004,7 +17917,7 @@ local function _forwardNet(net, input)
     return current[1]
 end
 
-local function _backpropNet(net, input, target, lr)
+function _backpropNet(net, input, target, lr)
     -- simplified single-output backprop
     local activations = { input }
     local zs = {}
@@ -18146,7 +18059,7 @@ end
 if Console then Console.info("LearningV2", "Extended learning engine v2 ready (net: 8→12→6→1)") end
 
 -- §85 ─── EXTENDED SERVER PROFILE v2 ─────────────────────────────────────────
-local ServerProfileV2 = {}
+ServerProfileV2 = {}
 ServerProfileV2._connected       = false
 ServerProfileV2._playerCount     = 0
 ServerProfileV2._serverAge       = 0
@@ -18278,7 +18191,7 @@ ServerProfileV2:collect()
 if Console then Console.info("ServerProfileV2", ServerProfileV2:getReportString()) end
 
 -- §85.1 Rejoin assistant
-local RejoinAssist = {}
+RejoinAssist = {}
 RejoinAssist._threshold    = 3     -- max lag events before suggesting rejoin
 RejoinAssist._lastSuggest  = 0
 RejoinAssist._cooldown     = 120   -- seconds between suggestions
@@ -18330,7 +18243,7 @@ if Console then Console.info("RejoinAssist", "Rejoin assistant ready (threshold=
 -- §86 ─── FINAL INIT & INTEGRATION ────────────────────────────────────────────
 -- This section ties together all systems and fires the final startup sequence
 
-local FinalInit = {}
+FinalInit = {}
 FinalInit._done      = false
 FinalInit._startTime = tick()
 FinalInit._modules   = {}
@@ -18446,7 +18359,7 @@ task.delay(1.0, function()
 end)
 
 -- §86.2 Heartbeat integration — final master loop
-local masterConn = RunService.Heartbeat:Connect(function(dt)
+masterConn = RunService.Heartbeat:Connect(function(dt)
     -- integrate all per-frame systems
     pcall(function()
         -- update parry frame data based on recent accuracy
@@ -18476,11 +18389,11 @@ if Console then Console.info("MasterLoop", "Final master heartbeat connected") e
 
 -- §87 ─── EXTENDED BALL TRACKER v2 ────────────────────────────────────────────
 -- Supplements existing BallTracker with additional analysis
-local BallTrackerV2 = {}
+BallTrackerV2 = {}
 BallTrackerV2._extended    = {}  -- per-ball extended data
 BallTrackerV2._maxHistory  = 32  -- positions per ball
 
-local function _ensureBallData(id)
+function _ensureBallData(id)
     if not BallTrackerV2._extended[id] then
         BallTrackerV2._extended[id] = {
             posHistory  = {},  -- ring of {t, pos}
@@ -18618,12 +18531,12 @@ end)
 if Console then Console.info("BallTrackerV2", "Extended ball tracker v2 ready") end
 
 -- §88 ─── EXTENDED VISUAL FX SYSTEM ──────────────────────────────────────────
-local VisualFX = {}
+VisualFX = {}
 VisualFX._active    = true
 VisualFX._effects   = {}
 VisualFX._maxEffect = 50
 
-local FX_TYPES = {
+FX_TYPES = {
     FLASH       = "flash",
     TRAIL       = "trail",
     SHOCKWAVE   = "shockwave",
@@ -18631,7 +18544,7 @@ local FX_TYPES = {
     STREAK      = "streak",
 }
 
-local function _newEffect(kind, data)
+function _newEffect(kind, data)
     return {
         kind    = kind,
         start   = tick(),
@@ -18837,7 +18750,7 @@ GameRemotes.onParrySuccess:Connect(function(resolvedPlayer, hrp, effectType)
 end)
 
 -- §89 ─── EXTENDED HITBOX ENGINE v2 ───────────────────────────────────────────
-local HitboxV2Extended = {}
+HitboxV2Extended = {}
 HitboxV2Extended._mode        = "standard"  -- standard, expanded, per_part, adaptive
 HitboxV2Extended._expandScale = 1.0
 HitboxV2Extended._baseRadius  = 3.0
@@ -18846,7 +18759,7 @@ HitboxV2Extended._hitEvents   = {}
 HitboxV2Extended._MAX_EVENTS  = 100
 HitboxV2Extended._registeredChars = {}
 
-local LIMB_RADIUS_MAP = {
+LIMB_RADIUS_MAP = {
     Head            = 1.2,
     UpperTorso      = 2.0,
     LowerTorso      = 1.8,
@@ -18970,7 +18883,7 @@ function HitboxV2Extended:getStats()
 end
 
 -- Register local player on load
-local function _registerLocalPlayer()
+function _registerLocalPlayer()
     local lp = game.Players.LocalPlayer
     if lp and lp.Character then
         HitboxV2Extended:registerChar(lp.Character, lp)
@@ -18984,7 +18897,7 @@ pcall(_registerLocalPlayer)
 if Console then Console.info("HitboxV2Extended", "Extended hitbox engine v2 ready") end
 
 -- §89.1 Hitbox debugger
-local HitboxDebugger = {}
+HitboxDebugger = {}
 HitboxDebugger._active   = false
 HitboxDebugger._drawObjs = {}
 
@@ -19028,7 +18941,7 @@ if Console then Console.info("HitboxDebugger", "Hitbox debugger ready") end
 
 -- §90 ─── EXTENDED AUTO-PARRY INTEGRATION ─────────────────────────────────────
 -- Final integration layer that connects all new subsystems to the core parry engine
-local ParryIntegration = {}
+ParryIntegration = {}
 ParryIntegration._active        = true
 ParryIntegration._lastParryT    = 0
 ParryIntegration._parryCount    = 0
@@ -19172,7 +19085,7 @@ end
 if Console then Console.info("ParryIntegration", "Parry integration layer ready") end
 
 -- §90.1 Auto-mode switcher
-local AutoModeSwitcher = {}
+AutoModeSwitcher = {}
 AutoModeSwitcher._active         = false
 AutoModeSwitcher._switchInterval = 60   -- seconds between mode checks
 AutoModeSwitcher._lastSwitch     = 0
@@ -19218,13 +19131,13 @@ if Console then Console.info("AutoModeSwitcher", "Auto mode switcher ready (disa
 
 -- §91 ─── COMPREHENSIVE UNIT TESTS ────────────────────────────────────────────
 -- Built-in self-tests to verify core systems on each load
-local SelfTest = {}
+SelfTest = {}
 SelfTest._results = {}
 SelfTest._passed  = 0
 SelfTest._failed  = 0
 SelfTest._skipped = 0
 
-local function _assert(condition, name, msg)
+function _assert(condition, name, msg)
     if condition then
         SelfTest._passed = SelfTest._passed + 1
         table.insert(SelfTest._results, { name = name, pass = true })
@@ -19235,7 +19148,7 @@ local function _assert(condition, name, msg)
     end
 end
 
-local function _skip(name, reason)
+function _skip(name, reason)
     SelfTest._skipped = SelfTest._skipped + 1
     table.insert(SelfTest._results, { name = name, skip = true, msg = reason })
 end
@@ -19385,7 +19298,7 @@ if Console then Console.info("SelfTest", "Self-test suite registered (will run i
 
 -- §92 ─── EXTENDED ABILITY SYSTEM ─────────────────────────────────────────────
 -- Tracks and leverages Blade Ball ability timings for advanced play
-local AbilitySystem = {}
+AbilitySystem = {}
 AbilitySystem._abilities     = {}
 AbilitySystem._cooldowns     = {}
 AbilitySystem._abilityLog    = {}
@@ -19393,7 +19306,7 @@ AbilitySystem._MAX_LOG       = 100
 AbilitySystem._detectedAbils = {}  -- abilities detected from remote spy
 
 -- Known Blade Ball abilities and their typical cooldowns (seconds)
-local KNOWN_ABILITIES = {
+KNOWN_ABILITIES = {
     Parry       = { cooldown = 0.5,  type = "defensive", priority = 10 },
     Block       = { cooldown = 8.0,  type = "defensive", priority = 9  },
     Dodge       = { cooldown = 6.0,  type = "evasive",   priority = 8  },
@@ -19501,7 +19414,7 @@ AbilitySystem:monitorFromSpy()
 if Console then Console.info("AbilitySystem", "Ability tracking system ready ("..#KNOWN_ABILITIES.." known abilities)") end
 
 -- §92.1 Ability combo detector
-local AbilityComboDetector = {}
+AbilityComboDetector = {}
 AbilityComboDetector._sequences  = {}
 AbilityComboDetector._WINDOW     = 3  -- seconds to form a combo
 AbilityComboDetector._combos     = {
@@ -19559,7 +19472,7 @@ end
 if Console then Console.info("AbilityComboDetector", "Ability combo detector ready") end
 
 -- §93 ─── EXTENDED MINIMAP v3 ──────────────────────────────────────────────────
-local MinimapV3 = {}
+MinimapV3 = {}
 MinimapV3._active        = true
 MinimapV3._size          = 160
 MinimapV3._range         = 100
@@ -19584,7 +19497,7 @@ MinimapV3._trailLen      = 5
 MinimapV3._x             = nil
 MinimapV3._y             = nil
 
-local function _mmPos(worldPos, cx, cy, range, size, camYaw)
+function _mmPos(worldPos, cx, cy, range, size, camYaw)
     -- convert world XZ to minimap pixel coordinates
     local relX = worldPos.X - (game.Players.LocalPlayer.Character
         and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -19751,7 +19664,7 @@ if Console then Console.info("MinimapV3", "Minimap v3 ready") end
 
 -- §94 ─── EXTENDED STATUS BAR ─────────────────────────────────────────────────
 -- Drawing-API based HUD overlay status bar
-local StatusBarHUD = {}
+StatusBarHUD = {}
 StatusBarHUD._active      = true
 StatusBarHUD._drawObjs    = {}
 StatusBarHUD._updateHz    = 10
@@ -19848,7 +19761,7 @@ end
 if Console then Console.info("StatusBarHUD", "Status bar HUD ready") end
 
 -- §94.1 Danger zone HUD overlay
-local DangerZoneHUD = {}
+DangerZoneHUD = {}
 DangerZoneHUD._active       = false
 DangerZoneHUD._drawObjs     = {}
 DangerZoneHUD._threshold    = 5  -- studs — ball must be within this to trigger
@@ -19942,7 +19855,7 @@ end
 if Console then Console.info("DangerZoneHUD", "Danger zone HUD ready") end
 
 -- §95 ─── EXTENDED AUDIO SYSTEM v3 ────────────────────────────────────────────
-local AudioV3 = {}
+AudioV3 = {}
 AudioV3._active      = true
 AudioV3._volume      = 0.5
 AudioV3._pools       = {}
@@ -19950,7 +19863,7 @@ AudioV3._ducking     = false
 AudioV3._duckFactor  = 0.3
 AudioV3._poolSize    = 4
 
-local AUDIO_CATALOGUE_V3 = {
+AUDIO_CATALOGUE_V3 = {
     parry_success  = { id = "rbxassetid://9120388661", pitch = 1.0,  vol = 0.8 },
     parry_fail     = { id = "rbxassetid://9120388690", pitch = 0.85, vol = 0.6 },
     combo_5        = { id = "rbxassetid://9120388720", pitch = 1.1,  vol = 0.7 },
@@ -20052,8 +19965,8 @@ function AudioV3:stopAll()
 end
 
 -- pentatonic combo chimes
-local PENTATONIC = { 0.90, 1.00, 1.12, 1.35, 1.50, 1.68, 1.80, 2.00 }
-local _chimeIdx = 0
+PENTATONIC = { 0.90, 1.00, 1.12, 1.35, 1.50, 1.68, 1.80, 2.00 }
+_chimeIdx = 0
 
 function AudioV3:playComboChime()
     _chimeIdx = (_chimeIdx % #PENTATONIC) + 1
@@ -20087,10 +20000,10 @@ if Console then Console.info("AudioV3", "Extended audio system v3 ready ("..#AUD
 
 -- §96 ─── FINAL MODULE REGISTRY ────────────────────────────────────────────────
 -- Central registry of all WindHub modules for inspection and management
-local Registry = {}
+Registry = {}
 Registry._modules = {}
 
-local function _reg(name, obj, description)
+function _reg(name, obj, description)
     Registry._modules[name] = {
         name        = name,
         obj         = obj,
@@ -20212,7 +20125,7 @@ if Console then Console.info("WindHub", "═════════════
 -- Final configuration, edge case handling, and supplemental utilities
 
 -- §97.1 Error boundary wrapper
-local function _safeCall(fn, context)
+function _safeCall(fn, context)
     local ok, err = pcall(fn)
     if not ok then
         if Console then Console.error(context or "SafeCall", tostring(err)) end
@@ -20223,7 +20136,7 @@ local function _safeCall(fn, context)
 end
 
 -- §97.2 Global accessor table for console exec
-local WH = {
+WH = {
     Config           = Config,
     Draw2            = Draw2,
     BallViz          = BallViz,
@@ -20289,7 +20202,7 @@ if getgenv then
 end
 
 -- §97.3 Quick-access aliases
-local function _alias(name, fn)
+function _alias(name, fn)
     if Console and Console._commands then
         Console._commands[name] = fn
     end
@@ -20333,7 +20246,7 @@ _alias("q", function(args)
 end)
 
 -- §97.4 Config hotkey shortcuts
-local UIS2 = game:GetService("UserInputService")
+UIS2 = game:GetService("UserInputService")
 if not isMobile then
     UIS2.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
@@ -20379,7 +20292,7 @@ if Console then Console.info("WindHub", "§97 Final touches applied. All systems
 -- Reference tables used throughout the script, centralized for easy tuning
 
 -- §98.1 Gravity constants across game variants
-local GRAVITY_CONSTANTS = {
+GRAVITY_CONSTANTS = {
     DEFAULT   = 196.2,   -- standard Roblox
     LOWGRAV   = 98.1,    -- half gravity servers
     HIGHGRAV  = 392.4,   -- double gravity servers
@@ -20388,7 +20301,7 @@ local GRAVITY_CONSTANTS = {
 }
 
 -- §98.2 Known Blade Ball ball types with physics parameters
-local BALL_TYPE_DB = {
+BALL_TYPE_DB = {
     Standard  = { baseSpeed = 50,  maxSpeed = 100, drag = 0.015, spin = 5,   mass = 1.0 },
     Heavy     = { baseSpeed = 35,  maxSpeed = 70,  drag = 0.025, spin = 2,   mass = 2.5 },
     Light     = { baseSpeed = 80,  maxSpeed = 160, drag = 0.008, spin = 15,  mass = 0.5 },
@@ -20402,7 +20315,7 @@ local BALL_TYPE_DB = {
 }
 
 -- §98.3 Color palette
-local PALETTE = {
+PALETTE = {
     Danger    = Color3.fromRGB(255, 50,  50),
     Warning   = Color3.fromRGB(255, 180, 40),
     Safe      = Color3.fromRGB(80,  220, 80),
@@ -20422,7 +20335,7 @@ local PALETTE = {
 }
 
 -- §98.4 Timing profiles (reaction time distributions by skill level)
-local TIMING_PROFILES = {
+TIMING_PROFILES = {
     Human_Novice   = { mean = 0.250, sigma = 0.060 },
     Human_Average  = { mean = 0.180, sigma = 0.040 },
     Human_Good     = { mean = 0.130, sigma = 0.025 },
@@ -20432,7 +20345,7 @@ local TIMING_PROFILES = {
 }
 
 -- §98.5 Network quality thresholds
-local NET_THRESHOLDS = {
+NET_THRESHOLDS = {
     Excellent = { maxPing = 0.050, maxJitter = 0.005, maxLoss = 0.01 },
     Good      = { maxPing = 0.100, maxJitter = 0.015, maxLoss = 0.03 },
     Fair      = { maxPing = 0.200, maxJitter = 0.040, maxLoss = 0.08 },
@@ -20441,7 +20354,7 @@ local NET_THRESHOLDS = {
 }
 
 -- §98.6 Animation state weights for threat prediction
-local ANIM_THREAT_WEIGHTS = {
+ANIM_THREAT_WEIGHTS = {
     Idle       = 0.1,
     Running    = 0.3,
     Jumping    = 0.6,
@@ -20455,7 +20368,7 @@ local ANIM_THREAT_WEIGHTS = {
 }
 
 -- §98.7 Ball threat scoring formula parameters
-local THREAT_PARAMS = {
+THREAT_PARAMS = {
     ETAWeight      = 0.4,
     SpeedWeight    = 0.2,
     DistWeight     = 0.2,
@@ -20467,7 +20380,7 @@ local THREAT_PARAMS = {
 }
 
 -- §98.8 ESP rendering constants
-local ESP_RENDER = {
+ESP_RENDER = {
     MAX_RENDER_DIST = 500,  -- studs
     MIN_BOX_SIZE    = 20,   -- pixels
     MAX_BOX_SIZE    = 300,  -- pixels
@@ -20479,7 +20392,7 @@ local ESP_RENDER = {
 }
 
 -- §98.9 UI layout constants
-local UI_LAYOUT = {
+UI_LAYOUT = {
     WINDOW_W       = 480,
     WINDOW_H       = 520,
     TAB_HEIGHT     = 34,
@@ -20500,7 +20413,7 @@ local UI_LAYOUT = {
 }
 
 -- §98.10 Performance budget targets (ms)
-local PERF_BUDGET = {
+PERF_BUDGET = {
     MainLoop     = 2.0,
     BallViz      = 1.0,
     PlayerAnalysis = 0.5,
@@ -20516,7 +20429,7 @@ if Console then Console.info("DataTables", "Reference data tables loaded ("..
     #BALL_TYPE_DB.." ball types, "..#TIMING_PROFILES.." timing profiles)") end
 
 -- §98.11 String utilities
-local StrUtil = {}
+StrUtil = {}
 
 function StrUtil:pad(s, len, char)
     char = char or " "
@@ -20585,12 +20498,12 @@ if Console then Console.info("StrUtil", "String utilities module ready") end
 -- Total target: 20,000+ lines
 
 -- §99.1 Post-load verification
-local PostLoad = {}
+PostLoad = {}
 PostLoad._checks = {}
 PostLoad._passed = 0
 PostLoad._failed = 0
 
-local function _postCheck(name, check)
+function _postCheck(name, check)
     local ok, err = pcall(check)
     if ok then
         PostLoad._passed = PostLoad._passed + 1
@@ -20626,7 +20539,7 @@ task.delay(3.0, function()
 end)
 
 -- §99.2 Uptime tracker
-local Uptime = {}
+Uptime = {}
 Uptime._start = tick()
 
 function Uptime:get()
@@ -20679,7 +20592,7 @@ task.delay(4.0, function()
 end)
 
 -- §99.5 Heartbeat watchdog — detect if main loop freezes
-local WatchdogTimer = {}
+WatchdogTimer = {}
 WatchdogTimer._lastBeat    = tick()
 WatchdogTimer._timeout     = 5  -- seconds without heartbeat = frozen
 WatchdogTimer._frozenCount = 0
@@ -20702,7 +20615,7 @@ end)
 if Console then Console.info("Watchdog", "Heartbeat watchdog active (timeout="..WatchdogTimer._timeout.."s)") end
 
 -- §99.6 Script identity stamp
-local SCRIPT_STAMP = {
+SCRIPT_STAMP = {
     name        = "WindHub",
     version     = "6.0.0",
     build       = "20260618",
@@ -20830,7 +20743,7 @@ if Console then Console.info("WindHub", "WindHub initialization complete. Ready 
 
 -- §100.7 Configuration key reference
 -- (all keys with their types and defaults)
-local CONFIG_REFERENCE = {
+CONFIG_REFERENCE = {
     { key = "parryActive",        type = "boolean", default = false,   desc = "Master parry on/off" },
     { key = "parryMode",          type = "string",  default = "Ultra", desc = "Parry algorithm mode" },
     { key = "parryWindow",        type = "number",  default = 0.3,     desc = "Parry accept window (s)" },
