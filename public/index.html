@@ -258,6 +258,81 @@ footer{
 .footer-links a:hover{color:var(--text)}
 .footer-copy{font-size:.72rem;color:var(--muted)}
 
+/* ── Chat ──────────────────────────────────────────────────────────────── */
+.chat-wrap{
+  margin-top:48px;background:var(--card);border:1px solid var(--border);
+  border-radius:16px;overflow:hidden;max-width:800px;
+  box-shadow:0 30px 80px rgba(0,0,0,.5),0 0 40px rgba(108,99,255,.06)
+}
+.chat-messages{
+  padding:24px;max-height:480px;overflow-y:auto;display:flex;flex-direction:column;gap:16px;
+  scroll-behavior:smooth
+}
+.chat-messages::-webkit-scrollbar{width:4px}
+.chat-messages::-webkit-scrollbar-track{background:transparent}
+.chat-messages::-webkit-scrollbar-thumb{background:rgba(108,99,255,.3);border-radius:2px}
+.chat-msg{display:flex;gap:12px;align-items:flex-start}
+.chat-msg.user{flex-direction:row-reverse}
+.chat-avatar{
+  width:34px;height:34px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.82rem;font-weight:700;letter-spacing:1px
+}
+.chat-msg.assistant .chat-avatar{
+  background:linear-gradient(135deg,var(--p1),var(--a1));color:#fff
+}
+.chat-msg.user .chat-avatar{
+  background:rgba(255,255,255,.08);border:1px solid var(--border);color:var(--muted);font-size:.7rem
+}
+.chat-bubble{
+  max-width:82%;padding:12px 16px;border-radius:12px;font-size:.88rem;line-height:1.65;
+}
+.chat-msg.assistant .chat-bubble{
+  background:rgba(108,99,255,.1);border:1px solid rgba(108,99,255,.15);color:var(--text)
+}
+.chat-msg.user .chat-bubble{
+  background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text)
+}
+.chat-bubble pre{
+  background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.06);
+  border-radius:8px;padding:12px;margin:10px 0;overflow-x:auto;
+  font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.5
+}
+.chat-bubble code{
+  font-family:'JetBrains Mono',monospace;font-size:.8rem;
+  background:rgba(0,0,0,.4);padding:2px 5px;border-radius:3px;color:var(--g1)
+}
+.chat-bubble pre code{background:transparent;padding:0;color:#c0e0ff}
+.chat-bubble strong{color:var(--text);font-weight:600}
+.chat-typing .chat-bubble{display:flex;gap:5px;align-items:center;padding:14px 18px}
+.typing-dot{
+  width:7px;height:7px;border-radius:50%;background:var(--p1);
+  animation:typingBounce .9s ease-in-out infinite
+}
+.typing-dot:nth-child(2){animation-delay:.15s}
+.typing-dot:nth-child(3){animation-delay:.3s}
+@keyframes typingBounce{0%,80%,100%{transform:scale(.8);opacity:.5}40%{transform:scale(1.1);opacity:1}}
+.chat-input-row{
+  display:flex;gap:0;border-top:1px solid var(--border);background:rgba(0,0,0,.3)
+}
+.chat-input{
+  flex:1;background:transparent;border:none;outline:none;
+  padding:16px 20px;color:var(--text);font-family:'Inter',sans-serif;font-size:.9rem;
+  caret-color:var(--p1)
+}
+.chat-input::placeholder{color:var(--muted)}
+.chat-send{
+  width:56px;background:linear-gradient(135deg,var(--p1),var(--p2));border:none;
+  color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:opacity .2s
+}
+.chat-send:hover{opacity:.85}
+.chat-send:disabled{opacity:.4;cursor:not-allowed}
+.chat-note{
+  font-size:.68rem;color:var(--muted);text-align:center;
+  padding:8px;background:rgba(0,0,0,.2)
+}
+
 /* ── Mobile ────────────────────────────────────────────────────────────── */
 @media(max-width:640px){
   .nav-links{display:none}
@@ -277,6 +352,7 @@ footer{
 <nav>
   <div class="nav-logo">NANO AI</div>
   <div class="nav-links">
+    <a href="#chat">Try Live</a>
     <a href="#features">Features</a>
     <a href="#generates">Generate</a>
     <a href="#knowledge">Knowledge</a>
@@ -298,6 +374,9 @@ footer{
   <div class="hero-btns">
     <button class="btn-primary" onclick="document.getElementById('install').scrollIntoView({behavior:'smooth'})">
       <span>$</span> pip install nano-ai
+    </button>
+    <button class="btn-primary" onclick="document.getElementById('chat').scrollIntoView({behavior:'smooth'})" style="background:linear-gradient(135deg,#00d4ff,#00ff88);box-shadow:0 0 30px rgba(0,212,255,.35)">
+      ✦ Try it free →
     </button>
     <button class="btn-secondary" onclick="document.getElementById('features').scrollIntoView({behavior:'smooth'})">
       See what it can do ↓
@@ -571,6 +650,38 @@ footer{
   </div>
 </section>
 
+<!-- ── Live Chat ───────────────────────────────────────────────────────────── -->
+<section class="section" id="chat" style="padding-top:0">
+  <div class="container">
+    <p class="section-label fade-up">Try it free — no account needed</p>
+    <h2 class="section-title fade-up">Chat with <span class="gradient-text">Nano AI</span> now.</h2>
+    <p class="section-sub fade-up">Ask any coding question. Powered by Claude, running right here in your browser.</p>
+
+    <div class="chat-wrap fade-up">
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-msg assistant">
+          <div class="chat-avatar">N</div>
+          <div class="chat-bubble">
+            Hey! I'm Nano AI — powered by Claude. Ask me <strong>anything</strong> about coding:
+            explain a concept, debug your code, generate a script, compare languages, or just chat. What's on your mind?
+          </div>
+        </div>
+      </div>
+      <div class="chat-input-row">
+        <input id="chat-input" class="chat-input" type="text"
+          placeholder="Ask anything — 'what is recursion?', 'generate a snake game', 'debug my code'..."
+          autocomplete="off" maxlength="2000">
+        <button class="chat-send" id="chat-send" onclick="sendMsg()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+      <p class="chat-note">10 messages per minute · Responses powered by Claude claude-sonnet-4-6</p>
+    </div>
+  </div>
+</section>
+
 <!-- ── Footer ─────────────────────────────────────────────────────────────── -->
 <footer>
   <div class="footer-logo">NANO AI</div>
@@ -672,6 +783,72 @@ function nextLine(){
   if(li<lines.length)setTimeout(nextLine,li===1?900:li===4?1400:600);
 }
 setTimeout(nextLine,1800);
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+const chatHistory = [];
+const msgsEl = document.getElementById('chat-messages');
+const inputEl = document.getElementById('chat-input');
+const sendEl  = document.getElementById('chat-send');
+
+function md(text) {
+  // Minimal markdown: code blocks, inline code, bold, newlines
+  return text
+    .replace(/```(\w*)\n?([\s\S]*?)```/g, (_,lang,code)=>`<pre><code>${escHtml(code.trim())}</code></pre>`)
+    .replace(/`([^`]+)`/g, (_,c)=>`<code>${escHtml(c)}</code>`)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g,'<br>');
+}
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+function appendMsg(role, html, isTyping=false) {
+  const wrap = document.createElement('div');
+  wrap.className = 'chat-msg ' + role + (isTyping?' chat-typing':'');
+  const avatarTxt = role==='assistant' ? 'N' : 'You';
+  wrap.innerHTML = `
+    <div class="chat-avatar">${avatarTxt}</div>
+    <div class="chat-bubble">${html}</div>`;
+  msgsEl.appendChild(wrap);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return wrap;
+}
+
+async function sendMsg() {
+  const text = inputEl.value.trim();
+  if (!text || sendEl.disabled) return;
+  inputEl.value = '';
+  sendEl.disabled = true;
+
+  appendMsg('user', escHtml(text));
+  chatHistory.push({ role:'user', content:text });
+
+  const typingEl = appendMsg('assistant',
+    '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>',
+    true);
+
+  try {
+    const res = await fetch('/api/chat', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ messages: chatHistory }),
+    });
+    const data = await res.json();
+    typingEl.remove();
+    if (data.error) {
+      appendMsg('assistant', `<span style="color:var(--a1)">${escHtml(data.error)}</span>`);
+    } else {
+      const reply = data.reply || '';
+      chatHistory.push({ role:'assistant', content: reply });
+      appendMsg('assistant', md(reply));
+    }
+  } catch(e) {
+    typingEl.remove();
+    appendMsg('assistant','<span style="color:var(--a1)">Network error. Please try again.</span>');
+  }
+  sendEl.disabled = false;
+  inputEl.focus();
+}
+
+inputEl.addEventListener('keydown', e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg()} });
 
 // ── Copy install ──────────────────────────────────────────────────────────────
 function copyInstall(){
