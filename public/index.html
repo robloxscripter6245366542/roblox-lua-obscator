@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nano AI — The Smartest Coding Tutor</title>
+<meta name="description" content="Nano AI is a Claude-powered coding tutor that knows every language, generates insane UIs, builds 2D/3D games, and deploys code instantly.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & tokens ────────────────────────────────────────────────────── */
+:root {
+  --bg:   #03010a;
+  --s1:   #0a061e;
+  --s2:   #110930;
+  --p1:   #6c63ff;
+  --p2:   #8b5cf6;
+  --a1:   #ff6584;
+  --a2:   #ff4da6;
+  --g1:   #00ff88;
+  --g2:   #00d4ff;
+  --y:    #ffd700;
+  --text: #f0ecff;
+  --muted:#6b6494;
+  --card: rgba(13,8,32,.7);
+  --border: rgba(108,99,255,.18);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+
+/* ── Canvas background ─────────────────────────────────────────────────── */
+#bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
+.mesh{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse at 15% 40%,rgba(108,99,255,.12) 0%,transparent 55%),
+    radial-gradient(ellipse at 85% 15%,rgba(255,101,132,.09) 0%,transparent 55%),
+    radial-gradient(ellipse at 60% 85%,rgba(0,212,255,.08) 0%,transparent 55%);
+  animation:meshDrift 12s ease-in-out infinite alternate}
+@keyframes meshDrift{0%{transform:scale(1) translate(0,0)}100%{transform:scale(1.04) translate(-1%,1%)}}
+
+/* ── Utility ───────────────────────────────────────────────────────────── */
+.content{position:relative;z-index:1}
+.container{max-width:1100px;margin:0 auto;padding:0 32px}
+.gradient-text{
+  background:linear-gradient(135deg,#fff 0%,var(--p1) 45%,var(--a1) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.green-text{color:var(--g1)}
+.fade-up{opacity:0;transform:translateY(28px);transition:opacity .7s ease,transform .7s ease}
+.fade-up.visible{opacity:1;transform:none}
+
+/* ── Nav ───────────────────────────────────────────────────────────────── */
+nav{
+  position:fixed;top:0;width:100%;z-index:100;
+  padding:0 32px;height:60px;
+  display:flex;align-items:center;justify-content:space-between;
+  background:rgba(3,1,10,.8);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border)
+}
+.nav-logo{
+  font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:900;letter-spacing:3px;
+  background:linear-gradient(90deg,var(--p1),var(--a1),var(--g2));
+  background-size:200% 100%;animation:logoShimmer 4s linear infinite;
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text
+}
+@keyframes logoShimmer{0%{background-position:0%}100%{background-position:200%}}
+.nav-links{display:flex;align-items:center;gap:28px}
+.nav-links a{font-size:.82rem;letter-spacing:1px;color:var(--muted);text-transform:uppercase;
+  transition:color .25s}
+.nav-links a:hover{color:var(--text)}
+.nav-cta{
+  padding:8px 20px;font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;
+  letter-spacing:2px;text-transform:uppercase;
+  background:linear-gradient(135deg,var(--p1),var(--p2));
+  border:none;color:#fff;cursor:pointer;border-radius:6px;
+  box-shadow:0 0 20px rgba(108,99,255,.35);transition:all .3s
+}
+.nav-cta:hover{box-shadow:0 0 30px rgba(108,99,255,.6);transform:translateY(-1px)}
+
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+.hero{
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;text-align:center;padding:100px 32px 80px;gap:0
+}
+.hero-eyebrow{
+  font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:6px;
+  text-transform:uppercase;color:var(--p1);margin-bottom:20px;
+  animation:fadeUp .8s ease both
+}
+.hero-title{
+  font-family:'Orbitron',sans-serif;
+  font-size:clamp(2.8rem,7vw,6.5rem);font-weight:900;line-height:1.05;
+  margin-bottom:20px;animation:fadeUp .8s .1s ease both
+}
+.hero-sub{
+  font-size:clamp(1rem,2vw,1.2rem);color:var(--muted);max-width:560px;line-height:1.7;
+  margin-bottom:36px;animation:fadeUp .8s .2s ease both
+}
+.hero-btns{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;animation:fadeUp .8s .3s ease both}
+.btn-primary{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:14px 28px;font-family:'JetBrains Mono',monospace;font-size:.9rem;
+  background:linear-gradient(135deg,var(--p1),var(--p2));
+  color:#fff;border:none;border-radius:8px;cursor:pointer;
+  box-shadow:0 0 30px rgba(108,99,255,.4);transition:all .3s
+}
+.btn-primary:hover{box-shadow:0 0 50px rgba(108,99,255,.7);transform:translateY(-2px)}
+.btn-secondary{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:14px 28px;font-family:'JetBrains Mono',monospace;font-size:.9rem;
+  background:transparent;color:var(--text);
+  border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:all .3s
+}
+.btn-secondary:hover{border-color:rgba(108,99,255,.5);background:rgba(108,99,255,.08)}
+
+/* Terminal mockup */
+.terminal{
+  margin-top:56px;width:100%;max-width:680px;
+  background:#080414;border:1px solid var(--border);border-radius:12px;
+  overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.6),0 0 60px rgba(108,99,255,.08);
+  animation:fadeUp .9s .4s ease both;text-align:left
+}
+.terminal-bar{
+  padding:12px 16px;background:rgba(255,255,255,.03);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px
+}
+.dot{width:11px;height:11px;border-radius:50%}
+.dot-r{background:#ff5f57}.dot-y{background:#febc2e}.dot-g{background:#28c840}
+.terminal-body{padding:20px 24px;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.9}
+.t-dim{color:#4a4060}
+.t-green{color:var(--g1)}
+.t-purple{color:var(--p1)}
+.t-yellow{color:var(--y)}
+.t-cyan{color:var(--g2)}
+.t-white{color:#e0d8f8}
+.t-cursor{display:inline-block;width:8px;height:14px;background:var(--p1);
+  animation:blink 1s step-end infinite;vertical-align:middle;margin-left:2px}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+
+/* ── Stats bar ─────────────────────────────────────────────────────────── */
+.stats-bar{
+  border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+  padding:28px 0;margin:0
+}
+.stats-inner{display:flex;justify-content:space-around;flex-wrap:wrap;gap:24px}
+.stat-item{text-align:center}
+.stat-val{
+  font-family:'Orbitron',sans-serif;font-size:1.8rem;font-weight:900;
+  background:linear-gradient(135deg,var(--p1),var(--a1));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text
+}
+.stat-lbl{font-size:.72rem;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-top:4px}
+
+/* ── Section headers ───────────────────────────────────────────────────── */
+.section{padding:100px 0}
+.section-label{font-family:'Orbitron',sans-serif;font-size:.62rem;letter-spacing:5px;
+  text-transform:uppercase;color:var(--p1);margin-bottom:14px}
+.section-title{font-size:clamp(1.8rem,4vw,2.8rem);font-weight:700;line-height:1.2;margin-bottom:16px}
+.section-sub{font-size:1rem;color:var(--muted);max-width:520px;line-height:1.7}
+
+/* ── Features grid ─────────────────────────────────────────────────────── */
+.features-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-top:56px}
+.feature-card{
+  background:var(--card);border:1px solid var(--border);border-radius:12px;
+  padding:28px 24px;transition:all .35s;cursor:default
+}
+.feature-card:hover{
+  border-color:rgba(108,99,255,.45);
+  box-shadow:0 20px 50px rgba(0,0,0,.5),0 0 30px rgba(108,99,255,.1);
+  transform:translateY(-4px)
+}
+.feature-icon{
+  width:46px;height:46px;border-radius:10px;margin-bottom:16px;
+  background:linear-gradient(135deg,rgba(108,99,255,.2),rgba(108,99,255,.05));
+  border:1px solid rgba(108,99,255,.25);
+  display:flex;align-items:center;justify-content:center;font-size:1.3rem
+}
+.feature-title{font-size:.95rem;font-weight:600;margin-bottom:8px;color:var(--text)}
+.feature-desc{font-size:.83rem;color:var(--muted);line-height:1.6}
+
+/* ── What it generates ─────────────────────────────────────────────────── */
+.generates-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:48px}
+.gen-card{
+  background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:20px 18px;display:flex;flex-direction:column;gap:8px;transition:all .3s;cursor:default
+}
+.gen-card:hover{border-color:rgba(108,99,255,.4);transform:translateY(-3px);box-shadow:0 12px 30px rgba(0,0,0,.4)}
+.gen-icon{font-size:1.5rem}
+.gen-title{font-size:.88rem;font-weight:600;color:var(--text)}
+.gen-desc{font-size:.75rem;color:var(--muted);line-height:1.5}
+.gen-tag{
+  display:inline-block;font-family:'JetBrains Mono',monospace;font-size:.65rem;
+  padding:3px 8px;border-radius:4px;background:rgba(108,99,255,.15);
+  border:1px solid rgba(108,99,255,.2);color:var(--p1);margin-top:2px
+}
+
+/* ── Demo section ──────────────────────────────────────────────────────── */
+.demo-grid{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:56px;align-items:center}
+@media(max-width:700px){.demo-grid{grid-template-columns:1fr}}
+.demo-text h3{font-size:1.5rem;font-weight:700;margin-bottom:14px}
+.demo-text p{color:var(--muted);line-height:1.7;margin-bottom:20px;font-size:.92rem}
+.demo-cmds{display:flex;flex-direction:column;gap:8px}
+.cmd{
+  font-family:'JetBrains Mono',monospace;font-size:.78rem;
+  padding:10px 14px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:6px;
+  color:var(--muted);transition:all .25s;cursor:pointer
+}
+.cmd:hover{border-color:rgba(108,99,255,.4);color:var(--text);background:rgba(108,99,255,.06)}
+.cmd .cmd-prompt{color:var(--p1)}
+.cmd .cmd-text{color:var(--g1)}
+
+/* ── Knowledge section ─────────────────────────────────────────────────── */
+.knowledge-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:40px}
+.lang-pill{
+  padding:10px 12px;background:var(--card);border:1px solid var(--border);
+  border-radius:8px;text-align:center;font-size:.78rem;font-weight:500;
+  letter-spacing:.5px;color:var(--muted);transition:all .25s
+}
+.lang-pill:hover{border-color:rgba(108,99,255,.4);color:var(--text);transform:scale(1.04)}
+
+/* ── CTA ───────────────────────────────────────────────────────────────── */
+.cta-section{
+  padding:120px 0;text-align:center
+}
+.cta-box{
+  background:linear-gradient(135deg,rgba(108,99,255,.1),rgba(255,101,132,.06));
+  border:1px solid rgba(108,99,255,.25);border-radius:20px;
+  padding:72px 48px;position:relative;overflow:hidden
+}
+.cta-box::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 50% 0%,rgba(108,99,255,.12),transparent 70%);
+  pointer-events:none
+}
+.cta-title{font-family:'Orbitron',sans-serif;font-size:clamp(1.6rem,4vw,2.4rem);font-weight:900;margin-bottom:14px}
+.cta-sub{font-size:.95rem;color:var(--muted);max-width:420px;margin:0 auto 36px;line-height:1.7}
+.install-box{
+  display:inline-flex;align-items:center;gap:12px;
+  padding:14px 24px;background:rgba(0,0,0,.5);border:1px solid var(--border);
+  border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:.88rem;
+  color:var(--g1);margin-bottom:12px;cursor:pointer;
+  transition:border-color .3s;position:relative;z-index:1
+}
+.install-box:hover{border-color:rgba(108,99,255,.5)}
+.install-note{font-size:.72rem;color:var(--muted);position:relative;z-index:1}
+
+/* ── Footer ────────────────────────────────────────────────────────────── */
+footer{
+  border-top:1px solid var(--border);padding:36px 32px;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px
+}
+.footer-logo{font-family:'Orbitron',sans-serif;font-size:.85rem;font-weight:900;letter-spacing:3px;color:var(--p1)}
+.footer-links{display:flex;gap:24px}
+.footer-links a{font-size:.78rem;color:var(--muted);transition:color .25s}
+.footer-links a:hover{color:var(--text)}
+.footer-copy{font-size:.72rem;color:var(--muted)}
+
+/* ── Mobile ────────────────────────────────────────────────────────────── */
+@media(max-width:640px){
+  .nav-links{display:none}
+  .container{padding:0 20px}
+  .cta-box{padding:48px 24px}
+  .stats-inner{justify-content:center}
+  footer{flex-direction:column;align-items:center;text-align:center}
+}
+</style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+<div class="mesh"></div>
+<div class="content">
+
+<!-- ── Nav ──────────────────────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-logo">NANO AI</div>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#generates">Generate</a>
+    <a href="#knowledge">Knowledge</a>
+    <a href="#install">Install</a>
+  </div>
+  <button class="nav-cta" onclick="document.getElementById('install').scrollIntoView({behavior:'smooth'})">Get Started</button>
+</nav>
+
+<!-- ── Hero ─────────────────────────────────────────────────────────────── -->
+<section class="hero">
+  <p class="hero-eyebrow">Powered by Claude · The Future of Coding</p>
+  <h1 class="hero-title">
+    <span class="gradient-text">Nano AI</span>
+  </h1>
+  <p class="hero-sub">
+    The smartest coding tutor ever built. Knows every language. Generates insane UIs,
+    2D & 3D games, full-stack apps — all from your terminal.
+  </p>
+  <div class="hero-btns">
+    <button class="btn-primary" onclick="document.getElementById('install').scrollIntoView({behavior:'smooth'})">
+      <span>$</span> pip install nano-ai
+    </button>
+    <button class="btn-secondary" onclick="document.getElementById('features').scrollIntoView({behavior:'smooth'})">
+      See what it can do ↓
+    </button>
+  </div>
+
+  <div class="terminal fade-up visible">
+    <div class="terminal-bar">
+      <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+      <span style="margin-left:8px;font-size:.72rem;color:#4a4060;font-family:'JetBrains Mono',monospace">nano-ai — terminal</span>
+    </div>
+    <div class="terminal-body" id="terminal-body">
+      <div><span class="t-purple">$</span> <span class="t-white">python -m ai_tutor</span></div>
+      <div class="t-dim">  ███╗   ██╗ █████╗ ███╗   ██╗ ██████╗     █████╗ ██╗</div>
+      <div class="t-dim">  ████╗  ██║██╔══██╗████╗  ██║██╔═══██╗   ██╔══██╗██║</div>
+      <div class="t-dim">  ██╔██╗ ██║███████║██╔██╗ ██║██║   ██║   ███████║██║</div>
+      <div class="t-dim">  ██║╚██╗██║██╔══██║██║╚██╗██║██║   ██║   ██╔══██║██║</div>
+      <div class="t-dim">  ██║ ╚████║██║  ██║██║ ╚████║╚██████╔╝   ██║  ██║██║</div>
+      <div>&nbsp;</div>
+      <div><span class="t-green">  ✦ FULL AI MODE</span> <span class="t-dim">— Claude API active. Ask me literally anything.</span></div>
+      <div>&nbsp;</div>
+      <div id="demo-line-1"></div>
+      <div id="demo-line-2"></div>
+      <div id="demo-line-3"></div>
+      <div id="demo-line-4"></div>
+      <div id="demo-line-5" style="display:none"></div>
+      <div id="demo-cursor"><span class="t-purple">  Nano AI ›</span> <span class="t-cursor"></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Stats ─────────────────────────────────────────────────────────────── -->
+<div class="stats-bar">
+  <div class="container">
+    <div class="stats-inner">
+      <div class="stat-item fade-up">
+        <div class="stat-val" data-target="20">0</div>
+        <div class="stat-lbl">Languages</div>
+      </div>
+      <div class="stat-item fade-up">
+        <div class="stat-val" data-target="50">0</div>
+        <div class="stat-lbl">Intents</div>
+      </div>
+      <div class="stat-item fade-up">
+        <div class="stat-val" data-target="30">0</div>
+        <div class="stat-lbl">Templates</div>
+      </div>
+      <div class="stat-item fade-up">
+        <div class="stat-val" data-target="100">0</div>
+        <div class="stat-lbl">% Offline Capable</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Features ──────────────────────────────────────────────────────────── -->
+<section class="section" id="features">
+  <div class="container">
+    <p class="section-label fade-up">Core capabilities</p>
+    <h2 class="section-title fade-up">Everything you need.<br><span class="gradient-text">Nothing you don't.</span></h2>
+    <p class="section-sub fade-up">Built on top of Claude — but fully functional offline too. One CLI. Infinite possibilities.</p>
+
+    <div class="features-grid">
+      <div class="feature-card fade-up">
+        <div class="feature-icon">🧠</div>
+        <div class="feature-title">Claude-Powered Intelligence</div>
+        <div class="feature-desc">Backed by Claude claude-sonnet-4-6 — the most capable AI model. Knows every concept in computer science, answers in seconds.</div>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">⚡</div>
+        <div class="feature-title">Instant Code Generation</div>
+        <div class="feature-desc">Generate complete, production-ready code in any language from a single sentence. No half-finished snippets.</div>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">🎮</div>
+        <div class="feature-title">2D & 3D Game Builder</div>
+        <div class="feature-desc">Generate full Canvas 2D platformers with physics, or Three.js 3D space shooters and endless runners. Playable immediately.</div>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">🎨</div>
+        <div class="feature-title">Insane UI Generator</div>
+        <div class="feature-desc">Particle systems, matrix rain, galaxy canvases, neon glow, React + Tailwind + shadcn/ui — the most visually stunning generated code you've seen.</div>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">🚀</div>
+        <div class="feature-title">One-Command Deploy</div>
+        <div class="feature-desc">Type <code style="color:var(--g1);font-family:'JetBrains Mono',monospace">deploy</code> after generating anything. Nano AI saves it and opens it in your browser instantly.</div>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">🌐</div>
+        <div class="feature-title">Live WebFetch</div>
+        <div class="feature-desc">Search the web, fetch any URL, pull live docs — all from the terminal. No browser needed.</div>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">📁</div>
+        <div class="feature-title">File Read / Write</div>
+        <div class="feature-desc">Read, write, list, and analyze any file on disk. Nano AI can review your code and suggest fixes in place.</div>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">🏆</div>
+        <div class="feature-title">XP & Leveling System</div>
+        <div class="feature-desc">Earn XP for every question, quiz, and exercise. Level up from Novice to Wizard as you learn. Persistent across sessions.</div>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">✅</div>
+        <div class="feature-title">Offline Mode</div>
+        <div class="feature-desc">No API key? No problem. Full built-in knowledge base with 20+ languages, 14 CS concepts, 16 exercises, and quiz bank.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── What it generates ──────────────────────────────────────────────────── -->
+<section class="section" id="generates" style="padding-top:0">
+  <div class="container">
+    <p class="section-label fade-up">Code generator</p>
+    <h2 class="section-title fade-up">Generate <span class="gradient-text">anything.</span></h2>
+    <p class="section-sub fade-up">Every output is self-contained, runs immediately, and is production quality.</p>
+
+    <div class="generates-grid">
+      <div class="gen-card fade-up">
+        <div class="gen-icon">🎮</div>
+        <div class="gen-title">2D Platformer</div>
+        <div class="gen-desc">Physics engine, double jump, coyote time, particles, enemies, coins</div>
+        <span class="gen-tag">generate a 2D platformer</span>
+      </div>
+      <div class="gen-card fade-up">
+        <div class="gen-icon">🐍</div>
+        <div class="gen-title">Snake Game</div>
+        <div class="gen-desc">Glowing particles, animated eyes, dynamic speed, pause support</div>
+        <span class="gen-tag">generate a snake game</span>
+      </div>
+      <div class="gen-card fade-up">
+        <div class="gen-icon">🚀</div>
+        <div class="gen-title">3D Space Shooter</div>
+        <div class="gen-desc">Three.js, mouse-tracked ship, asteroid waves, explosions, HUD</div>
+        <span class="gen-tag">generate a space shooter</span>
+      </div>
+      <div class="gen-card fade-up">
+        <div class="gen-icon">⚽</div>
+        <div class="gen-title">3D Ball Runner</div>
+        <div class="gen-desc">Endless neon track, lane dodge, gem collect, growing speed</div>
+        <span class="gen-tag">generate a ball runner</span>
+      </div>
+      <div class="gen-card fade-up">
+        <div class="gen-icon">🌌</div>
+        <div class="gen-title">Galaxy UI</div>
+        <div class="gen-desc">Nebula gradients, twinkling stars, orbital rings, cosmic CTA</div>
+        <span class="gen-tag">generate a galaxy UI</span>
+      </div>
+      <div class="gen-card fade-up">
+        <div class="gen-icon">💻</div>
+        <div class="gen-title">Matrix Glitch UI</div>
+        <div class="gen-desc">Matrix rain canvas, CSS clip-path glitch, neon scanlines</div>
+        <span class="gen-tag">generate a glitch UI</span>
+      </div>
+      <div class="gen-card fade-up">
+        <div class="gen-icon">⚛️</div>
+        <div class="gen-title">React Dashboard</div>
+        <div class="gen-desc">Tailwind CSS, shadcn/ui primitives, Lucide icons, stat cards</div>
+        <span class="gen-tag">generate a react dashboard</span>
+      </div>
+      <div class="gen-card fade-up">
+        <div class="gen-icon">🌊</div>
+        <div class="gen-title">Spring Animations</div>
+        <div class="gen-desc">Custom spring physics, magnetic hover, stagger menus, counters</div>
+        <span class="gen-tag">generate spring animations</span>
+      </div>
+      <div class="gen-card fade-up">
+        <div class="gen-icon">🧊</div>
+        <div class="gen-title">3D Scene</div>
+        <div class="gen-desc">Three.js OrbitControls, particle field, grid, animated lights</div>
+        <span class="gen-tag">generate a 3D cube</span>
+      </div>
+      <div class="gen-card fade-up">
+        <div class="gen-icon">🐍</div>
+        <div class="gen-title">Flask API</div>
+        <div class="gen-desc">Auth, CRUD endpoints, rate limiting, error handling, full Python</div>
+        <span class="gen-tag">generate a Flask API</span>
+      </div>
+      <div class="gen-card fade-up">
+        <div class="gen-icon">🎯</div>
+        <div class="gen-title">Roblox Scripts</div>
+        <div class="gen-desc">NPC AI with pathfinding, game loops, draggable GUIs with Tweens</div>
+        <span class="gen-tag">generate a Roblox NPC</span>
+      </div>
+      <div class="gen-card fade-up">
+        <div class="gen-icon">🗄️</div>
+        <div class="gen-title">SQL Schema</div>
+        <div class="gen-desc">Full schema, indexes, joins, transactions, seed data</div>
+        <span class="gen-tag">generate a SQL schema</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── How to use ─────────────────────────────────────────────────────────── -->
+<section class="section">
+  <div class="container">
+    <div class="demo-grid">
+      <div class="demo-text fade-up">
+        <p class="section-label">Try it yourself</p>
+        <h2 class="section-title" style="font-size:1.9rem">Just type what you want.</h2>
+        <p>Nano AI understands plain English. No commands to memorize. Ask questions, request code, run exercises — it all just works.</p>
+        <p>With a Claude API key, every answer is powered by the full intelligence of Claude claude-sonnet-4-6. Without one, the built-in knowledge base covers everything you need to start.</p>
+      </div>
+      <div class="fade-up">
+        <div class="demo-cmds">
+          <div class="cmd"><span class="cmd-prompt">Nano AI › </span><span class="cmd-text">what is recursion?</span></div>
+          <div class="cmd"><span class="cmd-prompt">Nano AI › </span><span class="cmd-text">teach me Python</span></div>
+          <div class="cmd"><span class="cmd-prompt">Nano AI › </span><span class="cmd-text">generate a 2D platformer game</span></div>
+          <div class="cmd"><span class="cmd-prompt">Nano AI › </span><span class="cmd-text">generate a crazy galaxy UI</span></div>
+          <div class="cmd"><span class="cmd-prompt">Nano AI › </span><span class="cmd-text">deploy</span></div>
+          <div class="cmd"><span class="cmd-prompt">Nano AI › </span><span class="cmd-text">search Python asyncio docs</span></div>
+          <div class="cmd"><span class="cmd-prompt">Nano AI › </span><span class="cmd-text">quiz me on functions</span></div>
+          <div class="cmd"><span class="cmd-prompt">Nano AI › </span><span class="cmd-text">compare Python vs Rust</span></div>
+          <div class="cmd"><span class="cmd-prompt">Nano AI › </span><span class="cmd-text">exercise</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Languages ──────────────────────────────────────────────────────────── -->
+<section class="section" id="knowledge" style="padding-top:0">
+  <div class="container">
+    <p class="section-label fade-up">Knowledge base</p>
+    <h2 class="section-title fade-up">Every language. <span class="gradient-text">Every concept.</span></h2>
+    <p class="section-sub fade-up">Full syntax guides, tips, and popular libraries for each. All available offline.</p>
+    <div class="knowledge-grid">
+      <div class="lang-pill fade-up">Python</div>
+      <div class="lang-pill fade-up">JavaScript</div>
+      <div class="lang-pill fade-up">TypeScript</div>
+      <div class="lang-pill fade-up">Lua / Roblox</div>
+      <div class="lang-pill fade-up">Java</div>
+      <div class="lang-pill fade-up">C++</div>
+      <div class="lang-pill fade-up">Rust</div>
+      <div class="lang-pill fade-up">Go</div>
+      <div class="lang-pill fade-up">SQL</div>
+      <div class="lang-pill fade-up">HTML</div>
+      <div class="lang-pill fade-up">CSS</div>
+      <div class="lang-pill fade-up">React</div>
+      <div class="lang-pill fade-up">Three.js</div>
+      <div class="lang-pill fade-up">Flask</div>
+      <div class="lang-pill fade-up">Node.js</div>
+      <div class="lang-pill fade-up">Express</div>
+      <div class="lang-pill fade-up">Next.js</div>
+      <div class="lang-pill fade-up">Tailwind</div>
+      <div class="lang-pill fade-up">GraphQL</div>
+      <div class="lang-pill fade-up">+ more</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA / Install ──────────────────────────────────────────────────────── -->
+<section class="cta-section" id="install">
+  <div class="container">
+    <div class="cta-box fade-up">
+      <p class="section-label" style="text-align:center">Get started in 30 seconds</p>
+      <h2 class="cta-title gradient-text">Run Nano AI now.</h2>
+      <p class="cta-sub">Install the dependency, grab a free Claude API key, and you're in full AI mode.</p>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+        <div class="install-box" id="copy-box" onclick="copyInstall()">
+          <span style="color:var(--muted)">$</span>
+          <span>pip install anthropic &amp;&amp; python -m ai_tutor</span>
+          <span style="font-size:.7rem;color:var(--muted)" id="copy-label">click to copy</span>
+        </div>
+        <p class="install-note">Get a free API key at <span style="color:var(--p1)">console.anthropic.com</span> — then type <code style="color:var(--g1);font-family:'JetBrains Mono',monospace">setkey YOUR_KEY</code> inside Nano AI</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────────── -->
+<footer>
+  <div class="footer-logo">NANO AI</div>
+  <div class="footer-links">
+    <a href="https://github.com/robloxscripter6245366542/roblox-lua-obscator">GitHub</a>
+    <a href="https://console.anthropic.com">Get API Key</a>
+  </div>
+  <div class="footer-copy">Built with Claude · Python + Terminal</div>
+</footer>
+
+</div><!-- /content -->
+
+<script>
+// ── Particle canvas ───────────────────────────────────────────────────────────
+(function(){
+  const c=document.getElementById('bg-canvas');
+  const ctx=c.getContext('2d');
+  function resize(){c.width=innerWidth;c.height=innerHeight}
+  resize();addEventListener('resize',resize);
+
+  const N=90;
+  const pts=Array.from({length:N},()=>({
+    x:Math.random()*c.width,y:Math.random()*c.height,
+    vx:(Math.random()-.5)*.35,vy:(Math.random()-.5)*.35,
+    r:.8+Math.random()*1.4
+  }));
+  let mouse={x:-999,y:-999};
+  addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY});
+
+  function frame(){
+    ctx.clearRect(0,0,c.width,c.height);
+    for(const p of pts){
+      // Repel from mouse
+      const dx=p.x-mouse.x,dy=p.y-mouse.y,d=Math.sqrt(dx*dx+dy*dy);
+      if(d<120){const f=.8*(1-d/120);p.vx+=dx/d*f;p.vy+=dy/d*f}
+      p.vx*=.995;p.vy*=.995;
+      p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0)p.x=c.width;if(p.x>c.width)p.x=0;
+      if(p.y<0)p.y=c.height;if(p.y>c.height)p.y=0;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle='rgba(108,99,255,.5)';ctx.fill();
+    }
+    // Connections
+    for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){
+      const dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);
+      if(d<110){
+        ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);
+        ctx.strokeStyle=`rgba(108,99,255,${.25*(1-d/110)})`;ctx.lineWidth=.6;ctx.stroke();
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+// ── Scroll fade-up ────────────────────────────────────────────────────────────
+const observer=new IntersectionObserver(entries=>{
+  entries.forEach(e=>{if(e.isIntersecting)e.target.classList.add('visible')});
+},{threshold:.12});
+document.querySelectorAll('.fade-up').forEach(el=>observer.observe(el));
+
+// ── Animated counters ─────────────────────────────────────────────────────────
+const counterObs=new IntersectionObserver(entries=>{
+  entries.forEach(e=>{
+    if(!e.isIntersecting)return;
+    const el=e.target;
+    const target=+el.dataset.target;
+    const suffix=el.textContent.replace(/[0-9]/g,'').trim();
+    const start=performance.now();
+    const dur=1400;
+    function tick(now){
+      const prog=Math.min((now-start)/dur,1);
+      const ease=1-Math.pow(1-prog,3);
+      el.textContent=Math.round(ease*target)+(suffix||'');
+      if(prog<1)requestAnimationFrame(tick);
+      else el.textContent=target+(suffix||'');
+    }
+    requestAnimationFrame(tick);
+    counterObs.unobserve(el);
+  });
+},{threshold:.5});
+document.querySelectorAll('[data-target]').forEach(el=>counterObs.observe(el));
+
+// ── Terminal typewriter ───────────────────────────────────────────────────────
+const lines=[
+  {id:'demo-line-1',html:'<span class="t-purple">  Nano AI ›</span> <span class="t-white">generate a 2D platformer game</span>'},
+  {id:'demo-line-2',html:'<span class="t-yellow">  ⚡ NANO AI GENERATED — 2D PLATFORMER GAME</span>'},
+  {id:'demo-line-3',html:'<span class="t-dim">  Language: html   Lines: 312</span> &nbsp; <span class="t-green">✓ deploy to open in browser</span>'},
+  {id:'demo-line-4',html:''},
+  {id:'demo-line-5',html:'<span class="t-purple">  Nano AI ›</span> <span class="t-white">quiz me on recursion</span>'},
+];
+let li=0;
+function nextLine(){
+  if(li>=lines.length)return;
+  const {id,html}=lines[li];
+  const el=document.getElementById(id);
+  if(el){el.innerHTML=html;el.style.display='';};
+  li++;
+  if(li<lines.length)setTimeout(nextLine,li===1?900:li===4?1400:600);
+}
+setTimeout(nextLine,1800);
+
+// ── Copy install ──────────────────────────────────────────────────────────────
+function copyInstall(){
+  navigator.clipboard.writeText('pip install anthropic && python -m ai_tutor').then(()=>{
+    document.getElementById('copy-label').textContent='copied!';
+    document.getElementById('copy-label').style.color='var(--g1)';
+    setTimeout(()=>{document.getElementById('copy-label').textContent='click to copy';document.getElementById('copy-label').style.color=''},2000);
+  });
+}
+</script>
+</body>
+</html>
