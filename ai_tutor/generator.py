@@ -12,9 +12,19 @@ def generate(request: str) -> str:
     """Route a generation request to the right template."""
     t = request.lower()
 
+    # Crazy / wild / insane UI
+    if any(k in t for k in ["crazy", "wild", "insane", "epic", "cool", "awesome", "sick", "fire",
+                              "neon", "cyberpunk", "veo", "vo ai", "futuristic", "glitch", "matrix",
+                              "particle", "galaxy", "cosmic", "extreme"]):
+        return _gen_crazy_ui(t)
+
     # 3D / Three.js
     if any(k in t for k in ["3d", "three.js", "threejs", "three js", "webgl", "cube", "scene"]):
         return _gen_threejs(t)
+
+    # React / Next.js / Tailwind / shadcn/ui / v0-style (must be before generic UI)
+    if any(k in t for k in ["react", "next.js", "nextjs", "tailwind", "shadcn", "framer", "v0", "component"]):
+        return _gen_react_shadcn(t)
 
     # Animation
     if any(k in t for k in ["animation", "animate", "css anim", "keyframe", "transition", "loading spinner", "spinner"]):
@@ -32,8 +42,8 @@ def generate(request: str) -> str:
     if any(k in t for k in ["python", "flask", "fastapi", "django", "scraper", "web scraper"]):
         return _gen_python(t)
 
-    # JavaScript / Node / React
-    if any(k in t for k in ["javascript", "react", "node", "express", "vue", "next.js"]):
+    # JavaScript / Node
+    if any(k in t for k in ["javascript", "node", "express", "vue"]):
         return _gen_javascript(t)
 
     # REST API
@@ -46,6 +56,943 @@ def generate(request: str) -> str:
 
     # General: just produce an example in the best matching language
     return _gen_general(request)
+
+
+# ─── Crazy / Wild UI ─────────────────────────────────────────────────────────
+
+def _gen_crazy_ui(hint: str) -> str:
+    if "glitch" in hint or "matrix" in hint:
+        return _wrap_output("Matrix Glitch UI", "html", _crazy_glitch())
+    if "galaxy" in hint or "cosmic" in hint or "space" in hint:
+        return _wrap_output("Cosmic Galaxy UI", "html", _crazy_galaxy())
+    if "cyberpunk" in hint or "neon" in hint:
+        return _wrap_output("Cyberpunk Neon UI", "html", _crazy_cyberpunk())
+    # default: the full mega UI
+    return _wrap_output("MEGA Animated UI (Particle + Neon + 3D)", "html", _crazy_mega())
+
+
+def _crazy_mega() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NANO AI — MEGA UI</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600&display=swap');
+
+:root {
+  --p1: #7c3aed; --p2: #6c63ff; --a1: #ff6584; --a2: #ff4da6;
+  --g1: #00ff88; --g2: #00d4ff; --y1: #ffd700;
+  --bg: #03010a; --s1: #0d0820; --s2: #140d2e;
+  --text: #f0ecff; --muted: #6b6494;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;overflow-x:hidden}
+
+/* ── Canvas particle field ─────────────────────────────── */
+#particles{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none}
+
+/* ── Animated gradient mesh background ────────────────── */
+.mesh{
+  position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(108,99,255,.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(255,101,132,.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 60% 80%, rgba(0,212,255,.10) 0%, transparent 50%);
+  animation:meshMove 8s ease-in-out infinite alternate;
+}
+@keyframes meshMove{
+  0%  {background-position:0% 0%, 100% 0%,  50% 100%}
+  100%{background-position:100% 100%,0% 100%,50% 0%}
+}
+
+/* ── Main content ──────────────────────────────────────── */
+.content{position:relative;z-index:1}
+
+/* ── Nav ───────────────────────────────────────────────── */
+nav{
+  position:fixed;top:0;width:100%;z-index:100;
+  padding:16px 48px;
+  display:flex;justify-content:space-between;align-items:center;
+  background:rgba(3,1,10,.7);backdrop-filter:blur(20px);
+  border-bottom:1px solid rgba(108,99,255,.2);
+}
+.logo{
+  font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:900;
+  background:linear-gradient(90deg,var(--p2),var(--a1),var(--g2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;letter-spacing:4px;
+  animation:logoShimmer 3s linear infinite;
+  background-size:200% 100%;
+}
+@keyframes logoShimmer{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+.nav-links{display:flex;gap:28px;list-style:none}
+.nav-links a{color:var(--muted);text-decoration:none;font-size:.85rem;letter-spacing:1px;transition:all .3s;text-transform:uppercase}
+.nav-links a:hover{color:var(--text);text-shadow:0 0 12px var(--p2)}
+.nav-cta{
+  padding:10px 22px;font-family:'Orbitron',sans-serif;font-size:.75rem;font-weight:700;
+  letter-spacing:2px;text-transform:uppercase;
+  background:transparent;
+  border:1px solid var(--p2);color:var(--p2);
+  cursor:pointer;border-radius:4px;
+  position:relative;overflow:hidden;transition:all .3s;
+}
+.nav-cta::before{
+  content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(108,99,255,.3),transparent);
+  transition:left .4s;
+}
+.nav-cta:hover::before{left:100%}
+.nav-cta:hover{background:rgba(108,99,255,.15);box-shadow:0 0 20px rgba(108,99,255,.4)}
+
+/* ── Hero ──────────────────────────────────────────────── */
+.hero{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  text-align:center;padding:120px 40px 80px;flex-direction:column;gap:0;
+}
+.hero-eyebrow{
+  font-family:'Orbitron',sans-serif;font-size:.7rem;letter-spacing:6px;
+  text-transform:uppercase;color:var(--p2);margin-bottom:24px;
+  animation:fadeUp .8s ease both;
+}
+.hero-title{
+  font-family:'Orbitron',sans-serif;
+  font-size:clamp(3rem,8vw,7rem);font-weight:900;line-height:1;
+  margin-bottom:24px;
+  animation:fadeUp .8s .1s ease both;
+}
+.hero-title .line1{
+  display:block;
+  background:linear-gradient(135deg,#fff 0%,var(--p2) 50%,var(--a1) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.hero-title .line2{
+  display:block;font-size:.55em;color:var(--muted);margin-top:8px;
+  -webkit-text-fill-color:var(--muted);
+}
+.hero-glitch{
+  position:relative;display:inline-block;
+  background:linear-gradient(90deg,var(--g2),var(--g1));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  animation:glitchColor 4s infinite;
+}
+.hero-glitch::before,.hero-glitch::after{
+  content:attr(data-text);position:absolute;top:0;left:0;width:100%;height:100%;
+  background:linear-gradient(90deg,var(--g2),var(--g1));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.hero-glitch::before{
+  animation:glitch1 3s infinite;clip-path:polygon(0 0,100% 0,100% 35%,0 35%);
+  transform:translateX(-2px);
+}
+.hero-glitch::after{
+  animation:glitch2 3s infinite;clip-path:polygon(0 65%,100% 65%,100% 100%,0 100%);
+  transform:translateX(2px);
+}
+@keyframes glitch1{0%,90%,100%{transform:translateX(-2px) skew(0)}93%{transform:translateX(4px) skew(-5deg)}}
+@keyframes glitch2{0%,90%,100%{transform:translateX(2px) skew(0)}93%{transform:translateX(-4px) skew(5deg)}}
+@keyframes glitchColor{0%,89%,100%{filter:hue-rotate(0deg)}90%{filter:hue-rotate(90deg)}}
+
+.hero-sub{
+  font-size:1.1rem;color:var(--muted);max-width:600px;line-height:1.8;
+  margin-bottom:48px;animation:fadeUp .8s .2s ease both;
+}
+.hero-sub em{font-style:normal;color:var(--text)}
+
+.hero-btns{
+  display:flex;gap:16px;flex-wrap:wrap;justify-content:center;
+  animation:fadeUp .8s .3s ease both;
+}
+.btn-primary{
+  padding:16px 36px;font-family:'Orbitron',sans-serif;font-size:.8rem;font-weight:700;
+  letter-spacing:2px;text-transform:uppercase;
+  background:linear-gradient(135deg,var(--p1),var(--p2));
+  border:none;color:#fff;border-radius:6px;cursor:pointer;
+  position:relative;overflow:hidden;transition:all .3s;
+  box-shadow:0 0 30px rgba(108,99,255,.4);
+}
+.btn-primary::after{
+  content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;
+  background:conic-gradient(transparent 270deg,rgba(255,255,255,.15),transparent);
+  animation:spin2 2s linear infinite;
+}
+@keyframes spin2{to{transform:rotate(360deg)}}
+.btn-primary:hover{transform:translateY(-3px);box-shadow:0 0 60px rgba(108,99,255,.6)}
+.btn-ghost{
+  padding:16px 36px;font-family:'Orbitron',sans-serif;font-size:.8rem;font-weight:700;
+  letter-spacing:2px;text-transform:uppercase;
+  background:transparent;border:1px solid rgba(255,255,255,.15);
+  color:var(--text);border-radius:6px;cursor:pointer;transition:all .3s;
+}
+.btn-ghost:hover{border-color:var(--p2);background:rgba(108,99,255,.1);transform:translateY(-3px)}
+
+.hero-scroll{
+  margin-top:64px;display:flex;flex-direction:column;align-items:center;gap:8px;
+  color:var(--muted);font-size:.75rem;letter-spacing:2px;text-transform:uppercase;
+  animation:fadeUp .8s .5s ease both;
+}
+.scroll-line{
+  width:1px;height:50px;background:linear-gradient(to bottom,var(--p2),transparent);
+  animation:scrollPulse 1.5s ease-in-out infinite;
+}
+@keyframes scrollPulse{0%,100%{opacity:1;transform:scaleY(1)}50%{opacity:.4;transform:scaleY(.6)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Floating stat chips ────────────────────────────────── */
+.stat-chips{
+  position:absolute;right:60px;top:50%;transform:translateY(-50%);
+  display:flex;flex-direction:column;gap:12px;
+  animation:fadeUp .8s .4s ease both;
+}
+.chip{
+  padding:10px 16px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(108,99,255,.2);border-radius:8px;
+  display:flex;align-items:center;gap:10px;font-size:.8rem;
+  backdrop-filter:blur(8px);
+}
+.chip-dot{width:8px;height:8px;border-radius:50%;animation:dotPulse 2s ease-in-out infinite}
+.chip-dot.green{background:var(--g1);box-shadow:0 0 8px var(--g1)}
+.chip-dot.blue{background:var(--g2);box-shadow:0 0 8px var(--g2);animation-delay:.5s}
+.chip-dot.pink{background:var(--a1);box-shadow:0 0 8px var(--a1);animation-delay:1s}
+@keyframes dotPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+
+/* ── Features grid ──────────────────────────────────────── */
+.features{padding:120px 48px;max-width:1200px;margin:0 auto}
+.section-title{
+  font-family:'Orbitron',sans-serif;font-size:clamp(1.5rem,3vw,2.5rem);
+  font-weight:700;text-align:center;margin-bottom:64px;
+  background:linear-gradient(135deg,#fff,var(--muted));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.section-title span{
+  background:linear-gradient(90deg,var(--p2),var(--a1));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.feat-card{
+  background:linear-gradient(135deg,rgba(13,8,32,.9),rgba(20,13,46,.9));
+  border:1px solid rgba(108,99,255,.15);border-radius:16px;padding:32px;
+  position:relative;overflow:hidden;
+  transition:transform .3s,border-color .3s,box-shadow .3s;
+  cursor:default;
+}
+.feat-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--p2),transparent);
+  opacity:0;transition:opacity .3s;
+}
+.feat-card:hover{
+  transform:translateY(-8px) scale(1.01);
+  border-color:rgba(108,99,255,.5);
+  box-shadow:0 20px 60px rgba(108,99,255,.2),inset 0 1px 0 rgba(108,99,255,.2);
+}
+.feat-card:hover::before{opacity:1}
+.feat-card:nth-child(2){border-color:rgba(255,101,132,.15)}
+.feat-card:nth-child(2):hover{border-color:rgba(255,101,132,.5);box-shadow:0 20px 60px rgba(255,101,132,.2)}
+.feat-card:nth-child(3){border-color:rgba(0,212,255,.15)}
+.feat-card:nth-child(3):hover{border-color:rgba(0,212,255,.5);box-shadow:0 20px 60px rgba(0,212,255,.2)}
+.feat-num{
+  font-family:'Orbitron',sans-serif;font-size:3.5rem;font-weight:900;
+  position:absolute;top:16px;right:24px;
+  background:linear-gradient(135deg,rgba(255,255,255,.06),transparent);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.feat-icon{font-size:2.2rem;margin-bottom:16px;display:block}
+.feat-card h3{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;color:var(--text)}
+.feat-card p{color:var(--muted);font-size:.9rem;line-height:1.7}
+.feat-tag{
+  display:inline-block;margin-top:16px;padding:3px 10px;
+  border-radius:4px;font-size:.7rem;letter-spacing:1px;text-transform:uppercase;
+}
+.tag-purple{background:rgba(108,99,255,.15);color:var(--p2);border:1px solid rgba(108,99,255,.3)}
+.tag-pink{background:rgba(255,101,132,.15);color:var(--a1);border:1px solid rgba(255,101,132,.3)}
+.tag-cyan{background:rgba(0,212,255,.1);color:var(--g2);border:1px solid rgba(0,212,255,.2)}
+
+/* ── Stats row ──────────────────────────────────────────── */
+.stats-row{
+  display:flex;flex-wrap:wrap;gap:1px;
+  background:rgba(108,99,255,.1);border:1px solid rgba(108,99,255,.15);
+  border-radius:16px;overflow:hidden;margin:80px 48px;
+}
+.stat{
+  flex:1;min-width:180px;padding:40px 32px;
+  background:var(--bg);text-align:center;
+  transition:background .3s;
+}
+.stat:hover{background:rgba(108,99,255,.05)}
+.stat-num{
+  font-family:'Orbitron',sans-serif;font-size:2.5rem;font-weight:900;
+  background:linear-gradient(135deg,var(--p2),var(--a1));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.stat-label{color:var(--muted);font-size:.8rem;letter-spacing:2px;text-transform:uppercase;margin-top:6px}
+
+/* ── Terminal demo ──────────────────────────────────────── */
+.terminal-wrap{padding:0 48px 120px;max-width:900px;margin:0 auto}
+.terminal{
+  background:rgba(5,3,15,.95);border:1px solid rgba(108,99,255,.3);
+  border-radius:12px;overflow:hidden;
+  box-shadow:0 0 80px rgba(108,99,255,.2);
+}
+.term-header{
+  padding:12px 16px;background:rgba(13,8,32,.8);
+  display:flex;align-items:center;gap:8px;
+  border-bottom:1px solid rgba(108,99,255,.15);
+}
+.term-dot{width:12px;height:12px;border-radius:50%}
+.term-dot.r{background:#ff5f56}.term-dot.y{background:#ffbd2e}.term-dot.g{background:#27c93f}
+.term-title{flex:1;text-align:center;font-size:.75rem;color:var(--muted);letter-spacing:2px}
+.term-body{padding:24px;font-family:'Courier New',monospace;font-size:.85rem;line-height:1.8}
+.term-line{display:flex;gap:12px;margin-bottom:4px}
+.term-prompt{color:var(--p2)}.term-cmd{color:var(--text)}
+.term-out{color:var(--muted);padding-left:20px;margin-bottom:4px}
+.term-out.green{color:var(--g1)}.term-out.cyan{color:var(--g2)}.term-out.pink{color:var(--a1)}
+.cursor{
+  display:inline-block;width:10px;height:1.1em;background:var(--p2);
+  vertical-align:middle;margin-left:4px;animation:blink .8s step-end infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── CTA ────────────────────────────────────────────────── */
+.cta-section{
+  padding:120px 40px;text-align:center;
+  background:radial-gradient(ellipse at center,rgba(108,99,255,.15) 0%,transparent 70%);
+}
+.cta-section h2{
+  font-family:'Orbitron',sans-serif;font-size:clamp(1.8rem,4vw,3.5rem);font-weight:900;
+  margin-bottom:20px;letter-spacing:2px;
+}
+.cta-section p{color:var(--muted);font-size:1.1rem;max-width:500px;margin:0 auto 40px}
+.cta-glow{
+  padding:18px 48px;font-family:'Orbitron',sans-serif;font-size:.85rem;font-weight:700;
+  letter-spacing:3px;text-transform:uppercase;
+  background:linear-gradient(135deg,var(--p1),var(--p2),var(--a1));
+  border:none;color:#fff;border-radius:8px;cursor:pointer;
+  box-shadow:0 0 40px rgba(108,99,255,.5),0 0 80px rgba(108,99,255,.2);
+  transition:all .3s;background-size:200% 100%;
+  animation:gradShift 3s ease infinite;
+}
+@keyframes gradShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+.cta-glow:hover{transform:translateY(-4px) scale(1.03);box-shadow:0 0 80px rgba(108,99,255,.7),0 0 160px rgba(255,101,132,.3)}
+
+/* ── Scanlines overlay ──────────────────────────────────── */
+.scanlines{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);
+  pointer-events:none;z-index:999;
+}
+</style>
+</head>
+<body>
+<canvas id="particles"></canvas>
+<div class="mesh"></div>
+<div class="scanlines"></div>
+
+<div class="content">
+  <!-- NAV -->
+  <nav>
+    <div class="logo">NANO AI</div>
+    <ul class="nav-links">
+      <li><a href="#">Learn</a></li>
+      <li><a href="#">Generate</a></li>
+      <li><a href="#">WebFetch</a></li>
+      <li><a href="#">About</a></li>
+    </ul>
+    <button class="nav-cta">Launch →</button>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="stat-chips">
+      <div class="chip"><span class="chip-dot green"></span>Claude API Active</div>
+      <div class="chip"><span class="chip-dot blue"></span>WebFetch Online</div>
+      <div class="chip"><span class="chip-dot pink"></span>All Languages</div>
+    </div>
+    <p class="hero-eyebrow">// The Future of Coding Education</p>
+    <h1 class="hero-title">
+      <span class="line1">NANO AI</span>
+      <span class="line2">Powered by</span>
+    </h1>
+    <h1 class="hero-title" style="margin-top:-20px">
+      <span class="hero-glitch" data-text="CLAUDE">CLAUDE</span>
+    </h1>
+    <p class="hero-sub">
+      The <em>smartest coding AI ever built</em>. Teaches every language,
+      generates production code, browses the web, and thinks like Claude.
+    </p>
+    <div class="hero-btns">
+      <button class="btn-primary">Get Started →</button>
+      <button class="btn-ghost">View Demo</button>
+    </div>
+    <div class="hero-scroll">
+      <span>Scroll</span>
+      <div class="scroll-line"></div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="features">
+    <h2 class="section-title">Everything you need to <span>master code</span></h2>
+    <div class="feat-grid">
+      <div class="feat-card">
+        <div class="feat-num">01</div>
+        <span class="feat-icon">🧠</span>
+        <h3>Claude-Powered Brain</h3>
+        <p>Every question routes through Claude, the world's most capable AI. Get accurate, nuanced answers to any coding question — no topic is off limits.</p>
+        <span class="feat-tag tag-purple">AI Engine</span>
+      </div>
+      <div class="feat-card">
+        <div class="feat-num">02</div>
+        <span class="feat-icon">⚡</span>
+        <h3>Instant Code Generator</h3>
+        <p>Generate complete, production-quality scripts instantly. 3D scenes, animated UIs, Roblox games, REST APIs, data pipelines — anything.</p>
+        <span class="feat-tag tag-pink">Code Gen</span>
+      </div>
+      <div class="feat-card">
+        <div class="feat-num">03</div>
+        <span class="feat-icon">🌐</span>
+        <h3>Real WebFetch</h3>
+        <p>Nano AI browses the internet. Search docs, fetch any URL, get real-time information from the web without leaving the terminal.</p>
+        <span class="feat-tag tag-cyan">Live Web</span>
+      </div>
+      <div class="feat-card">
+        <div class="feat-num">04</div>
+        <span class="feat-icon">🎯</span>
+        <h3>XP & Level System</h3>
+        <p>Earn XP through exercises and quizzes. Level up from Novice to Wizard. Track progress with persistent memory across every session.</p>
+        <span class="feat-tag tag-purple">Gamified</span>
+      </div>
+      <div class="feat-card">
+        <div class="feat-num">05</div>
+        <span class="feat-icon">📁</span>
+        <h3>File System Access</h3>
+        <p>Read, write, and analyze code files directly. Nano AI can inspect your project, understand your code, and suggest improvements.</p>
+        <span class="feat-tag tag-pink">File I/O</span>
+      </div>
+      <div class="feat-card">
+        <div class="feat-num">06</div>
+        <span class="feat-icon">🔄</span>
+        <h3>Persistent Memory</h3>
+        <p>Nano AI remembers you. Your name, preferred language, mastered topics, and total XP are saved and restored every session.</p>
+        <span class="feat-tag tag-cyan">Memory</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <div class="stats-row">
+    <div class="stat"><div class="stat-num" data-target="10">0</div><div class="stat-label">Languages</div></div>
+    <div class="stat"><div class="stat-num" data-target="14">0</div><div class="stat-label">CS Concepts</div></div>
+    <div class="stat"><div class="stat-num" data-target="16">0</div><div class="stat-label">Exercises</div></div>
+    <div class="stat"><div class="stat-num" data-target="7">0</div><div class="stat-label">XP Levels</div></div>
+    <div class="stat"><div class="stat-num" data-target="∞">0</div><div class="stat-label">Questions</div></div>
+  </div>
+
+  <!-- TERMINAL DEMO -->
+  <div class="terminal-wrap">
+    <div class="terminal">
+      <div class="term-header">
+        <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
+        <div class="term-title">NANO AI — TERMINAL</div>
+      </div>
+      <div class="term-body">
+        <div class="term-line"><span class="term-prompt">nano@ai</span><span style="color:#555">:~$</span><span class="term-cmd"> python -m ai_tutor</span></div>
+        <div class="term-out green">✦ FULL AI MODE  — Claude API active. Ask me literally anything.</div>
+        <div class="term-out"></div>
+        <div class="term-line"><span class="term-prompt">Nano AI ›</span><span class="term-cmd"> generate a 3D rotating sphere</span></div>
+        <div class="term-out cyan">⚡ NANO AI GENERATED — Three.js 3D Scene (sphere)</div>
+        <div class="term-out">  Language: html   Lines: 98</div>
+        <div class="term-out">  Saved to sphere.html</div>
+        <div class="term-out"></div>
+        <div class="term-line"><span class="term-prompt">Nano AI ›</span><span class="term-cmd"> what is the difference between TCP and UDP?</span></div>
+        <div class="term-out pink">  TCP (Transmission Control Protocol):</div>
+        <div class="term-out">  - Connection-oriented: establishes a handshake before sending data</div>
+        <div class="term-out">  - Reliable: guarantees delivery, ordering, and error-checking</div>
+        <div class="term-out">  - Slower due to overhead — used for HTTP, email, file transfers</div>
+        <div class="term-out"></div>
+        <div class="term-out pink">  UDP (User Datagram Protocol):</div>
+        <div class="term-out">  - Connectionless: fire-and-forget, no handshake</div>
+        <div class="term-out">  - Faster, no delivery guarantee — used for video, gaming, DNS</div>
+        <div class="term-out"></div>
+        <div class="term-line"><span class="term-prompt">Nano AI ›</span><span class="cursor"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <h2>Ready to become a <br>coding <span style="background:linear-gradient(90deg,#6c63ff,#ff6584);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">wizard?</span></h2>
+    <p>One command. Infinite knowledge. Powered by the world's best AI.</p>
+    <button class="cta-glow">python -m ai_tutor</button>
+  </section>
+</div>
+
+<script>
+// ── Particle canvas ────────────────────────────────────────────
+const canvas = document.getElementById('particles');
+const ctx    = canvas.getContext('2d');
+let W = canvas.width  = innerWidth;
+let H = canvas.height = innerHeight;
+let mouse = { x: W/2, y: H/2 };
+
+const COLORS = ['#6c63ff','#ff6584','#00d4ff','#00ff88','#ffd700'];
+const particles = Array.from({length: 120}, () => ({
+  x: Math.random()*W, y: Math.random()*H,
+  vx: (Math.random()-.5)*.4, vy: (Math.random()-.5)*.4,
+  r: Math.random()*2+.5,
+  c: COLORS[Math.floor(Math.random()*COLORS.length)],
+  o: Math.random()*.6+.2,
+}));
+
+function drawParticles() {
+  ctx.clearRect(0,0,W,H);
+  // Draw connections
+  for (let i=0; i<particles.length; i++) {
+    for (let j=i+1; j<particles.length; j++) {
+      const dx = particles[i].x-particles[j].x;
+      const dy = particles[i].y-particles[j].y;
+      const d  = Math.sqrt(dx*dx+dy*dy);
+      if (d < 120) {
+        ctx.beginPath();
+        ctx.strokeStyle = `rgba(108,99,255,${.15*(1-d/120)})`;
+        ctx.lineWidth   = .5;
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.stroke();
+      }
+    }
+  }
+  // Draw dots
+  for (const p of particles) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    ctx.fillStyle = p.c + Math.floor(p.o*255).toString(16).padStart(2,'0');
+    ctx.fill();
+  }
+}
+
+function updateParticles() {
+  for (const p of particles) {
+    p.x += p.vx; p.y += p.vy;
+    // mouse repulsion
+    const dx = mouse.x-p.x, dy = mouse.y-p.y;
+    const d  = Math.sqrt(dx*dx+dy*dy);
+    if (d < 100) { p.vx -= dx/d*.05; p.vy -= dy/d*.05; }
+    // bounds
+    if (p.x<0||p.x>W) p.vx*=-1;
+    if (p.y<0||p.y>H) p.vy*=-1;
+    // speed limit
+    const spd = Math.sqrt(p.vx*p.vx+p.vy*p.vy);
+    if (spd > 1.2) { p.vx = p.vx/spd*1.2; p.vy = p.vy/spd*1.2; }
+  }
+}
+
+(function loop(){
+  updateParticles();
+  drawParticles();
+  requestAnimationFrame(loop);
+})();
+
+window.addEventListener('mousemove', e => { mouse.x=e.clientX; mouse.y=e.clientY; });
+window.addEventListener('resize',    ()=>{ W=canvas.width=innerWidth; H=canvas.height=innerHeight; });
+
+// ── Counter animation ──────────────────────────────────────────
+const counters = document.querySelectorAll('[data-target]');
+const io = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    const el = entry.target;
+    const target = el.dataset.target;
+    if (target === '∞') { el.textContent='∞'; return; }
+    let current = 0;
+    const end = parseInt(target);
+    const step = end / 40;
+    const timer = setInterval(()=>{
+      current = Math.min(current+step, end);
+      el.textContent = Math.floor(current) + (current>=end?'+':'');
+      if (current >= end) clearInterval(timer);
+    }, 40);
+    io.unobserve(el);
+  });
+}, { threshold: .5 });
+counters.forEach(c => io.observe(c));
+
+// ── 3D tilt effect on feature cards ───────────────────────────
+document.querySelectorAll('.feat-card').forEach(card => {
+  card.addEventListener('mousemove', e => {
+    const rect = card.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width  - .5;
+    const y = (e.clientY - rect.top)  / rect.height - .5;
+    card.style.transform = `translateY(-8px) scale(1.01) perspective(600px) rotateY(${x*10}deg) rotateX(${-y*10}deg)`;
+  });
+  card.addEventListener('mouseleave', () => {
+    card.style.transform = '';
+  });
+});
+
+// ── Typing animation for terminal ─────────────────────────────
+// cursor already handled by CSS
+</script>
+</body>
+</html>"""
+
+
+def _crazy_cyberpunk() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>NANO AI — Cyberpunk</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:#050008;color:#e0d0ff;
+  font-family:'Orbitron',monospace;min-height:100vh;
+  overflow-x:hidden;
+}
+/* Neon grid floor */
+.grid-bg{
+  position:fixed;bottom:0;left:0;width:100%;height:60vh;
+  background:
+    linear-gradient(rgba(255,0,255,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,0,255,.03) 1px,transparent 1px);
+  background-size:60px 60px;
+  transform:perspective(400px) rotateX(60deg);
+  transform-origin:bottom;pointer-events:none;z-index:0;
+}
+/* Scanlines */
+.scan{
+  position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:999;
+  background:repeating-linear-gradient(0deg,rgba(0,255,255,.02) 0,rgba(0,255,255,.02) 1px,transparent 1px,transparent 3px);
+}
+/* Neon title */
+.neon-title{
+  font-size:clamp(3rem,10vw,8rem);font-weight:900;text-align:center;
+  padding:120px 40px 20px;position:relative;z-index:1;
+  color:#fff;
+  text-shadow:
+    0 0 7px #fff,0 0 10px #fff,0 0 21px #fff,
+    0 0 42px #bc13fe,0 0 82px #bc13fe,
+    0 0 92px #bc13fe,0 0 102px #bc13fe;
+  animation:neonFlicker 5s infinite;
+}
+@keyframes neonFlicker{
+  0%,18%,22%,25%,53%,57%,100%{
+    text-shadow:0 0 7px #fff,0 0 10px #fff,0 0 21px #fff,
+      0 0 42px #bc13fe,0 0 82px #bc13fe,0 0 92px #bc13fe,0 0 102px #bc13fe;
+  }
+  20%,24%,55%{text-shadow:none}
+}
+.neon-sub{
+  text-align:center;font-size:clamp(.6rem,1.5vw,1rem);
+  letter-spacing:6px;color:#00ffff;
+  text-shadow:0 0 10px #00ffff,0 0 30px #00ffff;
+  position:relative;z-index:1;margin-bottom:80px;
+  animation:subPulse 2s ease-in-out infinite;
+}
+@keyframes subPulse{0%,100%{opacity:1}50%{opacity:.6}}
+/* Neon cards */
+.cards{display:flex;flex-wrap:wrap;gap:24px;justify-content:center;padding:0 40px 80px;position:relative;z-index:1}
+.neon-card{
+  width:260px;padding:28px;
+  background:rgba(5,0,8,.85);
+  position:relative;cursor:pointer;transition:transform .3s;
+}
+.neon-card::before,.neon-card::after{
+  content:'';position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;
+}
+.neon-card::before{
+  border:1px solid #bc13fe;
+  box-shadow:inset 0 0 20px rgba(188,19,254,.2),0 0 20px rgba(188,19,254,.3);
+}
+.neon-card:nth-child(2)::before{border-color:#00ffff;box-shadow:inset 0 0 20px rgba(0,255,255,.2),0 0 20px rgba(0,255,255,.3)}
+.neon-card:nth-child(3)::before{border-color:#ff0080;box-shadow:inset 0 0 20px rgba(255,0,128,.2),0 0 20px rgba(255,0,128,.3)}
+.neon-card:hover{transform:translateY(-8px) scale(1.02)}
+.card-icon{font-size:2rem;margin-bottom:12px}
+.card-title{font-size:.8rem;letter-spacing:3px;text-transform:uppercase;margin-bottom:10px;color:#bc13fe;text-shadow:0 0 8px #bc13fe}
+.neon-card:nth-child(2) .card-title{color:#00ffff;text-shadow:0 0 8px #00ffff}
+.neon-card:nth-child(3) .card-title{color:#ff0080;text-shadow:0 0 8px #ff0080}
+.card-text{font-size:.75rem;line-height:1.7;color:rgba(224,208,255,.6);font-family:'Courier New',monospace}
+/* Neon line divider */
+.neon-line{
+  width:80%;max-width:600px;height:1px;margin:0 auto 60px;
+  background:linear-gradient(90deg,transparent,#bc13fe,#00ffff,#ff0080,transparent);
+  position:relative;z-index:1;
+  box-shadow:0 0 10px #bc13fe,0 0 20px #00ffff;
+  animation:lineScan 3s ease-in-out infinite;
+}
+@keyframes lineScan{0%{opacity:.4}50%{opacity:1}100%{opacity:.4}}
+/* CTA button */
+.neon-btn{
+  display:block;width:fit-content;margin:0 auto 80px;
+  padding:16px 48px;font-size:.85rem;letter-spacing:4px;text-transform:uppercase;
+  background:transparent;
+  border:1px solid #00ffff;color:#00ffff;cursor:pointer;
+  position:relative;z-index:1;transition:all .3s;
+  text-shadow:0 0 10px #00ffff;box-shadow:0 0 20px rgba(0,255,255,.3);
+}
+.neon-btn:hover{
+  background:rgba(0,255,255,.1);box-shadow:0 0 40px rgba(0,255,255,.6);
+  transform:translateY(-3px);
+}
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<div class="scan"></div>
+<h1 class="neon-title">NANO AI</h1>
+<p class="neon-sub">// POWERED BY CLAUDE — FULL AI MODE ONLINE</p>
+<div class="neon-line"></div>
+<div class="cards">
+  <div class="neon-card">
+    <div class="card-icon">🧠</div>
+    <div class="card-title">AI Brain</div>
+    <div class="card-text">Claude API integration. Answers any question. No topic out of bounds. Full conversation history.</div>
+  </div>
+  <div class="neon-card">
+    <div class="card-icon">⚡</div>
+    <div class="card-title">Code Gen</div>
+    <div class="card-text">Generate 3D scenes, UIs, Roblox scripts, APIs, scrapers. Production-ready in seconds.</div>
+  </div>
+  <div class="neon-card">
+    <div class="card-icon">🌐</div>
+    <div class="card-title">WebFetch</div>
+    <div class="card-text">Real internet access. DuckDuckGo search. Fetch any URL. Live documentation retrieval.</div>
+  </div>
+</div>
+<button class="neon-btn">[ ENTER NANO AI ]</button>
+</body>
+</html>"""
+
+
+def _crazy_glitch() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>NANO AI — Matrix Glitch</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;color:#0f0;font-family:'Share Tech Mono',monospace;overflow:hidden;height:100vh}
+canvas#matrix{position:fixed;top:0;left:0;z-index:0}
+.overlay{
+  position:relative;z-index:1;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:100vh;text-align:center;padding:40px;
+}
+.glitch-title{
+  font-size:clamp(2.5rem,8vw,6rem);font-weight:bold;
+  color:#0f0;text-shadow:0 0 10px #0f0;
+  position:relative;letter-spacing:8px;
+  animation:glitchMain 4s infinite;
+}
+.glitch-title::before{
+  content:'NANO AI';position:absolute;left:3px;top:0;width:100%;
+  color:#0f0;text-shadow:-2px 0 #ff0080;clip-path:polygon(0 30%,100% 30%,100% 50%,0 50%);
+  animation:glitchSlice1 3s infinite;
+}
+.glitch-title::after{
+  content:'NANO AI';position:absolute;left:-3px;top:0;width:100%;
+  color:#0f0;text-shadow:2px 0 #00ffff;clip-path:polygon(0 60%,100% 60%,100% 80%,0 80%);
+  animation:glitchSlice2 3s infinite;
+}
+@keyframes glitchMain{0%,89%,100%{filter:none}90%{filter:hue-rotate(180deg) brightness(1.5)}93%{filter:invert(.3)}}
+@keyframes glitchSlice1{0%,90%,100%{transform:translate(0)}91%{transform:translate(-6px,2px)}93%{transform:translate(4px,-1px)}}
+@keyframes glitchSlice2{0%,90%,100%{transform:translate(0)}92%{transform:translate(6px,1px)}94%{transform:translate(-3px,2px)}}
+.sub{
+  margin-top:16px;font-size:clamp(.7rem,1.5vw,.95rem);
+  letter-spacing:4px;color:#0a0;
+  text-shadow:0 0 8px #0f0;
+  animation:typeSub 3s steps(40) both;overflow:hidden;white-space:nowrap;
+}
+@keyframes typeSub{from{width:0}to{width:100%}}
+.stats{margin-top:48px;display:flex;gap:32px;flex-wrap:wrap;justify-content:center}
+.stat{border:1px solid #0a0;padding:12px 20px;text-shadow:0 0 6px #0f0}
+.stat-n{font-size:1.8rem;color:#0f0}
+.stat-l{font-size:.65rem;letter-spacing:2px;color:#0a0;margin-top:4px}
+.cmd{
+  margin-top:48px;font-size:.9rem;padding:12px 24px;
+  background:rgba(0,255,0,.05);border:1px solid #0a0;
+  color:#0f0;text-shadow:0 0 8px #0f0;cursor:pointer;
+  transition:all .2s;letter-spacing:2px;
+}
+.cmd:hover{background:rgba(0,255,0,.15);box-shadow:0 0 20px rgba(0,255,0,.3)}
+</style>
+</head>
+<body>
+<canvas id="matrix"></canvas>
+<div class="overlay">
+  <h1 class="glitch-title">NANO AI</h1>
+  <p class="sub">&gt; POWERED_BY_CLAUDE // KNOWS_EVERYTHING // FULLY_ONLINE</p>
+  <div class="stats">
+    <div class="stat"><div class="stat-n">10+</div><div class="stat-l">LANGUAGES</div></div>
+    <div class="stat"><div class="stat-n">∞</div><div class="stat-l">ANSWERS</div></div>
+    <div class="stat"><div class="stat-n">100%</div><div class="stat-l">OFFLINE OK</div></div>
+    <div class="stat"><div class="stat-n">0ms</div><div class="stat-l">DELAY*</div></div>
+  </div>
+  <button class="cmd">> python -m ai_tutor _</button>
+</div>
+<script>
+const c = document.getElementById('matrix');
+const x = c.getContext('2d');
+c.width = innerWidth; c.height = innerHeight;
+const cols = Math.floor(c.width/16)+1;
+const drops = Array(cols).fill(1);
+const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF';
+function draw(){
+  x.fillStyle='rgba(0,0,0,.05)';
+  x.fillRect(0,0,c.width,c.height);
+  x.fillStyle='#0f0';x.font='16px Share Tech Mono';
+  for(let i=0;i<drops.length;i++){
+    const t=chars[Math.floor(Math.random()*chars.length)];
+    x.fillText(t,i*16,drops[i]*16);
+    if(drops[i]*16>c.height&&Math.random()>.975) drops[i]=0;
+    drops[i]++;
+  }
+}
+setInterval(draw,33);
+window.addEventListener('resize',()=>{c.width=innerWidth;c.height=innerHeight});
+</script>
+</body>
+</html>"""
+
+
+def _crazy_galaxy() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>NANO AI — Cosmic Galaxy</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#000005;overflow:hidden;height:100vh;font-family:'Orbitron',sans-serif}
+canvas#galaxy{position:fixed;top:0;left:0}
+.ui{
+  position:relative;z-index:1;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:100vh;text-align:center;padding:40px;
+}
+.cosmic-title{
+  font-size:clamp(3rem,8vw,6rem);font-weight:900;
+  background:linear-gradient(135deg,#fff 0%,#c77dff 30%,#7b2ff7 50%,#4cc9f0 70%,#fff 100%);
+  background-size:200% 200%;
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  letter-spacing:6px;animation:cosmicShimmer 4s ease infinite;
+  filter:drop-shadow(0 0 20px rgba(124,45,247,.8));
+}
+@keyframes cosmicShimmer{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+.cosmic-sub{
+  color:rgba(200,180,255,.7);font-size:clamp(.6rem,1.2vw,.85rem);
+  letter-spacing:4px;margin-top:12px;
+  animation:fadeFloat 3s ease-in-out infinite;
+}
+@keyframes fadeFloat{0%,100%{opacity:.7;transform:translateY(0)}50%{opacity:1;transform:translateY(-4px)}}
+.orbit-ring{
+  position:relative;width:300px;height:300px;margin:40px 0;
+  animation:orbitSpin 20s linear infinite;
+}
+.ring{
+  position:absolute;top:50%;left:50%;
+  border-radius:50%;border:1px solid;
+  transform:translate(-50%,-50%);
+}
+.ring1{width:120px;height:120px;border-color:rgba(124,45,247,.6);animation:ringPulse 2s ease-in-out infinite}
+.ring2{width:180px;height:180px;border-color:rgba(76,201,240,.3);animation:ringPulse 2s .5s ease-in-out infinite}
+.ring3{width:240px;height:240px;border-color:rgba(199,125,255,.2);animation:ringPulse 2s 1s ease-in-out infinite}
+.ring4{width:300px;height:300px;border-color:rgba(124,45,247,.1);animation:ringPulse 2s 1.5s ease-in-out infinite}
+.ring-center{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:40px;height:40px;border-radius:50%;
+  background:radial-gradient(circle,#fff,#7b2ff7);
+  box-shadow:0 0 20px #7b2ff7,0 0 60px rgba(124,45,247,.5);
+  font-size:1.2rem;display:flex;align-items:center;justify-content:center;
+}
+.orbit-planet{
+  position:absolute;width:12px;height:12px;border-radius:50%;
+  background:radial-gradient(circle,#4cc9f0,#2196f3);
+  box-shadow:0 0 10px #4cc9f0;
+  top:calc(50% - 6px);left:calc(50% + 84px);
+  animation:orbitPlanet 6s linear infinite;transform-origin:-84px 6px;
+}
+.orbit-planet2{
+  position:absolute;width:8px;height:8px;border-radius:50%;
+  background:radial-gradient(circle,#ff6584,#ff0080);
+  box-shadow:0 0 8px #ff6584;
+  top:calc(50% - 4px);left:calc(50% + 114px);
+  animation:orbitPlanet 10s linear infinite reverse;transform-origin:-114px 4px;
+}
+@keyframes orbitSpin{to{transform:rotate(360deg)}}
+@keyframes orbitPlanet{to{transform:rotate(360deg)}}
+@keyframes ringPulse{0%,100%{opacity:.6}50%{opacity:1}}
+.cta-cosmic{
+  padding:14px 40px;
+  background:linear-gradient(135deg,rgba(124,45,247,.3),rgba(76,201,240,.2));
+  border:1px solid rgba(124,45,247,.6);color:#c77dff;
+  font-family:'Orbitron',sans-serif;font-size:.75rem;
+  letter-spacing:3px;text-transform:uppercase;cursor:pointer;border-radius:4px;
+  box-shadow:0 0 20px rgba(124,45,247,.3),inset 0 0 20px rgba(124,45,247,.1);
+  transition:all .3s;
+}
+.cta-cosmic:hover{box-shadow:0 0 40px rgba(124,45,247,.6);transform:translateY(-3px)}
+</style>
+</head>
+<body>
+<canvas id="galaxy"></canvas>
+<div class="ui">
+  <h1 class="cosmic-title">NANO AI</h1>
+  <p class="cosmic-sub">POWERED BY CLAUDE  ·  TRAVERSING THE CODE UNIVERSE</p>
+  <div class="orbit-ring">
+    <div class="ring ring1"></div>
+    <div class="ring ring2"></div>
+    <div class="ring ring3"></div>
+    <div class="ring ring4"></div>
+    <div class="ring-center">🧠</div>
+    <div class="orbit-planet"></div>
+    <div class="orbit-planet2"></div>
+  </div>
+  <button class="cta-cosmic">[ LAUNCH NANO AI ]</button>
+</div>
+<script>
+const c = document.getElementById('galaxy');
+const ctx = c.getContext('2d');
+c.width = innerWidth; c.height = innerHeight;
+const stars = Array.from({length:300},()=>({
+  x:Math.random()*c.width, y:Math.random()*c.height,
+  r:Math.random()*1.5+.3,
+  o:Math.random()*.8+.2,
+  p:Math.random()*Math.PI*2,
+  sp:Math.random()*.02+.005,
+}));
+const nebula = Array.from({length:6},(_,i)=>({
+  x:Math.random()*c.width, y:Math.random()*c.height,
+  r:Math.random()*200+100,
+  hue: [270,200,320,180,290,240][i],
+  o:Math.random()*.08+.03,
+}));
+function draw(){
+  ctx.fillStyle='rgba(0,0,5,.15)';ctx.fillRect(0,0,c.width,c.height);
+  // Nebula
+  for(const n of nebula){
+    const g=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,n.r);
+    g.addColorStop(0,`hsla(${n.hue},80%,60%,${n.o})`);
+    g.addColorStop(1,'transparent');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,Math.PI*2);ctx.fill();
+  }
+  // Stars
+  const t=Date.now()/1000;
+  for(const s of stars){
+    const o=s.o*(0.5+0.5*Math.sin(t*s.sp*10+s.p));
+    ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,255,255,${o})`;ctx.fill();
+  }
+}
+setInterval(draw,30);
+window.addEventListener('resize',()=>{c.width=innerWidth;c.height=innerHeight});
+</script>
+</body>
+</html>"""
 
 
 # ─── Three.js 3D ─────────────────────────────────────────────────────────────
@@ -1955,6 +2902,678 @@ COMMIT;
 
 # ─── General fallback ─────────────────────────────────────────────────────────
 
+def _gen_react_shadcn(hint: str) -> str:
+    if "dashboard" in hint:
+        return _wrap_output("React + Tailwind Dashboard (shadcn/ui style)", "html", _react_dashboard())
+    if "landing" in hint or "hero" in hint:
+        return _wrap_output("React + Tailwind Landing Page", "html", _react_landing())
+    if "card" in hint:
+        return _wrap_output("React shadcn/ui Card Components", "html", _react_cards())
+    return _wrap_output("React + Tailwind + shadcn/ui App (v0 style)", "html", _react_app())
+
+
+def _react_app() -> str:
+    return """<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nano AI — React App</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          border: 'hsl(240 3.7% 15.9%)',
+          input:  'hsl(240 3.7% 15.9%)',
+          ring:   'hsl(240 4.9% 83.9%)',
+          background: 'hsl(240 10% 3.9%)',
+          foreground:  'hsl(0 0% 98%)',
+          primary:    { DEFAULT:'hsl(0 0% 98%)',   foreground:'hsl(240 5.9% 10%)' },
+          secondary:  { DEFAULT:'hsl(240 3.7% 15.9%)', foreground:'hsl(0 0% 98%)' },
+          muted:      { DEFAULT:'hsl(240 3.7% 15.9%)', foreground:'hsl(240 5% 64.9%)' },
+          accent:     { DEFAULT:'hsl(240 3.7% 15.9%)', foreground:'hsl(0 0% 98%)' },
+          card:       { DEFAULT:'hsl(240 10% 3.9%)',   foreground:'hsl(0 0% 98%)' },
+        },
+        borderRadius: { lg:'0.5rem', md:'calc(0.5rem - 2px)', sm:'calc(0.5rem - 4px)' },
+        animation: {
+          'fade-in':    'fadeIn .4s ease both',
+          'slide-up':   'slideUp .5s ease both',
+          'slide-right':'slideRight .4s ease both',
+          'pulse-slow': 'pulse 3s infinite',
+        },
+        keyframes: {
+          fadeIn:   { from:{opacity:'0'},            to:{opacity:'1'} },
+          slideUp:  { from:{opacity:'0',transform:'translateY(16px)'}, to:{opacity:'1',transform:'translateY(0)'} },
+          slideRight:{ from:{opacity:'0',transform:'translateX(-16px)'},to:{opacity:'1',transform:'translateX(0)'} },
+        },
+      }
+    }
+  }
+</script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style>
+  body { background: hsl(240 10% 3.9%); margin: 0; font-family: 'Inter', system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  .animate-delay-1 { animation-delay: .1s; }
+  .animate-delay-2 { animation-delay: .2s; }
+  .animate-delay-3 { animation-delay: .3s; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ── shadcn/ui-style primitives ──────────────────────────────────────────────
+
+function Button({ children, variant = 'default', size = 'default', className = '', onClick, disabled }) {
+  const base = 'inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50';
+  const variants = {
+    default:   'bg-primary text-primary-foreground shadow hover:bg-primary/90',
+    secondary: 'bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80',
+    outline:   'border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground',
+    ghost:     'hover:bg-accent hover:text-accent-foreground',
+    destructive:'bg-red-500/90 text-white shadow-sm hover:bg-red-500',
+  };
+  const sizes = { default:'h-9 px-4 py-2', sm:'h-8 rounded-md px-3 text-xs', lg:'h-10 rounded-md px-8', icon:'h-9 w-9' };
+  return (
+    <button
+      disabled={disabled}
+      onClick={onClick}
+      className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
+    >{children}</button>
+  );
+}
+
+function Card({ children, className = '' }) {
+  return (
+    <div className={`rounded-xl border border-white/10 bg-card text-card-foreground shadow-sm ${className}`}>
+      {children}
+    </div>
+  );
+}
+function CardHeader({ children, className = '' }) {
+  return <div className={`flex flex-col space-y-1.5 p-6 ${className}`}>{children}</div>;
+}
+function CardTitle({ children, className = '' }) {
+  return <h3 className={`font-semibold leading-none tracking-tight text-foreground ${className}`}>{children}</h3>;
+}
+function CardDescription({ children }) {
+  return <p className="text-sm text-muted-foreground">{children}</p>;
+}
+function CardContent({ children, className = '' }) {
+  return <div className={`p-6 pt-0 ${className}`}>{children}</div>;
+}
+
+function Badge({ children, variant = 'default' }) {
+  const base = 'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors';
+  const v = {
+    default:     'border-transparent bg-primary text-primary-foreground',
+    secondary:   'border-transparent bg-secondary text-secondary-foreground',
+    destructive: 'border-transparent bg-red-500/20 text-red-400 border-red-500/30',
+    success:     'border-transparent bg-green-500/20 text-green-400 border-green-500/30',
+    outline:     'text-foreground border-white/20',
+  };
+  return <span className={`${base} ${v[variant]}`}>{children}</span>;
+}
+
+function Separator({ className = '' }) {
+  return <div className={`shrink-0 bg-border h-px w-full ${className}`} />;
+}
+
+// ── Animated counter ────────────────────────────────────────────────────────
+function AnimatedNumber({ target, duration = 1200 }) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    let start = null;
+    const step = (ts) => {
+      if (!start) start = ts;
+      const prog = Math.min((ts - start) / duration, 1);
+      setVal(Math.floor(prog * target));
+      if (prog < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, [target]);
+  return <>{val.toLocaleString()}</>;
+}
+
+// ── Framer-Motion-style entrance wrapper ─────────────────────────────────
+function Motion({ children, delay = 0, className = '' }) {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), delay);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div
+      ref={ref}
+      style={{ transition: `opacity .5s ${delay}ms ease, transform .5s ${delay}ms ease`,
+               opacity: visible ? 1 : 0,
+               transform: visible ? 'translateY(0)' : 'translateY(20px)' }}
+      className={className}
+    >{children}</div>
+  );
+}
+
+// ── Icon helper (Lucide) ─────────────────────────────────────────────────
+function Icon({ name, size = 16, className = '' }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current && window.lucide) {
+      ref.current.innerHTML = '';
+      const svg = window.lucide.createElement(name);
+      if (svg) { svg.setAttribute('width', size); svg.setAttribute('height', size); ref.current.appendChild(svg); }
+    }
+  }, [name, size]);
+  return <span ref={ref} className={`inline-flex items-center justify-center ${className}`} />;
+}
+
+// ── Stats card ────────────────────────────────────────────────────────────
+function StatCard({ label, value, icon, change, delay }) {
+  return (
+    <Motion delay={delay}>
+      <Card className="hover:border-white/20 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-white/5">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
+          <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center">
+            <Icon name={icon} size={15} className="text-foreground/70" />
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold text-foreground">
+            <AnimatedNumber target={value} />
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            <span className="text-green-400">+{change}%</span> from last month
+          </p>
+        </CardContent>
+      </Card>
+    </Motion>
+  );
+}
+
+// ── Activity feed ─────────────────────────────────────────────────────────
+const ACTIVITY = [
+  { user: 'Alice Chen',   action: 'deployed', target: 'v2.4.1',   time: '2m ago',  badge: 'success' },
+  { user: 'Bob Nakamura', action: 'opened PR', target: '#142',    time: '8m ago',  badge: 'default' },
+  { user: 'Cleo Santos',  action: 'reviewed', target: 'API docs', time: '15m ago', badge: 'outline' },
+  { user: 'Dan Osei',     action: 'closed',   target: 'Issue #89',time: '1h ago',  badge: 'destructive' },
+  { user: 'Ena Park',     action: 'merged',   target: 'feat/auth', time: '2h ago', badge: 'success' },
+];
+
+function ActivityRow({ item, delay }) {
+  return (
+    <Motion delay={delay}>
+      <div className="flex items-center gap-3 py-3">
+        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-violet-500/30 to-fuchsia-500/30 border border-white/10 flex items-center justify-center text-xs font-semibold text-foreground">
+          {item.user[0]}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-foreground truncate">
+            <span className="font-medium">{item.user}</span>
+            <span className="text-muted-foreground mx-1">{item.action}</span>
+            <span className="font-medium">{item.target}</span>
+          </p>
+          <p className="text-xs text-muted-foreground">{item.time}</p>
+        </div>
+        <Badge variant={item.badge}>{item.action}</Badge>
+      </div>
+    </Motion>
+  );
+}
+
+// ── Nav ───────────────────────────────────────────────────────────────────
+function Nav({ active, setActive }) {
+  const tabs = [
+    { id: 'overview',  label: 'Overview',  icon: 'layout-dashboard' },
+    { id: 'projects',  label: 'Projects',  icon: 'folder-open' },
+    { id: 'analytics', label: 'Analytics', icon: 'bar-chart-2' },
+    { id: 'settings',  label: 'Settings',  icon: 'settings' },
+  ];
+  return (
+    <nav className="fixed left-0 top-0 h-full w-56 border-r border-border bg-background/95 backdrop-blur flex flex-col p-4 gap-1 z-40">
+      <div className="mb-6 px-2 py-1">
+        <span className="text-lg font-bold tracking-tight text-foreground">nano</span>
+        <span className="text-lg font-bold tracking-tight text-violet-400">ai</span>
+        <span className="ml-2 text-xs text-muted-foreground font-normal">dashboard</span>
+      </div>
+      {tabs.map(t => (
+        <button
+          key={t.id}
+          onClick={() => setActive(t.id)}
+          className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full text-left ${
+            active === t.id
+              ? 'bg-secondary text-foreground'
+              : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
+          }`}
+        >
+          <Icon name={t.icon} size={15} />
+          {t.label}
+        </button>
+      ))}
+      <div className="mt-auto">
+        <Separator className="mb-4" />
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-secondary/50">
+          <div className="h-7 w-7 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-xs font-bold text-white">N</div>
+          <div>
+            <p className="text-xs font-medium text-foreground">Nano AI</p>
+            <p className="text-xs text-muted-foreground">claude-sonnet-4-6</p>
+          </div>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+// ── Overview page ─────────────────────────────────────────────────────────
+function Overview() {
+  const stats = [
+    { label: 'Total Requests', value: 48291, icon: 'zap',       change: 12.5, delay: 0   },
+    { label: 'Active Users',   value: 2847,  icon: 'users',     change: 8.1,  delay: 80  },
+    { label: 'Code Generated', value: 15032, icon: 'code-2',    change: 23.4, delay: 160 },
+    { label: 'Avg Response ms',value: 342,   icon: 'timer',     change: 4.2,  delay: 240 },
+  ];
+  return (
+    <div className="space-y-6">
+      <Motion delay={0}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Overview</h1>
+            <p className="text-muted-foreground text-sm">Welcome back — here's what's happening.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm"><Icon name="calendar" size={14} className="mr-1" />Jun 2025</Button>
+            <Button size="sm"><Icon name="plus" size={14} className="mr-1" />New Project</Button>
+          </div>
+        </div>
+      </Motion>
+
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        {stats.map(s => <StatCard key={s.label} {...s} />)}
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Motion delay={100} className="col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Activity</CardTitle>
+              <CardDescription>Latest events across your projects</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="divide-y divide-border">
+                {ACTIVITY.map((a, i) => <ActivityRow key={i} item={a} delay={i * 60} />)}
+              </div>
+            </CardContent>
+          </Card>
+        </Motion>
+
+        <Motion delay={200}>
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Actions</CardTitle>
+              <CardDescription>Jump right in</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              {[
+                { label: 'Generate UI',   icon: 'sparkles',    variant: 'default' },
+                { label: 'Ask Claude',    icon: 'message-square', variant: 'secondary' },
+                { label: 'Run Exercise',  icon: 'play',        variant: 'outline' },
+                { label: 'View Docs',     icon: 'book-open',   variant: 'ghost' },
+              ].map(a => (
+                <Button key={a.label} variant={a.variant} className="w-full justify-start gap-2">
+                  <Icon name={a.icon} size={14} />
+                  {a.label}
+                </Button>
+              ))}
+            </CardContent>
+          </Card>
+        </Motion>
+      </div>
+    </div>
+  );
+}
+
+// ── Root App ──────────────────────────────────────────────────────────────
+function App() {
+  const [active, setActive] = useState('overview');
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <Nav active={active} setActive={setActive} />
+      <main className="ml-56 p-8 min-h-screen">
+        {active === 'overview' && <Overview />}
+        {active !== 'overview' && (
+          <Motion delay={0}>
+            <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground">
+              <Icon name="construction" size={40} className="opacity-30" />
+              <p className="text-sm">"{active}" page — coming soon</p>
+              <Button variant="outline" size="sm" onClick={() => setActive('overview')}>
+                Back to Overview
+              </Button>
+            </div>
+          </Motion>
+        )}
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>"""
+
+
+def _react_dashboard() -> str:
+    return _react_app()
+
+
+def _react_landing() -> str:
+    return """<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nano AI — React Landing</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode:'class',
+    theme:{extend:{
+      colors:{
+        border:'hsl(240 3.7% 15.9%)',
+        background:'hsl(240 10% 3.9%)',
+        foreground:'hsl(0 0% 98%)',
+        muted:{DEFAULT:'hsl(240 3.7% 15.9%)',foreground:'hsl(240 5% 64.9%)'},
+        card:{DEFAULT:'hsl(240 10% 3.9%)',foreground:'hsl(0 0% 98%)'},
+      }
+    }}
+  }
+</script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style>body{background:hsl(240 10% 3.9%);margin:0;font-family:'Inter',system-ui,sans-serif}*{box-sizing:border-box}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+function Icon({ name, size=16, className='' }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current && window.lucide) {
+      ref.current.innerHTML = '';
+      const svg = window.lucide.createElement(name);
+      if (svg) { svg.setAttribute('width',size); svg.setAttribute('height',size); ref.current.appendChild(svg); }
+    }
+  }, [name, size]);
+  return <span ref={ref} className={`inline-flex items-center justify-center ${className}`} />;
+}
+
+function Motion({ children, delay=0, y=20 }) {
+  const [v,setV] = useState(false);
+  useEffect(() => { const t=setTimeout(()=>setV(true),delay); return ()=>clearTimeout(t); }, []);
+  return (
+    <div style={{transition:`opacity .6s ${delay}ms ease, transform .6s ${delay}ms ease`,
+                  opacity:v?1:0,transform:v?'none':`translateY(${y}px)`}}>
+      {children}
+    </div>
+  );
+}
+
+function GradientText({ children, className='' }) {
+  return (
+    <span className={`bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400 bg-clip-text text-transparent ${className}`}>
+      {children}
+    </span>
+  );
+}
+
+const FEATURES = [
+  { icon:'brain',    title:'Claude-Powered',   desc:'Every answer backed by Claude claude-sonnet-4-6 — the world\'s most capable AI.' },
+  { icon:'code-2',   title:'Any Language',      desc:'Python, Lua, TypeScript, Rust, Go — complete production-quality code on demand.' },
+  { icon:'zap',      title:'Instant Generation',desc:'Full UI, 3D scenes, APIs, and games generated in seconds from plain English.' },
+  { icon:'sparkles', title:'Crazy UIs',          desc:'Particle systems, matrix rain, galaxy canvases, neon glitch — insane visuals.' },
+  { icon:'book-open',title:'Built-in Tutor',     desc:'Exercises, quizzes, XP leveling, and step-by-step concept explanations.' },
+  { icon:'wifi',     title:'WebFetch',           desc:'Search the web, fetch URLs, pull live docs — all from the terminal.' },
+];
+
+function FeatureCard({ icon, title, desc, delay }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <Motion delay={delay}>
+      <div
+        onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
+        style={{transition:'transform .3s ease, box-shadow .3s ease',
+                transform:hover?'translateY(-4px)':'none',
+                boxShadow:hover?'0 20px 40px rgba(139,92,246,.15)':'none'}}
+        className="rounded-xl border border-white/10 bg-card p-6 cursor-default"
+      >
+        <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10 border border-violet-500/20">
+          <Icon name={icon} size={18} className="text-violet-400" />
+        </div>
+        <h3 className="font-semibold text-foreground mb-1.5">{title}</h3>
+        <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
+      </div>
+    </Motion>
+  );
+}
+
+function App() {
+  return (
+    <div className="text-foreground min-h-screen overflow-x-hidden">
+      {/* Nav */}
+      <nav className="fixed top-0 w-full z-50 border-b border-white/5 bg-background/80 backdrop-blur">
+        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+          <span className="font-bold tracking-tight">nano<span className="text-violet-400">ai</span></span>
+          <div className="flex items-center gap-2">
+            <button className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5">Docs</button>
+            <button className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5">GitHub</button>
+            <button className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 hover:bg-violet-500 px-3 py-1.5 text-sm font-medium text-white transition-colors">
+              <Icon name="terminal" size={13} />
+              Get Started
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero */}
+      <section className="pt-32 pb-24 px-6 text-center max-w-4xl mx-auto">
+        <Motion delay={0}>
+          <div className="inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10 px-3 py-1 text-xs text-violet-300 mb-8">
+            <Icon name="sparkles" size={11} className="text-violet-400" />
+            Powered by Claude claude-sonnet-4-6
+          </div>
+        </Motion>
+        <Motion delay={100}>
+          <h1 className="text-5xl sm:text-6xl font-bold tracking-tight text-foreground mb-6 leading-tight">
+            The AI tutor that<br/><GradientText>knows everything.</GradientText>
+          </h1>
+        </Motion>
+        <Motion delay={200}>
+          <p className="text-lg text-muted-foreground mb-10 max-w-xl mx-auto leading-relaxed">
+            Ask any coding question. Generate any UI, game, or API. Learn with exercises and quizzes.
+            All from your terminal, powered by Claude.
+          </p>
+        </Motion>
+        <Motion delay={300}>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button className="inline-flex items-center gap-2 rounded-lg bg-white text-black px-6 py-2.5 text-sm font-semibold hover:bg-white/90 transition-colors">
+              <Icon name="download" size={15} />
+              pip install nano-ai
+            </button>
+            <button className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-6 py-2.5 text-sm font-medium text-foreground hover:bg-white/10 transition-colors">
+              <Icon name="play" size={15} />
+              See Demo
+            </button>
+          </div>
+        </Motion>
+
+        {/* Terminal mockup */}
+        <Motion delay={400}>
+          <div className="mt-14 rounded-xl border border-white/10 bg-black/60 text-left p-4 font-mono text-sm shadow-2xl shadow-violet-900/10">
+            <div className="flex gap-1.5 mb-3">
+              <div className="h-3 w-3 rounded-full bg-red-500/80" />
+              <div className="h-3 w-3 rounded-full bg-yellow-500/80" />
+              <div className="h-3 w-3 rounded-full bg-green-500/80" />
+            </div>
+            <div className="space-y-1.5 text-xs sm:text-sm">
+              <p><span className="text-violet-400">$</span> <span className="text-white">python -m ai_tutor</span></p>
+              <p className="text-green-400">  ✦ FULL AI MODE — Claude API active.</p>
+              <p><span className="text-violet-400">  Nano AI ›</span> <span className="text-white">generate a crazy galaxy UI</span></p>
+              <p className="text-yellow-300">  ⚡ NANO AI GENERATED — COSMIC GALAXY UI</p>
+              <p className="text-muted-foreground">  Language: html   Lines: 120</p>
+              <p><span className="text-violet-400">  Nano AI ›</span> <span className="text-white animate-pulse">▊</span></p>
+            </div>
+          </div>
+        </Motion>
+      </section>
+
+      {/* Features */}
+      <section className="pb-24 px-6 max-w-6xl mx-auto">
+        <Motion delay={0}>
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold tracking-tight text-foreground mb-3">Everything you need</h2>
+            <p className="text-muted-foreground">One CLI, infinite possibilities.</p>
+          </div>
+        </Motion>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {FEATURES.map((f,i) => <FeatureCard key={f.title} {...f} delay={i*80} />)}
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-white/5 py-8 text-center text-xs text-muted-foreground">
+        <p>Built with React + Tailwind + Lucide · Generated by <span className="text-violet-400">Nano AI</span></p>
+      </footer>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>"""
+
+
+def _react_cards() -> str:
+    return """<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>shadcn/ui Card Components</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={darkMode:'class',theme:{extend:{colors:{border:'hsl(240 3.7% 15.9%)',background:'hsl(240 10% 3.9%)',foreground:'hsl(0 0% 98%)',muted:{DEFAULT:'hsl(240 3.7% 15.9%)',foreground:'hsl(240 5% 64.9%)'},card:{DEFAULT:'hsl(240 10% 3.9%)',foreground:'hsl(0 0% 98%)'},}}}}</script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style>body{background:hsl(240 10% 3.9%);margin:0;font-family:system-ui,sans-serif}*{box-sizing:border-box}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+function Icon({ name, size=16, className='' }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current && window.lucide) {
+      ref.current.innerHTML = '';
+      const svg = window.lucide.createElement(name);
+      if (svg) { svg.setAttribute('width',size); svg.setAttribute('height',size); ref.current.appendChild(svg); }
+    }
+  }, [name, size]);
+  return <span ref={ref} className={`inline-flex items-center justify-center ${className}`} />;
+}
+
+const CARDS = [
+  { title:'Notification', desc:'You have 3 unread messages.', icon:'bell', color:'from-violet-500/20 to-fuchsia-500/20', border:'border-violet-500/20',
+    content: <div className="space-y-2">
+      {['Alice starred your project','Bob left a comment','Deploy succeeded'].map((m,i)=>
+        <div key={i} className="flex items-center gap-2 text-sm text-foreground/80 p-2 rounded-lg bg-white/5">
+          <div className="h-2 w-2 rounded-full bg-violet-400 shrink-0"/>
+          {m}
+        </div>)}
+    </div>
+  },
+  { title:'Progress', desc:'Your weekly coding streak.', icon:'trending-up', color:'from-green-500/20 to-teal-500/20', border:'border-green-500/20',
+    content: <div className="space-y-3">
+      {[{lang:'Python',pct:87},{lang:'TypeScript',pct:72},{lang:'Rust',pct:43}].map(({lang,pct})=>
+        <div key={lang}>
+          <div className="flex justify-between text-xs text-foreground/70 mb-1"><span>{lang}</span><span>{pct}%</span></div>
+          <div className="h-1.5 w-full rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-green-400 to-teal-400 transition-all duration-1000" style={{width:`${pct}%`}}/></div>
+        </div>)}
+    </div>
+  },
+  { title:'Generate', desc:'Create code with Nano AI.', icon:'sparkles', color:'from-pink-500/20 to-rose-500/20', border:'border-pink-500/20',
+    content: <div className="space-y-2">
+      {['generate a React dashboard','generate a 3D scene','generate a Flask API'].map(cmd=>
+        <button key={cmd} className="w-full text-left text-xs font-mono p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-foreground/80 hover:text-foreground">
+          {'> '}{cmd}
+        </button>)}
+    </div>
+  },
+  { title:'Stats', desc:"Today's Nano AI usage.", icon:'bar-chart-2', color:'from-blue-500/20 to-cyan-500/20', border:'border-blue-500/20',
+    content: <div className="grid grid-cols-2 gap-2">
+      {[{k:'Questions',v:24},{k:'Generated',v:8},{k:'XP Earned',v:420},{k:'Streak',v:'7d'}].map(({k,v})=>
+        <div key={k} className="rounded-lg bg-white/5 p-3 text-center">
+          <div className="text-lg font-bold text-foreground">{v}</div>
+          <div className="text-xs text-foreground/50">{k}</div>
+        </div>)}
+    </div>
+  },
+];
+
+function ShowcaseCard({ card, delay }) {
+  const [vis, setVis] = useState(false);
+  useEffect(() => { const t=setTimeout(()=>setVis(true),delay); return()=>clearTimeout(t); }, []);
+  return (
+    <div style={{transition:`opacity .5s ${delay}ms, transform .5s ${delay}ms`,opacity:vis?1:0,transform:vis?'none':'translateY(24px)'}}>
+      <div className={`rounded-2xl border ${card.border} bg-gradient-to-br ${card.color} backdrop-blur p-5 hover:-translate-y-1 transition-transform duration-300`}>
+        <div className="flex items-center gap-2 mb-1">
+          <Icon name={card.icon} size={16} className="text-foreground/70" />
+          <h3 className="font-semibold text-sm text-foreground">{card.title}</h3>
+        </div>
+        <p className="text-xs text-foreground/50 mb-4">{card.desc}</p>
+        {card.content}
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <div className="min-h-screen p-8 text-foreground">
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold text-foreground mb-2">shadcn/ui Cards</h1>
+          <p className="text-muted-foreground text-sm">Component showcase · Generated by Nano AI</p>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          {CARDS.map((c,i) => <ShowcaseCard key={c.title} card={c} delay={i*120} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>"""
+
+
 def _gen_general(request: str) -> str:
     r = request.lower()
     # Detect language
@@ -1978,7 +3597,9 @@ def _gen_general(request: str) -> str:
         "    generate a 3D rotating cube\n"
         "    generate CSS animations\n"
         "    generate a landing page\n"
-        "    generate a React todo app\n"
+        "    generate a React dashboard (Tailwind + shadcn/ui)\n"
+        "    generate a React landing page\n"
+        "    generate a React card component\n"
         "    generate a Flask API\n"
         "    generate a Node.js Express server\n"
         "    generate a Python web scraper\n"
