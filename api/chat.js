@@ -1,33 +1,12 @@
 // Vercel serverless function — proxies to OpenRouter (Claude via openrouter.ai)
 // Set OPENROUTER_API_KEY in Vercel dashboard → Project → Settings → Environment Variables
 
-const RATE_LIMIT_WINDOW = 60_000; // 1 minute
-const RATE_LIMIT_MAX    = 10;     // requests per IP per window
-const ipMap = new Map();
-
-function isRateLimited(ip) {
-  const now = Date.now();
-  const entry = ipMap.get(ip) || { count: 0, start: now };
-  if (now - entry.start > RATE_LIMIT_WINDOW) {
-    ipMap.set(ip, { count: 1, start: now });
-    return false;
-  }
-  entry.count++;
-  ipMap.set(ip, entry);
-  return entry.count > RATE_LIMIT_MAX;
-}
-
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-
-  const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || "unknown";
-  if (isRateLimited(ip)) {
-    return res.status(429).json({ error: "Too many requests — try again in a minute." });
-  }
 
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) {
@@ -39,9 +18,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "No messages provided." });
   }
 
-  const history = messages.slice(-20).map(m => ({
+  const history = messages.slice(-40).map(m => ({
     role: m.role === "assistant" ? "assistant" : "user",
-    content: String(m.content).slice(0, 4000),
+    content: String(m.content).slice(0, 8000),
   }));
 
   try {
@@ -55,7 +34,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "anthropic/claude-sonnet-4-5",
-        max_tokens: 1024,
+        max_tokens: 2048,
         messages: [
           {
             role: "system",
