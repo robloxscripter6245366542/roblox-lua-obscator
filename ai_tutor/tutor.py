@@ -15,10 +15,11 @@ from .brain import (
 from .knowledge.exercises_kb import EXERCISES, QUIZZES
 from .knowledge.languages_kb  import LANGUAGES, LANG_ALIASES
 from .knowledge.general_kb    import CONCEPTS, ALIASES
-from .generator  import generate
-from .fetcher    import fetch_url, web_search_ddg
-from .filesystem import read_file, write_file, list_dir, analyze_file
-from .memory     import load_memory, save_memory, log_exchange, learn_correction, build_user_profile
+from .generator    import generate
+from .fetcher      import fetch_url, web_search_ddg
+from .filesystem   import read_file, write_file, list_dir, analyze_file
+from .memory       import load_memory, save_memory, log_exchange, learn_correction, build_user_profile
+from . import claude_client
 
 
 def _norm(text: str) -> str:
@@ -162,18 +163,28 @@ class Tutor:
             return self.session.progress_report(), False
 
         if intent == "best_practices":
+            if claude_client.is_ready():
+                return self._claude_respond(text), False
             return respond_best_practices(), False
 
         if intent == "career":
+            if claude_client.is_ready():
+                return self._claude_respond(text), False
             return respond_career(), False
 
         if intent == "project_ideas":
+            if claude_client.is_ready():
+                return self._claude_respond(text), False
             return respond_project_ideas(), False
 
         if intent == "analyze_code":
+            if claude_client.is_ready():
+                return self._claude_respond(text), False
             return respond_analyze_code(text), False
 
         if intent == "compare_languages":
+            if claude_client.is_ready():
+                return self._claude_respond(text), False
             pair = _extract_lang_pair(text)
             if pair and len(pair) == 2:
                 return respond_compare(pair[0], pair[1]), False
@@ -218,6 +229,8 @@ class Tutor:
             return "\n  Got it — thanks for the correction! I've noted that to improve.", False
 
         if intent == "learn_concept":
+            if claude_client.is_ready():
+                return self._claude_respond(text), False
             concept_key, concept = _extract_concept(text)
             if concept:
                 self.session.topics_covered.add(concept_key)
@@ -236,6 +249,9 @@ class Tutor:
                 self.session.topics_covered.add(lang_key)
                 self.memory["preferred_language"] = lang_key
                 save_memory(self.memory)
+            if claude_client.is_ready():
+                return self._claude_respond(text), False
+            if lang:
                 xp = self.session.award_xp(15)
                 return respond_language(lang_key, lang) + f"\n\n{xp}", False
             return "\n  Which language? Options: " + ", ".join(LANGUAGES.keys()), False
@@ -256,20 +272,40 @@ class Tutor:
                 return self._give_solution(), False
             return "\n  No active exercise. Type 'exercise' to start!", False
 
-        # ── Fallback concept/language lookup ────────────────────
+        # ── Fallback: try built-in concept/language lookup ──────
         concept_key, concept = _extract_concept(text)
         if concept:
             self.session.topics_covered.add(concept_key)
             xp = self.session.award_xp(10)
+            # If Claude is available, augment with AI response
+            if claude_client.is_ready():
+                return self._claude_respond(text), False
             return respond_concept(concept_key, concept) + f"\n\n{xp}", False
 
         lang_key, lang = _extract_language(text)
         if lang:
             self.session.topics_covered.add(lang_key)
             xp = self.session.award_xp(15)
+            if claude_client.is_ready():
+                return self._claude_respond(text), False
             return respond_language(lang_key, lang) + f"\n\n{xp}", False
 
+        # ── Final fallback: Claude AI or built-in unknown ────────
+        if claude_client.is_ready():
+            return self._claude_respond(text), False
+
         return respond_unknown(text), False
+
+    # ── Claude AI response ────────────────────────────────────────────────────
+
+    def _claude_respond(self, text: str) -> str:
+        """Route to Claude API and format the response."""
+        reply = claude_client.ask(text)
+        if not reply:
+            return respond_unknown(text)
+        # Indent for terminal display
+        lines = reply.split("\n")
+        return "\n" + "\n".join("  " + l for l in lines)
 
     # ── WebFetch ──────────────────────────────────────────────────────────────
 
