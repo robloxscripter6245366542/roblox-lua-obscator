@@ -73,9 +73,16 @@ INTENTS = {
         r"\b(project ideas?|what (can|should) i build|build something|idea for a project|give me.*(idea|project))\b",
     ],
     "generate": [
-        r"\b(generate|create|make|build|write|give me|produce)\b.*(code|script|ui|page|app|website|3d|animation|api|server|database|schema|roblox|three\.?js|css|html)",
+        r"\b(generate|create|make|build|write|give me|produce)\b.*(code|script|ui|page|app|website|3d|animation|api|server|database|schema|roblox|three\.?js|css|html|game|platformer|snake|shooter|runner)",
         r"\bgenerate\b",
-        r"\b(3d scene|landing page|dashboard|portfolio|react app|flask api|express|scraper|sql schema|roblox gui|roblox npc|game loop)\b",
+        r"\b(3d scene|landing page|dashboard|portfolio|react app|flask api|express|scraper|sql schema|roblox gui|roblox npc|game loop|2d game|3d game|space shooter|platformer|snake game|spring anim)\b",
+        r"\b(make|create|build).*(game|platformer|shooter|runner|snake)\b",
+    ],
+    "deploy": [
+        r"\bdeploy\b",
+        r"\b(open|launch|preview|show).*(in browser|it|this|the (site|app|page|game))\b",
+        r"\bopen in browser\b",
+        r"\blaunch (it|this|the site)\b",
     ],
     "read_file": [
         r"\b(read|open|show|display|view)\b.*\b(file|\.py|\.js|\.lua|\.txt|\.json|\.html|\.css)\b",

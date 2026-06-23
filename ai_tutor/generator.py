@@ -1,10 +1,16 @@
 """
 Nano AI Code Generator – produces complete, production-quality scripts
-for any language, UI, CSS animations, Three.js 3D, Roblox, and more.
+for any language, UI, CSS animations, Three.js 3D, 2D/3D games, Roblox, and more.
 """
 
 import re
 import random
+
+# ─── Last generated HTML (for deploy command) ─────────────────────────────────
+_last_html: str | None = None
+
+def get_last_html() -> str | None:
+    return _last_html
 
 # ─── Template registry ────────────────────────────────────────────────────────
 
@@ -12,19 +18,38 @@ def generate(request: str) -> str:
     """Route a generation request to the right template."""
     t = request.lower()
 
+    # 2D games (before crazy/UI to avoid keyword collisions)
+    if any(k in t for k in ["2d game", "2d platformer", "platformer", "side scroller",
+                              "2d shooter", "snake game", "flappy", "top down game",
+                              "canvas game", "2d", "make a game", "create a game",
+                              "build a game", "game like"]):
+        return _gen_2d_game(t)
+
+    # 3D games (before Three.js scene check)
+    if any(k in t for k in ["3d game", "space shooter", "space game", "asteroid",
+                              "fps game", "racing game", "3d shooter", "ball game",
+                              "endless runner", "3d platformer", "ball runner",
+                              "ball roll", "3d runner"]):
+        return _gen_3d_game(t)
+
     # Crazy / wild / insane UI
-    if any(k in t for k in ["crazy", "wild", "insane", "epic", "cool", "awesome", "sick", "fire",
-                              "neon", "cyberpunk", "veo", "vo ai", "futuristic", "glitch", "matrix",
+    if any(k in t for k in ["crazy", "wild", "insane", "epic", "neon", "cyberpunk",
+                              "veo", "vo ai", "futuristic", "glitch", "matrix",
                               "particle", "galaxy", "cosmic", "extreme"]):
         return _gen_crazy_ui(t)
 
-    # 3D / Three.js
+    # 3D / Three.js scene
     if any(k in t for k in ["3d", "three.js", "threejs", "three js", "webgl", "cube", "scene"]):
         return _gen_threejs(t)
 
     # React / Next.js / Tailwind / shadcn/ui / v0-style (must be before generic UI)
     if any(k in t for k in ["react", "next.js", "nextjs", "tailwind", "shadcn", "framer", "v0", "component"]):
         return _gen_react_shadcn(t)
+
+    # Spring / smooth physics animations
+    if any(k in t for k in ["spring", "smooth anim", "physics anim", "spring anim",
+                              "fluid anim", "elastic", "bounce anim"]):
+        return _gen_spring_anims(t)
 
     # Animation
     if any(k in t for k in ["animation", "animate", "css anim", "keyframe", "transition", "loading spinner", "spinner"]):
@@ -46,8 +71,8 @@ def generate(request: str) -> str:
     if any(k in t for k in ["javascript", "node", "express", "vue"]):
         return _gen_javascript(t)
 
-    # REST API
-    if any(k in t for k in ["api", "rest api", "endpoint", "server", "backend"]):
+    # REST API / backend
+    if any(k in t for k in ["api", "rest api", "endpoint", "server", "backend", "websocket", "graphql"]):
         return _gen_rest_api(t)
 
     # Database
@@ -3574,6 +3599,979 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </html>"""
 
 
+# ─── 2D Game ─────────────────────────────────────────────────────────────────
+
+def _gen_2d_game(hint: str) -> str:
+    if "snake" in hint:
+        return _wrap_output("Snake Game (Canvas 2D)", "html", _2d_snake())
+    return _wrap_output("2D Platformer Game (Canvas 2D + Physics)", "html", _2d_platformer())
+
+
+def _2d_platformer() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Nano AI — 2D Platformer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#05020f;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:'Segoe UI',sans-serif}
+canvas{border-radius:8px;box-shadow:0 0 60px rgba(108,99,255,.3),0 0 120px rgba(108,99,255,.1)}
+#tip{color:#6b6494;font-size:12px;margin-top:10px;letter-spacing:2px;text-transform:uppercase}
+</style>
+</head>
+<body>
+<canvas id="c" width="800" height="450"></canvas>
+<div id="tip">WASD / ARROWS to move · SPACE / W / UP to jump · Double jump enabled · Stomp enemies!</div>
+<script>
+const W=800,H=450;
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+
+// ── Physics ──────────────────────────────────────────────────────────────────
+const GRAV=0.45,JUMP=-11.5,MAX_VX=6.5,ACC=0.9,FRIC=0.78,COYOTE=8,JBUF=8;
+
+// ── World ────────────────────────────────────────────────────────────────────
+const PLATS=[
+  {x:0,  y:415,w:260,h:15},{x:310,y:370,w:140,h:15},{x:510,y:310,w:110,h:15},
+  {x:680,y:375,w:180,h:15},{x:910,y:330,w:130,h:15},{x:1090,y:278,w:100,h:15},
+  {x:1240,y:340,w:160,h:15},{x:1460,y:390,w:200,h:15},{x:1710,y:318,w:120,h:15},
+  {x:1880,y:258,w:90, h:15},{x:2030,y:320,w:180,h:15},{x:2260,y:415,w:400,h:15},
+  {x:2710,y:378,w:120,h:15},{x:2880,y:310,w:100,h:15},{x:3040,y:260,w:130,h:15},
+];
+const COINS=PLATS.flatMap(p=>{
+  const n=Math.max(1,Math.floor(p.w/55));
+  return Array.from({length:n},(_,i)=>({x:p.x+30+i*55,y:p.y-28,r:7,bob:Math.random()*Math.PI*2,gone:false}));
+});
+const ENEMIES=PLATS.slice(1).filter((_,i)=>i%3===0).map(p=>({
+  x:p.x+p.w*.3,y:p.y-30,w:24,h:30,vx:1.2+Math.random()*.8,
+  plat:p,alive:true,sqY:1,
+}));
+
+// ── Player ───────────────────────────────────────────────────────────────────
+const P={x:80,y:360,w:28,h:36,vx:0,vy:0,grounded:false,coyote:0,jbuf:0,jumps:2,face:1,sqY:1,trail:[]};
+let score=0,lives=3,shake=0;
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+let pts=[];
+function burst(x,y,col,n,sp,ang=Math.PI*2){
+  for(let i=0;i<n;i++){
+    const a=(ang<Math.PI*2?(Math.random()-.5)*ang:Math.random()*Math.PI*2);
+    const s=sp[0]+Math.random()*(sp[1]-sp[0]);
+    pts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1.5,r:2+Math.random()*3,col,life:1,dec:.025+Math.random()*.03});
+  }
+}
+
+// ── Camera ───────────────────────────────────────────────────────────────────
+const CAM={x:0,y:0};
+function moveCam(){
+  CAM.x+=(P.x+P.w/2-W*.4-CAM.x)*.09;
+  CAM.y+=(P.y+P.h/2-H*.5-30-CAM.y)*.09;
+}
+
+// ── Input ────────────────────────────────────────────────────────────────────
+const K={};
+onkeydown=e=>{K[e.code]=true;['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)&&e.preventDefault()};
+onkeyup=e=>K[e.code]=false;
+
+// ── AABB ─────────────────────────────────────────────────────────────────────
+const hit=(ax,ay,aw,ah,bx,by,bw,bh)=>ax<bx+bw&&ax+aw>bx&&ay<by+bh&&ay+ah>by;
+
+// ── Stars ────────────────────────────────────────────────────────────────────
+const STARS=Array.from({length:200},()=>({x:Math.random()*4000,y:Math.random()*H,r:.4+Math.random()*1.2,spd:.06+Math.random()*.35}));
+
+// ── Update ───────────────────────────────────────────────────────────────────
+let lt=0;
+function update(ts){
+  const dt=Math.min((ts-lt)/16,2.5);lt=ts;
+  const left=K.ArrowLeft||K.KeyA,right=K.ArrowRight||K.KeyD,jump=K.Space||K.ArrowUp||K.KeyW;
+
+  if(right){P.vx+=ACC*dt;P.face=1}
+  if(left) {P.vx-=ACC*dt;P.face=-1}
+  if(!left&&!right)P.vx*=Math.pow(FRIC,dt);
+  P.vx=Math.max(-MAX_VX,Math.min(MAX_VX,P.vx));
+  P.vy+=GRAV*dt;P.vy=Math.min(P.vy,20);
+
+  if(P.grounded)P.coyote=COYOTE;else if(P.coyote>0)P.coyote-=dt;
+  if(jump)P.jbuf=JBUF;else if(P.jbuf>0)P.jbuf-=dt;
+
+  const wasGnd=P.grounded;
+  if(P.jbuf>0&&(P.coyote>0||P.jumps>0)){
+    P.coyote>0?P.jumps=1:P.jumps--;
+    P.vy=JUMP;P.coyote=0;P.jbuf=0;P.sqY=1.5;
+    burst(P.x+P.w/2,P.y+P.h,'#a0c4ff',10,[2,5],Math.PI*.6);
+  }
+
+  P.x+=P.vx*dt;P.y+=P.vy*dt;
+  P.grounded=false;
+  for(const pl of PLATS){
+    if(hit(P.x,P.y,P.w,P.h,pl.x,pl.y,pl.w,pl.h)){
+      const b=P.y+P.h-pl.y,t=pl.y+pl.h-P.y,l=P.x+P.w-pl.x,r=pl.x+pl.w-P.x;
+      const m=Math.min(b,t,l,r);
+      if(m===b&&P.vy>=0){
+        P.y=pl.y-P.h;P.vy=0;P.grounded=true;
+        if(!wasGnd){P.sqY=.55;shake=Math.min(Math.abs(P.vy)*.3,6);burst(P.x+P.w/2,P.y+P.h,'#c084fc',12,[1,4],Math.PI*.8)}
+        P.jumps=2;
+      }else if(m===t&&P.vy<0){P.y=pl.y+pl.h;P.vy=0}
+      else if(m===l&&P.vx>0){P.x=pl.x-P.w;P.vx=0}
+      else if(m===r&&P.vx<0){P.x=pl.x+pl.w;P.vx=0}
+    }
+  }
+  P.sqY+=(1-P.sqY)*.22*dt;
+  if(Math.abs(P.vx)>1||!P.grounded)P.trail.push({x:P.x+P.w/2,y:P.y+P.h/2,r:P.w*.45,life:1});
+  P.trail=P.trail.filter(t=>(t.life-=.09*dt)>0);
+
+  // Coins
+  for(const co of COINS){
+    if(!co.gone&&hit(P.x,P.y,P.w,P.h,co.x-co.r,co.y-co.r,co.r*2,co.r*2)){
+      co.gone=true;score+=10;burst(co.x,co.y,'#ffd700',14,[2,5]);
+    }
+  }
+
+  // Enemies
+  for(const e of ENEMIES){
+    if(!e.alive)continue;
+    e.x+=e.vx*dt;
+    if(e.x<e.plat.x||e.x+e.w>e.plat.x+e.plat.w)e.vx*=-1;
+    e.sqY+=(1-e.sqY)*.15*dt;
+    if(hit(P.x,P.y,P.w,P.h,e.x,e.y,e.w,e.h)){
+      if(P.vy>1&&P.y+P.h<e.y+e.h*.5){
+        e.alive=false;P.vy=-8;score+=50;
+        burst(e.x+e.w/2,e.y+e.h/2,'#ff6584',18,[2,6]);
+      }
+    }
+  }
+
+  // Particles
+  for(const p of pts){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=.18*dt;p.life-=p.dec*dt;p.vx*=.96}
+  pts=pts.filter(p=>p.life>0);
+
+  shake*=.82;
+  if(P.y>H+200){P.x=80;P.y=360;P.vx=0;P.vy=0;lives=Math.max(0,lives-1)}
+  moveCam();
+}
+
+// ── Draw ─────────────────────────────────────────────────────────────────────
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  if(shake>.1)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake*.5);
+
+  // Sky
+  const sky=ctx.createLinearGradient(0,0,0,H);
+  sky.addColorStop(0,'#05020f');sky.addColorStop(1,'#0d082a');
+  ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
+
+  // Stars (parallax)
+  for(const s of STARS){
+    const sx=((s.x-CAM.x*s.spd)%4000+4000)%4000;
+    ctx.globalAlpha=.5+Math.sin(Date.now()*.001+s.x)*.2;
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(sx,s.y,s.r,0,Math.PI*2);ctx.fill();
+  }ctx.globalAlpha=1;
+
+  ctx.translate(-CAM.x,-CAM.y);
+
+  // Trail
+  for(const t of P.trail){
+    ctx.globalAlpha=t.life*.2;ctx.fillStyle='#7c3aed';
+    ctx.beginPath();ctx.arc(t.x,t.y,t.r,0,Math.PI*2);ctx.fill();
+  }ctx.globalAlpha=1;
+
+  // Platforms
+  for(const pl of PLATS){
+    const g=ctx.createLinearGradient(pl.x,pl.y,pl.x,pl.y+pl.h);
+    g.addColorStop(0,'#5b4fcf');g.addColorStop(1,'#3b2f9f');
+    ctx.fillStyle=g;ctx.beginPath();ctx.roundRect(pl.x,pl.y,pl.w,pl.h,4);ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.18)';ctx.fillRect(pl.x+4,pl.y+2,pl.w-8,3);
+    // Glow under
+    const gv=ctx.createLinearGradient(pl.x,pl.y+pl.h,pl.x,pl.y+pl.h+12);
+    gv.addColorStop(0,'rgba(124,58,237,.25)');gv.addColorStop(1,'transparent');
+    ctx.fillStyle=gv;ctx.fillRect(pl.x,pl.y+pl.h,pl.w,12);
+  }
+
+  // Coins
+  const T=Date.now()/1000;
+  for(const co of COINS){
+    if(co.gone)continue;
+    const bob=Math.sin(T*2.2+co.bob)*5;
+    ctx.save();ctx.translate(co.x,co.y+bob);
+    const cg=ctx.createRadialGradient(0,0,0,0,0,co.r*2.5);
+    cg.addColorStop(0,'rgba(255,215,0,.35)');cg.addColorStop(1,'transparent');
+    ctx.fillStyle=cg;ctx.beginPath();ctx.arc(0,0,co.r*2.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ffd700';ctx.strokeStyle='#ff8c00';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(0,0,co.r,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.65)';ctx.beginPath();ctx.ellipse(-2,-2.5,3,2,-.4,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+
+  // Enemies
+  for(const e of ENEMIES){
+    if(!e.alive)continue;
+    const ecx=e.x+e.w/2,eby=e.y+e.h;
+    ctx.save();ctx.translate(ecx,eby);ctx.scale(1/e.sqY,e.sqY);ctx.translate(-ecx,-eby);
+    const eg=ctx.createLinearGradient(e.x,e.y,e.x,e.y+e.h);
+    eg.addColorStop(0,'#ef4444');eg.addColorStop(1,'#991b1b');
+    ctx.fillStyle=eg;ctx.beginPath();ctx.roundRect(e.x,e.y,e.w,e.h,6);ctx.fill();
+    ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(e.x+7,e.y+10,3.5,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(e.x+e.w-7,e.y+10,3.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#1a0a0a';
+    ctx.beginPath();ctx.arc(e.x+8,e.y+11,2,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(e.x+e.w-6,e.y+11,2,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+
+  // Particles
+  for(const p of pts){
+    ctx.globalAlpha=p.life;ctx.fillStyle=p.col;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r*(.4+p.life*.6),0,Math.PI*2);ctx.fill();
+  }ctx.globalAlpha=1;
+
+  // Player
+  const pcx=P.x+P.w/2,pby=P.y+P.h;
+  ctx.save();ctx.translate(pcx,pby);ctx.scale(1/P.sqY,P.sqY);ctx.translate(-pcx,-pby);
+  const pg=ctx.createLinearGradient(P.x,P.y,P.x,P.y+P.h);
+  pg.addColorStop(0,'#8b5cf6');pg.addColorStop(1,'#4c1d95');
+  ctx.fillStyle=pg;ctx.beginPath();ctx.roundRect(P.x,P.y,P.w,P.h,8);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.18)';ctx.beginPath();ctx.roundRect(P.x+3,P.y+3,P.w-6,P.h*.4,5);ctx.fill();
+  const ex=P.face>0?P.x+P.w*.65:P.x+P.w*.35;
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ex,P.y+P.h*.28,4.5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#1a0a2e';ctx.beginPath();ctx.arc(ex+P.face*1.5,P.y+P.h*.3,2.5,0,Math.PI*2);ctx.fill();
+  ctx.restore();ctx.restore();
+
+  // HUD
+  ctx.fillStyle='rgba(3,1,10,.75)';ctx.fillRect(0,0,W,42);
+  ctx.font='bold 15px "Segoe UI",sans-serif';
+  ctx.fillStyle='#ffd700';ctx.fillText('⭐ '+score,14,27);
+  ctx.fillStyle='#ff6584';ctx.fillText('❤ '.repeat(lives)+(lives===0?'GAME OVER':''),110,27);
+  ctx.fillStyle='rgba(140,100,255,.9)';ctx.fillText('NANO AI PLATFORMER',W/2-90,27);
+  ctx.fillStyle='rgba(108,99,255,.5)';ctx.fillText('DOUBLE JUMP · STOMP ENEMIES',W-220,27);
+}
+
+let raf;
+function loop(ts){update(ts);draw();raf=requestAnimationFrame(loop)}
+requestAnimationFrame(t=>{lt=t;requestAnimationFrame(loop)});
+</script>
+</body>
+</html>"""
+
+
+def _2d_snake() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Nano AI — Snake</title>
+<style>
+*{margin:0;padding:0}
+body{background:#05020f;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:'Segoe UI',sans-serif}
+canvas{border-radius:8px;box-shadow:0 0 40px rgba(0,255,136,.2)}
+p{color:#6b6494;font-size:12px;margin-top:10px;letter-spacing:2px}
+</style>
+</head>
+<body>
+<canvas id="c" width="600" height="600"></canvas>
+<p>ARROW KEYS / WASD · SPACE to pause</p>
+<script>
+const SZ=20,COLS=30,ROWS=30;
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+
+let snake=[{x:15,y:15}],dir={x:1,y:0},nextDir={x:1,y:0},food=place(),score=0,hiScore=0,paused=false,dead=false;
+let particles=[];
+
+function place(){
+  let p;
+  do{p={x:Math.floor(Math.random()*COLS),y:Math.floor(Math.random()*ROWS)}}
+  while(snake.some(s=>s.x===p.x&&s.y===p.y));
+  return p;
+}
+
+function burst(fx,fy){
+  for(let i=0;i<16;i++){
+    const a=Math.random()*Math.PI*2,sp=2+Math.random()*5;
+    particles.push({x:fx*SZ+SZ/2,y:fy*SZ+SZ/2,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:1,r:2+Math.random()*3,hue:Math.random()*60+100});
+  }
+}
+
+onkeydown=e=>{
+  if(e.code==='Space'){paused=!paused;return}
+  const m={ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1},ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0},
+           KeyW:{x:0,y:-1},KeyS:{x:0,y:1},KeyA:{x:-1,y:0},KeyD:{x:1,y:0}};
+  const nd=m[e.code];
+  if(nd&&!(nd.x===-dir.x&&nd.y===-dir.y))nextDir=nd;
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
+};
+
+let tick=0;
+function update(){
+  if(paused||dead)return;
+  tick++;
+  const speed=Math.max(5,12-Math.floor(score/5));
+  if(tick%speed!==0)return;
+  dir=nextDir;
+  const head={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+  if(head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS||snake.some(s=>s.x===head.x&&s.y===head.y)){
+    dead=true;hiScore=Math.max(hiScore,score);return;
+  }
+  snake.unshift(head);
+  if(head.x===food.x&&head.y===food.y){
+    score++;burst(food.x,food.y);food=place();
+  }else snake.pop();
+}
+
+function draw(){
+  ctx.fillStyle='#05020f';ctx.fillRect(0,0,600,600);
+
+  // Grid
+  ctx.strokeStyle='rgba(108,99,255,.07)';ctx.lineWidth=1;
+  for(let i=0;i<=COLS;i++){ctx.beginPath();ctx.moveTo(i*SZ,0);ctx.lineTo(i*SZ,600);ctx.stroke()}
+  for(let j=0;j<=ROWS;j++){ctx.beginPath();ctx.moveTo(0,j*SZ);ctx.lineTo(600,j*SZ);ctx.stroke()}
+
+  // Food glow
+  const T=Date.now()/500;
+  ctx.save();
+  const fg=ctx.createRadialGradient(food.x*SZ+SZ/2,food.y*SZ+SZ/2,0,food.x*SZ+SZ/2,food.y*SZ+SZ/2,SZ);
+  fg.addColorStop(0,'rgba(255,100,130,.6)');fg.addColorStop(1,'transparent');
+  ctx.fillStyle=fg;ctx.beginPath();ctx.arc(food.x*SZ+SZ/2,food.y*SZ+SZ/2,SZ,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#ff6584';
+  const fr=SZ/2-1+Math.sin(T)*2;
+  ctx.beginPath();ctx.arc(food.x*SZ+SZ/2,food.y*SZ+SZ/2,fr,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+
+  // Snake
+  snake.forEach(({x,y},i)=>{
+    const t=1-i/snake.length;
+    const g=ctx.createLinearGradient(x*SZ,y*SZ,x*SZ+SZ,y*SZ+SZ);
+    g.addColorStop(0,`hsl(${140+i*2},${80+t*20}%,${40+t*25}%)`);
+    g.addColorStop(1,`hsl(${160+i*2},80%,35%)`);
+    ctx.fillStyle=g;
+    ctx.beginPath();ctx.roundRect(x*SZ+1,y*SZ+1,SZ-2,SZ-2,4);ctx.fill();
+    if(i===0){
+      // Eyes
+      ctx.fillStyle='#fff';
+      const ex1=dir.y===0?x*SZ+SZ*.65:x*SZ+SZ*.3,ey1=dir.x===0?y*SZ+SZ*.3:y*SZ+SZ*.35;
+      const ex2=dir.y===0?x*SZ+SZ*.65:x*SZ+SZ*.7,ey2=dir.x===0?y*SZ+SZ*.7:y*SZ+SZ*.35;
+      ctx.beginPath();ctx.arc(ex1,ey1,2.5,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(ex2,ey2,2.5,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#000';
+      ctx.beginPath();ctx.arc(ex1+dir.x,ey1+dir.y,1.2,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(ex2+dir.x,ey2+dir.y,1.2,0,Math.PI*2);ctx.fill();
+    }
+  });
+
+  // Particles
+  particles.forEach(p=>{
+    ctx.globalAlpha=p.life;ctx.fillStyle=`hsl(${p.hue},90%,60%)`;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);ctx.fill();
+    p.x+=p.vx;p.y+=p.vy;p.life-=.04;p.vx*=.94;p.vy*=.94;
+  });
+  particles=particles.filter(p=>p.life>0);
+  ctx.globalAlpha=1;
+
+  // HUD
+  ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(0,0,600,36);
+  ctx.font='bold 14px "Segoe UI",sans-serif';
+  ctx.fillStyle='#00ff88';ctx.fillText('SCORE: '+score,12,24);
+  ctx.fillStyle='rgba(108,99,255,.8)';ctx.fillText('NANO AI SNAKE',240,24);
+  ctx.fillStyle='#ffd700';ctx.fillText('BEST: '+hiScore,500,24);
+
+  if(dead){
+    ctx.fillStyle='rgba(3,1,10,.8)';ctx.fillRect(0,0,600,600);
+    ctx.font='bold 36px "Segoe UI",sans-serif';
+    ctx.fillStyle='#ff6584';ctx.textAlign='center';ctx.fillText('GAME OVER',300,260);
+    ctx.font='20px "Segoe UI",sans-serif';
+    ctx.fillStyle='#ffd700';ctx.fillText('Score: '+score+' | Best: '+hiScore,300,300);
+    ctx.font='14px "Segoe UI",sans-serif';
+    ctx.fillStyle='#6b6494';ctx.fillText('Press SPACE to restart',300,340);
+    ctx.textAlign='left';
+    if(paused){snake=[{x:15,y:15}];dir={x:1,y:0};nextDir={x:1,y:0};food=place();score=0;dead=false;paused=false}
+  }else if(paused){
+    ctx.fillStyle='rgba(3,1,10,.7)';ctx.fillRect(0,0,600,600);
+    ctx.font='bold 28px "Segoe UI",sans-serif';ctx.fillStyle='#a0c4ff';
+    ctx.textAlign='center';ctx.fillText('PAUSED — SPACE to resume',300,300);ctx.textAlign='left';
+  }
+}
+
+function loop(){update();draw();requestAnimationFrame(loop)}
+loop();
+</script>
+</body>
+</html>"""
+
+
+# ─── 3D Game ──────────────────────────────────────────────────────────────────
+
+def _gen_3d_game(hint: str) -> str:
+    if "ball" in hint or "runner" in hint or "endless" in hint:
+        return _wrap_output("3D Endless Runner (Three.js)", "html", _3d_ball_runner())
+    return _wrap_output("3D Space Shooter (Three.js)", "html", _3d_space_shooter())
+
+
+def _3d_space_shooter() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Nano AI — Space Shooter 3D</title>
+<style>
+*{margin:0;padding:0}
+body{background:#000;overflow:hidden}
+#ui{position:fixed;top:0;left:0;width:100%;pointer-events:none}
+#hud{padding:14px 20px;display:flex;justify-content:space-between;align-items:center;font-family:'Courier New',monospace;font-size:14px;letter-spacing:2px;background:linear-gradient(180deg,rgba(0,0,0,.7),transparent)}
+#score{color:#00ff88}
+#health{color:#ff6584}
+#level{color:#6c63ff}
+#msg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#fff;font-family:'Courier New',monospace;display:none}
+#crosshair{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none}
+</style>
+</head>
+<body>
+<div id="ui">
+  <div id="hud">
+    <span id="score">SCORE: 0</span>
+    <span id="level">WAVE 1</span>
+    <span id="health">♥ ♥ ♥ ♥ ♥</span>
+  </div>
+</div>
+<div id="msg"></div>
+<div id="crosshair">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00ff88" stroke-width="1.5">
+    <circle cx="12" cy="12" r="4.5" stroke-opacity=".8"/>
+    <line x1="12" y1="0" x2="12" y2="6"/>
+    <line x1="12" y1="18" x2="12" y2="24"/>
+    <line x1="0" y1="12" x2="6" y2="12"/>
+    <line x1="18" y1="12" x2="24" y2="12"/>
+  </svg>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+// ── Scene ──────────────────────────────────────────────────────────────────
+const scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0x000008,0.008);
+const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.1,800);
+camera.position.z=8;
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+// ── Lights ─────────────────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0x223366,1.2));
+const sunLight=new THREE.DirectionalLight(0x4488ff,2);sunLight.position.set(5,10,5);scene.add(sunLight);
+
+// ── Starfield ──────────────────────────────────────────────────────────────
+const sGeo=new THREE.BufferGeometry();
+const sPos=new Float32Array(6000);
+for(let i=0;i<6000;i+=3){sPos[i]=(Math.random()-.5)*600;sPos[i+1]=(Math.random()-.5)*600;sPos[i+2]=(Math.random()-.5)*600}
+sGeo.setAttribute('position',new THREE.BufferAttribute(sPos,3));
+scene.add(new THREE.Points(sGeo,new THREE.PointsMaterial({color:0xffffff,size:.35,transparent:true,opacity:.8})));
+
+// ── Ship ────────────────────────────────────────────────────────────────────
+const shipGroup=new THREE.Group();
+scene.add(shipGroup);
+
+// Body
+const bodyGeo=new THREE.ConeGeometry(.35,1.4,8);
+const bodyMat=new THREE.MeshStandardMaterial({color:0x00d4ff,metalness:.8,roughness:.2,emissive:0x002244});
+const body=new THREE.Mesh(bodyGeo,bodyMat);
+body.rotation.x=-Math.PI/2;shipGroup.add(body);
+
+// Wings
+const wingGeo=new THREE.BufferGeometry();
+const wv=new Float32Array([0,0,.6, -.9,0,-.4, -.5,-.1,-.6, 0,0,.6, .9,0,-.4, .5,-.1,-.6]);
+wingGeo.setAttribute('position',new THREE.BufferAttribute(wv,3));wingGeo.computeVertexNormals();
+const wingMat=new THREE.MeshStandardMaterial({color:0x0080aa,metalness:.7,roughness:.3,side:THREE.DoubleSide});
+shipGroup.add(new THREE.Mesh(wingGeo,wingMat));
+
+// Engine glow
+const engGeo=new THREE.SphereGeometry(.18,8,8);
+const engMat=new THREE.MeshBasicMaterial({color:0xff4400});
+const engine=new THREE.Mesh(engGeo,engMat);
+engine.position.z=.75;shipGroup.add(engine);
+
+// Engine trail
+const trailGeo=new THREE.CylinderGeometry(.12,.02,1.2,6);
+const trailMat=new THREE.MeshBasicMaterial({color:0xff6600,transparent:true,opacity:.4});
+const trail=new THREE.Mesh(trailGeo,trailMat);
+trail.rotation.x=Math.PI/2;trail.position.z=1.3;shipGroup.add(trail);
+
+// ── Bullets ────────────────────────────────────────────────────────────────
+const bullets=[];
+let lastShot=0;
+function shoot(){
+  const now=Date.now();
+  if(now-lastShot<200)return;lastShot=now;
+  const bGeo=new THREE.CylinderGeometry(.04,.04,.9,6);
+  const bMat=new THREE.MeshBasicMaterial({color:0x00ff88});
+  const b=new THREE.Mesh(bGeo,bMat);
+  b.rotation.x=Math.PI/2;
+  b.position.copy(shipGroup.position);b.position.z-=.8;
+  // Glow
+  const glGeo=new THREE.SphereGeometry(.15,8,8);
+  const glMat=new THREE.MeshBasicMaterial({color:0x00ff88,transparent:true,opacity:.3});
+  b.add(new THREE.Mesh(glGeo,glMat));
+  scene.add(b);bullets.push(b);
+}
+
+// ── Asteroids ──────────────────────────────────────────────────────────────
+const asteroids=[];
+function spawnAsteroid(){
+  const r=.4+Math.random()*.9;
+  const geo=new THREE.DodecahedronGeometry(r,0);
+  const pos=geo.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    pos.setXYZ(i,pos.getX(i)*(.75+Math.random()*.5),pos.getY(i)*(.75+Math.random()*.5),pos.getZ(i)*(.75+Math.random()*.5));
+  }
+  geo.computeVertexNormals();
+  const mat=new THREE.MeshStandardMaterial({color:0x7788aa,metalness:.2,roughness:.9});
+  const mesh=new THREE.Mesh(geo,mat);
+  mesh.position.set((Math.random()-.5)*18,(Math.random()-.5)*12,-120-Math.random()*30);
+  mesh.rotation.set(Math.random()*Math.PI*2,Math.random()*Math.PI*2,Math.random()*Math.PI*2);
+  scene.add(mesh);
+  asteroids.push({mesh,r,vz:.25+Math.random()*.3+wave*.04,rx:(Math.random()-.5)*.025,ry:(Math.random()-.5)*.025});
+}
+
+// ── Explosions ─────────────────────────────────────────────────────────────
+function explode(pos,col,n=20){
+  for(let i=0;i<n;i++){
+    const g=new THREE.SphereGeometry(.1,4,4);
+    const m=new THREE.MeshBasicMaterial({color:col,transparent:true});
+    const p=new THREE.Mesh(g,m);p.position.copy(pos);
+    const v=new THREE.Vector3((Math.random()-.5)*5,(Math.random()-.5)*5,(Math.random()-.5)*3);
+    scene.add(p);let life=1;
+    const tick=()=>{life-=.04;p.position.addScaledVector(v,.04);m.opacity=life;p.scale.setScalar(.5+life*.5);if(life>0)requestAnimationFrame(tick);else scene.remove(p)};tick();
+  }
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────
+const mouse={x:0,y:0};
+onmousemove=e=>{mouse.x=(e.clientX/innerWidth-.5)*2;mouse.y=-(e.clientY/innerHeight-.5)*2};
+onclick=()=>{if(!dead&&!gameOver)shoot()};
+onkeydown=e=>{if(e.code==='Space'){e.preventDefault();if(!dead&&!gameOver)shoot();else if(gameOver)restart()}};
+
+// ── Game state ────────────────────────────────────────────────────────────
+let score=0,health=5,wave=1,frame=0,dead=false,gameOver=false;
+const scoreEl=document.getElementById('score'),healthEl=document.getElementById('health'),levelEl=document.getElementById('level'),msgEl=document.getElementById('msg');
+
+function updateHUD(){
+  scoreEl.textContent='SCORE: '+score;
+  healthEl.textContent='♥ '.repeat(health)+'♡ '.repeat(Math.max(0,5-health));
+  levelEl.textContent='WAVE '+wave;
+}
+
+function restart(){
+  msgEl.style.display='none';gameOver=false;dead=false;score=0;health=5;wave=1;frame=0;
+  asteroids.forEach(a=>scene.remove(a.mesh));asteroids.length=0;
+  bullets.forEach(b=>scene.remove(b));bullets.length=0;
+  shipGroup.position.set(0,0,0);updateHUD();
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────
+function loop(){
+  requestAnimationFrame(loop);frame++;
+  if(!gameOver){
+    // Ship movement
+    shipGroup.position.x+=(mouse.x*7-shipGroup.position.x)*.1;
+    shipGroup.position.y+=(mouse.y*4-shipGroup.position.y)*.1;
+    shipGroup.rotation.z=-mouse.x*.35;
+    shipGroup.rotation.x=mouse.y*.15;
+
+    // Engine flicker
+    const ef=Math.sin(frame*.4)*.15;
+    engMat.color.setHSL(.07+ef*.02,1,.45+ef);
+    trailMat.opacity=.35+Math.sin(frame*.6)*.1;
+
+    // Spawn asteroids
+    const spawnRate=Math.max(20,60-wave*5);
+    if(frame%spawnRate===0)spawnAsteroid();
+    if(frame%(300)===0){wave++;updateHUD()}
+
+    // Move bullets
+    for(let i=bullets.length-1;i>=0;i--){
+      bullets[i].position.z-=.7;
+      if(bullets[i].position.z<-200){scene.remove(bullets[i]);bullets.splice(i,1)}
+    }
+
+    // Move asteroids
+    for(let i=asteroids.length-1;i>=0;i--){
+      const a=asteroids[i];
+      a.mesh.position.z+=a.vz;
+      a.mesh.rotation.x+=a.rx;a.mesh.rotation.y+=a.ry;
+      if(a.mesh.position.z>10){
+        scene.remove(a.mesh);asteroids.splice(i,1);
+        health--;updateHUD();
+        if(health<=0){gameOver=true;msgEl.innerHTML='<h1 style="font-size:48px;color:#ff6584">GAME OVER</h1><p style="color:#ffd700;margin-top:12px">Score: '+score+'</p><p style="color:#6b6494;margin-top:8px;font-size:14px">SPACE / Click to restart</p>';msgEl.style.display='block'}
+        continue;
+      }
+      // Bullet hits
+      let hit=false;
+      for(let j=bullets.length-1;j>=0;j--){
+        if(a.mesh.position.distanceTo(bullets[j].position)<a.r+.5){
+          explode(a.mesh.position.clone(),0xff6600);
+          scene.remove(a.mesh);asteroids.splice(i,1);
+          scene.remove(bullets[j]);bullets.splice(j,1);
+          score+=10+wave*2;updateHUD();hit=true;break;
+        }
+      }
+      if(hit)continue;
+      // Ship hit
+      if(a.mesh.position.distanceTo(shipGroup.position)<a.r+.5){
+        explode(a.mesh.position.clone(),0xff0000,12);
+        scene.remove(a.mesh);asteroids.splice(i,1);
+        health--;updateHUD();
+        camera.position.x=(Math.random()-.5)*.5;camera.position.y=(Math.random()-.5)*.5;
+        setTimeout(()=>{camera.position.x=0;camera.position.y=0},150);
+      }
+    }
+  }
+  renderer.render(scene,camera);
+}
+loop();
+onresize=()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)};
+</script>
+</body>
+</html>"""
+
+
+def _3d_ball_runner() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Nano AI — 3D Ball Runner</title>
+<style>*{margin:0;padding:0}body{background:#000;overflow:hidden}
+#ui{position:fixed;top:16px;left:50%;transform:translateX(-50%);font-family:'Courier New',monospace;font-size:15px;letter-spacing:2px;color:#00ff88;text-align:center;pointer-events:none}
+#sub{color:#6b6494;font-size:11px;margin-top:4px}
+#over{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;display:none;font-family:'Courier New',monospace}
+</style>
+</head>
+<body>
+<div id="ui"><span id="dist">0 m</span><div id="sub">← → / A D to dodge · Collect gems!</div></div>
+<div id="over"></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+const scene=new THREE.Scene();
+scene.fog=new THREE.Fog(0x000011,30,120);
+const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,200);
+camera.position.set(0,4,10);camera.lookAt(0,0,0);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(devicePixelRatio);renderer.shadowMap.enabled=true;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0x223366,1));
+const sun=new THREE.DirectionalLight(0x8866ff,2);sun.position.set(5,10,5);sun.castShadow=true;scene.add(sun);
+const neon1=new THREE.PointLight(0x00ffcc,3,20);scene.add(neon1);
+const neon2=new THREE.PointLight(0xff0088,2,15);scene.add(neon2);
+
+// Track tiles
+const TILE_W=8,TILE_D=20,POOL=12;
+const tileMat=new THREE.MeshStandardMaterial({color:0x0a0520,metalness:.9,roughness:.1});
+const tiles=[];
+for(let i=0;i<POOL;i++){
+  const geo=new THREE.BoxGeometry(TILE_W,0.4,TILE_D);
+  const m=new THREE.Mesh(geo,tileMat);m.receiveShadow=true;
+  m.position.z=-i*TILE_D;scene.add(m);tiles.push(m);
+  // Lane lines
+  const lg=new THREE.PlaneGeometry(.06,TILE_D);
+  const lm=new THREE.MeshBasicMaterial({color:0x6c63ff,transparent:true,opacity:.4});
+  for(let x of[-2,0,2]){const l=new THREE.Mesh(lg,lm);l.rotation.x=-Math.PI/2;l.position.set(x,.21,0);m.add(l)}
+}
+
+// Ball
+const ballGeo=new THREE.SphereGeometry(.5,32,32);
+const ballMat=new THREE.MeshStandardMaterial({color:0x00d4ff,metalness:.8,roughness:.1,emissive:0x003344});
+const ball=new THREE.Mesh(ballGeo,ballMat);ball.castShadow=true;ball.position.set(0,.7,4);scene.add(ball);
+const ballGlow=new THREE.PointLight(0x00d4ff,2,4);ball.add(ballGlow);
+
+// Obstacles & gems
+const obstacles=[];const gems=[];
+function spawnObstacle(z){
+  const lane=[-2.5,0,2.5][Math.floor(Math.random()*3)];
+  const h=.6+Math.random()*.8;
+  const geo=new THREE.BoxGeometry(1.6,h,1.6);
+  const mat=new THREE.MeshStandardMaterial({color:0xee4444,metalness:.6,roughness:.3,emissive:0x220000});
+  const m=new THREE.Mesh(geo,mat);m.castShadow=true;m.position.set(lane,h/2+.2,z);scene.add(m);obstacles.push(m);
+}
+function spawnGem(z){
+  const lane=[-2.5,0,2.5][Math.floor(Math.random()*3)];
+  const geo=new THREE.OctahedronGeometry(.35);
+  const mat=new THREE.MeshStandardMaterial({color:0xffd700,metalness:1,roughness:0,emissive:0x443300});
+  const m=new THREE.Mesh(geo,mat);m.position.set(lane,1.2,z);scene.add(m);
+  const gl=new THREE.PointLight(0xffd700,2,3);m.add(gl);gems.push(m);
+}
+for(let z=-60;z>=-200;z-=15){if(Math.random()>.3)spawnObstacle(z);if(Math.random()>.5)spawnGem(z+7)}
+
+// State
+let speed=.22,dist=0,laneTarget=0,laneX=0,dead=false,score=0;
+const K={};
+onkeydown=e=>{K[e.code]=true;if(e.code==='ArrowLeft'||e.code==='KeyA')laneTarget=Math.max(-1,laneTarget-1);if(e.code==='ArrowRight'||e.code==='KeyD')laneTarget=Math.min(1,laneTarget+1);e.preventDefault()};
+onkeyup=e=>K[e.code]=false;
+
+const distEl=document.getElementById('dist'),overEl=document.getElementById('over');
+let frame=0;
+function loop(){
+  requestAnimationFrame(loop);frame++;
+  if(dead)return;
+  speed=Math.min(.5,.22+dist*.00012);
+  dist+=speed;distEl.textContent=Math.floor(dist)+' m';
+
+  // Move ball
+  laneX+=(laneTarget*2.5-laneX)*.12;
+  ball.position.x=laneX;
+  ball.rotation.z-=speed*.8;ball.rotation.x-=speed*.4;
+
+  // Neon lights drift
+  neon1.position.set(Math.sin(frame*.03)*10,4,ball.position.z-10);
+  neon2.position.set(Math.cos(frame*.04)*8,3,ball.position.z-8);
+
+  // Scroll tiles
+  for(const t of tiles){
+    t.position.z+=speed;
+    if(t.position.z>15){
+      t.position.z-=POOL*TILE_D;
+      if(Math.random()>.35)spawnObstacle(t.position.z-TILE_D*.5);
+      if(Math.random()>.45)spawnGem(t.position.z-TILE_D*.3);
+    }
+  }
+
+  // Obstacles
+  for(let i=obstacles.length-1;i>=0;i--){
+    const o=obstacles[i];o.position.z+=speed;
+    if(o.position.z>12){scene.remove(o);obstacles.splice(i,1);continue}
+    if(Math.abs(o.position.x-ball.position.x)<1.1&&Math.abs(o.position.z-ball.position.z)<1){
+      dead=true;
+      overEl.innerHTML='<h1 style="font-size:40px;color:#ff6584">CRASHED!</h1><p style="color:#ffd700;margin-top:10px">Distance: '+Math.floor(dist)+'m &nbsp; Gems: '+score+'</p><p style="color:#6b6494;margin-top:8px;font-size:12px">Reload to restart</p>';
+      overEl.style.display='block';return;
+    }
+  }
+
+  // Gems
+  for(let i=gems.length-1;i>=0;i--){
+    const g=gems[i];g.position.z+=speed;g.rotation.y+=.05;
+    if(g.position.z>12){scene.remove(g);gems.splice(i,1);continue}
+    if(g.position.distanceTo(ball.position)<.9){scene.remove(g);gems.splice(i,1);score+=1;distEl.textContent=Math.floor(dist)+'m  💎'+score}
+  }
+
+  // Camera follow
+  camera.position.x+=(ball.position.x*.3-camera.position.x)*.08;
+  renderer.render(scene,camera);
+}
+loop();
+onresize=()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)};
+</script>
+</body>
+</html>"""
+
+
+# ─── Spring Physics Animations ────────────────────────────────────────────────
+
+def _gen_spring_anims(hint: str) -> str:
+    return _wrap_output("Spring Physics Animation Showcase", "html", _spring_showcase())
+
+
+def _spring_showcase() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nano AI — Spring Physics Animations</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Orbitron:wght@700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#05020f;color:#f0ecff;font-family:'Inter',sans-serif;min-height:100vh;padding:60px 40px}
+h1{font-family:'Orbitron',sans-serif;font-size:1.4rem;letter-spacing:4px;
+   background:linear-gradient(90deg,#6c63ff,#ff6584);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px}
+.subtitle{color:#6b6494;font-size:.8rem;letter-spacing:2px;margin-bottom:60px}
+.section{margin-bottom:60px}
+.section-title{font-size:.7rem;letter-spacing:3px;text-transform:uppercase;color:#6b6494;margin-bottom:20px}
+/* Cards grid */
+.cards{display:flex;gap:16px;flex-wrap:wrap}
+.scard{width:180px;height:220px;background:#0d0820;border:1px solid rgba(108,99,255,.2);border-radius:12px;
+       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;cursor:pointer;
+       transition:border-color .3s;user-select:none}
+.scard:hover{border-color:rgba(108,99,255,.5)}
+.scard .icon{width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#6c63ff,#ff6584);
+             display:flex;align-items:center;justify-content:center;font-size:1.6rem;will-change:transform}
+.scard .label{font-size:.8rem;color:#a0a0c0;letter-spacing:1px}
+.scard .val{font-size:1.4rem;font-weight:600;color:#f0ecff;font-variant-numeric:tabular-nums}
+/* Progress bars */
+.bars{display:flex;flex-direction:column;gap:16px;max-width:480px}
+.bar-row{display:flex;align-items:center;gap:12px}
+.bar-label{font-size:.8rem;color:#a0a0c0;width:80px;flex-shrink:0}
+.bar-track{flex:1;height:8px;background:#1a1035;border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;width:0%;will-change:width}
+/* Menu */
+.menu{display:flex;flex-direction:column;gap:6px;max-width:260px}
+.menu-item{padding:12px 18px;background:#0d0820;border:1px solid rgba(255,255,255,.06);border-radius:8px;
+           font-size:.88rem;color:#c0c0e0;cursor:pointer;transform:translateX(-30px);opacity:0;will-change:transform,opacity;
+           transition:background .2s,border-color .2s}
+.menu-item:hover{background:#1a1035;border-color:rgba(108,99,255,.3);color:#fff}
+/* Counter */
+.counter-wrap{display:flex;gap:24px;flex-wrap:wrap}
+.counter-box{background:#0d0820;border:1px solid rgba(108,99,255,.2);border-radius:12px;padding:24px 32px;text-align:center;min-width:140px}
+.counter-val{font-size:2.4rem;font-weight:600;font-variant-numeric:tabular-nums;color:#f0ecff;display:block;will-change:transform}
+.counter-lbl{font-size:.7rem;letter-spacing:2px;color:#6b6494;text-transform:uppercase;margin-top:4px}
+/* Magnetic button */
+.mag-wrap{display:flex;gap:16px;flex-wrap:wrap}
+.mag-btn{padding:14px 32px;background:linear-gradient(135deg,rgba(108,99,255,.3),rgba(255,101,132,.2));
+         border:1px solid rgba(108,99,255,.5);color:#c0c0ff;border-radius:8px;cursor:pointer;font-size:.9rem;
+         letter-spacing:1px;will-change:transform;display:inline-block}
+</style>
+</head>
+<body>
+<h1>SPRING PHYSICS</h1>
+<p class="subtitle">Pure JavaScript spring animations — no libraries</p>
+
+<div class="section">
+  <div class="section-title">Magnetic Hover Cards</div>
+  <div class="cards" id="cards"></div>
+</div>
+
+<div class="section">
+  <div class="section-title">Spring Progress Bars</div>
+  <div class="bars" id="bars"></div>
+</div>
+
+<div class="section">
+  <div class="section-title">Stagger Menu (Spring Entrance)</div>
+  <div class="menu" id="menu"></div>
+</div>
+
+<div class="section">
+  <div class="section-title">Spring Counters</div>
+  <div class="counter-wrap" id="counters"></div>
+</div>
+
+<div class="section">
+  <div class="section-title">Magnetic Buttons</div>
+  <div class="mag-wrap" id="magbtns"></div>
+</div>
+
+<script>
+// ── Spring class ──────────────────────────────────────────────────────────────
+class Spring {
+  constructor(stiffness=180,damping=14,mass=1){this.k=stiffness;this.d=damping;this.m=mass;this.pos=0;this.vel=0;this.target=0}
+  setTarget(t){this.target=t}
+  tick(dt=1/60){
+    const F=-this.k*(this.pos-this.target)-this.d*this.vel;
+    this.vel+=F/this.m*dt;this.pos+=this.vel*dt;
+    return Math.abs(this.vel)<.0001&&Math.abs(this.pos-this.target)<.0001;
+  }
+  get value(){return this.pos}
+}
+
+// ── Card spring hover ────────────────────────────────────────────────────────
+const cardData=[
+  {icon:'⚡',label:'SPEED',val:'99ms',color:'#6c63ff'},{icon:'🧠',label:'SMART',val:'∞ IQ',color:'#ff6584'},
+  {icon:'💎',label:'GEMS',val:'2,847',color:'#ffd700'},{icon:'🚀',label:'LAUNCH',val:'< 1s',color:'#00d4ff'},
+];
+const cardsEl=document.getElementById('cards');
+cardData.forEach(d=>{
+  const el=document.createElement('div');el.className='scard';
+  el.innerHTML=`<div class="icon" style="background:linear-gradient(135deg,${d.color}55,${d.color}22)">${d.icon}</div><div class="label">${d.label}</div><div class="val">${d.val}</div>`;
+  cardsEl.appendChild(el);
+  const sx=new Spring(200,14),sy=new Spring(200,14),sr=new Spring(160,12);
+  let mx=0,my=0,hovering=false,raf=null;
+  function frame(){
+    const done=sx.tick()&sy.tick()&sr.tick();
+    el.style.transform=`perspective(600px) rotateY(${sx.value}deg) rotateX(${sy.value*-1}deg) scale(${1+sr.value})`;
+    if(!done)raf=requestAnimationFrame(frame);else raf=null;
+  }
+  el.addEventListener('mousemove',e=>{
+    const r=el.getBoundingClientRect();
+    const rx=(e.clientX-r.left-r.width/2)/(r.width/2)*14;
+    const ry=(e.clientY-r.top-r.height/2)/(r.height/2)*10;
+    sx.setTarget(rx);sy.setTarget(ry);sr.setTarget(.04);
+    if(!raf)raf=requestAnimationFrame(frame);
+  });
+  el.addEventListener('mouseleave',()=>{sx.setTarget(0);sy.setTarget(0);sr.setTarget(0);if(!raf)raf=requestAnimationFrame(frame)});
+});
+
+// ── Spring progress bars ─────────────────────────────────────────────────────
+const barData=[
+  {label:'Python',pct:87,color:'#6c63ff'},{label:'TypeScript',pct:74,color:'#00d4ff'},
+  {label:'Rust',pct:43,color:'#ff6584'},{label:'Lua',pct:92,color:'#ffd700'},{label:'Go',pct:58,color:'#00ff88'},
+];
+const barsEl=document.getElementById('bars');
+barData.forEach(b=>{
+  const row=document.createElement('div');row.className='bar-row';
+  row.innerHTML=`<div class="bar-label">${b.label}</div><div class="bar-track"><div class="bar-fill" id="bar-${b.label}" style="background:linear-gradient(90deg,${b.color}88,${b.color})"></div></div>`;
+  barsEl.appendChild(row);
+  // Spring animate after 200ms offset
+  const fill=row.querySelector('.bar-fill');
+  const sp=new Spring(60,9);sp.setTarget(b.pct);
+  let prev=0;
+  function animBar(){
+    sp.tick(1/60);fill.style.width=sp.value.toFixed(2)+'%';
+    if(Math.abs(sp.value-b.pct)>.1)requestAnimationFrame(animBar);
+  }
+  setTimeout(animBar,300+barData.indexOf(b)*120);
+});
+
+// ── Stagger menu ─────────────────────────────────────────────────────────────
+const menuItems=['Dashboard','Projects','Analytics','Team','Settings','Billing'];
+const menuEl=document.getElementById('menu');
+menuItems.forEach((m,i)=>{
+  const el=document.createElement('div');el.className='menu-item';el.textContent=m;menuEl.appendChild(el);
+  const spX=new Spring(220,15),spO=new Spring(200,14);
+  spX.pos=-30;spO.pos=0;
+  function animIn(){
+    spX.tick(1/60);spO.tick(1/60);
+    el.style.transform=`translateX(${spX.value.toFixed(2)}px)`;
+    el.style.opacity=spO.value.toFixed(3);
+    if(Math.abs(spX.value)>.1||Math.abs(spO.value-1)>.01)requestAnimationFrame(animIn);
+  }
+  setTimeout(()=>{spX.setTarget(0);spO.setTarget(1);animIn()},100+i*80);
+  // Hover spring
+  const spH=new Spring(300,16);
+  function animH(){spH.tick(1/60);el.style.paddingLeft=(18+spH.value*8).toFixed(1)+'px';if(Math.abs(spH.value)>.001)requestAnimationFrame(animH)}
+  el.addEventListener('mouseenter',()=>{spH.setTarget(1);animH()});
+  el.addEventListener('mouseleave',()=>{spH.setTarget(0)});
+});
+
+// ── Spring counters ───────────────────────────────────────────────────────────
+const counterData=[{label:'Questions',val:48291},{label:'Scripts',val:12047},{label:'XP Earned',val:9830},{label:'Streak',val:42}];
+const countersEl=document.getElementById('counters');
+counterData.forEach(d=>{
+  const box=document.createElement('div');box.className='counter-box';
+  const span=document.createElement('span');span.className='counter-val';span.textContent='0';
+  const lbl=document.createElement('div');lbl.className='counter-lbl';lbl.textContent=d.label;
+  box.appendChild(span);box.appendChild(lbl);countersEl.appendChild(box);
+  const sp=new Spring(40,8);sp.setTarget(d.val);
+  function anim(){
+    sp.tick(1/60);
+    span.textContent=Math.round(sp.value).toLocaleString();
+    const done=sp.tick===undefined||Math.abs(sp.value-d.val)<.5;
+    if(!done)requestAnimationFrame(anim);
+    else span.textContent=d.val.toLocaleString();
+  }
+  setTimeout(anim,200);
+});
+
+// ── Magnetic buttons ──────────────────────────────────────────────────────────
+const btnLabels=['Generate UI','Ask Claude','Run Code','Deploy'];
+const magEl=document.getElementById('magbtns');
+btnLabels.forEach(l=>{
+  const btn=document.createElement('div');btn.className='mag-btn';btn.textContent=l;magEl.appendChild(btn);
+  const sx=new Spring(300,18),sy=new Spring(300,18);
+  let raf=null;
+  function frame(){
+    const done=sx.tick()&sy.tick();
+    btn.style.transform=`translate(${sx.value.toFixed(2)}px,${sy.value.toFixed(2)}px)`;
+    if(!done)raf=requestAnimationFrame(frame);else raf=null;
+  }
+  btn.addEventListener('mousemove',e=>{
+    const r=btn.getBoundingClientRect();
+    sx.setTarget((e.clientX-r.left-r.width/2)*.25);
+    sy.setTarget((e.clientY-r.top-r.height/2)*.25);
+    if(!raf)raf=requestAnimationFrame(frame);
+  });
+  btn.addEventListener('mouseleave',()=>{sx.setTarget(0);sy.setTarget(0);if(!raf)raf=requestAnimationFrame(frame)});
+});
+</script>
+</body>
+</html>"""
+
+
 def _gen_general(request: str) -> str:
     r = request.lower()
     # Detect language
@@ -3597,9 +4595,13 @@ def _gen_general(request: str) -> str:
         "    generate a 3D rotating cube\n"
         "    generate CSS animations\n"
         "    generate a landing page\n"
+        "    generate a 2D platformer game\n"
+        "    generate a snake game\n"
+        "    generate a 3D space shooter game\n"
+        "    generate a 3D ball runner game\n"
+        "    generate spring animations\n"
         "    generate a React dashboard (Tailwind + shadcn/ui)\n"
         "    generate a React landing page\n"
-        "    generate a React card component\n"
         "    generate a Flask API\n"
         "    generate a Node.js Express server\n"
         "    generate a Python web scraper\n"
@@ -3615,7 +4617,10 @@ def _gen_general(request: str) -> str:
 # ─── Output wrapper ───────────────────────────────────────────────────────────
 
 def _wrap_output(title: str, lang: str, code: str) -> str:
+    global _last_html
     lines = code.strip().split("\n")
+    if lang == "html":
+        _last_html = code.strip()
     header = (
         f"\n  ⚡ NANO AI GENERATED — {title.upper()}\n"
         f"  {'─'*65}\n"
@@ -3623,9 +4628,10 @@ def _wrap_output(title: str, lang: str, code: str) -> str:
         f"  {'─'*65}\n\n"
     )
     body = "\n".join("  " + l for l in lines)
+    deploy_tip = "\n  Type 'deploy' to open it in your browser!" if lang == "html" else ""
     footer = (
         f"\n\n  {'─'*65}\n"
-        f"  Copy the code above. Save as a .{_ext(lang)} file and run it!\n"
+        f"  Copy the code above. Save as a .{_ext(lang)} file and run it!{deploy_tip}\n"
         f"  Type 'generate [something else]' for more code.\n"
     )
     return header + body + footer

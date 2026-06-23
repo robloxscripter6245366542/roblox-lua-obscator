@@ -195,6 +195,9 @@ class Tutor:
             self.session.xp += 5
             return resp, False
 
+        if intent == "deploy":
+            return self._deploy_last(), False
+
         if intent == "fetch":
             return self._do_fetch(text), False
 
@@ -295,6 +298,42 @@ class Tutor:
             return self._claude_respond(text), False
 
         return respond_unknown(text), False
+
+    # ── Deploy ────────────────────────────────────────────────────────────────
+
+    def _deploy_last(self) -> str:
+        import webbrowser
+        from pathlib import Path
+        from . import generator as gen
+        html = gen.get_last_html()
+        if html is None:
+            return (
+                "\n  Nothing to deploy yet!\n"
+                "  First generate something, then type 'deploy':\n\n"
+                "    generate a 2D platformer game\n"
+                "    generate a 3D space shooter\n"
+                "    generate a React landing page\n"
+                "    generate a crazy galaxy UI\n"
+            )
+        out_dir = Path.home() / "nano_ai_output"
+        out_dir.mkdir(exist_ok=True)
+        fpath = out_dir / "nano_ai_preview.html"
+        fpath.write_text(html, encoding="utf-8")
+        filepath = str(fpath.resolve())
+        try:
+            webbrowser.open(f"file://{filepath}")
+            opened = "Opening in your browser..."
+        except Exception:
+            opened = "Open the file path above in your browser."
+        return (
+            f"\n  🚀 DEPLOYED!\n"
+            f"  {'─'*55}\n"
+            f"  Saved: {filepath}\n"
+            f"  {opened}\n\n"
+            f"  Want to go live?\n"
+            f"  → Drag-drop the file to netlify.com/drop\n"
+            f"  → Or push it to GitHub Pages\n"
+        )
 
     # ── Claude AI response ────────────────────────────────────────────────────
 
