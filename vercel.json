@@ -1,13 +1,15 @@
 {
-  "outputDirectory": "public",
+  "buildCommand": "npm install && npm run build",
+  "outputDirectory": "dist",
   "cleanUrls": true,
   "trailingSlash": false,
   "functions": {
-    "api/chat.js": {
-      "maxDuration": 30
-    }
+    "api/chat.js": { "maxDuration": 30 },
+    "api/video.js": { "maxDuration": 120 }
   },
   "rewrites": [
-    { "source": "/api/chat", "destination": "/api/chat.js" }
+    { "source": "/api/chat", "destination": "/api/chat.js" },
+    { "source": "/api/video", "destination": "/api/video.js" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
