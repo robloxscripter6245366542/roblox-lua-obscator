@@ -62,21 +62,25 @@ function makeLiveParticle(W: number, H: number): LiveParticle {
 
 function LivingPainting({ src, onDownload }: { src: string; onDownload: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas) return
+    const wrap = wrapRef.current
+    if (!canvas || !wrap) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
+    // Defer first size read to after browser layout
     const resize = () => {
-      canvas.width = canvas.offsetWidth
-      canvas.height = canvas.offsetHeight
+      canvas.width = wrap.clientWidth || 600
+      canvas.height = wrap.clientHeight || 420
     }
-    resize()
+    requestAnimationFrame(resize)
+    window.addEventListener('resize', resize)
 
-    const W = () => canvas.width
-    const H = () => canvas.height
+    const W = () => canvas.width || 600
+    const H = () => canvas.height || 420
 
     const particles: LiveParticle[] = Array.from({ length: 55 }, () => makeLiveParticle(W(), H()))
     let frame = 0
@@ -178,12 +182,11 @@ function LivingPainting({ src, onDownload }: { src: string; onDownload: () => vo
     }
 
     handle.raf = requestAnimationFrame(draw)
-    window.addEventListener('resize', resize)
     return () => { cancelAnimationFrame(handle.raf); window.removeEventListener('resize', resize) }
   }, [src])
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 420, overflow: 'hidden', borderRadius: 14 }}>
+    <div ref={wrapRef} style={{ position: 'relative', width: '100%', height: 420, overflow: 'hidden', borderRadius: 14 }}>
       {/* Painting with gentle float + breathe */}
       <img
         src={src}
@@ -274,8 +277,8 @@ export default function ImagePanel() {
         <button onClick={generate} className="px-5 py-2.5 rounded-xl font-bold text-black text-sm transition-all hover:scale-105" style={{ background: 'linear-gradient(135deg,var(--c),var(--v))' }}>Generate →</button>
       </div>
       <div className="flex gap-4" style={{ flexDirection: 'row' }}>
-        <div className="flex-1 rounded-2xl overflow-hidden flex items-center justify-center neon-c"
-          style={{ minHeight: 420, background: 'rgba(255,255,255,.03)', border: '2px dashed rgba(255,255,255,.1)' }}>
+        <div className={`flex-1 rounded-2xl overflow-hidden neon-c ${imgSrc ? '' : 'flex items-center justify-center'}`}
+          style={{ height: 420, background: 'rgba(255,255,255,.03)', border: '2px dashed rgba(255,255,255,.1)' }}>
           {loading && (
             <div className="text-center">
               <div className="spin mx-auto mb-3"></div>
