@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 const MODELS = [
   { val: 'flux-pro', label: 'Flux Pro — Cinematic / Best Overall' },
@@ -26,6 +26,198 @@ const EXAMPLES = [
   'Magical VFX: glowing cherry blossom petals swirling in golden light',
   'Abstract holographic 3D geometric portal with neon light rings',
 ]
+
+// Particle types for the living painting overlay
+interface LiveParticle {
+  x: number; y: number; vx: number; vy: number
+  size: number; alpha: number; color: string
+  wobble: number; wobbleSpeed: number; wobbleAmp: number
+  type: 'dust' | 'leaf' | 'petal' | 'spark'
+}
+
+function makeLiveParticle(W: number, H: number): LiveParticle {
+  const types: LiveParticle['type'][] = ['dust', 'leaf', 'petal', 'spark']
+  const type = types[Math.floor(Math.random() * types.length)]
+  const colors = {
+    dust:  ['#fffde0', '#fff8c0', '#f0e8c0'],
+    leaf:  ['#5a9e4a', '#7ec850', '#4d7a3a', '#a8d880'],
+    petal: ['#ffb7c5', '#ff85a2', '#ffd6e0', '#ff69b4'],
+    spark: ['#ffd700', '#fff8dc', '#ffe680', '#ffffff'],
+  }
+  const palette = colors[type]
+  return {
+    x: Math.random() * W,
+    y: type === 'spark' ? Math.random() * H : Math.random() * H * 0.8 + H * 0.1,
+    vx: (Math.random() - 0.5) * 0.5,
+    vy: type === 'spark' ? -(Math.random() * 0.8 + 0.2) : -(Math.random() * 0.6 + 0.1),
+    size: type === 'leaf' ? Math.random() * 6 + 3 : type === 'petal' ? Math.random() * 5 + 2 : Math.random() * 2.5 + 0.5,
+    alpha: Math.random() * 0.5 + 0.15,
+    color: palette[Math.floor(Math.random() * palette.length)],
+    wobble: Math.random() * Math.PI * 2,
+    wobbleSpeed: (Math.random() - 0.5) * 0.04,
+    wobbleAmp: Math.random() * 1.5 + 0.3,
+    type,
+  }
+}
+
+function LivingPainting({ src, onDownload }: { src: string; onDownload: () => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = canvas.offsetWidth
+      canvas.height = canvas.offsetHeight
+    }
+    resize()
+
+    const W = () => canvas.width
+    const H = () => canvas.height
+
+    const particles: LiveParticle[] = Array.from({ length: 55 }, () => makeLiveParticle(W(), H()))
+    let frame = 0
+    const handle = { raf: 0 }
+
+    const drawLeaf = (ctx: CanvasRenderingContext2D, p: LiveParticle) => {
+      ctx.save()
+      ctx.translate(p.x, p.y)
+      ctx.rotate(p.wobble * 2)
+      ctx.scale(1, 0.5)
+      ctx.beginPath()
+      ctx.ellipse(0, 0, p.size, p.size * 2.2, 0, 0, Math.PI * 2)
+      ctx.fillStyle = p.color
+      ctx.globalAlpha = p.alpha
+      ctx.fill()
+      // vein
+      ctx.beginPath()
+      ctx.moveTo(0, -p.size * 2.2)
+      ctx.lineTo(0, p.size * 2.2)
+      ctx.strokeStyle = 'rgba(0,80,0,0.3)'
+      ctx.lineWidth = 0.5
+      ctx.stroke()
+      ctx.restore()
+    }
+
+    const drawPetal = (ctx: CanvasRenderingContext2D, p: LiveParticle) => {
+      ctx.save()
+      ctx.translate(p.x, p.y)
+      ctx.rotate(p.wobble * 3)
+      ctx.beginPath()
+      ctx.ellipse(0, 0, p.size * 0.4, p.size, 0, 0, Math.PI * 2)
+      ctx.fillStyle = p.color
+      ctx.globalAlpha = p.alpha
+      ctx.shadowColor = '#ff85a2'
+      ctx.shadowBlur = 4
+      ctx.fill()
+      ctx.restore()
+    }
+
+    const draw = () => {
+      ctx.clearRect(0, 0, W(), H())
+      frame++
+
+      // Subtle light shimmer sweep
+      if (frame % 300 < 60) {
+        const prog = (frame % 300) / 60
+        const shimX = -W() * 0.3 + prog * W() * 1.6
+        const shimGrad = ctx.createLinearGradient(shimX, 0, shimX + W() * 0.25, H())
+        shimGrad.addColorStop(0, 'rgba(255,255,220,0)')
+        shimGrad.addColorStop(0.5, 'rgba(255,255,220,0.06)')
+        shimGrad.addColorStop(1, 'rgba(255,255,220,0)')
+        ctx.fillStyle = shimGrad
+        ctx.fillRect(0, 0, W(), H())
+      }
+
+      // Bottom warm glow (ground heat / candlelight flicker)
+      const flickerAlpha = 0.04 + Math.sin(frame * 0.07) * 0.02
+      const groundGlow = ctx.createRadialGradient(W() * 0.5, H() * 0.9, 0, W() * 0.5, H() * 0.9, W() * 0.5)
+      groundGlow.addColorStop(0, `rgba(255,180,60,${flickerAlpha})`)
+      groundGlow.addColorStop(1, 'rgba(255,140,0,0)')
+      ctx.fillStyle = groundGlow
+      ctx.fillRect(0, 0, W(), H())
+
+      for (const p of particles) {
+        p.x += p.vx + Math.sin(p.wobble) * p.wobbleAmp
+        p.y += p.vy
+        p.wobble += p.wobbleSpeed
+
+        // Respawn at bottom when drifted off top
+        if (p.y < -20 || p.x < -30 || p.x > W() + 30) {
+          const fresh = makeLiveParticle(W(), H())
+          Object.assign(p, fresh, { y: H() + 10 })
+        }
+
+        ctx.globalAlpha = p.alpha * (0.6 + Math.sin(frame * 0.025 + p.wobble) * 0.4)
+
+        if (p.type === 'leaf') { drawLeaf(ctx, p); continue }
+        if (p.type === 'petal') { drawPetal(ctx, p); continue }
+        if (p.type === 'spark') {
+          // Tiny glowing spark
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+          ctx.fillStyle = p.color
+          ctx.shadowColor = p.color
+          ctx.shadowBlur = 6
+          ctx.fill()
+          ctx.shadowBlur = 0
+        } else {
+          // dust mote
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+          ctx.fillStyle = p.color
+          ctx.fill()
+        }
+      }
+
+      ctx.globalAlpha = 1
+      handle.raf = requestAnimationFrame(draw)
+    }
+
+    handle.raf = requestAnimationFrame(draw)
+    window.addEventListener('resize', resize)
+    return () => { cancelAnimationFrame(handle.raf); window.removeEventListener('resize', resize) }
+  }, [src])
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 420, overflow: 'hidden', borderRadius: 14 }}>
+      {/* Painting with gentle float + breathe */}
+      <img
+        src={src}
+        alt="Generated"
+        style={{
+          width: '100%', height: '100%', objectFit: 'contain', borderRadius: 14, display: 'block',
+          animation: 'imgFloat 10s ease-in-out infinite',
+          transformOrigin: 'center center',
+        }}
+      />
+      {/* Living particle overlay: leaves, petals, dust, sparks */}
+      <canvas
+        ref={canvasRef}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', borderRadius: 14 }}
+      />
+      {/* Vignette to make particles feel embedded in the scene */}
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: 14, pointerEvents: 'none',
+        background: 'radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.35) 100%)',
+      }} />
+      {/* Download button */}
+      <button
+        onClick={onDownload}
+        style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,.72)', border: '1px solid rgba(255,255,255,.2)', color: '#fff', padding: '5px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer', backdropFilter: 'blur(10px)', zIndex: 2 }}
+      >
+        ⬇ Download
+      </button>
+      {/* "Living painting" badge */}
+      <div style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,.65)', border: '1px solid rgba(255,200,100,.25)', color: 'rgba(255,220,120,.9)', padding: '3px 10px', borderRadius: 8, fontSize: 11, backdropFilter: 'blur(8px)', zIndex: 2 }}>
+        🎨 Living Painting
+      </div>
+    </div>
+  )
+}
 
 export default function ImagePanel() {
   const [prompt, setPrompt] = useState('')
@@ -84,13 +276,13 @@ export default function ImagePanel() {
       <div className="flex gap-4" style={{ flexDirection: 'row' }}>
         <div className="flex-1 rounded-2xl overflow-hidden flex items-center justify-center neon-c"
           style={{ minHeight: 420, background: 'rgba(255,255,255,.03)', border: '2px dashed rgba(255,255,255,.1)' }}>
-          {loading && <div className="text-center"><div className="spin mx-auto mb-3"></div><div className="text-sm" style={{ color: 'var(--muted)' }}>Generating with {model}… (30–90 seconds)</div></div>}
-          {imgSrc && (
-            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-              <img src={imgSrc} alt="Generated" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 14 }} />
-              <button onClick={download} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,.7)', border: '1px solid rgba(255,255,255,.2)', color: '#fff', padding: '4px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer', backdropFilter: 'blur(8px)' }}>⬇ Download</button>
+          {loading && (
+            <div className="text-center">
+              <div className="spin mx-auto mb-3"></div>
+              <div className="text-sm" style={{ color: 'var(--muted)' }}>Generating with {model}… (30–90 seconds)</div>
             </div>
           )}
+          {imgSrc && <LivingPainting src={imgSrc} onDownload={download} />}
           {error && <div className="text-center p-6"><div className="text-4xl mb-3">⚠️</div><div className="text-sm">{error}</div></div>}
           {!loading && !imgSrc && !error && (
             <div className="text-center" style={{ color: 'var(--muted)' }}>
@@ -107,7 +299,7 @@ export default function ImagePanel() {
               style={{ border: '1px solid rgba(255,255,255,.08)', color: 'var(--text)' }}
               onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(6,182,212,.4)'}
               onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,.08)'}
-              onClick={() => { setPrompt(t); }}>
+              onClick={() => setPrompt(t)}>
               {t}
             </div>
           ))}

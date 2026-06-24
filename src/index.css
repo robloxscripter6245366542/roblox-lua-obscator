@@ -28,6 +28,9 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.6)} }
 @keyframes msgIn { from{opacity:0;transform:translateY(8px) scale(.97)} to{opacity:1;transform:none} }
 @keyframes td { 0%,100%{transform:translateY(0);opacity:.35} 50%{transform:translateY(-6px);opacity:1} }
+@keyframes imgFloat { 0%,100%{transform:scale(1.0) translate(0,0)} 25%{transform:scale(1.012) translate(3px,-2px)} 50%{transform:scale(1.016) translate(-2px,3px)} 75%{transform:scale(1.01) translate(2px,2px)} }
+@keyframes lightShimmer { 0%,100%{opacity:0;transform:translateX(-100%) rotate(20deg)} 40%,60%{opacity:1;transform:translateX(150%) rotate(20deg)} }
+@keyframes plantSway { 0%,100%{transform:rotate(-2deg) scaleX(1)} 50%{transform:rotate(2deg) scaleX(0.98)} }
 @keyframes g1 {
   0%,87%,100%{clip-path:inset(0 0 100% 0);opacity:0}
   88%{clip-path:inset(10% 0 60% 0);transform:translate(5px);opacity:1}
