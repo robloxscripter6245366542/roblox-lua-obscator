@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import MoviePlayer from './MoviePlayer'
+import AnimeBackground from './AnimeBackground'
 
 const PIPELINE = [
   { ic: '📝', name: 'Claude', role: 'Screenplay', color: 'rgba(124,58,237,.3)' },
@@ -264,7 +265,15 @@ export default function MoviePanel() {
   const estHours = Math.ceil(totalClips * 1.5 / 60)
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" style={{ position: 'relative' }}>
+      {/* Anime / manga animated background */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', overflow: 'hidden' }}>
+        <AnimeBackground />
+      </div>
+
+      {/* All content sits above the anime background */}
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
       {/* Pipeline banner */}
       <div className="glass rounded-2xl p-4" style={{ border: '1px solid rgba(236,72,153,.3)' }}>
         <div className="text-xs font-bold mb-3" style={{ color: 'var(--p)' }}>⚡ 9 SPECIALISED AIs — COLLABORATING ON YOUR FILM</div>
@@ -567,6 +576,8 @@ export default function MoviePanel() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      </div>{/* end content wrapper */}
     </div>
   )
 }
