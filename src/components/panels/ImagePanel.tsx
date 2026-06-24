@@ -33,24 +33,38 @@ export default function ImagePanel() {
   const [size, setSize] = useState('1024x1024')
   const [loading, setLoading] = useState(false)
   const [imgSrc, setImgSrc] = useState('')
+  const [directUrl, setDirectUrl] = useState('')
   const [error, setError] = useState('')
 
-  const generate = async () => {
+  const generate = () => {
     if (!prompt.trim()) { alert('Enter a prompt!'); return }
     const [w, h] = size.split('x')
-    setLoading(true); setError('')
-    setImgSrc(prev => { if (prev) URL.revokeObjectURL(prev); return '' })
+    setLoading(true); setError(''); setImgSrc(''); setDirectUrl('')
+    const seed = Math.floor(Math.random() * 99999)
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.trim())}?model=${model}&width=${w}&height=${h}&enhance=true&nologo=true&seed=${seed}`
+    setDirectUrl(url)
+    const img = new window.Image()
+    img.onload = () => { setImgSrc(url); setLoading(false) }
+    img.onerror = () => { setError('Generation failed — try a different model or prompt.'); setLoading(false) }
+    img.src = url
+  }
+
+  const download = async () => {
+    if (!directUrl) return
     try {
       const r = await fetch('/api/image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: prompt.trim(), model, width: parseInt(w), height: parseInt(h) }),
+        body: JSON.stringify({ prompt: prompt.trim(), model, width: parseInt(size.split('x')[0]), height: parseInt(size.split('x')[1]) }),
       })
-      if (!r.ok) throw new Error('Image generation failed')
+      if (!r.ok) throw new Error()
       const blob = await r.blob()
-      setImgSrc(URL.createObjectURL(blob))
-    } catch { setError('Generation failed — try a different model or prompt.') }
-    finally { setLoading(false) }
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `generated-${model}.png`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000)
+    } catch { window.open(directUrl, '_blank') }
   }
 
   return (
@@ -70,8 +84,13 @@ export default function ImagePanel() {
       <div className="flex gap-4" style={{ flexDirection: 'row' }}>
         <div className="flex-1 rounded-2xl overflow-hidden flex items-center justify-center neon-c"
           style={{ minHeight: 420, background: 'rgba(255,255,255,.03)', border: '2px dashed rgba(255,255,255,.1)' }}>
-          {loading && <div className="text-center"><div className="spin mx-auto mb-3"></div><div className="text-sm" style={{ color: 'var(--muted)' }}>Generating with {model}…</div></div>}
-          {imgSrc && <img src={imgSrc} alt="Generated" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 14 }} />}
+          {loading && <div className="text-center"><div className="spin mx-auto mb-3"></div><div className="text-sm" style={{ color: 'var(--muted)' }}>Generating with {model}… (30–90 seconds)</div></div>}
+          {imgSrc && (
+            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+              <img src={imgSrc} alt="Generated" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 14 }} />
+              <button onClick={download} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,.7)', border: '1px solid rgba(255,255,255,.2)', color: '#fff', padding: '4px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer', backdropFilter: 'blur(8px)' }}>⬇ Download</button>
+            </div>
+          )}
           {error && <div className="text-center p-6"><div className="text-4xl mb-3">⚠️</div><div className="text-sm">{error}</div></div>}
           {!loading && !imgSrc && !error && (
             <div className="text-center" style={{ color: 'var(--muted)' }}>

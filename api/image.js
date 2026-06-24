@@ -27,11 +27,11 @@ export default async function handler(req, res) {
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(String(prompt))}?model=${resolvedModel}&width=${width}&height=${height}&enhance=true&nologo=true&seed=${s}`;
 
   try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(60000) });
+    const r = await fetch(url, { signal: AbortSignal.timeout(115000) });
     if (!r.ok) {
       // Fallback to flux-pro if the requested model fails
       if (resolvedModel !== "flux-pro") {
-        const fallback = await fetch(url.replace(`model=${resolvedModel}`, "model=flux-pro"), { signal: AbortSignal.timeout(60000) });
+        const fallback = await fetch(url.replace(`model=${resolvedModel}`, "model=flux-pro"), { signal: AbortSignal.timeout(115000) });
         if (fallback.ok) {
           const buf = await fallback.arrayBuffer();
           res.setHeader("Content-Type", "image/jpeg");
