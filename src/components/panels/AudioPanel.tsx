@@ -22,8 +22,12 @@ export default function AudioPanel() {
     if (!text.trim()) { alert('Enter some text!'); return }
     setLoading(true); setError(''); setAudioSrc('')
     try {
-      const r = await fetch(`https://text.pollinations.ai/${encodeURIComponent(text)}?voice=${voice}&model=openai-audio`)
-      if (!r.ok) throw new Error()
+      const r = await fetch('/api/audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.trim(), voice }),
+      })
+      if (!r.ok) throw new Error(await r.text())
       const blob = await r.blob()
       setAudioSrc(URL.createObjectURL(blob))
     } catch { setError('Speech generation failed. Try shorter text or a different voice.') }

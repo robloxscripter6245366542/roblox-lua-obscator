@@ -6,7 +6,7 @@ const MODELS = [
   { val: 'flux-anime', label: 'Flux Anime — Anime / Manga Style' },
   { val: 'flux-3d', label: 'Flux 3D — 3D Models / CGI Renders' },
   { val: 'gptimage', label: 'GPT Image — Graphics / Logos / Art' },
-  { val: 'seedimage', label: 'Seedream — VFX / Glows / Magic Effects' },
+  { val: 'seedream', label: 'Seedream — VFX / Glows / Magic Effects' },
   { val: 'flux', label: 'Flux Standard — Fast Draft' },
 ]
 
@@ -35,15 +35,21 @@ export default function ImagePanel() {
   const [imgSrc, setImgSrc] = useState('')
   const [error, setError] = useState('')
 
-  const generate = () => {
+  const generate = async () => {
     if (!prompt.trim()) { alert('Enter a prompt!'); return }
     const [w, h] = size.split('x')
     setLoading(true); setError(''); setImgSrc('')
-    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${model}&width=${w}&height=${h}&enhance=true&nologo=true&seed=${Math.floor(Math.random() * 99999)}`
-    const img = new Image()
-    img.onload = () => { setImgSrc(url); setLoading(false) }
-    img.onerror = () => { setError('Generation failed — try a different model or prompt.'); setLoading(false) }
-    img.src = url
+    try {
+      const r = await fetch('/api/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: prompt.trim(), model, width: parseInt(w), height: parseInt(h) }),
+      })
+      if (!r.ok) throw new Error('Image generation failed')
+      const blob = await r.blob()
+      setImgSrc(URL.createObjectURL(blob))
+    } catch { setError('Generation failed — try a different model or prompt.') }
+    finally { setLoading(false) }
   }
 
   return (

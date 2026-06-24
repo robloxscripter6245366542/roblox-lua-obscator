@@ -48,6 +48,7 @@ export default function MoviePanel() {
   const [chars, setChars] = useState<CharAsset[]>([])
   const [scenes, setScenes] = useState<Scene[]>([])
   const [storyboardFrames, setStoryboardFrames] = useState<string[]>([])
+  const [modelImages, setModelImages] = useState<string[]>([])
   const [vfxImages, setVfxImages] = useState<string[]>([])
   const [musicSrc, setMusicSrc] = useState('')
   const [narrateSrc, setNarrateSrc] = useState('')
@@ -56,20 +57,24 @@ export default function MoviePanel() {
 
   const wait = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
-  const genImg = (prompt: string, model: string, w = 512, h = 512): Promise<string> =>
-    new Promise(resolve => {
-      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${model}&width=${w}&height=${h}&enhance=true&nologo=true&seed=${Math.floor(Math.random() * 99999)}`
-      const img = new Image()
-      img.onload = () => resolve(url)
-      img.onerror = () => resolve('')
-      img.src = url
-    })
+  const genImg = async (prompt: string, model: string, w = 512, h = 512): Promise<string> => {
+    try {
+      const r = await fetch('/api/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, model, width: w, height: h }),
+      })
+      if (!r.ok) return ''
+      const blob = await r.blob()
+      return URL.createObjectURL(blob)
+    } catch { return '' }
+  }
 
   const startMovie = async () => {
     if (!concept.trim()) { alert('Enter a movie concept!'); return }
     setRunning(true); setStopped(false); stoppedRef.current = false
     setScript(''); setChars([]); setScenes([]); setStoryboardFrames([])
-    setVfxImages([]); setMusicSrc(''); setNarrateSrc('')
+    setModelImages([]); setVfxImages([]); setMusicSrc(''); setNarrateSrc('')
     setActivePipe(-1); setProgress(0)
 
     const CLIP_SEC = 5
@@ -128,8 +133,34 @@ export default function MoviePanel() {
 
     if (stoppedRef.current) { setRunning(false); return }
 
-    // ── 4. VFX ASSETS (Seedream) ──
-    setActivePipe(4); setStatusMsg('✨ Seedream generating VFX assets…'); setProgress(52)
+    // ── 4. 3D MODELS (Flux 3D) — key props, vehicles, environments ──
+    setActivePipe(3); setStatusMsg('🔷 Flux 3D generating 3D models and assets…'); setProgress(50)
+    const threeDPrompts: string[] = []
+    // Extract objects/locations from script for 3D rendering
+    const actionLines = [...generatedScript.matchAll(/ACTION:\s*([^\n]+)/ig)].map(m => m[1]).slice(0, 6)
+    actionLines.forEach(line => {
+      const obj = line.match(/(?:a |an |the )([\w\s]{4,30}(?:ship|craft|robot|vehicle|building|weapon|portal|device|suit|mech|sword|gun|castle|throne|spaceship|car|bike|drone|machine|tower))/i)?.[1]
+      if (obj) threeDPrompts.push(`3D CGI render of ${obj}, ${style} style, Pixar quality, subsurface scattering, studio lighting, transparent background, 360 view`)
+    })
+    // Fallback: render main locations as 3D environments
+    if (threeDPrompts.length === 0) {
+      const locs = [...generatedScript.matchAll(/(?:INT\.|EXT\.)\s+([^-\n]+)/g)].map(m => m[1].trim()).slice(0, 3)
+      locs.forEach(loc => threeDPrompts.push(`3D CGI environment render of ${loc}, ${genre} genre, cinematic lighting, photorealistic, Unreal Engine quality`))
+    }
+    const modelUrls: string[] = []
+    for (const p of threeDPrompts.slice(0, 4)) {
+      if (stoppedRef.current) break
+      const url = await genImg(p, 'flux-3d', 512, 512)
+      if (url) modelUrls.push(url)
+      await wait(400)
+    }
+    if (modelUrls.length > 0) setModelImages(modelUrls)
+    setProgress(56)
+
+    if (stoppedRef.current) { setRunning(false); return }
+
+    // ── 5. VFX ASSETS (Seedream) ──
+    setActivePipe(4); setStatusMsg('✨ Seedream generating VFX and glow effects…'); setProgress(58)
     const vfxDescs: string[] = []
     sceneMatches.slice(0, 6).forEach(s => {
       const vfx = s.match(/VFX:\s*([^\n]+)/i)?.[1]
@@ -138,35 +169,35 @@ export default function MoviePanel() {
     const vfxUrls: string[] = []
     for (const desc of vfxDescs.slice(0, 4)) {
       if (stoppedRef.current) break
-      const url = await genImg(`${desc}, cinematic VFX, glowing particles, magical light effects, professional visual effect, 4K`, 'seedimage', 512, 512)
+      const url = await genImg(`${desc}, cinematic VFX, glowing particles, magical light effects, professional visual effect, 4K`, 'seedream', 512, 512)
       if (url) vfxUrls.push(url)
       await wait(400)
     }
-    setVfxImages(vfxUrls)
-    setProgress(62)
+    if (vfxUrls.length > 0) setVfxImages(vfxUrls)
+    setProgress(65)
 
     if (stoppedRef.current) { setRunning(false); return }
 
-    // ── 5. SOUNDTRACK (Suno / Stable Audio) ──
-    setActivePipe(6); setStatusMsg('🎼 Suno AI composing soundtrack…'); setProgress(65)
+    // ── 6. SOUNDTRACK (Suno / Stable Audio) ──
+    setActivePipe(6); setStatusMsg('🎼 Stable Audio composing soundtrack…'); setProgress(68)
     try {
       const musicCues = sceneMatches.slice(0, 3).map(s => s.match(/MUSIC_CUE:\s*([^\n]+)/i)?.[1]).filter(Boolean).join(', ')
       const mPrompt = `${genre} film score, ${style} aesthetic, ${musicCues || 'cinematic dramatic'}, for: ${concept.slice(0, 80)}`
-      const mr = await fetch(`https://text.pollinations.ai/${encodeURIComponent(mPrompt)}?model=stable-audio`)
+      const mr = await fetch('/api/music', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: mPrompt, model: 'stable-audio' }) })
       if (mr.ok) { const blob = await mr.blob(); setMusicSrc(URL.createObjectURL(blob)) }
     } catch {}
-    setProgress(72)
+    setProgress(75)
 
     if (stoppedRef.current) { setRunning(false); return }
 
-    // ── 6. NARRATION (ElevenLabs) ──
-    setActivePipe(7); setStatusMsg('🎙️ ElevenLabs narrating opening scene…'); setProgress(75)
+    // ── 7. NARRATION (ElevenLabs) ──
+    setActivePipe(7); setStatusMsg('🎙️ ElevenLabs narrating opening scene…'); setProgress(78)
     try {
       const narration = `${concept.slice(0, 200)}. A ${genre} story begins.`
-      const nr = await fetch(`https://text.pollinations.ai/${encodeURIComponent(narration)}?voice=nova&model=openai-audio`)
+      const nr = await fetch('/api/audio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: narration, voice: 'nova' }) })
       if (nr.ok) { const blob = await nr.blob(); setNarrateSrc(URL.createObjectURL(blob)) }
     } catch {}
-    setProgress(82)
+    setProgress(85)
 
     if (stoppedRef.current) { setRunning(false); return }
 
@@ -210,7 +241,7 @@ export default function MoviePanel() {
     setVfxImages([])
     const urls: string[] = []
     for (let i = 0; i < 4; i++) {
-      const url = await genImg(`${vfxPrompt}, cinematic VFX, glowing particles, professional visual effect, 4K, variation ${i + 1}`, 'seedimage', 512, 512)
+      const url = await genImg(`${vfxPrompt}, cinematic VFX, glowing particles, professional visual effect, 4K, variation ${i + 1}`, 'seedream', 512, 512)
       if (url) urls.push(url)
       setVfxImages([...urls])
       await wait(300)
@@ -386,6 +417,40 @@ export default function MoviePanel() {
                 <div key={i} className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,.08)' }}>
                   <img src={url} alt={`Scene ${i + 1}`} style={{ width: '100%', display: 'block' }} />
                   <div className="text-center py-1" style={{ fontSize: 10, color: 'var(--muted)' }}>Scene {i + 1}</div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 3D Models */}
+      <AnimatePresence>
+        {modelImages.length > 0 && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-4" style={{ border: '1px solid rgba(245,158,11,.2)' }}>
+            <div className="text-sm font-bold text-white mb-3">🔷 Flux 3D — Props, Vehicles &amp; Environments ({modelImages.length} renders)</div>
+            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
+              {modelImages.map((url, i) => (
+                <div key={i} className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(245,158,11,.2)' }}>
+                  <img src={url} alt={`3D Model ${i + 1}`} style={{ width: '100%', display: 'block' }} />
+                  <div className="text-center py-1" style={{ fontSize: 10, color: 'var(--muted)' }}>Model {i + 1}</div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* VFX assets */}
+      <AnimatePresence>
+        {vfxImages.length > 0 && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-4" style={{ border: '1px solid rgba(168,85,247,.2)' }}>
+            <div className="text-sm font-bold text-white mb-3">✨ Seedream — VFX, Glows &amp; Particles ({vfxImages.length} assets)</div>
+            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
+              {vfxImages.map((url, i) => (
+                <div key={i} className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(168,85,247,.2)' }}>
+                  <img src={url} alt={`VFX ${i + 1}`} style={{ width: '100%', display: 'block' }} />
+                  <div className="text-center py-1" style={{ fontSize: 10, color: 'var(--muted)' }}>VFX {i + 1}</div>
                 </div>
               ))}
             </div>

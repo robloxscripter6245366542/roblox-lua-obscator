@@ -22,8 +22,12 @@ export default function MusicPanel() {
     if (!prompt.trim()) { alert('Enter a music prompt!'); return }
     setLoading(true); setError(''); setAudioSrc('')
     try {
-      const r = await fetch(`https://text.pollinations.ai/${encodeURIComponent(prompt)}?model=${musicModel}`)
-      if (!r.ok) throw new Error()
+      const r = await fetch('/api/music', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: prompt.trim(), model: musicModel }),
+      })
+      if (!r.ok) throw new Error(await r.text())
       const blob = await r.blob()
       setAudioSrc(URL.createObjectURL(blob))
     } catch { setError('Music generation failed. Try a different prompt.') }

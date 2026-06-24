@@ -4,12 +4,18 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "functions": {
-    "api/chat.js": { "maxDuration": 30 },
-    "api/video.js": { "maxDuration": 120 }
+    "api/chat.js":  { "maxDuration": 30 },
+    "api/video.js": { "maxDuration": 120 },
+    "api/audio.js": { "maxDuration": 60 },
+    "api/music.js": { "maxDuration": 90 },
+    "api/image.js": { "maxDuration": 60 }
   },
   "rewrites": [
-    { "source": "/api/chat", "destination": "/api/chat.js" },
+    { "source": "/api/chat",  "destination": "/api/chat.js"  },
     { "source": "/api/video", "destination": "/api/video.js" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/api/audio", "destination": "/api/audio.js" },
+    { "source": "/api/music", "destination": "/api/music.js" },
+    { "source": "/api/image", "destination": "/api/image.js" },
+    { "source": "/(.*)",      "destination": "/index.html"   }
   ]
 }
