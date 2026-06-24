@@ -18,14 +18,16 @@ export default function MusicPanel() {
   const [audioSrc, setAudioSrc] = useState('')
   const [error, setError] = useState('')
 
-  const generate = async () => {
-    if (!prompt.trim()) { alert('Enter a music prompt!'); return }
-    setLoading(true); setError(''); setAudioSrc('')
+  const generate = async (overridePrompt?: string) => {
+    const text = (overridePrompt ?? prompt).trim()
+    if (!text) { alert('Enter a music prompt!'); return }
+    setLoading(true); setError('')
+    setAudioSrc(prev => { if (prev) URL.revokeObjectURL(prev); return '' })
     try {
       const r = await fetch('/api/music', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: prompt.trim(), model: musicModel }),
+        body: JSON.stringify({ prompt: text, model: musicModel }),
       })
       if (!r.ok) throw new Error(await r.text())
       const blob = await r.blob()
@@ -85,7 +87,7 @@ export default function MusicPanel() {
             style={{ border: '1px solid rgba(255,255,255,.08)', color: 'var(--text)' }}
             onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(245,158,11,.4)'}
             onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,.08)'}
-            onClick={() => { setPrompt(t); generate() }}>{t}</button>
+            onClick={() => { setPrompt(t); generate(t) }}>{t}</button>
         ))}
       </div>
     </div>

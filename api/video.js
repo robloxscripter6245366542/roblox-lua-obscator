@@ -14,6 +14,7 @@ export default async function handler(req, res) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, model, duration, width, height }),
+      signal: AbortSignal.timeout(110000),
     });
     if (!r.ok) return res.status(r.status).json({ error: `Video API returned ${r.status}` });
 

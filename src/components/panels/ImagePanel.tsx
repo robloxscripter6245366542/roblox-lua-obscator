@@ -38,7 +38,8 @@ export default function ImagePanel() {
   const generate = async () => {
     if (!prompt.trim()) { alert('Enter a prompt!'); return }
     const [w, h] = size.split('x')
-    setLoading(true); setError(''); setImgSrc('')
+    setLoading(true); setError('')
+    setImgSrc(prev => { if (prev) URL.revokeObjectURL(prev); return '' })
     try {
       const r = await fetch('/api/image', {
         method: 'POST',

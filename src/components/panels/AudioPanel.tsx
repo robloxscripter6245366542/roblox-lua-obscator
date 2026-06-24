@@ -20,7 +20,8 @@ export default function AudioPanel() {
 
   const generate = async () => {
     if (!text.trim()) { alert('Enter some text!'); return }
-    setLoading(true); setError(''); setAudioSrc('')
+    setLoading(true); setError('')
+    setAudioSrc(prev => { if (prev) URL.revokeObjectURL(prev); return '' })
     try {
       const r = await fetch('/api/audio', {
         method: 'POST',

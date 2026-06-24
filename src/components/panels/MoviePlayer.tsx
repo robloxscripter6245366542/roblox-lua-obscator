@@ -60,10 +60,12 @@ export default function MoviePlayer({ clips, title, totalScenes = 0, doneScenes 
     recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
     recorder.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: mime })
+      const blobUrl = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = URL.createObjectURL(blob)
+      a.href = blobUrl
       a.download = `${title || 'omni-ai-movie'}.webm`
       a.click()
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000)
       setIsRecording(false); setRecordDone(true); setRecordPct(100)
     }
 

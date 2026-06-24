@@ -48,6 +48,14 @@ export default function MoviePanel() {
   const [script, setScript] = useState('')
   const [chars, setChars] = useState<CharAsset[]>([])
   const [scenes, setScenes] = useState<Scene[]>([])
+  const scenesRef = useRef<Scene[]>([])
+  const setScenesSynced = (updater: Scene[] | ((prev: Scene[]) => Scene[])) => {
+    setScenes(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      scenesRef.current = next
+      return next
+    })
+  }
   const [storyboardFrames, setStoryboardFrames] = useState<string[]>([])
   const [modelImages, setModelImages] = useState<string[]>([])
   const [vfxImages, setVfxImages] = useState<string[]>([])
@@ -74,7 +82,7 @@ export default function MoviePanel() {
   const startMovie = async () => {
     if (!concept.trim()) { alert('Enter a movie concept!'); return }
     setRunning(true); setStopped(false); stoppedRef.current = false
-    setScript(''); setChars([]); setScenes([]); setStoryboardFrames([])
+    setScript(''); setChars([]); setScenesSynced([]); setStoryboardFrames([])
     setModelImages([]); setVfxImages([]); setMusicSrc(''); setNarrateSrc('')
     setActivePipe(-1); setProgress(0)
 
@@ -91,10 +99,15 @@ export default function MoviePanel() {
     let generatedScript = ''
     try {
       const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: scriptPrompt }] }) })
+      if (!r.ok) throw new Error(`Chat API returned ${r.status}`)
       const d = await r.json()
-      generatedScript = d.reply || 'Script generation failed.'
+      if (!d.reply) throw new Error(d.error || 'Empty reply')
+      generatedScript = d.reply
       setScript(generatedScript)
-    } catch { setStatusMsg('❌ Script failed — check connection'); setRunning(false); return }
+    } catch (e: any) {
+      setStatusMsg(`❌ Script failed — ${e.message || 'check connection'}`)
+      setActivePipe(-1); setProgress(0); setRunning(false); return
+    }
     setProgress(18)
 
     if (stoppedRef.current) { setRunning(false); return }
@@ -202,25 +215,26 @@ export default function MoviePanel() {
 
     if (stoppedRef.current) { setRunning(false); return }
 
-    // ── 7. SET UP SCENE QUEUE (Seedance 2.0 / Veo) ──
-    setActivePipe(5); setStatusMsg('🎬 Video scene queue ready — start generating clips!')
-    const sceneList: Scene[] = sceneMatches.slice(0, Math.min(sceneMatches.length, 30)).map((text, i) => ({
+    // ── 8. SET UP SCENE QUEUE (Seedance 2.0 / Veo) — step 5 in pipeline ──
+    setActivePipe(5); setStatusMsg('🎬 Video scene queue ready — click Generate Clips to start!')
+    const builtScenes: Scene[] = sceneMatches.slice(0, Math.min(sceneMatches.length, 30)).map((text, i) => ({
       id: i, text, status: 'queued' as SceneStatus,
     }))
-    setScenes(sceneList)
+    setScenesSynced(builtScenes)
     setProgress(90)
 
-    // ── 8. ASSEMBLY ──
+    // ── 9. ASSEMBLY ──
     setActivePipe(8); setStatusMsg('🎞️ Pipeline complete! Generate video clips to finish your movie.')
     setProgress(100)
     setRunning(false)
   }
 
   const generateClips = async () => {
-    const sceneList = [...scenes]
+    const sceneList = [...scenesRef.current]
+    if (sceneList.length === 0) return
     for (let i = 0; i < sceneList.length; i++) {
       if (stoppedRef.current) break
-      setScenes(prev => prev.map((s, idx) => idx === i ? { ...s, status: 'generating' } : s))
+      setScenesSynced(prev => prev.map((s, idx) => idx === i ? { ...s, status: 'generating' } : s))
       const vis = sceneList[i].text.match(/VISUAL:\s*([^\n]+)/i)?.[1] || sceneList[i].text.replace(/\[SCENE.*?\]/g, '').slice(0, 200)
       try {
         const r = await fetch('/api/video', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -230,9 +244,9 @@ export default function MoviePanel() {
           let url = ''
           if (ct.includes('video') || ct.includes('octet')) { const blob = await r.blob(); url = URL.createObjectURL(blob) }
           else { const d = await r.json(); url = d.url || '' }
-          setScenes(prev => prev.map((s, idx) => idx === i ? { ...s, status: 'done', clipUrl: url } : s))
+          setScenesSynced(prev => prev.map((s, idx) => idx === i ? { ...s, status: 'done', clipUrl: url } : s))
         } else throw new Error()
-      } catch { setScenes(prev => prev.map((s, idx) => idx === i ? { ...s, status: 'failed' } : s)) }
+      } catch { setScenesSynced(prev => prev.map((s, idx) => idx === i ? { ...s, status: 'failed' } : s)) }
       await wait(2000)
     }
   }

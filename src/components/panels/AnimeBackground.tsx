@@ -140,6 +140,7 @@ export default function AnimeBackground() {
 
     const draw = () => {
       ctx.clearRect(0, 0, W, H)
+      ctx.globalAlpha = 1  // reset at start of every frame to prevent contamination
       frame++
       speedPulse = Math.sin(frame * 0.02) * 0.5 + 0.5
 
@@ -222,7 +223,8 @@ export default function AnimeBackground() {
         ctx.shadowBlur = 15
         ctx.stroke()
         ctx.shadowBlur = 0
-        // Thinner inner arc
+        // Thinner inner arc — reset alpha to full for white core
+        ctx.globalAlpha = Math.min(lt.alpha * 1.5, 1)
         ctx.lineWidth = 0.5
         ctx.strokeStyle = '#ffffff'
         ctx.stroke()
@@ -318,11 +320,12 @@ export default function AnimeBackground() {
       }
     }
 
-    let raf: number
-    const loop = () => { draw(); raf = requestAnimationFrame(loop) }
-    loop()
+    // Use an object so the closure in cleanup always sees the latest raf id
+    const handle = { raf: 0 }
+    const loop = () => { draw(); handle.raf = requestAnimationFrame(loop) }
+    handle.raf = requestAnimationFrame(loop)
 
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize) }
+    return () => { cancelAnimationFrame(handle.raf); window.removeEventListener('resize', resize) }
   }, [])
 
   return (
