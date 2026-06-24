@@ -536,7 +536,7 @@ export default function MoviePanel() {
 
       {/* Full Movie Player */}
       <AnimatePresence>
-        {scenes.filter(s => s.status === 'done' && s.clipUrl).length > 0 && (
+        {scenes.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <MoviePlayer
               clips={scenes.filter(s => s.status === 'done' && s.clipUrl).map(s => ({
@@ -545,6 +545,8 @@ export default function MoviePanel() {
                 label: s.text.match(/\[SCENE \d+\]/)?.[0] || `Scene ${s.id + 1}`
               }))}
               title={script.match(/TITLE:\s*([^\n]+)/i)?.[1]?.trim() || 'omni-ai-movie'}
+              totalScenes={scenes.length}
+              doneScenes={scenes.filter(s => s.status === 'done' && s.clipUrl).length}
             />
           </motion.div>
         )}
