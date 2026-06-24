@@ -65,7 +65,7 @@ export default function MusicPanel() {
         )}
         {audioSrc && (
           <div>
-            <div className="text-sm font-bold text-white mb-3">🎼 Generated: <span style={{ color: 'var(--o)' }}>{prompt.slice(0, 55)}…</span></div>
+            <div className="text-sm font-bold text-white mb-3">🎼 Generated: <span style={{ color: 'var(--o)' }}>{prompt.length > 55 ? prompt.slice(0, 55) + '…' : prompt}</span></div>
             <audio controls autoPlay className="w-full rounded-xl" style={{ accentColor: 'var(--o)' }}>
               <source src={audioSrc} />
             </audio>

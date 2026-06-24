@@ -63,12 +63,13 @@ export default function CodePanel() {
     }
   }, [code])
 
-  const generate = async () => {
-    if (!prompt.trim()) { alert('Enter a prompt!'); return }
+  const generate = async (overridePrompt?: string) => {
+    const text = (overridePrompt ?? prompt).trim()
+    if (!text) { alert('Enter a prompt!'); return }
     setCode('// Generating with Claude Sonnet 4.6…\n// Please wait…')
     setLoading(true)
     try {
-      const full = `${TYPE_INSTR[type]}\n\nTask: ${prompt}`
+      const full = `${TYPE_INSTR[type]}\n\nTask: ${text}`
       const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: full }] }) })
       const d = await r.json()
       const reply = d.reply || d.error || 'Error.'
@@ -108,7 +109,7 @@ export default function CodePanel() {
         {CODE_QPS.map((t, i) => (
           <button key={i} className="glass rounded-lg px-3 py-1.5 text-xs transition-all"
             style={{ border: '1px solid rgba(255,255,255,.08)', color: 'var(--text)' }}
-            onClick={() => { setPrompt(`${t} with React, Tailwind CSS, shadcn/ui, Lucide icons, and Framer Motion animations`); generate() }}>{t}</button>
+            onClick={() => { const txt = `${t} with React, Tailwind CSS, shadcn/ui, Lucide icons, and Framer Motion animations`; setPrompt(txt); generate(txt) }}>{t}</button>
         ))}
       </div>
       <div className="rounded-xl overflow-hidden" style={{ minHeight: 400, background: 'rgba(0,0,0,.6)', border: '1px solid rgba(255,255,255,.07)' }}>

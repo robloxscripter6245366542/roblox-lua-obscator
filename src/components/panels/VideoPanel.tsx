@@ -29,7 +29,8 @@ export default function VideoPanel() {
 
   const generate = async () => {
     if (!prompt.trim()) { alert('Enter a prompt!'); return }
-    setLoading(true); setError(''); setVideoSrc(''); setProgress(0)
+    setLoading(true); setError(''); setProgress(0)
+    setVideoSrc(prev => { if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev); return '' })
     clearInterval(timerRef.current)
     timerRef.current = window.setInterval(() => setProgress(p => Math.min(p + 1, 88)), 1200)
     try {

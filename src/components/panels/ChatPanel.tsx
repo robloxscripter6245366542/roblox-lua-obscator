@@ -46,10 +46,11 @@ export default function ChatPanel() {
     setLoading(true)
     try {
       const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history }) })
-      const d = await r.json()
-      setMsgs([...history, { role: 'assistant', content: d.reply || d.error || 'Something went wrong.' }])
-    } catch {
-      setMsgs([...history, { role: 'assistant', content: 'Connection error. Please try again.' }])
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error((d as any).error || `Server error ${r.status}`)
+      setMsgs([...history, { role: 'assistant', content: (d as any).reply || 'Something went wrong.' }])
+    } catch (e: any) {
+      setMsgs([...history, { role: 'assistant', content: `❌ ${e.message || 'Connection error. Please try again.'}` }])
     } finally { setLoading(false) }
   }
 

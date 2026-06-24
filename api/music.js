@@ -18,9 +18,11 @@ export default async function handler(req, res) {
     if (!r.ok) return res.status(502).json({ error: `Music API returned ${r.status}` });
 
     const ct = r.headers.get("content-type") || "";
+    if (!ct.includes("audio")) {
+      return res.status(502).json({ error: "Music generation failed — no audio returned. Try a different prompt." });
+    }
     const buf = await r.arrayBuffer();
-    const audioType = ct.includes("audio") ? ct : safeModel === "suno" ? "audio/mpeg" : "audio/wav";
-    res.setHeader("Content-Type", audioType);
+    res.setHeader("Content-Type", ct);
     return res.status(200).send(Buffer.from(buf));
   } catch (e) {
     return res.status(503).json({ error: "Music generation temporarily unavailable. Try again in a moment." });
