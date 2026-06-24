@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import MoviePlayer from './MoviePlayer'
 
 const PIPELINE = [
   { ic: '📝', name: 'Claude', role: 'Screenplay', color: 'rgba(124,58,237,.3)' },
@@ -464,6 +465,22 @@ export default function MoviePanel() {
                 ))}
               </div>
             )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Full Movie Player */}
+      <AnimatePresence>
+        {scenes.filter(s => s.status === 'done' && s.clipUrl).length > 0 && (
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <MoviePlayer
+              clips={scenes.filter(s => s.status === 'done' && s.clipUrl).map(s => ({
+                id: s.id,
+                clipUrl: s.clipUrl!,
+                label: s.text.match(/\[SCENE \d+\]/)?.[0] || `Scene ${s.id + 1}`
+              }))}
+              title={script.match(/TITLE:\s*([^\n]+)/i)?.[1]?.trim() || 'omni-ai-movie'}
+            />
           </motion.div>
         )}
       </AnimatePresence>
