@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build",
+  "buildCommand": "",
   "outputDirectory": "seedance-react/dist",
-  "installCommand": "echo skip"
+  "installCommand": ""
 }
