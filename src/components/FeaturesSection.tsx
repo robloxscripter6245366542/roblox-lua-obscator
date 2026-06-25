@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 
 const FEATS = [
   { ic: '🎥', t: 'AI Movie Studio', d: '9 AIs collaborate: Claude scripts, Flux chars, Seedance films, Suno scores, ElevenLabs narrates' },
-  { ic: '🎬', t: 'Long-Form Video', d: 'Queue 9hr+ movies — Seedance 2.0 & Veo generate scene-by-scene, clips download as ready' },
+  { ic: '🎬', t: 'Long-Form Video', d: 'Queue 9hr+ movies — Seedance 2.5 4K & Veo generate scene-by-scene, clips download as ready' },
   { ic: '✨', t: 'VFX Generator', d: 'Seedream for glows, particles, petals, hair animation, magic effects — 4 variations per prompt' },
   { ic: '👤', t: 'Character Designer', d: 'Flux Realism for portraits, Flux Anime for manga, Flux 3D for CGI — detailed hair, rigging refs' },
   { ic: '🖼️', t: 'Image Generation', d: 'Flux Pro, Flux Realism, Flux Anime, Flux 3D, GPT Image, Seedream — best model for every use' },

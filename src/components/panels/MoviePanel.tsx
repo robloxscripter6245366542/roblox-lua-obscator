@@ -9,7 +9,7 @@ const PIPELINE = [
   { ic: '🌄', name: 'Flux Pro', role: 'Backgrounds', color: 'rgba(16,185,129,.3)' },
   { ic: '🔷', name: 'Flux 3D', role: '3D Models', color: 'rgba(245,158,11,.3)' },
   { ic: '✨', name: 'Seedream', role: 'VFX / Glows', color: 'rgba(168,85,247,.3)' },
-  { ic: '🎬', name: 'Seedance 2.0', role: 'Video Clips', color: 'rgba(236,72,153,.3)' },
+  { ic: '🎬', name: 'Seedance 2.5', role: 'Video 4K', color: 'rgba(236,72,153,.3)' },
   { ic: '🎼', name: 'Suno AI', role: 'Soundtrack', color: 'rgba(245,158,11,.3)' },
   { ic: '🎙️', name: 'ElevenLabs', role: 'Narration', color: 'rgba(6,182,212,.3)' },
   { ic: '🎞️', name: 'Assembly', role: 'Final Movie', color: 'rgba(16,185,129,.3)' },
@@ -329,7 +329,7 @@ export default function MoviePanel() {
   const [genre, setGenre] = useState('Sci-Fi Thriller')
   const [style, setStyle] = useState('cinematic')
   const [lenMin, setLenMin] = useState(5)
-  const [vidModel, setVidModel] = useState('seedance-2.0')
+  const [vidModel, setVidModel] = useState('seedance-2.5')
   const [charsText, setCharsText] = useState('')
   const [vfxPrompt, setVfxPrompt] = useState('')
 
@@ -510,7 +510,7 @@ export default function MoviePanel() {
       setScenesSynced(prev => prev.map((s, idx) => idx === i ? { ...s, status: 'generating' } : s))
       const vis = sceneList[i].text.match(/VISUAL:\s*([^\n]+)/i)?.[1] || sceneList[i].text.replace(/\[SCENE.*?\]/g, '').slice(0, 200)
       try {
-        const r = await fetch('/api/video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: vis.trim(), model: vidModel, duration: 5, width: 1920, height: 1080 }) })
+        const r = await fetch('/api/video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: vis.trim(), model: vidModel, duration: 5, width: 3840, height: 2160 }) })
         if (r.ok) {
           const ct = r.headers.get('content-type') || ''
           let url = ''
@@ -610,7 +610,7 @@ export default function MoviePanel() {
               <div>
                 <label className="text-xs font-bold mb-1 block" style={{ color: 'var(--p)' }}>Video Model</label>
                 <select value={vidModel} onChange={e => setVidModel(e.target.value)} className="ai-select">
-                  <option value="seedance-2.0">Seedance 2.0 (Best)</option><option value="veo">Veo (Google)</option>
+                  <option value="seedance-2.5">Seedance 2.5 4K (Best)</option><option value="veo">Veo (Google)</option>
                   <option value="wan-pro-1080p">Wan Pro 1080p</option><option value="grok-video-pro">Grok Video Pro</option>
                   <option value="nova-reel">Nova Reel</option>
                 </select>

@@ -5,7 +5,7 @@ import type { Mode } from '../App'
 const SEQS = [
   { inp: 'generate a react dashboard', resp: '⚛️ Generated dashboard with KPI cards, Recharts, Framer Motion — 220 lines' },
   { inp: 'create image: neon tokyo city', resp: '🖼️ Flux Pro generating → 4K photorealistic in 8s' },
-  { inp: 'generate video: ocean waves', resp: '🎬 Seedance 2.0 (90s)… → HD video ready ▶' },
+  { inp: 'generate video: ocean waves', resp: '🎬 Seedance 2.5 4K (90s)… → HD video ready ▶' },
   { inp: 'speak: Welcome to Omni AI', resp: '🎵 ElevenLabs nova voice → Audio ready ▶' },
   { inp: 'compose epic film score', resp: '🎼 Stable Audio 2.5 (30s)… → WAV ready ▶' },
   { inp: 'make a sci-fi movie 30 min', resp: '🎥 9 AIs collaborating → Script → Characters → Scenes → Music' },
@@ -15,7 +15,7 @@ const SEQS = [
 const MODES = [
   { id: 'chat', ic: '💬', label: 'Chat', sub: 'Claude 4.6' },
   { id: 'image', ic: '🖼️', label: 'Image', sub: 'Flux Pro' },
-  { id: 'video', ic: '🎬', label: 'Video', sub: 'Seedance 2.0' },
+  { id: 'video', ic: '🎬', label: 'Video', sub: 'Seedance 2.5 4K' },
   { id: 'audio', ic: '🎵', label: 'Speech', sub: 'ElevenLabs' },
   { id: 'music', ic: '🎼', label: 'Music', sub: 'Suno AI' },
   { id: 'code', ic: '⚛️', label: 'Code', sub: 'v0 killer' },
@@ -61,7 +61,7 @@ export default function Hero({ setMode }: { setMode: (m: Mode) => void }) {
           className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm mb-8 glass"
           style={{ border: '1px solid rgba(6,182,212,.25)', color: 'var(--c)' }}>
           <span className="pulse-dot inline-block w-2 h-2 rounded-full" style={{ background: '#10b981' }}></span>
-          Claude · Flux Pro · Seedance 2.0 · Veo · ElevenLabs · Suno — All Free
+          Claude · Flux Pro · Seedance 2.5 4K · Veo · ElevenLabs · Suno — All Free
         </motion.div>
 
         <motion.h1
@@ -109,7 +109,7 @@ export default function Hero({ setMode }: { setMode: (m: Mode) => void }) {
             <div className="flex-1 text-center text-xs" style={{ color: 'var(--muted)' }}>omni-ai — terminal</div>
           </div>
           <div style={{ color: '#8890c0' }}>🚀 Omni AI v4.0 — 9 AI Modes · 25+ Models · Free Forever</div>
-          <div style={{ color: '#8890c0' }}>🤖 Claude · Flux · Seedance 2.0 · Veo · ElevenLabs · Suno · Stable Audio</div>
+          <div style={{ color: '#8890c0' }}>🤖 Claude · Flux · Seedance 2.5 4K · Veo · ElevenLabs · Suno · Stable Audio</div>
           <div className="mt-2">
             <span style={{ color: '#10b981' }}>you ❯ </span>
             <span style={{ color: 'var(--c)' }} ref={tinRef}></span>

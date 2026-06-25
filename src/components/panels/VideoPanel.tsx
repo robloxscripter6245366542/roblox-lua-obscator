@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 
 const VIDEO_MODELS = [
-  { val: 'seedance-2.0', label: 'Seedance 2.0 (Best Quality)' },
+  { val: 'seedance-2.5', label: 'Seedance 2.5 4K (Best Quality)' },
   { val: 'veo', label: 'Veo (Google DeepMind)' },
   { val: 'seedance-pro', label: 'Seedance Pro' },
   { val: 'wan-pro-1080p', label: 'Wan Pro 1080p' },
@@ -19,8 +19,8 @@ const VID_EXAMPLES = [
 
 export default function VideoPanel() {
   const [prompt, setPrompt] = useState('')
-  const [model, setModel] = useState('seedance-2.0')
-  const [res, setRes] = useState('1920x1080')
+  const [model, setModel] = useState('seedance-2.5')
+  const [res, setRes] = useState('3840x2160')
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [videoSrc, setVideoSrc] = useState('')
@@ -63,7 +63,7 @@ export default function VideoPanel() {
   return (
     <div className="flex flex-col gap-4">
       <div className="glass rounded-2xl p-5 neon-p" style={{ border: '1px solid rgba(236,72,153,.2)' }}>
-        <div className="text-xs font-bold mb-3" style={{ color: 'var(--p)' }}>🎬 Video Generation — Seedance 2.0, Veo, Wan Pro, Grok Video</div>
+        <div className="text-xs font-bold mb-3" style={{ color: 'var(--p)' }}>🎬 Video Generation — Seedance 2.5 4K, Veo, Wan Pro, Grok Video</div>
         <div className="flex gap-3 flex-wrap mb-3">
           <input value={prompt} onChange={e => setPrompt(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && generate()}
@@ -72,13 +72,13 @@ export default function VideoPanel() {
             {VIDEO_MODELS.map(m => <option key={m.val} value={m.val}>{m.label}</option>)}
           </select>
           <select value={res} onChange={e => setRes(e.target.value)} className="ai-select" style={{ width: 'auto' }}>
-            <option value="1920x1080">1080p HD</option>
             <option value="3840x2160">4K Ultra HD</option>
+            <option value="1920x1080">1080p HD</option>
             <option value="1280x720">720p</option>
           </select>
           <button onClick={generate} className="px-5 py-2.5 rounded-xl font-bold text-black text-sm" style={{ background: 'linear-gradient(135deg,var(--p),var(--v))' }}>Generate →</button>
         </div>
-        <div className="text-xs" style={{ color: 'var(--muted)' }}>Each clip is 5 seconds · 1080p quality · Proxied through server (no CORS) · 60–120s generation time</div>
+        <div className="text-xs" style={{ color: 'var(--muted)' }}>Each clip is 5 seconds · 4K Ultra HD · Proxied through server (no CORS) · 60–120s generation time</div>
       </div>
       <div className="flex gap-4">
         <div className="flex-1 rounded-2xl flex items-center justify-center neon-p"
@@ -97,7 +97,7 @@ export default function VideoPanel() {
             <div className="text-center" style={{ color: 'var(--muted)' }}>
               <div className="text-5xl mb-3">🎬</div>
               <div className="text-sm">Video output appears here</div>
-              <div className="text-xs mt-1 opacity-50">Seedance 2.0 · Veo · Wan Pro 1080p</div>
+              <div className="text-xs mt-1 opacity-50">Seedance 2.5 4K · Veo · Wan Pro</div>
             </div>
           )}
         </div>

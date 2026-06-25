@@ -8,7 +8,7 @@ const MODELS = [
   { ic: '🔷', name: 'Flux 3D', provider: 'Black Forest Labs', mode: 'Image — 3D Renders', c: 'var(--o)' },
   { ic: '✨', name: 'Seedream', provider: 'ByteDance', mode: 'Image — VFX / Glows', c: '#a855f7' },
   { ic: '🖼️', name: 'GPT Image Large', provider: 'OpenAI', mode: 'Image — Graphics', c: '#10a37f' },
-  { ic: '🎬', name: 'Seedance 2.0', provider: 'ByteDance', mode: 'Video — Best Quality', c: 'var(--p)' },
+  { ic: '🎬', name: 'Seedance 2.5 4K', provider: 'ByteDance', mode: 'Video — Best Quality', c: 'var(--p)' },
   { ic: '🎬', name: 'Veo', provider: 'Google DeepMind', mode: 'Video — Cinematic', c: 'var(--g)' },
   { ic: '🎬', name: 'Wan Pro 1080p', provider: 'Alibaba DAMO', mode: 'Video — 1080p', c: 'var(--o)' },
   { ic: '🎵', name: 'ElevenLabs', provider: 'ElevenLabs', mode: 'Speech — 8 voices', c: '#a855f7' },
