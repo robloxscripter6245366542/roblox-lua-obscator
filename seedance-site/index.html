@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seedance 2.5 — 4K AI Video Maker</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <!-- Background -->
+  <div class="bg-grid"></div>
+  <div class="bg-glow glow-1"></div>
+  <div class="bg-glow glow-2"></div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="16" cy="16" r="14" fill="url(#lg1)" />
+            <path d="M10 16 L16 10 L22 16 L16 22 Z" fill="white" opacity="0.9"/>
+            <circle cx="16" cy="16" r="3" fill="white"/>
+            <defs>
+              <linearGradient id="lg1" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#7C3AED"/>
+                <stop offset="1" stop-color="#2563EB"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <span class="logo-name">Seedance <span class="logo-version">2.5</span></span>
+      </div>
+      <nav class="nav">
+        <a href="#generate" class="nav-link">Generate</a>
+        <a href="#gallery" class="nav-link">Gallery</a>
+        <a href="#pricing" class="nav-link">Pricing</a>
+      </nav>
+      <div class="header-right">
+        <div class="badge-4k">4K</div>
+        <div class="session-timer" id="sessionTimer">
+          <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M8 5V8.5L10 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <span id="timerDisplay">30:00</span>
+          <span class="timer-label">FREE</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-badge">
+        <span class="pulse-dot"></span>
+        Seedance 2.5 Pro · 4K Ultra HD · 30 min Free
+      </div>
+      <h1 class="hero-title">
+        Turn Any Idea Into<br/>
+        <span class="gradient-text">Cinematic 4K Video</span>
+      </h1>
+      <p class="hero-desc">
+        Generate stunning 4K videos in seconds with Seedance 2.5 — the world's most advanced AI video model. No account needed. 30 minutes free, unlimited generations.
+      </p>
+      <div class="hero-stats">
+        <div class="stat"><span class="stat-num">4K</span><span class="stat-label">Ultra HD</span></div>
+        <div class="stat-divider"></div>
+        <div class="stat"><span class="stat-num">30m</span><span class="stat-label">Free Usage</span></div>
+        <div class="stat-divider"></div>
+        <div class="stat"><span class="stat-num">∞</span><span class="stat-label">Generations</span></div>
+        <div class="stat-divider"></div>
+        <div class="stat"><span class="stat-num">8s</span><span class="stat-label">Avg Speed</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Generator -->
+  <section class="generator-section" id="generate">
+    <div class="container">
+
+      <!-- Mode Tabs -->
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="text">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h10M3 15h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Text to Video
+        </button>
+        <button class="mode-tab" data-mode="image">
+          <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><circle cx="7" cy="9" r="1.5" fill="currentColor"/><path d="M2 14l4-4 3 3 3-4 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Image to Video
+        </button>
+      </div>
+
+      <div class="generator-grid">
+        <!-- Left: Controls -->
+        <div class="controls-panel">
+
+          <!-- Text prompt panel -->
+          <div class="panel" id="textPanel">
+            <label class="label">Describe your video</label>
+            <textarea
+              class="prompt-input"
+              id="promptInput"
+              placeholder="A majestic dragon soaring over snow-capped mountains at golden hour, cinematic lighting, ultra detailed, 4K..."
+              rows="5"
+            ></textarea>
+            <div class="prompt-actions">
+              <button class="btn-ghost btn-sm" id="randomPromptBtn">
+                <svg viewBox="0 0 16 16" fill="none"><path d="M2 5h2l2 6h4l2-6h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 3l2 2-2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Random Prompt
+              </button>
+              <span class="char-count" id="charCount">0 / 500</span>
+            </div>
+          </div>
+
+          <!-- Image upload panel -->
+          <div class="panel hidden" id="imagePanel">
+            <label class="label">Upload reference image</label>
+            <div class="upload-zone" id="uploadZone">
+              <input type="file" id="imageInput" accept="image/*" hidden />
+              <div class="upload-content" id="uploadContent">
+                <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="4" y="10" width="40" height="28" rx="4" stroke="currentColor" stroke-width="2"/>
+                  <path d="M24 30V20M19 25l5-5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <p>Drop an image here or <span class="upload-link">browse</span></p>
+                <span class="upload-hint">PNG, JPG up to 10MB</span>
+              </div>
+              <img id="uploadPreview" class="upload-preview hidden" alt="Preview" />
+            </div>
+            <label class="label mt-16">Motion prompt (optional)</label>
+            <textarea
+              class="prompt-input"
+              id="imagePromptInput"
+              placeholder="Camera slowly zooms in, leaves blow in the wind..."
+              rows="3"
+            ></textarea>
+          </div>
+
+          <!-- Settings -->
+          <div class="panel">
+            <label class="label">Settings</label>
+            <div class="settings-grid">
+
+              <div class="setting-group">
+                <span class="setting-label">Resolution</span>
+                <div class="select-row">
+                  <button class="select-chip active" data-setting="resolution" data-val="4K">4K</button>
+                  <button class="select-chip" data-setting="resolution" data-val="1080p">1080p</button>
+                  <button class="select-chip" data-setting="resolution" data-val="720p">720p</button>
+                </div>
+              </div>
+
+              <div class="setting-group">
+                <span class="setting-label">Duration</span>
+                <div class="select-row">
+                  <button class="select-chip active" data-setting="duration" data-val="5s">5s</button>
+                  <button class="select-chip" data-setting="duration" data-val="10s">10s</button>
+                  <button class="select-chip" data-setting="duration" data-val="20s">20s</button>
+                </div>
+              </div>
+
+              <div class="setting-group">
+                <span class="setting-label">Style</span>
+                <div class="select-row style-row">
+                  <button class="select-chip active" data-setting="style" data-val="Cinematic">Cinematic</button>
+                  <button class="select-chip" data-setting="style" data-val="Anime">Anime</button>
+                  <button class="select-chip" data-setting="style" data-val="Realistic">Realistic</button>
+                  <button class="select-chip" data-setting="style" data-val="3D Render">3D</button>
+                </div>
+              </div>
+
+              <div class="setting-group">
+                <span class="setting-label">Motion Intensity</span>
+                <div class="slider-row">
+                  <input type="range" id="motionSlider" min="1" max="10" value="5" class="slider" />
+                  <span class="slider-val" id="motionVal">5</span>
+                </div>
+              </div>
+
+              <div class="setting-group">
+                <span class="setting-label">Aspect Ratio</span>
+                <div class="select-row">
+                  <button class="select-chip active" data-setting="aspect" data-val="16:9">16:9</button>
+                  <button class="select-chip" data-setting="aspect" data-val="9:16">9:16</button>
+                  <button class="select-chip" data-setting="aspect" data-val="1:1">1:1</button>
+                </div>
+              </div>
+
+              <div class="setting-group">
+                <span class="setting-label">Frame Rate</span>
+                <div class="select-row">
+                  <button class="select-chip" data-setting="fps" data-val="24fps">24fps</button>
+                  <button class="select-chip active" data-setting="fps" data-val="30fps">30fps</button>
+                  <button class="select-chip" data-setting="fps" data-val="60fps">60fps</button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- API Key (optional) -->
+          <div class="panel">
+            <label class="label">
+              API Key <span class="label-optional">(optional — uses shared pool if empty)</span>
+            </label>
+            <div class="api-key-row">
+              <input type="password" id="apiKeyInput" class="input" placeholder="sk-..." />
+              <button class="btn-ghost btn-icon" id="toggleApiKey" title="Show/hide">
+                <svg viewBox="0 0 20 20" fill="none" id="eyeIcon"><circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M2 10c2-5 4-6 8-6s6 1 8 6c-2 5-4 6-8 6s-6-1-8-6z" stroke="currentColor" stroke-width="1.5"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <button class="btn-generate" id="generateBtn">
+            <svg viewBox="0 0 20 20" fill="none"><path d="M10 3v14M3 10h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            Generate 4K Video
+          </button>
+        </div>
+
+        <!-- Right: Output -->
+        <div class="output-panel">
+          <div class="output-header">
+            <span class="label">Output</span>
+            <div class="output-actions hidden" id="outputActions">
+              <button class="btn-ghost btn-sm" id="downloadBtn">
+                <svg viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 12h12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                Download
+              </button>
+              <button class="btn-ghost btn-sm" id="shareBtn">
+                <svg viewBox="0 0 16 16" fill="none"><circle cx="12" cy="4" r="1.5" stroke="currentColor" stroke-width="1.3"/><circle cx="4" cy="8" r="1.5" stroke="currentColor" stroke-width="1.3"/><circle cx="12" cy="12" r="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M10.5 4.7L5.5 7.3M10.5 11.3L5.5 8.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                Share
+              </button>
+            </div>
+          </div>
+
+          <div class="output-box" id="outputBox">
+            <!-- Idle state -->
+            <div class="output-idle" id="outputIdle">
+              <div class="idle-icon">
+                <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="32" cy="32" r="28" stroke="url(#ig1)" stroke-width="2" stroke-dasharray="6 4"/>
+                  <path d="M24 22l16 10-16 10V22z" fill="url(#ig1)"/>
+                  <defs>
+                    <linearGradient id="ig1" x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
+                      <stop stop-color="#7C3AED"/>
+                      <stop offset="1" stop-color="#2563EB"/>
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
+              <p class="idle-title">Your video will appear here</p>
+              <p class="idle-desc">Enter a prompt and click Generate to create a 4K video with Seedance 2.5</p>
+            </div>
+
+            <!-- Loading state -->
+            <div class="output-loading hidden" id="outputLoading">
+              <div class="loading-ring">
+                <svg viewBox="0 0 80 80" fill="none" class="spin">
+                  <circle cx="40" cy="40" r="34" stroke="url(#rg1)" stroke-width="4" stroke-linecap="round" stroke-dasharray="60 150"/>
+                  <defs>
+                    <linearGradient id="rg1" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+                      <stop stop-color="#7C3AED"/>
+                      <stop offset="1" stop-color="#2563EB"/>
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
+              <p class="loading-title" id="loadingTitle">Initializing Seedance 2.5...</p>
+              <div class="loading-steps" id="loadingSteps">
+                <div class="loading-step active" id="step1">Parsing prompt</div>
+                <div class="loading-step" id="step2">Generating frames</div>
+                <div class="loading-step" id="step3">Upscaling to 4K</div>
+                <div class="loading-step" id="step4">Encoding video</div>
+              </div>
+              <div class="progress-bar-wrap">
+                <div class="progress-bar" id="progressBar"></div>
+              </div>
+              <p class="loading-eta" id="loadingEta">Estimated: ~8 seconds</p>
+            </div>
+
+            <!-- Video output -->
+            <div class="output-result hidden" id="outputResult">
+              <video id="outputVideo" controls loop playsinline></video>
+              <div class="video-meta" id="videoMeta"></div>
+            </div>
+          </div>
+
+          <!-- Generation queue -->
+          <div class="queue-panel" id="queuePanel"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Gallery -->
+  <section class="gallery-section" id="gallery">
+    <div class="container">
+      <h2 class="section-title">Community Creations</h2>
+      <p class="section-desc">Made with Seedance 2.5 · 4K Ultra HD</p>
+      <div class="gallery-grid" id="galleryGrid">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="pricing-section" id="pricing">
+    <div class="container">
+      <h2 class="section-title">Simple Pricing</h2>
+      <p class="section-desc">Start free. No card required.</p>
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <div class="pricing-badge">Current Plan</div>
+          <h3 class="plan-name">Free</h3>
+          <div class="plan-price"><span class="price-num">$0</span><span class="price-period">/mo</span></div>
+          <ul class="plan-features">
+            <li><span class="feat-check">✓</span> 30 minutes of free usage</li>
+            <li><span class="feat-check">✓</span> Unlimited generations per session</li>
+            <li><span class="feat-check">✓</span> Up to 1080p quality</li>
+            <li><span class="feat-check">✓</span> 5-second videos</li>
+            <li><span class="feat-x">✗</span> 4K quality (Pro only)</li>
+            <li><span class="feat-x">✗</span> Priority queue</li>
+          </ul>
+          <button class="btn-plan btn-plan-current">Current Plan</button>
+        </div>
+        <div class="pricing-card pricing-card-pro">
+          <div class="pricing-badge pro">Most Popular</div>
+          <h3 class="plan-name">Pro</h3>
+          <div class="plan-price"><span class="price-num">$12</span><span class="price-period">/mo</span></div>
+          <ul class="plan-features">
+            <li><span class="feat-check">✓</span> Unlimited usage</li>
+            <li><span class="feat-check">✓</span> 4K Ultra HD quality</li>
+            <li><span class="feat-check">✓</span> Up to 60-second videos</li>
+            <li><span class="feat-check">✓</span> Priority generation queue</li>
+            <li><span class="feat-check">✓</span> API access</li>
+            <li><span class="feat-check">✓</span> Commercial license</li>
+          </ul>
+          <button class="btn-plan btn-plan-pro">Upgrade to Pro</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Toast -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Session expired modal -->
+  <div class="modal-overlay hidden" id="sessionModal">
+    <div class="modal">
+      <div class="modal-icon">
+        <svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" stroke="url(#mg1)" stroke-width="2"/><path d="M24 14v12M24 30v2" stroke="url(#mg1)" stroke-width="2.5" stroke-linecap="round"/><defs><linearGradient id="mg1" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse"><stop stop-color="#7C3AED"/><stop offset="1" stop-color="#2563EB"/></linearGradient></defs></svg>
+      </div>
+      <h3 class="modal-title">Free session ended</h3>
+      <p class="modal-desc">Your 30-minute free session has expired. Add your own API key or upgrade to Pro for unlimited access.</p>
+      <div class="modal-actions">
+        <button class="btn-plan btn-plan-pro" id="modalUpgrade">Upgrade to Pro</button>
+        <button class="btn-ghost" id="modalRestart">Start New Session</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="logo">
+          <div class="logo-icon">
+            <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="16" cy="16" r="14" fill="url(#flg)"/>
+              <path d="M10 16 L16 10 L22 16 L16 22 Z" fill="white" opacity="0.9"/>
+              <circle cx="16" cy="16" r="3" fill="white"/>
+              <defs><linearGradient id="flg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop stop-color="#7C3AED"/><stop offset="1" stop-color="#2563EB"/></linearGradient></defs>
+            </svg>
+          </div>
+          <span class="logo-name">Seedance <span class="logo-version">2.5</span></span>
+        </div>
+        <p class="footer-copy">© 2025 Seedance AI. All rights reserved. Powered by Seedance 2.5 Ultra model.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
