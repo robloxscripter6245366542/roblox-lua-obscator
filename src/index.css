@@ -31,6 +31,7 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 @keyframes imgFloat { 0%,100%{transform:scale(1.0) translate(0,0)} 25%{transform:scale(1.012) translate(3px,-2px)} 50%{transform:scale(1.016) translate(-2px,3px)} 75%{transform:scale(1.01) translate(2px,2px)} }
 @keyframes lightShimmer { 0%,100%{opacity:0;transform:translateX(-100%) rotate(20deg)} 40%,60%{opacity:1;transform:translateX(150%) rotate(20deg)} }
 @keyframes plantSway { 0%,100%{transform:rotate(-2deg) scaleX(1)} 50%{transform:rotate(2deg) scaleX(0.98)} }
+@keyframes charBreathe { 0%,100%{transform:scale(1) translateY(0)} 33%{transform:scale(1.008) translateY(-1px)} 66%{transform:scale(1.005) translateY(1px)} }
 @keyframes g1 {
   0%,87%,100%{clip-path:inset(0 0 100% 0);opacity:0}
   88%{clip-path:inset(10% 0 60% 0);transform:translate(5px);opacity:1}
