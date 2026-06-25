@@ -33,7 +33,7 @@ function Logo() {
           <circle cx="16" cy="16" r="3" fill="white" />
         </svg>
       </div>
-      <span className="text-[17px] font-bold tracking-tight">Seedance <span className="text-[#8b8fa8] font-normal">2.5</span></span>
+      <span className="text-[17px] font-bold tracking-tight">Seedance <span className="text-[#8b8fa8] font-normal">2.0</span></span>
     </div>
   )
 }

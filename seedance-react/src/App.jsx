@@ -51,9 +51,9 @@ export default function App() {
                 <circle cx="14" cy="14" r="2.5" fill="white" />
               </svg>
             </div>
-            <span className="font-bold tracking-tight">Seedance <span className="text-[#8b8fa8] font-normal">2.5</span></span>
+            <span className="font-bold tracking-tight">Seedance <span className="text-[#8b8fa8] font-normal">2.0</span></span>
           </div>
-          <p className="text-xs text-[#555872]">© 2025 Seedance AI. All rights reserved. Powered by Seedance 2.5 Ultra.</p>
+          <p className="text-xs text-[#555872]">© 2025 Seedance AI. All rights reserved. Powered by Seedance 2.0 Ultra.</p>
         </div>
       </footer>
 

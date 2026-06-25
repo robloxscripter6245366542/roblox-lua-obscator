@@ -60,7 +60,7 @@ export default function Generator({ timer, onToast }) {
     if (!timer.running) timer.start()
     if (timer.expired) { onToast('Session expired — start a new session', 'error'); return }
 
-    setOutputState({ status: 'loading', progress: 0, step: 0, label: 'Initializing Seedance 2.5…' })
+    setOutputState({ status: 'loading', progress: 0, step: 0, label: 'Initializing Seedance 2.0…' })
 
     try {
       let url

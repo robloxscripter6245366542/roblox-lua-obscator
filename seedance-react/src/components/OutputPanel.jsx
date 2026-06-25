@@ -37,7 +37,7 @@ function IdleState() {
       </div>
       <p className="text-sm font-semibold text-white mb-1">Your video will appear here</p>
       <p className="text-xs text-[#8b8fa8] leading-relaxed max-w-xs">
-        Enter a prompt and click Generate to create a 4K video with Seedance 2.5
+        Enter a prompt and click Generate to create a 4K video with Seedance 2.0
       </p>
     </div>
   )

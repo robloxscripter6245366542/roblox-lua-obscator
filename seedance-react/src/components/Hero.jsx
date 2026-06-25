@@ -5,7 +5,7 @@ export default function Hero() {
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border mb-8 text-[13px] font-medium text-purple-300"
           style={{ background: 'rgba(124,58,237,0.1)', borderColor: 'rgba(124,58,237,0.3)' }}>
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse-slow" />
-          Seedance 2.5 Pro · 4K Ultra HD · 30 min Free
+          Seedance 2.0 Pro · 4K Ultra HD · 30 min Free
         </div>
 
         <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black tracking-tighter leading-[1.05] mb-6">
@@ -14,7 +14,7 @@ export default function Hero() {
         </h1>
 
         <p className="text-[17px] text-[#8b8fa8] leading-relaxed max-w-xl mx-auto mb-10">
-          Generate stunning 4K videos in seconds with Seedance 2.5 — the world's most advanced AI video model.
+          Generate stunning 4K videos in seconds with Seedance 2.0 — the world's most advanced AI video model.
           No account needed. 30 minutes free, unlimited generations.
         </p>
 

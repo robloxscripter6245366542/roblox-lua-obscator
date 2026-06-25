@@ -15,7 +15,7 @@ export default function Gallery() {
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
           <h2 className="text-4xl font-black tracking-tight mb-3">Community Creations</h2>
-          <p className="text-[#8b8fa8]">Made with Seedance 2.5 · 4K Ultra HD</p>
+          <p className="text-[#8b8fa8]">Made with Seedance 2.0 · 4K Ultra HD</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {ITEMS.map((item, i) => (
