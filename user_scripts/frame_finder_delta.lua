@@ -31,8 +31,7 @@ local LP       = Players.LocalPlayer
 local PGUI     = LP:WaitForChild("PlayerGui")
 local CAM      = workspace.CurrentCamera
 
--- ── HTTP abstraction (Delta iOS: only game:HttpGet works) ─────────────────────
-local HS_req = game:GetService("HttpService")
+-- ── HTTP abstraction ──────────────────────────────────────────────────────────
 
 -- URL encoder for GET requests
 local function urlEnc(s)
@@ -41,44 +40,38 @@ local function urlEnc(s)
     end))
 end
 
--- GET request (works on Delta iOS via game:HttpGet)
+-- GET (works on Delta iOS via game:HttpGet / HttpService:GetAsync)
 local function doHttpGet(url)
-    local ok1, r1 = pcall(function() return game:HttpGet(url, true) end)
+    local ok1,r1 = pcall(function() return game:HttpGet(url,true) end)
     if ok1 and type(r1)=="string" and #r1>10 then return r1 end
-    local ok2, r2 = pcall(function() return HS_req:GetAsync(url, true) end)
+    local ok2,r2 = pcall(function() return HS:GetAsync(url,true) end)
     if ok2 and type(r2)=="string" and #r2>10 then return r2 end
     return nil
 end
 
--- POST request (PC executors + some Android)
+-- POST (PC/Android executors via HttpService:RequestAsync or UNC request)
 local function doHttpPost(url, body, headers)
-    local ok1, r1 = pcall(function()
-        return HS_req:RequestAsync({Url=url,Method="POST",
-            Headers=headers or {["Content-Type"]="application/json"},Body=body})
+    local H = headers or {["Content-Type"]="application/json"}
+    local ok1,r1 = pcall(function()
+        return HS:RequestAsync({Url=url,Method="POST",Headers=H,Body=body})
     end)
-    if ok1 and r1 and (r1.StatusCode==200 or r1.Success) then
-        return r1.Body or ""
-    end
-    local ok2, r2 = pcall(function()
+    if ok1 and r1 and (r1.StatusCode==200 or r1.Success) then return r1.Body or "" end
+    local ok2,r2 = pcall(function()
         if type(request)=="function" then
-            return request({Url=url,Method="POST",Headers=headers,Body=body})
+            return request({Url=url,Method="POST",Headers=H,Body=body})
         end
     end)
-    if ok2 and r2 and (r2.StatusCode==200 or r2.status==200) then
-        return r2.Body or r2.body or ""
-    end
-    local ok3, r3 = pcall(function()
+    if ok2 and r2 and (r2.StatusCode==200 or r2.status==200) then return r2.Body or r2.body or "" end
+    local ok3,r3 = pcall(function()
         if type(syn)=="table" and type(syn.request)=="function" then
-            return syn.request({Url=url,Method="POST",Headers=headers,Body=body})
+            return syn.request({Url=url,Method="POST",Headers=H,Body=body})
         end
     end)
-    if ok3 and r3 and (r3.StatusCode==200 or r3.status==200) then
-        return r3.Body or r3.body or ""
-    end
+    if ok3 and r3 and (r3.StatusCode==200 or r3.status==200) then return r3.Body or r3.body or "" end
     return nil
 end
 
--- legacy httpReq for UNC tester
+-- legacy httpReq for UNC tester display
 local httpReq
 pcall(function()
     if type(request)=="function" then httpReq=request
@@ -199,29 +192,44 @@ local function notify(t, b, d)
     pcall(function() SG:SetCore("SendNotification",{Title=t,Text=b,Duration=d or 3}) end)
 end
 
--- ── code cleaner: strip fences, JSON wrappers, prose preamble ─────────────────
+-- ── code cleaner: strip fences, JSON wrappers, validate Lua ──────────────────
+local function isLua(s)
+    -- Must contain at least one Lua keyword/pattern to be considered real code
+    return s:find("local ") or s:find("function ") or s:find("game:") or
+           s:find("Players") or s:find("workspace") or s:find("%-%-") or
+           s:find("require") or s:find("pcall") or s:find("task%.")
+end
+
 local function cleanLuaCode(raw)
     if not raw or raw=="" then return "" end
     local s = tostring(raw)
-    -- Try JSON unwrap (Pollinations sometimes wraps in OpenAI format)
+    -- Reject obvious error/HTML responses early
+    if s:sub(1,1)=="<" then return "" end  -- HTML error page
+    if #s < 30 and (s:lower():find("error") or s:lower():find("limit")) then return "" end
+    -- JSON unwrap (OpenAI-format response)
     if s:sub(1,1)=="{" then
-        local ok, j = pcall(function() return HS:JSONDecode(s) end)
+        local ok,j = pcall(function() return HS:JSONDecode(s) end)
         if ok and type(j)=="table" then
+            -- Check for error field first
+            if j.error then return "" end
             local c = (j.choices and j.choices[1] and j.choices[1].message and j.choices[1].message.content)
                    or j.content or j.text or j.response
             if type(c)=="string" then s = c end
+        elseif not ok then
+            -- Not valid JSON — treat as raw text
         end
     end
-    -- Prefer the LONGEST ```lua ... ``` block if any exist
+    -- Extract LONGEST ```lua...``` block
     local best
     for block in s:gmatch("```[lL]?[uU]?[aA]?%s*(.-)```") do
-        if not best or #block > #best then best = block end
+        if not best or #block>#best then best=block end
     end
-    if best and #best > 20 then s = best end
-    -- Strip any remaining stray fences
+    if best and #best>20 then s=best end
+    -- Strip remaining fences
     s = s:gsub("```[lL]?[uU]?[aA]?%s*",""):gsub("```","")
-    -- Trim
     s = s:gsub("^%s+",""):gsub("%s+$","")
+    -- Final validation: must look like Lua
+    if not isLua(s) then return "" end
     return s
 end
 
@@ -606,77 +614,97 @@ OUTPUT FORMAT:
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- AI GENERATION
 -- ═══════════════════════════════════════════════════════════════════════════════
--- Short system prompt for GET endpoint (must be URL-safe and brief)
-local SYS_SHORT = "You are a Roblox Lua executor script expert. Write complete working scripts using ONLY the real game paths provided. Include hookfunction on remotes, ESP Drawing API if multiplayer, feature toggles, output log panel. Output raw Lua code only. No markdown, no backticks."
+-- Pollinations valid model names (NOT Anthropic names):
+-- GET+POST: "openai" (GPT-4o), "mistral", "llama", "claude" (Claude 3)
+-- POST only: "openai-large" (GPT-4o high), "gemini"
 
--- Compact context: first 30 meaningful lines of full context (~800 chars)
-local function compactCtx(fullCtx)
-    local lines, n = {}, 0
-    for line in fullCtx:gmatch("[^\n]+") do
-        local trim = line:gsub("^%s+","")
-        if #trim > 2 then
-            table.insert(lines, trim); n = n + 1
-            if n >= 30 then break end
+local SYS_SHORT = "Roblox Lua executor script writer. Write complete working Roblox scripts. Use real paths from GAME INFO. Hook remotes, add ESP if multiplayer, toggles, output log. Raw Lua code ONLY. No markdown."
+
+-- Build a brief game summary (under 300 chars) from full context
+local function gameSum(ctx)
+    local lines = {}
+    for l in ctx:gmatch("[^\n]+") do
+        local t = l:gsub("^%-%-+%s*",""):gsub("^%s+","")
+        if #t>3 and not t:find("^===") and not t:find("^  ") then
+            table.insert(lines, t)
+            if #lines >= 8 then break end
         end
     end
-    -- also grab HOOKABLE TARGETS section
-    local hooks = fullCtx:match("HOOKABLE TARGETS(.-)=== END") or ""
-    local hlines, hn = {}, 0
-    for l in hooks:gmatch("[^\n]+") do
-        table.insert(hlines, l:gsub("^%s+","")); hn=hn+1
-        if hn >= 15 then break end
+    -- grab remote names
+    for r in ctx:gmatch("REMOTES?:\n(.-)HOOKABLE") do
+        for l in r:gmatch("[^\n]+") do
+            table.insert(lines, l:gsub("^%s+",""))
+            if #lines >= 14 then break end
+        end
+        break
     end
-    local result = table.concat(lines,"\n").."\nHOOKABLE TARGETS:"..table.concat(hlines,"\n")
-    return result:sub(1, 900)
+    return table.concat(lines," | "):sub(1,280)
 end
 
 local function aiGenerate(prompt, ctx, onStatus)
     local lastErr = "no response"
     local seed = math.random(1,99999)
 
-    -- Method 1: GET endpoint (works on Delta iOS — game:HttpGet)
+    -- GET method: short URL — only user prompt in path, game summary in system
+    -- Works on Delta iOS via game:HttpGet(). URL stays under ~800 chars.
     local function tryGET(model)
-        local compact = compactCtx(ctx)
-        local userMsg = compact.."\n\nREQUEST: "..prompt
-        local url = "https://text.pollinations.ai/"..urlEnc(userMsg)
-            .."?model="..model.."&seed="..seed.."&system="..urlEnc(SYS_SHORT)
+        local sys = SYS_SHORT.." GAME:"..gameSum(ctx)
+        local url = "https://text.pollinations.ai/"..urlEnc(prompt)
+            .."?model="..model.."&seed="..seed.."&system="..urlEnc(sys)
         local body = doHttpGet(url)
-        if body and #body > 20 then
-            local cleaned = cleanLuaCode(body)
-            if #cleaned > 20 then return cleaned end
-            lastErr = "GET response too short after clean ("..#cleaned.." chars)"
-        else
-            lastErr = "GET returned empty"
-        end
+        if not body or #body<15 then lastErr="GET empty (model="..model..")"; return nil end
+        if body:sub(1,1)=="<" then lastErr="GET returned HTML error"; return nil end
+        local cleaned = cleanLuaCode(body)
+        if #cleaned>30 then return cleaned end
+        lastErr="GET not Lua: "..body:sub(1,60)
         return nil
     end
 
-    -- Method 2: POST endpoint (PC executors)
+    -- POST method: OpenAI-compatible endpoint with full context
+    -- Correct Pollinations POST endpoint: /openai/chat/completions
     local function tryPOST(model)
-        local full = ctx.."\n\n[USER REQUEST]\n"..prompt
-        local body = HS:JSONEncode({
-            messages={{role="system",content=SYS},{role="user",content=full}},
+        local full = ctx.."\n\nREQUEST: "..prompt
+        local payload = HS:JSONEncode({
             model=model, seed=seed,
+            messages={
+                {role="system", content=SYS_SHORT},
+                {role="user",   content=full:sub(1,4000)},  -- cap at 4k chars
+            },
         })
-        local res = doHttpPost("https://text.pollinations.ai/", body,
+        -- Try the correct OpenAI-compatible endpoint first, then fallback
+        local res = doHttpPost("https://text.pollinations.ai/openai/chat/completions", payload,
             {["Content-Type"]="application/json"})
-        if res and #res > 10 then
-            local cleaned = cleanLuaCode(res)
-            if #cleaned > 20 then return cleaned end
-            lastErr = "POST response too short ("..#cleaned.." chars)"
-        else
-            lastErr = "POST returned empty or failed"
+        if not res or #res<15 then
+            res = doHttpPost("https://text.pollinations.ai/", payload,
+                {["Content-Type"]="application/json"})
         end
+        if not res or #res<15 then lastErr="POST empty (model="..model..")"; return nil end
+        local cleaned = cleanLuaCode(res)
+        if #cleaned>30 then return cleaned end
+        lastErr="POST not Lua: "..res:sub(1,60)
         return nil
     end
 
-    -- Try GET first (Delta iOS), then POST fallbacks
-    onStatus("Calling AI (GET)...")
+    -- Attempt order: GET (Delta iOS works) → POST fallback
+    -- Use correct Pollinations model names only
+    onStatus("AI: GET openai...")
     local code = tryGET("openai")
-    if not code then onStatus("Trying claude via GET..."); code = tryGET("claude-opus-4-6") end
-    if not code then onStatus("Trying POST method..."); code = tryPOST("openai") end
-    if not code then onStatus("Trying POST claude..."); code = tryPOST("claude-opus-4-6") end
-    if not code then onStatus("Trying POST mistral..."); code = tryPOST("mistral") end
+    if not code then
+        task.wait(1.5); onStatus("AI: GET mistral...")
+        code = tryGET("mistral")
+    end
+    if not code then
+        task.wait(1.5); onStatus("AI: GET claude...")
+        code = tryGET("claude")  -- Pollinations name for Claude is "claude" not "claude-opus-4-6"
+    end
+    if not code then
+        task.wait(2); onStatus("AI: POST openai...")
+        code = tryPOST("openai")
+    end
+    if not code then
+        task.wait(2); onStatus("AI: POST openai-large...")
+        code = tryPOST("openai-large")
+    end
     if code then return code,nil end
     return nil,lastErr
 end
