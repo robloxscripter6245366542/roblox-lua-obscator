@@ -499,7 +499,7 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- SYSTEM PROMPT
 -- ═══════════════════════════════════════════════════════════════════════════════
-local SYS = [[You are an expert Roblox Lua architect for executor environments (Delta, Synapse, KRNL).
+local SYS = [=[You are an expert Roblox Lua architect for executor environments (Delta, Synapse, KRNL).
 You receive a GAME CONTEXT block: full live game hierarchy, game type classification, player/NPC/projectile detection flags, device info, available UNC functions, and a pre-built HOOKABLE TARGETS list.
 
 ══ ANALYSIS PHASE (mandatory first) ══
@@ -570,7 +570,7 @@ Use ONLY UNC functions listed as available in GAME CONTEXT. For each one used:
 
 OUTPUT FORMAT:
 --[[ ANALYSIS REPORT ... ]]
-<raw Lua code only — no backticks, no markdown>]]
+<raw Lua code only — no backticks, no markdown>]=]
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- AI GENERATION
