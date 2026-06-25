@@ -31,14 +31,50 @@ local LP       = Players.LocalPlayer
 local PGUI     = LP:WaitForChild("PlayerGui")
 local CAM      = workspace.CurrentCamera
 
--- ── Executor APIs (Delta iOS first, then others) ──────────────────────────────
+-- ── HTTP request abstraction ──────────────────────────────────────────────────
+-- Delta iOS: game:HttpGet() works but request() does not.
+-- Wrap HttpService:RequestAsync (unlocked by Delta) as primary POST method.
+local HS_req = game:GetService("HttpService")
+
+local function doHttpPost(url, body, headers)
+    -- 1) Try HttpService:RequestAsync (Delta iOS unlocks this)
+    local ok1, r1 = pcall(function()
+        return HS_req:RequestAsync({
+            Url=url, Method="POST",
+            Headers=headers or {["Content-Type"]="application/json"},
+            Body=body,
+        })
+    end)
+    if ok1 and r1 and (r1.StatusCode==200 or r1.Success) then
+        return {StatusCode=r1.StatusCode or 200, Body=r1.Body or ""}
+    end
+    -- 2) Try UNC request()
+    local ok2, r2 = pcall(function()
+        if type(request)=="function" then
+            return request({Url=url,Method="POST",Headers=headers,Body=body})
+        end
+    end)
+    if ok2 and r2 and (r2.StatusCode==200 or r2.status==200) then
+        return {StatusCode=200, Body=r2.Body or r2.body or ""}
+    end
+    -- 3) Try syn.request
+    local ok3, r3 = pcall(function()
+        if type(syn)=="table" and type(syn.request)=="function" then
+            return syn.request({Url=url,Method="POST",Headers=headers,Body=body})
+        end
+    end)
+    if ok3 and r3 and (r3.StatusCode==200 or r3.status==200) then
+        return {StatusCode=200, Body=r3.Body or r3.body or ""}
+    end
+    return nil
+end
+
+-- legacy httpReq kept for UNC tester compat
 local httpReq
 pcall(function()
-    -- Delta iOS: request() is the global
-    if type(request) == "function" then httpReq = request
-    elseif type(http) == "table" and type(http.request) == "function" then httpReq = http.request
-    elseif type(syn) == "table" and type(syn.request) == "function" then httpReq = syn.request
-    elseif type(http_request) == "function" then httpReq = http_request
+    if type(request)=="function" then httpReq=request
+    elseif type(http)=="table" and type(http.request)=="function" then httpReq=http.request
+    elseif type(syn)=="table" and type(syn.request)=="function" then httpReq=syn.request
     end
 end)
 
@@ -599,7 +635,6 @@ OUTPUT FORMAT:
 -- AI GENERATION
 -- ═══════════════════════════════════════════════════════════════════════════════
 local function aiGenerate(prompt, ctx, onStatus)
-    if not httpReq then return nil,"No HTTP function in this executor (need request/syn.request)." end
     local full = ctx.."\n\n[USER REQUEST]\n"..prompt
     local lastErr = "no response"
     local function tryModel(model)
@@ -607,22 +642,17 @@ local function aiGenerate(prompt, ctx, onStatus)
             messages={{role="system",content=SYS},{role="user",content=full}},
             model=model, seed=math.random(1,99999),
         })
-        local ok,res = pcall(httpReq,{
-            Url="https://text.pollinations.ai/", Method="POST",
-            Headers={["Content-Type"]="application/json"}, Body=body,
-        })
-        if not ok then lastErr = "HTTP threw: "..tostring(res):sub(1,80); return nil end
-        if not res then lastErr = "No response object"; return nil end
-        local code = res.StatusCode or res.status or 0
-        local body2 = res.Body or res.body or ""
-        if code ~= 200 then
-            lastErr = "HTTP "..tostring(code).." — "..tostring(body2):sub(1,80)
-            return nil
-        end
-        if #body2 < 10 then lastErr = "Empty body"; return nil end
+        local res = doHttpPost(
+            "https://text.pollinations.ai/",
+            body,
+            {["Content-Type"]="application/json"}
+        )
+        if not res then lastErr = "All HTTP methods failed (HttpService:RequestAsync, request, syn.request)"; return nil end
+        local body2 = res.Body or ""
+        if #body2 < 10 then lastErr = "Empty response body"; return nil end
         local cleaned = cleanLuaCode(body2)
         if #cleaned > 20 then return cleaned end
-        lastErr = "Cleaned body too short ("..#cleaned.." chars)"
+        lastErr = "Response too short after clean ("..#cleaned.." chars): "..body2:sub(1,60)
         return nil
     end
     onStatus("Sending to Claude Opus 4.6...")
