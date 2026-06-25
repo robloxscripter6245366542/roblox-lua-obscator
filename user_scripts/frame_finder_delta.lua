@@ -235,19 +235,21 @@ end
 
 -- ── loadstring executor ───────────────────────────────────────────────────────
 local function execScript(code)
-    code = cleanLuaCode(code)
-    if not code or code:gsub("%s","")=="" then notify("Execute","No script (empty after clean).",3); return end
+    if not code or code:gsub("%s","")=="" then notify("Execute","No code to run.",3); return end
+    -- Strip markdown fences if present (Scanner results may have them)
+    code = code:gsub("```[lL]?[uU]?[aA]?%s*",""):gsub("```",""):gsub("^%s+",""):gsub("%s+$","")
+    if code=="" then notify("Execute","Empty after strip.",3); return end
     local fn, err = loadstring(code)
     if not fn then
-        warn("[NexusAI] Syntax error:", err)
-        notify("Syntax Error",tostring(err):sub(1,140),6)
+        notify("Syntax Error", tostring(err):sub(1,140), 6)
         return
     end
     local ok, runErr = pcall(fn)
     if not ok then
-        warn("[NexusAI] Runtime error:", runErr)
-        notify("Runtime Error",tostring(runErr):sub(1,140),6)
-    else notify("Nexus AI","Running!",2) end
+        notify("Runtime Error", tostring(runErr):sub(1,140), 6)
+    else
+        notify("Nexus AI","Script running!",2)
+    end
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
