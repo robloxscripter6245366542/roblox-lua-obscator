@@ -1,3 +1,8 @@
+# Node.js / Vite
+node_modules/
+dist/
+.vite/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

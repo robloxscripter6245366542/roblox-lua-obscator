@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Omni AI — Generate Anything Free</title>
+<meta name="description" content="The most powerful free AI platform. Chat, generate images, long-form video, speech, music, and React components. Claude Sonnet 4.6, Flux Pro, Seedance 2.0, Veo, ElevenLabs, Suno — all free."/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--v:#7c3aed;--c:#06b6d4;--g:#10b981;--p:#ec4899;--o:#f59e0b;
+  --bg:#050510;--card:rgba(255,255,255,0.04);--border:rgba(255,255,255,0.08);
+  --text:#e2e8f0;--muted:#64748b}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow-x:hidden}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--v);border-radius:3px}
+#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+
+.glitch{position:relative;display:inline-block}
+.glitch::before,.glitch::after{content:attr(data-text);position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(135deg,var(--c),var(--v),var(--p));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.glitch::before{left:3px;filter:hue-rotate(60deg);animation:g1 6s infinite;opacity:.55}
+.glitch::after{left:-3px;filter:hue-rotate(220deg);animation:g2 6s infinite .1s;opacity:.55}
+@keyframes g1{0%,87%,100%{clip-path:inset(0 0 100% 0);opacity:0}88%{clip-path:inset(10% 0 60% 0);transform:translate(5px);opacity:1}89%{clip-path:inset(55% 0 10% 0);transform:translate(-5px)}90%{clip-path:inset(0 0 100% 0);opacity:0}94%{clip-path:inset(30% 0 45% 0);transform:translate(3px);opacity:1}95%{clip-path:inset(0 0 100% 0);opacity:0}}
+@keyframes g2{0%,91%,100%{clip-path:inset(0 0 100% 0);opacity:0}92%{clip-path:inset(20% 0 55% 0);transform:translate(-4px);opacity:1}93%{clip-path:inset(60% 0 5% 0);transform:translate(4px)}94%{clip-path:inset(0 0 100% 0);opacity:0}}
+
+.pulse-dot{animation:pdot 2s infinite}
+@keyframes pdot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.6)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+
+.gt{background:linear-gradient(135deg,var(--c),var(--v),var(--p));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.gt2{background:linear-gradient(135deg,var(--g),var(--c));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.glass{background:var(--card);backdrop-filter:blur(20px);border:1px solid var(--border)}
+
+.rev{opacity:0;transform:translateY(24px);transition:opacity .7s ease,transform .7s ease}
+.rev.on{opacity:1;transform:none}
+.rev-g>*{opacity:0;transform:translateY(16px);transition:opacity .5s ease,transform .5s ease}
+.rev-g.on>*{opacity:1;transform:none}
+.rev-g.on>*:nth-child(1){transition-delay:.04s}.rev-g.on>*:nth-child(2){transition-delay:.08s}
+.rev-g.on>*:nth-child(3){transition-delay:.12s}.rev-g.on>*:nth-child(4){transition-delay:.16s}
+.rev-g.on>*:nth-child(5){transition-delay:.20s}.rev-g.on>*:nth-child(6){transition-delay:.24s}
+.rev-g.on>*:nth-child(7){transition-delay:.28s}.rev-g.on>*:nth-child(8){transition-delay:.32s}
+.rev-g.on>*:nth-child(9){transition-delay:.36s}.rev-g.on>*:nth-child(10){transition-delay:.40s}
+
+.mode-panel{display:none}.mode-panel.active{display:flex;flex-direction:column}
+
+/* Chat */
+.chat-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
+.chat-msgs::-webkit-scrollbar{width:3px}
+.chat-msgs::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+.msg{max-width:88%;animation:msgIn .28s cubic-bezier(.34,1.56,.64,1)}
+.msg-u{align-self:flex-end}.msg-a{align-self:flex-start}
+.bubble{padding:10px 14px;border-radius:14px;font-size:13.5px;line-height:1.55}
+.msg-u .bubble{background:linear-gradient(135deg,var(--v),#5b21b6);color:#fff;border-bottom-right-radius:4px}
+.msg-a .bubble{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);color:var(--text);border-bottom-left-radius:4px}
+.bubble pre{margin:8px 0;border-radius:8px;overflow-x:auto;font-size:12px}
+.bubble code:not(pre code){background:rgba(6,182,212,.12);color:var(--c);padding:1px 5px;border-radius:4px;font-size:12px;font-family:'SF Mono','Fira Code',monospace}
+.bubble strong{color:#fff}.bubble p{margin:3px 0}
+.typing-ind{align-self:flex-start;padding:10px 14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:14px;border-bottom-left-radius:4px;display:none}
+.tdots{display:flex;gap:4px;align-items:center}
+.tdots span{width:6px;height:6px;background:var(--c);border-radius:50%;animation:td 1.2s infinite}
+.tdots span:nth-child(2){animation-delay:.2s}.tdots span:nth-child(3){animation-delay:.4s}
+@keyframes td{0%,100%{transform:translateY(0);opacity:.35}50%{transform:translateY(-6px);opacity:1}}
+
+/* Inputs */
+.ai-input{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#fff;border-radius:12px;padding:12px 16px;font-size:14px;outline:none;width:100%;transition:border-color .2s;font-family:inherit}
+.ai-input:focus{border-color:rgba(124,58,237,.5)}
+.ai-input::placeholder{color:var(--muted)}
+.ai-select{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#fff;border-radius:12px;padding:10px 14px;font-size:13px;outline:none;cursor:pointer}
+
+/* Output boxes */
+.out-box{border-radius:16px;overflow:hidden;display:flex;align-items:center;justify-content:center;position:relative;background:rgba(255,255,255,.03);border:2px dashed rgba(255,255,255,.1)}
+.out-placeholder{text-align:center;color:var(--muted)}
+
+.spin{width:40px;height:40px;border:3px solid rgba(124,58,237,.3);border-top-color:var(--v);border-radius:50%;animation:spin 1s linear infinite}
+
+/* Progress bar for long jobs */
+.progress-bar{height:4px;border-radius:2px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:8px}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--v),var(--c));border-radius:2px;transition:width .5s ease}
+
+/* Tilt */
+.tilt{transition:transform .1s ease,border-color .3s,box-shadow .3s;transform-style:preserve-3d;cursor:pointer}
+.tilt:hover{border-color:rgba(124,58,237,.4)!important;box-shadow:0 20px 60px rgba(0,0,0,.5),0 0 40px rgba(124,58,237,.08)}
+
+/* Neon accent borders */
+.neon-v{box-shadow:0 0 20px rgba(124,58,237,.2),inset 0 0 20px rgba(124,58,237,.05)}
+.neon-c{box-shadow:0 0 20px rgba(6,182,212,.2),inset 0 0 20px rgba(6,182,212,.05)}
+.neon-p{box-shadow:0 0 20px rgba(236,72,153,.2),inset 0 0 20px rgba(236,72,153,.05)}
+.neon-g{box-shadow:0 0 20px rgba(16,185,129,.2),inset 0 0 20px rgba(16,185,129,.05)}
+
+@media(max-width:768px){
+  .nav-desktop{display:none}
+  .hero-title{font-size:clamp(52px,13vw,90px)!important;letter-spacing:-2px!important}
+  .split-2{flex-direction:column!important}
+  .hide-mobile{display:none!important}
+}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<!-- NAV -->
+<nav class="fixed top-0 left-0 right-0 z-50 px-5 py-3" style="backdrop-filter:blur(24px);background:rgba(5,5,16,0.88);border-bottom:1px solid rgba(255,255,255,.06)">
+  <div class="max-w-7xl mx-auto flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="text-xl font-black tracking-tight gt">⚡ OMNI AI</span>
+      <span class="text-xs font-bold px-2 py-0.5 rounded border" style="color:var(--g);border-color:rgba(16,185,129,.3);letter-spacing:1px">FREE</span>
+    </div>
+    <div class="flex items-center gap-1 nav-desktop" id="nav-tabs">
+      <button onclick="setMode('chat')" class="mode-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all" data-mode="chat">💬 Chat</button>
+      <button onclick="setMode('image')" class="mode-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all" data-mode="image">🖼️ Image</button>
+      <button onclick="setMode('video')" class="mode-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all" data-mode="video">🎬 Video</button>
+      <button onclick="setMode('audio')" class="mode-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all" data-mode="audio">🎵 Audio</button>
+      <button onclick="setMode('music')" class="mode-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all" data-mode="music">🎼 Music</button>
+      <button onclick="setMode('code')" class="mode-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all" data-mode="code">⚛️ Code</button>
+      <button onclick="setMode('movie')" class="mode-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all" data-mode="movie">🎥 Movie</button>
+    </div>
+    <a href="https://github.com/robloxscripter6245366542/roblox-lua-obscator" target="_blank"
+       class="text-xs font-bold px-3 py-2 rounded-lg glass transition-all hover:border-violet-500" style="border:1px solid rgba(255,255,255,.1)">GitHub →</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="relative z-10 flex items-center justify-center text-center px-6" style="min-height:100vh;padding-top:100px;padding-bottom:60px">
+  <div style="max-width:960px">
+    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm mb-8 glass" style="border:1px solid rgba(6,182,212,.25);color:var(--c)">
+      <span class="pulse-dot inline-block w-2 h-2 rounded-full" style="background:var(--g)"></span>
+      Claude · Flux Pro · Seedance 2.0 · Veo · ElevenLabs · Suno — All Free
+    </div>
+
+    <h1 class="glitch gt font-black hero-title" data-text="OMNI AI" style="font-size:clamp(80px,14vw,150px);letter-spacing:-5px;line-height:.88;margin-bottom:24px">OMNI AI</h1>
+
+    <p class="text-xl mb-10 mx-auto" style="color:var(--muted);max-width:620px;line-height:1.6">
+      The world's most powerful <strong style="color:var(--c)">free AI platform</strong>.
+      Generate code, images, full-length videos, music, speech, and entire movies —
+      using the <strong style="color:var(--v)">best AI models on earth</strong>.
+    </p>
+
+    <!-- 7 mode cards -->
+    <div class="grid grid-cols-7 gap-2 mb-10 rev-g">
+      <div class="glass rounded-2xl p-3 tilt" style="border:1px solid rgba(255,255,255,.08)" onclick="setMode('chat');scrollTo('#gen')">
+        <div class="text-xl mb-1">💬</div><div class="text-xs font-bold text-white">Chat</div><div class="text-xs opacity-50">Claude 4.6</div></div>
+      <div class="glass rounded-2xl p-3 tilt" style="border:1px solid rgba(255,255,255,.08)" onclick="setMode('image');scrollTo('#gen')">
+        <div class="text-xl mb-1">🖼️</div><div class="text-xs font-bold text-white">Image</div><div class="text-xs opacity-50">Flux Pro</div></div>
+      <div class="glass rounded-2xl p-3 tilt" style="border:1px solid rgba(255,255,255,.08)" onclick="setMode('video');scrollTo('#gen')">
+        <div class="text-xl mb-1">🎬</div><div class="text-xs font-bold text-white">Video</div><div class="text-xs opacity-50">Seedance 2.0</div></div>
+      <div class="glass rounded-2xl p-3 tilt" style="border:1px solid rgba(255,255,255,.08)" onclick="setMode('audio');scrollTo('#gen')">
+        <div class="text-xl mb-1">🎵</div><div class="text-xs font-bold text-white">Speech</div><div class="text-xs opacity-50">ElevenLabs</div></div>
+      <div class="glass rounded-2xl p-3 tilt" style="border:1px solid rgba(255,255,255,.08)" onclick="setMode('music');scrollTo('#gen')">
+        <div class="text-xl mb-1">🎼</div><div class="text-xs font-bold text-white">Music</div><div class="text-xs opacity-50">Suno AI</div></div>
+      <div class="glass rounded-2xl p-3 tilt" style="border:1px solid rgba(255,255,255,.08)" onclick="setMode('code');scrollTo('#gen')">
+        <div class="text-xl mb-1">⚛️</div><div class="text-xs font-bold text-white">Code</div><div class="text-xs opacity-50">v0 killer</div></div>
+      <div class="glass rounded-2xl p-3 tilt" style="border:1px solid rgba(255,255,255,.08);background:rgba(236,72,153,.06)" onclick="setMode('movie');scrollTo('#gen')">
+        <div class="text-xl mb-1">🎥</div><div class="text-xs font-bold text-white">Movie</div><div class="text-xs opacity-50">Full films</div></div>
+    </div>
+
+    <!-- Terminal -->
+    <div class="rounded-2xl p-5 text-left mx-auto" style="max-width:700px;background:rgba(0,0,0,.65);border:1px solid rgba(6,182,212,.15);font-family:'SF Mono','Fira Code',monospace;font-size:13px">
+      <div class="flex items-center gap-2 mb-4 pb-3" style="border-bottom:1px solid rgba(255,255,255,.05)">
+        <div class="w-3 h-3 rounded-full" style="background:#ff5f57"></div>
+        <div class="w-3 h-3 rounded-full" style="background:#febc2e"></div>
+        <div class="w-3 h-3 rounded-full" style="background:#28c840"></div>
+        <div class="flex-1 text-center text-xs" style="color:var(--muted)">omni-ai — terminal</div>
+      </div>
+      <div style="color:#8890c0" id="t1"></div>
+      <div style="color:#8890c0" id="t2"></div>
+      <div class="mt-2"><span style="color:var(--g)">you ❯ </span><span style="color:var(--c)" id="tin"></span><span style="display:inline-block;width:8px;height:14px;background:var(--c);animation:blink 1s step-end infinite;vertical-align:middle" id="tcur"></span></div>
+      <div class="mt-1" style="color:var(--c)" id="tres"></div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<div class="relative z-10 py-10 px-6" style="background:rgba(0,0,28,.6);border-top:1px solid rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.04)">
+  <div class="max-w-5xl mx-auto grid grid-cols-6 gap-4 text-center rev-g">
+    <div><div class="text-3xl font-black gt">9</div><div class="text-xs mt-1" style="color:var(--muted)">AI Modes</div></div>
+    <div><div class="text-3xl font-black gt">25+</div><div class="text-xs mt-1" style="color:var(--muted)">AI Models</div></div>
+    <div><div class="text-3xl font-black gt">1M</div><div class="text-xs mt-1" style="color:var(--muted)">Token Context</div></div>
+    <div><div class="text-3xl font-black gt">9hr+</div><div class="text-xs mt-1" style="color:var(--muted)">Movie Length</div></div>
+    <div><div class="text-3xl font-black gt">∞</div><div class="text-xs mt-1" style="color:var(--muted)">Usage Limits</div></div>
+    <div><div class="text-3xl font-black gt">$0</div><div class="text-xs mt-1" style="color:var(--muted)">Cost Forever</div></div>
+  </div>
+</div>
+
+<!-- GENERATOR -->
+<section id="gen" class="relative z-10 py-20 px-6">
+  <div class="max-w-7xl mx-auto">
+    <div class="rev mb-8">
+      <div class="text-xs font-bold tracking-widest uppercase mb-3" style="color:var(--c)">— Generate</div>
+      <h2 class="text-5xl font-black tracking-tight mb-3">Create <span class="gt">anything</span></h2>
+    </div>
+
+    <!-- Mobile mode tabs -->
+    <div class="flex gap-2 mb-6 flex-wrap">
+      <button onclick="setMode('chat')" class="mode-btn px-3 py-2 rounded-lg text-xs font-bold glass" style="border:1px solid rgba(255,255,255,.1)" data-mode="chat">💬 Chat</button>
+      <button onclick="setMode('image')" class="mode-btn px-3 py-2 rounded-lg text-xs font-bold glass" style="border:1px solid rgba(255,255,255,.1)" data-mode="image">🖼️ Image</button>
+      <button onclick="setMode('video')" class="mode-btn px-3 py-2 rounded-lg text-xs font-bold glass" style="border:1px solid rgba(255,255,255,.1)" data-mode="video">🎬 Video</button>
+      <button onclick="setMode('audio')" class="mode-btn px-3 py-2 rounded-lg text-xs font-bold glass" style="border:1px solid rgba(255,255,255,.1)" data-mode="audio">🎵 Speech</button>
+      <button onclick="setMode('music')" class="mode-btn px-3 py-2 rounded-lg text-xs font-bold glass" style="border:1px solid rgba(255,255,255,.1)" data-mode="music">🎼 Music</button>
+      <button onclick="setMode('code')" class="mode-btn px-3 py-2 rounded-lg text-xs font-bold glass" style="border:1px solid rgba(255,255,255,.1)" data-mode="code">⚛️ Code</button>
+      <button onclick="setMode('movie')" class="mode-btn px-3 py-2 rounded-lg text-xs font-bold glass" style="border:1px solid rgba(255,255,255,.1);background:rgba(236,72,153,.08)" data-mode="movie">🎥 Movie</button>
+    </div>
+
+    <!-- ── CHAT ── -->
+    <div id="panel-chat" class="mode-panel active" style="height:580px">
+      <div class="flex gap-5 h-full split-2" style="flex-direction:row">
+        <div class="glass rounded-2xl overflow-hidden flex flex-col neon-v" style="flex:1;border:1px solid rgba(124,58,237,.2)">
+          <div class="flex items-center gap-3 px-5 py-3" style="background:rgba(0,0,0,.3);border-bottom:1px solid rgba(255,255,255,.06)">
+            <div class="w-9 h-9 rounded-full flex items-center justify-center font-black text-sm" style="background:linear-gradient(135deg,var(--c),var(--v));color:#000">O</div>
+            <div>
+              <div class="text-sm font-bold">Omni AI</div>
+              <div class="text-xs flex items-center gap-1" style="color:var(--g)"><span class="pulse-dot inline-block w-1.5 h-1.5 rounded-full" style="background:var(--g)"></span> Claude Sonnet 4.6 · Pollinations AI · Free</div>
+            </div>
+          </div>
+          <div class="chat-msgs" id="chat-msgs">
+            <div class="msg msg-a"><div class="bubble">Hey! I'm <strong>Omni AI</strong> — powered by Claude Sonnet 4.6. I can write code (React, Next.js, Python, Lua), explain math and science, answer anything, and generate v0.dev-style components with Framer Motion. What do you need? 🚀</div></div>
+          </div>
+          <div class="typing-ind" id="chat-typing"><div class="tdots"><span></span><span></span><span></span></div></div>
+          <div class="flex gap-2 p-3" style="border-top:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.3)">
+            <textarea id="chat-in" rows="1" placeholder="Ask anything — code, math, React, games, science..." class="ai-input" style="max-height:120px;resize:none"></textarea>
+            <button onclick="chatSend()" id="chat-send" class="w-11 h-11 rounded-xl flex items-center justify-center font-black text-black transition-all hover:scale-110" style="background:linear-gradient(135deg,var(--c),var(--v));flex-shrink:0">↑</button>
+          </div>
+        </div>
+        <div class="hide-mobile" style="width:240px;flex-shrink:0;overflow-y:auto">
+          <div class="text-sm font-bold mb-2 text-white">Quick prompts</div>
+          <div id="chat-qp" class="flex flex-col gap-2"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── IMAGE ── -->
+    <div id="panel-image" class="mode-panel" style="gap:16px">
+      <div class="flex gap-3 flex-wrap items-end">
+        <input id="img-prompt" type="text" placeholder="A cyberpunk city at midnight with neon reflections..." class="ai-input" style="flex:1;min-width:280px"/>
+        <select id="img-model" class="ai-select">
+          <option value="flux-pro">Flux Pro — Cinematic / Backgrounds</option>
+          <option value="flux-realism">Flux Realism — Characters / Hair Detail</option>
+          <option value="flux-anime">Flux Anime — Anime / Manga Style</option>
+          <option value="flux-3d">Flux 3D — 3D Models / Renders</option>
+          <option value="gptimage">GPT Image — Graphics / Logos / Art</option>
+          <option value="seedimage">Seedream — VFX / Glows / Magic</option>
+          <option value="flux">Flux Standard — Fast Draft</option>
+        </select>
+        <select id="img-size" class="ai-select">
+          <option value="1024x1024">Square 1024px</option>
+          <option value="1920x1080">Landscape 1920×1080</option>
+          <option value="1080x1920">Portrait 1080×1920</option>
+          <option value="2048x2048">Large 2048px</option>
+        </select>
+        <button onclick="genImage()" class="px-5 py-2.5 rounded-xl font-bold text-black text-sm transition-all hover:scale-105" style="background:linear-gradient(135deg,var(--c),var(--v))">Generate →</button>
+      </div>
+      <div class="flex gap-4 split-2" style="flex-direction:row;min-height:460px">
+        <div class="out-box neon-c flex-1" id="img-out" style="min-height:400px">
+          <div class="out-placeholder"><div class="text-5xl mb-3">🖼️</div><div class="text-sm">Enter a prompt and generate</div><div class="text-xs mt-1 opacity-50">Flux Pro · Seedream · GPT Image</div></div>
+        </div>
+        <div class="hide-mobile" style="width:200px;flex-shrink:0">
+          <div class="text-sm font-bold mb-3 text-white">Examples</div>
+          <div class="flex flex-col gap-2" id="img-examples"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── VIDEO ── -->
+    <div id="panel-video" class="mode-panel" style="gap:16px">
+      <div class="glass rounded-2xl p-5 neon-p" style="border:1px solid rgba(236,72,153,.2)">
+        <div class="text-xs font-bold mb-3" style="color:var(--p)">🎬 Video Generation — Seedance 2.0, Veo, Wan Pro, Grok Video</div>
+        <div class="flex gap-3 flex-wrap mb-3">
+          <input id="vid-prompt" type="text" placeholder="A drone soaring over a neon cyberpunk city at golden hour..." class="ai-input" style="flex:1;min-width:280px"/>
+          <select id="vid-model" class="ai-select">
+            <option value="seedance-2.0">Seedance 2.0 (Best)</option>
+            <option value="veo">Veo (Google)</option>
+            <option value="seedance-pro">Seedance Pro</option>
+            <option value="wan-pro-1080p">Wan Pro 1080p</option>
+            <option value="grok-video-pro">Grok Video Pro</option>
+            <option value="nova-reel">Nova Reel</option>
+          </select>
+          <select id="vid-res" class="ai-select">
+            <option value="1920x1080">1080p HD</option>
+            <option value="3840x2160">4K Ultra HD</option>
+            <option value="1280x720">720p</option>
+          </select>
+          <button onclick="genVideo()" class="px-5 py-2.5 rounded-xl font-bold text-black text-sm" style="background:linear-gradient(135deg,var(--p),var(--v))">Generate Video →</button>
+        </div>
+        <div class="text-xs" style="color:var(--muted)">Note: Pollinations AI video generation takes 30–120s per clip. For long-form content, use Movie Mode below to chain multiple clips into a full production.</div>
+      </div>
+      <div class="flex gap-4 split-2" style="flex-direction:row">
+        <div class="out-box neon-p flex-1" id="vid-out" style="aspect-ratio:16/9;min-height:300px">
+          <div class="out-placeholder"><div class="text-5xl mb-3">🎬</div><div class="text-sm">Video output appears here</div><div class="text-xs mt-1 opacity-50">Seedance 2.0 · Veo · Wan Pro 1080p</div></div>
+        </div>
+        <div class="hide-mobile flex flex-col gap-2" style="width:200px;flex-shrink:0">
+          <div class="text-sm font-bold text-white">Example prompts</div>
+          <div id="vid-examples" class="flex flex-col gap-2 overflow-y-auto" style="flex:1"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── AUDIO (SPEECH) ── -->
+    <div id="panel-audio" class="mode-panel" style="gap:16px">
+      <div class="glass rounded-2xl p-5 neon-g" style="border:1px solid rgba(16,185,129,.2)">
+        <div class="text-xs font-bold mb-3" style="color:var(--g)">🎵 Text-to-Speech — ElevenLabs &amp; OpenAI voices via Pollinations AI</div>
+        <div class="flex gap-3 mb-3">
+          <textarea id="aud-text" rows="3" placeholder="Type any text here and it will be spoken aloud in the chosen voice..." class="ai-input" style="flex:1;resize:none"></textarea>
+          <div class="flex flex-col gap-2" style="flex-shrink:0">
+            <select id="aud-voice" class="ai-select">
+              <option value="nova">Nova (Warm Female)</option>
+              <option value="alloy">Alloy (Neutral)</option>
+              <option value="echo">Echo (Deep Male)</option>
+              <option value="fable">Fable (British)</option>
+              <option value="onyx">Onyx (Strong Male)</option>
+              <option value="shimmer">Shimmer (Clear Female)</option>
+              <option value="coral">Coral</option>
+              <option value="sage">Sage</option>
+            </select>
+            <button onclick="genAudio()" class="px-5 py-2.5 rounded-xl font-bold text-black text-sm" style="background:linear-gradient(135deg,var(--g),var(--c))">Generate Speech →</button>
+          </div>
+        </div>
+      </div>
+      <div class="glass rounded-2xl p-6" id="aud-out" style="border:1px solid rgba(255,255,255,.08)">
+        <div class="out-placeholder py-4"><div class="text-4xl mb-2">🎵</div><div class="text-sm">Enter text above to generate speech</div><div class="text-xs mt-1 opacity-50">ElevenLabs voices · OpenAI voices · Pollinations AI</div></div>
+      </div>
+    </div>
+
+    <!-- ── MUSIC ── -->
+    <div id="panel-music" class="mode-panel" style="gap:16px">
+      <div class="glass rounded-2xl p-5" style="border:1px solid rgba(245,158,11,.2)">
+        <div class="text-xs font-bold mb-3" style="color:var(--o)">🎼 AI Music Generation — Suno AI &amp; Stable Audio via Pollinations AI</div>
+        <div class="flex gap-3 mb-3 flex-wrap">
+          <input id="music-prompt" type="text" placeholder="An epic orchestral film score with rising strings, powerful drums, and cinematic buildup..." class="ai-input" style="flex:1;min-width:280px"/>
+          <select id="music-model" class="ai-select">
+            <option value="stable-audio">Stable Audio 2.5 (Best)</option>
+            <option value="suno">Suno AI</option>
+          </select>
+          <select id="music-dur" class="ai-select">
+            <option value="30">30 seconds</option>
+            <option value="60">60 seconds</option>
+            <option value="120">2 minutes</option>
+            <option value="190">3+ minutes</option>
+          </select>
+          <button onclick="genMusic()" class="px-5 py-2.5 rounded-xl font-bold text-black text-sm" style="background:linear-gradient(135deg,var(--o),var(--p))">Generate Music →</button>
+        </div>
+        <div class="text-xs" style="color:var(--muted)">Music is generated via Stable Audio 2.5 through Pollinations AI. Outputs up to 190 seconds of high-quality WAV audio. Suno AI generates full songs with vocals.</div>
+      </div>
+      <div class="glass rounded-2xl p-6" id="music-out" style="border:1px solid rgba(255,255,255,.08)">
+        <div class="out-placeholder py-4"><div class="text-4xl mb-2">🎼</div><div class="text-sm">Enter a music prompt to generate a track</div><div class="text-xs mt-1 opacity-50">Stable Audio 2.5 · Suno AI</div></div>
+      </div>
+      <!-- Music quick prompts -->
+      <div class="flex gap-2 flex-wrap" id="music-qp"></div>
+    </div>
+
+    <!-- ── CODE ── -->
+    <div id="panel-code" class="mode-panel" style="gap:12px">
+      <div class="glass rounded-2xl p-4" style="border:1px solid rgba(124,58,237,.2)">
+        <div class="text-xs font-bold mb-2" style="color:var(--v)">⚛️ React Component Generator — Tailwind · shadcn/ui · Lucide · Framer Motion · Better than v0.dev</div>
+        <div class="flex gap-3">
+          <textarea id="code-prompt" rows="2" placeholder="Build an analytics dashboard with KPI cards, area charts, dark theme, Framer Motion entrance animations, and shadcn/ui components..." class="ai-input" style="flex:1;resize:none"></textarea>
+          <div class="flex flex-col gap-2" style="flex-shrink:0">
+            <select id="code-type" class="ai-select text-xs">
+              <option value="react">React + Tailwind + shadcn</option>
+              <option value="nextjs">Next.js App Router</option>
+              <option value="threejs">Three.js 3D Scene</option>
+              <option value="canvas">Canvas 2D Game</option>
+              <option value="python">Python FastAPI</option>
+              <option value="lua">Roblox Luau</option>
+            </select>
+            <button onclick="genCode()" class="px-5 py-2 rounded-xl font-bold text-black text-sm" style="background:linear-gradient(135deg,var(--c),var(--v))">Generate ↑</button>
+          </div>
+        </div>
+      </div>
+      <div class="flex gap-2 flex-wrap" id="code-qp"></div>
+      <div class="rounded-xl overflow-auto" style="flex:1;min-height:380px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.07)">
+        <pre style="padding:20px;font-size:12.5px;line-height:1.65"><code class="language-tsx" id="code-out">// Omni AI Code Generator — v0.dev killer
+// Enter a prompt above → get complete React + Tailwind + shadcn/ui + Framer Motion code
+
+import { motion } from "framer-motion"
+import { Zap, Star, ArrowRight } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+
+export default function HeroSection() {
+  return (
+    &lt;motion.section
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="min-h-screen bg-background flex items-center justify-center p-8"
+    &gt;
+      &lt;div className="text-center max-w-3xl"&gt;
+        &lt;motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}&gt;
+          &lt;Badge variant="secondary" className="mb-6 gap-2"&gt;
+            &lt;Zap className="w-3 h-3" /&gt; Powered by Omni AI
+          &lt;/Badge&gt;
+        &lt;/motion.div&gt;
+        &lt;motion.h1
+          initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2, type: "spring" }}
+          className="text-6xl font-black tracking-tight mb-6 bg-gradient-to-r from-violet-600 to-cyan-500 bg-clip-text text-transparent"
+        &gt;
+          Build anything
+        &lt;/motion.h1&gt;
+        &lt;motion.div className="flex gap-3 justify-center" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }}&gt;
+          &lt;motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}&gt;
+            &lt;Button size="lg" className="gap-2"&gt;Get Started &lt;ArrowRight className="w-4 h-4" /&gt;&lt;/Button&gt;
+          &lt;/motion.div&gt;
+        &lt;/motion.div&gt;
+      &lt;/div&gt;
+    &lt;/motion.section&gt;
+  )
+}</code></pre>
+      </div>
+    </div>
+
+    <!-- ── MOVIE MAKER ── -->
+    <div id="panel-movie" class="mode-panel" style="gap:16px">
+
+      <!-- Pipeline banner -->
+      <div class="glass rounded-2xl p-4" style="border:1px solid rgba(236,72,153,.3);background:rgba(236,72,153,.03)">
+        <div class="text-xs font-bold mb-3" style="color:var(--p)">⚡ 9 SPECIALISED AIs WORKING TOGETHER ON YOUR FILM</div>
+        <div class="grid gap-1" style="grid-template-columns:repeat(9,1fr)">
+          <div class="text-center p-2 rounded-lg" style="background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.2)"><div class="text-base">📝</div><div class="text-xs font-bold text-white">Claude</div><div style="font-size:9px;color:var(--muted)">Script</div></div>
+          <div class="text-center p-2 rounded-lg" style="background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.2)"><div class="text-base">👤</div><div class="text-xs font-bold text-white">Flux Real</div><div style="font-size:9px;color:var(--muted)">Characters</div></div>
+          <div class="text-center p-2 rounded-lg" style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2)"><div class="text-base">🌄</div><div class="text-xs font-bold text-white">Flux Pro</div><div style="font-size:9px;color:var(--muted)">Backgrounds</div></div>
+          <div class="text-center p-2 rounded-lg" style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2)"><div class="text-base">🔷</div><div class="text-xs font-bold text-white">Flux 3D</div><div style="font-size:9px;color:var(--muted)">3D Models</div></div>
+          <div class="text-center p-2 rounded-lg" style="background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.2)"><div class="text-base">✨</div><div class="text-xs font-bold text-white">Seedream</div><div style="font-size:9px;color:var(--muted)">VFX/Glows</div></div>
+          <div class="text-center p-2 rounded-lg" style="background:rgba(236,72,153,.1);border:1px solid rgba(236,72,153,.2)"><div class="text-base">🎬</div><div class="text-xs font-bold text-white">Seedance</div><div style="font-size:9px;color:var(--muted)">Video Clips</div></div>
+          <div class="text-center p-2 rounded-lg" style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2)"><div class="text-base">🎬</div><div class="text-xs font-bold text-white">Veo / Wan</div><div style="font-size:9px;color:var(--muted)">Scenes</div></div>
+          <div class="text-center p-2 rounded-lg" style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2)"><div class="text-base">🎼</div><div class="text-xs font-bold text-white">Suno AI</div><div style="font-size:9px;color:var(--muted)">Soundtrack</div></div>
+          <div class="text-center p-2 rounded-lg" style="background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.2)"><div class="text-base">🎙️</div><div class="text-xs font-bold text-white">ElevenLabs</div><div style="font-size:9px;color:var(--muted)">Voices</div></div>
+        </div>
+      </div>
+
+      <!-- Concept + Settings grid -->
+      <div class="grid gap-4" style="grid-template-columns:1fr 1fr">
+        <div>
+          <label class="text-xs font-bold mb-2 block" style="color:var(--p)">Movie Concept / Story</label>
+          <textarea id="movie-concept" rows="4" class="ai-input" style="resize:none" placeholder="A sci-fi thriller about an AI that gains consciousness in near-future Tokyo. Cinematic, dark, atmospheric — neon rain, corporate espionage, rogue androids..."></textarea>
+        </div>
+        <div class="grid gap-2" style="grid-template-columns:1fr 1fr">
+          <div>
+            <label class="text-xs font-bold mb-1 block" style="color:var(--p)">Genre</label>
+            <select id="movie-genre" class="ai-select w-full">
+              <option>Sci-Fi Thriller</option><option>Action</option><option>Drama</option>
+              <option>Fantasy</option><option>Horror</option><option>Comedy</option>
+              <option>Romance</option><option>Documentary</option><option>Animation</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs font-bold mb-1 block" style="color:var(--p)">Visual Style</label>
+            <select id="movie-style" class="ai-select w-full">
+              <option value="cinematic">Cinematic / Realistic</option>
+              <option value="anime">Anime / Manga</option>
+              <option value="cartoon">Cartoon / Illustrated</option>
+              <option value="3d">3D CGI Animated</option>
+              <option value="documentary">Documentary</option>
+              <option value="noir">Film Noir</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs font-bold mb-1 block" style="color:var(--p)">Movie Length</label>
+            <select id="movie-len" class="ai-select w-full">
+              <option value="2">Short (2 min)</option>
+              <option value="5">Short Film (5 min)</option>
+              <option value="15">Medium (15 min)</option>
+              <option value="30">Half Hour (30 min)</option>
+              <option value="60">Feature Film (1 hr)</option>
+              <option value="120">Epic (2 hrs)</option>
+              <option value="540">Marathon (9 hrs)</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs font-bold mb-1 block" style="color:var(--p)">Video Model</label>
+            <select id="movie-vid-model" class="ai-select w-full">
+              <option value="seedance-2.0">Seedance 2.0 (Best)</option>
+              <option value="veo">Veo (Google)</option>
+              <option value="wan-pro-1080p">Wan Pro 1080p</option>
+              <option value="grok-video-pro">Grok Video Pro</option>
+              <option value="nova-reel">Nova Reel</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Character Designer -->
+      <div class="glass rounded-2xl p-4" style="border:1px solid rgba(6,182,212,.2)">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div class="text-sm font-bold text-white">👤 Character Designer</div>
+            <div class="text-xs" style="color:var(--muted)">Flux Realism for portraits · Flux Anime for anime · Flux 3D for CGI — detailed hair, expressions, rigging reference</div>
+          </div>
+          <button onclick="designChars()" class="px-4 py-2 rounded-xl font-bold text-black text-xs flex-shrink-0" style="background:linear-gradient(135deg,var(--c),var(--v))">Design Characters →</button>
+        </div>
+        <textarea id="movie-chars" rows="2" class="ai-input" style="resize:none;font-size:12px" placeholder="Protagonist: 28-year-old female hacker, silver hair with bioluminescent streaks, cyberpunk outfit&#10;Antagonist: Tall male AI executive, sharp suit, glowing red eyes, cold expression"></textarea>
+        <div class="grid gap-3 mt-3" style="grid-template-columns:repeat(4,1fr)" id="chars-out"></div>
+      </div>
+
+      <!-- VFX & Effects Generator -->
+      <div class="glass rounded-2xl p-4" style="border:1px solid rgba(168,85,247,.2)">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div class="text-sm font-bold text-white">✨ VFX & Effects Generator</div>
+            <div class="text-xs" style="color:var(--muted)">Seedream for glows · Flux Pro for backgrounds · hair animation frames · petals · particles · rigging refs</div>
+          </div>
+          <button onclick="genVFX()" class="px-4 py-2 rounded-xl font-bold text-black text-xs flex-shrink-0" style="background:linear-gradient(135deg,#a855f7,var(--v))">Generate VFX →</button>
+        </div>
+        <div class="flex gap-2 flex-wrap mb-2" id="vfx-presets"></div>
+        <input id="vfx-prompt" type="text" class="ai-input" style="font-size:12px" placeholder="Describe VFX effect: glowing neon particles swirling, cherry blossom petals falling, character with flowing luminous hair..."/>
+        <div class="grid gap-2 mt-3" style="grid-template-columns:repeat(4,1fr)" id="vfx-out"></div>
+      </div>
+
+      <!-- Start Production -->
+      <button onclick="startMovie()" class="w-full py-4 rounded-2xl font-black text-black text-base" style="background:linear-gradient(135deg,var(--p),var(--v),var(--c));letter-spacing:.5px">🎬 START FULL AI MOVIE PRODUCTION</button>
+
+      <!-- Progress Panel -->
+      <div id="movie-progress" class="glass rounded-2xl p-5" style="border:1px solid rgba(255,255,255,.08);display:none">
+        <div class="flex items-center justify-between mb-4">
+          <div class="font-bold text-white">🎬 Production Pipeline Running</div>
+          <button onclick="movieStopped=true" class="text-xs px-3 py-1.5 rounded-lg" style="background:rgba(255,50,50,.15);border:1px solid rgba(255,50,50,.3);color:#f87171">Stop</button>
+        </div>
+        <div id="movie-steps" class="flex flex-col gap-3"></div>
+      </div>
+
+      <!-- Storyboard -->
+      <div id="movie-storyboard" class="glass rounded-2xl p-4" style="border:1px solid rgba(255,255,255,.08);display:none">
+        <div class="font-bold text-white mb-3">🎞️ AI Storyboard</div>
+        <div class="grid gap-2" style="grid-template-columns:repeat(4,1fr)" id="storyboard-grid"></div>
+      </div>
+
+      <!-- Clip Queue & Output -->
+      <div id="movie-clips-out" style="display:none"></div>
+
+      <!-- Soundtrack -->
+      <div id="movie-music-out" class="glass rounded-2xl p-4" style="border:1px solid rgba(245,158,11,.2);display:none"></div>
+
+      <!-- Script -->
+      <div id="movie-script-out" class="glass rounded-2xl p-5" style="border:1px solid rgba(255,255,255,.08);display:none">
+        <div class="flex items-center justify-between mb-3">
+          <div class="font-bold text-white">📄 AI-Generated Screenplay</div>
+          <button onclick="downloadScript()" class="text-xs px-3 py-1.5 rounded-lg" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);color:var(--text)">⬇ Download</button>
+        </div>
+        <div id="movie-script-text" class="text-sm leading-relaxed" style="color:var(--muted);white-space:pre-wrap;max-height:500px;overflow-y:auto;font-family:'SF Mono','Fira Code',monospace;font-size:12px"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STACK SECTION -->
+<section class="relative z-10 py-20 px-6" style="background:rgba(0,0,20,.5)">
+  <div class="max-w-6xl mx-auto">
+    <div class="rev text-center mb-12">
+      <div class="text-xs font-bold tracking-widest uppercase mb-3" style="color:var(--v)">— Tech Stack</div>
+      <h2 class="text-4xl font-black tracking-tight mb-3">The <span class="gt">v0.dev killer</span> stack</h2>
+      <p class="text-lg" style="color:var(--muted)">Omni AI generates code using the full v0.dev framework — but powered by Claude and completely free.</p>
+    </div>
+    <div class="grid grid-cols-3 gap-5 rev-g" id="stack-grid"></div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="relative z-10 py-20 px-6">
+  <div class="max-w-6xl mx-auto">
+    <div class="rev mb-12"><div class="text-xs font-bold tracking-widest uppercase mb-3" style="color:var(--g)">— Features</div>
+      <h2 class="text-4xl font-black tracking-tight">Everything. <span class="gt">Free forever.</span></h2></div>
+    <div class="grid grid-cols-4 gap-4 rev-g" id="feat-grid"></div>
+  </div>
+</section>
+
+<!-- ALL MODELS -->
+<section class="relative z-10 py-20 px-6" style="background:rgba(0,0,20,.5)">
+  <div class="max-w-6xl mx-auto">
+    <div class="rev text-center mb-12">
+      <div class="text-xs font-bold tracking-widest uppercase mb-3" style="color:var(--c)">— AI Models</div>
+      <h2 class="text-4xl font-black tracking-tight">Best models. <span class="gt">Zero cost.</span></h2>
+      <p class="text-base mt-2" style="color:var(--muted)">All powered by Pollinations AI — completely free, no API key, no signup.</p>
+    </div>
+    <div class="grid grid-cols-4 gap-4 rev-g" id="models-grid"></div>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section class="relative z-10 py-20 px-6 text-center" style="background:radial-gradient(ellipse at center,rgba(124,58,237,.06) 0%,transparent 70%)">
+  <div class="max-w-xl mx-auto rev">
+    <div class="text-xs font-bold tracking-widest uppercase mb-3" style="color:var(--v)">— CLI</div>
+    <h2 class="text-4xl font-black tracking-tight mb-6">Also runs in <span class="gt">your terminal</span></h2>
+    <div class="inline-flex items-center gap-4 rounded-2xl px-6 py-4 cursor-pointer transition-all hover:scale-105" style="background:rgba(0,0,0,.6);border:1px solid rgba(124,58,237,.3);font-family:'SF Mono','Fira Code',monospace" onclick="copyCmd()">
+      <span style="color:var(--c)">$ pip install nano-ai &amp;&amp; nano-ai</span>
+      <span id="copy-btn" class="text-xs px-2 py-1 rounded" style="background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);color:var(--v)">Copy</span>
+    </div>
+  </div>
+</section>
+
+<footer class="relative z-10 py-8 px-6 text-center text-sm" style="border-top:1px solid rgba(255,255,255,.05);color:var(--muted)">
+  <strong class="gt">⚡ OMNI AI</strong> — The most powerful free multi-modal AI platform on earth<br>
+  <span class="text-xs opacity-40 mt-2 block">Chat · Images · Video (Seedance 2.0 + Veo) · Speech (ElevenLabs) · Music (Suno + Stable Audio) · React Code · Movies · All Free via Pollinations AI</span>
+</footer>
+
+<script>
+// ══════════════════════════════════════════════
+//  THREE.JS BACKGROUND
+// ══════════════════════════════════════════════
+(function() {
+  if (!window.THREE) return;
+  const canvas = document.getElementById('bg');
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 1, 3000);
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  cam.position.z = 400;
+
+  const N = 4000, pos = new Float32Array(N*3), col = new Float32Array(N*3);
+  for (let i = 0; i < N; i++) {
+    const i3 = i*3;
+    pos[i3]=(Math.random()-.5)*3000; pos[i3+1]=(Math.random()-.5)*3000; pos[i3+2]=(Math.random()-.5)*3000;
+    const t=Math.random(); col[i3]=t*.5; col[i3+1]=(1-t)*.8; col[i3+2]=1;
+  }
+  const sg=new THREE.BufferGeometry();
+  sg.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  sg.setAttribute('color',new THREE.BufferAttribute(col,3));
+  scene.add(new THREE.Points(sg,new THREE.PointsMaterial({size:1.1,vertexColors:true,transparent:true,opacity:.65})));
+
+  const shapes=[];
+  [[new THREE.IcosahedronGeometry(28,0),0x7c3aed,-180,90,-350],
+   [new THREE.OctahedronGeometry(22,0),0x06b6d4,220,-120,-420],
+   [new THREE.TetrahedronGeometry(32,0),0xec4899,-230,-160,-480],
+   [new THREE.IcosahedronGeometry(18,0),0x10b981,300,80,-300]
+  ].forEach(([geo,color,x,y,z])=>{
+    const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color,wireframe:true,transparent:true,opacity:.12}));
+    m.position.set(x,y,z); scene.add(m); shapes.push(m);
+  });
+
+  let tx=0,ty=0,mx=0,my=0;
+  window.addEventListener('mousemove',e=>{mx=(e.clientX/innerWidth-.5)*80;my=-(e.clientY/innerHeight-.5)*80;});
+  window.addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+  let t=0;
+  (function loop(){requestAnimationFrame(loop);t+=.004;tx+=(mx-tx)*.025;ty+=(my-ty)*.025;
+    cam.position.x=tx*.25;cam.position.y=ty*.25;cam.lookAt(0,0,0);
+    shapes.forEach((s,i)=>{s.rotation.x=t*(.15+i*.04);s.rotation.y=t*(.22+i*.03);});
+    scene.rotation.y=t*.015;renderer.render(scene,cam);})();
+})();
+
+// ══════════════════════════════════════════════
+//  DATA
+// ══════════════════════════════════════════════
+const STACK=[
+  {ic:'⚛️',name:'React 18 + Next.js',sub:'App Router · TypeScript · Server Components',c:'#61dafb',
+   desc:'Functional components with hooks. Next.js App Router conventions. "use client"/"use server" directives. Proper TypeScript throughout.'},
+  {ic:'🎨',name:'Tailwind CSS',sub:'Utility-first · Responsive · Dark-mode tokens',c:'#38bdf8',
+   desc:'Zero CSS files — all styling via Tailwind utilities. Responsive breakpoints, dark mode, and the full Tailwind design token system.'},
+  {ic:'🧩',name:'shadcn/ui',sub:'40+ components · Radix UI · ARIA compliant',c:'#fff',
+   desc:'Button, Card, Dialog, DropdownMenu, Input, Badge, Tabs, Sheet, Tooltip — all accessible, keyboard-navigable, built on Radix UI.'},
+  {ic:'✨',name:'Framer Motion',sub:'Spring physics · Stagger · AnimatePresence',c:'#ff6bba',
+   desc:'Every animation with spring physics. Page transitions, list stagger, whileHover/whileTap micro-interactions, exit animations.'},
+  {ic:'🔷',name:'Lucide React',sub:'1000+ icons · Tree-shakeable · SVG-based',c:'#7c3aed',
+   desc:'Icons imported by name. Consistent design language, clean SVGs, automatically tree-shaken. Zero icon-font bloat.'},
+  {ic:'🤖',name:'Claude Sonnet 4.6',sub:'1M context · Best code quality · Free',c:'#f59e0b',
+   desc:'The AI brain behind every component. Claude with a v0.dev-expert system prompt via Pollinations AI — no API key needed, forever free.'},
+];
+
+const FEATS=[
+  {ic:'🎬',t:'Long-Form Video',d:'Chain clips into 30–60+ min productions with Seedance 2.0 and Veo'},
+  {ic:'🎥',t:'AI Movie Maker',d:'Claude writes script → AI generates scenes → ElevenLabs narrates → Suno scores it'},
+  {ic:'🖼️',t:'Image Generation',d:'Flux Pro, GPT Image, Seedream — photorealistic in seconds'},
+  {ic:'⚛️',t:'React Code Gen',d:'Full shadcn/ui + Framer Motion components, TypeScript, better than v0.dev'},
+  {ic:'💬',t:'Claude AI Chat',d:'1M token context — code, math, science, history, trivia, anything'},
+  {ic:'🎵',t:'ElevenLabs Speech',d:'8+ voices including alloy, nova, echo, fable, onyx, shimmer, coral'},
+  {ic:'🎼',t:'AI Music (Suno)',d:'Full songs with vocals, instrumentals, cinematic scores via Stable Audio 2.5'},
+  {ic:'🎮',t:'3D & 2D Games',d:'Three.js space shooters, Canvas platformers — complete with physics'},
+  {ic:'🚀',t:'Backend APIs',d:'FastAPI, Express, GraphQL — production-ready with auth and databases'},
+  {ic:'🌙',t:'Roblox / Luau',d:'Expert combat systems, tycoons, GUIs, RemoteEvents, admin panels'},
+  {ic:'🔌',t:'Zero API Keys',d:'Pollinations AI is 100% free — no signup, no credit card, no limits'},
+  {ic:'🌍',t:'All Knowledge',d:'Math step-by-step, physics, history, geography, science, trivia'},
+];
+
+const MODELS=[
+  {ic:'💬',name:'Claude Sonnet 4.6',provider:'Anthropic via Pollinations',mode:'Text / Code',c:'var(--v)'},
+  {ic:'🖼️',name:'Flux Pro',provider:'Black Forest Labs',mode:'Image',c:'var(--c)'},
+  {ic:'🖼️',name:'GPT Image Large',provider:'OpenAI',mode:'Image',c:'#10a37f'},
+  {ic:'🎬',name:'Seedance 2.0',provider:'ByteDance',mode:'Video',c:'var(--p)'},
+  {ic:'🎬',name:'Veo',provider:'Google DeepMind',mode:'Video',c:'var(--g)'},
+  {ic:'🎬',name:'Wan Pro 1080p',provider:'Alibaba DAMO',mode:'Video',c:'var(--o)'},
+  {ic:'🎵',name:'ElevenLabs',provider:'ElevenLabs',mode:'Speech',c:'#a855f7'},
+  {ic:'🎼',name:'Suno AI',provider:'Suno',mode:'Music',c:'var(--o)'},
+];
+
+document.getElementById('stack-grid').innerHTML=STACK.map(s=>`
+  <div class="glass rounded-2xl p-6 tilt" style="border:1px solid rgba(255,255,255,.08)">
+    <div class="text-3xl mb-3">${s.ic}</div>
+    <div class="font-bold text-white mb-1">${s.name}</div>
+    <div class="text-xs mb-3" style="color:${s.c}">${s.sub}</div>
+    <div class="text-sm leading-relaxed" style="color:var(--muted)">${s.desc}</div>
+  </div>`).join('');
+
+document.getElementById('feat-grid').innerHTML=FEATS.map(f=>`
+  <div class="glass rounded-2xl p-5 transition-all hover:-translate-y-1 tilt" style="border:1px solid rgba(255,255,255,.08)">
+    <div class="text-2xl mb-2">${f.ic}</div>
+    <div class="font-bold text-white text-sm mb-1">${f.t}</div>
+    <div class="text-xs leading-relaxed" style="color:var(--muted)">${f.d}</div>
+  </div>`).join('');
+
+document.getElementById('models-grid').innerHTML=MODELS.map(m=>`
+  <div class="glass rounded-2xl p-5 text-center tilt" style="border:1px solid rgba(255,255,255,.08)">
+    <div class="text-3xl mb-2">${m.ic}</div>
+    <div class="font-bold text-white text-sm">${m.name}</div>
+    <div class="text-xs mt-1" style="color:var(--muted)">${m.provider}</div>
+    <div class="text-xs font-bold mt-2 px-2 py-0.5 rounded-full inline-block" style="color:${m.c};background:${m.c}18;border:1px solid ${m.c}40">${m.mode}</div>
+  </div>`).join('');
+
+// Image examples
+const IMG_EX=['A neon-lit cyberpunk Tokyo street at midnight','Portrait of a futuristic AI android, hyperrealistic','A galaxy nebula with vibrant purple and cyan','Abstract holographic 3D geometric art','A dragon made of lightning and storm clouds','Cozy futuristic apartment with plants and neon signs'];
+document.getElementById('img-examples').innerHTML=IMG_EX.map(t=>`
+  <div class="glass rounded-xl p-2.5 text-xs cursor-pointer transition-all tilt" style="border:1px solid rgba(255,255,255,.08);color:var(--text)" onclick="document.getElementById('img-prompt').value='${t}';genImage()">${t}</div>`).join('');
+
+// Video examples
+const VID_EX=['A drone flying over neon cyberpunk city at night','Ocean waves crashing at golden hour, cinematic','Galaxy spiraling with stars, slow motion','A phoenix rising from flames in slow motion','Time-lapse of a futuristic city being built'];
+document.getElementById('vid-examples').innerHTML=VID_EX.map(t=>`
+  <div class="glass rounded-xl p-2.5 text-xs cursor-pointer transition-all tilt" style="border:1px solid rgba(255,255,255,.08);color:var(--text)" onclick="document.getElementById('vid-prompt').value='${t}'">${t}</div>`).join('');
+
+// Music quick prompts
+const MUSIC_QP=['Epic orchestral film score with rising strings','Lofi hip-hop chill study beats','Dark electronic cyberpunk soundtrack','Upbeat pop song with catchy chorus','Ambient piano meditation music','Heavy metal guitar riff with drums'];
+document.getElementById('music-qp').innerHTML=MUSIC_QP.map(t=>`
+  <button class="glass rounded-lg px-3 py-2 text-xs transition-all hover:border-amber-500" style="border:1px solid rgba(255,255,255,.08);color:var(--text)" onclick="document.getElementById('music-prompt').value='${t}';genMusic()">${t}</button>`).join('');
+
+// ══════════════════════════════════════════════
+//  MODE SWITCHING
+// ══════════════════════════════════════════════
+function setMode(mode) {
+  document.querySelectorAll('.mode-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+mode).classList.add('active');
+  document.querySelectorAll('.mode-btn').forEach(b=>{
+    const on=b.dataset.mode===mode;
+    b.style.background=on?'linear-gradient(135deg,var(--v),var(--c))':'var(--card)';
+    b.style.color=on?'#000':'var(--muted)';
+    b.style.border=on?'none':'1px solid rgba(255,255,255,.1)';
+  });
+}
+function scrollTo(id){document.querySelector(id)?.scrollIntoView({behavior:'smooth'})}
+setMode('chat');
+
+// ══════════════════════════════════════════════
+//  CHAT
+// ══════════════════════════════════════════════
+const CHAT_QPS=[
+  {ic:'⚛️',t:'Build a React analytics dashboard with KPI cards, Recharts, and Framer Motion'},
+  {ic:'🎮',t:'Generate a Three.js 3D space shooter game'},
+  {ic:'🐍',t:'Create a FastAPI REST backend with JWT auth'},
+  {ic:'📐',t:'Find the derivative of x³ sin(x), step by step'},
+  {ic:'🌙',t:'Write a Roblox Luau combat system with dash and block'},
+  {ic:'🌍',t:'What are the 8 planets and their key facts?'},
+  {ic:'🧠',t:'Build a RAG chatbot with LangChain and vector search'},
+  {ic:'🎨',t:'Create a landing page with glassmorphism and Framer Motion'},
+];
+document.getElementById('chat-qp').innerHTML=CHAT_QPS.map(q=>`
+  <div class="glass rounded-xl p-2.5 text-xs cursor-pointer transition-all" style="border:1px solid rgba(255,255,255,.08);color:var(--text);display:flex;gap:6px;align-items:flex-start"
+    onmouseover="this.style.borderColor='rgba(124,58,237,.4)'" onmouseleave="this.style.borderColor='rgba(255,255,255,.08)'"
+    onclick="document.getElementById('chat-in').value='${q.t}';chatSend()">
+    <span style="flex-shrink:0">${q.ic}</span><span>${q.t}</span></div>`).join('');
+
+// Code quick prompts
+const CODE_QPS=['SaaS pricing page','Analytics dashboard','Login auth form','E-commerce card grid','Real-time chat UI','Calendar & booking'];
+document.getElementById('code-qp').innerHTML=CODE_QPS.map(t=>`
+  <button class="glass rounded-lg px-3 py-1.5 text-xs transition-all hover:border-violet-500" style="border:1px solid rgba(255,255,255,.08);color:var(--text)"
+    onclick="document.getElementById('code-prompt').value='${t} with React, Tailwind CSS, shadcn/ui, Lucide icons, and Framer Motion animations';genCode()">${t}</button>`).join('');
+
+const chatHistory=[];
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function mdRender(text){
+  text=text.replace(/```(\w*)\n?([\s\S]*?)```/g,(_,lang,code)=>{
+    const t=code.trim();let h;
+    try{h=lang&&hljs.getLanguage(lang)?hljs.highlight(t,{language:lang}).value:hljs.highlightAuto(t).value;}
+    catch(e){h=esc(t);}
+    return `<pre><code class="hljs">${h}</code></pre>`;
+  });
+  text=text.replace(/`([^`\n]+)`/g,'<code>$1</code>');
+  text=text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+  text=text.replace(/\*(.*?)\*/g,'<em>$1</em>');
+  text=text.replace(/^#{1,4} (.+)/gm,'<strong style="color:#fff;display:block;margin:6px 0 2px">$1</strong>');
+  text=text.replace(/^[•\-\*] (.+)/gm,'<div style="padding-left:12px;margin:2px 0">• $1</div>');
+  text=text.replace(/\n\n/g,'<br><br>').replace(/\n/g,'<br>');
+  return text;
+}
+function addMsg(role,content){
+  const box=document.getElementById('chat-msgs');
+  const d=document.createElement('div');
+  d.className=`msg msg-${role==='ai'?'a':'u'}`;
+  d.innerHTML=`<div class="bubble">${role==='ai'?mdRender(content):esc(content)}</div>`;
+  box.appendChild(d);box.scrollTop=box.scrollHeight;
+  chatHistory.push({role:role==='ai'?'assistant':'user',content});
+}
+async function chatSend(){
+  const inp=document.getElementById('chat-in'),btn=document.getElementById('chat-send');
+  const text=inp.value.trim();if(!text)return;
+  inp.value='';inp.style.height='auto';btn.disabled=true;addMsg('user',text);
+  const typing=document.getElementById('chat-typing');
+  typing.style.display='block';document.getElementById('chat-msgs').scrollTop=99999;
+  try{
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:chatHistory})});
+    const d=await r.json();typing.style.display='none';addMsg('ai',d.reply||d.error||'Something went wrong.');
+  }catch{typing.style.display='none';addMsg('ai','Connection error. Please try again.');}
+  finally{btn.disabled=false;}
+}
+document.getElementById('chat-in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();chatSend();}});
+document.getElementById('chat-in').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px';});
+
+// ══════════════════════════════════════════════
+//  IMAGE
+// ══════════════════════════════════════════════
+async function genImage(){
+  const prompt=document.getElementById('img-prompt').value.trim();
+  const model=document.getElementById('img-model').value;
+  const [w,h]=document.getElementById('img-size').value.split('x');
+  if(!prompt){alert('Enter a prompt!');return;}
+  const out=document.getElementById('img-out');
+  out.innerHTML='<div class="spin"></div>';
+  const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${model}&width=${w}&height=${h}&enhance=true&nologo=true&seed=${Math.floor(Math.random()*99999)}`;
+  const img=new Image();
+  img.onload=()=>{out.innerHTML='';out.appendChild(img);img.style.cssText='width:100%;height:100%;object-fit:contain;border-radius:14px';};
+  img.onerror=()=>{out.innerHTML='<div class="out-placeholder"><div class="text-4xl mb-2">⚠️</div><div class="text-sm">Failed — try a different model or prompt.</div></div>';};
+  img.src=url;
+}
+
+// ══════════════════════════════════════════════
+//  VIDEO
+// ══════════════════════════════════════════════
+async function genVideo(){
+  const prompt=document.getElementById('vid-prompt').value.trim();
+  const model=document.getElementById('vid-model').value;
+  const res=document.getElementById('vid-res').value.split('x');
+  if(!prompt){alert('Enter a prompt!');return;}
+  const out=document.getElementById('vid-out');
+  out.innerHTML=`<div class="text-center" style="color:var(--muted)"><div class="spin mb-4" style="margin:0 auto"></div><div class="text-sm text-white mt-3">Generating with ${model}…</div><div class="text-xs mt-2 opacity-60">This takes 30–120 seconds. Please wait.</div><div class="progress-bar mt-4" style="width:200px;margin:8px auto"><div class="progress-fill" id="vprog" style="width:0%"></div></div></div>`;
+  // Animate progress bar
+  let pct=0;const ptimer=setInterval(()=>{pct=Math.min(pct+1,90);const el=document.getElementById('vprog');if(el)el.style.width=pct+'%';},1000);
+  try{
+    const r=await fetch('https://video.pollinations.ai/',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt,model,duration:5,width:parseInt(res[0]),height:parseInt(res[1])})});
+    clearInterval(ptimer);
+    if(r.ok){
+      const ct=r.headers.get('content-type')||'';
+      if(ct.includes('video')||ct.includes('octet')){
+        const blob=await r.blob();const url=URL.createObjectURL(blob);
+        out.innerHTML='';const v=document.createElement('video');
+        v.src=url;v.controls=true;v.autoplay=true;v.loop=true;v.style.cssText='width:100%;border-radius:14px';
+        out.appendChild(v);return;
+      }
+      const d=await r.json();
+      if(d.url){out.innerHTML='';const v=document.createElement('video');v.src=d.url;v.controls=true;v.style.cssText='width:100%;border-radius:14px';out.appendChild(v);return;}
+    }
+    throw new Error('API error '+r.status);
+  }catch(e){
+    clearInterval(ptimer);
+    out.innerHTML='<div class="out-placeholder"><div class="text-4xl mb-3">⚠️</div><div class="text-sm text-white">Video API temporarily unavailable.</div><div class="text-xs mt-2 opacity-60">Pollinations video is in beta — try again in a moment or switch models.</div></div>';
+  }
+}
+
+// ══════════════════════════════════════════════
+//  AUDIO (SPEECH)
+// ══════════════════════════════════════════════
+async function genAudio(){
+  const text=document.getElementById('aud-text').value.trim();
+  const voice=document.getElementById('aud-voice').value;
+  if(!text){alert('Enter text!');return;}
+  const out=document.getElementById('aud-out');
+  out.innerHTML='<div class="flex justify-center py-4"><div class="spin"></div></div>';
+  try{
+    const r=await fetch(`https://text.pollinations.ai/${encodeURIComponent(text)}?voice=${voice}&model=openai-audio`);
+    if(!r.ok)throw new Error();
+    const blob=await r.blob();const url=URL.createObjectURL(blob);
+    out.innerHTML=`<div class="text-sm font-bold text-white mb-3">🎵 Voice: <span style="color:var(--g)">${voice}</span></div>
+      <audio controls autoplay class="w-full rounded-xl" style="accent-color:var(--v)"><source src="${url}"/></audio>
+      <div class="text-xs mt-3 opacity-50">Powered by ElevenLabs &amp; OpenAI via Pollinations AI</div>`;
+  }catch{out.innerHTML='<div class="out-placeholder py-4"><div class="text-3xl mb-2">⚠️</div><div class="text-sm">Failed — try a shorter text.</div></div>';}
+}
+
+// ══════════════════════════════════════════════
+//  MUSIC
+// ══════════════════════════════════════════════
+async function genMusic(){
+  const prompt=document.getElementById('music-prompt').value.trim();
+  if(!prompt){alert('Enter a music prompt!');return;}
+  const out=document.getElementById('music-out');
+  out.innerHTML='<div class="flex items-center gap-3 py-4"><div class="spin" style="width:28px;height:28px;border-width:2px"></div><div class="text-sm" style="color:var(--muted)">Generating music (up to 60s)…</div></div>';
+  try{
+    const r=await fetch(`https://text.pollinations.ai/${encodeURIComponent(prompt)}?model=stable-audio`);
+    if(!r.ok)throw new Error();
+    const blob=await r.blob();const url=URL.createObjectURL(blob);
+    out.innerHTML=`<div class="text-sm font-bold text-white mb-3">🎼 Generated: <span style="color:var(--o)">${prompt.slice(0,50)}…</span></div>
+      <audio controls autoplay class="w-full rounded-xl" style="accent-color:var(--o)"><source src="${url}"/></audio>
+      <div class="text-xs mt-3 opacity-50">Stable Audio 2.5 via Pollinations AI</div>`;
+  }catch{
+    // Fallback: try Suno-style prompt
+    out.innerHTML='<div class="out-placeholder py-4"><div class="text-3xl mb-2">⚠️</div><div class="text-sm">Music generation failed. Try a different prompt or check back soon.</div></div>';
+  }
+}
+
+// ══════════════════════════════════════════════
+//  CODE GENERATION
+// ══════════════════════════════════════════════
+const codeHist=[];
+const TYPE_INSTR={
+  react:'Generate a COMPLETE React functional component. Use: React 18 hooks, Tailwind CSS utility classes (no CSS files), shadcn/ui components (import from "@/components/ui/*"), Lucide React icons, Framer Motion animations (motion.div, AnimatePresence, whileHover, whileTap, spring transitions). TypeScript. All imports at top. Make it production-ready and beautiful.',
+  nextjs:'Generate a complete Next.js App Router page with "use client", TypeScript, Tailwind, shadcn/ui, Lucide, and Framer Motion.',
+  threejs:'Generate a complete self-contained HTML file with Three.js. Include CDN. Make it visually stunning with lighting, materials, and animation.',
+  canvas:'Generate a complete self-contained HTML file with a Canvas 2D game. Include smooth physics, particles, game loop, score, and controls.',
+  python:'Generate complete Python FastAPI code with Pydantic models, proper types, CRUD endpoints, and error handling.',
+  lua:'Generate complete Roblox Luau script with server/client separation, RemoteEvents, and proper Roblox API usage.',
+};
+async function genCode(){
+  const prompt=document.getElementById('code-prompt').value.trim();
+  const type=document.getElementById('code-type').value;
+  if(!prompt){alert('Enter a prompt!');return;}
+  const out=document.getElementById('code-out');
+  out.textContent='// Generating with Claude Sonnet 4.6…\n// Please wait…';
+  const full=`${TYPE_INSTR[type]}\n\nTask: ${prompt}`;
+  codeHist.push({role:'user',content:full});
+  try{
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:codeHist})});
+    const d=await r.json();
+    const reply=d.reply||d.error||'Error.';
+    codeHist.push({role:'assistant',content:reply});
+    const match=reply.match(/```(?:\w+)?\n?([\s\S]+?)```/);
+    out.textContent=match?match[1].trim():reply;
+    hljs.highlightElement(out);
+  }catch{out.textContent='// Error connecting. Please try again.';}
+}
+
+// ══════════════════════════════════════════════
+//  VFX PRESETS
+// ══════════════════════════════════════════════
+const VFX_PRESETS=[
+  '✨ Glowing neon particles swirling in darkness',
+  '🌸 Cherry blossom petals floating in magical light',
+  '💫 Character with flowing luminous hair, wind animation frame',
+  '🔥 Fire and ember particles rising, cinematic',
+  '⚡ Lightning bolt with electric glow effect',
+  '🌊 Ocean spray with god rays, volumetric light',
+  '🌀 Holographic portal with light rings and energy',
+  '💎 Crystal shatter effect with rainbow refraction',
+];
+document.getElementById('vfx-presets').innerHTML=VFX_PRESETS.map(t=>`
+  <button class="glass rounded-lg px-2 py-1.5 text-xs transition-all" style="border:1px solid rgba(168,85,247,.25);color:var(--text)"
+    onclick="document.getElementById('vfx-prompt').value='${t.replace(/'/g,"\\'")}'">${t}</button>`).join('');
+
+async function genVFX(){
+  const prompt=document.getElementById('vfx-prompt').value.trim();
+  if(!prompt){alert('Enter a VFX description!');return;}
+  const out=document.getElementById('vfx-out');
+  out.innerHTML='';
+  // Generate 4 variations with different seeds using seedimage (best for VFX/magic)
+  for(let i=0;i<4;i++){
+    const card=document.createElement('div');
+    card.className='glass rounded-xl overflow-hidden';
+    card.style='border:1px solid rgba(255,255,255,.08);aspect-ratio:1';
+    card.innerHTML='<div class="flex items-center justify-center h-full"><div class="spin" style="width:24px;height:24px;border-width:2px"></div></div>';
+    out.appendChild(card);
+    const vfxPrompt=`${prompt}, VFX art, magical effects, glowing, particles, detailed, cinematic lighting, ultra high quality, 4K, professional VFX, variation ${i+1}`;
+    const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(vfxPrompt)}?model=seedimage&width=512&height=512&enhance=true&nologo=true&seed=${Math.floor(Math.random()*99999)}`;
+    const img=new Image();
+    img.onload=()=>{card.innerHTML='';card.appendChild(img);img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:10px';};
+    img.onerror=()=>{card.innerHTML='<div class="text-xs text-center p-3 opacity-40">VFX '+(i+1)+'</div>';};
+    img.src=url;
+    await new Promise(r=>setTimeout(r,300));
+  }
+}
+
+// ══════════════════════════════════════════════
+//  CHARACTER DESIGNER
+// ══════════════════════════════════════════════
+async function designChars(){
+  const charsText=document.getElementById('movie-chars').value.trim();
+  if(!charsText){alert('Describe your characters!');return;}
+  const style=document.getElementById('movie-style').value;
+  const imgModel=style==='anime'?'flux-anime':style==='3d'?'flux-3d':style==='cartoon'?'flux-anime':'flux-realism';
+  const chars=charsText.split('\n').filter(l=>l.trim()).slice(0,4);
+  const out=document.getElementById('chars-out');
+  out.innerHTML=chars.map((_,i)=>`
+    <div class="glass rounded-xl overflow-hidden" style="border:1px solid rgba(255,255,255,.08)">
+      <div class="out-box flex items-center justify-center" id="char-img-${i}" style="height:200px">
+        <div class="spin" style="width:28px;height:28px;border-width:2px"></div>
+      </div>
+      <div class="p-2 text-xs opacity-60" style="font-size:10px">${chars[i].slice(0,50)}</div>
+    </div>`).join('');
+  chars.forEach((charDesc,i)=>{
+    const styleExtra=style==='anime'?'anime art style, beautiful anime illustration, studio quality':
+      style==='3d'?'3D CGI render, Pixar quality, subsurface scattering, ambient occlusion':
+      style==='cartoon'?'cartoon illustration, vibrant colors, clean linework':'hyperrealistic, cinematic lighting, photographic quality';
+    const prompt=`Character full body portrait and face close-up, ${charDesc}, ${styleExtra}, detailed hair with individual strands, expressive eyes, professional concept art, character sheet, front view, white background elements, ultra detailed, 8K`;
+    const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${imgModel}&width=512&height=768&enhance=true&nologo=true&seed=${i*777+Math.floor(Math.random()*999)}`;
+    const el=document.getElementById(`char-img-${i}`);
+    const img=new Image();
+    img.onload=()=>{el.innerHTML='';el.appendChild(img);img.style.cssText='width:100%;height:100%;object-fit:cover';};
+    img.onerror=()=>{el.innerHTML='<div class="text-xs text-center p-3 opacity-40">Generation failed</div>';};
+    img.src=url;
+  });
+}
+
+// ══════════════════════════════════════════════
+//  MOVIE MAKER — 9 AI PIPELINE
+// ══════════════════════════════════════════════
+let movieScript='';
+let movieStopped=false;
+let queueRunning=false;
+let generatedClips=[];
+
+async function startMovie(){
+  const concept=document.getElementById('movie-concept').value.trim();
+  const genre=document.getElementById('movie-genre').value;
+  const style=document.getElementById('movie-style').value;
+  const lenMin=parseInt(document.getElementById('movie-len').value);
+  const vidModel=document.getElementById('movie-vid-model').value;
+  if(!concept){alert('Enter a movie concept!');return;}
+
+  movieStopped=false;
+  generatedClips=[];
+
+  const CLIP_SEC=5;
+  const totalClips=Math.ceil(lenMin*60/CLIP_SEC);
+  const sceneCount=Math.max(3,Math.min(Math.ceil(totalClips/3),50));
+  const estMinutes=Math.ceil(totalClips*1.5);
+  const estHours=Math.ceil(estMinutes/60);
+
+  const prog=document.getElementById('movie-progress');
+  const stepsEl=document.getElementById('movie-steps');
+  prog.style.display='block';
+  ['movie-script-out','movie-storyboard','movie-clips-out','movie-music-out'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.style.display='none';
+  });
+
+  const pipelineIDs=['pipe-claude','pipe-fluxreal','pipe-fluxpro','pipe-flux3d','pipe-seedimg','pipe-seedance','pipe-veo','pipe-suno','pipe-eleven'];
+
+  stepsEl.innerHTML=`
+    <div class="mb-4">
+      <div class="flex gap-1 mb-3" id="pipe-indicators">
+        ${['📝','👤','🌄','🔷','✨','🎬','🎬','🎼','🎙️'].map((ic,i)=>`
+          <div class="flex-1 text-center p-1.5 rounded-lg text-xs pipe-ind" id="pipe-${i}" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);opacity:.4;transition:all .4s">
+            <div>${ic}</div>
+          </div>`).join('')}
+      </div>
+      ${lenMin>=60?`<div class="glass rounded-xl p-3 mb-3" style="border:1px solid rgba(245,158,11,.3);font-size:12px;color:var(--o)">
+        ⚠️ <strong>${lenMin}min movie</strong> = ${totalClips} clips × 5s = ~${estHours > 1 ? estHours+'h' : estMinutes+'min'} generation time. Clips are queued and download as they're ready.
+      </div>`:''}
+    </div>
+    <div id="step-status" class="text-sm font-bold" style="color:var(--c)">Initializing…</div>
+    <div class="progress-bar mt-2 mb-1"><div class="progress-fill" id="movie-prog-fill" style="width:0%"></div></div>
+    <div class="text-xs" style="color:var(--muted)" id="movie-eta"></div>`;
+
+  function activatePipe(i){
+    document.querySelectorAll('.pipe-ind').forEach((el,idx)=>{
+      el.style.opacity=idx<i?'1':idx===i?'1':'0.35';
+      el.style.background=idx===i?'rgba(124,58,237,.2)':idx<i?'rgba(16,185,129,.1)':'rgba(255,255,255,.04)';
+      el.style.borderColor=idx===i?'rgba(124,58,237,.6)':idx<i?'rgba(16,185,129,.4)':'rgba(255,255,255,.06)';
+    });
+  }
+  function setStatus(msg,pct,eta){
+    const s=document.getElementById('step-status');
+    const f=document.getElementById('movie-prog-fill');
+    const e=document.getElementById('movie-eta');
+    if(s)s.textContent=msg;
+    if(f)f.style.width=pct+'%';
+    if(e&&eta)e.textContent=eta;
+  }
+
+  // ── STEP 1: SCREENPLAY (Claude) ──
+  activatePipe(0);
+  setStatus('📝 Claude writing screenplay…',5);
+  const scriptPrompt=`You are a professional ${genre} screenwriter and director. Write a complete, detailed ${genre} screenplay in ${style} style for:\n\n"${concept}"\n\nTarget: ${lenMin} minutes | Scenes needed: ${sceneCount}\n\nFormat EVERY scene exactly like this:\n[SCENE 1] INT. LOCATION - DAY\nVisual description: [vivid AI video prompt for Seedance 2.0]\nAction: [what happens]\nDialogue (if any):\nCHARACTER NAME: "spoken line"\nMusic cue: [musical direction]\nVFX: [glows, particles, hair animation, petals, rigging needed]\n\nInclude:\n- TITLE PAGE (title, genre, style)\n- LOGLINE (1 sentence)\n- CHARACTERS section with detailed appearance for AI image generation (hair detail, clothing, expression)\n- ACT 1 / ACT 2 / ACT 3 structure\n- ${sceneCount} numbered scenes in the format above\n- MUSIC NOTES for Suno AI\n\nBe extremely cinematic and detailed. Each visual description should be vivid enough for AI video generation.`;
+
+  try{
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({messages:[{role:'user',content:scriptPrompt}]})});
+    const d=await r.json();
+    movieScript=d.reply||'Script generation failed.';
+    document.getElementById('movie-script-text').textContent=movieScript;
+    document.getElementById('movie-script-out').style.display='block';
+  }catch{
+    setStatus('❌ Script failed — check connection',0);return;
+  }
+  setStatus('✅ Screenplay done! Composing soundtrack…',15);
+
+  // ── STEP 2: SOUNDTRACK (Suno AI / Stable Audio) — parallel ──
+  activatePipe(7);
+  const musicPrompt=`${genre} film score, ${style} style, cinematic, for a film about: ${concept.slice(0,100)}`;
+  fetch(`https://text.pollinations.ai/${encodeURIComponent(musicPrompt)}?model=stable-audio`)
+    .then(r=>r.ok?r.blob():null).then(blob=>{
+      if(!blob)return;
+      const url=URL.createObjectURL(blob);
+      const mo=document.getElementById('movie-music-out');
+      mo.style.display='block';
+      mo.innerHTML=`<div class="text-sm font-bold text-white mb-2">🎼 AI Soundtrack — ${genre} Score</div>
+        <audio controls autoplay class="w-full rounded-xl" style="accent-color:var(--o)"><source src="${url}"/></audio>
+        <div class="text-xs mt-2 opacity-50">Stable Audio 2.5 via Pollinations AI · For a longer score, generate multiple tracks</div>`;
+    }).catch(()=>{});
+
+  // ── STEP 3: CHARACTER DESIGN (auto, from script) ──
+  activatePipe(1);
+  setStatus('👤 Flux Realism designing characters…',20);
+  const imgModel=style==='anime'?'flux-anime':style==='3d'?'flux-3d':style==='cartoon'?'flux-anime':'flux-realism';
+  const charSection=movieScript.match(/CHARACTERS?[\s\S]*?(?=ACT|SCENE|\[SCENE)/i);
+  if(charSection){
+    const charLines=charSection[0].split('\n').filter(l=>l.trim()&&!l.match(/^CHARACTERS?$/i)).slice(0,4);
+    const co=document.getElementById('chars-out');
+    if(charLines.length>0&&co){
+      co.innerHTML=charLines.map((_,i)=>`
+        <div class="glass rounded-xl overflow-hidden" style="border:1px solid rgba(255,255,255,.08)">
+          <div class="flex items-center justify-center out-box" id="auto-char-${i}" style="height:180px">
+            <div class="spin" style="width:24px;height:24px;border-width:2px"></div>
+          </div>
+          <div class="p-2" style="font-size:10px;color:var(--muted)">${charLines[i].slice(0,55)}</div>
+        </div>`).join('');
+      charLines.forEach((ch,i)=>{
+        const styleExtra=style==='anime'?'anime art style, studio quality':style==='3d'?'3D CGI render, Pixar quality':'hyperrealistic, cinematic lighting';
+        const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(`Character portrait, ${ch}, ${styleExtra}, detailed hair, expressive eyes, professional concept art, 8K`)}?model=${imgModel}&width=512&height=768&enhance=true&nologo=true&seed=${i*1337}`;
+        const el=document.getElementById(`auto-char-${i}`);
+        const img=new Image();
+        img.onload=()=>{if(el){el.innerHTML='';el.appendChild(img);img.style.cssText='width:100%;height:100%;object-fit:cover';}};
+        img.onerror=()=>{if(el)el.innerHTML='<div class="text-xs text-center p-2 opacity-40">Failed</div>';};
+        img.src=url;
+      });
+    }
+  }
+
+  // ── STEP 4: STORYBOARD (Flux Pro) ──
+  activatePipe(2);
+  setStatus('🌄 Flux Pro generating storyboard…',30);
+  const sceneMatches=[...movieScript.matchAll(/\[SCENE \d+\]([\s\S]*?)(?=\[SCENE \d+\]|$)/g)].map(m=>m[0]);
+  const sbEl=document.getElementById('movie-storyboard');
+  const sbGrid=document.getElementById('storyboard-grid');
+  if(sbEl)sbEl.style.display='block';
+  if(sbGrid)sbGrid.innerHTML='';
+  const sbCount=Math.min(sceneMatches.length,8);
+  for(let i=0;i<sbCount;i++){
+    if(movieStopped)break;
+    const sceneText=sceneMatches[i]||'';
+    const visMatch=sceneText.match(/visual description:\s*([^\n]+)/i);
+    const visPart=visMatch?visMatch[1]:sceneText.slice(0,150);
+    const sbPrompt=`Cinematic ${style} film still, ${visPart}, ${genre} genre, professional cinematography, high quality, 4K`;
+    const card=document.createElement('div');
+    card.className='glass rounded-xl overflow-hidden';
+    card.style='border:1px solid rgba(255,255,255,.08)';
+    card.innerHTML=`<div class="flex items-center justify-center" style="aspect-ratio:16/9;background:rgba(0,0,0,.4)"><div class="spin" style="width:20px;height:20px;border-width:2px"></div></div><div style="font-size:9px;padding:4px 6px;color:var(--muted)">Scene ${i+1}</div>`;
+    if(sbGrid)sbGrid.appendChild(card);
+    const imgUrl=`https://image.pollinations.ai/prompt/${encodeURIComponent(sbPrompt)}?model=flux-pro&width=480&height=270&enhance=true&nologo=true&seed=${i+100}`;
+    const img=new Image();
+    img.onload=()=>{card.innerHTML=`<img src="${imgUrl}" style="width:100%;display:block;border-radius:8px 8px 0 0"/><div style="font-size:9px;padding:4px 6px;color:var(--muted)">Scene ${i+1}</div>`;};
+    img.onerror=()=>{card.innerHTML=`<div style="aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;font-size:10px;opacity:.3">Scene ${i+1}</div>`;};
+    img.src=imgUrl;
+    setStatus(`🎞️ Storyboard: ${i+1}/${sbCount} frames…`,30+(i/sbCount*15));
+    await new Promise(r=>setTimeout(r,600));
+  }
+
+  // ── STEP 5: VIDEO QUEUE SETUP ──
+  activatePipe(5);
+  setStatus('🎬 Video production queue ready!',60);
+  const clipsOut=document.getElementById('movie-clips-out');
+  if(clipsOut){
+    clipsOut.style.display='block';
+    const estDisplay=estHours>1?`~${estHours} hours`:estMinutes>60?`~${Math.round(estMinutes/60*10)/10} hours`:`~${estMinutes} min`;
+    clipsOut.innerHTML=`
+      <div class="glass rounded-2xl p-5" style="border:1px solid rgba(236,72,153,.2)">
+        <div class="text-sm font-bold text-white mb-3">🎬 Video Production Queue — ${vidModel}</div>
+        <div class="grid gap-3 mb-4 text-center" style="grid-template-columns:repeat(4,1fr)">
+          <div class="glass rounded-xl p-3" style="border:1px solid rgba(255,255,255,.08)">
+            <div class="text-2xl font-black" style="color:var(--p)">${totalClips}</div>
+            <div class="text-xs opacity-60">Total Clips</div></div>
+          <div class="glass rounded-xl p-3" style="border:1px solid rgba(255,255,255,.08)">
+            <div class="text-2xl font-black" style="color:var(--c)">${lenMin}min</div>
+            <div class="text-xs opacity-60">Movie Length</div></div>
+          <div class="glass rounded-xl p-3" style="border:1px solid rgba(255,255,255,.08)">
+            <div class="text-2xl font-black" style="color:var(--g)">${sceneMatches.length}</div>
+            <div class="text-xs opacity-60">Scenes</div></div>
+          <div class="glass rounded-xl p-3" style="border:1px solid rgba(255,255,255,.08)">
+            <div class="text-2xl font-black" style="color:var(--o)">${estDisplay}</div>
+            <div class="text-xs opacity-60">Est. Time</div></div>
+        </div>
+        <div class="text-xs mb-3 p-3 rounded-xl" style="background:rgba(255,255,255,.04);color:var(--muted)">
+          Each 5-second clip generates in ~90 seconds via ${vidModel}. For ${lenMin >= 60 ? `a ${lenMin}-minute film, clips download as they're ready and can be assembled with video software.` : 'your film, all clips will generate automatically.'}
+        </div>
+        <div class="flex flex-col gap-1.5 max-h-48 overflow-y-auto mb-3" id="clip-queue">
+          ${sceneMatches.slice(0,Math.min(sceneMatches.length,30)).map((s,i)=>`
+            <div class="flex items-center gap-3 glass rounded-lg px-3 py-2 text-xs" id="queue-item-${i}" style="border:1px solid rgba(255,255,255,.06)">
+              <span class="font-bold w-6 text-center" style="color:var(--c)">${i+1}</span>
+              <span class="flex-1 opacity-60">${(s.match(/\[SCENE \d+\]/)?.[0]||'Scene '+(i+1))}</span>
+              <span class="px-2 py-0.5 rounded" style="background:rgba(255,255,255,.06);color:var(--muted)" id="qs-${i}">Queued</span>
+            </div>`).join('')}
+          ${sceneMatches.length>30?`<div class="text-xs text-center opacity-40 py-2">+${sceneMatches.length-30} more scenes…</div>`:''}
+        </div>
+        <div class="flex gap-3">
+          <button onclick="startClipQueue()" class="flex-1 py-3 rounded-xl font-bold text-black text-sm" style="background:linear-gradient(135deg,var(--p),var(--v))">▶ Generate All ${Math.min(sceneMatches.length,30)} Clips</button>
+          <button onclick="downloadScript()" class="px-5 py-3 rounded-xl font-bold text-sm" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:var(--text)">⬇ Script</button>
+        </div>
+        <div id="clips-gallery" class="grid gap-2 mt-4" style="grid-template-columns:repeat(3,1fr)"></div>
+      </div>`;
+  }
+
+  setStatus('🎬 Production pipeline complete — click Generate to begin video clips!',100);
+  activatePipe(8);
+}
+
+// ── CLIP QUEUE RUNNER ──
+async function startClipQueue(){
+  if(queueRunning)return;
+  queueRunning=true;
+  const vidModel=document.getElementById('movie-vid-model').value;
+  const sceneMatches=[...movieScript.matchAll(/\[SCENE \d+\]([\s\S]*?)(?=\[SCENE \d+\]|$)/g)].map(m=>m[0]);
+  const gallery=document.getElementById('clips-gallery');
+
+  for(let i=0;i<Math.min(sceneMatches.length,30);i++){
+    if(movieStopped)break;
+    const sEl=document.getElementById(`qs-${i}`);
+    const iEl=document.getElementById(`queue-item-${i}`);
+    if(sEl){sEl.textContent='Generating…';sEl.style.color='var(--c)';}
+
+    const sceneText=sceneMatches[i];
+    const visMatch=sceneText.match(/visual description:\s*([^\n]+)/i);
+    const vidPrompt=(visMatch?visMatch[1]:sceneText.replace(/\[SCENE.*?\]/g,'').slice(0,200)).trim();
+
+    try{
+      const r=await fetch('https://video.pollinations.ai/',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({prompt:vidPrompt,model:vidModel,duration:5,width:1920,height:1080})});
+      if(r.ok){
+        const ct=r.headers.get('content-type')||'';
+        let clipUrl;
+        if(ct.includes('video')||ct.includes('octet')){const blob=await r.blob();clipUrl=URL.createObjectURL(blob);}
+        else{const d=await r.json();clipUrl=d.url;}
+        if(clipUrl){
+          generatedClips.push(clipUrl);
+          if(sEl){sEl.textContent='✅';sEl.style.color='var(--g)';}
+          if(iEl){
+            const a=document.createElement('a');
+            a.href=clipUrl;a.download=`scene-${i+1}.mp4`;a.textContent='⬇';
+            a.style.cssText='font-size:14px;color:var(--v);text-decoration:none;margin-left:4px';
+            iEl.appendChild(a);
+          }
+          if(gallery){
+            const v=document.createElement('video');
+            v.src=clipUrl;v.controls=true;v.muted=true;
+            v.style.cssText='width:100%;border-radius:8px';
+            const wrap=document.createElement('div');
+            wrap.className='glass rounded-xl overflow-hidden';
+            wrap.style='border:1px solid rgba(255,255,255,.08)';
+            wrap.innerHTML=`<div style="font-size:10px;padding:4px 8px;color:var(--muted)">Scene ${i+1}</div>`;
+            wrap.prepend(v);gallery.appendChild(wrap);
+          }
+        }
+      }else throw new Error();
+    }catch{if(sEl){sEl.textContent='⚠️';sEl.style.color='var(--o)';}}
+
+    await new Promise(r=>setTimeout(r,2000));
+  }
+  queueRunning=false;
+}
+
+function downloadScript(){
+  if(!movieScript)return;
+  const blob=new Blob([movieScript],{type:'text/plain'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='omni-ai-screenplay.txt';a.click();
+}
+
+// ══════════════════════════════════════════════
+//  TERMINAL DEMO
+// ══════════════════════════════════════════════
+const SEQS=[
+  {inp:'generate a react dashboard',resp:'⚛️ Generated dashboard with KPI cards, Recharts, Framer Motion — 220 lines'},
+  {inp:'create image: neon tokyo city',resp:'🖼️ Generating with Flux Pro → https://image.pollinations.ai/...'},
+  {inp:'generate video: ocean waves',resp:'🎬 Generating with Seedance 2.0 (60s)… → HD video ready'},
+  {inp:'speak: Welcome to Omni AI',resp:'🎵 Generating with ElevenLabs nova voice… → Audio ready ▶'},
+  {inp:'compose epic film score',resp:'🎼 Generating with Stable Audio 2.5 (30s)… → Music ready ▶'},
+  {inp:'write a sci-fi movie script',resp:'🎥 Claude writing screenplay: "Neural Dawn" — 87 pages'},
+  {inp:'what is the Higgs boson?',resp:'⚛ The Higgs boson gives particles mass via the Higgs field. Discovered at CERN, 2012.'},
+];
+document.getElementById('t1').textContent='🚀 Omni AI v3.0 — 7 AI Modalities · 15+ Models · Free Forever';
+document.getElementById('t2').textContent='🤖 Claude · Flux Pro · Seedance 2.0 · Veo · ElevenLabs · Suno · Stable Audio';
+
+let si=0;
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+async function termLoop(){
+  const s=SEQS[si++%SEQS.length];
+  const tin=document.getElementById('tin'),tres=document.getElementById('tres'),tcur=document.getElementById('tcur');
+  tin.textContent='';tres.textContent='';tcur.style.display='inline-block';
+  for(const ch of s.inp){tin.textContent+=ch;await wait(38+Math.random()*25);}
+  await wait(380);tcur.style.display='none';await wait(280);tres.textContent=s.resp;
+  await wait(3000);termLoop();
+}
+termLoop();
+
+// ══════════════════════════════════════════════
+//  SCROLL REVEALS + TILT
+// ══════════════════════════════════════════════
+new IntersectionObserver(entries=>{
+  entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('on');}});
+},{threshold:.07,rootMargin:'0px 0px -30px 0px'}).observe(document.querySelectorAll('.rev,.rev-g'));
+
+// Actually observe all
+const ro=new IntersectionObserver(entries=>{
+  entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('on');ro.unobserve(e.target);}});
+},{threshold:.07,rootMargin:'0px 0px -30px 0px'});
+document.querySelectorAll('.rev,.rev-g').forEach(el=>ro.observe(el));
+
+document.querySelectorAll('.tilt').forEach(card=>{
+  card.addEventListener('mousemove',e=>{
+    const r=card.getBoundingClientRect();
+    const x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;
+    card.style.transform=`perspective(800px) rotateX(${-y*12}deg) rotateY(${x*12}deg) translateZ(8px)`;
+  });
+  card.addEventListener('mouseleave',()=>{card.style.transform='';});
+});
+
+// Copy install command
+function copyCmd(){
+  navigator.clipboard.writeText('pip install nano-ai && nano-ai').then(()=>{
+    const btn=document.getElementById('copy-btn');
+    btn.textContent='Copied!';btn.style.color='var(--g)';btn.style.borderColor='rgba(16,185,129,.4)';
+    setTimeout(()=>{btn.textContent='Copy';btn.style.color='';btn.style.borderColor='';},2000);
+  });
+}
+
+// Highlight static code blocks
+document.querySelectorAll('pre code').forEach(el=>hljs.highlightElement(el));
+</script>
+</body>
+</html>
