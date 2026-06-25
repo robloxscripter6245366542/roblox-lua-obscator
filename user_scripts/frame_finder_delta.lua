@@ -135,13 +135,46 @@ local function notify(t, b, d)
     pcall(function() SG:SetCore("SendNotification",{Title=t,Text=b,Duration=d or 3}) end)
 end
 
+-- ── code cleaner: strip fences, JSON wrappers, prose preamble ─────────────────
+local function cleanLuaCode(raw)
+    if not raw or raw=="" then return "" end
+    local s = tostring(raw)
+    -- Try JSON unwrap (Pollinations sometimes wraps in OpenAI format)
+    if s:sub(1,1)=="{" then
+        local ok, j = pcall(function() return HS:JSONDecode(s) end)
+        if ok and type(j)=="table" then
+            local c = (j.choices and j.choices[1] and j.choices[1].message and j.choices[1].message.content)
+                   or j.content or j.text or j.response
+            if type(c)=="string" then s = c end
+        end
+    end
+    -- Prefer the LONGEST ```lua ... ``` block if any exist
+    local best
+    for block in s:gmatch("```[lL]?[uU]?[aA]?%s*(.-)```") do
+        if not best or #block > #best then best = block end
+    end
+    if best and #best > 20 then s = best end
+    -- Strip any remaining stray fences
+    s = s:gsub("```[lL]?[uU]?[aA]?%s*",""):gsub("```","")
+    -- Trim
+    s = s:gsub("^%s+",""):gsub("%s+$","")
+    return s
+end
+
 -- ── loadstring executor ───────────────────────────────────────────────────────
 local function execScript(code)
-    if not code or code:gsub("%s","")=="" then notify("Execute","No script.",2); return end
+    code = cleanLuaCode(code)
+    if not code or code:gsub("%s","")=="" then notify("Execute","No script (empty after clean).",3); return end
     local fn, err = loadstring(code)
-    if not fn then notify("Syntax Error",tostring(err):sub(1,90),5); return end
+    if not fn then
+        warn("[NexusAI] Syntax error:", err)
+        notify("Syntax Error",tostring(err):sub(1,140),6)
+        return
+    end
     local ok, runErr = pcall(fn)
-    if not ok then notify("Runtime Error",tostring(runErr):sub(1,90),5)
+    if not ok then
+        warn("[NexusAI] Runtime error:", runErr)
+        notify("Runtime Error",tostring(runErr):sub(1,140),6)
     else notify("Nexus AI","Running!",2) end
 end
 
@@ -543,8 +576,9 @@ OUTPUT FORMAT:
 -- AI GENERATION
 -- ═══════════════════════════════════════════════════════════════════════════════
 local function aiGenerate(prompt, ctx, onStatus)
-    if not httpReq then return nil,"No HTTP function in this executor." end
+    if not httpReq then return nil,"No HTTP function in this executor (need request/syn.request)." end
     local full = ctx.."\n\n[USER REQUEST]\n"..prompt
+    local lastErr = "no response"
     local function tryModel(model)
         local body = HS:JSONEncode({
             messages={{role="system",content=SYS},{role="user",content=full}},
@@ -554,19 +588,26 @@ local function aiGenerate(prompt, ctx, onStatus)
             Url="https://text.pollinations.ai/", Method="POST",
             Headers={["Content-Type"]="application/json"}, Body=body,
         })
-        if ok and res and (res.StatusCode==200 or res.status==200) then
-            local t=(res.Body or res.body or "")
-                :gsub("^```lua%s*",""):gsub("^```%s*",""):gsub("```%s*$","")
-                :gsub("^%s+",""):gsub("%s+$","")
-            if #t>20 then return t end
+        if not ok then lastErr = "HTTP threw: "..tostring(res):sub(1,80); return nil end
+        if not res then lastErr = "No response object"; return nil end
+        local code = res.StatusCode or res.status or 0
+        local body2 = res.Body or res.body or ""
+        if code ~= 200 then
+            lastErr = "HTTP "..tostring(code).." — "..tostring(body2):sub(1,80)
+            return nil
         end
+        if #body2 < 10 then lastErr = "Empty body"; return nil end
+        local cleaned = cleanLuaCode(body2)
+        if #cleaned > 20 then return cleaned end
+        lastErr = "Cleaned body too short ("..#cleaned.." chars)"
         return nil
     end
     onStatus("Sending to Claude Opus 4.6...")
     local code = tryModel("claude-opus-4-6")
-    if not code then onStatus("Retrying with fallback..."); code = tryModel("openai") end
+    if not code then onStatus("Retrying with openai fallback..."); code = tryModel("openai") end
+    if not code then onStatus("Retrying with mistral fallback..."); code = tryModel("mistral") end
     if code then return code,nil end
-    return nil,"AI request failed."
+    return nil,lastErr
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
