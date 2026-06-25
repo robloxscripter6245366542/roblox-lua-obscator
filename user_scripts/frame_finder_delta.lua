@@ -219,9 +219,9 @@ local function cleanLuaCode(raw)
             -- Not valid JSON — treat as raw text
         end
     end
-    -- Extract LONGEST ```lua...``` block
+    -- Extract LONGEST ```lua...``` block (must use [%s%S] — . does not match \n in Lua)
     local best
-    for block in s:gmatch("```[lL]?[uU]?[aA]?%s*(.-)```") do
+    for block in s:gmatch("```[lL]?[uU]?[aA]?%s*([%s%S]-)```") do
         if not best or #block>#best then best=block end
     end
     if best and #best>20 then s=best end
@@ -729,8 +729,9 @@ local function extractFns(src, name)
         if seen[n] then return end
         if matchFP(body) then seen[n]=true; table.insert(res,{name=n,code=sig.."\n"..body.."\nend",source=name}) end
     end
-    for s,n,b in src:gmatch("(local%s+function%s+(%w+)%b()%s*)\n(.-)\nend") do tryAdd(s,n,b) end
-    for s,n,b in src:gmatch("(function%s+([%w_%.]+)%b()%s*)\n(.-)\nend")     do tryAdd(s,n,b) end
+    -- [%s%S] is required — . does not match \n in Lua patterns, so multi-line bodies were never captured
+    for s,n,b in src:gmatch("(local%s+function%s+(%w+)%b()%s*)\n([%s%S]-)\nend") do tryAdd(s,n,b) end
+    for s,n,b in src:gmatch("(function%s+([%w_%.]+)%b()%s*)\n([%s%S]-)\nend")     do tryAdd(s,n,b) end
     return res
 end
 
