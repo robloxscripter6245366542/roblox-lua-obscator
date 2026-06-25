@@ -406,7 +406,7 @@ local function gatherContext(onLog)
             end
         end
     end)
-    emit("PLAYERS:"..pcount.." NPC:"..(hasNPC and"YES"or"NO").." PROJ:"..(hasProj or hasBall and"YES"or"NO"))
+    emit("PLAYERS:"..pcount.." NPC:"..(hasNPC and"YES"or"NO").." PROJ:"..((hasProj or hasBall) and"YES"or"NO"))
     emit("PLAYER_ESP_NEEDED: "..(pcount>1 and"YES"or"NO"))
     emit("PROJECTILE_TRACK_NEEDED: "..((hasProj or hasBall) and"YES"or"NO"))
     emit("NPC_ESP_NEEDED: "..(hasNPC and"YES"or"NO"))
@@ -472,7 +472,8 @@ local function gatherContext(onLog)
         local src=""
         pcall(function() src=scr.Source end)  -- .Source only, never decompile()
         if src and src~="" then
-            local sf = pcall(function() return scr:GetFullName() end) and scr:GetFullName() or scr.Name
+            local _ok_gfn, sf = pcall(function() return scr:GetFullName() end)
+            if not _ok_gfn then sf = scr.Name end
             local fns, fires, reqs = {}, {}, {}
             for n in src:gmatch("function%s+([%w_%.]+)%s*%(") do
                 local k=sf.."::"..n
@@ -497,7 +498,7 @@ local function gatherContext(onLog)
     log("Building hookable targets list...")
     local hooks={}
     for _, r in ipairs(remotes) do
-        local path = r:match("^(.-)%s+%[")
+        local path = r:match("^(.-)%s+%[") or r
         if r:find("RemoteEvent")   then table.insert(hooks,"LISTEN:"..path..":OnClientEvent") end
         if r:find("RemoteEvent")   then table.insert(hooks,"FIRE:"  ..path..":FireServer()") end
         if r:find("RemoteFunction")then table.insert(hooks,"INVOKE:"..path..":InvokeServer()") end
@@ -633,7 +634,7 @@ local function gameSum(ctx)
         end
     end
     -- grab remote names
-    for r in ctx:gmatch("REMOTES?:\n(.-)HOOKABLE") do
+    for r in ctx:gmatch("REMOTES?:\n([%s%S]-)HOOKABLE") do
         for l in r:gmatch("[^\n]+") do
             table.insert(lines, l:gsub("^%s+",""))
             if #lines >= 14 then break end
@@ -1053,7 +1054,7 @@ local function populateDevInfo()
     if dev.touch    then table.insert(caps,"Touch") end
     if dev.keyboard then table.insert(caps,"Keyboard") end
     if dev.gamepad  then table.insert(caps,"Gamepad") end
-    mkInfoRow(60, "⌨","Input",     table.concat(caps,", ") or "None", C.SUB)
+    mkInfoRow(60, "⌨","Input",     #caps>0 and table.concat(caps,", ") or "None", C.SUB)
 end
 
 RUNTESTBTN.MouseButton1Click:Connect(function()
