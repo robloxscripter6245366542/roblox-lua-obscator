@@ -128,6 +128,46 @@ document.querySelectorAll('.mode-tab').forEach(btn => {
   });
 });
 
+// ===== Presets =====
+const PRESETS = {
+  max:   { resolution: '4k', duration: '15', style: 'Cinematic', aspect: '16:9', model: 'seedance-2-0', audio: 'true' },
+  fast:  { resolution: '1080p', duration: '5', style: 'Cinematic', aspect: '16:9', model: 'seedance-2-0-fast', audio: 'true' },
+  short: { resolution: '4k', duration: '5', style: 'Cinematic', aspect: '16:9', model: 'seedance-2-0', audio: 'true' },
+};
+
+function applyPreset(name) {
+  const p = PRESETS[name];
+  Object.assign(state.settings, p);
+  // sync chips
+  Object.entries(p).forEach(([setting, val]) => {
+    document.querySelectorAll(`.select-chip[data-setting="${setting}"]`).forEach(c => {
+      c.classList.toggle('active', c.dataset.val === val);
+    });
+  });
+  // sync preset buttons
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  const btn = { max: $('presetMax'), fast: $('presetFast'), short: $('presetShort') }[name];
+  if (btn) btn.classList.add('active');
+  updateQualityTag();
+}
+
+function updateQualityTag() {
+  const tag = $('qualityTag');
+  if (!tag) return;
+  if (state.settings.resolution === '4k' && state.settings.model === 'seedance-2-0') {
+    tag.textContent = ''; // rebuild
+    tag.innerHTML = '<svg viewBox="0 0 12 12" fill="none"><path d="M6 1l1.1 3.4H10L7.5 6.2l.9 3L6 7.7l-2.4 1.5.9-3L2 4.4h2.9z" fill="currentColor"/></svg> 4K MAX';
+    tag.classList.remove('hidden-tag');
+  } else {
+    tag.innerHTML = `<svg viewBox="0 0 12 12" fill="none"><path d="M6 1l1.1 3.4H10L7.5 6.2l.9 3L6 7.7l-2.4 1.5.9-3L2 4.4h2.9z" fill="currentColor"/></svg> ${state.settings.resolution.toUpperCase()}`;
+    tag.classList.remove('hidden-tag');
+  }
+}
+
+$('presetMax').addEventListener('click', () => { applyPreset('max'); toast('4K Max Quality preset applied!', 'success'); });
+$('presetFast').addEventListener('click', () => { applyPreset('fast'); toast('Fast 1080p preset applied', 'info'); });
+$('presetShort').addEventListener('click', () => { applyPreset('short'); toast('Quick 5s preset applied', 'info'); });
+
 // ===== Select Chips =====
 document.querySelectorAll('.select-chip').forEach(chip => {
   chip.addEventListener('click', () => {
@@ -135,6 +175,14 @@ document.querySelectorAll('.select-chip').forEach(chip => {
     document.querySelectorAll(`.select-chip[data-setting="${setting}"]`).forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     state.settings[setting] = chip.dataset.val;
+    // Auto-lock quality model when 4K selected
+    if (setting === 'resolution' && chip.dataset.val === '4k') {
+      const qualityChip = document.querySelector('.select-chip[data-setting="model"][data-val="seedance-2-0"]');
+      if (qualityChip) qualityChip.click();
+    }
+    // Clear preset highlight when manually changed
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    updateQualityTag();
   });
 });
 
@@ -596,6 +644,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function init() {
   updateTimerDisplay();
   renderGallery();
+  applyPreset('max'); // default to 4K max quality
 
   // Smooth scroll for anchor links
   document.querySelectorAll('a[href^="#"]').forEach(a => {
