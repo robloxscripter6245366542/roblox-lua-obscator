@@ -495,7 +495,8 @@ export default function MoviePanel() {
     const CLIP_SEC = 5
     const totalClips = Math.ceil(lenMin * 60 / CLIP_SEC)
     const sceneCount = Math.max(3, Math.min(Math.ceil(totalClips / 3), 40))
-    const imgModel = style === 'anime' ? 'flux-anime' : style === '3d' ? 'flux-3d' : style === 'cartoon' ? 'flux-anime' : 'flux-realism'
+    const imgModel = style === 'anime' ? 'flux-anime' : style === '3d' ? 'flux-3d' : style === 'cartoon' ? 'flux-anime' : 'flux-pro'
+    // gptimage used for max-quality character close-ups regardless of style
 
     // ── 1. SCREENPLAY ──
     setActivePipe(0); setStatusMsg('📝 Claude writing full screenplay…'); setProgress(5)
@@ -522,8 +523,10 @@ export default function MoviePanel() {
       .split('\n').map(l => l.trim()).filter(l => l.length > 10).slice(0, 4)
     setChars(charLines.map(d => ({ desc: d })))
     const charDesigns: CharAsset[] = await Promise.all(charLines.map(async (desc) => {
-      const styleExtra = style === 'anime' ? 'manga anime art style, studio Ghibli quality, cel shading, dramatic rim lighting cyan and pink, screen tone shading, beautiful anime, dynamic flowing hair strands, manga lighting' : style === '3d' ? '3D CGI render, Pixar quality, subsurface scattering, physically based rendering, dramatic studio lighting' : style === 'cartoon' ? 'cartoon illustration, vibrant, clean linework, expressive, bold shadows' : 'hyperrealistic portrait, cinematic lighting, photographic, golden ratio composition, dramatic rim light'
-      const imgUrl = await genImg(`Character portrait, full body rigging reference sheet, ${desc}, ${styleExtra}, individual hair strands flowing, expressive eyes, dynamic pose, dramatic manga lighting, cyan rim light, professional concept art, 4K ultra detail, 8K`, imgModel, 768, 1024)
+      const styleExtra = style === 'anime' ? 'manga anime art style, studio Ghibli quality, cel shading, dramatic rim lighting cyan and pink, screen tone shading, beautiful anime, dynamic flowing hair strands, manga lighting, extremely detailed' : style === '3d' ? '3D CGI render, Pixar / Unreal Engine 5 quality, subsurface scattering, physically based rendering, dramatic studio lighting, hyperdetailed' : style === 'cartoon' ? 'cartoon illustration, vibrant, clean linework, expressive, bold shadows, high quality' : 'hyperrealistic portrait, cinematic lighting, photographic, golden ratio composition, dramatic rim light, professional photography'
+      // Use gptimage for cleanest character rendering; fall back to style model if gptimage fails
+      const charModel = style === '3d' ? 'flux-3d' : 'gptimage'
+      const imgUrl = await genImg(`Character portrait, full body rigging reference sheet, ${desc}, ${styleExtra}, individual hair strands flowing, expressive eyes, dynamic pose, dramatic rim lighting, masterpiece, best quality, ultra-detailed, sharp focus, 8K hyperdetailed professional concept art`, charModel, 1024, 1536)
       return { desc, imgUrl }
     }))
     setChars(charDesigns)
@@ -538,8 +541,8 @@ export default function MoviePanel() {
     for (let i = 0; i < Math.min(sceneMatches.length, 8); i++) {
       if (stoppedRef.current) break
       const vis = sceneMatches[i].match(/VISUAL:\s*([^\n]+)/i)?.[1] || sceneMatches[i].slice(0, 150)
-      const bgStyleExtra = style === 'anime' ? 'manga anime background art, studio Ghibli style, dramatic manga lighting, screen tone shadows, cel shaded, atmospheric depth, cherry blossoms and leaves floating' : 'cinematic lighting, dramatic shadows, volumetric god rays'
-      const url = await genImg(`${style === 'anime' ? 'Anime manga' : 'Cinematic'} film background environment, ${vis}, ${genre} genre, ${bgStyleExtra}, ultra detailed foliage, flowing flowers and leaves, atmospheric depth, 4K ultra HD quality`, 'flux-pro', 768, 432)
+      const bgStyleExtra = style === 'anime' ? 'manga anime background art, studio Ghibli / Makoto Shinkai style, dramatic manga lighting, atmospheric depth, cherry blossoms and leaves floating, beautiful detailed environment' : 'cinematic lighting, dramatic shadows, volumetric god rays, professional cinematography, award winning'
+      const url = await genImg(`${style === 'anime' ? 'Anime manga' : 'Cinematic'} film background environment, ${vis}, ${genre} genre, ${bgStyleExtra}, ultra detailed foliage, flowing flowers and leaves, atmospheric depth, masterpiece, best quality, ultra-detailed, 4K ultra HD`, 'flux-pro', 1280, 720)
       if (url) frames.push(url)
       setStoryboardFrames([...frames])
       setProgress(38 + (i / 8) * 12)
@@ -553,16 +556,16 @@ export default function MoviePanel() {
     const actionLines = [...generatedScript.matchAll(/ACTION:\s*([^\n]+)/ig)].map(m => m[1]).slice(0, 6)
     actionLines.forEach(line => {
       const obj = line.match(/(?:a |an |the )([\w\s]{4,30}(?:ship|craft|robot|vehicle|building|weapon|portal|device|suit|mech|sword|gun|castle|throne|spaceship|car|bike|drone|machine|tower))/i)?.[1]
-      if (obj) threeDPrompts.push(`Full 3D CGI render of ${obj}, ${style} style, physically based rendering, subsurface scattering, professional studio lighting, 360 turntable view, rigging bones visible, Unreal Engine 5 quality, 4K ultra detail`)
+      if (obj) threeDPrompts.push(`Full 3D CGI render of ${obj}, ${style} style, physically based rendering, subsurface scattering, Unreal Engine 5 / Pixar quality, professional studio lighting with dramatic shadows, rigging bones and wireframe visible, 360 turntable view, masterpiece, ultra-detailed, sharp focus, 4K`)
     })
     if (threeDPrompts.length === 0) {
       const locs = [...generatedScript.matchAll(/(?:INT\.|EXT\.)\s+([^-\n]+)/g)].map(m => m[1].trim()).slice(0, 3)
-      locs.forEach(loc => threeDPrompts.push(`3D CGI environment render of ${loc}, ${genre} genre, cinematic lighting, ultra detailed foliage and particles, photorealistic, Unreal Engine 5, 4K`))
+      locs.forEach(loc => threeDPrompts.push(`3D CGI environment render of ${loc}, ${genre} genre, dramatic cinematic lighting, ultra detailed foliage and particles, photorealistic Unreal Engine 5, masterpiece quality, 4K`))
     }
     const modelUrls: string[] = []
     for (const p of threeDPrompts.slice(0, 4)) {
       if (stoppedRef.current) break
-      const url = await genImg(p, 'flux-3d', 768, 768)
+      const url = await genImg(p, 'flux-3d', 1024, 1024)
       if (url) modelUrls.push(url)
       await wait(400)
     }
@@ -577,7 +580,7 @@ export default function MoviePanel() {
     const vfxUrls: string[] = []
     for (const desc of vfxDescs.slice(0, 4)) {
       if (stoppedRef.current) break
-      const url = await genImg(`${desc}, cinematic VFX, glowing particles, flower petals floating, magical light effects, sparkling dust, professional visual effect, 4K maximum detail`, 'seedream', 768, 768)
+      const url = await genImg(`${desc}, cinematic VFX, glowing particles, flower petals floating, magical volumetric light effects, sparkling energy dust, masterpiece professional visual effect, ultra-detailed, 8K`, 'seedream', 1024, 1024)
       if (url) vfxUrls.push(url)
       await wait(400)
     }
@@ -642,7 +645,7 @@ export default function MoviePanel() {
     setVfxImages([])
     const urls: string[] = []
     for (let i = 0; i < 4; i++) {
-      const url = await genImg(`${vfxPrompt}, cinematic VFX, glowing particles, flower petals floating, magical light, sparkling dust, 4K maximum detail, variation ${i + 1}`, 'seedream', 768, 768)
+      const url = await genImg(`${vfxPrompt}, cinematic VFX, glowing particles, flower petals floating, magical volumetric light, sparkling energy dust, masterpiece, ultra-detailed, 8K, variation ${i + 1}`, 'seedream', 1024, 1024)
       if (url) urls.push(url)
       setVfxImages([...urls])
       await wait(300)
@@ -655,7 +658,8 @@ export default function MoviePanel() {
     const imgModel = style === 'anime' ? 'flux-anime' : style === '3d' ? 'flux-3d' : 'flux-realism'
     setChars(lines.map(d => ({ desc: d })))
     const results = await Promise.all(lines.map(async desc => {
-      const url = await genImg(`Character portrait, full body rigging reference, ${desc}, individual hair strands, expressive eyes, dynamic pose, ${style === 'anime' ? 'manga anime art, studio quality, dramatic rim lighting, cyan and pink manga lighting, cel shading, screen tone shading, flowing hair, beautiful anime illustration' : 'hyperrealistic, cinematic lighting, photographic quality, dramatic rim light'}, professional concept art, 4K ultra detail`, imgModel, 768, 1024)
+      const charModelDesign = style === '3d' ? 'flux-3d' : 'gptimage'
+      const url = await genImg(`Character portrait, full body rigging reference, ${desc}, individual hair strands, expressive eyes, dynamic pose, ${style === 'anime' ? 'manga anime art, studio Ghibli quality, dramatic rim lighting, cyan and pink manga lighting, cel shading, screen tone shading, flowing hair, beautiful anime illustration' : 'hyperrealistic, cinematic lighting, photographic quality, dramatic rim light, professional'}, masterpiece, best quality, ultra-detailed, sharp focus, 8K`, charModelDesign, 1024, 1536)
       return { desc, imgUrl: url }
     }))
     setChars(results)
