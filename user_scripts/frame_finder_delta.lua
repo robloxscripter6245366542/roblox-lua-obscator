@@ -1,33 +1,40 @@
 --[[
 ╔══════════════════════════════════════════════════════════════╗
 ║              NEXUS AI — Delta Edition                        ║
-║  Describe a script → AI generates it → Copy / Execute       ║
+║  Scan game → build real context → AI writes working script  ║
 ║  Powered by Pollinations AI  ·  Claude Opus 4.6             ║
 ╚══════════════════════════════════════════════════════════════╝
 
-  AI TAB  — Type any prompt (e.g. "blade ball autoparry with emotes,
-             draggable ui, on/off switches, scan and decompile the
-             game for all parry code"). AI writes the full script.
-             Copy it or Execute it directly via loadstring().
+HOW IT WORKS
+  1. Press Generate — the tool first scans the live game:
+       • All RemoteEvents / RemoteFunctions (exact paths)
+       • All UI elements in PlayerGui (real names)
+       • All Workspace objects
+       • Decompiled function names from every script
+  2. That real game context is sent to Claude Opus 4.6 alongside
+     your prompt — so the AI uses ACTUAL names, not invented ones.
+  3. The generated script is shown in the code box.
+  4. Press Copy or Execute (loadstring) — done.
 
-  SCANNER TAB — Scans all game scripts for frame-drawing functions.
-                Each result has Copy + Execute buttons.
+SCANNER TAB
+  Scans scripts for frame-drawing functions, each with Copy + Execute.
 --]]
 
 -- ── Services ──────────────────────────────────────────────────────────────────
-local Players = game:GetService("Players")
-local UIS     = game:GetService("UserInputService")
-local TS      = game:GetService("TweenService")
-local SG      = game:GetService("StarterGui")
-local HS      = game:GetService("HttpService")
-local LP      = Players.LocalPlayer
-local PGUI    = LP:WaitForChild("PlayerGui")
+local Players  = game:GetService("Players")
+local RS       = game:GetService("ReplicatedStorage")
+local UIS      = game:GetService("UserInputService")
+local TS       = game:GetService("TweenService")
+local SG       = game:GetService("StarterGui")
+local HS       = game:GetService("HttpService")
+local LP       = Players.LocalPlayer
+local PGUI     = LP:WaitForChild("PlayerGui")
 
 -- ── Executor APIs ─────────────────────────────────────────────────────────────
 local httpReq    = (syn and syn.request) or (http and http.request) or request
 local clipSet    = setclipboard or (syn and syn.set_clipboard) or (function() end)
-local getScripts = getscripts  or nil
-local doDecomp   = decompile   or nil
+local getScripts = getscripts or nil
+local doDecomp   = decompile  or nil
 
 -- ── Colors ────────────────────────────────────────────────────────────────────
 local C = {
@@ -48,7 +55,6 @@ local C = {
     BORDER = Color3.fromRGB(30,  42,  75 ),
     CODE   = Color3.fromRGB(160, 200, 240),
 }
-
 local FB = Enum.Font.GothamBold
 local FN = Enum.Font.Gotham
 local FM = Enum.Font.RobotoMono
@@ -64,17 +70,15 @@ end
 
 -- ── UI primitives ─────────────────────────────────────────────────────────────
 local function corner(p, r)
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, r or 8); c.Parent = p; return c
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 8); c.Parent = p; return c
 end
 local function stroke(p, col, th)
-    local s = Instance.new("UIStroke")
-    s.Color = col or C.BORDER; s.Thickness = th or 1; s.Parent = p; return s
+    local s = Instance.new("UIStroke"); s.Color = col or C.BORDER; s.Thickness = th or 1; s.Parent = p; return s
 end
 local function pad(p, v, h)
     local u = Instance.new("UIPadding")
-    u.PaddingTop    = UDim.new(0, v); u.PaddingBottom = UDim.new(0, v)
-    u.PaddingLeft   = UDim.new(0, h); u.PaddingRight  = UDim.new(0, h)
+    u.PaddingTop = UDim.new(0,v); u.PaddingBottom = UDim.new(0,v)
+    u.PaddingLeft= UDim.new(0,h); u.PaddingRight  = UDim.new(0,h)
     u.Parent = p; return u
 end
 local function listV(p, sp)
@@ -87,30 +91,24 @@ end
 local function F(par, sz, pos, col)
     local f = Instance.new("Frame"); f.Size = sz
     if pos then f.Position = pos end
-    f.BackgroundColor3 = col or C.BG; f.BorderSizePixel = 0
-    f.Parent = par; return f
+    f.BackgroundColor3 = col or C.BG; f.BorderSizePixel = 0; f.Parent = par; return f
 end
 local function L(par, txt, sz, pos, col, fnt, ts, xa)
     local l = Instance.new("TextLabel"); l.Size = sz
     if pos then l.Position = pos end
-    l.BackgroundTransparency = 1; l.Text = txt
-    l.TextColor3 = col or C.TXT; l.Font = fnt or FN
-    l.TextSize = ts or 12; l.TextWrapped = true
-    l.TextXAlignment = xa or Enum.TextXAlignment.Left
-    l.Parent = par; return l
+    l.BackgroundTransparency = 1; l.Text = txt; l.TextColor3 = col or C.TXT
+    l.Font = fnt or FN; l.TextSize = ts or 12; l.TextWrapped = true
+    l.TextXAlignment = xa or Enum.TextXAlignment.Left; l.Parent = par; return l
 end
 local function B(par, txt, sz, pos, bg, tc, ts, fnt)
     local b = Instance.new("TextButton"); b.Size = sz
     if pos then b.Position = pos end
-    b.BackgroundColor3 = bg or C.ACC; b.Text = txt
-    b.TextColor3 = tc or C.TXT; b.Font = fnt or FB
-    b.TextSize = ts or 12; b.BorderSizePixel = 0
-    b.Parent = par; return b
+    b.BackgroundColor3 = bg or C.ACC; b.Text = txt; b.TextColor3 = tc or C.TXT
+    b.Font = fnt or FB; b.TextSize = ts or 12; b.BorderSizePixel = 0; b.Parent = par; return b
 end
 local function dot(par, sz, pos, col)
     local d = F(par, sz, pos, col or C.MUTED); corner(d, 99); return d
 end
-
 local function notify(title, body, dur)
     pcall(function()
         SG:SetCore("SendNotification", {Title = title, Text = body, Duration = dur or 3})
@@ -119,54 +117,189 @@ end
 
 -- ── loadstring executor ───────────────────────────────────────────────────────
 local function execScript(code)
-    if not code or code:gsub("%s","") == "" then
-        notify("Execute", "No script loaded.", 2); return
-    end
+    if not code or code:gsub("%s","") == "" then notify("Execute","No script loaded.",2); return end
     local fn, err = loadstring(code)
-    if not fn then
-        notify("Syntax Error", tostring(err):sub(1, 90), 5); return
-    end
+    if not fn then notify("Syntax Error", tostring(err):sub(1,90), 5); return end
     local ok, runErr = pcall(fn)
-    if not ok then
-        notify("Runtime Error", tostring(runErr):sub(1, 90), 5)
-    else
-        notify("Nexus AI", "Script is running!", 2)
-    end
+    if not ok then notify("Runtime Error", tostring(runErr):sub(1,90), 5)
+    else notify("Nexus AI","Script is running!",2) end
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
--- POLLINATIONS AI  —  full script generation
+-- GAME CONTEXT SCANNER
+-- Walks the live game and builds a structured summary for the AI prompt.
 -- ═══════════════════════════════════════════════════════════════════════════════
-local SYS = [[You are an expert Roblox Lua script writer for executor environments (Delta, Synapse, KRNL).
-Rules:
-- Write a complete, self-contained, immediately runnable Lua script.
-- Use task.spawn / task.wait (not coroutine or wait).
-- Wrap risky calls in pcall.
-- Find RemoteEvents/RemoteFunctions dynamically at runtime — never hardcode instance paths.
-- If a draggable UI is requested, build it with ScreenGui + Frame, implement mouse+touch drag on the title bar.
-- If toggles/switches are requested, implement proper on/off state with color feedback.
-- Output ONLY raw Lua code. No markdown, no triple backticks, no prose.]]
+local function gatherContext(onProgress)
+    local out = {}
+    local function emit(s) table.insert(out, s) end
 
-local function aiGenerate(prompt)
-    if not httpReq then return nil, "No HTTP function in this executor." end
+    -- Game info
+    emit("=== GAME CONTEXT (use these EXACT paths in your code) ===")
+    emit("PlaceId: " .. tostring(game.PlaceId))
+    pcall(function()
+        local info = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId)
+        emit("Place Name: " .. (info and info.Name or "Unknown"))
+    end)
+
+    onProgress("Scanning RemoteEvents...")
+
+    -- RemoteEvents / RemoteFunctions (breadth-limited)
+    local remotes = {}
+    local function walkRemotes(parent, path, depth)
+        if depth > 6 then return end
+        local ok, children = pcall(function() return parent:GetChildren() end)
+        if not ok then return end
+        for _, v in ipairs(children) do
+            local p = path .. "." .. v.Name
+            if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
+                table.insert(remotes, p .. " [" .. v.ClassName .. "]")
+            end
+            if not v:IsA("BasePart") and #remotes < 60 then
+                walkRemotes(v, p, depth + 1)
+            end
+        end
+    end
+    pcall(walkRemotes, RS,                           "ReplicatedStorage", 1)
+    pcall(walkRemotes, game:GetService("Players"),   "Players",           1)
+
+    if #remotes > 0 then
+        emit("\nREMOTE EVENTS / FUNCTIONS:")
+        for _, r in ipairs(remotes) do emit("  " .. r) end
+    end
+
+    onProgress("Scanning UI elements...")
+
+    -- PlayerGui UI elements
+    local uis = {}
+    local function walkUI(parent, path, depth)
+        if depth > 5 then return end
+        local ok, children = pcall(function() return parent:GetChildren() end)
+        if not ok then return end
+        for _, v in ipairs(children) do
+            local p = path .. "." .. v.Name
+            local cls = v.ClassName
+            if cls == "ScreenGui" or cls == "Frame" or cls == "ScrollingFrame"
+            or cls == "TextButton" or cls == "TextLabel" or cls == "ImageLabel"
+            or cls == "BillboardGui" or cls == "SurfaceGui" then
+                if v.Name ~= "NexusAI" and #uis < 50 then
+                    table.insert(uis, p .. " [" .. cls .. "]")
+                end
+            end
+            walkUI(v, p, depth + 1)
+        end
+    end
+    pcall(walkUI, PGUI, "PlayerGui", 1)
+
+    if #uis > 0 then
+        emit("\nUI ELEMENTS IN PLAYERGUI:")
+        for _, u in ipairs(uis) do emit("  " .. u) end
+    end
+
+    onProgress("Scanning workspace objects...")
+
+    -- Workspace top-level objects
+    local ws = {}
+    pcall(function()
+        for _, v in ipairs(workspace:GetChildren()) do
+            if not v:IsA("Terrain") and not v:IsA("Camera") then
+                table.insert(ws, "workspace." .. v.Name .. " [" .. v.ClassName .. "]")
+            end
+        end
+    end)
+    if #ws > 0 then
+        emit("\nWORKSPACE OBJECTS:")
+        for i, w in ipairs(ws) do
+            if i > 40 then emit("  ...(+" .. (#ws-40) .. " more)"); break end
+            emit("  " .. w)
+        end
+    end
+
+    onProgress("Decompiling scripts for function names...")
+
+    -- Decompile scripts → extract function names
+    local scripts = {}
+    if getScripts then pcall(function() scripts = getScripts() end) end
+    if #scripts == 0 then
+        pcall(function()
+            for _, v in ipairs(game:GetDescendants()) do
+                if v:IsA("LocalScript") or v:IsA("ModuleScript") or v:IsA("Script") then
+                    table.insert(scripts, v)
+                end
+            end
+        end)
+    end
+
+    local fnLines = {}
+    local seen = {}
+    for _, scr in ipairs(scripts) do
+        local src = ""
+        if doDecomp then pcall(function() src = doDecomp(scr) end) end
+        if src == "" then pcall(function() src = scr.Source end) end
+        if src and src ~= "" then
+            local scrName = scr.Name
+            for name in src:gmatch("function%s+([%w_%.]+)%s*%(") do
+                local key = scrName .. "::" .. name
+                if not seen[key] and #fnLines < 60 then
+                    seen[key] = true
+                    table.insert(fnLines, "  " .. scrName .. " → " .. name .. "()")
+                end
+            end
+            -- Also capture RemoteEvent:FireServer calls used in this script
+            for remote in src:gmatch(":FireServer%(") do
+                -- context already has remotes; skip duplicates
+            end
+        end
+    end
+    if #fnLines > 0 then
+        emit("\nFUNCTIONS FOUND IN SCRIPTS:")
+        for _, f in ipairs(fnLines) do emit(f) end
+    end
+
+    emit("\n=== END CONTEXT ===")
+    return table.concat(out, "\n")
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- POLLINATIONS AI  —  context-aware script generation
+-- ═══════════════════════════════════════════════════════════════════════════════
+local SYS = [[You are an expert Roblox Lua scripter for executor environments (Delta, Synapse, KRNL).
+You will receive a GAME CONTEXT block with exact RemoteEvent paths, UI element names, workspace objects, and function names found in the live game. Use ONLY those real names and paths — never invent them.
+
+Code rules:
+- task.spawn / task.wait only (no coroutine / wait).
+- Wrap every RemoteEvent call and instance lookup in pcall.
+- For bots / trackers: use Drawing API — Drawing.new("Square"), Drawing.new("Line"), Drawing.new("Text"), Drawing.new("Circle"). Update positions in RunService.RenderStepped using Camera:WorldToViewportPoint().
+- For UI: build ONE draggable ScreenGui. Drag on title bar (mouse + touch). Each feature gets a color-coded toggle button: green BackgroundColor = on, red = off.
+- Hook RemoteEvents found in GAME CONTEXT using their exact full path.
+- Locate game objects (balls, targets, players) by the workspace names found in GAME CONTEXT.
+- Features must be toggleable — do NOT hardcode them always-on.
+- Output ONLY raw Lua code. Zero markdown, zero backticks, zero prose.]]
+
+local function aiGenerate(userPrompt, gameContext, onStatus)
+    if not httpReq then return nil, "No HTTP function available in this executor." end
+
+    local fullPrompt = gameContext .. "\n\n[USER REQUEST]\n" .. userPrompt
 
     local payload = HS:JSONEncode({
         messages = {
-            { role = "system", content = SYS   },
-            { role = "user",   content = prompt },
+            {role = "system", content = SYS       },
+            {role = "user",   content = fullPrompt },
         },
         model = "claude-opus-4-6",
         seed  = math.random(1, 99999),
     })
 
+    onStatus("Sending to Claude Opus 4.6...")
+
     for _, model in ipairs({"claude-opus-4-6", "openai"}) do
         local body = (model == "claude-opus-4-6") and payload or HS:JSONEncode({
             messages = {
-                { role = "system", content = SYS   },
-                { role = "user",   content = prompt },
+                {role = "system", content = SYS       },
+                {role = "user",   content = fullPrompt },
             },
             model = model, seed = 42,
         })
+        if model ~= "claude-opus-4-6" then onStatus("Retrying with fallback model...") end
         local ok, res = pcall(httpReq, {
             Url     = "https://text.pollinations.ai/",
             Method  = "POST",
@@ -183,11 +316,11 @@ local function aiGenerate(prompt)
             end
         end
     end
-    return nil, "AI request failed — check your internet connection."
+    return nil, "AI request failed — check internet connection."
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
--- SCANNER  —  frame-drawing pattern extraction
+-- SCANNER  (frame-drawing function extractor)
 -- ═══════════════════════════════════════════════════════════════════════════════
 local FPATS = {
     'Instance%.new%s*%(%s*["\']Frame["\']',
@@ -232,22 +365,19 @@ GUI.Name = "NexusAI"; GUI.ResetOnSpawn = false
 GUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 GUI.DisplayOrder = 999; GUI.Parent = PGUI
 
--- Shadow
-local SHADOW = F(GUI, UDim2.new(0,510,0,632), UDim2.new(0.5,-255,0.5,-316), Color3.new(0,0,0))
-SHADOW.BackgroundTransparency = 0.62; corner(SHADOW, 16)
+local SHADOW = F(GUI, UDim2.new(0,510,0,652), UDim2.new(0.5,-255,0.5,-326), Color3.new(0,0,0))
+SHADOW.BackgroundTransparency = 0.62; corner(SHADOW,16)
 
--- Window
-local WIN = F(GUI, UDim2.new(0,490,0,612), UDim2.new(0.5,-245,0.5,-306), C.BG)
-corner(WIN, 12); stroke(WIN, C.BORDER, 1.5)
+local WIN = F(GUI, UDim2.new(0,490,0,632), UDim2.new(0.5,-245,0.5,-316), C.BG)
+corner(WIN,12); stroke(WIN,C.BORDER,1.5)
 
--- ── Title bar ─────────────────────────────────────────────────────────────────
+-- Title bar
 local TBAR = F(WIN, UDim2.new(1,0,0,46), UDim2.new(0,0,0,0), C.SIDE)
-corner(TBAR, 12); F(TBAR, UDim2.new(1,0,0,12), UDim2.new(0,0,1,-12), C.SIDE)
-
+corner(TBAR,12); F(TBAR, UDim2.new(1,0,0,12), UDim2.new(0,0,1,-12), C.SIDE)
 local STRIPE = F(TBAR, UDim2.new(0,3,0,24), UDim2.new(0,14,0.5,-12), C.ACC); corner(STRIPE,2)
-L(TBAR, "Nexus AI",  UDim2.new(0,220,0,20), UDim2.new(0,25,0,7),  C.TXT,   FB, 14)
-L(TBAR, "Delta  ·  Pollinations AI  ·  Claude Opus 4.6",
-         UDim2.new(0,340,0,14), UDim2.new(0,25,0,27), C.MUTED, FN, 9)
+L(TBAR,"Nexus AI",    UDim2.new(0,220,0,20), UDim2.new(0,25,0,7),  C.TXT,  FB,14)
+L(TBAR,"Delta  ·  Pollinations AI  ·  Claude Opus 4.6",
+        UDim2.new(0,340,0,14), UDim2.new(0,25,0,27), C.MUTED,FN,9)
 
 local CLOSE = B(TBAR,"✕",UDim2.new(0,26,0,26),UDim2.new(1,-36,0.5,-13),C.RED,C.TXT,11,FB)
 corner(CLOSE,6)
@@ -255,121 +385,99 @@ CLOSE.MouseEnter:Connect(function()  tw(CLOSE,{BackgroundColor3=Color3.fromRGB(2
 CLOSE.MouseLeave:Connect(function()  tw(CLOSE,{BackgroundColor3=C.RED}) end)
 CLOSE.MouseButton1Click:Connect(function() GUI:Destroy() end)
 
--- ── Drag ──────────────────────────────────────────────────────────────────────
+-- Drag
 do
-    local drag, dSt, wSt
+    local drag,dSt,wSt
     local function syncShadow()
-        SHADOW.Position = UDim2.new(
-            WIN.Position.X.Scale, WIN.Position.X.Offset - 10,
-            WIN.Position.Y.Scale, WIN.Position.Y.Offset - 10)
+        SHADOW.Position=UDim2.new(WIN.Position.X.Scale,WIN.Position.X.Offset-10,
+                                   WIN.Position.Y.Scale,WIN.Position.Y.Offset-10)
     end
     TBAR.InputBegan:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1
-        or i.UserInputType==Enum.UserInputType.Touch then
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
             drag=true; dSt=i.Position; wSt=WIN.Position
         end
     end)
     UIS.InputChanged:Connect(function(i)
         if not drag then return end
-        if i.UserInputType==Enum.UserInputType.MouseMovement
-        or i.UserInputType==Enum.UserInputType.Touch then
+        if i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch then
             local d=i.Position-dSt
             WIN.Position=UDim2.new(wSt.X.Scale,wSt.X.Offset+d.X,wSt.Y.Scale,wSt.Y.Offset+d.Y)
             syncShadow()
         end
     end)
     UIS.InputEnded:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1
-        or i.UserInputType==Enum.UserInputType.Touch then drag=false end
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=false end
     end)
     syncShadow()
 end
 
--- ── Tab bar ───────────────────────────────────────────────────────────────────
-local TABBAR = F(WIN, UDim2.new(1,-24,0,32), UDim2.new(0,12,0,54), C.PANEL)
-corner(TABBAR, 8)
+-- Tab bar
+local TABBAR = F(WIN,UDim2.new(1,-24,0,32),UDim2.new(0,12,0,54),C.PANEL); corner(TABBAR,8)
 local TAB_AI  = B(TABBAR,"⬡  AI Generate",UDim2.new(0.5,-3,1,-8),UDim2.new(0,4,0,4),   C.ACC,  C.TXT,11,FB); corner(TAB_AI,6)
 local TAB_SCN = B(TABBAR,"⬡  Scanner",    UDim2.new(0.5,-3,1,-8),UDim2.new(0.5,3,0,4), C.PANEL,C.SUB,11,FB); corner(TAB_SCN,6)
 
--- ── Status bar ────────────────────────────────────────────────────────────────
-local SBAR = F(WIN, UDim2.new(1,-24,0,26), UDim2.new(0,12,0,94), C.PANEL)
-corner(SBAR, 6)
-local SDOT = dot(SBAR, UDim2.new(0,8,0,8), UDim2.new(0,8,0.5,-4), C.GRN)
-local STXT = L(SBAR,"Ready",UDim2.new(1,-28,1,0),UDim2.new(0,22,0,0),C.SUB,FN,10)
+-- Status bar
+local SBAR = F(WIN,UDim2.new(1,-24,0,26),UDim2.new(0,12,0,94),C.PANEL); corner(SBAR,6)
+local SDOT  = dot(SBAR,UDim2.new(0,8,0,8),UDim2.new(0,8,0.5,-4),C.GRN)
+local STXT  = L(SBAR,"Ready",UDim2.new(1,-28,1,0),UDim2.new(0,22,0,0),C.SUB,FN,10)
 STXT.TextTruncate = Enum.TextTruncate.AtEnd
-
-local function setStatus(msg, col)
-    STXT.Text = msg; tw(SDOT, {BackgroundColor3 = col or C.MUTED})
-end
+local function setStatus(msg, col) STXT.Text=msg; tw(SDOT,{BackgroundColor3=col or C.MUTED}) end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- AI GENERATE PAGE
 -- ═══════════════════════════════════════════════════════════════════════════════
-local AI_PAGE = F(WIN, UDim2.new(1,-24,1,-130), UDim2.new(0,12,0,128), C.BG)
+local AI_PAGE = F(WIN,UDim2.new(1,-24,1,-130),UDim2.new(0,12,0,128),C.BG)
 
 -- Prompt box
-local PFRAME = F(AI_PAGE, UDim2.new(1,0,0,96), UDim2.new(0,0,0,0), C.PANEL)
+local PFRAME = F(AI_PAGE,UDim2.new(1,0,0,96),UDim2.new(0,0,0,0),C.PANEL)
 corner(PFRAME,8); stroke(PFRAME,C.BORDER)
-L(PFRAME,"Describe the script you want  (the AI will write it):",
-  UDim2.new(1,-12,0,14), UDim2.new(0,10,0,6), C.SUB, FB, 9)
+L(PFRAME,"Describe the script you want — AI scans the game first, then writes it:",
+  UDim2.new(1,-12,0,14),UDim2.new(0,10,0,6),C.SUB,FB,9)
 
 local PIN = Instance.new("TextBox")
-PIN.Size              = UDim2.new(1,-16,0,64)
-PIN.Position          = UDim2.new(0,8,0,22)
-PIN.BackgroundColor3  = C.EDIT
-PIN.Text              = ""
-PIN.PlaceholderText   = 'e.g. "blade ball autoparry with all emotes, draggable ui, on/off switches, decompile and scan the game for all parry code, copy to clipboard"'
-PIN.PlaceholderColor3 = C.MUTED
-PIN.TextColor3        = C.TXT
-PIN.Font              = FM
-PIN.TextSize          = 10
-PIN.MultiLine         = true
-PIN.ClearTextOnFocus  = false
-PIN.TextXAlignment    = Enum.TextXAlignment.Left
-PIN.TextYAlignment    = Enum.TextYAlignment.Top
-PIN.BorderSizePixel   = 0
-PIN.Parent            = PFRAME
-corner(PIN, 6); pad(PIN, 5, 8)
+PIN.Size=UDim2.new(1,-16,0,64); PIN.Position=UDim2.new(0,8,0,22)
+PIN.BackgroundColor3=C.EDIT; PIN.Text=""
+PIN.PlaceholderText='e.g. "autoparry bot with ESP drawing, all emotes, draggable ui with on/off switches for each feature"'
+PIN.PlaceholderColor3=C.MUTED; PIN.TextColor3=C.TXT
+PIN.Font=FM; PIN.TextSize=10; PIN.MultiLine=true
+PIN.ClearTextOnFocus=false; PIN.TextXAlignment=Enum.TextXAlignment.Left
+PIN.TextYAlignment=Enum.TextYAlignment.Top; PIN.BorderSizePixel=0
+PIN.Parent=PFRAME; corner(PIN,6); pad(PIN,5,8)
 
 -- Generate button
-local GENBTN = B(AI_PAGE,"⬡  Generate Script with AI",UDim2.new(1,0,0,36),UDim2.new(0,0,0,102),C.ACC,C.TXT,13,FB)
+local GENBTN = B(AI_PAGE,"⬡  Scan Game + Generate Script",UDim2.new(1,0,0,36),UDim2.new(0,0,0,102),C.ACC,C.TXT,13,FB)
 corner(GENBTN,8)
 GENBTN.MouseEnter:Connect(function() tw(GENBTN,{BackgroundColor3=Color3.fromRGB(80,152,255)}) end)
 GENBTN.MouseLeave:Connect(function() tw(GENBTN,{BackgroundColor3=C.ACC}) end)
 
--- Code output section
-local OUTLBL  = L(AI_PAGE,"GENERATED SCRIPT", UDim2.new(0,160,0,12), UDim2.new(0,0,0,146), C.MUTED, FB, 9)
-local OUTCNT  = L(AI_PAGE,"", UDim2.new(1,0,0,12), UDim2.new(0,0,0,146), C.MUTED, FN, 9)
-OUTCNT.TextXAlignment = Enum.TextXAlignment.Right
+-- Context summary strip
+local CTXLBL = L(AI_PAGE,"Context: none yet",UDim2.new(1,0,0,14),UDim2.new(0,0,0,144),C.MUTED,FM,9)
+
+-- Code output label row
+local OUTLBL = L(AI_PAGE,"GENERATED SCRIPT",UDim2.new(0,160,0,12),UDim2.new(0,0,0,162),C.MUTED,FB,9)
+local OUTCNT = L(AI_PAGE,"",                UDim2.new(1,0,0,12),  UDim2.new(0,0,0,162),C.MUTED,FN,9)
+OUTCNT.TextXAlignment=Enum.TextXAlignment.Right
 
 -- Scrollable code preview
 local CSCR = Instance.new("ScrollingFrame")
-CSCR.Size                = UDim2.new(1,0,1,-206)
-CSCR.Position            = UDim2.new(0,0,0,162)
-CSCR.BackgroundColor3    = C.DEEP
-CSCR.BorderSizePixel     = 0
-CSCR.ScrollBarThickness  = 3
-CSCR.ScrollBarImageColor3= C.ACC
-CSCR.AutomaticCanvasSize = Enum.AutomaticSize.Y
-CSCR.CanvasSize          = UDim2.new(0,0,0,0)
-CSCR.Parent              = AI_PAGE
-corner(CSCR,8); pad(CSCR,8,10)
+CSCR.Size=UDim2.new(1,0,1,-218); CSCR.Position=UDim2.new(0,0,0,178)
+CSCR.BackgroundColor3=C.DEEP; CSCR.BorderSizePixel=0
+CSCR.ScrollBarThickness=3; CSCR.ScrollBarImageColor3=C.ACC
+CSCR.AutomaticCanvasSize=Enum.AutomaticSize.Y
+CSCR.CanvasSize=UDim2.new(0,0,0,0)
+CSCR.Parent=AI_PAGE; corner(CSCR,8); pad(CSCR,8,10)
 
 local CLBL = Instance.new("TextLabel")
-CLBL.Size                = UDim2.new(1,0,0,0)
-CLBL.AutomaticSize       = Enum.AutomaticSize.Y
-CLBL.BackgroundTransparency = 1
-CLBL.Text                = "← Type a prompt above, then press Generate"
-CLBL.TextColor3          = C.MUTED
-CLBL.Font                = FM
-CLBL.TextSize            = 10
-CLBL.TextWrapped         = true
-CLBL.TextXAlignment      = Enum.TextXAlignment.Left
-CLBL.Parent              = CSCR
+CLBL.Size=UDim2.new(1,0,0,0); CLBL.AutomaticSize=Enum.AutomaticSize.Y
+CLBL.BackgroundTransparency=1
+CLBL.Text="← Type your request above, then press  ⬡ Scan Game + Generate"
+CLBL.TextColor3=C.MUTED; CLBL.Font=FM; CLBL.TextSize=10
+CLBL.TextWrapped=true; CLBL.TextXAlignment=Enum.TextXAlignment.Left
+CLBL.Parent=CSCR
 
 -- Copy + Execute buttons
-local COPYBTN = B(AI_PAGE,"⧉  Copy Script",         UDim2.new(0.5,-3,0,32),UDim2.new(0,0,1,-34),  C.INDIGO,C.TXT,11,FB); corner(COPYBTN,8)
-local EXECBTN = B(AI_PAGE,"▶  Execute via loadstring",UDim2.new(0.5,-3,0,32),UDim2.new(0.5,3,1,-34),C.GRN,   C.TXT,11,FB); corner(EXECBTN,8)
+local COPYBTN = B(AI_PAGE,"⧉  Copy Script",            UDim2.new(0.5,-3,0,32),UDim2.new(0,0,1,-34),  C.INDIGO,C.TXT,11,FB); corner(COPYBTN,8)
+local EXECBTN = B(AI_PAGE,"▶  Execute via loadstring",  UDim2.new(0.5,-3,0,32),UDim2.new(0.5,3,1,-34),C.GRN,   C.TXT,11,FB); corner(EXECBTN,8)
 
 COPYBTN.MouseEnter:Connect(function() tw(COPYBTN,{BackgroundColor3=Color3.fromRGB(118,122,255)}) end)
 COPYBTN.MouseLeave:Connect(function() tw(COPYBTN,{BackgroundColor3=C.INDIGO}) end)
@@ -379,62 +487,70 @@ EXECBTN.MouseLeave:Connect(function() tw(EXECBTN,{BackgroundColor3=C.GRN}) end)
 local generatedCode = ""
 
 COPYBTN.MouseButton1Click:Connect(function()
-    if generatedCode == "" then notify("Nexus AI","Nothing generated yet.",2); return end
-    clipSet(generatedCode)
-    flash(COPYBTN, C.GRN)
-    COPYBTN.Text = "✓  Copied!"
-    task.delay(1.8, function() COPYBTN.Text = "⧉  Copy Script" end)
+    if generatedCode=="" then notify("Nexus AI","Nothing generated yet.",2); return end
+    clipSet(generatedCode); flash(COPYBTN,C.GRN)
+    COPYBTN.Text="✓  Copied!"; task.delay(1.8,function() COPYBTN.Text="⧉  Copy Script" end)
     notify("Nexus AI","Script copied to clipboard!",2)
 end)
-
 EXECBTN.MouseButton1Click:Connect(function()
-    if generatedCode == "" then notify("Nexus AI","Nothing generated yet.",2); return end
-    flash(EXECBTN, C.AMBER)
-    task.spawn(function() execScript(generatedCode) end)
+    if generatedCode=="" then notify("Nexus AI","Nothing generated yet.",2); return end
+    flash(EXECBTN,C.AMBER); task.spawn(function() execScript(generatedCode) end)
 end)
 
 local generating = false
 GENBTN.MouseButton1Click:Connect(function()
     if generating then return end
     local prompt = PIN.Text
-    if not prompt or prompt:gsub("%s","") == "" then
-        notify("Nexus AI","Enter a prompt first!",2); return
-    end
-    generating    = true
-    generatedCode = ""
-    CLBL.Text     = "Asking Claude Opus 4.6 ..."
-    CLBL.TextColor3 = C.AMBER
-    OUTCNT.Text   = ""
-    setStatus("Generating with Claude Opus 4.6...", C.AMBER)
-    tw(GENBTN,{BackgroundColor3=Color3.fromRGB(38,58,102)})
-    GENBTN.Text = "Generating..."
+    if not prompt or prompt:gsub("%s","")=="" then notify("Nexus AI","Enter a prompt first!",2); return end
+    generating=true; generatedCode=""
+    CLBL.Text="Scanning game..."; CLBL.TextColor3=C.AMBER
+    OUTCNT.Text=""; CTXLBL.Text="Scanning..."
+    setStatus("Phase 1 — scanning live game...",C.AMBER)
+    tw(GENBTN,{BackgroundColor3=Color3.fromRGB(38,58,102)}); GENBTN.Text="Scanning game..."
 
     task.spawn(function()
-        local code, err = aiGenerate(prompt)
+        -- Phase 1: gather live game context
+        local gameContext = gatherContext(function(msg)
+            setStatus(msg, C.AMBER)
+            CTXLBL.Text = msg
+        end)
+
+        local ctxLen = #gameContext
+        CTXLBL.Text = "Context: " .. ctxLen .. " chars  ·  remotes + ui + ws + functions"
+        setStatus("Phase 2 — generating with Claude Opus 4.6...", C.AMBER)
+        GENBTN.Text = "Asking AI..."
+        CLBL.Text = "Claude Opus 4.6 is writing your script..."
+        CLBL.TextColor3 = C.AMBER
+
+        -- Phase 2: AI generation with full context
+        local code, err = aiGenerate(prompt, gameContext, function(msg)
+            setStatus(msg, C.AMBER)
+        end)
+
         if code and #code > 20 then
-            generatedCode   = code
-            CLBL.Text       = code
-            CLBL.TextColor3 = C.CODE
-            OUTCNT.Text     = #code .. " chars"
-            setStatus("Done — " .. #code .. " chars  ·  ready to copy / execute", C.GRN)
+            generatedCode = code
+            CLBL.Text = code; CLBL.TextColor3 = C.CODE
+            OUTCNT.Text = #code .. " chars"
+            setStatus("Done — " .. #code .. " chars  ·  Copy or Execute below", C.GRN)
             notify("Nexus AI","Script ready! Press Copy or Execute.",3)
         else
-            CLBL.Text       = "Generation failed:\n" .. (err or "unknown error")
+            CLBL.Text = "Generation failed:\n" .. (err or "unknown error")
             CLBL.TextColor3 = C.RED
-            setStatus("Generation failed", C.RED)
-            notify("Nexus AI", err or "AI request failed.", 4)
+            setStatus("Generation failed",C.RED)
+            notify("Nexus AI", err or "AI request failed.",4)
         end
+
         tw(GENBTN,{BackgroundColor3=C.ACC})
-        GENBTN.Text = "⬡  Generate Script with AI"
-        generating = false
+        GENBTN.Text="⬡  Scan Game + Generate Script"
+        generating=false
     end)
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- SCANNER PAGE
 -- ═══════════════════════════════════════════════════════════════════════════════
-local SCN_PAGE = F(WIN, UDim2.new(1,-24,1,-130), UDim2.new(0,12,0,128), C.BG)
-SCN_PAGE.Visible = false
+local SCN_PAGE = F(WIN,UDim2.new(1,-24,1,-130),UDim2.new(0,12,0,128),C.BG)
+SCN_PAGE.Visible=false
 
 local SCANBTN = B(SCN_PAGE,"⬡  Scan Game for Frame Functions",UDim2.new(1,0,0,36),UDim2.new(0,0,0,0),C.ACC,C.TXT,13,FB)
 corner(SCANBTN,8)
@@ -443,34 +559,28 @@ SCANBTN.MouseLeave:Connect(function() tw(SCANBTN,{BackgroundColor3=C.ACC}) end)
 
 local RLBL = L(SCN_PAGE,"RESULTS",UDim2.new(0,80,0,12),UDim2.new(0,0,0,44),C.MUTED,FB,9)
 local RCNT = L(SCN_PAGE,"",       UDim2.new(1,0,0,12), UDim2.new(0,0,0,44),C.SUB,  FN,9)
-RCNT.TextXAlignment = Enum.TextXAlignment.Right
+RCNT.TextXAlignment=Enum.TextXAlignment.Right
 
 local RSCR = Instance.new("ScrollingFrame")
-RSCR.Size                = UDim2.new(1,0,1,-60)
-RSCR.Position            = UDim2.new(0,0,0,58)
-RSCR.BackgroundColor3    = C.PANEL
-RSCR.BorderSizePixel     = 0
-RSCR.ScrollBarThickness  = 3
-RSCR.ScrollBarImageColor3= C.ACC
-RSCR.AutomaticCanvasSize = Enum.AutomaticSize.Y
-RSCR.CanvasSize          = UDim2.new(0,0,0,0)
-RSCR.Parent              = SCN_PAGE
-corner(RSCR,8); listV(RSCR,6); pad(RSCR,8,8)
+RSCR.Size=UDim2.new(1,0,1,-60); RSCR.Position=UDim2.new(0,0,0,58)
+RSCR.BackgroundColor3=C.PANEL; RSCR.BorderSizePixel=0
+RSCR.ScrollBarThickness=3; RSCR.ScrollBarImageColor3=C.ACC
+RSCR.AutomaticCanvasSize=Enum.AutomaticSize.Y; RSCR.CanvasSize=UDim2.new(0,0,0,0)
+RSCR.Parent=SCN_PAGE; corner(RSCR,8); listV(RSCR,6); pad(RSCR,8,8)
 
-local EMPTY = L(RSCR,"No scripts scanned yet.\nPress Scan to search for frame-drawing functions.",
-    UDim2.new(1,0,0,110), nil, C.MUTED, FN,12)
-EMPTY.TextXAlignment = Enum.TextXAlignment.Center
-EMPTY.TextYAlignment = Enum.TextYAlignment.Center
+local EMPTY=L(RSCR,"No scripts scanned yet.\nPress Scan to search for frame-drawing functions.",
+    UDim2.new(1,0,0,110),nil,C.MUTED,FN,12)
+EMPTY.TextXAlignment=Enum.TextXAlignment.Center
+EMPTY.TextYAlignment=Enum.TextYAlignment.Center
 
 local function makeCard(info, idx)
-    local CARD = Instance.new("Frame")
+    local CARD=Instance.new("Frame")
     CARD.Size=UDim2.new(1,0,0,0); CARD.AutomaticSize=Enum.AutomaticSize.Y
     CARD.BackgroundColor3=C.EDIT; CARD.BorderSizePixel=0
     CARD.LayoutOrder=idx; CARD.Parent=RSCR
     corner(CARD,7); stroke(CARD,C.BORDER,1); listV(CARD,0)
 
-    -- Header
-    local HDR = F(CARD,UDim2.new(1,0,0,32),nil,C.HDRROW)
+    local HDR=F(CARD,UDim2.new(1,0,0,32),nil,C.HDRROW)
     HDR.LayoutOrder=1; corner(HDR,7)
     F(HDR,UDim2.new(1,0,0,7),UDim2.new(0,0,1,-7),C.HDRROW)
     dot(HDR,UDim2.new(0,7,0,7),UDim2.new(0,9,0.5,-3),C.ACC)
@@ -480,7 +590,6 @@ local function makeCard(info, idx)
     local PT=L(PIL,info.source or "?",UDim2.new(1,-6,1,0),UDim2.new(0,3,0,0),C.MUTED,FM,9)
     PT.TextXAlignment=Enum.TextXAlignment.Center; PT.TextTruncate=Enum.TextTruncate.AtEnd
 
-    -- Code preview
     local CR=Instance.new("Frame"); CR.Size=UDim2.new(1,0,0,0); CR.AutomaticSize=Enum.AutomaticSize.Y
     CR.BackgroundColor3=C.DEEP; CR.BorderSizePixel=0; CR.LayoutOrder=2; CR.Parent=CARD; pad(CR,6,10)
     local lines=info.code:split("\n"); local pl={}
@@ -490,10 +599,9 @@ local function makeCard(info, idx)
     CT.BackgroundTransparency=1; CT.Text=table.concat(pl,"\n"); CT.TextColor3=C.CODE
     CT.Font=FM; CT.TextSize=9; CT.TextWrapped=true; CT.TextXAlignment=Enum.TextXAlignment.Left; CT.Parent=CR
 
-    -- Copy + Execute row
     local BR=F(CARD,UDim2.new(1,0,0,34),nil,C.EDIT); BR.LayoutOrder=3
     local CP=B(BR,"⧉ Copy",    UDim2.new(0.5,-5,0,26),UDim2.new(0,4,0,4),  C.INDIGO,C.TXT,10,FB); corner(CP,6)
-    local EX=B(BR,"▶ Execute",  UDim2.new(0.5,-5,0,26),UDim2.new(0.5,3,0,4),C.GRN,   C.TXT,10,FB); corner(EX,6)
+    local EX=B(BR,"▶ Execute", UDim2.new(0.5,-5,0,26),UDim2.new(0.5,3,0,4),C.GRN,   C.TXT,10,FB); corner(EX,6)
     CP.MouseButton1Click:Connect(function()
         clipSet(info.code); flash(CP,C.GRN)
         CP.Text="✓ Copied!"; task.delay(1.5,function() CP.Text="⧉ Copy" end)
@@ -504,34 +612,29 @@ local function makeCard(info, idx)
     end)
 end
 
-local scanning = false
+local scanning=false
 SCANBTN.MouseButton1Click:Connect(function()
     if scanning then return end; scanning=true
     for _,c in ipairs(RSCR:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
     EMPTY.Visible=false; RCNT.Text=""
-    setStatus("Collecting scripts...", C.AMBER)
+    setStatus("Collecting scripts...",C.AMBER)
     tw(SCANBTN,{BackgroundColor3=Color3.fromRGB(38,58,102)}); SCANBTN.Text="Scanning..."
-
     task.spawn(function()
         local scripts={}
         if getScripts then pcall(function() scripts=getScripts() end) end
         if #scripts==0 then
             for _,v in ipairs(game:GetDescendants()) do
-                if v:IsA("LocalScript") or v:IsA("ModuleScript") or v:IsA("Script") then
-                    table.insert(scripts,v)
-                end
+                if v:IsA("LocalScript") or v:IsA("ModuleScript") or v:IsA("Script") then table.insert(scripts,v) end
             end
         end
-        setStatus("Found "..#scripts.." scripts — extracting...", C.AMBER)
+        setStatus("Found "..#scripts.." scripts — extracting...",C.AMBER)
         local found={}
         for _,scr in ipairs(scripts) do
             local src=""
             if doDecomp then pcall(function() src=doDecomp(scr) end) end
             if src=="" then pcall(function() src=scr.Source end) end
             if src and src~="" then
-                for _,fn in ipairs(extractFunctions(src,scr.Name)) do
-                    table.insert(found,fn)
-                end
+                for _,fn in ipairs(extractFunctions(src,scr.Name)) do table.insert(found,fn) end
             end
         end
         if #found==0 then
@@ -563,6 +666,6 @@ end
 TAB_AI.MouseButton1Click:Connect(function()  showTab("ai")      end)
 TAB_SCN.MouseButton1Click:Connect(function() showTab("scanner") end)
 
--- ── Boot ──────────────────────────────────────────────────────────────────────
-setStatus("Ready — describe a script and press Generate", C.GRN)
-notify("Nexus AI","Type any script request and press Generate, or use the Scanner tab.",4)
+-- Boot
+setStatus("Ready — type a prompt and press  ⬡ Scan Game + Generate", C.GRN)
+notify("Nexus AI","Loaded! Describe what you want and hit Generate — AI scans the game first.",4)
