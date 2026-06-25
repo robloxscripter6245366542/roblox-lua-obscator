@@ -31,45 +31,54 @@ local LP       = Players.LocalPlayer
 local PGUI     = LP:WaitForChild("PlayerGui")
 local CAM      = workspace.CurrentCamera
 
--- ── HTTP request abstraction ──────────────────────────────────────────────────
--- Delta iOS: game:HttpGet() works but request() does not.
--- Wrap HttpService:RequestAsync (unlocked by Delta) as primary POST method.
+-- ── HTTP abstraction (Delta iOS: only game:HttpGet works) ─────────────────────
 local HS_req = game:GetService("HttpService")
 
+-- URL encoder for GET requests
+local function urlEnc(s)
+    return (tostring(s):gsub("([^%w%-%.%_%~])", function(c)
+        return string.format("%%%02X", string.byte(c))
+    end))
+end
+
+-- GET request (works on Delta iOS via game:HttpGet)
+local function doHttpGet(url)
+    local ok1, r1 = pcall(function() return game:HttpGet(url, true) end)
+    if ok1 and type(r1)=="string" and #r1>10 then return r1 end
+    local ok2, r2 = pcall(function() return HS_req:GetAsync(url, true) end)
+    if ok2 and type(r2)=="string" and #r2>10 then return r2 end
+    return nil
+end
+
+-- POST request (PC executors + some Android)
 local function doHttpPost(url, body, headers)
-    -- 1) Try HttpService:RequestAsync (Delta iOS unlocks this)
     local ok1, r1 = pcall(function()
-        return HS_req:RequestAsync({
-            Url=url, Method="POST",
-            Headers=headers or {["Content-Type"]="application/json"},
-            Body=body,
-        })
+        return HS_req:RequestAsync({Url=url,Method="POST",
+            Headers=headers or {["Content-Type"]="application/json"},Body=body})
     end)
     if ok1 and r1 and (r1.StatusCode==200 or r1.Success) then
-        return {StatusCode=r1.StatusCode or 200, Body=r1.Body or ""}
+        return r1.Body or ""
     end
-    -- 2) Try UNC request()
     local ok2, r2 = pcall(function()
         if type(request)=="function" then
             return request({Url=url,Method="POST",Headers=headers,Body=body})
         end
     end)
     if ok2 and r2 and (r2.StatusCode==200 or r2.status==200) then
-        return {StatusCode=200, Body=r2.Body or r2.body or ""}
+        return r2.Body or r2.body or ""
     end
-    -- 3) Try syn.request
     local ok3, r3 = pcall(function()
         if type(syn)=="table" and type(syn.request)=="function" then
             return syn.request({Url=url,Method="POST",Headers=headers,Body=body})
         end
     end)
     if ok3 and r3 and (r3.StatusCode==200 or r3.status==200) then
-        return {StatusCode=200, Body=r3.Body or r3.body or ""}
+        return r3.Body or r3.body or ""
     end
     return nil
 end
 
--- legacy httpReq kept for UNC tester compat
+-- legacy httpReq for UNC tester
 local httpReq
 pcall(function()
     if type(request)=="function" then httpReq=request
@@ -634,31 +643,77 @@ OUTPUT FORMAT:
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- AI GENERATION
 -- ═══════════════════════════════════════════════════════════════════════════════
+-- Short system prompt for GET endpoint (must be URL-safe and brief)
+local SYS_SHORT = "You are a Roblox Lua executor script expert. Write complete working scripts using ONLY the real game paths provided. Include hookfunction on remotes, ESP Drawing API if multiplayer, feature toggles, output log panel. Output raw Lua code only. No markdown, no backticks."
+
+-- Compact context: first 30 meaningful lines of full context (~800 chars)
+local function compactCtx(fullCtx)
+    local lines, n = {}, 0
+    for line in fullCtx:gmatch("[^\n]+") do
+        local trim = line:gsub("^%s+","")
+        if #trim > 2 then
+            table.insert(lines, trim); n = n + 1
+            if n >= 30 then break end
+        end
+    end
+    -- also grab HOOKABLE TARGETS section
+    local hooks = fullCtx:match("HOOKABLE TARGETS(.-)=== END") or ""
+    local hlines, hn = {}, 0
+    for l in hooks:gmatch("[^\n]+") do
+        table.insert(hlines, l:gsub("^%s+","")); hn=hn+1
+        if hn >= 15 then break end
+    end
+    local result = table.concat(lines,"\n").."\nHOOKABLE TARGETS:"..table.concat(hlines,"\n")
+    return result:sub(1, 900)
+end
+
 local function aiGenerate(prompt, ctx, onStatus)
-    local full = ctx.."\n\n[USER REQUEST]\n"..prompt
     local lastErr = "no response"
-    local function tryModel(model)
-        local body = HS:JSONEncode({
-            messages={{role="system",content=SYS},{role="user",content=full}},
-            model=model, seed=math.random(1,99999),
-        })
-        local res = doHttpPost(
-            "https://text.pollinations.ai/",
-            body,
-            {["Content-Type"]="application/json"}
-        )
-        if not res then lastErr = "All HTTP methods failed (HttpService:RequestAsync, request, syn.request)"; return nil end
-        local body2 = res.Body or ""
-        if #body2 < 10 then lastErr = "Empty response body"; return nil end
-        local cleaned = cleanLuaCode(body2)
-        if #cleaned > 20 then return cleaned end
-        lastErr = "Response too short after clean ("..#cleaned.." chars): "..body2:sub(1,60)
+    local seed = math.random(1,99999)
+
+    -- Method 1: GET endpoint (works on Delta iOS — game:HttpGet)
+    local function tryGET(model)
+        local compact = compactCtx(ctx)
+        local userMsg = compact.."\n\nREQUEST: "..prompt
+        local url = "https://text.pollinations.ai/"..urlEnc(userMsg)
+            .."?model="..model.."&seed="..seed.."&system="..urlEnc(SYS_SHORT)
+        local body = doHttpGet(url)
+        if body and #body > 20 then
+            local cleaned = cleanLuaCode(body)
+            if #cleaned > 20 then return cleaned end
+            lastErr = "GET response too short after clean ("..#cleaned.." chars)"
+        else
+            lastErr = "GET returned empty"
+        end
         return nil
     end
-    onStatus("Sending to Claude Opus 4.6...")
-    local code = tryModel("claude-opus-4-6")
-    if not code then onStatus("Retrying with openai fallback..."); code = tryModel("openai") end
-    if not code then onStatus("Retrying with mistral fallback..."); code = tryModel("mistral") end
+
+    -- Method 2: POST endpoint (PC executors)
+    local function tryPOST(model)
+        local full = ctx.."\n\n[USER REQUEST]\n"..prompt
+        local body = HS:JSONEncode({
+            messages={{role="system",content=SYS},{role="user",content=full}},
+            model=model, seed=seed,
+        })
+        local res = doHttpPost("https://text.pollinations.ai/", body,
+            {["Content-Type"]="application/json"})
+        if res and #res > 10 then
+            local cleaned = cleanLuaCode(res)
+            if #cleaned > 20 then return cleaned end
+            lastErr = "POST response too short ("..#cleaned.." chars)"
+        else
+            lastErr = "POST returned empty or failed"
+        end
+        return nil
+    end
+
+    -- Try GET first (Delta iOS), then POST fallbacks
+    onStatus("Calling AI (GET)...")
+    local code = tryGET("openai")
+    if not code then onStatus("Trying claude via GET..."); code = tryGET("claude-opus-4-6") end
+    if not code then onStatus("Trying POST method..."); code = tryPOST("openai") end
+    if not code then onStatus("Trying POST claude..."); code = tryPOST("claude-opus-4-6") end
+    if not code then onStatus("Trying POST mistral..."); code = tryPOST("mistral") end
     if code then return code,nil end
     return nil,lastErr
 end
@@ -715,8 +770,8 @@ pcall(function() if protect_gui then protect_gui(GUI) end end)
 
 -- Responsive sizing: fit to screen, max 520x692, min 300x420
 local _vp = CAM.ViewportSize
-local WIN_W = math.min(520, math.max(300, math.floor(_vp.X * 0.92)))
-local WIN_H = math.min(692, math.max(420, math.floor(_vp.Y * 0.88)))
+local WIN_W = math.min(480, math.max(300, math.floor(_vp.X * 0.92)))
+local WIN_H = math.min(520, math.max(400, math.floor(_vp.Y * 0.72)))
 print(string.format("[NexusAI] GUI parent=%s viewport=%dx%d window=%dx%d",
     tostring(GUI.Parent and GUI.Parent:GetFullName() or "nil"),
     _vp.X, _vp.Y, WIN_W, WIN_H))
@@ -812,38 +867,38 @@ local PAGE = F(WIN,UDim2.new(1,-24,1,-138),UDim2.new(0,12,0,132),C.BG)
 -- ── AI GENERATE PAGE ──────────────────────────────────────────────────────────
 local AI_PAGE = F(PAGE,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),C.BG)
 
--- Prompt input
-local PFRAME = F(AI_PAGE,UDim2.new(1,0,0,90),UDim2.new(0,0,0,0),C.PANEL)
+-- Prompt input (compact: 68px tall)
+local PFRAME = F(AI_PAGE,UDim2.new(1,0,0,68),UDim2.new(0,0,0,0),C.PANEL)
 corner(PFRAME,8); stroke(PFRAME,C.BORDER)
-L(PFRAME,"Describe the script you want:",UDim2.new(1,-12,0,14),UDim2.new(0,10,0,6),C.SUB,FB,9)
+L(PFRAME,"Prompt:",UDim2.new(1,-12,0,12),UDim2.new(0,10,0,4),C.SUB,FB,9)
 local PIN = Instance.new("TextBox")
-PIN.Size=UDim2.new(1,-16,0,58); PIN.Position=UDim2.new(0,8,0,22)
+PIN.Size=UDim2.new(1,-16,0,44); PIN.Position=UDim2.new(0,8,0,18)
 PIN.BackgroundColor3=C.EDIT; PIN.Text=""
-PIN.PlaceholderText='e.g. "hook all remotes, ESP all players + NPCs, autoparry bot, emotes, toggle UI, use all UNC functions"'
+PIN.PlaceholderText='e.g. "hook all remotes, ESP players, autoparry, toggles"'
 PIN.PlaceholderColor3=C.MUTED; PIN.TextColor3=C.TXT
 PIN.Font=FM; PIN.TextSize=10; PIN.MultiLine=true
 PIN.ClearTextOnFocus=false; PIN.TextXAlignment=Enum.TextXAlignment.Left
 PIN.TextYAlignment=Enum.TextYAlignment.Top; PIN.BorderSizePixel=0
-PIN.Parent=PFRAME; corner(PIN,6); pad(PIN,5,8)
+PIN.Parent=PFRAME; corner(PIN,6); pad(PIN,4,8)
 
 -- Generate button
-local GENBTN=B(AI_PAGE,"⬡  Deep Scan + Analyse + Generate",UDim2.new(1,0,0,34),UDim2.new(0,0,0,96),C.ACC,C.TXT,13,FB)
+local GENBTN=B(AI_PAGE,"⬡  Scan + Generate",UDim2.new(1,0,0,30),UDim2.new(0,0,0,74),C.ACC,C.TXT,12,FB)
 corner(GENBTN,8)
 GENBTN.MouseEnter:Connect(function() tw(GENBTN,{BackgroundColor3=Color3.fromRGB(80,152,255)}) end)
 GENBTN.MouseLeave:Connect(function() tw(GENBTN,{BackgroundColor3=C.ACC}) end)
 
--- Live output log
-local LOGLBL = F(AI_PAGE,UDim2.new(1,0,0,14),UDim2.new(0,0,0,136),C.BG)
-L(LOGLBL,"OUTPUT LOG",UDim2.new(0,80,1,0),nil,C.MUTED,FB,9)
-local LOGCLEAR=B(LOGLBL,"Clear",UDim2.new(0,36,1,0),UDim2.new(1,-38,0,0),C.CARD,C.SUB,9,FN)
+-- Live output log (compact: 50px)
+local LOGLBL = F(AI_PAGE,UDim2.new(1,0,0,14),UDim2.new(0,0,0,110),C.BG)
+L(LOGLBL,"LOG",UDim2.new(0,40,1,0),nil,C.MUTED,FB,9)
+local LOGCLEAR=B(LOGLBL,"Clear",UDim2.new(0,34,1,0),UDim2.new(1,-36,0,0),C.CARD,C.SUB,8,FN)
 corner(LOGCLEAR,4)
 
 local LOGBOX = Instance.new("ScrollingFrame")
-LOGBOX.Size=UDim2.new(1,0,0,72); LOGBOX.Position=UDim2.new(0,0,0,152)
+LOGBOX.Size=UDim2.new(1,0,0,50); LOGBOX.Position=UDim2.new(0,0,0,126)
 LOGBOX.BackgroundColor3=C.DEEP; LOGBOX.BorderSizePixel=0
 LOGBOX.ScrollBarThickness=2; LOGBOX.ScrollBarImageColor3=C.MUTED
 LOGBOX.AutomaticCanvasSize=Enum.AutomaticSize.Y; LOGBOX.CanvasSize=UDim2.new(0,0,0,0)
-LOGBOX.Parent=AI_PAGE; corner(LOGBOX,6); stroke(LOGBOX,C.BORDER); pad(LOGBOX,4,8)
+LOGBOX.Parent=AI_PAGE; corner(LOGBOX,6); stroke(LOGBOX,C.BORDER); pad(LOGBOX,3,6)
 listV(LOGBOX,1)
 
 local logLines = {}
@@ -857,7 +912,6 @@ local function addLog(msg, col)
     lbl.LayoutOrder=#logLines+1; lbl.Parent=LOGBOX
     table.insert(logLines,lbl)
     if #logLines>30 then logLines[1]:Destroy(); table.remove(logLines,1) end
-    -- Auto-scroll to bottom
     task.defer(function()
         LOGBOX.CanvasPosition=Vector2.new(0,math.max(0,LOGBOX.AbsoluteCanvasSize.Y-LOGBOX.AbsoluteSize.Y))
     end)
@@ -867,12 +921,12 @@ LOGCLEAR.MouseButton1Click:Connect(function()
 end)
 
 -- Code output section
-local OUTLBL=L(AI_PAGE,"GENERATED SCRIPT",UDim2.new(0,160,0,12),UDim2.new(0,0,0,230),C.MUTED,FB,9)
-local OUTCNT=L(AI_PAGE,"",               UDim2.new(1,0,0,12),  UDim2.new(0,0,0,230),C.MUTED,FN,9)
+local OUTLBL=L(AI_PAGE,"GENERATED SCRIPT",UDim2.new(0,160,0,12),UDim2.new(0,0,0,182),C.MUTED,FB,9)
+local OUTCNT=L(AI_PAGE,"",               UDim2.new(1,0,0,12),  UDim2.new(0,0,0,182),C.MUTED,FN,9)
 OUTCNT.TextXAlignment=Enum.TextXAlignment.Right
 
--- Code scroll
-local CSCR=scr(AI_PAGE,UDim2.new(1,0,1,-282),UDim2.new(0,0,0,246))
+-- Code scroll (height = remaining page height minus 198px for fixed elements above + 34px buttons below)
+local CSCR=scr(AI_PAGE,UDim2.new(1,0,1,-232),UDim2.new(0,0,0,196))
 CSCR.BackgroundColor3=C.DEEP; corner(CSCR,8); pad(CSCR,8,10)
 
 local CLBL = Instance.new("TextLabel")
