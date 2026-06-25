@@ -1,0 +1,7 @@
+{
+  "name": "seedance-root",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix seedance-react install && npm --prefix seedance-react run build"
+  }
+}
