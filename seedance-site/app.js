@@ -3,7 +3,7 @@
 // ===== State =====
 const state = {
   mode: 'text',
-  settings: { resolution: '4K', duration: '5s', style: 'Cinematic', motion: 5, aspect: '16:9', fps: '30fps' },
+  settings: { resolution: '4k', duration: '5', style: 'Cinematic', motion: 5, aspect: '16:9', model: 'seedance-2-0', audio: 'true' },
   sessionSeconds: 30 * 60,
   timerRunning: false,
   timerInterval: null,
@@ -237,56 +237,80 @@ async function callSeedanceAPI(prompt) {
 }
 
 async function callRealAPI(prompt, apiKey) {
-  // Seedance 2.5 via ByteDance/Jianying API endpoint
-  // Endpoint: https://api.seedance.ai/v1/generate
-  const payload = {
-    model: 'seedance-2.5-pro',
+  const BASE = 'https://api.seedance2.ai';
+  const genType = state.mode === 'text' ? 'text-to-video' : 'image-to-video';
+
+  const inputPayload = {
     prompt,
-    resolution: state.settings.resolution === '4K' ? '3840x2160' : state.settings.resolution === '1080p' ? '1920x1080' : '1280x720',
-    duration: parseInt(state.settings.duration),
-    style: state.settings.style.toLowerCase(),
-    motion_intensity: state.settings.motion / 10,
+    generation_type: genType,
+    duration: parseInt(state.settings.duration, 10),
     aspect_ratio: state.settings.aspect,
-    fps: parseInt(state.settings.fps),
+    resolution: state.settings.resolution,
+    generate_audio: state.settings.audio === 'true',
+    watermark: false,
+    seed: -1,
   };
 
+  // Attach uploaded image for image-to-video
+  if (genType === 'image-to-video' && els.uploadPreview.src && !els.uploadPreview.classList.contains('hidden')) {
+    inputPayload.image_urls = [els.uploadPreview.src];
+  }
+
+  const body = { model: state.settings.model, input: inputPayload };
+
   updateLoadingStep(1); updateProgress(10);
-  const resp = await fetch('https://api.seedance.ai/v1/generate', {
+  els.loadingTitle.textContent = 'Submitting to Seedance 2.5...';
+
+  const resp = await fetch(`${BASE}/v1/videos/generations`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
-    throw new Error(err.message || `API error ${resp.status}`);
+    const msg = err.error?.message || err.message || `API error ${resp.status}`;
+    if (resp.status === 401) throw new Error('Invalid API key — check your sk_live_... key');
+    if (resp.status === 402) throw new Error('Insufficient credits on your Seedance account');
+    if (resp.status === 429) throw new Error('Rate limit hit — please wait a moment');
+    throw new Error(msg);
   }
 
-  updateLoadingStep(2); updateProgress(40);
-  const data = await resp.json();
-  const taskId = data.task_id || data.id;
+  const { taskId } = await resp.json();
   if (!taskId) throw new Error('No task ID returned from API');
 
-  // Poll for completion
-  for (let i = 0; i < 60; i++) {
-    await sleep(2000);
-    const poll = await fetch(`https://api.seedance.ai/v1/tasks/${taskId}`, {
+  updateLoadingStep(2); updateProgress(25);
+  els.loadingTitle.textContent = 'Generating frames...';
+
+  // Poll every 10 seconds per API recommendation
+  const maxPolls = 90; // 15 minutes max
+  for (let i = 0; i < maxPolls; i++) {
+    await sleep(10000);
+
+    const poll = await fetch(`${BASE}/v1/tasks/${taskId}`, {
       headers: { 'Authorization': `Bearer ${apiKey}` },
     });
     const result = await poll.json();
 
-    const progress = result.progress || (i / 60) * 90;
-    updateProgress(40 + progress * 0.5);
-
-    if (result.status === 'completed' || result.status === 'succeeded') {
+    // Rough progress: queued=25%, generating ramps 25→80%, completed=100%
+    if (result.status === 'queued') {
+      updateProgress(25);
+    } else if (result.status === 'generating') {
+      updateLoadingStep(2);
+      updateProgress(Math.min(80, 25 + (i / maxPolls) * 55));
+    } else if (result.status === 'completed') {
       updateLoadingStep(3); updateProgress(90);
-      await sleep(500);
+      els.loadingTitle.textContent = 'Upscaling to 4K...';
+      await sleep(600);
       updateLoadingStep(4); updateProgress(100);
-      return result.video_url || result.output?.video_url;
+      const videoUrl = result.data?.results?.[0];
+      if (!videoUrl) throw new Error('No video URL in response');
+      return videoUrl;
+    } else if (result.status === 'failed') {
+      throw new Error(result.data?.failed_reason || 'Generation failed on server');
     }
-    if (result.status === 'failed') throw new Error(result.error || 'Generation failed');
   }
-  throw new Error('Generation timed out');
+  throw new Error('Generation timed out after 15 minutes');
 }
 
 async function simulateGeneration(prompt) {
@@ -422,7 +446,7 @@ function showLoading() {
   resetLoadingSteps();
   els.progressBar.style.width = '0%';
   els.loadingTitle.textContent = 'Initializing Seedance 2.5...';
-  els.loadingEta.textContent = `Estimated: ~${parseInt(state.settings.duration) + 3}s`;
+  els.loadingEta.textContent = `Estimated: ~${parseInt(state.settings.duration, 10) + 3}s`;
 }
 
 function showIdle() {
@@ -438,11 +462,12 @@ function showResult(videoUrl, prompt) {
   els.outputActions.classList.remove('hidden');
   els.outputVideo.src = videoUrl;
   els.outputVideo.play().catch(() => {});
+  const res = state.settings.resolution === '4k' ? '4K' : state.settings.resolution;
   els.videoMeta.innerHTML = `
-    <span class="tag">${state.settings.resolution}</span>
-    <span class="tag">${state.settings.duration}</span>
+    <span class="tag">${res}</span>
+    <span class="tag">${state.settings.duration}s</span>
     <span class="tag">${state.settings.style}</span>
-    <span class="tag">${state.settings.fps}</span>
+    <span class="tag">${state.settings.aspect}</span>
   `;
   // Store for download
   els.downloadBtn._url = videoUrl;
@@ -487,7 +512,7 @@ function renderQueue() {
       <div class="queue-thumb"><video src="${item.videoUrl}" muted loop autoplay playsinline></video></div>
       <div class="queue-info">
         <div class="queue-prompt">${item.prompt}</div>
-        <div class="queue-meta">${item.settings.resolution} · ${item.settings.duration} · ${item.settings.style}</div>
+        <div class="queue-meta">${item.settings.resolution === '4k' ? '4K' : item.settings.resolution} · ${item.settings.duration}s · ${item.settings.style}</div>
       </div>
       <span class="queue-badge">Done</span>
     `;

@@ -149,18 +149,19 @@
               <div class="setting-group">
                 <span class="setting-label">Resolution</span>
                 <div class="select-row">
-                  <button class="select-chip active" data-setting="resolution" data-val="4K">4K</button>
+                  <button class="select-chip active" data-setting="resolution" data-val="4k">4K</button>
                   <button class="select-chip" data-setting="resolution" data-val="1080p">1080p</button>
                   <button class="select-chip" data-setting="resolution" data-val="720p">720p</button>
+                  <button class="select-chip" data-setting="resolution" data-val="480p">480p</button>
                 </div>
               </div>
 
               <div class="setting-group">
                 <span class="setting-label">Duration</span>
                 <div class="select-row">
-                  <button class="select-chip active" data-setting="duration" data-val="5s">5s</button>
-                  <button class="select-chip" data-setting="duration" data-val="10s">10s</button>
-                  <button class="select-chip" data-setting="duration" data-val="20s">20s</button>
+                  <button class="select-chip active" data-setting="duration" data-val="5">5s</button>
+                  <button class="select-chip" data-setting="duration" data-val="10">10s</button>
+                  <button class="select-chip" data-setting="duration" data-val="15">15s</button>
                 </div>
               </div>
 
@@ -175,28 +176,29 @@
               </div>
 
               <div class="setting-group">
-                <span class="setting-label">Motion Intensity</span>
-                <div class="slider-row">
-                  <input type="range" id="motionSlider" min="1" max="10" value="5" class="slider" />
-                  <span class="slider-val" id="motionVal">5</span>
-                </div>
-              </div>
-
-              <div class="setting-group">
                 <span class="setting-label">Aspect Ratio</span>
                 <div class="select-row">
                   <button class="select-chip active" data-setting="aspect" data-val="16:9">16:9</button>
                   <button class="select-chip" data-setting="aspect" data-val="9:16">9:16</button>
                   <button class="select-chip" data-setting="aspect" data-val="1:1">1:1</button>
+                  <button class="select-chip" data-setting="aspect" data-val="21:9">21:9</button>
+                  <button class="select-chip" data-setting="aspect" data-val="4:3">4:3</button>
                 </div>
               </div>
 
               <div class="setting-group">
-                <span class="setting-label">Frame Rate</span>
+                <span class="setting-label">Speed</span>
                 <div class="select-row">
-                  <button class="select-chip" data-setting="fps" data-val="24fps">24fps</button>
-                  <button class="select-chip active" data-setting="fps" data-val="30fps">30fps</button>
-                  <button class="select-chip" data-setting="fps" data-val="60fps">60fps</button>
+                  <button class="select-chip active" data-setting="model" data-val="seedance-2-0">Quality</button>
+                  <button class="select-chip" data-setting="model" data-val="seedance-2-0-fast">Fast</button>
+                </div>
+              </div>
+
+              <div class="setting-group">
+                <span class="setting-label">Audio</span>
+                <div class="select-row">
+                  <button class="select-chip active" data-setting="audio" data-val="true">Generate Audio</button>
+                  <button class="select-chip" data-setting="audio" data-val="false">Silent</button>
                 </div>
               </div>
 
@@ -209,7 +211,7 @@
               API Key <span class="label-optional">(optional — uses shared pool if empty)</span>
             </label>
             <div class="api-key-row">
-              <input type="password" id="apiKeyInput" class="input" placeholder="sk-..." />
+              <input type="password" id="apiKeyInput" class="input" placeholder="sk_live_..." />
               <button class="btn-ghost btn-icon" id="toggleApiKey" title="Show/hide">
                 <svg viewBox="0 0 20 20" fill="none" id="eyeIcon"><circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M2 10c2-5 4-6 8-6s6 1 8 6c-2 5-4 6-8 6s-6-1-8-6z" stroke="currentColor" stroke-width="1.5"/></svg>
               </button>
