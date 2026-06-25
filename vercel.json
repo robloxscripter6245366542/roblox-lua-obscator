@@ -1,0 +1,5 @@
+{
+  "buildCommand": "cd seedance-react && npm install && npm run build",
+  "outputDirectory": "seedance-react/dist",
+  "framework": null
+}
