@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
---  Blade Ball  |  Auto Parry  v2.1  |  Place ID: 13772394625
+--  Blade Ball  |  Auto Parry  v2.2  |  Place ID: 13772394625
 --  Requires: getnilinstances, getconnections, hookfunction,
 --            getcallbackvalue, hookmetamethod
 -- ════════════════════════════════════════════════════════════════════════
@@ -69,14 +69,13 @@ for _, conn in getconnections(ParrySuccessAll.OnClientEvent) do
     end)
 end
 
--- ── ConfidentTarget: only arm parry when WE are the target ───────────────
-State.IsTarget = false
+-- ── ConfidentTarget: UI display only — does NOT gate the parry ───────────
+State.IsTarget   = false
 State.TargetName = ""
 
 for _, conn in getconnections(ConfidentTarget.OnClientEvent) do
     local old; old = hookfunction(conn.Function, function(...)
         local args = {...}
-        -- arg 1 is typically the targeted Player object
         local target = args[1]
         if typeof(target) == "Instance" and target:IsA("Player") then
             State.IsTarget   = (target == LP)
@@ -117,15 +116,32 @@ for _, conn in getconnections(SetMessage.OnClientEvent) do
     end)
 end
 
--- ── Parry remote (from server info panel) ────────────────────────────────
-local PARRY_REMOTE = "eehbffibel9j:e9h=ec<h=i`:9:5981e"
+-- ── Parry remote — cached after first find ────────────────────────────────
+local PARRY_REMOTE  = "eehbffibel9j:e9h=ec<h=i`:9:5981e"
+local _cachedRemote = nil
+
+-- Auto-capture via __namecall so we catch it the moment the game itself
+-- fires it (e.g. when the player manually presses the parry button once)
+local _captureHook; _captureHook = hookmetamethod(game, "__namecall", function(self, ...)
+    if not _cachedRemote and getnamecallmethod() == "FireServer"
+       and self:IsA("RemoteEvent") and self.Name == PARRY_REMOTE then
+        _cachedRemote = self
+    end
+    return _captureHook(self, ...)
+end)
 
 local function getParryRemote()
-    for _, v in RS:GetDescendants() do
-        if v:IsA("RemoteEvent") and v.Name == PARRY_REMOTE then return v end
-    end
+    if _cachedRemote then return _cachedRemote end
+    -- nil instances first (obfuscated remotes live here in Blade Ball)
     for _, v in getnilinstances() do
-        if v:IsA("RemoteEvent") and v.Name == PARRY_REMOTE then return v end
+        if v:IsA("RemoteEvent") and v.Name == PARRY_REMOTE then
+            _cachedRemote = v; return v
+        end
+    end
+    for _, v in RS:GetDescendants() do
+        if v:IsA("RemoteEvent") and v.Name == PARRY_REMOTE then
+            _cachedRemote = v; return v
+        end
     end
 end
 
@@ -136,23 +152,17 @@ local function getHRP()
 end
 
 -- ── Parry fire ────────────────────────────────────────────────────────────
-local function doParry(ball)
+local function doParry()
     if not CFG.Enabled then return end
-    -- Skip if ball is confirmed targeting someone else
-    if not State.IsTarget and State.TargetName ~= "" then return end
     local remote = getParryRemote()
     if not remote then return end
-    local hrp = getHRP()
-    if not hrp then return end
-    if not ball or not ball.Parent then return end
-    local part = ball:IsA("BasePart") and ball or ball:FindFirstChildOfClass("BasePart")
-    if not part then return end
-    if (hrp.Position - part.Position).Magnitude > CFG.ParryDistance then return end
     if CFG.Delay > 0 then task.wait(CFG.Delay) end
     pcall(function() remote:FireServer() end)
 end
 
--- ── Ball tracking ─────────────────────────────────────────────────────────
+-- ── Ball tracking — stays connected, fires with cooldown ─────────────────
+local _parryCooldown = false
+
 local function watchBall(ball)
     if State.ActiveBalls[ball] then return end
 
@@ -171,11 +181,10 @@ local function watchBall(ball)
         if not part then return end
         local dist = (hrp.Position - part.Position).Magnitude
         State.BallDist = dist
-        if CFG.Enabled and dist <= CFG.ParryDistance then
-            State.ActiveBalls[ball]:Disconnect()
-            State.ActiveBalls[ball] = nil
-            State.BallDist = math.huge
-            doParry(ball)
+        if CFG.Enabled and not _parryCooldown and dist <= CFG.ParryDistance then
+            _parryCooldown = true
+            doParry()
+            task.delay(0.4, function() _parryCooldown = false end)
         end
     end)
 
@@ -311,7 +320,7 @@ local HVer = Instance.new("TextLabel", Header)
 HVer.Size = UDim2.new(0, 32, 1, 0); HVer.Position = UDim2.new(1, -38, 0, 0)
 HVer.BackgroundTransparency = 1; HVer.Text = "v2.0"
 HVer.TextColor3 = Color3.fromRGB(200, 170, 255); HVer.Font = Enum.Font.Gotham; HVer.TextSize = 10
-HVer.Text = "v2.1"
+HVer.Text = "v2.2"
 HVer.TextXAlignment = Enum.TextXAlignment.Right
 
 -- ── Status section ────────────────────────────────────────────────────────
