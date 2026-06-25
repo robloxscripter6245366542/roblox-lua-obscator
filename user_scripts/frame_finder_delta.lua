@@ -660,12 +660,22 @@ if not GUI.Parent then GUI.Parent = PGUI end
 pcall(function() if syn and syn.protect_gui then syn.protect_gui(GUI) end end)
 pcall(function() if protect_gui then protect_gui(GUI) end end)
 
+-- Responsive sizing: fit to screen, max 520x692, min 300x420
+local _vp = CAM.ViewportSize
+local WIN_W = math.min(520, math.max(300, math.floor(_vp.X * 0.92)))
+local WIN_H = math.min(692, math.max(420, math.floor(_vp.Y * 0.88)))
+print(string.format("[NexusAI] GUI parent=%s viewport=%dx%d window=%dx%d",
+    tostring(GUI.Parent and GUI.Parent:GetFullName() or "nil"),
+    _vp.X, _vp.Y, WIN_W, WIN_H))
+
 -- Shadow
-local SHADOW = F(GUI,UDim2.new(0,540,0,712),UDim2.new(0.5,-270,0.5,-356),Color3.new(0,0,0))
+local SHADOW = F(GUI,UDim2.new(0,WIN_W+20,0,WIN_H+20),
+    UDim2.new(0.5,-(WIN_W+20)/2,0.5,-(WIN_H+20)/2),Color3.new(0,0,0))
 SHADOW.BackgroundTransparency=0.65; corner(SHADOW,16)
 
 -- Window
-local WIN = F(GUI,UDim2.new(0,520,0,692),UDim2.new(0.5,-260,0.5,-346),C.BG)
+local WIN = F(GUI,UDim2.new(0,WIN_W,0,WIN_H),
+    UDim2.new(0.5,-WIN_W/2,0.5,-WIN_H/2),C.BG)
 corner(WIN,12); stroke(WIN,C.BORDER,1.5)
 
 -- ── Title bar ─────────────────────────────────────────────────────────────────
