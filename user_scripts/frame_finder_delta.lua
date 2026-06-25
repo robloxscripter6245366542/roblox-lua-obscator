@@ -351,22 +351,20 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════════
 local function gatherContext(onLog)
     local out = {}
+    local t0 = tick()
     local function emit(s) table.insert(out, s) end
     local function log(s)  onLog(s); emit("-- " .. s) end
+    local function timed() return tick()-t0 end
 
     emit("=== GAME CONTEXT ===")
     emit("PlaceId: " .. tostring(game.PlaceId))
-    pcall(function()
-        emit("Place: " .. game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name)
-    end)
 
     -- Device context
     local dev = detectDevice()
     emit("Device: " .. dev.device .. "  Executor: " .. dev.executor)
     emit("Screen: " .. dev.width .. "x" .. dev.height)
 
-    -- UNC available
-    log("Checking UNC functions...")
+    -- UNC available (fast check, no decompile)
     local avail = {}
     for _, e in ipairs(UNC_LIST) do
         local ok = pcall(function()
@@ -377,127 +375,92 @@ local function gatherContext(onLog)
         end)
         if ok then table.insert(avail, e.n) end
     end
-    emit("\nUNC AVAILABLE: " .. table.concat(avail, ", "))
+    emit("UNC: " .. table.concat(avail, ","))
 
-    -- Game type classification
-    log("Classifying game type...")
-    local gtypes = {}
+    -- Game type (walk only direct children of workspace to stay fast)
     local pcount = #Players:GetPlayers()
-    if pcount > 1 then table.insert(gtypes, "MULTIPLAYER_PVP ("..pcount.." players)") end
     local hasNPC, hasProj, hasBall = false, false, false
     pcall(function()
-        for _, v in ipairs(workspace:GetDescendants()) do
-            if v:IsA("Humanoid") and v.Parent and
-               not Players:GetPlayerFromCharacter(v.Parent) and
-               v.Parent ~= LP.Character then hasNPC = true end
-            if v:IsA("BasePart") then
+        for _, v in ipairs(workspace:GetChildren()) do
+            if v:IsA("Model") then
+                local h = v:FindFirstChildOfClass("Humanoid")
+                if h and not Players:GetPlayerFromCharacter(v) then hasNPC=true end
                 local n = v.Name:lower()
-                if n:find("npc") or n:find("enemy") or n:find("mob") then hasNPC = true end
-                if n:find("bullet") or n:find("proj") or n:find("arrow") then hasProj = true end
-                if n:find("ball") then hasBall = true end
+                if n:find("npc") or n:find("enemy") or n:find("mob") then hasNPC=true end
+                if n:find("ball") then hasBall=true end
+            end
+            if v:IsA("BasePart") then
+                local n=v.Name:lower()
+                if n:find("bullet") or n:find("proj") then hasProj=true end
+                if n:find("ball") then hasBall=true end
             end
         end
     end)
-    if hasNPC  then table.insert(gtypes, "HAS_NPCS") end
-    if hasProj then table.insert(gtypes, "HAS_PROJECTILES") end
-    if hasBall then table.insert(gtypes, "HAS_BALL_OBJECT") end
-    emit("\nGAME TYPE: " .. (next(gtypes) and table.concat(gtypes, " | ") or "SINGLE_PLAYER"))
-    emit("PLAYER_ESP_NEEDED: " .. (pcount > 1 and "YES — " .. pcount .. " players visible" or "NO — solo"))
-    emit("PROJECTILE_TRACK_NEEDED: " .. ((hasProj or hasBall) and "YES" or "NO"))
-    emit("NPC_ESP_NEEDED: " .. (hasNPC and "YES" or "NO"))
+    emit("PLAYERS:"..pcount.." NPC:"..(hasNPC and"YES"or"NO").." PROJ:"..(hasProj or hasBall and"YES"or"NO"))
+    emit("PLAYER_ESP_NEEDED: "..(pcount>1 and"YES"or"NO"))
+    emit("PROJECTILE_TRACK_NEEDED: "..((hasProj or hasBall) and"YES"or"NO"))
+    emit("NPC_ESP_NEEDED: "..(hasNPC and"YES"or"NO"))
 
-    -- Remotes
-    log("Scanning RemoteEvents + Bindables...")
+    -- Remotes (fast, max 40, depth 5)
+    log("Scanning remotes...")
     local remotes = {}
     local function walkR(parent, path, depth)
-        if depth > 7 or #remotes >= 120 then return end
-        local ok, ch = pcall(function() return parent:GetChildren() end)
+        if depth>5 or #remotes>=40 then return end
+        local ok,ch=pcall(function() return parent:GetChildren() end)
         if not ok then return end
-        for _, v in ipairs(ch) do
-            local p = path.."."..v.Name
+        for _,v in ipairs(ch) do
+            local p=path.."."..v.Name
             if v:IsA("RemoteEvent") or v:IsA("RemoteFunction")
             or v:IsA("BindableEvent") or v:IsA("BindableFunction") then
                 table.insert(remotes, p.." ["..v.ClassName.."]")
             end
-            if not v:IsA("BasePart") then walkR(v, p, depth+1) end
+            if not v:IsA("BasePart") and not v:IsA("Model") then walkR(v,p,depth+1) end
         end
     end
-    for _, sn in ipairs({"ReplicatedStorage","ReplicatedFirst","Players","Lighting","SoundService"}) do
-        pcall(function() walkR(game:GetService(sn), sn, 1) end)
+    for _,sn in ipairs({"ReplicatedStorage","ReplicatedFirst","Lighting"}) do
+        pcall(function() walkR(game:GetService(sn),sn,1) end)
     end
-    if #remotes > 0 then
-        emit("\nREMOTES & BINDABLES:"); for _, r in ipairs(remotes) do emit("  "..r) end
-    end
+    if #remotes>0 then emit("REMOTES:"); for _,r in ipairs(remotes) do emit(" "..r) end end
 
-    -- Modules
-    log("Mapping ModuleScripts...")
-    local mods = {}
-    pcall(function()
-        for _, v in ipairs(game:GetDescendants()) do
-            if v:IsA("ModuleScript") then
-                table.insert(mods, v:GetFullName())
-                if #mods >= 40 then break end
-            end
-        end
-    end)
-    if #mods > 0 then emit("\nMODULE SCRIPTS:"); for _, m in ipairs(mods) do emit("  "..m) end end
-
-    -- UI hierarchy
-    log("Scanning UI hierarchy...")
-    local uis, GUI_T = {}, {ScreenGui=1,Frame=1,ScrollingFrame=1,TextButton=1,
-        TextLabel=1,ImageLabel=1,ImageButton=1,BillboardGui=1,SurfaceGui=1,TextBox=1}
-    local function walkUI(p, path, d)
-        if d>6 or #uis>=80 then return end
-        local ok,ch = pcall(function() return p:GetChildren() end)
+    -- UI names only (fast, depth 3, max 30)
+    log("Scanning UI...")
+    local uis={}
+    local function walkUI(p,path,d)
+        if d>3 or #uis>=30 then return end
+        local ok,ch=pcall(function() return p:GetChildren() end)
         if not ok then return end
-        for _, v in ipairs(ch) do
+        for _,v in ipairs(ch) do
             if v.Name~="NexusAI" then
                 local pp=path.."."..v.Name
-                if GUI_T[v.ClassName] then table.insert(uis, pp.." ["..v.ClassName.."]") end
+                if v:IsA("ScreenGui") or v:IsA("Frame") or v:IsA("TextButton") then
+                    table.insert(uis,pp.."["..v.ClassName.."]")
+                end
                 walkUI(v,pp,d+1)
             end
         end
     end
-    pcall(walkUI, PGUI, "PlayerGui", 1)
-    pcall(function() walkUI(game:GetService("CoreGui"), "CoreGui", 1) end)
-    if #uis>0 then emit("\nUI HIERARCHY:"); for _, u in ipairs(uis) do emit("  "..u) end end
+    pcall(walkUI,PGUI,"PlayerGui",1)
+    if #uis>0 then emit("UI:"); for _,u in ipairs(uis) do emit(" "..u) end end
 
-    -- Workspace
-    log("Scanning workspace...")
-    local ws = {}
-    local function walkWS(p, path, d)
-        if d>4 or #ws>=80 then return end
-        local ok,ch = pcall(function() return p:GetChildren() end)
-        if not ok then return end
-        for _, v in ipairs(ch) do
-            if not v:IsA("Terrain") and not v:IsA("Camera") then
-                local pp=path.."."..v.Name
-                table.insert(ws, pp.." ["..v.ClassName.."]")
-                if v:IsA("Model") or v:IsA("Folder") then walkWS(v,pp,d+1) end
-            end
-        end
-    end
-    pcall(walkWS, workspace, "workspace", 1)
-    if #ws>0 then emit("\nWORKSPACE:"); for i,w in ipairs(ws) do if i>80 then break end emit("  "..w) end end
-
-    -- Scripts + decompile
-    log("Decompiling scripts...")
+    -- Scripts: names + .Source only (NO decompile — it's too slow)
+    log("Scanning scripts...")
     local scripts = {}
     if getScripts then pcall(function() scripts=getScripts() end) end
     if #scripts==0 then
         pcall(function()
-            for _, v in ipairs(game:GetDescendants()) do
-                if v:IsA("LocalScript") or v:IsA("ModuleScript") or v:IsA("Script") then
-                    table.insert(scripts, v)
+            for _,v in ipairs(game:GetDescendants()) do
+                if (v:IsA("LocalScript") or v:IsA("ModuleScript")) then
+                    table.insert(scripts,v)
+                    if #scripts>=20 then break end
                 end
             end
         end)
     end
     local scrLines, fnSeen = {}, {}
-    for _, scr in ipairs(scripts) do
+    for _,scr in ipairs(scripts) do
+        if timed()>8 then break end  -- hard 8s cap on entire scan
         local src=""
-        if doDecomp then pcall(function() src=doDecomp(scr) end) end
-        if src=="" then pcall(function() src=scr.Source end) end
+        pcall(function() src=scr.Source end)  -- .Source only, never decompile()
         if src and src~="" then
             local sf = pcall(function() return scr:GetFullName() end) and scr:GetFullName() or scr.Name
             local fns, fires, reqs = {}, {}, {}
