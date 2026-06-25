@@ -146,8 +146,8 @@ local function notify(title, body, dur)
 end
 
 -- ── Pollinations AI ───────────────────────────────────────────────────────────
--- GET https://text.pollinations.ai/{prompt}?model=openai&seed=42
--- Claude Opus model attempted first, falls back to openai
+-- GET https://text.pollinations.ai/{prompt}?model=claude-opus-4-6&seed=42
+-- Claude Opus 4.6 attempted first, falls back to openai
 local function aiDescribe(fnName, fnCode)
     if not httpReq then return "HTTP not available in this executor." end
 
@@ -162,8 +162,8 @@ local function aiDescribe(fnName, fnCode)
         return string.format("%%%02X", c:byte())
     end):gsub("%s", "%%20")
 
-    -- Try claude-opus-4 first, fall back to openai
-    local models = {"claude-opus-4", "openai"}
+    -- Try claude-opus-4-6 first, fall back to openai
+    local models = {"claude-opus-4-6", "openai"}
     for _, model in ipairs(models) do
         local ok, resp = pcall(httpReq, {
             Url    = "https://text.pollinations.ai/" .. encoded
@@ -282,7 +282,7 @@ L(TBAR, "Frame Finder",
     UDim2.new(0,220,0,20), UDim2.new(0,25,0,7),
     C.TXT, FB, 14)
 
-local TSUB = L(TBAR, "Delta  ·  Pollinations AI  ·  Claude Opus",
+local TSUB = L(TBAR, "Delta  ·  Pollinations AI  ·  Claude Opus 4.6",
     UDim2.new(0,320,0,14), UDim2.new(0,25,0,26),
     C.MUTED, FN, 9)
 
