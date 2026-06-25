@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react'
-import { Shuffle, Eye, EyeOff, Upload, Wand2, Film, Clock3 } from 'lucide-react'
+import { Shuffle, Upload, Wand2, Film, Clock3 } from 'lucide-react'
 import clsx from 'clsx'
 import SettingsPanel from './SettingsPanel.jsx'
 import OutputPanel from './OutputPanel.jsx'
 import LongVideoPanel from './LongVideoPanel.jsx'
-import { generateDemo, createVideoTask, pollTask } from '../lib/seedance.js'
+import { createVideoTask, pollTask } from '../lib/seedance.js'
 
 const RANDOM_PROMPTS = [
   'A majestic dragon soaring over snow-capped mountains at golden hour, cinematic lighting, ultra detailed',
@@ -36,8 +36,6 @@ export default function Generator({ timer, onToast }) {
   const [prompt, setPrompt] = useState('')
   const [imagePrompt, setImagePrompt] = useState('')
   const [imagePreview, setImagePreview] = useState(null)
-  const [apiKey, setApiKey] = useState('')
-  const [showKey, setShowKey] = useState(false)
   const [outputState, setOutputState] = useState({ status: 'idle', videoUrl: null, progress: 0, step: 0, label: '' })
   const [queue, setQueue] = useState([])
   const fileRef = useRef()
@@ -64,24 +62,14 @@ export default function Generator({ timer, onToast }) {
 
     try {
       let url
-      if (apiKey && apiKey.length > 10) {
-        const taskId = await createVideoTask(apiKey, {
-          prompt: p, genType: mode === 'image' ? 'image-to-video' : 'text-to-video',
-          imageUrls: imagePreview ? [imagePreview] : [],
-          duration: settings.duration, aspectRatio: settings.aspect,
-          resolution: settings.resolution, model: settings.model, audio: settings.audio,
-        })
-        url = await pollTask(apiKey, taskId, pct =>
-          setOutputState(s => ({ ...s, progress: pct, step: Math.floor(pct / 25) })))
-      } else {
-        url = await generateDemo(p, {
-          resolution: settings.resolution,
-          duration: settings.duration,
-          onStep: (label, progress) => {
-            setOutputState(s => ({ ...s, label, progress, step: Math.floor(progress / 25) }))
-          },
-        })
-      }
+      const taskId = await createVideoTask(null, {
+        prompt: p, genType: mode === 'image' ? 'image-to-video' : 'text-to-video',
+        imageUrls: imagePreview ? [imagePreview] : [],
+        duration: settings.duration, aspectRatio: settings.aspect,
+        resolution: settings.resolution, model: settings.model, audio: settings.audio,
+      })
+      url = await pollTask(null, taskId, pct =>
+        setOutputState(s => ({ ...s, progress: pct, step: Math.floor(pct / 25) })))
       setOutputState({ status: 'done', videoUrl: url, progress: 100, step: 4, label: '' })
       setQueue(q => [{ url, prompt: p, settings: { ...settings }, ts: Date.now() }, ...q].slice(0, 6))
       onToast(`4K video ready! (${settings.resolution.toUpperCase()} · ${settings.duration}s)`, 'success')
@@ -185,19 +173,6 @@ export default function Generator({ timer, onToast }) {
             {/* Settings */}
             <SettingsPanel settings={settings} onChange={setSettings} />
 
-            {/* API Key */}
-            <div className="panel">
-              <label className="text-xs font-semibold text-[#8b8fa8] uppercase tracking-wide block mb-2.5">
-                API Key <span className="normal-case font-normal text-[#555872]">(optional — uses demo if empty)</span>
-              </label>
-              <div className="flex gap-2">
-                <input type={showKey ? 'text' : 'password'} value={apiKey} onChange={e => setApiKey(e.target.value)}
-                  className="input-field flex-1" placeholder="sk_live_…" />
-                <button onClick={() => setShowKey(s => !s)} className="btn-ghost px-3">
-                  {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-              </div>
-            </div>
 
             {/* Generate Button */}
             {mode !== 'long' && (

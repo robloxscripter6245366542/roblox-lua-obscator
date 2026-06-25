@@ -1,6 +1,4 @@
-const BASE = 'https://api.seedance2.ai'
-
-export async function createVideoTask(apiKey, { prompt, genType, imageUrls, duration, aspectRatio, resolution, model, audio }) {
+export async function createVideoTask(_apiKey, { prompt, genType, imageUrls, duration, aspectRatio, resolution, model, audio }) {
   const body = {
     model,
     input: {
@@ -15,16 +13,15 @@ export async function createVideoTask(apiKey, { prompt, genType, imageUrls, dura
       ...(imageUrls?.length ? { image_urls: imageUrls } : {}),
     },
   }
-  const resp = await fetch(`${BASE}/v1/videos/generations`, {
+  const resp = await fetch('/api/generate', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}))
     const msg = err.error?.message || err.message || `API error ${resp.status}`
-    if (resp.status === 401) throw new Error('Invalid API key — check your sk_live_... key')
-    if (resp.status === 402) throw new Error('Insufficient credits on your Seedance account')
+    if (resp.status === 402) throw new Error('Insufficient credits on the Seedance account')
     if (resp.status === 429) throw new Error('Rate limit — please wait a moment and try again')
     throw new Error(msg)
   }
@@ -33,12 +30,10 @@ export async function createVideoTask(apiKey, { prompt, genType, imageUrls, dura
   return data.taskId
 }
 
-export async function pollTask(apiKey, taskId, onProgress) {
+export async function pollTask(_apiKey, taskId, onProgress) {
   for (let i = 0; i < 90; i++) {
     await sleep(10000)
-    const resp = await fetch(`${BASE}/v1/tasks/${taskId}`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    })
+    const resp = await fetch(`/api/poll?taskId=${taskId}`)
     const result = await resp.json()
     if (result.status === 'queued') onProgress?.(20)
     else if (result.status === 'generating') onProgress?.(20 + Math.min(60, i * 3))
