@@ -31,11 +31,30 @@ local LP       = Players.LocalPlayer
 local PGUI     = LP:WaitForChild("PlayerGui")
 local CAM      = workspace.CurrentCamera
 
--- ── Executor APIs ─────────────────────────────────────────────────────────────
-local httpReq    = (syn and syn.request) or (http and http.request) or request
-local clipSet    = setclipboard or (syn and syn.set_clipboard) or (function() end)
-local getScripts = getscripts  or nil
-local doDecomp   = decompile   or nil
+-- ── Executor APIs (Delta iOS first, then others) ──────────────────────────────
+local httpReq
+pcall(function()
+    -- Delta iOS: request() is the global
+    if type(request) == "function" then httpReq = request
+    elseif type(http) == "table" and type(http.request) == "function" then httpReq = http.request
+    elseif type(syn) == "table" and type(syn.request) == "function" then httpReq = syn.request
+    elseif type(http_request) == "function" then httpReq = http_request
+    end
+end)
+
+local clipSet
+pcall(function()
+    if type(setclipboard) == "function" then clipSet = setclipboard
+    elseif type(syn) == "table" and type(syn.set_clipboard) == "function" then clipSet = syn.set_clipboard
+    elseif type(Clipboard) == "table" and type(Clipboard.set) == "function" then clipSet = Clipboard.set
+    end
+end)
+clipSet = clipSet or function() end
+
+local getScripts
+pcall(function() if type(getscripts) == "function" then getScripts = getscripts end end)
+local doDecomp
+pcall(function() if type(decompile) == "function" then doDecomp = decompile end end)
 
 -- ── Colors ────────────────────────────────────────────────────────────────────
 local C = {
@@ -190,14 +209,18 @@ local function detectDevice()
                        touch and kb     and "Tablet" or
                        gamepad          and "Console" or "Desktop"
 
-    local executor = "Unknown Executor"
+    local executor = "Delta"  -- default for this script
     pcall(function()
-        if getexecutorname then executor = getexecutorname()
-        elseif identifyexecutor then executor = identifyexecutor()
-        elseif syn then executor = "Synapse X"
-        elseif KRNL_LOADED then executor = "KRNL"
-        elseif Delta then executor = "Delta"
-        elseif fluxus then executor = "Fluxus"
+        if type(getexecutorname) == "function" then
+            executor = getexecutorname()
+        elseif type(identifyexecutor) == "function" then
+            executor = identifyexecutor()
+        elseif type(Delta) ~= "nil" then executor = "Delta"
+        elseif type(syn) ~= "nil" then executor = "Synapse X"
+        elseif type(KRNL_LOADED) ~= "nil" then executor = "KRNL"
+        elseif type(fluxus) ~= "nil" then executor = "Fluxus"
+        elseif type(Electron) ~= "nil" then executor = "Electron"
+        elseif type(Xeno) ~= "nil" then executor = "Xeno"
         end
     end)
 
