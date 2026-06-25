@@ -594,12 +594,30 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- BUILD GUI
 -- ═══════════════════════════════════════════════════════════════════════════════
+-- Parent target: gethui() > CoreGui > PlayerGui (hidden from game scripts)
+local function getGuiParent()
+    local ok, hui = pcall(function() return gethui and gethui() end)
+    if ok and hui then return hui end
+    local ok2, cg = pcall(function() return game:GetService("CoreGui") end)
+    if ok2 and cg then return cg end
+    return PGUI
+end
+local GUI_PARENT = getGuiParent()
+
+for _,old in ipairs(GUI_PARENT:GetChildren()) do
+    if old.Name=="NexusAI" then pcall(function() old:Destroy() end) end
+end
 if PGUI:FindFirstChild("NexusAI") then PGUI.NexusAI:Destroy() end
 
 local GUI = Instance.new("ScreenGui")
 GUI.Name="NexusAI"; GUI.ResetOnSpawn=false
 GUI.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
-GUI.DisplayOrder=999; GUI.Parent=PGUI
+GUI.DisplayOrder=999
+GUI.IgnoreGuiInset=true
+pcall(function() GUI.Parent = GUI_PARENT end)
+if not GUI.Parent then GUI.Parent = PGUI end
+pcall(function() if syn and syn.protect_gui then syn.protect_gui(GUI) end end)
+pcall(function() if protect_gui then protect_gui(GUI) end end)
 
 -- Shadow
 local SHADOW = F(GUI,UDim2.new(0,540,0,712),UDim2.new(0.5,-270,0.5,-356),Color3.new(0,0,0))
