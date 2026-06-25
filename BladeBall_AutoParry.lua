@@ -1,6 +1,7 @@
 -- ════════════════════════════════════════════════════════════════════════
---  Blade Ball  |  Auto Parry  v2.0  |  Place ID: 13772394625
---  Requires: getnilinstances, getconnections, hookfunction
+--  Blade Ball  |  Auto Parry  v2.1  |  Place ID: 13772394625
+--  Requires: getnilinstances, getconnections, hookfunction,
+--            getcallbackvalue, hookmetamethod
 -- ════════════════════════════════════════════════════════════════════════
 
 local Players      = game:GetService("Players")
@@ -21,23 +22,97 @@ local CFG = {
 
 -- ── Live state ────────────────────────────────────────────────────────────
 local State = {
-    ParryCount  = 0,
-    LastParryAt = 0,
-    BallDist    = math.huge,
-    ActiveBalls = {},
+    ParryCount   = 0,
+    LastParryAt  = 0,
+    BallDist     = math.huge,
+    ActiveBalls  = {},
+    Standoff     = false,
+    LastWinner   = "",
+    LastMessage  = "",
 }
 
 -- ── Remotes ───────────────────────────────────────────────────────────────
 local Remotes         = RS:WaitForChild("Remotes")
+local Shared          = RS:WaitForChild("Shared")
 local BallAdded       = Remotes:WaitForChild("BallAdded")
 local BallExplode     = Remotes:WaitForChild("BallExplode")
 local ParrySuccessAll = Remotes:WaitForChild("ParrySuccessAll")
+local StandoffStart   = Remotes:WaitForChild("StandoffStart")
+local WinnerText      = Remotes:WaitForChild("WinnerText")
+local SetMessage      = Remotes:WaitForChild("SetMessage")
+local ConfidentTarget = Remotes:WaitForChild("ConfidentTarget")
+local RemotePing      = Shared:WaitForChild("Ping"):WaitForChild("RemotePing")
+
+-- ── Anti-cheat bypass: keep RemotePing working transparently ─────────────
+do
+    local Callback = getcallbackvalue(RemotePing, "OnClientInvoke")
+    RemotePing.OnClientInvoke = function(...)
+        local args = table.pack(...)
+        return table.unpack(table.pack(Callback(table.unpack(args, 1, args.n))), 1)
+    end
+    local mtHook; mtHook = hookmetamethod(game, "__newindex", function(self, key, value, ...)
+        if rawequal(self, RemotePing) and rawequal(key, "OnClientInvoke")
+           and typeof(value) == "function" and not checkcaller() then
+            Callback = value
+            return
+        end
+        return mtHook(self, key, value, ...)
+    end)
+end
 
 -- ── Hook ParrySuccessAll to count confirmed parries ───────────────────────
 for _, conn in getconnections(ParrySuccessAll.OnClientEvent) do
     local old; old = hookfunction(conn.Function, function(...)
         State.ParryCount  = State.ParryCount + 1
         State.LastParryAt = tick()
+        return old(...)
+    end)
+end
+
+-- ── ConfidentTarget: only arm parry when WE are the target ───────────────
+State.IsTarget = false
+State.TargetName = ""
+
+for _, conn in getconnections(ConfidentTarget.OnClientEvent) do
+    local old; old = hookfunction(conn.Function, function(...)
+        local args = {...}
+        -- arg 1 is typically the targeted Player object
+        local target = args[1]
+        if typeof(target) == "Instance" and target:IsA("Player") then
+            State.IsTarget   = (target == LP)
+            State.TargetName = target.DisplayName or target.Name
+        end
+        return old(...)
+    end)
+end
+
+-- ── StandoffStart: widen range since ball accelerates ────────────────────
+local NORMAL_DIST   = CFG.ParryDistance
+local STANDOFF_DIST = CFG.ParryDistance + 20
+
+StandoffStart.OnClientEvent:Connect(function()
+    State.Standoff    = true
+    CFG.ParryDistance = STANDOFF_DIST
+end)
+
+-- ── WinnerText: round ended — reset standoff ────────────────────────────
+for _, conn in getconnections(WinnerText.OnClientEvent) do
+    local old; old = hookfunction(conn.Function, function(...)
+        local args = {...}
+        State.LastWinner  = tostring(args[1] or "")
+        State.Standoff    = false
+        CFG.ParryDistance = NORMAL_DIST
+        State.IsTarget    = false
+        State.TargetName  = ""
+        return old(...)
+    end)
+end
+
+-- ── SetMessage: capture game status messages ──────────────────────────────
+for _, conn in getconnections(SetMessage.OnClientEvent) do
+    local old; old = hookfunction(conn.Function, function(...)
+        local args = {...}
+        State.LastMessage = tostring(args[1] or "")
         return old(...)
     end)
 end
@@ -63,6 +138,8 @@ end
 -- ── Parry fire ────────────────────────────────────────────────────────────
 local function doParry(ball)
     if not CFG.Enabled then return end
+    -- Skip if ball is confirmed targeting someone else
+    if not State.IsTarget and State.TargetName ~= "" then return end
     local remote = getParryRemote()
     if not remote then return end
     local hrp = getHRP()
@@ -142,6 +219,7 @@ local C = {
     WHITE  = Color3.fromRGB(255, 255, 255),
     OFFWH  = Color3.fromRGB(205, 210, 230),
     MUTED  = Color3.fromRGB(95,  100, 135),
+    YELLOW = Color3.fromRGB(255, 215, 50),
 }
 
 local TI_FAST = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -233,6 +311,7 @@ local HVer = Instance.new("TextLabel", Header)
 HVer.Size = UDim2.new(0, 32, 1, 0); HVer.Position = UDim2.new(1, -38, 0, 0)
 HVer.BackgroundTransparency = 1; HVer.Text = "v2.0"
 HVer.TextColor3 = Color3.fromRGB(200, 170, 255); HVer.Font = Enum.Font.Gotham; HVer.TextSize = 10
+HVer.Text = "v2.1"
 HVer.TextXAlignment = Enum.TextXAlignment.Right
 
 -- ── Status section ────────────────────────────────────────────────────────
@@ -371,8 +450,11 @@ end
 
 local V_Parries  = statRow(StatSec, 1, "↯", "PARRIES (SERVER)")
 local V_Last     = statRow(StatSec, 2, "◷", "LAST PARRY")
-local V_Range    = statRow(StatSec, 3, "◎", "PARRY RANGE")
-local V_Delay    = statRow(StatSec, 4, "⏱", "FIRE DELAY")
+local V_Target   = statRow(StatSec, 3, "◉", "BALL TARGET")
+local V_Standoff = statRow(StatSec, 4, "⚡", "STANDOFF")
+local V_Range    = statRow(StatSec, 5, "◎", "PARRY RANGE")
+local V_Delay    = statRow(StatSec, 6, "⏱", "FIRE DELAY")
+local V_Message  = statRow(StatSec, 7, "✉", "GAME STATUS")
 
 divider(Win, 7)
 
@@ -468,6 +550,50 @@ do
     end)
 end
 
+-- ── Winner banner (shown briefly after each round) ────────────────────────
+local WinBanner = Instance.new("Frame", SG)
+WinBanner.Size = UDim2.new(0, 240, 0, 36); WinBanner.AnchorPoint = Vector2.new(0.5, 0)
+WinBanner.Position = UDim2.new(0.5, 0, 0, 20)
+WinBanner.BackgroundColor3 = C.ACCENT; WinBanner.BorderSizePixel = 0
+WinBanner.BackgroundTransparency = 1; corner(WinBanner, 10)
+local WBGrad = Instance.new("UIGradient", WinBanner)
+WBGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, C.ACCENT2),
+    ColorSequenceKeypoint.new(1, C.ACCENT),
+}); WBGrad.Rotation = 90
+local WBTxt = Instance.new("TextLabel", WinBanner)
+WBTxt.Size = UDim2.new(1, 0, 1, 0); WBTxt.BackgroundTransparency = 1
+WBTxt.Text = ""; WBTxt.TextColor3 = C.WHITE
+WBTxt.Font = Enum.Font.GothamBold; WBTxt.TextSize = 13
+
+local function showWinner(name)
+    WBTxt.Text = "Winner: " .. name
+    WinBanner.BackgroundTransparency = 0
+    task.delay(4, function()
+        tw(WinBanner, { BackgroundTransparency = 1 }, TI_MED)
+    end)
+end
+
+-- Hook into winner state change to trigger the banner
+local _prevWinner = ""
+RunService.Heartbeat:Connect(function()
+    if State.LastWinner ~= _prevWinner and State.LastWinner ~= "" then
+        _prevWinner = State.LastWinner
+        showWinner(State.LastWinner)
+    end
+end)
+
+-- ── AFK bypass: suppress the AFK FireServer call ──────────────────────────
+pcall(function()
+    local AFKEvent = game:GetService("GamepadService").AFK
+    local afkHook; afkHook = hookmetamethod(game, "__namecall", function(self, ...)
+        if rawequal(self, AFKEvent) and getnamecallmethod() == "FireServer" then
+            return  -- suppress AFK report to server
+        end
+        return afkHook(self, ...)
+    end)
+end)
+
 -- ── HUD refresh ───────────────────────────────────────────────────────────
 RunService.Heartbeat:Connect(function()
     local dist = State.BallDist
@@ -494,10 +620,41 @@ RunService.Heartbeat:Connect(function()
         end
     end
 
+    -- Standoff ring-stroke flash
+    if State.Standoff then
+        tw(WinStroke, { Color = C.RED, Thickness = 2.5 }, TI_MED)
+    elseif CFG.Enabled then
+        tw(WinStroke, { Color = C.ACCENT, Thickness = 1.5 }, TI_MED)
+    end
+
     V_Parries.Text = tostring(State.ParryCount)
     if State.LastParryAt > 0 then
         V_Last.Text = string.format("%.1fs ago", tick() - State.LastParryAt)
     end
-    V_Range.Text = CFG.ParryDistance .. " st"
-    V_Delay.Text = CFG.Delay == 0 and "instant" or (CFG.Delay .. "s")
+
+    -- Target display
+    if State.TargetName == "" then
+        V_Target.Text      = "—"
+        V_Target.TextColor3 = C.MUTED
+    elseif State.IsTarget then
+        V_Target.Text      = "YOU !"
+        V_Target.TextColor3 = C.RED
+    else
+        V_Target.Text      = State.TargetName
+        V_Target.TextColor3 = C.OFFWH
+    end
+
+    -- Standoff display
+    if State.Standoff then
+        V_Standoff.Text      = "ACTIVE"
+        V_Standoff.TextColor3 = C.RED
+    else
+        V_Standoff.Text      = "off"
+        V_Standoff.TextColor3 = C.MUTED
+    end
+
+    V_Range.Text  = CFG.ParryDistance .. " st"
+    V_Delay.Text  = CFG.Delay == 0 and "instant" or (CFG.Delay .. "s")
+    V_Message.Text = State.LastMessage ~= "" and State.LastMessage or "—"
+    V_Message.TextColor3 = State.LastMessage ~= "" and C.YELLOW or C.MUTED
 end)
