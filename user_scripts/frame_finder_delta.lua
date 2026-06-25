@@ -836,16 +836,17 @@ do
     ss()
 end
 
--- ── Tab bar ───────────────────────────────────────────────────────────────────
+-- ── Tab bar (4 tabs, each 25%) ────────────────────────────────────────────────
 local TABBAR = F(WIN,UDim2.new(1,-24,0,34),UDim2.new(0,12,0,56),C.PANEL); corner(TABBAR,8)
 local function mkTab(txt, xoff, active)
     local w = active and C.ACC or C.CARD
     local tc = active and C.TXT or C.SUB
-    local b=B(TABBAR,txt,UDim2.new(0.333,-3,1,-8),UDim2.new(xoff,2,0,4),w,tc,11,FB); corner(b,6); return b
+    local b=B(TABBAR,txt,UDim2.new(0.25,-3,1,-8),UDim2.new(xoff,2,0,4),w,tc,10,FB); corner(b,6); return b
 end
-local TAB_AI  = mkTab("⬡  AI Generate", 0,     true)
-local TAB_UNC = mkTab("⬡  UNC Tester",  0.333, false)
-local TAB_SCN = mkTab("⬡  Scanner",     0.666, false)
+local TAB_AI  = mkTab("⬡ AI",      0,     true)
+local TAB_EXE = mkTab("▶ Execute", 0.25,  false)
+local TAB_UNC = mkTab("⬡ UNC",    0.5,   false)
+local TAB_SCN = mkTab("⬡ Scan",   0.75,  false)
 
 -- ── Status bar ────────────────────────────────────────────────────────────────
 local SBAR = F(WIN,UDim2.new(1,-24,0,26),UDim2.new(0,12,0,98),C.PANEL); corner(SBAR,6)
@@ -1010,6 +1011,51 @@ GENBTN.MouseButton1Click:Connect(function()
         tw(GENBTN,{BackgroundColor3=C.ACC})
         GENBTN.Text="⬡  Scan + Generate"
         generating=false
+    end)
+end)
+
+-- ── EXECUTE PAGE (direct loadstring executor) ────────────────────────────────
+local EXE_PAGE = F(PAGE,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),C.BG)
+EXE_PAGE.Visible=false
+
+L(EXE_PAGE,"PASTE LUA CODE:",UDim2.new(1,0,0,12),UDim2.new(0,0,0,0),C.MUTED,FB,9)
+
+local EXEBOX = Instance.new("TextBox")
+EXEBOX.Size=UDim2.new(1,0,1,-56); EXEBOX.Position=UDim2.new(0,0,0,16)
+EXEBOX.BackgroundColor3=C.DEEP; EXEBOX.BorderSizePixel=0
+EXEBOX.Text=""; EXEBOX.PlaceholderText="-- paste or type any Lua code here, then press Run"
+EXEBOX.PlaceholderColor3=C.MUTED; EXEBOX.TextColor3=C.CODE
+EXEBOX.Font=FM; EXEBOX.TextSize=10; EXEBOX.MultiLine=true
+EXEBOX.ClearTextOnFocus=false; EXEBOX.TextXAlignment=Enum.TextXAlignment.Left
+EXEBOX.TextYAlignment=Enum.TextYAlignment.Top; EXEBOX.Parent=EXE_PAGE
+corner(EXEBOX,8); stroke(EXEBOX,C.BORDER); pad(EXEBOX,6,8)
+
+local EXERUN =B(EXE_PAGE,"▶  Run (loadstring)",UDim2.new(0.6,-4,0,34),UDim2.new(0,0,1,-36),  C.GRN,   C.TXT,12,FB); corner(EXERUN,8)
+local EXECLR =B(EXE_PAGE,"Clear",              UDim2.new(0.4,-4,0,34),UDim2.new(0.6,4,1,-36), C.CARD,  C.SUB,11,FN); corner(EXECLR,8)
+EXERUN.MouseEnter:Connect(function() tw(EXERUN,{BackgroundColor3=Color3.fromRGB(50,220,110)}) end)
+EXERUN.MouseLeave:Connect(function() tw(EXERUN,{BackgroundColor3=C.GRN}) end)
+EXECLR.MouseButton1Click:Connect(function() EXEBOX.Text="" end)
+EXERUN.MouseButton1Click:Connect(function()
+    local code = EXEBOX.Text
+    if not code or code:gsub("%s","")=="" then notify("Execute","Nothing to run.",2); return end
+    flash(EXERUN,C.AMBER)
+    setStatus("Running via loadstring...",C.AMBER)
+    task.spawn(function()
+        local fn, err = pcall(loadstring, code)
+        if not fn or type(err)~="function" then
+            local msg = type(err)=="string" and err or "loadstring failed"
+            notify("Syntax Error", msg:sub(1,140), 6)
+            setStatus("Syntax error", C.RED)
+            return
+        end
+        local ok, runErr = pcall(err)
+        if not ok then
+            notify("Runtime Error", tostring(runErr):sub(1,140), 6)
+            setStatus("Runtime error", C.RED)
+        else
+            notify("Execute","Running!",2)
+            setStatus("Script running!",C.GRN)
+        end
     end)
 end)
 
@@ -1200,15 +1246,18 @@ end)
 
 -- ── Tab switching ─────────────────────────────────────────────────────────────
 local function showTab(t)
-    AI_PAGE.Visible=(t=="ai"); UNC_PAGE.Visible=(t=="unc"); SCN_PAGE.Visible=(t=="scn")
+    AI_PAGE.Visible=(t=="ai"); EXE_PAGE.Visible=(t=="exe")
+    UNC_PAGE.Visible=(t=="unc"); SCN_PAGE.Visible=(t=="scn")
     local function upTab(btn, active)
         tw(btn,{BackgroundColor3=active and C.ACC or C.CARD, TextColor3=active and C.TXT or C.SUB})
     end
     upTab(TAB_AI,  t=="ai")
+    upTab(TAB_EXE, t=="exe")
     upTab(TAB_UNC, t=="unc")
     upTab(TAB_SCN, t=="scn")
 end
 TAB_AI.MouseButton1Click:Connect(function()  showTab("ai")  end)
+TAB_EXE.MouseButton1Click:Connect(function() showTab("exe") end)
 TAB_UNC.MouseButton1Click:Connect(function() showTab("unc") end)
 TAB_SCN.MouseButton1Click:Connect(function() showTab("scn") end)
 
