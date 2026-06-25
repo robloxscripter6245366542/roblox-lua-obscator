@@ -285,8 +285,11 @@ export default function MoviePanel() {
         <AnimeBackground />
       </div>
 
-      {/* All content sits above the anime background */}
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Two-column layout: controls left, big preview right */}
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+
+        {/* ── LEFT: all controls ── */}
+        <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* Pipeline banner */}
       <div className="glass rounded-2xl p-4" style={{ border: '1px solid rgba(236,72,153,.3)' }}>
@@ -481,31 +484,6 @@ export default function MoviePanel() {
         )}
       </AnimatePresence>
 
-      {/* Soundtrack */}
-      <AnimatePresence>
-        {musicSrc && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-4" style={{ border: '1px solid rgba(245,158,11,.2)' }}>
-            <div className="text-sm font-bold text-white mb-2">🎼 AI Soundtrack — {genre} Score</div>
-            <audio controls autoPlay className="w-full rounded-xl" style={{ accentColor: 'var(--o)' }}>
-              <source src={musicSrc} />
-            </audio>
-            <div className="text-xs mt-2 opacity-50">Stable Audio 2.5 via Pollinations AI</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Narration */}
-      <AnimatePresence>
-        {narrateSrc && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-4" style={{ border: '1px solid rgba(6,182,212,.2)' }}>
-            <div className="text-sm font-bold text-white mb-2">🎙️ Opening Narration — ElevenLabs</div>
-            <audio controls className="w-full rounded-xl" style={{ accentColor: 'var(--c)' }}>
-              <source src={narrateSrc} />
-            </audio>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Scene queue */}
       <AnimatePresence>
         {scenes.length > 0 && (
@@ -557,24 +535,6 @@ export default function MoviePanel() {
         )}
       </AnimatePresence>
 
-      {/* Full Movie Player */}
-      <AnimatePresence>
-        {scenes.length > 0 && (
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-            <MoviePlayer
-              clips={scenes.filter(s => s.status === 'done' && s.clipUrl).map(s => ({
-                id: s.id,
-                clipUrl: s.clipUrl!,
-                label: s.text.match(/\[SCENE \d+\]/)?.[0] || `Scene ${s.id + 1}`
-              }))}
-              title={script.match(/TITLE:\s*([^\n]+)/i)?.[1]?.trim() || 'omni-ai-movie'}
-              totalScenes={scenes.length}
-              doneScenes={scenes.filter(s => s.status === 'done' && s.clipUrl).length}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Screenplay */}
       <AnimatePresence>
         {script && (
@@ -591,7 +551,96 @@ export default function MoviePanel() {
         )}
       </AnimatePresence>
 
-      </div>{/* end content wrapper */}
+        </div>{/* end left column */}
+
+        {/* ── RIGHT: big sticky movie preview ── */}
+        <div style={{ width: 420, flexShrink: 0, position: 'sticky', top: 20 }}>
+          <div className="flex flex-col gap-3">
+
+            {/* Movie Player — always shown in preview */}
+            <MoviePlayer
+              clips={scenes.filter(s => s.status === 'done' && s.clipUrl).map(s => ({
+                id: s.id,
+                clipUrl: s.clipUrl!,
+                label: s.text.match(/\[SCENE \d+\]/)?.[0] || `Scene ${s.id + 1}`
+              }))}
+              title={script.match(/TITLE:\s*([^\n]+)/i)?.[1]?.trim() || 'omni-ai-movie'}
+              totalScenes={scenes.length}
+              doneScenes={scenes.filter(s => s.status === 'done' && s.clipUrl).length}
+            />
+
+            {/* Latest storyboard frames */}
+            {storyboardFrames.length > 0 && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-3" style={{ border: '1px solid rgba(255,255,255,.08)' }}>
+                <div className="text-xs font-bold text-white mb-2">🎞️ Storyboard Preview</div>
+                <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(2,1fr)' }}>
+                  {storyboardFrames.slice(0, 4).map((url, i) => (
+                    <div key={i} className="rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,.08)' }}>
+                      <img src={url} alt={`Frame ${i + 1}`} style={{ width: '100%', display: 'block' }} />
+                      <div className="text-center py-0.5" style={{ fontSize: 9, color: 'var(--muted)' }}>Scene {i + 1}</div>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Character sheet strip */}
+            {chars.filter(c => c.imgUrl).length > 0 && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-3" style={{ border: '1px solid rgba(6,182,212,.2)' }}>
+                <div className="text-xs font-bold text-white mb-2">👤 Character Designs</div>
+                <div className="flex gap-2 overflow-x-auto">
+                  {chars.filter(c => c.imgUrl).map((c, i) => (
+                    <div key={i} className="flex-shrink-0 rounded-lg overflow-hidden" style={{ width: 80, border: '1px solid rgba(255,255,255,.08)' }}>
+                      <img src={c.imgUrl} alt={c.desc} style={{ width: '100%', display: 'block' }} />
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* VFX strip */}
+            {vfxImages.length > 0 && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-3" style={{ border: '1px solid rgba(168,85,247,.2)' }}>
+                <div className="text-xs font-bold text-white mb-2">✨ VFX Assets</div>
+                <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(2,1fr)' }}>
+                  {vfxImages.slice(0, 4).map((url, i) => (
+                    <img key={i} src={url} alt={`VFX ${i + 1}`} style={{ width: '100%', borderRadius: 8, border: '1px solid rgba(168,85,247,.2)' }} />
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Audio players */}
+            {musicSrc && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-3" style={{ border: '1px solid rgba(245,158,11,.2)' }}>
+                <div className="text-xs font-bold text-white mb-2">🎼 Soundtrack</div>
+                <audio controls className="w-full rounded-xl" style={{ accentColor: 'var(--o)' }}>
+                  <source src={musicSrc} />
+                </audio>
+              </motion.div>
+            )}
+            {narrateSrc && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-3" style={{ border: '1px solid rgba(6,182,212,.2)' }}>
+                <div className="text-xs font-bold text-white mb-2">🎙️ Narration</div>
+                <audio controls className="w-full rounded-xl" style={{ accentColor: 'var(--c)' }}>
+                  <source src={narrateSrc} />
+                </audio>
+              </motion.div>
+            )}
+
+            {/* Empty state */}
+            {scenes.length === 0 && storyboardFrames.length === 0 && (
+              <div className="glass rounded-2xl p-6 text-center" style={{ border: '1px solid rgba(236,72,153,.2)' }}>
+                <div className="text-4xl mb-3">🎥</div>
+                <div className="text-sm font-bold text-white mb-1">Movie Preview</div>
+                <div className="text-xs opacity-50">Click "Start Full AI Movie Production" to begin — your preview appears here as scenes generate.</div>
+              </div>
+            )}
+
+          </div>
+        </div>{/* end right column */}
+
+      </div>{/* end two-column wrapper */}
     </div>
   )
 }
