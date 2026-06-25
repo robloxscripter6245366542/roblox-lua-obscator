@@ -114,6 +114,11 @@
           <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><circle cx="7" cy="9" r="1.5" fill="currentColor"/><path d="M2 14l4-4 3 3 3-4 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           Image to Video
         </button>
+        <button class="mode-tab mode-tab-long" data-mode="long">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M3 10h14M10 3v14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/></svg>
+          Long Video
+          <span class="tab-badge-new">30 MIN</span>
+        </button>
       </div>
 
       <div class="generator-grid">
@@ -160,6 +165,59 @@
               placeholder="Camera slowly zooms in, leaves blow in the wind..."
               rows="3"
             ></textarea>
+          </div>
+
+          <!-- Long Video panel -->
+          <div class="panel hidden" id="longPanel">
+            <div class="long-video-header">
+              <div>
+                <label class="label" style="margin-bottom:4px">Long Video Generation</label>
+                <p class="long-video-sub">Generates multiple 15s clips and stitches them into one continuous video — up to 30 minutes.</p>
+              </div>
+              <div class="long-badge">30 MIN</div>
+            </div>
+            <label class="label mt-16">Story / Scene prompt</label>
+            <textarea
+              class="prompt-input"
+              id="longPromptInput"
+              placeholder="An epic journey through ancient civilizations: starting at the pyramids of Egypt at sunrise, moving to the Colosseum in Rome at golden hour, then the Great Wall of China under moonlight..."
+              rows="5"
+            ></textarea>
+            <div class="long-settings">
+              <div class="long-setting-row">
+                <span class="setting-label">Target Length</span>
+                <div class="select-row">
+                  <button class="select-chip" data-setting="longDuration" data-val="1">1 min</button>
+                  <button class="select-chip" data-setting="longDuration" data-val="5">5 min</button>
+                  <button class="select-chip active" data-setting="longDuration" data-val="10">10 min</button>
+                  <button class="select-chip" data-setting="longDuration" data-val="30">30 min</button>
+                </div>
+              </div>
+              <div class="long-setting-row">
+                <span class="setting-label">Clip Length</span>
+                <div class="select-row">
+                  <button class="select-chip" data-setting="clipDuration" data-val="5">5s clips</button>
+                  <button class="select-chip" data-setting="clipDuration" data-val="10">10s clips</button>
+                  <button class="select-chip active" data-setting="clipDuration" data-val="15">15s clips</button>
+                </div>
+              </div>
+            </div>
+            <div class="long-info-box">
+              <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 5v4M8 10.5v.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+              <span id="longInfoText">10 minutes = 40 clips × 15s each. Clips are auto-stitched into one video file.</span>
+            </div>
+          </div>
+
+          <!-- Long Video Progress (shown during long generation) -->
+          <div class="panel hidden" id="longProgressPanel">
+            <label class="label">Generation Progress</label>
+            <div class="long-progress-wrap">
+              <div class="long-progress-bar-track">
+                <div class="long-progress-bar-fill" id="longProgressFill"></div>
+              </div>
+              <span class="long-progress-pct" id="longProgressPct">0%</span>
+            </div>
+            <div class="long-clip-list" id="longClipList"></div>
           </div>
 
           <!-- Settings -->

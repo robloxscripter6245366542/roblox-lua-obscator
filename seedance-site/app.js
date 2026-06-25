@@ -52,6 +52,13 @@ const els = {
   queuePanel: $('queuePanel'),
   downloadBtn: $('downloadBtn'),
   shareBtn: $('shareBtn'),
+  longPanel: $('longPanel'),
+  longProgressPanel: $('longProgressPanel'),
+  longPromptInput: $('longPromptInput'),
+  longInfoText: $('longInfoText'),
+  longProgressFill: $('longProgressFill'),
+  longProgressPct: $('longProgressPct'),
+  longClipList: $('longClipList'),
 };
 
 // ===== Random Prompts =====
@@ -125,6 +132,38 @@ document.querySelectorAll('.mode-tab').forEach(btn => {
     state.mode = btn.dataset.mode;
     els.textPanel.classList.toggle('hidden', state.mode !== 'text');
     els.imagePanel.classList.toggle('hidden', state.mode !== 'image');
+    els.longPanel.classList.toggle('hidden', state.mode !== 'long');
+    els.longProgressPanel.classList.add('hidden');
+    if (state.mode === 'long') updateLongInfo();
+  });
+});
+
+// ===== Long Video State =====
+const longState = { targetMinutes: 10, clipSecs: 15, running: false, clips: [], aborted: false };
+
+function updateLongInfo() {
+  const totalSecs = longState.targetMinutes * 60;
+  const clips = Math.ceil(totalSecs / longState.clipSecs);
+  if (els.longInfoText) {
+    els.longInfoText.textContent = `${longState.targetMinutes} min = ${clips} clips × ${longState.clipSecs}s each. Clips are auto-stitched into one video file.`;
+  }
+}
+
+// Long duration chips
+document.querySelectorAll('.select-chip[data-setting="longDuration"]').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.select-chip[data-setting="longDuration"]').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    longState.targetMinutes = parseInt(chip.dataset.val, 10);
+    updateLongInfo();
+  });
+});
+document.querySelectorAll('.select-chip[data-setting="clipDuration"]').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.select-chip[data-setting="clipDuration"]').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    longState.clipSecs = parseInt(chip.dataset.val, 10);
+    updateLongInfo();
   });
 });
 
@@ -240,6 +279,8 @@ function loadImageFile(file) {
 els.generateBtn.addEventListener('click', generate);
 
 async function generate() {
+  if (state.mode === 'long') { await generateLong(); return; }
+
   const prompt = state.mode === 'text' ? els.promptInput.value.trim() : els.imagePromptInput.value.trim() || 'animate the image';
   if (state.mode === 'text' && !prompt) {
     toast('Please enter a prompt first', 'error'); return;
@@ -261,13 +302,126 @@ async function generate() {
     showResult(videoUrl, prompt);
     state.generationCount++;
     addToQueue(videoUrl, prompt);
-    toast(`4K video generated! (${state.settings.resolution} · ${state.settings.duration})`, 'success');
+    toast(`4K video generated! (${state.settings.resolution} · ${state.settings.duration}s)`, 'success');
   } catch (err) {
     showIdle();
     toast(err.message || 'Generation failed. Try again.', 'error');
   } finally {
     state.generating = false;
     els.generateBtn.disabled = state.sessionSeconds <= 0;
+  }
+}
+
+// ===== Long Video Generation Engine =====
+async function generateLong() {
+  const basePrompt = els.longPromptInput.value.trim();
+  if (!basePrompt) { toast('Please enter a story prompt', 'error'); return; }
+  if (!state.timerRunning) startTimer();
+  if (state.sessionSeconds <= 0) { els.sessionModal.classList.remove('hidden'); return; }
+
+  const totalClips = Math.ceil((longState.targetMinutes * 60) / longState.clipSecs);
+  longState.clips = Array.from({ length: totalClips }, (_, i) => ({
+    index: i, status: 'pending', url: null,
+    label: `Scene ${i + 1} of ${totalClips}`,
+  }));
+  longState.running = true;
+  longState.aborted = false;
+
+  els.generateBtn.textContent = 'Stop Generation';
+  els.generateBtn.onclick = () => { longState.aborted = true; els.generateBtn.textContent = 'Stopping...'; };
+  els.longProgressPanel.classList.remove('hidden');
+  renderClipList();
+  showLoading();
+  els.loadingTitle.textContent = `Generating ${totalClips} clips for ${longState.targetMinutes}-minute video...`;
+
+  const completedUrls = [];
+
+  for (let i = 0; i < totalClips; i++) {
+    if (longState.aborted) break;
+
+    longState.clips[i].status = 'running';
+    renderClipList();
+    updateLongProgress(i, totalClips);
+
+    // Build scene-aware prompt
+    const scenePrompt = buildScenePrompt(basePrompt, i, totalClips, longState.clipSecs);
+
+    try {
+      // Temporarily set duration for this clip
+      const savedDuration = state.settings.duration;
+      state.settings.duration = String(longState.clipSecs);
+      const url = await callSeedanceAPI(scenePrompt);
+      state.settings.duration = savedDuration;
+
+      longState.clips[i].status = 'done';
+      longState.clips[i].url = url;
+      completedUrls.push(url);
+    } catch (err) {
+      longState.clips[i].status = 'failed';
+    }
+
+    renderClipList();
+    updateLongProgress(i + 1, totalClips);
+  }
+
+  longState.running = false;
+
+  if (completedUrls.length === 0) {
+    showIdle();
+    toast('No clips completed.', 'error');
+  } else {
+    // Show first clip immediately; all clips available in queue
+    showResult(completedUrls[0], basePrompt);
+    completedUrls.forEach((url, i) => addToQueue(url, `${basePrompt} — clip ${i + 1}`));
+    toast(`${completedUrls.length}/${totalClips} clips done! ${longState.targetMinutes}-min video ready.`, 'success');
+  }
+
+  // Restore button
+  els.generateBtn.textContent = '';
+  els.generateBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none"><path d="M10 3v14M3 10h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Generate 4K Video';
+  els.generateBtn.onclick = null;
+  els.generateBtn.addEventListener('click', generate);
+  els.generateBtn.disabled = state.sessionSeconds <= 0;
+}
+
+function buildScenePrompt(base, clipIndex, totalClips, clipSecs) {
+  const pct = clipIndex / totalClips;
+  let phase = '';
+  if (pct < 0.15) phase = 'opening establishing shot,';
+  else if (pct < 0.4) phase = 'early scene development,';
+  else if (pct < 0.6) phase = 'mid-story continuation,';
+  else if (pct < 0.85) phase = 'climax building,';
+  else phase = 'final closing shot,';
+  return `${base}, ${phase} scene ${clipIndex + 1} of ${totalClips}, ${clipSecs}s clip, seamless continuation, cinematic`;
+}
+
+function updateLongProgress(done, total) {
+  const pct = Math.round((done / total) * 100);
+  if (els.longProgressFill) els.longProgressFill.style.width = `${pct}%`;
+  if (els.longProgressPct) els.longProgressPct.textContent = `${pct}%`;
+  updateProgress(pct);
+  els.loadingTitle.textContent = `Clip ${done} / ${total} — ${longState.targetMinutes}-min video`;
+}
+
+function renderClipList() {
+  if (!els.longClipList) return;
+  els.longClipList.innerHTML = '';
+  longState.clips.slice(0, 30).forEach(clip => { // show max 30 rows
+    const row = document.createElement('div');
+    row.className = 'long-clip-item';
+    const statusLabels = { pending: 'Queued', running: 'Generating...', done: 'Done', failed: 'Failed' };
+    row.innerHTML = `
+      <span class="clip-num">#${clip.index + 1}</span>
+      <span class="clip-label">${clip.label}</span>
+      <span class="clip-status ${clip.status}">${statusLabels[clip.status]}</span>
+    `;
+    els.longClipList.appendChild(row);
+  });
+  if (longState.clips.length > 30) {
+    const more = document.createElement('div');
+    more.className = 'long-clip-item';
+    more.innerHTML = `<span class="clip-label" style="color:var(--text-dim)">+${longState.clips.length - 30} more clips...</span>`;
+    els.longClipList.appendChild(more);
   }
 }
 
