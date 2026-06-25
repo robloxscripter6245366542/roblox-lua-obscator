@@ -37,8 +37,10 @@ type FrameType = 'background' | 'character' | 'model' | 'vfx'
 type Pt = {
   x: number; y: number; vx: number; vy: number
   size: number; alpha: number; color: string; life: number; maxLife: number
-  spin: number; kind: 'petal' | 'leaf' | 'pollen' | 'hair' | 'spark' | 'orbit' | 'dot'
+  spin: number; kind: 'petal' | 'leaf' | 'pollen' | 'hair' | 'spark' | 'orbit' | 'dot' | 'speedline' | 'inkstreak' | 'stardot' | 'ring'
   orbitR?: number; orbitCx?: number; orbitCy?: number
+  angle?: number; length?: number; fromX?: number; fromY?: number
+  ringR?: number; maxRingR?: number; ringCx?: number; ringCy?: number
 }
 
 function AnimatedMovieFrame({ src, alt = '', type = 'background' }: { src: string; alt?: string; type?: FrameType }) {
@@ -60,51 +62,71 @@ function AnimatedMovieFrame({ src, alt = '', type = 'background' }: { src: strin
     ro.observe(wrap)
 
     const pts: Pt[] = []
-    const MAX = type === 'vfx' ? 55 : type === 'background' ? 60 : type === 'character' ? 35 : 28
+    const MAX = type === 'vfx' ? 75 : type === 'background' ? 80 : type === 'character' ? 55 : 40
 
     const spawnBackground = (w: number, h: number): Pt => {
       const r = Math.random()
-      if (r < 0.4) { // pink/white cherry blossom petals
-        const clrs = ['rgba(255,182,193,', 'rgba(255,210,220,', 'rgba(255,240,245,', 'rgba(230,160,200,']
-        return { x: Math.random() * w * 1.2 - w * .1, y: Math.random() * h, vx: (Math.random() - .5) * .5 + .2, vy: -Math.random() * .4 - .1, size: Math.random() * 4 + 1.5, alpha: Math.random() * .7 + .25, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: Math.random() * 300 + 150, spin: Math.random() * Math.PI * 2, kind: 'petal', orbitR: 0, orbitCx: 0, orbitCy: 0 }
-      } else if (r < 0.7) { // green/yellow leaves
-        const clrs = ['rgba(120,200,80,', 'rgba(80,180,50,', 'rgba(160,220,60,', 'rgba(200,230,80,']
-        return { x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - .5) * .4, vy: -Math.random() * .3 - .05, size: Math.random() * 5 + 2, alpha: Math.random() * .6 + .2, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: Math.random() * 400 + 180, spin: Math.random() * Math.PI * 2, kind: 'leaf', orbitR: 0, orbitCx: 0, orbitCy: 0 }
-      } else { // white pollen dust
-        return { x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - .5) * .3, vy: -Math.random() * .2 - .05, size: Math.random() * 1.5 + .3, alpha: Math.random() * .5 + .15, color: 'rgba(255,255,255,', life: 0, maxLife: Math.random() * 250 + 100, spin: 0, kind: 'pollen', orbitR: 0, orbitCx: 0, orbitCy: 0 }
+      if (r < 0.35) { // pink/white cherry blossom petals — more intense
+        const clrs = ['rgba(255,182,193,', 'rgba(255,210,220,', 'rgba(255,240,245,', 'rgba(230,160,200,', 'rgba(255,150,210,']
+        return { x: Math.random() * w * 1.2 - w * .1, y: Math.random() * h * 1.1, vx: (Math.random() - .5) * .5 + .25, vy: -Math.random() * .5 - .15, size: Math.random() * 5 + 1.8, alpha: Math.random() * .85 + .3, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: Math.random() * 320 + 160, spin: Math.random() * Math.PI * 2, kind: 'petal', orbitR: 0, orbitCx: 0, orbitCy: 0 }
+      } else if (r < 0.6) { // green/yellow leaves
+        const clrs = ['rgba(100,200,70,', 'rgba(60,170,40,', 'rgba(140,220,50,', 'rgba(180,230,70,']
+        return { x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - .5) * .5, vy: -Math.random() * .38 - .08, size: Math.random() * 6 + 2, alpha: Math.random() * .65 + .25, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: Math.random() * 420 + 200, spin: Math.random() * Math.PI * 2, kind: 'leaf', orbitR: 0, orbitCx: 0, orbitCy: 0 }
+      } else if (r < 0.78) { // golden fireflies — manga ambient light
+        return { x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - .5) * .2, vy: -Math.random() * .12 - .02, size: Math.random() * 2.2 + .4, alpha: Math.random() * .9 + .1, color: 'rgba(255,235,80,', life: Math.random() * 80, maxLife: Math.random() * 200 + 80, spin: 0, kind: 'stardot' }
+      } else if (r < 0.9) { // white pollen dust
+        return { x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - .5) * .28, vy: -Math.random() * .18 - .04, size: Math.random() * 1.6 + .3, alpha: Math.random() * .5 + .15, color: 'rgba(255,255,200,', life: 0, maxLife: Math.random() * 260 + 110, spin: 0, kind: 'pollen', orbitR: 0, orbitCx: 0, orbitCy: 0 }
+      } else { // ink horizontal streaks — manga motion
+        return { x: -20, y: Math.random() * h, vx: Math.random() * 1.8 + .5, vy: 0, size: Math.random() * 1.2 + .3, alpha: Math.random() * .09 + .03, color: 'rgba(20,20,80,', life: 0, maxLife: w + 40, spin: 0, kind: 'inkstreak', length: Math.random() * 35 + 12 }
       }
     }
 
     const spawnCharacter = (w: number, h: number): Pt => {
-      const isHair = Math.random() < 0.6
-      if (isHair) {
-        const clrs = ['rgba(220,190,255,', 'rgba(180,220,255,', 'rgba(255,200,220,', 'rgba(255,240,180,', 'rgba(200,255,220,']
-        return { x: Math.random() * w, y: Math.random() * h * .6, vx: (Math.random() - .5) * .5, vy: -Math.random() * .7 - .15, size: Math.random() * 1.8 + .4, alpha: Math.random() * .8 + .2, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: Math.random() * 200 + 80, spin: (Math.random() - .5) * .06, kind: 'hair', orbitR: 0, orbitCx: 0, orbitCy: 0 }
+      const r = Math.random()
+      if (r < 0.45) { // hair particles — flowing strands
+        const clrs = ['rgba(220,190,255,', 'rgba(180,220,255,', 'rgba(255,200,220,', 'rgba(255,240,180,', 'rgba(200,255,220,', 'rgba(160,240,255,']
+        return { x: Math.random() * w, y: Math.random() * h * .65, vx: (Math.random() - .5) * .6, vy: -Math.random() * .85 - .2, size: Math.random() * 2.2 + .4, alpha: Math.random() * .9 + .2, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: Math.random() * 220 + 90, spin: (Math.random() - .5) * .07, kind: 'hair', orbitR: 0, orbitCx: 0, orbitCy: 0 }
+      } else if (r < 0.7) { // sparks
+        const clrs = ['rgba(255,255,200,', 'rgba(200,230,255,', 'rgba(255,200,255,', 'rgba(200,255,255,']
+        return { x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - .5) * .35, vy: -Math.random() * .45 - .1, size: Math.random() * 1.5 + .3, alpha: Math.random() * .9 + .1, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: Math.random() * 130 + 50, spin: 0, kind: 'spark', orbitR: 0, orbitCx: 0, orbitCy: 0 }
+      } else { // manga speed lines — burst from character
+        const angle = Math.random() * Math.PI * 2
+        return { x: w / 2, y: h * .38, vx: 0, vy: 0, size: .7, alpha: Math.random() * .18 + .05, color: 'rgba(200,230,255,', life: 0, maxLife: Math.random() * 55 + 25, spin: 0, kind: 'speedline', angle, length: Math.random() * w * .48 + w * .1, fromX: w / 2, fromY: h * .38 }
       }
-      const clrs = ['rgba(255,255,200,', 'rgba(200,230,255,', 'rgba(255,200,255,']
-      return { x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - .5) * .3, vy: -Math.random() * .4 - .1, size: Math.random() * 1.2 + .3, alpha: Math.random() * .9 + .1, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: Math.random() * 120 + 40, spin: 0, kind: 'spark', orbitR: 0, orbitCx: 0, orbitCy: 0 }
     }
 
     const spawnModel = (w: number, h: number): Pt => {
-      const angle = Math.random() * Math.PI * 2
-      const orbitR = Math.random() * Math.min(w, h) * .38 + Math.min(w, h) * .08
-      const cx = w / 2, cy = h / 2
-      const clrs = ['rgba(80,220,255,', 'rgba(255,180,50,', 'rgba(80,255,180,', 'rgba(200,100,255,']
-      return { x: cx + Math.cos(angle) * orbitR, y: cy + Math.sin(angle) * orbitR, vx: 0, vy: 0, size: Math.random() * 2 + .5, alpha: Math.random() * .9 + .1, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: 9999, spin: angle, kind: 'orbit', orbitR, orbitCx: cx, orbitCy: cy }
+      if (Math.random() < 0.7) {
+        const angle = Math.random() * Math.PI * 2
+        const orbitR = Math.random() * Math.min(w, h) * .42 + Math.min(w, h) * .08
+        const cx = w / 2, cy = h / 2
+        const clrs = ['rgba(80,220,255,', 'rgba(255,180,50,', 'rgba(80,255,180,', 'rgba(200,100,255,', 'rgba(255,100,200,']
+        return { x: cx + Math.cos(angle) * orbitR, y: cy + Math.sin(angle) * orbitR, vx: 0, vy: 0, size: Math.random() * 2.5 + .5, alpha: Math.random() * .9 + .1, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: 9999, spin: angle, kind: 'orbit', orbitR, orbitCx: cx, orbitCy: cy }
+      } else { // expanding ring pulse
+        const clrs = ['rgba(80,220,255,', 'rgba(255,180,50,', 'rgba(200,100,255,']
+        const cx = w / 2 + (Math.random() - .5) * w * .18
+        const cy = h / 2 + (Math.random() - .5) * h * .18
+        return { x: cx, y: cy, vx: 0, vy: 0, size: 1.5, alpha: .55, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: 80, spin: 0, kind: 'ring', ringR: 0, maxRingR: Math.min(w, h) * .28, ringCx: cx, ringCy: cy }
+      }
     }
 
     const spawnVFX = (w: number, h: number): Pt => {
       const zone = Math.floor(Math.random() * 3)
       const cx = zone === 0 ? w / 2 : zone === 1 ? w * .25 : w * .75
       const cy = zone === 0 ? h / 2 : zone === 1 ? h * .3 : h * .7
-      const clrs = ['rgba(255,80,50,', 'rgba(255,210,50,', 'rgba(255,50,210,', 'rgba(80,160,255,', 'rgba(50,255,180,']
-      const a = Math.random() * Math.PI * 2
-      const spd = Math.random() * 2.2 + .5
-      return { x: cx + (Math.random() - .5) * 30, y: cy + (Math.random() - .5) * 30, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd - .4, size: Math.random() * 2.8 + .5, alpha: 1, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: Math.random() * 65 + 20, spin: 0, kind: 'spark', orbitR: 0, orbitCx: 0, orbitCy: 0 }
+      if (Math.random() < 0.65) {
+        const clrs = ['rgba(255,80,50,', 'rgba(255,210,50,', 'rgba(255,50,210,', 'rgba(80,160,255,', 'rgba(50,255,180,', 'rgba(255,255,100,']
+        const a = Math.random() * Math.PI * 2
+        const spd = Math.random() * 3.2 + .8
+        return { x: cx + (Math.random() - .5) * 28, y: cy + (Math.random() - .5) * 28, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd - .5, size: Math.random() * 3.2 + .5, alpha: 1, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: Math.random() * 72 + 22, spin: 0, kind: 'spark', orbitR: 0, orbitCx: 0, orbitCy: 0 }
+      } else { // expanding energy ring
+        const clrs = ['rgba(255,80,180,', 'rgba(80,200,255,', 'rgba(255,220,80,', 'rgba(200,100,255,']
+        return { x: cx, y: cy, vx: 0, vy: 0, size: 2, alpha: .8, color: clrs[Math.floor(Math.random() * clrs.length)], life: 0, maxLife: 65, spin: 0, kind: 'ring', ringR: 0, maxRingR: Math.random() * Math.min(w, h) * .42 + Math.min(w, h) * .1, ringCx: cx, ringCy: cy }
+      }
     }
 
     let fr = 0
-    const RIG_PERIOD = 500
+    const RIG_PERIOD = 320
 
     const tick = () => {
       const w = canvas.width, h = canvas.height
@@ -133,41 +155,53 @@ function AnimatedMovieFrame({ src, alt = '', type = 'background' }: { src: strin
       }
 
       if (type === 'character') {
-        // Rim glow top
-        const ga = .06 + Math.sin(fr * .025) * .03
-        const g = ctx.createLinearGradient(0, 0, 0, h * .4)
-        g.addColorStop(0, `rgba(140,180,255,${ga.toFixed(3)})`)
-        g.addColorStop(1, 'rgba(0,0,0,0)')
-        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h)
-        // Edge rim
-        const ge = ctx.createRadialGradient(w / 2, h * .3, w * .08, w / 2, h * .3, w * .72)
-        ge.addColorStop(.82, 'rgba(0,0,0,0)')
-        ge.addColorStop(1, `rgba(100,170,255,${(ga * 1.8).toFixed(3)})`)
-        ctx.fillStyle = ge; ctx.fillRect(0, 0, w, h)
+        // Manga rim lighting — cyan top, pink sides, shadow base
+        const rimA = .08 + Math.sin(fr * .028) * .045
+        const gTop = ctx.createLinearGradient(0, 0, 0, h * .55)
+        gTop.addColorStop(0, `rgba(100,200,255,${rimA.toFixed(3)})`)
+        gTop.addColorStop(.4, `rgba(80,150,255,${(rimA * .5).toFixed(3)})`)
+        gTop.addColorStop(1, 'rgba(0,0,0,0)')
+        ctx.fillStyle = gTop; ctx.fillRect(0, 0, w, h)
+        // Left rim (cyan)
+        const sideA = .07 + Math.sin(fr * .022 + 1) * .04
+        const gLeft = ctx.createLinearGradient(0, 0, w * .28, 0)
+        gLeft.addColorStop(0, `rgba(80,220,255,${sideA.toFixed(3)})`)
+        gLeft.addColorStop(1, 'rgba(0,0,0,0)')
+        ctx.fillStyle = gLeft; ctx.fillRect(0, 0, w, h)
+        // Right rim (pink — manga style)
+        const gRight = ctx.createLinearGradient(w, 0, w * .72, 0)
+        gRight.addColorStop(0, `rgba(255,100,200,${(sideA * .85).toFixed(3)})`)
+        gRight.addColorStop(1, 'rgba(0,0,0,0)')
+        ctx.fillStyle = gRight; ctx.fillRect(0, 0, w, h)
+        // Bottom shadow
+        const gBot = ctx.createLinearGradient(0, h * .72, 0, h)
+        gBot.addColorStop(0, 'rgba(0,0,0,0)')
+        gBot.addColorStop(1, `rgba(20,10,40,${(.09 + Math.sin(fr * .018) * .03).toFixed(3)})`)
+        ctx.fillStyle = gBot; ctx.fillRect(0, 0, w, h)
       }
 
       if (type === 'model') {
-        // Rotating scan line
-        const sy = ((fr * 1.8) % (h + 40)) - 20
-        const sg = ctx.createLinearGradient(0, sy - 10, 0, sy + 10)
+        // Rotating scan lines (3D holographic style)
+        const sy = ((fr * 1.6) % (h + 40)) - 20
+        const sg = ctx.createLinearGradient(0, sy - 12, 0, sy + 12)
         sg.addColorStop(0, 'rgba(80,200,255,0)')
-        sg.addColorStop(.5, 'rgba(80,200,255,0.15)')
+        sg.addColorStop(.5, 'rgba(80,200,255,0.18)')
         sg.addColorStop(1, 'rgba(80,200,255,0)')
-        ctx.fillStyle = sg; ctx.fillRect(0, sy - 10, w, 20)
-        // Second scan (diagonal)
-        const sy2 = ((fr * .9 + 150) % (h + 40)) - 20
-        const sg2 = ctx.createLinearGradient(0, sy2 - 6, 0, sy2 + 6)
+        ctx.fillStyle = sg; ctx.fillRect(0, sy - 12, w, 24)
+        const sy2 = ((fr * .85 + 120) % (h + 40)) - 20
+        const sg2 = ctx.createLinearGradient(0, sy2 - 7, 0, sy2 + 7)
         sg2.addColorStop(0, 'rgba(255,180,50,0)')
-        sg2.addColorStop(.5, 'rgba(255,180,50,0.1)')
+        sg2.addColorStop(.5, 'rgba(255,180,50,0.12)')
         sg2.addColorStop(1, 'rgba(255,180,50,0)')
-        ctx.fillStyle = sg2; ctx.fillRect(0, sy2 - 6, w, 12)
-        // Orbit ring
-        const orbitPulse = .08 + Math.sin(fr * .03) * .04
-        ctx.strokeStyle = `rgba(80,200,255,${orbitPulse.toFixed(3)})`
-        ctx.lineWidth = 1
-        ctx.beginPath(); ctx.ellipse(w / 2, h / 2, Math.min(w, h) * .42, Math.min(w, h) * .22, fr * .008, 0, Math.PI * 2); ctx.stroke()
+        ctx.fillStyle = sg2; ctx.fillRect(0, sy2 - 7, w, 14)
+        // Three orbit rings at different angles
+        const orbitPulse = .10 + Math.sin(fr * .03) * .055
+        ctx.strokeStyle = `rgba(80,200,255,${orbitPulse.toFixed(3)})`; ctx.lineWidth = 1.2
+        ctx.beginPath(); ctx.ellipse(w / 2, h / 2, Math.min(w, h) * .44, Math.min(w, h) * .24, fr * .007, 0, Math.PI * 2); ctx.stroke()
         ctx.strokeStyle = `rgba(255,180,50,${(orbitPulse * .7).toFixed(3)})`
-        ctx.beginPath(); ctx.ellipse(w / 2, h / 2, Math.min(w, h) * .3, Math.min(w, h) * .36, -fr * .012, 0, Math.PI * 2); ctx.stroke()
+        ctx.beginPath(); ctx.ellipse(w / 2, h / 2, Math.min(w, h) * .3, Math.min(w, h) * .38, -fr * .011, 0, Math.PI * 2); ctx.stroke()
+        ctx.strokeStyle = `rgba(200,100,255,${(orbitPulse * .45).toFixed(3)})`
+        ctx.beginPath(); ctx.ellipse(w / 2, h / 2, Math.min(w, h) * .5, Math.min(w, h) * .16, fr * .015, 0, Math.PI * 2); ctx.stroke()
       }
 
       if (type === 'background') {
@@ -180,12 +214,35 @@ function AnimatedMovieFrame({ src, alt = '', type = 'background' }: { src: strin
         ctx.fillStyle = sg; ctx.fillRect(shimX - 30, 0, 60, h)
       }
 
+      // ── Manga screen tone dots (subtle animated halftone) ──
+      const stPhase = Math.sin(fr * .007) * .5 + .5
+      if (stPhase > .35) {
+        const stA = (stPhase - .35) * .028
+        const dotSpacing = type === 'character' ? 8 : 10
+        const toneColor = type === 'background' ? [20, 0, 60] : type === 'character' ? [0, 20, 60] : type === 'model' ? [0, 30, 50] : [60, 0, 40]
+        for (let tx = 0; tx < w; tx += dotSpacing) {
+          for (let ty = 0; ty < h; ty += dotSpacing) {
+            const edgeFade = 1 - Math.sqrt(((tx - w / 2) / (w * .6)) ** 2 + ((ty - h / 2) / (h * .6)) ** 2)
+            if (edgeFade > 0) { ctx.globalAlpha = stA * Math.max(0, edgeFade) * .5; ctx.fillStyle = `rgba(${toneColor.join(',')},1)`; ctx.beginPath(); ctx.arc(tx, ty, .7, 0, Math.PI * 2); ctx.fill() }
+          }
+        }
+        ctx.globalAlpha = 1
+      }
+
+      // ── Manga panel border flash ──
+      const pfP = fr % 380
+      if (pfP < 20) {
+        const pfA = (pfP < 10 ? pfP / 10 : 1 - (pfP - 10) / 10) * (type === 'vfx' ? .4 : .22)
+        ctx.strokeStyle = type === 'vfx' ? `rgba(255,100,200,${pfA.toFixed(3)})` : type === 'character' ? `rgba(80,220,255,${pfA.toFixed(3)})` : type === 'model' ? `rgba(255,200,80,${pfA.toFixed(3)})` : `rgba(180,255,120,${pfA.toFixed(3)})`
+        ctx.lineWidth = 3; ctx.strokeRect(1.5, 1.5, w - 3, h - 3)
+      }
+
       // ── Rigging flash overlay (character & model) ──
       if (type === 'character' || type === 'model') {
         const rp = fr % RIG_PERIOD
-        if (rp < 55) {
-          const t = rp < 25 ? rp / 25 : 1 - (rp - 25) / 30
-          const rigA = t * (type === 'character' ? .22 : .18)
+        if (rp < 65) {
+          const t = rp < 30 ? rp / 30 : 1 - (rp - 30) / 35
+          const rigA = t * (type === 'character' ? .28 : .22)
           ctx.strokeStyle = type === 'character' ? `rgba(80,220,255,${rigA.toFixed(3)})` : `rgba(255,200,80,${rigA.toFixed(3)})`
           ctx.lineWidth = .4
           const gs = type === 'character' ? 18 : 22
@@ -193,30 +250,58 @@ function AnimatedMovieFrame({ src, alt = '', type = 'background' }: { src: strin
           for (let gy = 0; gy <= h; gy += gs) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke() }
 
           if (type === 'character') {
-            // Skeleton joints
-            const jA = rigA * 4
-            const joints: [number, number][] = [[w / 2, h * .07], [w / 2, h * .22], [w * .28, h * .34], [w * .72, h * .34], [w * .18, h * .5], [w * .82, h * .5], [w / 2, h * .52], [w * .34, h * .75], [w * .66, h * .75], [w * .3, h * .94], [w * .7, h * .94]]
-            ctx.strokeStyle = `rgba(80,240,255,${(jA * .8).toFixed(3)})`; ctx.lineWidth = 1.2
-            const bones: [number, number][][] = [[0, 1], [1, 2], [1, 3], [2, 4], [3, 5], [1, 6], [6, 7], [6, 8], [7, 9], [8, 10]]
-            bones.forEach(([a, b]) => {
-              ctx.beginPath(); ctx.moveTo(joints[a][0], joints[a][1]); ctx.lineTo(joints[b][0], joints[b][1]); ctx.stroke()
-            })
-            ctx.fillStyle = `rgba(80,240,255,${(jA * 1.2).toFixed(3)})`
-            joints.forEach(([jx, jy]) => { ctx.beginPath(); ctx.arc(jx, jy, 2.5, 0, Math.PI * 2); ctx.fill() })
+            // Full 16-joint skeleton — anime rig
+            const jA = Math.min(1, rigA * 4.5)
+            const joints: [number, number][] = [
+              [w / 2, h * .06],    // 0 head top
+              [w / 2, h * .14],    // 1 neck
+              [w / 2, h * .26],    // 2 chest
+              [w * .25, h * .28],  // 3 L shoulder
+              [w * .75, h * .28],  // 4 R shoulder
+              [w * .18, h * .44],  // 5 L elbow
+              [w * .82, h * .44],  // 6 R elbow
+              [w * .13, h * .58],  // 7 L wrist
+              [w * .87, h * .58],  // 8 R wrist
+              [w / 2, h * .52],    // 9 hip center
+              [w * .35, h * .54],  // 10 L hip
+              [w * .65, h * .54],  // 11 R hip
+              [w * .32, h * .73],  // 12 L knee
+              [w * .68, h * .73],  // 13 R knee
+              [w * .3, h * .92],   // 14 L ankle
+              [w * .7, h * .92],   // 15 R ankle
+            ]
+            const bones: [number, number][][] = [[0, 1], [1, 2], [2, 9], [2, 3], [2, 4], [3, 5], [4, 6], [5, 7], [6, 8], [9, 10], [9, 11], [10, 12], [11, 13], [12, 14], [13, 15]]
+            ctx.strokeStyle = `rgba(80,240,255,${(jA * .95).toFixed(3)})`; ctx.lineWidth = 1.4
+            bones.forEach(([a, b]) => { ctx.beginPath(); ctx.moveTo(joints[a][0], joints[a][1]); ctx.lineTo(joints[b][0], joints[b][1]); ctx.stroke() })
+            ctx.fillStyle = `rgba(100,255,255,${(jA * 1.35).toFixed(3)})`
+            joints.forEach(([jx, jy]) => { ctx.beginPath(); ctx.arc(jx, jy, 3, 0, Math.PI * 2); ctx.fill() })
+            // Head circle
+            ctx.strokeStyle = `rgba(80,240,255,${(jA * .7).toFixed(3)})`; ctx.lineWidth = 1
+            ctx.beginPath(); ctx.arc(w / 2, h * .1, h * .045, 0, Math.PI * 2); ctx.stroke()
           }
           if (type === 'model') {
-            ctx.strokeStyle = `rgba(255,200,80,${(rigA * 2.5).toFixed(3)})`; ctx.lineWidth = 1
-            ctx.beginPath(); ctx.arc(w / 2, h / 2, Math.min(w, h) * .35, 0, Math.PI * 2); ctx.stroke()
-            ctx.beginPath(); ctx.arc(w / 2, h / 2, Math.min(w, h) * .18, 0, Math.PI * 2); ctx.stroke()
-            // cross hairs
-            ctx.beginPath(); ctx.moveTo(w / 2 - 20, h / 2); ctx.lineTo(w / 2 + 20, h / 2)
-            ctx.moveTo(w / 2, h / 2 - 20); ctx.lineTo(w / 2, h / 2 + 20); ctx.stroke()
+            ctx.strokeStyle = `rgba(255,200,80,${(rigA * 3).toFixed(3)})`; ctx.lineWidth = 1.2
+            ctx.beginPath(); ctx.arc(w / 2, h / 2, Math.min(w, h) * .36, 0, Math.PI * 2); ctx.stroke()
+            ctx.beginPath(); ctx.arc(w / 2, h / 2, Math.min(w, h) * .2, 0, Math.PI * 2); ctx.stroke()
+            ctx.beginPath()
+            ctx.moveTo(w / 2 - 25, h / 2); ctx.lineTo(w / 2 + 25, h / 2)
+            ctx.moveTo(w / 2, h / 2 - 25); ctx.lineTo(w / 2, h / 2 + 25)
+            ctx.stroke()
+            // Targeting brackets at corners
+            const bs = 12
+            const corners: [number, number][] = [[w * .15, h * .15], [w * .85, h * .15], [w * .15, h * .85], [w * .85, h * .85]]
+            corners.forEach(([cx, cy]) => {
+              ctx.beginPath()
+              ctx.moveTo(cx - bs, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy - bs)
+              ctx.moveTo(cx + bs, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy + bs)
+              ctx.stroke()
+            })
           }
         }
       }
 
       // ── Spawn ──
-      const rate = type === 'vfx' ? 1 : type === 'background' ? 3 : 6
+      const rate = type === 'vfx' ? 1 : type === 'background' ? 2 : 4
       if (pts.length < MAX && fr % rate === 0) {
         if (type === 'background') pts.push(spawnBackground(w, h))
         else if (type === 'character') pts.push(spawnCharacter(w, h))
@@ -231,20 +316,50 @@ function AnimatedMovieFrame({ src, alt = '', type = 'background' }: { src: strin
 
         // Update position
         if (p.kind === 'orbit') {
-          const orbitSpeed = .018 + (p.orbitR! / (Math.min(w, h) * .5)) * .008
+          const orbitSpeed = .02 + (p.orbitR! / (Math.min(w, h) * .5)) * .01
           p.spin += orbitSpeed
           p.x = p.orbitCx! + Math.cos(p.spin) * p.orbitR!
           p.y = p.orbitCy! + Math.sin(p.spin) * p.orbitR! * .55
-          // orbital particles live forever; fade only at edges
-          const t = Math.sin(p.spin) * .5 + .5
-          const a = p.alpha * (.5 + t * .5)
-          ctx.save(); ctx.globalAlpha = a
-          ctx.shadowBlur = 7; ctx.shadowColor = p.color + '.9)'
-          ctx.fillStyle = p.color + a.toFixed(2) + ')'
+          const ot = Math.sin(p.spin) * .5 + .5
+          const oa = p.alpha * (.5 + ot * .5)
+          ctx.save(); ctx.globalAlpha = oa
+          ctx.shadowBlur = 10; ctx.shadowColor = p.color + '.9)'
+          ctx.fillStyle = p.color + oa.toFixed(2) + ')'
           ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill()
           ctx.restore()
-          // orbit particles never die
           continue
+        }
+
+        if (p.kind === 'ring') {
+          p.ringR = (p.ringR || 0) + (p.maxRingR! / p.maxLife)
+          const rt = p.life / p.maxLife
+          const ra = (rt < .3 ? rt / .3 : 1 - (rt - .3) / .7) * p.alpha
+          if (ra <= 0 || p.life >= p.maxLife) { pts.splice(i, 1); continue }
+          ctx.save(); ctx.globalAlpha = ra
+          ctx.strokeStyle = p.color + ra.toFixed(2) + ')'; ctx.lineWidth = type === 'vfx' ? 2.2 : 1.6
+          ctx.beginPath(); ctx.arc(p.ringCx!, p.ringCy!, p.ringR, 0, Math.PI * 2); ctx.stroke()
+          ctx.restore(); p.life++; continue
+        }
+
+        if (p.kind === 'speedline') {
+          const st = p.life / p.maxLife
+          const sa = (st < .2 ? st / .2 : 1 - (st - .2) / .8) * p.alpha
+          if (sa <= 0 || p.life >= p.maxLife) { pts.splice(i, 1); continue }
+          const endX = p.fromX! + Math.cos(p.angle!) * p.length! * Math.min(1, st * 4)
+          const endY = p.fromY! + Math.sin(p.angle!) * p.length! * Math.min(1, st * 4)
+          ctx.save(); ctx.globalAlpha = sa
+          ctx.strokeStyle = p.color + sa.toFixed(2) + ')'; ctx.lineWidth = p.size
+          ctx.beginPath(); ctx.moveTo(p.fromX!, p.fromY!); ctx.lineTo(endX, endY); ctx.stroke()
+          ctx.restore(); p.life++; continue
+        }
+
+        if (p.kind === 'inkstreak') {
+          if (p.x > w + 25 || p.life >= p.maxLife) { pts.splice(i, 1); continue }
+          p.x += p.vx; p.life++
+          ctx.save(); ctx.globalAlpha = p.alpha
+          ctx.strokeStyle = p.color + p.alpha.toFixed(2) + ')'; ctx.lineWidth = p.size
+          ctx.beginPath(); ctx.moveTo(p.x - (p.length || 20), p.y); ctx.lineTo(p.x, p.y); ctx.stroke()
+          ctx.restore(); continue
         }
 
         p.x += p.vx; p.y += p.vy
@@ -274,10 +389,8 @@ function AnimatedMovieFrame({ src, alt = '', type = 'background' }: { src: strin
           ctx.fill()
           ctx.strokeStyle = 'rgba(255,255,255,' + (a * .3).toFixed(2) + ')'; ctx.lineWidth = .4
           ctx.beginPath(); ctx.moveTo(0, -p.size * 1.5); ctx.lineTo(0, p.size * 1.5); ctx.stroke()
-        } else if (p.kind === 'pollen') {
-          ctx.fillStyle = p.color + a.toFixed(2) + ')'
-          ctx.beginPath(); ctx.arc(p.x - p.x, p.y - p.y, p.size, 0, Math.PI * 2)
-          ctx.restore(); ctx.save(); ctx.globalAlpha = Math.max(0, a)
+        } else if (p.kind === 'pollen' || p.kind === 'stardot') {
+          if (p.kind === 'stardot') { ctx.shadowBlur = 9; ctx.shadowColor = p.color + '.9)' }
           ctx.fillStyle = p.color + a.toFixed(2) + ')'
           ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill()
         } else if (p.kind === 'hair') {
@@ -327,7 +440,7 @@ function AnimatedMovieFrame({ src, alt = '', type = 'background' }: { src: strin
 export default function MoviePanel() {
   const [concept, setConcept] = useState('')
   const [genre, setGenre] = useState('Sci-Fi Thriller')
-  const [style, setStyle] = useState('cinematic')
+  const [style, setStyle] = useState('anime')
   const [lenMin, setLenMin] = useState(5)
   const [vidModel, setVidModel] = useState('seedance-2.5')
   const [charsText, setCharsText] = useState('')
@@ -409,8 +522,8 @@ export default function MoviePanel() {
       .split('\n').map(l => l.trim()).filter(l => l.length > 10).slice(0, 4)
     setChars(charLines.map(d => ({ desc: d })))
     const charDesigns: CharAsset[] = await Promise.all(charLines.map(async (desc) => {
-      const styleExtra = style === 'anime' ? 'anime art style, studio quality illustration, beautiful anime, dynamic hair strands' : style === '3d' ? '3D CGI render, Pixar quality, subsurface scattering, physically based rendering' : style === 'cartoon' ? 'cartoon illustration, vibrant, clean linework, expressive' : 'hyperrealistic portrait, cinematic lighting, photographic, golden ratio composition'
-      const imgUrl = await genImg(`Character portrait, full body rigging reference sheet, ${desc}, ${styleExtra}, individual hair strands flowing, expressive eyes, dynamic pose, professional concept art, 4K ultra detail, 8K`, imgModel, 768, 1024)
+      const styleExtra = style === 'anime' ? 'manga anime art style, studio Ghibli quality, cel shading, dramatic rim lighting cyan and pink, screen tone shading, beautiful anime, dynamic flowing hair strands, manga lighting' : style === '3d' ? '3D CGI render, Pixar quality, subsurface scattering, physically based rendering, dramatic studio lighting' : style === 'cartoon' ? 'cartoon illustration, vibrant, clean linework, expressive, bold shadows' : 'hyperrealistic portrait, cinematic lighting, photographic, golden ratio composition, dramatic rim light'
+      const imgUrl = await genImg(`Character portrait, full body rigging reference sheet, ${desc}, ${styleExtra}, individual hair strands flowing, expressive eyes, dynamic pose, dramatic manga lighting, cyan rim light, professional concept art, 4K ultra detail, 8K`, imgModel, 768, 1024)
       return { desc, imgUrl }
     }))
     setChars(charDesigns)
@@ -425,7 +538,8 @@ export default function MoviePanel() {
     for (let i = 0; i < Math.min(sceneMatches.length, 8); i++) {
       if (stoppedRef.current) break
       const vis = sceneMatches[i].match(/VISUAL:\s*([^\n]+)/i)?.[1] || sceneMatches[i].slice(0, 150)
-      const url = await genImg(`Cinematic ${style} film background environment, ${vis}, ${genre} genre, professional cinematography, dramatic lighting, ultra detailed foliage, flowing flowers and leaves, atmospheric depth, 4K ultra HD quality`, 'flux-pro', 768, 432)
+      const bgStyleExtra = style === 'anime' ? 'manga anime background art, studio Ghibli style, dramatic manga lighting, screen tone shadows, cel shaded, atmospheric depth, cherry blossoms and leaves floating' : 'cinematic lighting, dramatic shadows, volumetric god rays'
+      const url = await genImg(`${style === 'anime' ? 'Anime manga' : 'Cinematic'} film background environment, ${vis}, ${genre} genre, ${bgStyleExtra}, ultra detailed foliage, flowing flowers and leaves, atmospheric depth, 4K ultra HD quality`, 'flux-pro', 768, 432)
       if (url) frames.push(url)
       setStoryboardFrames([...frames])
       setProgress(38 + (i / 8) * 12)
@@ -541,7 +655,7 @@ export default function MoviePanel() {
     const imgModel = style === 'anime' ? 'flux-anime' : style === '3d' ? 'flux-3d' : 'flux-realism'
     setChars(lines.map(d => ({ desc: d })))
     const results = await Promise.all(lines.map(async desc => {
-      const url = await genImg(`Character portrait, full body rigging reference, ${desc}, individual hair strands, expressive eyes, dynamic pose, ${style === 'anime' ? 'anime art, studio quality, flowing hair' : 'hyperrealistic, cinematic lighting, photographic quality'}, professional concept art, 4K ultra detail`, imgModel, 768, 1024)
+      const url = await genImg(`Character portrait, full body rigging reference, ${desc}, individual hair strands, expressive eyes, dynamic pose, ${style === 'anime' ? 'manga anime art, studio quality, dramatic rim lighting, cyan and pink manga lighting, cel shading, screen tone shading, flowing hair, beautiful anime illustration' : 'hyperrealistic, cinematic lighting, photographic quality, dramatic rim light'}, professional concept art, 4K ultra detail`, imgModel, 768, 1024)
       return { desc, imgUrl: url }
     }))
     setChars(results)
