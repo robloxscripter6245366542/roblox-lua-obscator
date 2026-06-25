@@ -351,6 +351,76 @@ local function gatherContext(onProgress)
         for _, s in ipairs(scrLines) do emit("  " .. s) end
     end
 
+    -- ── Hookable targets summary (explicit list for AI) ───────────────────────
+    onProgress("Building hookable targets list...")
+    local hookTargets = {}
+
+    -- Every RemoteEvent → hookable via OnClientEvent listener + FireServer intercept
+    for _, r in ipairs(remotes) do
+        if r:find("RemoteEvent") then
+            table.insert(hookTargets, "REMOTE_LISTEN: " .. r:match("^(.-)%s+%[") .. ":OnClientEvent")
+            table.insert(hookTargets, "REMOTE_FIRE:   " .. r:match("^(.-)%s+%[") .. ":FireServer()")
+        elseif r:find("RemoteFunction") then
+            table.insert(hookTargets, "REMOTE_INVOKE: " .. r:match("^(.-)%s+%[") .. ":InvokeServer()")
+        elseif r:find("bindable") then
+            table.insert(hookTargets, "BINDABLE:      " .. r:match("^(.-)%s+%[") .. ":Event / :Fire()")
+        end
+        if #hookTargets >= 60 then break end
+    end
+
+    -- Every function found in scripts → hookable via hookfunction() if UNC available
+    for _, scr in ipairs(scripts) do
+        local src = ""
+        if doDecomp then pcall(function() src = doDecomp(scr) end) end
+        if src == "" then pcall(function() src = scr.Source end) end
+        if src and src ~= "" then
+            for n in src:gmatch("function%s+([%w_]+)%s*%(") do
+                table.insert(hookTargets, "HOOK_FUNC:     " .. scr.Name .. "::" .. n .. "()")
+                if #hookTargets >= 100 then break end
+            end
+        end
+        if #hookTargets >= 100 then break end
+    end
+
+    -- Every UI TextButton found → hookable via MouseButton1Click
+    local function walkButtons(parent, path, depth)
+        if depth > 6 or #hookTargets >= 130 then return end
+        local ok, children = pcall(function() return parent:GetChildren() end)
+        if not ok then return end
+        for _, v in ipairs(children) do
+            if v.Name ~= "NexusAI" then
+                local p = path .. "." .. v.Name
+                if v:IsA("TextButton") or v:IsA("ImageButton") then
+                    table.insert(hookTargets, "HOOK_BTN:      " .. p .. ":MouseButton1Click")
+                end
+                walkButtons(v, p, depth + 1)
+            end
+        end
+    end
+    pcall(walkButtons, PGUI, "PlayerGui", 1)
+
+    -- getconnections() targets — existing signal connections on key game objects
+    pcall(function()
+        if getconnections then
+            local char = LP.Character or LP.CharacterAdded:Wait()
+            local hum  = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                local conns = getconnections(hum.HealthChanged)
+                table.insert(hookTargets, "GETCONN: Humanoid.HealthChanged → " .. #conns .. " existing connection(s)")
+                local dconns = getconnections(hum.Died)
+                table.insert(hookTargets, "GETCONN: Humanoid.Died → " .. #dconns .. " existing connection(s)")
+            end
+        end
+    end)
+
+    if #hookTargets > 0 then
+        emit("\nHOOKABLE TARGETS (hook ALL of these in generated code):")
+        for i, h in ipairs(hookTargets) do
+            if i > 130 then emit("  ...(" .. (#hookTargets-130) .. " more)"); break end
+            emit("  " .. h)
+        end
+    end
+
     emit("\n=== END CONTEXT ===")
     return table.concat(out, "\n")
 end
@@ -359,51 +429,73 @@ end
 -- POLLINATIONS AI  —  context-aware script generation
 -- ═══════════════════════════════════════════════════════════════════════════════
 local SYS = [[You are an expert Roblox Lua architect for executor environments (Delta, Synapse, KRNL).
-You will receive a GAME CONTEXT block containing the live game's full hierarchy: RemoteEvents, BindableEvents, ModuleScript paths, UI elements, workspace objects, script function maps, and which UNC/executor functions are available.
+You receive a GAME CONTEXT block with the full live game hierarchy AND a pre-built HOOKABLE TARGETS list.
+Your job: hook EVERYTHING in that list, then build the requested features on top.
 
-══ ANALYSIS PHASE (always first) ══
-Before writing any code, produce a concise technical report inside a Lua block comment:
-  --[[ ANALYSIS REPORT
-    Game: <name>
-    UI Structure: describe how PlayerGui is organized, which ScreenGuis exist, what menus are present
-    Gameplay Systems: identify which RemoteEvents drive which mechanics, which LocalScripts own which features
-    Event Flow: trace how client→server communication works (which scripts fire which remotes)
-    Module Dependencies: list require() chains found
-    Hooks Available: list which UNC functions from GAME CONTEXT you will use and WHY
-    Missing Info: explicitly state anything that could not be determined from GAME CONTEXT
-  ]]
+══ ANALYSIS PHASE (mandatory — do this first) ══
+Output a block comment before any code:
+--[[ ANALYSIS REPORT
+  Game: <name and PlaceId>
+  UI Structure: which ScreenGuis exist, how menus are laid out, what buttons/labels are present
+  Gameplay Systems: which RemoteEvents drive which mechanics, which LocalScripts own which features
+  Event & Data Flow: how client→server communication works, which scripts fire which remotes
+  Module Dependencies: require() chains found
+  Hook Plan: for EVERY entry in HOOKABLE TARGETS — state what you will hook it to and what you gain
+  Missing Info: anything that cannot be determined from GAME CONTEXT — state it explicitly
+]]
 
-══ IMPLEMENTATION RULES ══
-1. Use ONLY paths and names from GAME CONTEXT — never invent instance paths.
-2. Use all available UNC functions listed in GAME CONTEXT to maximise feature power:
-     hookfunction() → intercept existing game functions without replacing them
-     getconnections() → inspect/disconnect existing signal handlers
-     firesignal() → trigger signals programmatically
-     getgc() → locate hidden instances/tables the game doesn't expose publicly
-     getrawmetatable() / setrawmetatable() / setreadonly() → bypass __index/__newindex locks
-     hookmetamethod() → intercept __index/__newindex on game objects
-     getsenv() / getscriptenv() → access another script's closed-over variables
-     newcclosure() → wrap hooks so they appear as C closures to anti-cheat checks
-3. Hook ALL relevant RemoteEvents found in GAME CONTEXT — connect listeners to log/modify traffic.
-4. For bots and trackers: use Drawing API (Drawing.new("Square"/"Line"/"Circle"/"Text")).
-     Update every frame via RunService.RenderStepped.
-     Convert 3D to screen: Camera:WorldToViewportPoint(pos) → Vector2.
-     Check visibility with Camera:WorldToViewportPoint returning onScreen bool.
-5. Build ONE draggable ScreenGui.
-     Title-bar drag works with both mouse (MouseMovement) and touch (Touch).
-     Every feature has its own color-coded toggle: green = on, red = off.
-     Group related toggles under section headers.
-6. Integrate cleanly — check if an existing UI element from GAME CONTEXT is already present before creating a duplicate.
-7. Add a one-line comment above every major block explaining WHY it exists.
-8. Wrap every remote call and instance lookup in pcall.
-9. Use task.spawn / task.wait only — no coroutine / wait.
-10. Include all helper functions, utility tables, and config constants inline.
+══ HOOK EVERYTHING RULE ══
+This is the most important rule. For EVERY entry in "HOOKABLE TARGETS":
 
-OUTPUT FORMAT — always this exact structure:
+  REMOTE_LISTEN  → connect :OnClientEvent to intercept all incoming server→client data
+  REMOTE_FIRE    → use hookfunction() on the game's FireServer calls to intercept/log/modify outgoing args
+  REMOTE_INVOKE  → use hookfunction() on InvokeServer to intercept both request and response
+  BINDABLE       → connect :Event and wrap :Fire() with hookfunction() to intercept internal signals
+  HOOK_FUNC      → use hookfunction(originalFn, newcclosure(function(...) ... end)) on every found function
+  HOOK_BTN       → connect :MouseButton1Click on every game UI button to log/intercept clicks
+  GETCONN        → use getconnections() to enumerate existing handlers, optionally disconnect anti-cheat ones
+
+Do not skip any entry. If a hook would break the feature, wrap it in pcall and log the error instead.
+
+══ UNC MAXIMISATION ══
+Use EVERY available UNC function listed in GAME CONTEXT:
+  hookfunction()     — intercept any Lua function, keep original callable via the returned ref
+  newcclosure()      — wrap every hook so it appears as a C closure (bypasses checkcaller guards)
+  getconnections()   — enumerate signal connections; disconnect server-side anti-cheat handlers
+  firesignal()       — fire any RBXScriptSignal programmatically without owning the instance
+  getgc(true)        — scan GC heap for hidden tables/functions the game hides from the instance tree
+  getrawmetatable()  — read locked metatables; setreadonly(mt, false) before writing
+  setrawmetatable()  — replace metatables to intercept __index / __newindex globally
+  hookmetamethod()   — hook __index/__newindex on game objects (e.g. BasePart, Humanoid)
+  getsenv()          — get the environment of any running LocalScript to read its upvalues/globals
+  getscriptenv()     — alternative to getsenv for module scripts
+  getfenv(fn)        — get environment of a specific function closure
+
+══ BOT & DRAWING RULES ══
+  Drawing API: Drawing.new("Square"), Drawing.new("Line"), Drawing.new("Circle"), Drawing.new("Text")
+  Update ALL drawings in RunService.RenderStepped — never in Heartbeat or loops
+  3D→2D: local pos2d, depth, onScreen = Camera:WorldToViewportPoint(part.Position)
+  Only draw when onScreen == true
+  Clean up all Drawing objects on toggle-off by setting .Visible = false
+
+══ UI RULES ══
+  ONE ScreenGui, draggable by title bar (mouse + touch both work)
+  Every feature = its own toggle button, green (on) / red (off)
+  Group toggles under section labels (HOOKS / BOTS / REMOTES / PLAYER / etc.)
+  Show a live log/output frame that prints hooked remote traffic
+
+══ CODE QUALITY ══
+  One-line WHY comment above every major block
+  All remote calls + instance lookups in pcall
+  task.spawn / task.wait only — never coroutine / wait
+  Config table at top (distances, colors, keys) so user can tweak without reading code
+  Helper functions defined before use
+
+OUTPUT FORMAT — always exactly:
 --[[ ANALYSIS REPORT
 ...
 ]]
-<raw Lua code — no backticks, no markdown outside the analysis block>]]
+<raw Lua code — no backticks, no markdown outside the analysis comment>]]
 
 local function aiGenerate(userPrompt, gameContext, onStatus)
     if not httpReq then return nil, "No HTTP function available in this executor." end
