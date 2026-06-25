@@ -965,30 +965,46 @@ GENBTN.MouseButton1Click:Connect(function()
             setStatus(msg,C.AMBER); addLog(msg,C.SUB)
         end)
         addLog("Context built: "..#ctx.." chars",C.GRN)
-        setStatus("Phase 2 — generating with Claude Opus 4.6...",C.AMBER)
         GENBTN.Text="Asking AI..."
-        CLBL.Text="Claude Opus 4.6 is writing your script..."
+        CLBL.Text="AI is writing your script..."
         CLBL.TextColor3=C.AMBER
 
-        local code,err = aiGenerate(prompt, ctx, function(msg)
-            setStatus(msg,C.AMBER); addLog(msg,C.SUB)
+        -- Live elapsed-time counter so user sees it's working
+        local aiStart = tick()
+        local timerConn
+        local lastLabel = ""
+        timerConn = RUN.Heartbeat:Connect(function()
+            local s = math.floor(tick()-aiStart)
+            local lbl = "AI thinking... "..s.."s (normal: 10-30s)"
+            if lbl ~= lastLabel then
+                lastLabel = lbl
+                setStatus(lbl, C.AMBER)
+                GENBTN.Text = "AI... "..s.."s"
+            end
         end)
+
+        local code,err = aiGenerate(prompt, ctx, function(msg)
+            addLog(msg,C.SUB)
+        end)
+        timerConn:Disconnect()
 
         if code and #code>20 then
             generatedCode=code
             CLBL.Text=code; CLBL.TextColor3=C.CODE
             OUTCNT.Text=#code.." chars"
-            setStatus("Done — "..(#code).." chars · Copy or Execute",C.GRN)
-            addLog("Script generated: "..(#code).." chars",C.GRN)
-            notify("Nexus AI","Script ready!",3)
+            local elapsed = math.floor(tick()-aiStart)
+            setStatus("Done in "..elapsed.."s — "..(#code).." chars · Copy or Execute",C.GRN)
+            addLog("Script ready: "..(#code).." chars in "..elapsed.."s",C.GRN)
+            notify("Nexus AI","Script ready! ("..elapsed.."s)",3)
         else
             CLBL.Text="Failed:\n"..(err or "unknown error")
             CLBL.TextColor3=C.RED
-            setStatus("Generation failed",C.RED)
+            setStatus("Failed: "..(err or "?"),C.RED)
             addLog("FAILED: "..(err or "unknown"),C.RED)
+            notify("Nexus AI","Failed: "..(err or "?"):sub(1,60),4)
         end
         tw(GENBTN,{BackgroundColor3=C.ACC})
-        GENBTN.Text="⬡  Deep Scan + Analyse + Generate"
+        GENBTN.Text="⬡  Scan + Generate"
         generating=false
     end)
 end)
