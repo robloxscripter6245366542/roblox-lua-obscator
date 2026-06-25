@@ -133,90 +133,162 @@ local function gatherContext(onProgress)
     local out = {}
     local function emit(s) table.insert(out, s) end
 
-    -- Game info
-    emit("=== GAME CONTEXT (use these EXACT paths in your code) ===")
+    -- ── Header ────────────────────────────────────────────────────────────────
+    emit("=== GAME CONTEXT (EXACT paths only — do not invent names) ===")
     emit("PlaceId: " .. tostring(game.PlaceId))
     pcall(function()
         local info = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId)
         emit("Place Name: " .. (info and info.Name or "Unknown"))
     end)
 
-    onProgress("Scanning RemoteEvents...")
+    -- ── Available UNC / executor functions ────────────────────────────────────
+    onProgress("Checking UNC / executor functions...")
+    local UNC_CANDIDATES = {
+        -- GC / metatable
+        "getgc","getrawmetatable","setrawmetatable","setreadonly","isreadonly",
+        -- Hooks
+        "hookfunction","newcclosure","hookmetamethod","replaceclosure",
+        -- Script env
+        "getscripts","getrunningscripts","getsenv","getscriptenv","getscripthash",
+        -- Decompile
+        "decompile",
+        -- Connections / signals
+        "getconnections","firesignal","fireclickdetector","firetouchinterest",
+        "fireproximityprompt",
+        -- Remote helpers
+        "getremotes",
+        -- Environment
+        "getfenv","setfenv","getrenv","getgenv",
+        -- Debug
+        "debug.info","debug.traceback","debug.getinfo","debug.profilebegin",
+        -- UI / drawing
+        "gethui","protect_gui","Drawing",
+        -- Misc
+        "isluau","setidentity","getidentity","request","syn.request",
+        "setclipboard","loadstring","checkcaller","isourclosure",
+        "clonefunction","getnamecallmethod",
+    }
+    local avail, unavail = {}, {}
+    for _, fn in ipairs(UNC_CANDIDATES) do
+        local ok = pcall(function()
+            local parts = fn:split(".")
+            local v = _G[parts[1]]
+            if #parts == 2 then v = type(v)=="table" and v[parts[2]] or nil end
+            assert(type(v) == "function" or type(v) == "table")
+        end)
+        if ok then table.insert(avail, fn) else table.insert(unavail, fn) end
+    end
+    emit("\nUNC FUNCTIONS AVAILABLE (" .. #avail .. "):")
+    emit("  " .. table.concat(avail, ", "))
+    emit("UNC FUNCTIONS NOT AVAILABLE (" .. #unavail .. "):")
+    emit("  " .. table.concat(unavail, ", "))
 
-    -- RemoteEvents / RemoteFunctions (breadth-limited)
+    -- ── RemoteEvents / RemoteFunctions across all key services ────────────────
+    onProgress("Scanning RemoteEvents across all services...")
     local remotes = {}
     local function walkRemotes(parent, path, depth)
-        if depth > 6 then return end
+        if depth > 7 or #remotes >= 100 then return end
         local ok, children = pcall(function() return parent:GetChildren() end)
         if not ok then return end
         for _, v in ipairs(children) do
             local p = path .. "." .. v.Name
             if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
                 table.insert(remotes, p .. " [" .. v.ClassName .. "]")
+            elseif v:IsA("BindableEvent") or v:IsA("BindableFunction") then
+                table.insert(remotes, p .. " [" .. v.ClassName .. " — bindable]")
             end
-            if not v:IsA("BasePart") and #remotes < 60 then
+            if not v:IsA("BasePart") then
                 walkRemotes(v, p, depth + 1)
             end
         end
     end
-    pcall(walkRemotes, RS,                           "ReplicatedStorage", 1)
-    pcall(walkRemotes, game:GetService("Players"),   "Players",           1)
-
+    local scanServices = {
+        "ReplicatedStorage","ReplicatedFirst","ServerStorage",
+        "Players","Lighting","SoundService",
+    }
+    for _, svcName in ipairs(scanServices) do
+        pcall(function()
+            walkRemotes(game:GetService(svcName), svcName, 1)
+        end)
+    end
     if #remotes > 0 then
-        emit("\nREMOTE EVENTS / FUNCTIONS:")
+        emit("\nREMOTES & BINDABLES:")
         for _, r in ipairs(remotes) do emit("  " .. r) end
     end
 
-    onProgress("Scanning UI elements...")
-
-    -- PlayerGui UI elements
-    local uis = {}
-    local function walkUI(parent, path, depth)
-        if depth > 5 then return end
-        local ok, children = pcall(function() return parent:GetChildren() end)
-        if not ok then return end
-        for _, v in ipairs(children) do
-            local p = path .. "." .. v.Name
-            local cls = v.ClassName
-            if cls == "ScreenGui" or cls == "Frame" or cls == "ScrollingFrame"
-            or cls == "TextButton" or cls == "TextLabel" or cls == "ImageLabel"
-            or cls == "BillboardGui" or cls == "SurfaceGui" then
-                if v.Name ~= "NexusAI" and #uis < 50 then
-                    table.insert(uis, p .. " [" .. cls .. "]")
-                end
-            end
-            walkUI(v, p, depth + 1)
-        end
-    end
-    pcall(walkUI, PGUI, "PlayerGui", 1)
-
-    if #uis > 0 then
-        emit("\nUI ELEMENTS IN PLAYERGUI:")
-        for _, u in ipairs(uis) do emit("  " .. u) end
-    end
-
-    onProgress("Scanning workspace objects...")
-
-    -- Workspace top-level objects
-    local ws = {}
+    -- ── Module dependency map ─────────────────────────────────────────────────
+    onProgress("Mapping ModuleScript hierarchy...")
+    local modules = {}
     pcall(function()
-        for _, v in ipairs(workspace:GetChildren()) do
-            if not v:IsA("Terrain") and not v:IsA("Camera") then
-                table.insert(ws, "workspace." .. v.Name .. " [" .. v.ClassName .. "]")
+        for _, v in ipairs(game:GetDescendants()) do
+            if v:IsA("ModuleScript") then
+                table.insert(modules, v:GetFullName() .. " [ModuleScript]")
+                if #modules >= 40 then break end
             end
         end
     end)
-    if #ws > 0 then
-        emit("\nWORKSPACE OBJECTS:")
-        for i, w in ipairs(ws) do
-            if i > 40 then emit("  ...(+" .. (#ws-40) .. " more)"); break end
-            emit("  " .. w)
-        end
+    if #modules > 0 then
+        emit("\nMODULE SCRIPTS (require targets):")
+        for _, m in ipairs(modules) do emit("  " .. m) end
     end
 
-    onProgress("Decompiling scripts for function names...")
+    -- ── Full UI hierarchy ─────────────────────────────────────────────────────
+    onProgress("Scanning full UI hierarchy...")
+    local uis = {}
+    local GUI_TYPES = {
+        ScreenGui=true, Frame=true, ScrollingFrame=true, TextButton=true,
+        TextLabel=true, ImageLabel=true, ImageButton=true,
+        BillboardGui=true, SurfaceGui=true, TextBox=true,
+        ViewportFrame=true,
+    }
+    local function walkUI(parent, path, depth)
+        if depth > 6 or #uis >= 80 then return end
+        local ok, children = pcall(function() return parent:GetChildren() end)
+        if not ok then return end
+        for _, v in ipairs(children) do
+            if v.Name ~= "NexusAI" then
+                local p = path .. "." .. v.Name
+                if GUI_TYPES[v.ClassName] then
+                    table.insert(uis, p .. " [" .. v.ClassName .. "]")
+                end
+                walkUI(v, p, depth + 1)
+            end
+        end
+    end
+    pcall(walkUI, PGUI, "PlayerGui", 1)
+    pcall(function()
+        walkUI(game:GetService("CoreGui"), "CoreGui", 1)
+    end)
+    if #uis > 0 then
+        emit("\nUI HIERARCHY (PlayerGui + CoreGui):")
+        for _, u in ipairs(uis) do emit("  " .. u) end
+    end
 
-    -- Decompile scripts → extract function names
+    -- ── Workspace hierarchy (full, with class) ────────────────────────────────
+    onProgress("Scanning workspace hierarchy...")
+    local ws = {}
+    local function walkWS(parent, path, depth)
+        if depth > 4 or #ws >= 80 then return end
+        local ok, children = pcall(function() return parent:GetChildren() end)
+        if not ok then return end
+        for _, v in ipairs(children) do
+            if not v:IsA("Terrain") and not v:IsA("Camera") then
+                local p = path .. "." .. v.Name
+                table.insert(ws, p .. " [" .. v.ClassName .. "]")
+                if v:IsA("Model") or v:IsA("Folder") then
+                    walkWS(v, p, depth + 1)
+                end
+            end
+        end
+    end
+    pcall(walkWS, workspace, "workspace", 1)
+    if #ws > 0 then
+        emit("\nWORKSPACE HIERARCHY:")
+        for _, w in ipairs(ws) do emit("  " .. w) end
+    end
+
+    -- ── Script inventory + decompiled function signatures ────────────────────
+    onProgress("Decompiling scripts — tracing functions & events...")
     local scripts = {}
     if getScripts then pcall(function() scripts = getScripts() end) end
     if #scripts == 0 then
@@ -229,30 +301,54 @@ local function gatherContext(onProgress)
         end)
     end
 
-    local fnLines = {}
-    local seen = {}
+    local scrLines = {}
+    local fnSeen   = {}
     for _, scr in ipairs(scripts) do
         local src = ""
         if doDecomp then pcall(function() src = doDecomp(scr) end) end
         if src == "" then pcall(function() src = scr.Source end) end
         if src and src ~= "" then
-            local scrName = scr.Name
-            for name in src:gmatch("function%s+([%w_%.]+)%s*%(") do
-                local key = scrName .. "::" .. name
-                if not seen[key] and #fnLines < 60 then
-                    seen[key] = true
-                    table.insert(fnLines, "  " .. scrName .. " → " .. name .. "()")
+            local scrFull = pcall(function() return scr:GetFullName() end) and scr:GetFullName() or scr.Name
+            local fns, fires, requires = {}, {}, {}
+            -- function declarations
+            for n in src:gmatch("function%s+([%w_%.]+)%s*%(") do
+                local key = scrFull .. "::" .. n
+                if not fnSeen[key] and #fns < 20 then fnSeen[key]=true; table.insert(fns, n.."()") end
+            end
+            -- :FireServer / :InvokeServer calls → reveals which remotes this script uses
+            for call in src:gmatch(":([%w_]+)%(") do
+                if call == "FireServer" or call == "InvokeServer"
+                or call == "FireClient" or call == "InvokeClient"
+                or call == "Fire" then
+                    if not fires[call] then fires[call]=true end
                 end
             end
-            -- Also capture RemoteEvent:FireServer calls used in this script
-            for remote in src:gmatch(":FireServer%(") do
-                -- context already has remotes; skip duplicates
+            -- require() calls
+            for req in src:gmatch("require%s*%((.-)%)") do
+                table.insert(requires, req)
+                if #requires >= 5 then break end
+            end
+            if #fns > 0 or next(fires) or #requires > 0 then
+                local line = scrFull .. " ["..scr.ClassName.."]"
+                if #fns > 0 then
+                    line = line .. "\n    functions: " .. table.concat(fns, ", ")
+                end
+                if next(fires) then
+                    local flist = {}
+                    for k in pairs(fires) do table.insert(flist, k) end
+                    line = line .. "\n    uses: " .. table.concat(flist, ", ")
+                end
+                if #requires > 0 then
+                    line = line .. "\n    require(): " .. table.concat(requires, ", ")
+                end
+                table.insert(scrLines, line)
             end
         end
+        if #scrLines >= 40 then break end
     end
-    if #fnLines > 0 then
-        emit("\nFUNCTIONS FOUND IN SCRIPTS:")
-        for _, f in ipairs(fnLines) do emit(f) end
+    if #scrLines > 0 then
+        emit("\nSCRIPT INVENTORY + FUNCTION MAP:")
+        for _, s in ipairs(scrLines) do emit("  " .. s) end
     end
 
     emit("\n=== END CONTEXT ===")
@@ -262,18 +358,52 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- POLLINATIONS AI  —  context-aware script generation
 -- ═══════════════════════════════════════════════════════════════════════════════
-local SYS = [[You are an expert Roblox Lua scripter for executor environments (Delta, Synapse, KRNL).
-You will receive a GAME CONTEXT block with exact RemoteEvent paths, UI element names, workspace objects, and function names found in the live game. Use ONLY those real names and paths — never invent them.
+local SYS = [[You are an expert Roblox Lua architect for executor environments (Delta, Synapse, KRNL).
+You will receive a GAME CONTEXT block containing the live game's full hierarchy: RemoteEvents, BindableEvents, ModuleScript paths, UI elements, workspace objects, script function maps, and which UNC/executor functions are available.
 
-Code rules:
-- task.spawn / task.wait only (no coroutine / wait).
-- Wrap every RemoteEvent call and instance lookup in pcall.
-- For bots / trackers: use Drawing API — Drawing.new("Square"), Drawing.new("Line"), Drawing.new("Text"), Drawing.new("Circle"). Update positions in RunService.RenderStepped using Camera:WorldToViewportPoint().
-- For UI: build ONE draggable ScreenGui. Drag on title bar (mouse + touch). Each feature gets a color-coded toggle button: green BackgroundColor = on, red = off.
-- Hook RemoteEvents found in GAME CONTEXT using their exact full path.
-- Locate game objects (balls, targets, players) by the workspace names found in GAME CONTEXT.
-- Features must be toggleable — do NOT hardcode them always-on.
-- Output ONLY raw Lua code. Zero markdown, zero backticks, zero prose.]]
+══ ANALYSIS PHASE (always first) ══
+Before writing any code, produce a concise technical report inside a Lua block comment:
+  --[[ ANALYSIS REPORT
+    Game: <name>
+    UI Structure: describe how PlayerGui is organized, which ScreenGuis exist, what menus are present
+    Gameplay Systems: identify which RemoteEvents drive which mechanics, which LocalScripts own which features
+    Event Flow: trace how client→server communication works (which scripts fire which remotes)
+    Module Dependencies: list require() chains found
+    Hooks Available: list which UNC functions from GAME CONTEXT you will use and WHY
+    Missing Info: explicitly state anything that could not be determined from GAME CONTEXT
+  ]]
+
+══ IMPLEMENTATION RULES ══
+1. Use ONLY paths and names from GAME CONTEXT — never invent instance paths.
+2. Use all available UNC functions listed in GAME CONTEXT to maximise feature power:
+     hookfunction() → intercept existing game functions without replacing them
+     getconnections() → inspect/disconnect existing signal handlers
+     firesignal() → trigger signals programmatically
+     getgc() → locate hidden instances/tables the game doesn't expose publicly
+     getrawmetatable() / setrawmetatable() / setreadonly() → bypass __index/__newindex locks
+     hookmetamethod() → intercept __index/__newindex on game objects
+     getsenv() / getscriptenv() → access another script's closed-over variables
+     newcclosure() → wrap hooks so they appear as C closures to anti-cheat checks
+3. Hook ALL relevant RemoteEvents found in GAME CONTEXT — connect listeners to log/modify traffic.
+4. For bots and trackers: use Drawing API (Drawing.new("Square"/"Line"/"Circle"/"Text")).
+     Update every frame via RunService.RenderStepped.
+     Convert 3D to screen: Camera:WorldToViewportPoint(pos) → Vector2.
+     Check visibility with Camera:WorldToViewportPoint returning onScreen bool.
+5. Build ONE draggable ScreenGui.
+     Title-bar drag works with both mouse (MouseMovement) and touch (Touch).
+     Every feature has its own color-coded toggle: green = on, red = off.
+     Group related toggles under section headers.
+6. Integrate cleanly — check if an existing UI element from GAME CONTEXT is already present before creating a duplicate.
+7. Add a one-line comment above every major block explaining WHY it exists.
+8. Wrap every remote call and instance lookup in pcall.
+9. Use task.spawn / task.wait only — no coroutine / wait.
+10. Include all helper functions, utility tables, and config constants inline.
+
+OUTPUT FORMAT — always this exact structure:
+--[[ ANALYSIS REPORT
+...
+]]
+<raw Lua code — no backticks, no markdown outside the analysis block>]]
 
 local function aiGenerate(userPrompt, gameContext, onStatus)
     if not httpReq then return nil, "No HTTP function available in this executor." end
@@ -437,7 +567,7 @@ L(PFRAME,"Describe the script you want — AI scans the game first, then writes 
 local PIN = Instance.new("TextBox")
 PIN.Size=UDim2.new(1,-16,0,64); PIN.Position=UDim2.new(0,8,0,22)
 PIN.BackgroundColor3=C.EDIT; PIN.Text=""
-PIN.PlaceholderText='e.g. "autoparry bot with ESP drawing, all emotes, draggable ui with on/off switches for each feature"'
+PIN.PlaceholderText='e.g. "hook all remotes, add ESP drawing bot, all emotes, toggle UI for every feature, use all available UNC functions"'
 PIN.PlaceholderColor3=C.MUTED; PIN.TextColor3=C.TXT
 PIN.Font=FM; PIN.TextSize=10; PIN.MultiLine=true
 PIN.ClearTextOnFocus=false; PIN.TextXAlignment=Enum.TextXAlignment.Left
@@ -445,10 +575,12 @@ PIN.TextYAlignment=Enum.TextYAlignment.Top; PIN.BorderSizePixel=0
 PIN.Parent=PFRAME; corner(PIN,6); pad(PIN,5,8)
 
 -- Generate button
-local GENBTN = B(AI_PAGE,"⬡  Scan Game + Generate Script",UDim2.new(1,0,0,36),UDim2.new(0,0,0,102),C.ACC,C.TXT,13,FB)
+local GENBTN = B(AI_PAGE,"⬡  Deep Scan + Analyse + Generate",UDim2.new(1,0,0,36),UDim2.new(0,0,0,102),C.ACC,C.TXT,13,FB)
 corner(GENBTN,8)
 GENBTN.MouseEnter:Connect(function() tw(GENBTN,{BackgroundColor3=Color3.fromRGB(80,152,255)}) end)
 GENBTN.MouseLeave:Connect(function() tw(GENBTN,{BackgroundColor3=C.ACC}) end)
+-- Reset button text after generation
+
 
 -- Context summary strip
 local CTXLBL = L(AI_PAGE,"Context: none yet",UDim2.new(1,0,0,14),UDim2.new(0,0,0,144),C.MUTED,FM,9)
@@ -541,7 +673,7 @@ GENBTN.MouseButton1Click:Connect(function()
         end
 
         tw(GENBTN,{BackgroundColor3=C.ACC})
-        GENBTN.Text="⬡  Scan Game + Generate Script"
+        GENBTN.Text="⬡  Deep Scan + Analyse + Generate"
         generating=false
     end)
 end)
