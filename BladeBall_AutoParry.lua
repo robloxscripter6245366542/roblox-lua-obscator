@@ -1,227 +1,503 @@
 -- ════════════════════════════════════════════════════════════════════════
---  Blade Ball  |  Auto Parry  |  v1.0
---  Place ID: 13772394625
---  Requires: getnilinstances, firesignal, hookmetamethod
+--  Blade Ball  |  Auto Parry  v2.0  |  Place ID: 13772394625
+--  Requires: getnilinstances, getconnections, hookfunction
 -- ════════════════════════════════════════════════════════════════════════
 
-local Players    = game:GetService("Players")
-local RS         = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local StarterGui = game:GetService("StarterGui")
-local WS         = game:GetService("Workspace")
+local Players      = game:GetService("Players")
+local RS           = game:GetService("ReplicatedStorage")
+local RunService   = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UIS          = game:GetService("UserInputService")
+local WS           = game:GetService("Workspace")
 
-local LP     = Players.LocalPlayer
-local Camera = WS.CurrentCamera
+local LP = Players.LocalPlayer
 
 -- ── Config ────────────────────────────────────────────────────────────────
 local CFG = {
     Enabled       = true,
-    ParryDistance = 35,   -- stud radius to trigger parry
-    Delay         = 0,    -- seconds to wait before firing (0 = instant)
-    Notifications = true,
+    ParryDistance = 35,
+    Delay         = 0,
+}
+
+-- ── Live state ────────────────────────────────────────────────────────────
+local State = {
+    ParryCount  = 0,
+    LastParryAt = 0,
+    BallDist    = math.huge,
+    ActiveBalls = {},
 }
 
 -- ── Remotes ───────────────────────────────────────────────────────────────
-local Remotes      = RS:WaitForChild("Remotes")
-local BallAdded    = Remotes:WaitForChild("BallAdded")
-local BallExplode  = Remotes:WaitForChild("BallExplode")
+local Remotes         = RS:WaitForChild("Remotes")
+local BallAdded       = Remotes:WaitForChild("BallAdded")
+local BallExplode     = Remotes:WaitForChild("BallExplode")
+local ParrySuccessAll = Remotes:WaitForChild("ParrySuccessAll")
 
--- Remote name from server info panel (Parry Remote field)
-local PARRY_REMOTE_NAME = "eehbffibel9j:e9h=ec<h=i`:9:5981e"
-
--- ── Nil-instance helpers ──────────────────────────────────────────────────
-local function GetNil(Name, DebugId)
-    for _, obj in getnilinstances() do
-        if obj.Name == Name and obj:GetDebugId() == DebugId then
-            return obj
-        end
-    end
-end
-
--- ── Notification helper ───────────────────────────────────────────────────
-local function notify(title, text, duration)
-    if not CFG.Notifications then return end
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title    = title,
-            Text     = text,
-            Duration = duration or 3,
-        })
+-- ── Hook ParrySuccessAll to count confirmed parries ───────────────────────
+for _, conn in getconnections(ParrySuccessAll.OnClientEvent) do
+    local old; old = hookfunction(conn.Function, function(...)
+        State.ParryCount  = State.ParryCount + 1
+        State.LastParryAt = tick()
+        return old(...)
     end)
 end
 
--- ── Find the parry RemoteEvent ────────────────────────────────────────────
-local function GetParryRemote()
-    -- First try ReplicatedStorage
+-- ── Parry remote (from server info panel) ────────────────────────────────
+local PARRY_REMOTE = "eehbffibel9j:e9h=ec<h=i`:9:5981e"
+
+local function getParryRemote()
     for _, v in RS:GetDescendants() do
-        if v:IsA("RemoteEvent") and v.Name == PARRY_REMOTE_NAME then
-            return v
-        end
+        if v:IsA("RemoteEvent") and v.Name == PARRY_REMOTE then return v end
     end
-    -- Fallback: nil instances (obfuscated remotes often live there)
-    for _, obj in getnilinstances() do
-        if obj:IsA("RemoteEvent") and obj.Name == PARRY_REMOTE_NAME then
-            return obj
-        end
+    for _, v in getnilinstances() do
+        if v:IsA("RemoteEvent") and v.Name == PARRY_REMOTE then return v end
     end
-    return nil
 end
 
--- ── Character helpers ─────────────────────────────────────────────────────
+-- ── Character ────────────────────────────────────────────────────────────
 local function getHRP()
-    local char = LP.Character
-    return char and char:FindFirstChild("HumanoidRootPart")
+    local c = LP.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
 end
 
--- ── Active ball tracking ──────────────────────────────────────────────────
-local activeBalls = {}  -- [ball] = connection
-
-local function fireparry(ball)
+-- ── Parry fire ────────────────────────────────────────────────────────────
+local function doParry(ball)
     if not CFG.Enabled then return end
-
-    local parryRemote = GetParryRemote()
-    if not parryRemote then
-        notify("AutoParry", "Parry remote not found!", 3)
-        return
-    end
-
+    local remote = getParryRemote()
+    if not remote then return end
     local hrp = getHRP()
     if not hrp then return end
-
-    -- Check ball is still in workspace and close enough
     if not ball or not ball.Parent then return end
-    local ballPos = ball:IsA("BasePart") and ball.Position
-                    or (ball:FindFirstChildOfClass("BasePart") and ball:FindFirstChildOfClass("BasePart").Position)
-    if not ballPos then return end
-
-    local dist = (hrp.Position - ballPos).Magnitude
-    if dist > CFG.ParryDistance then return end
-
-    if CFG.Delay > 0 then
-        task.wait(CFG.Delay)
-    end
-
-    -- Fire the parry remote
-    pcall(function()
-        parryRemote:FireServer()
-    end)
+    local part = ball:IsA("BasePart") and ball or ball:FindFirstChildOfClass("BasePart")
+    if not part then return end
+    if (hrp.Position - part.Position).Magnitude > CFG.ParryDistance then return end
+    if CFG.Delay > 0 then task.wait(CFG.Delay) end
+    pcall(function() remote:FireServer() end)
 end
 
--- ── Watch a ball for proximity ────────────────────────────────────────────
+-- ── Ball tracking ─────────────────────────────────────────────────────────
 local function watchBall(ball)
-    if activeBalls[ball] then return end  -- already tracking
+    if State.ActiveBalls[ball] then return end
 
     local conn = RunService.Heartbeat:Connect(function()
-        if not CFG.Enabled then return end
         if not ball or not ball.Parent then
-            if activeBalls[ball] then
-                activeBalls[ball]:Disconnect()
-                activeBalls[ball] = nil
+            if State.ActiveBalls[ball] then
+                State.ActiveBalls[ball]:Disconnect()
+                State.ActiveBalls[ball] = nil
+                State.BallDist = math.huge
             end
             return
         end
-
         local hrp = getHRP()
         if not hrp then return end
-
-        local ballPart = ball:IsA("BasePart") and ball
-                         or ball:FindFirstChildOfClass("BasePart")
-        if not ballPart then return end
-
-        local dist = (hrp.Position - ballPart.Position).Magnitude
-        if dist <= CFG.ParryDistance then
-            -- Disconnect before firing to avoid double-firing
-            activeBalls[ball]:Disconnect()
-            activeBalls[ball] = nil
-            fireparry(ball)
+        local part = ball:IsA("BasePart") and ball or ball:FindFirstChildOfClass("BasePart")
+        if not part then return end
+        local dist = (hrp.Position - part.Position).Magnitude
+        State.BallDist = dist
+        if CFG.Enabled and dist <= CFG.ParryDistance then
+            State.ActiveBalls[ball]:Disconnect()
+            State.ActiveBalls[ball] = nil
+            State.BallDist = math.huge
+            doParry(ball)
         end
     end)
 
-    activeBalls[ball] = conn
+    State.ActiveBalls[ball] = conn
 end
 
--- ── Listen for balls spawning ─────────────────────────────────────────────
-local ballAddedConn = firesignal and true or false  -- just a capability check
-
--- Hook BallAdded to learn when a ball enters play
 BallAdded.OnClientEvent:Connect(function(ball)
-    if not ball then return end
-    watchBall(ball)
+    if ball then watchBall(ball) end
 end)
 
--- Also watch balls that already exist in workspace (rejoin case)
-for _, obj in WS:GetDescendants() do
-    if obj.Name == "Ball" or obj.Name == "656" then
-        watchBall(obj)
+BallExplode.OnClientEvent:Connect(function(ball)
+    if ball and State.ActiveBalls[ball] then
+        State.ActiveBalls[ball]:Disconnect()
+        State.ActiveBalls[ball] = nil
+        State.BallDist = math.huge
     end
+end)
+
+for _, obj in WS:GetDescendants() do
+    if obj.Name == "Ball" or obj.Name == "656" then watchBall(obj) end
 end
 WS.DescendantAdded:Connect(function(obj)
-    if obj.Name == "Ball" or obj.Name == "656" then
-        watchBall(obj)
-    end
+    if obj.Name == "Ball" or obj.Name == "656" then watchBall(obj) end
 end)
 
--- ── BallExplode: clean up tracking ───────────────────────────────────────
-BallExplode.OnClientEvent:Connect(function(ball)
-    if ball and activeBalls[ball] then
-        activeBalls[ball]:Disconnect()
-        activeBalls[ball] = nil
-    end
+-- ════════════════════════════════════════════════════════════════════════
+--  UI
+-- ════════════════════════════════════════════════════════════════════════
+
+local C = {
+    BG     = Color3.fromRGB(9,   9,   15),
+    PANEL  = Color3.fromRGB(16,  16,  26),
+    CARD   = Color3.fromRGB(22,  22,  36),
+    BORDER = Color3.fromRGB(38,  40,  62),
+    ACCENT = Color3.fromRGB(110, 70,  255),
+    ACCENT2= Color3.fromRGB(160, 100, 255),
+    CYAN   = Color3.fromRGB(0,   210, 230),
+    GREEN  = Color3.fromRGB(52,  211, 153),
+    RED    = Color3.fromRGB(239, 68,  68),
+    ORANGE = Color3.fromRGB(251, 146, 60),
+    WHITE  = Color3.fromRGB(255, 255, 255),
+    OFFWH  = Color3.fromRGB(205, 210, 230),
+    MUTED  = Color3.fromRGB(95,  100, 135),
+}
+
+local TI_FAST = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local TI_MED  = TweenInfo.new(0.3,  Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local function tw(obj, props, speed)
+    TweenService:Create(obj, speed or TI_FAST, props):Play()
+end
+
+local function corner(p, r)
+    local c = Instance.new("UICorner", p); c.CornerRadius = UDim.new(0, r or 8); return c
+end
+
+local function pad(p, t, b, l, r)
+    local u = Instance.new("UIPadding", p)
+    u.PaddingTop = UDim.new(0, t or 0); u.PaddingBottom = UDim.new(0, b or 0)
+    u.PaddingLeft= UDim.new(0, l or 0); u.PaddingRight  = UDim.new(0, r or 0)
+end
+
+local function vlist(p, spacing)
+    local l = Instance.new("UIListLayout", p)
+    l.SortOrder = Enum.SortOrder.LayoutOrder
+    l.Padding   = UDim.new(0, spacing or 0)
+    return l
+end
+
+local function divider(p, order)
+    local d = Instance.new("Frame", p)
+    d.Size = UDim2.new(1, 0, 0, 1); d.BackgroundColor3 = C.BORDER
+    d.BorderSizePixel = 0; d.LayoutOrder = order
+end
+
+-- ── ScreenGui ─────────────────────────────────────────────────────────────
+local SG = Instance.new("ScreenGui")
+SG.Name = "BB_AutoParry_v2"; SG.ResetOnSpawn = false
+SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; SG.IgnoreGuiInset = true
+pcall(function() SG.Parent = LP:WaitForChild("PlayerGui") end)
+
+-- ── Window ────────────────────────────────────────────────────────────────
+local Win = Instance.new("Frame", SG)
+Win.Name = "Window"
+Win.Size = UDim2.new(0, 248, 0, 0)
+Win.Position = UDim2.new(0, 16, 0.5, -110)
+Win.BackgroundColor3 = C.BG
+Win.BorderSizePixel = 0
+Win.AutomaticSize = Enum.AutomaticSize.Y
+Win.ClipsDescendants = true
+corner(Win, 14)
+
+local WinStroke = Instance.new("UIStroke", Win)
+WinStroke.Color = C.ACCENT; WinStroke.Thickness = 1.5; WinStroke.Transparency = 0.35
+
+vlist(Win, 0)
+
+-- ── Header bar ────────────────────────────────────────────────────────────
+local Header = Instance.new("Frame", Win)
+Header.Name = "Header"; Header.LayoutOrder = 1
+Header.Size = UDim2.new(1, 0, 0, 44)
+Header.BackgroundColor3 = C.ACCENT
+Header.BorderSizePixel = 0
+corner(Header, 14)
+
+-- Mask bottom-radius of header
+local HMask = Instance.new("Frame", Header)
+HMask.Size = UDim2.new(1, 0, 0.5, 0)
+HMask.Position = UDim2.new(0, 0, 0.5, 0)
+HMask.BackgroundColor3 = C.ACCENT; HMask.BorderSizePixel = 0
+
+-- Gradient on header
+local HGrad = Instance.new("UIGradient", Header)
+HGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, C.ACCENT2),
+    ColorSequenceKeypoint.new(1, C.ACCENT),
+})
+HGrad.Rotation = 90
+
+local HIcon = Instance.new("TextLabel", Header)
+HIcon.Size = UDim2.new(0, 30, 1, 0); HIcon.Position = UDim2.new(0, 10, 0, 0)
+HIcon.BackgroundTransparency = 1; HIcon.Text = "⚔"
+HIcon.TextColor3 = C.WHITE; HIcon.Font = Enum.Font.GothamBold; HIcon.TextSize = 18
+
+local HTitle = Instance.new("TextLabel", Header)
+HTitle.Size = UDim2.new(1, -80, 1, 0); HTitle.Position = UDim2.new(0, 38, 0, 0)
+HTitle.BackgroundTransparency = 1; HTitle.Text = "BLADE BALL  AUTO PARRY"
+HTitle.TextColor3 = C.WHITE; HTitle.Font = Enum.Font.GothamBold; HTitle.TextSize = 12
+HTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local HVer = Instance.new("TextLabel", Header)
+HVer.Size = UDim2.new(0, 32, 1, 0); HVer.Position = UDim2.new(1, -38, 0, 0)
+HVer.BackgroundTransparency = 1; HVer.Text = "v2.0"
+HVer.TextColor3 = Color3.fromRGB(200, 170, 255); HVer.Font = Enum.Font.Gotham; HVer.TextSize = 10
+HVer.TextXAlignment = Enum.TextXAlignment.Right
+
+-- ── Status section ────────────────────────────────────────────────────────
+local StatusSec = Instance.new("Frame", Win)
+StatusSec.Name = "Status"; StatusSec.LayoutOrder = 2
+StatusSec.Size = UDim2.new(1, 0, 0, 42)
+StatusSec.BackgroundColor3 = C.PANEL; StatusSec.BorderSizePixel = 0
+pad(StatusSec, 0, 0, 14, 14)
+
+local SDot = Instance.new("Frame", StatusSec)
+SDot.Size = UDim2.new(0, 10, 0, 10); SDot.Position = UDim2.new(0, 0, 0.5, -5)
+SDot.BackgroundColor3 = C.GREEN; SDot.BorderSizePixel = 0; corner(SDot, 5)
+
+-- Pulse effect on dot
+local PulseFrame = Instance.new("Frame", SDot)
+PulseFrame.Size = UDim2.new(2, 0, 2, 0); PulseFrame.Position = UDim2.new(-0.5, 0, -0.5, 0)
+PulseFrame.BackgroundColor3 = C.GREEN; PulseFrame.BackgroundTransparency = 0.6
+PulseFrame.BorderSizePixel = 0; corner(PulseFrame, 10)
+
+local function pulseDot()
+    local t1 = TweenService:Create(PulseFrame, TweenInfo.new(0.8, Enum.EasingStyle.Sine), {
+        Size = UDim2.new(3.5, 0, 3.5, 0),
+        Position = UDim2.new(-1.25, 0, -1.25, 0),
+        BackgroundTransparency = 1,
+    })
+    local t2 = TweenService:Create(PulseFrame, TweenInfo.new(0, Enum.EasingStyle.Linear), {
+        Size = UDim2.new(2, 0, 2, 0),
+        Position = UDim2.new(-0.5, 0, -0.5, 0),
+        BackgroundTransparency = 0.6,
+    })
+    t1.Completed:Connect(function() t2:Play() end)
+    t1:Play()
+end
+task.spawn(function()
+    while true do pulseDot(); task.wait(1.2) end
 end)
 
--- ── Simple GUI toggle ─────────────────────────────────────────────────────
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name              = "BladeBallAutoParry"
-ScreenGui.ResetOnSpawn      = false
-ScreenGui.ZIndexBehavior    = Enum.ZIndexBehavior.Sibling
-ScreenGui.IgnoreGuiInset    = true
+local SLabel = Instance.new("TextLabel", StatusSec)
+SLabel.Size = UDim2.new(0, 150, 1, 0); SLabel.Position = UDim2.new(0, 18, 0, 0)
+SLabel.BackgroundTransparency = 1; SLabel.Text = "AUTO PARRY ACTIVE"
+SLabel.TextColor3 = C.GREEN; SLabel.Font = Enum.Font.GothamBold; SLabel.TextSize = 12
+SLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-pcall(function()
-    ScreenGui.Parent = LP:WaitForChild("PlayerGui")
-end)
+local SKB = Instance.new("TextLabel", StatusSec)
+SKB.Size = UDim2.new(0, 50, 1, 0); SKB.Position = UDim2.new(1, -50, 0, 0)
+SKB.BackgroundTransparency = 1; SKB.Text = "[F]"
+SKB.TextColor3 = C.MUTED; SKB.Font = Enum.Font.GothamBold; SKB.TextSize = 11
+SKB.TextXAlignment = Enum.TextXAlignment.Right
 
-local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size            = UDim2.new(0, 180, 0, 60)
-Frame.Position        = UDim2.new(0, 10, 0.5, -30)
-Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
-Frame.BorderSizePixel  = 0
-Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 8)
+divider(Win, 3)
 
-local Title = Instance.new("TextLabel", Frame)
-Title.Size               = UDim2.new(1, 0, 0.45, 0)
-Title.Position           = UDim2.new(0, 0, 0, 0)
-Title.BackgroundTransparency = 1
-Title.Text               = "⚔ Blade Ball AutoParry"
-Title.TextColor3         = Color3.fromRGB(255, 255, 255)
-Title.TextScaled         = true
-Title.Font               = Enum.Font.GothamBold
+-- ── Ball tracker section ──────────────────────────────────────────────────
+local BallSec = Instance.new("Frame", Win)
+BallSec.Name = "BallTracker"; BallSec.LayoutOrder = 4
+BallSec.Size = UDim2.new(1, 0, 0, 0); BallSec.AutomaticSize = Enum.AutomaticSize.Y
+BallSec.BackgroundColor3 = C.PANEL; BallSec.BorderSizePixel = 0
+vlist(BallSec, 6); pad(BallSec, 10, 12, 14, 14)
 
-local StatusLabel = Instance.new("TextLabel", Frame)
-StatusLabel.Size               = UDim2.new(1, 0, 0.45, 0)
-StatusLabel.Position           = UDim2.new(0, 0, 0.5, 0)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.TextScaled         = true
-StatusLabel.Font               = Enum.Font.Gotham
+local BallHeader = Instance.new("Frame", BallSec)
+BallHeader.Size = UDim2.new(1, 0, 0, 14); BallHeader.BackgroundTransparency = 1
+BallHeader.LayoutOrder = 1
 
-local function updateStatus()
-    if CFG.Enabled then
-        StatusLabel.Text       = "Status: ON  [F] to toggle"
-        StatusLabel.TextColor3 = Color3.fromRGB(52, 211, 153)
+local BallLbl = Instance.new("TextLabel", BallHeader)
+BallLbl.Size = UDim2.new(0.5, 0, 1, 0); BallLbl.BackgroundTransparency = 1
+BallLbl.Text = "BALL DISTANCE"; BallLbl.TextColor3 = C.MUTED
+BallLbl.Font = Enum.Font.GothamBold; BallLbl.TextSize = 10
+BallLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+local BallVal = Instance.new("TextLabel", BallHeader)
+BallVal.Size = UDim2.new(0.5, 0, 1, 0); BallVal.Position = UDim2.new(0.5, 0, 0, 0)
+BallVal.BackgroundTransparency = 1; BallVal.Text = "---"
+BallVal.TextColor3 = C.OFFWH; BallVal.Font = Enum.Font.GothamBold; BallVal.TextSize = 10
+BallVal.TextXAlignment = Enum.TextXAlignment.Right
+
+-- Progress track
+local Track = Instance.new("Frame", BallSec)
+Track.Size = UDim2.new(1, 0, 0, 10); Track.BackgroundColor3 = C.CARD
+Track.BorderSizePixel = 0; Track.LayoutOrder = 2; Track.ClipsDescendants = true
+corner(Track, 5)
+
+local Fill = Instance.new("Frame", Track)
+Fill.Size = UDim2.new(0, 0, 1, 0); Fill.BackgroundColor3 = C.CYAN
+Fill.BorderSizePixel = 0; corner(Fill, 5)
+
+local FillGrad = Instance.new("UIGradient", Fill)
+FillGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 200, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 240, 200)),
+})
+FillGrad.Rotation = 0
+
+-- Range label under bar
+local RangeLbl = Instance.new("TextLabel", BallSec)
+RangeLbl.Size = UDim2.new(1, 0, 0, 11); RangeLbl.BackgroundTransparency = 1
+RangeLbl.Text = "Parry range: " .. CFG.ParryDistance .. " studs"
+RangeLbl.TextColor3 = C.MUTED; RangeLbl.Font = Enum.Font.Gotham; RangeLbl.TextSize = 10
+RangeLbl.TextXAlignment = Enum.TextXAlignment.Right; RangeLbl.LayoutOrder = 3
+
+divider(Win, 5)
+
+-- ── Stats section ─────────────────────────────────────────────────────────
+local StatSec = Instance.new("Frame", Win)
+StatSec.Name = "Stats"; StatSec.LayoutOrder = 6
+StatSec.Size = UDim2.new(1, 0, 0, 0); StatSec.AutomaticSize = Enum.AutomaticSize.Y
+StatSec.BackgroundColor3 = C.PANEL; StatSec.BorderSizePixel = 0
+vlist(StatSec, 4); pad(StatSec, 10, 10, 14, 14)
+
+local function statRow(parent, order, icon, label)
+    local row = Instance.new("Frame", parent)
+    row.Size = UDim2.new(1, 0, 0, 18); row.BackgroundTransparency = 1; row.LayoutOrder = order
+
+    local card = Instance.new("Frame", row)
+    card.Size = UDim2.new(1, 0, 1, 0); card.BackgroundColor3 = C.CARD
+    card.BorderSizePixel = 0; corner(card, 6)
+    pad(card, 0, 0, 8, 8)
+
+    local iLbl = Instance.new("TextLabel", card)
+    iLbl.Size = UDim2.new(0, 18, 1, 0); iLbl.BackgroundTransparency = 1
+    iLbl.Text = icon; iLbl.TextColor3 = C.ACCENT2
+    iLbl.Font = Enum.Font.GothamBold; iLbl.TextSize = 12
+
+    local tLbl = Instance.new("TextLabel", card)
+    tLbl.Size = UDim2.new(0.5, -18, 1, 0); tLbl.Position = UDim2.new(0, 20, 0, 0)
+    tLbl.BackgroundTransparency = 1; tLbl.Text = label
+    tLbl.TextColor3 = C.MUTED; tLbl.Font = Enum.Font.Gotham; tLbl.TextSize = 10
+    tLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local vLbl = Instance.new("TextLabel", card)
+    vLbl.Size = UDim2.new(0.5, 0, 1, 0); vLbl.Position = UDim2.new(0.5, 0, 0, 0)
+    vLbl.BackgroundTransparency = 1; vLbl.Text = "—"
+    vLbl.TextColor3 = C.OFFWH; vLbl.Font = Enum.Font.GothamBold; vLbl.TextSize = 10
+    vLbl.TextXAlignment = Enum.TextXAlignment.Right
+
+    return vLbl
+end
+
+local V_Parries  = statRow(StatSec, 1, "↯", "PARRIES (SERVER)")
+local V_Last     = statRow(StatSec, 2, "◷", "LAST PARRY")
+local V_Range    = statRow(StatSec, 3, "◎", "PARRY RANGE")
+local V_Delay    = statRow(StatSec, 4, "⏱", "FIRE DELAY")
+
+divider(Win, 7)
+
+-- ── Toggle button ─────────────────────────────────────────────────────────
+local ToggleSec = Instance.new("Frame", Win)
+ToggleSec.Name = "ToggleSec"; ToggleSec.LayoutOrder = 8
+ToggleSec.Size = UDim2.new(1, 0, 0, 0); ToggleSec.AutomaticSize = Enum.AutomaticSize.Y
+ToggleSec.BackgroundColor3 = C.PANEL; ToggleSec.BorderSizePixel = 0
+pad(ToggleSec, 10, 10, 12, 12)
+
+local Btn = Instance.new("TextButton", ToggleSec)
+Btn.Size = UDim2.new(1, 0, 0, 34)
+Btn.BackgroundColor3 = C.GREEN; Btn.BorderSizePixel = 0
+Btn.Text = "⏸  DISABLE  AUTO PARRY"
+Btn.TextColor3 = Color3.fromRGB(5, 20, 15)
+Btn.Font = Enum.Font.GothamBold; Btn.TextSize = 12
+corner(Btn, 8)
+
+local BtnGrad = Instance.new("UIGradient", Btn)
+BtnGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 230, 170)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 190, 140)),
+})
+BtnGrad.Rotation = 90
+
+-- ── Update toggle UI ──────────────────────────────────────────────────────
+local function setToggleUI(enabled)
+    if enabled then
+        tw(Btn, { BackgroundColor3 = C.GREEN }, TI_MED)
+        tw(SDot, { BackgroundColor3 = C.GREEN }, TI_MED)
+        tw(PulseFrame, { BackgroundColor3 = C.GREEN }, TI_MED)
+        tw(SLabel, { TextColor3 = C.GREEN }, TI_MED)
+        tw(WinStroke, { Color = C.ACCENT }, TI_MED)
+        BtnGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 230, 170)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 190, 140)),
+        })
+        Btn.Text = "⏸  DISABLE  AUTO PARRY"
+        Btn.TextColor3 = Color3.fromRGB(5, 20, 15)
+        SLabel.Text = "AUTO PARRY ACTIVE"
     else
-        StatusLabel.Text       = "Status: OFF [F] to toggle"
-        StatusLabel.TextColor3 = Color3.fromRGB(239, 68, 68)
+        tw(Btn, { BackgroundColor3 = C.RED }, TI_MED)
+        tw(SDot, { BackgroundColor3 = C.RED }, TI_MED)
+        tw(PulseFrame, { BackgroundColor3 = C.RED }, TI_MED)
+        tw(SLabel, { TextColor3 = C.RED }, TI_MED)
+        tw(WinStroke, { Color = C.RED }, TI_MED)
+        BtnGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 100, 100)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 50, 50)),
+        })
+        Btn.Text = "▶  ENABLE   AUTO PARRY"
+        Btn.TextColor3 = Color3.fromRGB(255, 220, 220)
+        SLabel.Text = "AUTO PARRY PAUSED"
     end
 end
-updateStatus()
 
--- ── Keybind: F to toggle ──────────────────────────────────────────────────
-game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.F then
+Btn.MouseButton1Click:Connect(function()
+    CFG.Enabled = not CFG.Enabled
+    setToggleUI(CFG.Enabled)
+end)
+
+Btn.MouseEnter:Connect(function()
+    tw(Btn, { BackgroundTransparency = 0.15 })
+end)
+Btn.MouseLeave:Connect(function()
+    tw(Btn, { BackgroundTransparency = 0 })
+end)
+
+UIS.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if inp.KeyCode == Enum.KeyCode.F then
         CFG.Enabled = not CFG.Enabled
-        updateStatus()
-        notify("AutoParry", CFG.Enabled and "Enabled" or "Disabled", 2)
+        setToggleUI(CFG.Enabled)
     end
 end)
 
-notify("AutoParry", "Blade Ball AutoParry loaded! Press [F] to toggle.", 5)
+-- ── Drag ─────────────────────────────────────────────────────────────────
+do
+    local dragging, ds, sp
+    Header.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true; ds = inp.Position; sp = Win.Position
+        end
+    end)
+    Header.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    end)
+    UIS.InputChanged:Connect(function(inp)
+        if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
+            local d = inp.Position - ds
+            Win.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+        end
+    end)
+end
+
+-- ── HUD refresh ───────────────────────────────────────────────────────────
+RunService.Heartbeat:Connect(function()
+    local dist = State.BallDist
+
+    if dist == math.huge then
+        BallVal.Text       = "no ball"
+        BallVal.TextColor3 = C.MUTED
+        tw(Fill, { Size = UDim2.new(0, 0, 1, 0) })
+        tw(Fill, { BackgroundColor3 = C.CYAN })
+    else
+        local d = math.floor(dist * 10) / 10
+        BallVal.Text = d .. " st"
+        local ratio = math.clamp(1 - (dist / CFG.ParryDistance), 0, 1)
+        tw(Fill, { Size = UDim2.new(ratio, 0, 1, 0) })
+        if ratio >= 0.8 then
+            BallVal.TextColor3 = C.RED
+            tw(Fill, { BackgroundColor3 = C.RED })
+        elseif ratio >= 0.5 then
+            BallVal.TextColor3 = C.ORANGE
+            tw(Fill, { BackgroundColor3 = C.ORANGE })
+        else
+            BallVal.TextColor3 = C.CYAN
+            tw(Fill, { BackgroundColor3 = C.CYAN })
+        end
+    end
+
+    V_Parries.Text = tostring(State.ParryCount)
+    if State.LastParryAt > 0 then
+        V_Last.Text = string.format("%.1fs ago", tick() - State.LastParryAt)
+    end
+    V_Range.Text = CFG.ParryDistance .. " st"
+    V_Delay.Text = CFG.Delay == 0 and "instant" or (CFG.Delay .. "s")
+end)
