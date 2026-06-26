@@ -473,6 +473,253 @@ local function vm_trace(src)
   end
 end
 
+-- ── Luraph v14 base85 blob decoder ───────────────────────────────────────────
+-- Luraph v14.x stores its payload as custom base85 inside [=[ ... ]=].
+-- Encoding: each group of 5 chars (offset by 33) decodes to a big-endian uint32.
+-- "z" is a run-length alias for "!!!!!" (base85 zero-word).
+-- The blob starts with a 4-byte header we skip (q=5 means start at char 5).
+
+local function luraph_b85_decode(blob, offset)
+  local data = blob:sub(offset)        -- skip header bytes
+  data = data:gsub("z", "!!!!!")       -- expand zero-word alias
+  local out = {}
+  local i = 1
+  while i + 4 <= #data do
+    local M,N,S,C,A = data:byte(i, i+4)
+    M=M-33; N=N-33; S=S-33; C=C-33; A=A-33
+    if M<0 or N<0 or S<0 or C<0 or A<0 then break end
+    local b = M*52200625 + N*614125 + S*7225 + C*85 + A
+    out[#out+1] = string.char(
+      math.floor(b/16777216)%256,
+      math.floor(b/65536)%256,
+      math.floor(b/256)%256,
+      b%256
+    )
+    i = i + 5
+  end
+  return table.concat(out)
+end
+
+local function luraph_find_bytecode(src)
+  -- Collect all long-string blobs
+  local blobs = {}
+  for blob in src:gmatch("%[=%[(.-)%]=%]") do
+    blobs[#blobs+1] = blob
+  end
+  if #blobs == 0 then return nil, "no [=[ blobs found" end
+
+  io.stderr:write(string.format("[luraph] found %d blob(s), scanning for Lua 5.1 magic...\n", #blobs))
+
+  for bi, blob in ipairs(blobs) do
+    -- Try all reasonable offsets (Luraph sets q=5 normally, q=20 when tampered)
+    for offset = 1, 25 do
+      if offset > #blob - 9 then break end
+      local bc = luraph_b85_decode(blob, offset)
+      if #bc >= 12
+        and bc:byte(1)==0x1b and bc:byte(2)==0x4c
+        and bc:byte(3)==0x75 and bc:byte(4)==0x61
+        and bc:byte(5)==0x51 then
+        io.stderr:write(string.format("[luraph] blob #%d offset=%d → valid Lua 5.1 bytecode (%d bytes)\n",
+          bi, offset, #bc))
+        return bc, bi, offset
+      end
+    end
+  end
+  return nil, "no valid Lua 5.1 bytecode found in any blob (wrong version or tampered)"
+end
+
+-- ── Lua 5.1 bytecode disassembler ────────────────────────────────────────────
+local LUA51_OPS = {
+  [0]="MOVE","LOADK","LOADBOOL","LOADNIL","GETUPVAL","GETGLOBAL","GETTABLE",
+  "SETGLOBAL","SETUPVAL","SETTABLE","NEWTABLE","SELF",
+  "ADD","SUB","MUL","DIV","MOD","POW","UNM","NOT","LEN","CONCAT",
+  "JMP","EQ","LT","LE","TEST","TESTSET",
+  "CALL","TAILCALL","RETURN",
+  "FORLOOP","FORPREP","TFORLOOP","SETLIST",
+  "CLOSE","CLOSURE","VARARG",
+}
+
+local function lua51_disasm(bc)
+  local p = 1
+  local le = true
+
+  local function u8()
+    local v = bc:byte(p); p=p+1; return v or 0
+  end
+  local function u32()
+    local a,b_,c,d = bc:byte(p,p+3); p=p+4
+    a=a or 0; b_=b_ or 0; c=c or 0; d=d or 0
+    if le then return a + b_*256 + c*65536 + d*16777216
+    else       return d + c*256 + b_*65536 + a*16777216 end
+  end
+  local function f64() p=p+8; return 0 end
+  local function lstr()
+    local len = u32(); if len==0 then return nil end
+    local s = bc:sub(p, p+len-2); p=p+len; return s
+  end
+
+  -- header
+  if bc:sub(1,4)~="\x1bLua" then return nil,"bad magic" end
+  p=5; u8(); u8(); le=(u8()==1); u8(); u8(); u8(); u8(); u8()
+
+  local funcs = {}
+  local strings_seen = {}
+  local all_strings = {}
+
+  local function parse(depth, fn_idx)
+    local fn = {depth=depth, idx=fn_idx}
+    fn.src        = lstr() or "?"
+    fn.line_s     = u32(); fn.line_e = u32()
+    fn.nups       = u8();  fn.nparams = u8()
+    fn.isvararg   = u8();  fn.maxstack = u8()
+
+    -- code
+    fn.code = {}
+    local nc = u32()
+    for i=1,nc do fn.code[i]=u32() end
+
+    -- constants
+    fn.k = {}
+    local nk = u32()
+    for i=1,nk do
+      local t = u8()
+      if     t==0 then fn.k[i]={t="nil",v="nil"}
+      elseif t==1 then fn.k[i]={t="bool",v=u8()==1 and "true" or "false"}
+      elseif t==3 then f64(); fn.k[i]={t="num",v="<num>"}
+      elseif t==4 then
+        local s=lstr() or ""
+        fn.k[i]={t="str",v=s}
+        if #s>0 and not strings_seen[s] then
+          strings_seen[s]=true; all_strings[#all_strings+1]=s
+        end
+      else fn.k[i]={t="?",v="?"} end
+    end
+
+    -- nested protos
+    fn.protos={}
+    local np=u32()
+    for i=1,np do fn.protos[i]=parse(depth+1, i-1) end
+
+    -- debug: line info
+    fn.lines={}; local nl=u32()
+    for i=1,nl do fn.lines[i]=u32() end
+
+    -- debug: locals
+    fn.locals={}; local nlo=u32()
+    for i=1,nlo do fn.locals[i]={name=lstr() or "?", s=u32(), e=u32()} end
+
+    -- debug: upvalues
+    fn.ups={}; local nu=u32()
+    for i=1,nu do fn.ups[i]=lstr() or "?" end
+
+    funcs[#funcs+1]=fn
+    return fn
+  end
+
+  local ok,err = pcall(function() parse(0,0) end)
+  if not ok then return nil, err end
+
+  -- Format output
+  local lines = {}
+  local function emit(s) lines[#lines+1]=s end
+
+  emit(string.format("=== Lua 5.1 Bytecode Disassembly (%d bytes, %d functions) ===",
+    #bc, #funcs))
+  emit("")
+
+  -- Strings section (most useful for understanding what the script does)
+  emit(string.format("── String constants (%d) ──", #all_strings))
+  -- Sort by length desc, then alpha
+  table.sort(all_strings, function(a,b)
+    if #a ~= #b then return #a > #b end
+    return a < b
+  end)
+  for i,s in ipairs(all_strings) do
+    local display = s:gsub("[%c]", function(c) return string.format("\\%d", c:byte()) end)
+    emit(string.format("  [%d] %q", i, display))
+    if i >= 500 then emit("  ... ("..#all_strings-500 .." more strings)"); break end
+  end
+  emit("")
+
+  -- Per-function summary
+  emit(string.format("── Functions (%d) ──", #funcs))
+  for _, fn in ipairs(funcs) do
+    local pad = string.rep("  ", fn.depth)
+    local src = fn.src:match("^@?(.*)") or fn.src
+    emit(string.format("%sfunction [%d] %s  params=%d ups=%d stack=%d instrs=%d consts=%d protos=%d",
+      pad, fn.idx, src, fn.nparams, fn.nups, fn.maxstack,
+      #fn.code, #fn.k, #fn.protos))
+
+    -- Instructions
+    for i, raw in ipairs(fn.code) do
+      local op    = raw & 0x3F
+      local A     = (raw >> 6) & 0xFF
+      local C     = (raw >> 14) & 0x1FF
+      local B     = (raw >> 23) & 0x1FF
+      local Bx    = (raw >> 14) & 0x3FFFF
+      local sBx   = Bx - 131071
+      local opname = LUA51_OPS[op] or ("OP_"..op)
+      local ln    = fn.lines[i] or 0
+
+      -- Human-readable arg
+      local rk = function(x)
+        if x >= 256 then
+          local k=fn.k[x-255]; return k and (k.t=="str" and string.format("%q",k.v) or k.v) or "K?"
+        end
+        local loc=fn.locals[x+1]; return loc and loc.name or ("R"..x)
+      end
+      local lname = function(x) local l=fn.locals[x+1]; return l and l.name or ("R"..x) end
+      local kname = function(x) local k=fn.k[x+1]; return k and (k.t=="str" and string.format("%q",k.v) or k.v) or "K"..x end
+
+      local args
+      if     opname=="MOVE"      then args=lname(A).." = "..lname(B)
+      elseif opname=="LOADK"     then args=lname(A).." = "..kname(Bx)
+      elseif opname=="LOADBOOL"  then args=lname(A).." = "..(B~=0 and "true" or "false")..(C~=0 and "; skip" or "")
+      elseif opname=="LOADNIL"   then args=lname(A)..".."..lname(B).." = nil"
+      elseif opname=="GETUPVAL"  then args=lname(A).." = UP["..B.."]"..(fn.ups[B+1] and "("..fn.ups[B+1]..")" or "")
+      elseif opname=="GETGLOBAL" then args=lname(A).." = _G["..kname(Bx).."]"
+      elseif opname=="GETTABLE"  then args=lname(A).." = "..lname(B).."["..rk(C).."]"
+      elseif opname=="SETGLOBAL" then args="_G["..kname(Bx).."] = "..lname(A)
+      elseif opname=="SETUPVAL"  then args="UP["..B.."] = "..lname(A)
+      elseif opname=="SETTABLE"  then args=lname(A).."["..rk(B).."] = "..rk(C)
+      elseif opname=="NEWTABLE"  then args=lname(A).." = {}"
+      elseif opname=="SELF"      then args=lname(A+1).." = "..lname(B).."; "..lname(A).." = "..lname(B).."["..rk(C).."]"
+      elseif opname=="ADD"       then args=lname(A).." = "..rk(B).." + "..rk(C)
+      elseif opname=="SUB"       then args=lname(A).." = "..rk(B).." - "..rk(C)
+      elseif opname=="MUL"       then args=lname(A).." = "..rk(B).." * "..rk(C)
+      elseif opname=="DIV"       then args=lname(A).." = "..rk(B).." / "..rk(C)
+      elseif opname=="MOD"       then args=lname(A).." = "..rk(B).." % "..rk(C)
+      elseif opname=="POW"       then args=lname(A).." = "..rk(B).." ^ "..rk(C)
+      elseif opname=="UNM"       then args=lname(A).." = -"..lname(B)
+      elseif opname=="NOT"       then args=lname(A).." = not "..lname(B)
+      elseif opname=="LEN"       then args=lname(A).." = #"..lname(B)
+      elseif opname=="CONCAT"    then args=lname(A).." = "..lname(B)..".."..lname(C)
+      elseif opname=="JMP"       then args="→ "..(i+sBx)
+      elseif opname=="EQ"        then args="if "..rk(B).."==".."rk(C).."..(A~=0 and " skip" or "")
+      elseif opname=="LT"        then args="if "..rk(B).."<"..rk(C)..(A~=0 and " skip" or "")
+      elseif opname=="LE"        then args="if "..rk(B).."<="..rk(C)..(A~=0 and " skip" or "")
+      elseif opname=="TEST"      then args="if bool("..lname(A)..") != "..C.." skip"
+      elseif opname=="TESTSET"   then args="if "..lname(B).." then "..lname(A).."="..lname(B)
+      elseif opname=="CALL"      then args=lname(A).."("..lname(A+1).."…) → "..(C>1 and (C-1).." ret" or "…ret")
+      elseif opname=="TAILCALL"  then args="return "..lname(A).."(…)"
+      elseif opname=="RETURN"    then args="return "..(B>1 and lname(A) or "()")
+      elseif opname=="FORLOOP"   then args=lname(A).."+= "..lname(A+2).." → "..(i+sBx)
+      elseif opname=="FORPREP"   then args=lname(A).."-= "..lname(A+2).." → "..(i+sBx)
+      elseif opname=="TFORLOOP"  then args="tfor "..lname(A)
+      elseif opname=="SETLIST"   then args=lname(A).."["..(C>0 and (C-1)*50+1 or "?").."+] = R…"
+      elseif opname=="CLOSE"     then args="close upvals ≥"..lname(A)
+      elseif opname=="CLOSURE"   then args=lname(A).." = closure[Proto"..Bx.."]"
+      elseif opname=="VARARG"    then args=lname(A)..".."..lname(A+B-2).." = ..."
+      else                            args=string.format("A=%d B=%d C=%d", A, B, C)
+      end
+
+      emit(string.format("%s  %5d [%4d]  %-12s  %s", pad, i-1, ln, opname, args))
+    end
+  end
+
+  return table.concat(lines, "\n")
+end
+
 -- ── Dispatch ─────────────────────────────────────────────────────────────────
 if mode == "detect" then
   print(detect(src))
@@ -508,6 +755,21 @@ elseif mode == "deep" then
         io.write(ld)
       end
     end
+  end
+
+elseif mode == "luraph" then
+  local bc, blob_idx, offset = luraph_find_bytecode(src)
+  if not bc then
+    io.stderr:write("[luraph] ERROR: " .. tostring(blob_idx) .. "\n")
+    os.exit(1)
+  end
+  io.stderr:write(string.format("[luraph] blob #%d offset=%d → %d bytes Lua 5.1 bytecode\n", blob_idx, offset, #bc))
+  local dis, err2 = lua51_disasm(bc)
+  if dis then
+    io.write(dis)
+  else
+    io.stderr:write("[luraph] disasm error: " .. tostring(err2) .. "\n")
+    io.write(bc)
   end
 
 else -- deob (default)

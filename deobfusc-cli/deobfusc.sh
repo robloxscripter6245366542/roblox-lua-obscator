@@ -200,14 +200,15 @@ vm_trace() {
 usage() {
   echo -e "${BOLD}deobfusc${RESET} — Lua deobfuscator (AI-only)"
   echo ""
-  echo "  deobfusc <file>           Text deob + key strip (fast)"
-  echo "  deobfusc --deep <file>    Deep: execute VM, capture all layers"
-  echo "  deobfusc --detect <file>  Detect obfuscation type + signatures"
-  echo "  deobfusc --keyrm <file>   Strip key system only"
-  echo "  deobfusc --trace <file>   VM execution trace (debug hook)"
-  echo "  deobfusc --stdin          Read from stdin"
-  echo "  deobfusc --auth           Authenticate (first run)"
-  echo "  deobfusc --status         Show auth/env status"
+  echo "  deobfusc <file>            Text deob + key strip (fast)"
+  echo "  deobfusc --deep <file>     Deep: execute VM, capture all layers"
+  echo "  deobfusc --luraph <file>   Static Luraph decode: base85 → disasm Lua 5.1"
+  echo "  deobfusc --detect <file>   Detect obfuscation type + signatures"
+  echo "  deobfusc --keyrm <file>    Strip key system only"
+  echo "  deobfusc --trace <file>    VM execution trace (debug hook)"
+  echo "  deobfusc --stdin           Read from stdin"
+  echo "  deobfusc --auth            Authenticate (first run)"
+  echo "  deobfusc --status          Show auth/env status"
   echo ""
   echo "  Supports: Luraph 11–14.7, Moonsec v1–v3, IronBrew 2,"
   echo "            Prometheus, PSU, Junkie/Linkvertise key systems,"
@@ -277,6 +278,17 @@ case "$CMD" in
     header "Deep Deob: $FILE"
     echo -e "  ${DIM}strip keys → text passes → VM execute → capture layers${RESET}"
     "$LUA_BIN" "$ENGINE" deep "$FILE"
+    ;;
+
+  --luraph)
+    require_auth
+    [ -z "$FILE" ] && { err "Usage: deobfusc --luraph <file>"; exit 1; }
+    [ ! -f "$FILE" ] && { err "File not found: $FILE"; exit 1; }
+    [ -z "$LUA_BIN" ] && { err "No Lua runtime found."; exit 1; }
+    [ ! -f "$ENGINE" ] && { err "engine.lua not found at $ENGINE"; exit 1; }
+    header "Luraph Static Decode: $FILE"
+    echo -e "  ${DIM}extract blob → decode base85 → disassemble Lua 5.1 bytecode${RESET}"
+    "$LUA_BIN" "$ENGINE" luraph "$FILE"
     ;;
 
   --stdin)

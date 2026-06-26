@@ -845,6 +845,45 @@ async function runTrace() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  LURAPH STATIC DECODER  (base85 → Lua 5.1 bytecode)
+// ═══════════════════════════════════════════════════════════════
+function luraphB85DecodeBlob(blob, offset) {
+  let data = blob.slice(offset - 1); // offset is 1-based
+  data = data.replace(/z/g, '!!!!!');
+  const bytes = [];
+  for (let i = 0; i + 4 < data.length; i += 5) {
+    const M=data.charCodeAt(i)-33, N=data.charCodeAt(i+1)-33,
+          S=data.charCodeAt(i+2)-33, C=data.charCodeAt(i+3)-33,
+          A=data.charCodeAt(i+4)-33;
+    if (M<0||N<0||S<0||C<0||A<0) break;
+    const b = M*52200625 + N*614125 + S*7225 + C*85 + A;
+    bytes.push((b>>>24)&0xFF, (b>>>16)&0xFF, (b>>>8)&0xFF, b&0xFF);
+  }
+  return bytes;
+}
+
+function luraphFindBytecode(src) {
+  const blobs = [];
+  const re = /\[=\[([\s\S]*?)\]=\]/g;
+  let m;
+  while ((m = re.exec(src)) !== null) blobs.push(m[1]);
+  if (!blobs.length) return null;
+  for (let bi = 0; bi < blobs.length; bi++) {
+    for (let offset = 1; offset <= 25; offset++) {
+      if (offset > blobs[bi].length - 9) break;
+      const bc = luraphB85DecodeBlob(blobs[bi], offset);
+      if (bc.length >= 12
+        && bc[0]===0x1b && bc[1]===0x4c
+        && bc[2]===0x75 && bc[3]===0x61
+        && bc[4]===0x51) {
+        return { bc: new Uint8Array(bc), blobIdx: bi+1, offset };
+      }
+    }
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  BYTECODE DISASSEMBLER  (📋 Disassemble)
 // ═══════════════════════════════════════════════════════════════
 async function runDisasm() {
@@ -853,7 +892,26 @@ async function runDisasm() {
   setOut('<div class="card" style="background:#1a1830;border-color:#2d2050;color:#b39ddb"><span class="spinner"></span>Extracting and disassembling bytecode…</div>','disassembling…','cinfo');
   await new Promise(r=>setTimeout(r,60));
 
-  // First try to capture bytecode via fengari (running the VM)
+  // ── Step 0: Try Luraph static decode (base85 → Lua 5.1 bytecode, no VM needed) ──
+  const luraphResult = luraphFindBytecode(code);
+  if (luraphResult) {
+    const { bc, blobIdx, offset } = luraphResult;
+    let html2 = `<div class="card cok-card">✓ Luraph static decode: blob #${blobIdx} offset=${offset} → ${fmt(bc.length)} Lua 5.1 bytecode (no VM needed)</div>`;
+    try {
+      const dis = new Lua51Dis(bc);
+      const disHTML = dis.disassemble();
+      html2 += `<div>${disHTML}</div>`;
+      const bcStr = String.fromCharCode(...bc);
+      autoCopy(bcStr);
+      setOut(html2, 'luraph decoded', 'cok');
+    } catch(e) {
+      html2 += `<div class="card cwarn-card">⚠ Disassembly failed: ${esc(e.message)}</div>`;
+      setOut(html2, 'luraph bc', 'cwarn');
+    }
+    return;
+  }
+
+  // ── Step 1: Try to capture bytecode via fengari (running the VM) ──
   const {cleaned}=extractKey(code);
   const {code:prepped}=deobPasses(cleaned);
   const captured=[];let errMsg=null;
@@ -923,8 +981,8 @@ __getcap=function() return _cap end
         disasmCount++;
       }catch(e){html+=`<div class="card cwarn-card">Bytecode parse error: ${esc(e.message)}</div>`;}
     } else {
-      html+=`<div class="card cwarn-card">⚠ No bytecode captured. The Luraph VM could not be fully emulated without Roblox globals. Try pasting the raw bytecode blob (starting with \\x1bLua) directly.</div>`;
-      html+=`<div class="card cinfo-card">💡 Tip: If you can run the script in a real Roblox executor, hook <code>loadstring</code> to dump the raw binary argument, then paste that here.</div>`;
+      html+=`<div class="card cwarn-card">⚠ No bytecode captured. Luraph static decode found no base85 blob and the Fengari VM could not extract a layer without Roblox globals.</div>`;
+      html+=`<div class="card cinfo-card">💡 Tip: For Luraph scripts, the static decoder runs first automatically. For other VMs, hook <code>loadstring</code> in a real executor and paste the raw bytecode here.</div>`;
     }
   }
 
