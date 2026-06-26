@@ -280,7 +280,7 @@ local function detect(code)
   end
 
   -- PSU
-  if code:find("%bPSU%b") and code:find("loadstring") then add("PSU") end
+  if code:find("[^%a]PSU[^%a]") and code:find("loadstring") then add("PSU") end
 
   -- Raw Lua bytecode
   if code:sub(1,4) == "\x1bLua" then
@@ -301,7 +301,7 @@ local function detect(code)
   if code:find("jnkie%.com") or code:find("Junkie%.") then add("KeySystem:Junkie") end
   if code:find("Linkvertise") or lo:find("linkvertise") then add("KeySystem:Linkvertise") end
   if lo:find("keysystem") then add("KeySystem:Generic") end
-  if code:find("%b%%checkKey") or code:find("%bverifyKey") or code:find("%bKeySystem") then add("KeySystem:Function") end
+  if code:find("checkKey") or code:find("verifyKey") or code:find("[^%a]KeySystem[^%a]") then add("KeySystem:Function") end
 
   -- Text obfuscation
   if code:find("string%.char%(%d") then add("obf:string.char") end
@@ -322,10 +322,14 @@ local function keyrm(code)
   code = code:gsub("local%s+result%s*=%s*%(function%(%)(.-)end%)%(%)","", 1)
   -- Linkvertise redirect block
   code = code:gsub('if%s+not%s+pcall%s*%(function%(%)[^\n]*Linkvertise[^\n]*\n.-end%)%s*then\n.-end%s*\n',"")
-  -- Generic getgenv().Key check
-  code = code:gsub("if%s+(?:getgenv|getrenv)%(%)%.%w*[Kk]ey%w*%s*~=%s*\"[^\"]*\"%s*then.-end%s*\n","")
+  -- Generic getgenv()/getrenv() key check
+  for _, fn in ipairs({"getgenv", "getrenv"}) do
+    code = code:gsub("if%s+"..fn.."%s*%(%)%.%w*[Kk]ey%w*%s*~=%s*\"[^\"]*\"%s*then.-end%s*\n","")
+  end
   -- KeySystem require/call pattern
-  code = code:gsub('require%s*%(%s*[%d]+%s*%)%s*:%s*(?:checkKey|verifyKey|KeySystem)%s*%([^%)]*%)', "-- key check removed")
+  for _, m in ipairs({"checkKey","verifyKey","KeySystem","check_key"}) do
+    code = code:gsub('require%s*%(%s*[%d]+%s*%)%s*:%s*'..m..'%s*%([^%)]*%)', "-- key check removed")
+  end
   -- getgenv().WHITELIST check block
   code = code:gsub("local%s+%w+%s*=%s*false%s*\nfor%s+.-%sdo.-%sif.-%swhitelist.-%sthen.-%send.-%send","")
   return code:match("^%s*(.-)%s*$") or code
