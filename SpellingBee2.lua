@@ -1,46 +1,33 @@
-local Players=game:GetService("Players")
-local UIS=game:GetService("UserInputService")
-local RunService=game:GetService("RunService")
-local VirtualUser=game:GetService("VirtualUser")
-local RS=game:GetService("ReplicatedStorage")
-local WS=game:GetService("Workspace")
-local TW=game:GetService("TweenService")
-local StarterGui=game:GetService("StarterGui")
-local LP=Players.LocalPlayer
-local PGui=LP:WaitForChild("PlayerGui")
-local isMobile=UIS.TouchEnabled
+-- SpellingBee2 | Delta only | RS.Remotes
 
-local KNOWN_GAMES={
-    [74779072921656]="NerdZone Spelling Bee",
-    [17590362521]="Spelling Bee",
-    [83091000527113]="Spelling Bee",
-    [17707569217]="Spelling Bee",
-    [91692552632068]="Scary Spelling Bee",
-    [133419989757748]="Bean Cans Spelling Bee",
-    [70718852079605]="Spelling Bee",
-    [115840692772844]="Spelling Bee",
-    [135159688166294]="Spelling Bee",
-}
-local GAME_NAME=KNOWN_GAMES[game.PlaceId] or "Spelling Bee"
-local IS_KNOWN=KNOWN_GAMES[game.PlaceId]~=nil
+local Players    = game:GetService("Players")
+local UIS        = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local VirtualUser= game:GetService("VirtualUser")
+local TW         = game:GetService("TweenService")
+local StarterGui = game:GetService("StarterGui")
+local RS         = game:GetService("ReplicatedStorage")
+local WS         = game:GetService("Workspace")
+local LP         = Players.LocalPlayer
+local PGui       = LP:WaitForChild("PlayerGui")
+local CoreGui    = game:GetService("CoreGui")
 
 local function notify(t,m,d)
     pcall(function()StarterGui:SetCore("SendNotification",{Title=t,Text=m,Duration=d or 4})end)
 end
-notify("Preppy Hub | "..GAME_NAME,IS_KNOWN and "Game detected!" or "Universal mode",3)
 
--- ── state ──────────────────────────────────────────────────────────────
-local botEnabled=true
-local submitDelay=0.05
-local currentWord=""
-local answerRemote=nil
-local knownAnswerRemotes={} -- confirmed FireServer remotes
-local antiAFK=false
-local infJump=false
-local sessionStart=os.clock()
-local wordsTyped=0
-local bestWPM=0
-local mistakes=0
+-- ── state ────────────────────────────────────────────────────────────────
+local botEnabled        = true
+local submitDelay       = 0.05
+local currentWord       = ""
+local answerRemote      = nil
+local knownAnswerRemotes= {}
+local antiAFK           = false
+local infJump           = false
+local sessionStart      = os.clock()
+local wordsTyped        = 0
+local bestWPM           = 0
+local mistakes          = 0
 
 local function getWPM()
     local m=(os.clock()-sessionStart)/60
@@ -48,52 +35,40 @@ local function getWPM()
 end
 
 local nWord,nWords,nWpm,nBest,nMist,nAcc,statusDot,statusLbl
+local updateStats  -- forward decl
+local submitAnswer -- forward decl
+local onWordFound  -- forward decl
 
-local function updateStats()
-    if not nWords then return end
-    local wpm=getWPM()
-    if wpm>bestWPM then bestWPM=wpm end
-    local acc=wordsTyped==0 and 100 or math.floor(((wordsTyped-mistakes)/wordsTyped)*100)
-    nWords.Text=tostring(wordsTyped)
-    nWpm.Text=tostring(wpm)
-    nBest.Text=tostring(bestWPM)
-    nMist.Text=tostring(mistakes)
-    nAcc.Text=acc.."%"
-end
-
--- ── word detection ──────────────────────────────────────────────────────
-local UI_BL={spellingbee=1,nerdzone=1,preppyhub=1,preppy=1,hub=1,submit=1,answer=1,play=1,reset=1,start=1,continue=1,back=1,close=1,menu=1,quit=1,exit=1,enabled=1,disabled=1,loading=1,loaded=1,waiting=1,ready=1,error=1,failed=1,roblox=1,studio=1,player=1,server=1,client=1,remote=1}
+-- ── word helpers ─────────────────────────────────────────────────────────
+local UI_BL={spellingbee=1,spellingbee2=1,hub=1,submit=1,answer=1,play=1,reset=1,
+    start=1,continue=1,back=1,close=1,menu=1,quit=1,exit=1,enabled=1,disabled=1,
+    loading=1,loaded=1,waiting=1,ready=1,error=1,failed=1,roblox=1,studio=1,
+    player=1,server=1,client=1,remote=1,playsound=1,sound=1}
 
 local function looksLikeWord(s)
     if type(s)~="string" then return false end
-    local trimmed=s:match("^%s*(.-)%s*$") or s
-    if #trimmed<2 or #trimmed>50 then return false end
-    if trimmed:match("[%d%p%s]") then return false end
-    if #trimmed==0 then return false end
-    return not UI_BL[trimmed:lower()]
+    local t=s:match("^%s*(.-)%s*$") or s
+    if #t<2 or #t>50 then return false end
+    if t:match("[%d%p%s]") then return false end
+    return not UI_BL[t:lower()]
 end
 
--- Reassemble a word from a table of single-letter keys (keyboard layout payload).
-local function assembleFromKeys(t)
+local function assembleFromKeys(tbl)
     local letters={}
-    for _,v in pairs(t) do
-        if type(v)=="string" and v:match("^%a$") then
-            letters[#letters+1]=v
-        end
+    for _,v in pairs(tbl) do
+        if type(v)=="string" and v:match("^%a$") then letters[#letters+1]=v end
     end
     if #letters>=2 then
-        -- try every ordering — shortest plausible first, then sorted by key order
-        table.sort(letters)
         local combined=table.concat(letters)
         if looksLikeWord(combined) then return combined end
     end
 end
 
 local function extractWord(args)
+    -- full-word pass
     for _,v in ipairs(args) do
         if looksLikeWord(v) then return v end
         if type(v)=="table" then
-            -- first pass: look for a full word value
             for _,tv in pairs(v) do
                 if looksLikeWord(tv) then return tv end
                 if type(tv)=="string" then
@@ -101,13 +76,11 @@ local function extractWord(args)
                     if w and looksLikeWord(w) then return w end
                 end
             end
-            -- second pass: reassemble from single-letter keys (keyboard payload)
-            local assembled=assembleFromKeys(v)
-            if assembled then return assembled end
+            local a=assembleFromKeys(v); if a then return a end
         end
         if type(v)=="string" then
-            local trimmed=v:match("^%s*(.-)%s*$")
-            if looksLikeWord(trimmed) then return trimmed end
+            local t=v:match("^%s*(.-)%s*$")
+            if looksLikeWord(t) then return t end
             local w=v:match("([%a][%a]+)")
             if w and looksLikeWord(w) then return w end
         end
@@ -119,28 +92,26 @@ local function extractWord(args)
             end)
         end
     end
-    -- last resort: reassemble from all string args that are single letters
+    -- letter-args fallback
     local letters={}
     for _,v in ipairs(args) do
         if type(v)=="string" and v:match("^%a$") then letters[#letters+1]=v end
     end
     if #letters>=2 then
-        local combined=table.concat(letters)
-        if looksLikeWord(combined) then return combined end
+        local c=table.concat(letters); if looksLikeWord(c) then return c end
     end
 end
 
--- ── specific RS.Events / RS.Modules paths ───────────────────────────────
-local RS_EVENTS   = RS:FindFirstChild("Events")
-local RS_MODULES  = RS:FindFirstChild("Modules")
-
-local SCAN_ROOTS={RS,WS,game:GetService("ReplicatedFirst"),PGui,LP}
+-- ── scan roots ───────────────────────────────────────────────────────────
+local RS_REMOTES = RS:FindFirstChild("Remotes")
+local SCAN_ROOTS = {RS,WS,game:GetService("ReplicatedFirst"),PGui,LP}
 pcall(function()table.insert(SCAN_ROOTS,LP.Backpack)end)
 pcall(function()table.insert(SCAN_ROOTS,LP.Character)end)
-if RS_EVENTS  then table.insert(SCAN_ROOTS,RS_EVENTS) end
-if RS_MODULES then table.insert(SCAN_ROOTS,RS_MODULES) end
+if RS_REMOTES then table.insert(SCAN_ROOTS,RS_REMOTES) end
 
-local ANSWER_KEYS={"submit","answer","spell","type","guess","check","input","word","attempt","confirm","enter","send","fire","respond","bean","can","scary","horror","spook","round","solve"}
+-- ── answer remote helpers ─────────────────────────────────────────────────
+local ANSWER_KEYS={"submit","answer","spell","type","guess","check","input","word",
+    "attempt","confirm","enter","send","fire","respond","round","solve"}
 local function isAnswerRemote(name)
     local n=name:lower()
     for _,k in ipairs(ANSWER_KEYS) do if n:find(k,1,true) then return true end end
@@ -170,21 +141,20 @@ local function fireAllRemotes(word)
     blast(RS);blast(WS);return fired
 end
 
-local CHAR_MS_BASE=0.037
+-- ── typing / submission ───────────────────────────────────────────────────
+local CHAR_MS=0.037
 local function humanTypeBox(box,word)
     box.Text="";box:CaptureFocus();task.wait(0.02+math.random()*0.015)
     for i=1,#word do
-        box.Text=word:sub(1,i)
-        task.wait(CHAR_MS_BASE+(math.random()-0.5)*0.016)
+        box.Text=word:sub(1,i);task.wait(CHAR_MS+(math.random()-0.5)*0.016)
     end
     task.wait(0.02+math.random()*0.015);box:ReleaseFocus(true)
 end
 
 local function fireAnswer(word)
-    task.wait(math.min(#word*CHAR_MS_BASE,3))
+    task.wait(math.min(#word*CHAR_MS,3))
     local r=findAnswerRemote()
     if r then pcall(function()r:FireServer(word)end);return true end
-    -- try confirmed FireServer remotes (GameEvent, MusicEvent)
     for _,kr in ipairs(knownAnswerRemotes) do
         if kr and kr.Parent then pcall(function()kr:FireServer(word)end);return true end
     end
@@ -194,19 +164,12 @@ end
 local function boxSubmit(word)
     local function tryBoxes(root)
         for _,obj in ipairs(root:GetDescendants()) do
-            if obj:IsA("TextBox") and obj.TextEditable and obj.Visible then humanTypeBox(obj,word);return true end
+            if obj:IsA("TextBox") and obj.TextEditable and obj.Visible then
+                humanTypeBox(obj,word);return true
+            end
         end
     end
     return tryBoxes(PGui) or tryBoxes(WS) or false
-end
-
-local submitAnswer
-local function onWordFound(w)
-    w=w:lower()
-    if w==currentWord then return end
-    currentWord=w
-    if nWord then nWord.Text=w:upper() end
-    if botEnabled then task.delay(submitDelay,function()submitAnswer(w)end) end
 end
 
 submitAnswer=function(word)
@@ -216,20 +179,18 @@ submitAnswer=function(word)
     end
 end
 
--- ── hooks (Delta) ───────────────────────────────────────────────────────
+-- ── hooks (Delta) ────────────────────────────────────────────────────────
 local _hooked={}
 local function hookOne(remote)
     if _hooked[remote] then return end;_hooked[remote]=true
-    -- wrap every existing connection with hookfunction
     pcall(function()
         for _,conn in ipairs(getconnections(remote.OnClientEvent)) do
-            local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
+            local orig;orig=hookfunction(conn.Function,newcclosure(function(...)
                 local w=extractWord({...});if w then task.spawn(onWordFound,w) end
                 return orig(...)
             end))
         end
     end)
-    -- also add our own listener for events with no prior connections
     remote.OnClientEvent:Connect(function(...)
         local w=extractWord({...});if w then task.spawn(onWordFound,w) end
     end)
@@ -240,7 +201,7 @@ local function hookOneRF(rf)
     if _hookedRF[rf] then return end;_hookedRF[rf]=true
     pcall(function()
         for _,conn in ipairs(getconnections(rf.OnClientInvoke)) do
-            local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
+            local orig;orig=hookfunction(conn.Function,newcclosure(function(...)
                 local w=extractWord({...});if w then task.spawn(onWordFound,w) end
                 return orig(...)
             end))
@@ -262,8 +223,9 @@ local function hookIncoming()
     end
 end
 
-
-local SV_KEYS={"word","spell","current","target","prompt","letter","round","question","answer","display","show","text","challenge","bean","scary"}
+-- ── StringValue watcher ───────────────────────────────────────────────────
+local SV_KEYS={"word","spell","current","target","prompt","letter","round",
+    "question","answer","display","show","text","challenge"}
 local function isSVKey(name)
     local n=name:lower()
     for _,k in ipairs(SV_KEYS) do if n:find(k,1,true) then return true end end
@@ -283,6 +245,109 @@ local function hookSVs(root)
     end
 end
 
+-- ── label scanner ─────────────────────────────────────────────────────────
+local function scanLabels(root)
+    local best,score=nil,-1
+    local letters={}
+    for _,obj in ipairs(root:GetDescendants()) do
+        if obj:IsA("TextLabel") and obj.Visible and obj.Text~="" then
+            local t=obj.Text:match("^%s*(.-)%s*$") or ""
+            if looksLikeWord(t) then
+                local s=#t+(obj.TextSize>=18 and 50 or 0)
+                if s>score then best=t;score=s end
+            end
+            if t:match("^%a$") then letters[#letters+1]={char=t,x=obj.AbsolutePosition.X} end
+        end
+    end
+    if #letters>=2 then
+        table.sort(letters,function(a,b)return a.x<b.x end)
+        local combined=""
+        for _,l in ipairs(letters) do combined=combined..l.char end
+        if looksLikeWord(combined) and #combined>score then best=combined end
+    end
+    return best
+end
+
+-- ── onWordFound ───────────────────────────────────────────────────────────
+onWordFound=function(w)
+    w=w:lower()
+    if w==currentWord then return end
+    currentWord=w
+    if nWord then
+        nWord.Text=w:upper()
+    end
+    if botEnabled then task.delay(submitDelay,function()submitAnswer(w)end) end
+end
+
+-- ── RS.Remotes.SubmitAnswer hook ──────────────────────────────────────────
+local function hookSubmitAnswer()
+    local remFolder=RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes",5)
+    if not remFolder then return end
+    local SubmitAnswer=remFolder:FindFirstChild("SubmitAnswer") or remFolder:WaitForChild("SubmitAnswer",5)
+    if not SubmitAnswer then return end
+
+    -- confirmed answer remote — set as primary
+    answerRemote=SubmitAnswer
+    table.insert(knownAnswerRemotes,SubmitAnswer)
+
+    -- intercept OnClientEvent (server confirms/validates answers back to client)
+    pcall(function()
+        for _,conn in ipairs(getconnections(SubmitAnswer.OnClientEvent)) do
+            local orig;orig=hookfunction(conn.Function,newcclosure(function(...)
+                local w=extractWord({...})
+                if w then task.spawn(onWordFound,w) end
+                return orig(...)
+            end))
+        end
+    end)
+    SubmitAnswer.OnClientEvent:Connect(function(...)
+        local w=extractWord({...})
+        if w then task.spawn(onWordFound,w) end
+    end)
+end
+
+-- ── RS.Remotes.PlaySound hook ─────────────────────────────────────────────
+local function hookPlaySound()
+    local remFolder=RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes",5)
+    if not remFolder then return end
+    local PlaySound=remFolder:FindFirstChild("PlaySound") or remFolder:WaitForChild("PlaySound",5)
+    if not PlaySound then return end
+
+    -- scan siblings for an answer remote
+    for _,sib in ipairs(remFolder:GetChildren()) do
+        if sib:IsA("RemoteEvent") and sib~=PlaySound and isAnswerRemote(sib.Name) then
+            answerRemote=sib;table.insert(knownAnswerRemotes,sib)
+        end
+    end
+    remFolder.ChildAdded:Connect(function(ch)
+        if ch:IsA("RemoteEvent") and isAnswerRemote(ch.Name) then
+            answerRemote=ch;table.insert(knownAnswerRemotes,ch)
+        end
+    end)
+
+    local function onPlaySoundPayload(...)
+        local w=extractWord({...})
+        if w then task.spawn(onWordFound,w) end
+        -- PlaySound fires when a round starts; re-scan labels shortly after
+        task.delay(0.15,function()
+            if not botEnabled then return end
+            local found=scanLabels(PGui) or scanLabels(WS)
+            if found then onWordFound(found) end
+        end)
+    end
+
+    pcall(function()
+        for _,conn in ipairs(getconnections(PlaySound.OnClientEvent)) do
+            local orig;orig=hookfunction(conn.Function,newcclosure(function(...)
+                onPlaySoundPayload(...)
+                return orig(...)
+            end))
+        end
+    end)
+    PlaySound.OnClientEvent:Connect(onPlaySoundPayload)
+end
+
+-- ── live watcher ──────────────────────────────────────────────────────────
 local function startLiveWatch()
     for _,root in ipairs(SCAN_ROOTS) do
         pcall(function()
@@ -299,115 +364,35 @@ local function startLiveWatch()
     end)
 end
 
-local function scanLabels(root)
-    local best,score=nil,-1
-    local letters={}
-    for _,obj in ipairs(root:GetDescendants()) do
-        if obj:IsA("TextLabel") and obj.Visible and obj.Text~="" then
-            local t=obj.Text:match("^%s*(.-)%s*$") or ""
-            if looksLikeWord(t) then
-                local s=#t+(obj.TextSize>=18 and 50 or 0)
-                if s>score then best=t;score=s end
-            end
-            if t:match("^%a$") then
-                letters[#letters+1]={char=t,x=obj.AbsolutePosition.X}
-            end
-        end
-    end
-    if #letters>=2 then
-        table.sort(letters,function(a,b)return a.x<b.x end)
-        local combined=""
-        for _,l in ipairs(letters) do combined=combined..l.char end
-        if looksLikeWord(combined) and #combined>score then best=combined end
-    end
-    return best
-end
-
 local function getHumanoid()
     local c=LP.Character;return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- ── RS.Events.GameEvent dedicated hook (Cobalt-style) ───────────────────
-local function hookGameEvent()
-    local evFolder = RS:FindFirstChild("Events") or RS:WaitForChild("Events",5)
-    if not evFolder then return end
-    local GameEvent = evFolder:FindFirstChild("GameEvent") or evFolder:WaitForChild("GameEvent",5)
-    if not GameEvent then return end
-
-    -- confirmed: GameEvent:FireServer() is used for answer submission
-    answerRemote = GameEvent
-    table.insert(knownAnswerRemotes, GameEvent)
-    evFolder.ChildAdded:Connect(function(ch)
-        if ch:IsA("RemoteEvent") and isAnswerRemote(ch.Name) then answerRemote=ch end
-    end)
-
-    hookOne(GameEvent)
-end
-
--- ── RS.Events.MusicEvent dedicated hook (Cobalt-style) ──────────────────
--- MusicEvent carries round-start/stop signals; intercepting it lets us
--- trigger a re-scan for the current word the moment a new round begins.
-local function hookMusicEvent()
-    local evFolder = RS:FindFirstChild("Events") or RS:WaitForChild("Events",5)
-    if not evFolder then return end
-    local MusicEvent = evFolder:FindFirstChild("MusicEvent") or evFolder:WaitForChild("MusicEvent",5)
-    if not MusicEvent then return end
-
-    local function onMusicPayload(...)
-        -- extract any word carried in the payload
-        local w = extractWord({...})
-        if w then task.spawn(onWordFound, w) end
-        -- regardless, re-scan GUI/workspace for the new word
-        task.delay(0.15, function()
-            if not botEnabled then return end
-            local found = scanLabels(PGui) or scanLabels(WS)
-            if found then onWordFound(found) end
-        end)
-    end
-
-    -- confirmed: MusicEvent:FireServer() is also used — register as fallback answer remote
-    table.insert(knownAnswerRemotes, MusicEvent)
-
+-- ── RS.Remotes.UpdateCamera / UpdateControls hooks ────────────────────────
+local function hookStateRemote(name)
+    local remFolder=RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes",5)
+    if not remFolder then return end
+    local ev=remFolder:FindFirstChild(name) or remFolder:WaitForChild(name,5)
+    if not ev then return end
     pcall(function()
-        for _,conn in ipairs(getconnections(MusicEvent.OnClientEvent)) do
-            local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
-                onMusicPayload(...)
+        for _,conn in ipairs(getconnections(ev.OnClientEvent)) do
+            local orig;orig=hookfunction(conn.Function,newcclosure(function(...)
+                local w=extractWord({...})
+                if w then task.spawn(onWordFound,w) end
                 return orig(...)
             end))
         end
     end)
-    MusicEvent.OnClientEvent:Connect(onMusicPayload)
-end
-
--- ── RS.Events.UIEvent dedicated hook (Cobalt-style) ─────────────────────
--- UIEvent pushes display updates to the client; the word to spell is
--- almost always embedded here as a plain string argument.
-local function hookUIEvent()
-    local evFolder = RS:FindFirstChild("Events") or RS:WaitForChild("Events",5)
-    if not evFolder then return end
-    local UIEvent = evFolder:FindFirstChild("UIEvent") or evFolder:WaitForChild("UIEvent",5)
-    if not UIEvent then return end
-
-    local function onUIPayload(...)
-        local w = extractWord({...})
-        if w then task.spawn(onWordFound, w) end
-    end
-
-    pcall(function()
-        for _,conn in ipairs(getconnections(UIEvent.OnClientEvent)) do
-            local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
-                onUIPayload(...)
-                return orig(...)
-            end))
-        end
+    ev.OnClientEvent:Connect(function(...)
+        local w=extractWord({...})
+        if w then task.spawn(onWordFound,w) end
     end)
-    UIEvent.OnClientEvent:Connect(onUIPayload)
 end
 
-task.spawn(hookGameEvent)
-task.spawn(hookMusicEvent)
-task.spawn(hookUIEvent)
-
+task.spawn(hookSubmitAnswer)
+task.spawn(hookPlaySound)
+task.spawn(function()hookStateRemote("UpdateCamera")end)
+task.spawn(function()hookStateRemote("UpdateControls")end)
 hookIncoming()
 for _,root in ipairs(SCAN_ROOTS) do pcall(function()hookSVs(root)end) end
 startLiveWatch()
@@ -448,54 +433,48 @@ task.spawn(function()
     end
 end)
 
--- ═══════════════════════════════════════════════════════════════════════
---  RAYFIELD-STYLE GUI
--- ═══════════════════════════════════════════════════════════════════════
-
--- clean up any previous instance from gethui, CoreGui, and PlayerGui
-local CoreGui=game:GetService("CoreGui")
+-- ═════════════════════════════════════════════════════════════════════════
+--  GUI
+-- ═════════════════════════════════════════════════════════════════════════
 for _,container in ipairs({gethui(),CoreGui,PGui}) do
     pcall(function()
-        local old=container:FindFirstChild("__PrepSpellHub__")
+        local old=container:FindFirstChild("__SB2Hub__")
         if old then old:Destroy() end
     end)
 end
 
 local SG=Instance.new("ScreenGui")
-SG.Name="__PrepSpellHub__";SG.ResetOnSpawn=false
+SG.Name="__SB2Hub__";SG.ResetOnSpawn=false
 SG.IgnoreGuiInset=true;SG.DisplayOrder=999
 SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 SG.Parent=gethui()
 
 local R={
-    BG    =Color3.fromRGB(25,  25,  35),
-    SIDE  =Color3.fromRGB(20,  20,  28),
-    PANEL =Color3.fromRGB(32,  32,  44),
-    CARD  =Color3.fromRGB(38,  38,  52),
-    BLUE  =Color3.fromRGB(64, 156, 255),
-    BLUE2 =Color3.fromRGB(100,180,255),
-    WHITE =Color3.fromRGB(255,255,255),
-    OFFWH =Color3.fromRGB(200,205,220),
-    MUTED =Color3.fromRGB(110,115,140),
-    GREEN =Color3.fromRGB(52, 211,153),
-    RED   =Color3.fromRGB(239, 68, 68),
-    GRAY  =Color3.fromRGB(55,  58, 75),
-    BORDER=Color3.fromRGB(48,  50, 68),
+    BG   =Color3.fromRGB(18, 18, 26),
+    SIDE =Color3.fromRGB(14, 14, 20),
+    PANEL=Color3.fromRGB(28, 28, 40),
+    CARD =Color3.fromRGB(34, 34, 48),
+    BLUE =Color3.fromRGB(64,156,255),
+    BLUE2=Color3.fromRGB(100,180,255),
+    WHITE=Color3.fromRGB(255,255,255),
+    OFFWH=Color3.fromRGB(200,205,220),
+    MUTED=Color3.fromRGB(110,115,140),
+    GREEN=Color3.fromRGB(52,211,153),
+    RED  =Color3.fromRGB(239,68,68),
+    GRAY =Color3.fromRGB(50,52,68),
+    BORD =Color3.fromRGB(42,44,62),
 }
-
 local TI15=TweenInfo.new(0.15,Enum.EasingStyle.Quad)
-local TI25=TweenInfo.new(0.25,Enum.EasingStyle.Quart)
 
-local function corner(p,r)local c=Instance.new("UICorner",p);c.CornerRadius=UDim.new(0,r or 8);return c end
-local function stroke(p,col,t)local s=Instance.new("UIStroke",p);s.Color=col;s.Thickness=t or 1;return s end
-local function pad(p,x,y)local d=Instance.new("UIPadding",p);d.PaddingLeft=UDim.new(0,x);d.PaddingRight=UDim.new(0,x);d.PaddingTop=UDim.new(0,y or x);d.PaddingBottom=UDim.new(0,y or x) end
+local function corner(p,r) local c=Instance.new("UICorner",p);c.CornerRadius=UDim.new(0,r or 8) end
+local function stroke(p,col,t) local s=Instance.new("UIStroke",p);s.Color=col;s.Thickness=t or 1 end
+local function pad(p,x,y) local d=Instance.new("UIPadding",p);d.PaddingLeft=UDim.new(0,x);d.PaddingRight=UDim.new(0,x);d.PaddingTop=UDim.new(0,y or x);d.PaddingBottom=UDim.new(0,y or x) end
 
 local WIN=Instance.new("Frame",SG)
 WIN.Name="Win";WIN.Size=UDim2.new(0,520,0,400)
 WIN.Position=UDim2.new(0.5,-260,0.5,-200)
-WIN.BackgroundColor3=R.BG;WIN.BorderSizePixel=0;WIN.Active=true
-WIN.ClipsDescendants=true
-corner(WIN,12);stroke(WIN,R.BORDER,1.5)
+WIN.BackgroundColor3=R.BG;WIN.BorderSizePixel=0;WIN.Active=true;WIN.ClipsDescendants=true
+corner(WIN,12);stroke(WIN,R.BORD,1.5)
 
 local TOP=Instance.new("Frame",WIN)
 TOP.Size=UDim2.new(1,0,0,50);TOP.BackgroundColor3=R.SIDE;TOP.BorderSizePixel=0
@@ -511,8 +490,8 @@ hubLbl.TextColor3=R.WHITE;hubLbl.Font=Enum.Font.GothamBold;hubLbl.TextSize=14
 hubLbl.TextXAlignment=Enum.TextXAlignment.Left
 
 local subLbl=Instance.new("TextLabel",TOP)
-subLbl.Size=UDim2.new(0,220,0,14);subLbl.Position=UDim2.new(0,24,0.5,4)
-subLbl.BackgroundTransparency=1;subLbl.Text=GAME_NAME.."  •  Delta"
+subLbl.Size=UDim2.new(0,240,0,14);subLbl.Position=UDim2.new(0,24,0.5,4)
+subLbl.BackgroundTransparency=1;subLbl.Text="RS.Remotes  •  Delta"
 subLbl.TextColor3=R.MUTED;subLbl.Font=Enum.Font.Gotham;subLbl.TextSize=10
 subLbl.TextXAlignment=Enum.TextXAlignment.Left
 
@@ -559,8 +538,7 @@ end)
 
 local SIDE=Instance.new("Frame",MAIN)
 SIDE.Size=UDim2.new(0,130,1,0);SIDE.BackgroundColor3=R.SIDE;SIDE.BorderSizePixel=0
-local sideList=Instance.new("UIListLayout",SIDE)
-sideList.Padding=UDim.new(0,4);sideList.SortOrder=Enum.SortOrder.LayoutOrder
+Instance.new("UIListLayout",SIDE).Padding=UDim.new(0,4)
 pad(SIDE,8,10)
 
 local CONT=Instance.new("ScrollingFrame",MAIN)
@@ -593,8 +571,7 @@ local function makeTab(name,icon)
 
     local bar=Instance.new("Frame",btn)
     bar.Size=UDim2.new(0,3,0,20);bar.Position=UDim2.new(0,0,0.5,-10)
-    bar.BackgroundColor3=R.BLUE;bar.BorderSizePixel=0;corner(bar,2)
-    bar.Visible=false
+    bar.BackgroundColor3=R.BLUE;bar.BorderSizePixel=0;corner(bar,2);bar.Visible=false
 
     local frame=Instance.new("Frame",CONT)
     frame.Size=UDim2.new(1,0,0,0);frame.AutomaticSize=Enum.AutomaticSize.Y
@@ -637,8 +614,7 @@ end
 
 local function makeToggle(parent,title,sub,default,callback)
     local f=Instance.new("Frame",parent)
-    f.Size=UDim2.new(1,0,0,50);f.BackgroundColor3=R.PANEL;f.BorderSizePixel=0;corner(f,8)
-    stroke(f,R.BORDER,1)
+    f.Size=UDim2.new(1,0,0,50);f.BackgroundColor3=R.PANEL;f.BorderSizePixel=0;corner(f,8);stroke(f,R.BORD,1)
     local tL=Instance.new("TextLabel",f);tL.Size=UDim2.new(1,-70,0,18);tL.Position=UDim2.new(0,14,0,9)
     tL.BackgroundTransparency=1;tL.Text=title
     tL.TextColor3=R.WHITE;tL.Font=Enum.Font.GothamBold;tL.TextSize=13;tL.TextXAlignment=Enum.TextXAlignment.Left
@@ -670,14 +646,12 @@ local function makeBtn(parent,txt,col,cb)
     return b
 end
 
--- ── Bot Tab ────────────────────────────────────────────────────────────
+-- ── Bot Tab ───────────────────────────────────────────────────────────────
 secLabel(tabBot,"Current Word")
 
 local wordCard=Instance.new("Frame",tabBot)
-wordCard.Size=UDim2.new(1,0,0,72);wordCard.BackgroundColor3=R.PANEL;wordCard.BorderSizePixel=0;corner(wordCard,8)
-stroke(wordCard,R.BORDER,1)
-local wLine=Instance.new("Frame",wordCard);wLine.Size=UDim2.new(1,0,0,2)
-wLine.BackgroundColor3=R.BLUE;wLine.BorderSizePixel=0
+wordCard.Size=UDim2.new(1,0,0,72);wordCard.BackgroundColor3=R.PANEL;wordCard.BorderSizePixel=0;corner(wordCard,8);stroke(wordCard,R.BORD,1)
+local wLine=Instance.new("Frame",wordCard);wLine.Size=UDim2.new(1,0,0,2);wLine.BackgroundColor3=R.BLUE;wLine.BorderSizePixel=0
 
 nWord=Instance.new("TextLabel",wordCard)
 nWord.Size=UDim2.new(1,-110,0,36);nWord.Position=UDim2.new(0,14,0,14)
@@ -703,14 +677,13 @@ lastLbl.BackgroundTransparency=1;lastLbl.Text="Waiting for word..."
 lastLbl.TextColor3=R.MUTED;lastLbl.Font=Enum.Font.Gotham;lastLbl.TextSize=9
 lastLbl.TextXAlignment=Enum.TextXAlignment.Left
 
+-- override onWordFound now that GUI labels exist
 onWordFound=function(w)
     w=w:lower()
     if w==currentWord then return end
     currentWord=w
-    if nWord then
-        nWord.Text=w:upper()
-        lastLbl.Text="["..( answerRemote and "remote" or "scan").."]  "..w:upper().."  •  "..(botEnabled and "Submitting..." or "Bot off")
-    end
+    nWord.Text=w:upper()
+    lastLbl.Text="[".. (answerRemote and answerRemote.Name or "scan") .."]  "..w:upper().."  •  "..(botEnabled and "Submitting..." or "Bot off")
     if botEnabled then task.delay(submitDelay,function()submitAnswer(w)end) end
 end
 
@@ -725,8 +698,7 @@ makeToggle(tabBot,"Auto Type","Automatically answers each round",true,function(v
 end)
 
 local delCard=Instance.new("Frame",tabBot)
-delCard.Size=UDim2.new(1,0,0,46);delCard.BackgroundColor3=R.PANEL;delCard.BorderSizePixel=0;corner(delCard,8)
-stroke(delCard,R.BORDER,1)
+delCard.Size=UDim2.new(1,0,0,46);delCard.BackgroundColor3=R.PANEL;delCard.BorderSizePixel=0;corner(delCard,8);stroke(delCard,R.BORD,1)
 local delTxt=Instance.new("TextLabel",delCard)
 delTxt.Size=UDim2.new(0.5,0,1,0);delTxt.Position=UDim2.new(0,14,0,0)
 delTxt.BackgroundTransparency=1;delTxt.Text="Submit Delay"
@@ -759,7 +731,7 @@ makeBtn(tabBot,"Re-scan Remotes",R.CARD,function()
     notify("Done","Hooks refreshed.",2)
 end)
 
--- ── Stats Tab ──────────────────────────────────────────────────────────
+-- ── Stats Tab ─────────────────────────────────────────────────────────────
 secLabel(tabStats,"Session Stats")
 
 local statsGrid=Instance.new("Frame",tabStats)
@@ -773,13 +745,13 @@ local SDEFS={
     {"Words","0",R.BLUE,"⌨"},
     {"Avg WPM","0",R.BLUE2,"⚡"},
     {"Best WPM","0",Color3.fromRGB(251,191,36),"🏆"},
-    {"Mistakes","0",Color3.fromRGB(239,68,68),"✗"},
+    {"Mistakes","0",R.RED,"✗"},
     {"Accuracy","100%",R.GREEN,"✓"},
 }
 local statRefs={}
 for _,d in ipairs(SDEFS) do
     local lbl,init,col,icon=d[1],d[2],d[3],d[4]
-    local f=Instance.new("Frame",statsGrid);f.BackgroundColor3=R.PANEL;f.BorderSizePixel=0;corner(f,8);stroke(f,R.BORDER,1)
+    local f=Instance.new("Frame",statsGrid);f.BackgroundColor3=R.PANEL;f.BorderSizePixel=0;corner(f,8);stroke(f,R.BORD,1)
     local strip=Instance.new("Frame",f);strip.Size=UDim2.new(1,0,0,2);strip.BackgroundColor3=col;strip.BorderSizePixel=0
     local ic=Instance.new("TextLabel",f);ic.Size=UDim2.new(0,16,0,14);ic.Position=UDim2.new(0,10,0,10)
     ic.BackgroundTransparency=1;ic.Text=icon;ic.TextColor3=col;ic.Font=Enum.Font.Gotham;ic.TextSize=12
@@ -801,12 +773,12 @@ updateStats=function()
 end
 
 secLabel(tabStats,"Actions")
-makeBtn(tabStats,"Reset Session Stats",R.CARD,function()
+makeBtn(tabStats,"Reset Stats",R.CARD,function()
     sessionStart=os.clock();wordsTyped=0;bestWPM=0;mistakes=0;updateStats()
     notify("Reset","Stats cleared.",2)
 end)
 
--- ── Player Tab ─────────────────────────────────────────────────────────
+-- ── Player Tab ────────────────────────────────────────────────────────────
 secLabel(tabPlayer,"Toggles")
 makeToggle(tabPlayer,"Infinite Jump","Hold jump to keep flying",false,function(v)infJump=v end)
 makeToggle(tabPlayer,"Anti-AFK","Prevents automatic kick",false,function(v)antiAFK=v end)
@@ -816,7 +788,5 @@ makeBtn(tabPlayer,"Reset Character",Color3.fromRGB(120,30,30),function()
     local h=getHumanoid();if h then pcall(function()h.Health=0 end) end
 end)
 
--- activate Bot tab by default
 tabs["Bot"].btn.MouseButton1Click:Fire()
-
-notify("Spelling Bee Hub",GAME_NAME.." — Ready",4)
+notify("Spelling Bee Hub","RS.Remotes  •  Delta — Ready",4)
