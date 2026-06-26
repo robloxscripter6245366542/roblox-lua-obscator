@@ -5,7 +5,7 @@ import SettingsPanel from './SettingsPanel.jsx'
 import OutputPanel from './OutputPanel.jsx'
 import LongVideoPanel from './LongVideoPanel.jsx'
 import { generateDemo } from '../lib/seedance.js'
-import { generateAIVideo } from '../lib/videomaker.js'
+import { makeAIVideo } from '../lib/aicomposer.js'
 
 const RANDOM_PROMPTS = [
   'A majestic dragon soaring over snow-capped mountains at golden hour, cinematic lighting, ultra detailed',
@@ -64,7 +64,7 @@ export default function Generator({ timer, onToast }) {
     try {
       let url
       try {
-        url = await generateAIVideo(p, {
+        url = await makeAIVideo(p, {
           resolution: settings.resolution,
           duration: settings.duration,
           onStep: (label, progress) => {
