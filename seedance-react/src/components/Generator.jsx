@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import SettingsPanel from './SettingsPanel.jsx'
 import OutputPanel from './OutputPanel.jsx'
 import LongVideoPanel from './LongVideoPanel.jsx'
-import { createVideoTask, pollTask } from '../lib/seedance.js'
+import { createVideoTask, pollTask, generateDemo } from '../lib/seedance.js'
 
 const RANDOM_PROMPTS = [
   'A majestic dragon soaring over snow-capped mountains at golden hour, cinematic lighting, ultra detailed',
@@ -62,14 +62,24 @@ export default function Generator({ timer, onToast }) {
 
     try {
       let url
-      const taskId = await createVideoTask(null, {
-        prompt: p, genType: mode === 'image' ? 'image-to-video' : 'text-to-video',
-        imageUrls: imagePreview ? [imagePreview] : [],
-        duration: settings.duration, aspectRatio: settings.aspect,
-        resolution: settings.resolution, model: settings.model, audio: settings.audio,
-      })
-      url = await pollTask(null, taskId, pct =>
-        setOutputState(s => ({ ...s, progress: pct, step: Math.floor(pct / 25) })))
+      try {
+        const taskId = await createVideoTask(null, {
+          prompt: p, genType: mode === 'image' ? 'image-to-video' : 'text-to-video',
+          imageUrls: imagePreview ? [imagePreview] : [],
+          duration: settings.duration, aspectRatio: settings.aspect,
+          resolution: settings.resolution, model: settings.model, audio: settings.audio,
+        })
+        url = await pollTask(null, taskId, pct =>
+          setOutputState(s => ({ ...s, progress: pct, step: Math.floor(pct / 25) })))
+      } catch {
+        url = await generateDemo(p, {
+          resolution: settings.resolution,
+          duration: settings.duration,
+          onStep: (label, progress) => {
+            setOutputState(s => ({ ...s, label, progress, step: Math.floor(progress / 25) }))
+          },
+        })
+      }
       setOutputState({ status: 'done', videoUrl: url, progress: 100, step: 4, label: '' })
       setQueue(q => [{ url, prompt: p, settings: { ...settings }, ts: Date.now() }, ...q].slice(0, 6))
       onToast(`4K video ready! (${settings.resolution.toUpperCase()} · ${settings.duration}s)`, 'success')
