@@ -19,8 +19,6 @@ local spawnCooldown = 5 -- seconds between each spawn
 
 fireclickdetector(game:GetService("Workspace").Lobby.Replica.ClickDetector)
 wait(.5)
-game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = workspace.Lobby.Teleport1.CFrame
-task.wait(.3)
 
 for i = 1, spawnCount do
 	game:GetService("ReplicatedStorage").Duplicate:FireServer(unpack({[1] = true}))
