@@ -21,7 +21,6 @@ TABS
 
 -- ── Services ──────────────────────────────────────────────────────────────────
 local Players  = game:GetService("Players")
-local _RS      = game:GetService("ReplicatedStorage") -- kept to prevent lazy-load errors
 local UIS      = game:GetService("UserInputService")
 local TS       = game:GetService("TweenService")
 local SG       = game:GetService("StarterGui")
@@ -71,15 +70,6 @@ local function doHttpPost(url, body, headers)
     return nil
 end
 
--- legacy httpReq for UNC tester display
-local httpReq
-pcall(function()
-    if type(request)=="function" then httpReq=request
-    elseif type(http)=="table" and type(http.request)=="function" then httpReq=http.request
-    elseif type(syn)=="table" and type(syn.request)=="function" then httpReq=syn.request
-    end
-end)
-
 local clipSet
 pcall(function()
     if type(setclipboard) == "function" then clipSet = setclipboard
@@ -91,8 +81,6 @@ clipSet = clipSet or function() end
 
 local getScripts
 pcall(function() if type(getscripts) == "function" then getScripts = getscripts end end)
-local doDecomp
-pcall(function() if type(decompile) == "function" then doDecomp = decompile end end)
 
 -- ── Colors ────────────────────────────────────────────────────────────────────
 local C = {
@@ -1225,7 +1213,6 @@ SCANBTN.MouseButton1Click:Connect(function()
         for _,s in ipairs(scripts) do
             task.wait()  -- yield each iteration to avoid freezing
             local src=""
-            -- never call doDecomp here — 5-30s per script = infinite hang
             pcall(function() src=s.Source end)
             if src and src~="" then for _,fn in ipairs(extractFns(src,s.Name)) do table.insert(found,fn) end end
         end
