@@ -6,15 +6,18 @@
 local Players    = game:GetService("Players")
 local UIS        = game:GetService("UserInputService")
 local TweenSvc   = game:GetService("TweenService")
-local RunSvc     = game:GetService("RunService")
 
 local LP   = Players.LocalPlayer
 local Cam  = game:GetService("Workspace").CurrentCamera
 
 -- gethui() bypasses game GUI protection; fall back to CoreGui then PlayerGui
-local guiParent = (typeof(gethui) == "function" and gethui())
-    or game:GetService("CoreGui")
-    or LP:WaitForChild("PlayerGui", 10)
+local guiParent
+pcall(function()
+    if typeof(gethui) == "function" then guiParent = gethui() end
+end)
+if not guiParent then
+    guiParent = game:GetService("CoreGui") or LP:WaitForChild("PlayerGui", 10)
+end
 
 if guiParent:FindFirstChild("RoastGeneratorGUI") then
     guiParent.RoastGeneratorGUI:Destroy()
@@ -106,7 +109,6 @@ local ROASTS = {
 -- ── Siri colour palette ───────────────────────────────────────────────────────
 local C = {
     BG      = Color3.fromRGB(  8,   8,  18),
-    PANEL   = Color3.fromRGB( 14,  14,  28),
     CARD    = Color3.fromRGB( 18,  18,  36),
     BORDER  = Color3.fromRGB( 38,  38,  80),
     BLUE    = Color3.fromRGB( 10, 132, 255),
@@ -407,6 +409,8 @@ local lastIndex  = 0
 local roastCount = 0
 
 local function pickRoast()
+    if #ROASTS == 0 then return "" end
+    if #ROASTS == 1 then return ROASTS[1] end
     local idx
     repeat idx = math.random(1, #ROASTS) until idx ~= lastIndex
     lastIndex = idx
@@ -467,15 +471,17 @@ local function onDragBegan(inp)
         dragging  = true
         dragStart = inp.Position
         startPos  = win.Position
-        inp.Changed:Connect(function()
-            if inp.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
     end
 end
 
 titleBar.InputBegan:Connect(onDragBegan)
+
+UIS.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
 
 UIS.InputChanged:Connect(function(inp)
     if not dragging then return end
