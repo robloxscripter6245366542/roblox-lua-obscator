@@ -217,34 +217,41 @@ export default function Studio({ onClose }) {
     controls.maxDistance = 14
     controlsRef.current = controls
 
-    // Lights
-    const ambient = new THREE.AmbientLight('#b0b8ff', 0.4)
+    // 3-point cinematic lighting
+    const ambient = new THREE.AmbientLight('#c8d0f0', 0.32)
     scene.add(ambient)
     lightsRef.current.ambient = ambient
 
-    const key = new THREE.DirectionalLight('#fff8f0', 2.5)
-    key.position.set(3, 6, 4)
+    // Key light – warm, high front-left
+    const key = new THREE.DirectionalLight('#fff5e0', 3.2)
+    key.position.set(3.5, 9, 5)
     key.castShadow = true
     key.shadow.mapSize.set(2048, 2048)
-    key.shadow.camera.near = 0.5; key.shadow.camera.far = 20
+    key.shadow.camera.near = 0.5; key.shadow.camera.far = 22
     key.shadow.camera.left = -4; key.shadow.camera.right = 4
-    key.shadow.camera.top = 7; key.shadow.camera.bottom = -2
-    key.shadow.bias = -0.0005
+    key.shadow.camera.top = 8; key.shadow.camera.bottom = -2
+    key.shadow.bias = -0.0004
     scene.add(key)
     lightsRef.current.key = key
 
-    scene.add(new THREE.DirectionalLight('#4060ff', 0.7).position.set(-4, 3, -2) && (() => {
-      const f = new THREE.DirectionalLight('#4060ff', 0.7); f.position.set(-4, 3, -2); scene.add(f); return f
-    })())
-    const rim = new THREE.DirectionalLight('#ff6030', 0.45)
-    rim.position.set(0, 2, -5)
-    scene.add(rim)
-    scene.add(new THREE.HemisphereLight('#a0c0ff', '#302010', 0.3))
+    // Fill light – cool blue-grey from right
+    const fill = new THREE.DirectionalLight('#b8d0ff', 1.2)
+    fill.position.set(-4, 5, 3)
+    scene.add(fill)
 
-    // Ground + ring
-    const gMesh = new THREE.Mesh(new THREE.CircleGeometry(5, 64), new THREE.MeshStandardMaterial({ color: '#161929', roughness: 0.9, metalness: 0.05 }))
+    // Rim light – clean white from behind-above
+    const rim = new THREE.DirectionalLight('#e8f0ff', 1.0)
+    rim.position.set(0, 7, -5)
+    scene.add(rim)
+
+    // Hemisphere sky/ground bounce
+    scene.add(new THREE.HemisphereLight('#a0b8e8', '#3a2e22', 0.38))
+
+    // Ground
+    const gMesh = new THREE.Mesh(new THREE.CircleGeometry(6, 64), new THREE.MeshStandardMaterial({ color: '#12151f', roughness: 0.88, metalness: 0.06 }))
     gMesh.rotation.x = -Math.PI / 2; gMesh.receiveShadow = true; scene.add(gMesh)
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0, 1.2, 48), new THREE.MeshStandardMaterial({ color: '#7C3AED', roughness: 0.15, metalness: 0.8, transparent: true, opacity: 0.18, side: THREE.DoubleSide }))
+    // Subtle glow ring (very transparent)
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 1.3, 64), new THREE.MeshStandardMaterial({ color: '#7C3AED', roughness: 0.2, metalness: 0.9, transparent: true, opacity: 0.06, side: THREE.DoubleSide }))
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.002; scene.add(ring)
 
     const grid = new THREE.GridHelper(10, 20, '#2a2d3e', '#1e2030')

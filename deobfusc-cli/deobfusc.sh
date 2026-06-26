@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
-#  deobfusc — Lua deobfuscator CLI
-#  AI-only access. Key required on first run, stored permanently.
+#  deobfusc — Lua deobfuscator CLI (AI-only)
+#  Key required on first run, stored permanently.
 #  Usage:
-#    deobfusc <file.lua>              # deobfuscate a file
+#    deobfusc <file.lua>              # text deobfuscate + key strip
+#    deobfusc --deep <file.lua>       # deep: execute VM, capture all layers
 #    deobfusc --detect <file.lua>     # detect obfuscation type
-#    deobfusc --keyrm <file.lua>      # strip key system
-#    deobfusc --trace <file.lua>      # VM execution trace
+#    deobfusc --keyrm <file.lua>      # strip key system only
+#    deobfusc --trace <file.lua>      # VM execution trace (debug hook)
 #    deobfusc --stdin                 # read from stdin
 #    deobfusc --auth                  # re-authenticate
-#    deobfusc --status                # show auth status
+#    deobfusc --status                # show auth/env status
 # ═══════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -17,7 +18,6 @@ set -euo pipefail
 # ── Config paths ─────────────────────────────────────────────────────────────
 CONF_DIR="${HOME}/.deobfusc"
 AUTH_FILE="${CONF_DIR}/auth.token"
-CORRECT_KEY_HASH="6e4c8e1ad79c0d7a0e3421b3de81f73c2fd2a83b1e59d64fc2e70a0b7c9f8e2d"
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -200,13 +200,19 @@ vm_trace() {
 usage() {
   echo -e "${BOLD}deobfusc${RESET} — Lua deobfuscator (AI-only)"
   echo ""
-  echo "  deobfusc <file>          Deobfuscate Lua file"
-  echo "  deobfusc --detect <f>    Detect obfuscation type"
-  echo "  deobfusc --keyrm <f>     Strip key system"
-  echo "  deobfusc --trace <f>     VM execution trace"
-  echo "  deobfusc --stdin         Read from stdin"
-  echo "  deobfusc --auth          Authenticate (first run)"
-  echo "  deobfusc --status        Show auth/env status"
+  echo "  deobfusc <file>           Text deob + key strip (fast)"
+  echo "  deobfusc --deep <file>    Deep: execute VM, capture all layers"
+  echo "  deobfusc --detect <file>  Detect obfuscation type + signatures"
+  echo "  deobfusc --keyrm <file>   Strip key system only"
+  echo "  deobfusc --trace <file>   VM execution trace (debug hook)"
+  echo "  deobfusc --stdin          Read from stdin"
+  echo "  deobfusc --auth           Authenticate (first run)"
+  echo "  deobfusc --status         Show auth/env status"
+  echo ""
+  echo "  Supports: Luraph 11–14.7, Moonsec v1–v3, IronBrew 2,"
+  echo "            Prometheus, PSU, Junkie/Linkvertise key systems,"
+  echo "            hex-escape, dec-escape, string.char, num-array,"
+  echo "            string.reverse, string.rep, XOR, base64"
   echo ""
 }
 
@@ -261,6 +267,16 @@ case "$CMD" in
     [ -z "$FILE" ] && { err "Usage: deobfusc --trace <file>"; exit 1; }
     header "VM Trace: $FILE"
     vm_trace "$FILE"
+    ;;
+
+  --deep)
+    require_auth
+    [ -z "$FILE" ] && { err "Usage: deobfusc --deep <file>"; exit 1; }
+    [ ! -f "$FILE" ] && { err "File not found: $FILE"; exit 1; }
+    [ ! -f "$ENGINE" ] && { err "engine.lua not found at $ENGINE"; exit 1; }
+    header "Deep Deob: $FILE"
+    echo -e "  ${DIM}strip keys → text passes → VM execute → capture layers${RESET}"
+    "$LUA_BIN" "$ENGINE" deep "$FILE"
     ;;
 
   --stdin)
