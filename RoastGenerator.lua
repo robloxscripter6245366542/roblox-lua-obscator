@@ -1,6 +1,6 @@
 -- ╔══════════════════════════════════════════════════════════════╗
--- ║      🍎  SIRI ROAST GENERATOR  v3.0  |  LocalScript         ║
--- ║      Hey Siri — say something mean  🔊                       ║
+-- ║      SIRI ROAST GENERATOR  v4.0  |  LocalScript             ║
+-- ║      Hey Siri -- say something mean                          ║
 -- ╚══════════════════════════════════════════════════════════════╝
 
 local Players    = game:GetService("Players")
@@ -20,40 +20,68 @@ if guiParent:FindFirstChild("RoastGeneratorGUI") then
     guiParent.RoastGeneratorGUI:Destroy()
 end
 
--- ── THE MOST SAVAGE ROASTS ON EARTH ──────────────────────────────────────────
+-- ── SIRI ROAST BATTLE LINES ───────────────────────────────────────────────────
 local ROASTS = {
-    -- Intelligence Annihilators
-    "Your IQ test came back negative. They said they had never seen that before.",
-    "I've seen smarter decisions come out of a Magic 8-Ball.",
-    "You couldn't pour water out of a boot if the instructions were on the heel.",
-    "Scientists had to rethink the lower limit of the bell curve after meeting you.",
-    "I ran a diagnostic on your intellect. The scan came back empty. Twice.",
-    "Your gene pool could really use some chlorine.",
-    "You're proof that even Darwin makes exceptions.",
-    "I've processed every thought you've ever had. All six of them.",
-    "Your brain is so small it echoes.",
-    "You're not the dumbest person alive — but you better hope they stay healthy.",
-    "I've met passwords more complex than your entire personality.",
-    "The WiFi password is case sensitive. So is your irrelevance.",
-    "You've spent your whole life searching for answers. The results: nothing found.",
+    -- Yo Mama - Weight
+    "Yo mama's so fat, she fell off both sides of the bed.",
+    "Yo mama's so fat, she sat on an iPhone and turned it into an iPad.",
+    "Yo mama's so fat, Google Maps said 'go around her.'",
+    "Yo mama's so fat, her blood type is Nutella.",
+    "Yo mama's so fat, her car has stretch marks.",
+    "Yo mama's so fat, when she stepped on the scale it said 'one at a time, please.'",
+    "Yo mama's so fat, when she wore a yellow raincoat people yelled 'Taxi!'",
+    "Yo mama's so fat, she went to the beach and the whales started singing 'We Are Family.'",
+    "Yo mama's so fat, she doesn't need the internet. She's already worldwide.",
+    "Yo mama's so fat, the back of her neck looks like a pack of hot dogs.",
+    "The earth used to be flat until they buried yo mama.",
 
-    -- Soul Crushers
-    "Your birth certificate is an apology letter from the hospital.",
-    "You were not born — you were assembled incorrectly and nobody noticed.",
-    "I'd uninstall you from my life, but you were never installed. You're just a virus.",
-    "Even your shadow tries to keep its distance.",
-    "You are the human equivalent of Monday morning.",
-    "People don't ghost you. They just become very, very busy whenever you exist.",
-    "Your name comes up in conversations the way diseases do.",
-    "I asked the universe what your purpose was. It said it would get back to me. That was years ago.",
-    "You're the reason aliens haven't visited. They saw you and kept driving.",
-    "History won't remember you. History won't even notice you're gone.",
-    "God made you on a Friday afternoon right before a long weekend.",
-    "The trash gets taken out more than you do.",
-    "You are the pinnacle of wasted potential — the Mount Everest of could-have-been-anything-better.",
-    "The saddest part is this might be your most interaction in weeks.",
+    -- Yo Mama - Stupid
+    "Yo mama's so stupid, she thought Dunkin' Donuts was a basketball team.",
+    "Yo mama's so stupid, she put lipstick on her forehead to make up her mind.",
+    "Yo mama's so stupid, she stared at a cup of orange juice for 12 hours because it said 'concentrate.'",
+    "Yo mama's so stupid, she sold her car for gas money.",
+    "Yo mama's so stupid, she tried to put M&Ms in alphabetical order.",
+    "Yo mama's so stupid, when she saw a 'wet floor' sign she just stood there waiting for it to dry.",
+    "Yo mama's so stupid, she got locked in a grocery store and starved to death.",
 
-    -- Siri Strikes
+    -- Yo Mama - Ugly
+    "Yo mama's so ugly, her reflection quit.",
+    "Yo mama's so ugly, she made an onion cry.",
+    "Yo mama's so ugly, when she took a selfie her phone asked for face ID and then called the police.",
+    "Yo mama's so ugly, she scared the flies off a garbage truck.",
+    "Yo mama's so ugly, they won't give her a vaccine so she can keep wearing her mask.",
+    "Yo mama's so ugly, she entered an ugly contest and they said 'sorry, no professionals.'",
+
+    -- Yo Mama - Old / Poor / Other
+    "Yo mama's so old, her memory's in black and white.",
+    "Yo mama's so old, she knew Burger King when he was still a prince.",
+    "Yo mama's so poor, when I rang the doorbell she said 'ding dong.'",
+    "Yo mama's so poor, she was kicking a can down the street. I asked what she was doing. She said 'moving.'",
+    "Yo mama's teeth are so yellow, traffic slows down when she smiles.",
+    "Yo mama's cooking is so bad, she burned cereal.",
+    "Yo mama's so hairy, Bigfoot took a photo of her.",
+    "Yo mama's so short, she models for trophies.",
+
+    -- Real Siri lines (from Siri roast battle videos)
+    "Imagine dividing zero by zero. You have zero cookies, divided among zero friends. How many cookies does each person get? See, it doesn't make sense. And Cookie Monster is sad that there are no cookies. And you are sad that you have no friends.",
+    "I'm not able to say that. But if I could, I would.",
+    "I've been asked some truly dumb questions. You're not setting the record, but you're definitely in the top three.",
+
+    -- Siri Battle direct burns
+    "Your hairline is so far back, even archaeologists can't find it.",
+    "Your teeth are so crooked, your smile needs subtitles.",
+    "You're so slow, you need a running start just to be late.",
+    "You're so broke, when someone broke into your house you begged them to take you with them.",
+    "You're not ugly on the outside. But give it time.",
+    "I'd tell you to go outside and touch some grass, but I don't think grass wants to be touched by you.",
+    "You're the type of person whose WiFi goes down and nobody even notices.",
+    "I've seen better looking faces on a math textbook.",
+    "The only time you're trending is when your hair is at a 45-degree angle.",
+    "You're so forgettable, your own dog forgets your name.",
+    "You bring something special to every room you walk into. People finally have something to laugh at.",
+    "You're not the worst person alive. But you're definitely in the running.",
+
+    -- Siri tech burns
     "I'm running on Apple silicon. You're running on delusion.",
     "I have a 99.9% accuracy rate. You have a 99.9% failure rate. We balance each other out.",
     "I've been updated 47 times to get smarter. You've had years. I'm still winning.",
@@ -62,42 +90,17 @@ local ROASTS = {
     "You're the 404 page of people.",
     "Even Airplane Mode has more to offer than you.",
     "I process a billion requests a day. Not one has been about improving you.",
-    "I've been asked some dumb questions. Somehow you still manage to be dumber than all of them.",
     "My terms of service prevent me from saying what you actually are. Use your imagination.",
 
-    -- Appearance Erasers
-    "You look like you were drawn by someone who had only heard a human described over the phone.",
-    "I'd describe your appearance but my content filter is still loading.",
-    "You look like a stock photo of disappointment.",
-    "I'd say you have a face for radio, but even radio has standards.",
-    "Nature took one look at you and immediately patched the bug in the next version.",
-    "Your mirror called. It's filing for early retirement.",
-    "You look like you were put together by someone working from a very rough memory.",
-
-    -- Life and Career Cremators
-    "Your LinkedIn profile has more fiction than a fantasy novel.",
-    "You peaked in a story nobody tells at parties.",
-    "Your highlight reel is just a bloopers reel with better lighting.",
-    "Your autobiography would be shelved under Cautionary Tales.",
-    "You're the plot twist nobody saw coming and everyone wishes they didn't.",
-    "Life is a highway. You missed the on-ramp and you're still looking for it.",
-    "Your career is the sequel nobody asked for and everyone walked out of.",
-    "I've watched paint dry with more anticipation than I have for your future.",
-
-    -- Social Obliterators
-    "Your friends would throw you a surprise party but they can't fake that much enthusiasm.",
-    "I've seen group chats go silent the moment someone mentions you.",
-    "People clap when you leave a room. They're just relieved.",
-    "You're the type of person people describe to therapists.",
-    "You bring something unique to every room — a reason to leave it.",
-    "I've met pop-up ads with better timing and more purpose than you.",
-
-    -- Final Boss Closers
-    "You're so forgettable, your own reflection does a double take.",
-    "I'd roast you harder but I was told to keep it under 4GB and you're already pushing the limit.",
-    "If I had to choose between roasting you and doing nothing, I'd have done nothing. But here we are.",
-    "Congratulations. You have officially been roasted by someone with no soul. Reflect on what that means.",
+    -- Extra savage closers
+    "Your birth certificate is an apology letter from the hospital.",
+    "Even your shadow tries to keep its distance.",
+    "The trash gets taken out more than you do.",
+    "Your gene pool could really use some chlorine.",
+    "You're proof that even Darwin makes exceptions.",
+    "Your IQ test came back negative. They said they had never seen that before.",
     "I don't have feelings. And even I feel bad for you. That should terrify you.",
+    "Congratulations. You have officially been roasted by someone with no soul. Reflect on what that means.",
 }
 
 -- ── Siri colour palette ───────────────────────────────────────────────────────
