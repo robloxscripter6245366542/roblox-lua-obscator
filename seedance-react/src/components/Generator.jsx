@@ -4,7 +4,8 @@ import clsx from 'clsx'
 import SettingsPanel from './SettingsPanel.jsx'
 import OutputPanel from './OutputPanel.jsx'
 import LongVideoPanel from './LongVideoPanel.jsx'
-import { createVideoTask, pollTask, generateDemo } from '../lib/seedance.js'
+import { generateDemo } from '../lib/seedance.js'
+import { generateAIVideo } from '../lib/videomaker.js'
 
 const RANDOM_PROMPTS = [
   'A majestic dragon soaring over snow-capped mountains at golden hour, cinematic lighting, ultra detailed',
@@ -63,14 +64,13 @@ export default function Generator({ timer, onToast }) {
     try {
       let url
       try {
-        const taskId = await createVideoTask(null, {
-          prompt: p, genType: mode === 'image' ? 'image-to-video' : 'text-to-video',
-          imageUrls: imagePreview ? [imagePreview] : [],
-          duration: settings.duration, aspectRatio: settings.aspect,
-          resolution: settings.resolution, model: settings.model, audio: settings.audio,
+        url = await generateAIVideo(p, {
+          resolution: settings.resolution,
+          duration: settings.duration,
+          onStep: (label, progress) => {
+            setOutputState(s => ({ ...s, label, progress, step: Math.floor(progress / 25) }))
+          },
         })
-        url = await pollTask(null, taskId, pct =>
-          setOutputState(s => ({ ...s, progress: pct, step: Math.floor(pct / 25) })))
       } catch {
         url = await generateDemo(p, {
           resolution: settings.resolution,
