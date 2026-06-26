@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, lazy, Suspense } from 'react'
 import Header from './components/Header.jsx'
 import Hero from './components/Hero.jsx'
 import Generator from './components/Generator.jsx'
@@ -8,9 +8,12 @@ import ToastContainer from './components/Toast.jsx'
 import SessionModal from './components/SessionModal.jsx'
 import { useTimer } from './hooks/useTimer.js'
 
+const Studio = lazy(() => import('./studio/Studio.jsx'))
+
 export default function App() {
   const timer = useTimer()
   const [toasts, setToasts] = useState([])
+  const [showStudio, setShowStudio] = useState(false)
 
   const addToast = useCallback((message, type = 'info') => {
     const id = Date.now() + Math.random()
@@ -20,6 +23,21 @@ export default function App() {
   const removeToast = useCallback(id => {
     setToasts(t => t.filter(x => x.id !== id))
   }, [])
+
+  if (showStudio) {
+    return (
+      <Suspense fallback={
+        <div className="fixed inset-0 flex items-center justify-center" style={{ background: '#090b12' }}>
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-2 border-white/20 border-t-purple-500 rounded-full animate-spin" />
+            <span className="text-sm text-[#8b8fa8]">Loading Character Studio…</span>
+          </div>
+        </div>
+      }>
+        <Studio onClose={() => setShowStudio(false)} />
+      </Suspense>
+    )
+  }
 
   return (
     <div className="min-h-screen" style={{ background: '#08090d' }}>
@@ -34,7 +52,7 @@ export default function App() {
           style={{ background: 'radial-gradient(ellipse, #7C3AED 0%, transparent 70%)', filter: 'blur(80px)' }} />
       </div>
 
-      <Header timer={timer} />
+      <Header timer={timer} onOpenStudio={() => setShowStudio(true)} />
       <main className="relative z-10">
         <Hero />
         <Generator timer={timer} onToast={addToast} />

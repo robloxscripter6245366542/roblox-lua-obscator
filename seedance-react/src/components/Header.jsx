@@ -1,7 +1,7 @@
-import { Clock } from 'lucide-react'
+import { Clock, Boxes } from 'lucide-react'
 import clsx from 'clsx'
 
-export default function Header({ timer }) {
+export default function Header({ timer, onOpenStudio }) {
   return (
     <header className="sticky top-0 z-50 glass border-b border-white/[0.07]">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center gap-8">
@@ -13,6 +13,12 @@ export default function Header({ timer }) {
               {link}
             </a>
           ))}
+          <button onClick={onOpenStudio}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+            style={{ background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(124,58,237,0.3)', color: '#a78bfa' }}>
+            <Boxes size={14} />
+            Studio
+          </button>
         </nav>
         <div className="flex items-center gap-3">
           <span className="hidden sm:flex items-center px-2.5 py-1 rounded-md text-[11px] font-black tracking-widest text-white"
