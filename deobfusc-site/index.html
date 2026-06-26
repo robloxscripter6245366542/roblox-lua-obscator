@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Lua Deobfuscator — Luraph / Moonsec / IronBrew</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;
+  --blue:#58a6ff;--green:#3fb950;--red:#f85149;--orange:#d29922;
+  --purple:#8957e5;--cyan:#39d353;--pink:#f778ba;
+  --text:#e6edf3;--muted:#8b949e;--dim:#484f58;
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header h1{font-size:1.05rem;font-weight:700}
+.badge{font-size:.62rem;padding:2px 7px;border-radius:99px;font-weight:700;letter-spacing:.5px}
+.badge-purple{background:#3d1e6e;color:var(--purple)}
+.badge-blue{background:#1e3040;color:var(--blue)}
+.badge-green{background:#0f2010;color:var(--green)}
+.badge-orange{background:#2a1a00;color:var(--orange)}
+.toolbar{background:var(--surface);border-bottom:1px solid var(--border);padding:9px 16px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.btn{border:none;border-radius:6px;padding:6px 13px;font-size:.78rem;font-weight:600;cursor:pointer;transition:.12s;white-space:nowrap}
+.btn-detect{background:#1f3240;color:var(--blue);border:1px solid #1e3a5f}.btn-detect:hover{background:#1e3a5f}
+.btn-deob{background:#1a2e1a;color:var(--green);border:1px solid #1a3a1a}.btn-deob:hover{background:#1a3a1a}
+.btn-key{background:#2d1f2d;color:var(--purple);border:1px solid #3d2050}.btn-key:hover{background:#3d2050}
+.btn-vm{background:#2d2200;color:var(--orange);border:1px solid #403010}.btn-vm:hover{background:#403010}
+.btn-run{background:#1e1230;color:var(--pink);border:1px solid #3d1a50}.btn-run:hover{background:#3d1a50}
+.btn-clear{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}.btn-clear:hover{background:var(--border)}
+.btn-copy{background:var(--surface2);color:var(--muted);border:1px solid var(--border);margin-left:auto}.btn-copy:hover{color:var(--text)}
+.panels{flex:1;display:grid;grid-template-columns:1fr 1fr;height:calc(100vh - 106px)}
+.pane{display:flex;flex-direction:column;border-right:1px solid var(--border)}
+.pane:last-child{border-right:none}
+.pane-hdr{background:var(--surface);padding:7px 14px;font-size:.7rem;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+.pane-hdr .chip{margin-left:auto;font-size:.65rem;padding:2px 8px;border-radius:99px}
+.chip-ok{background:#0f2010;color:var(--green)}
+.chip-warn{background:#2a1a00;color:var(--orange)}
+.chip-err{background:#2d1212;color:var(--red)}
+.chip-info{background:#1f3240;color:var(--blue)}
+.chip-pink{background:#1e1230;color:var(--pink)}
+textarea{flex:1;background:var(--bg);color:var(--text);border:none;outline:none;resize:none;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.76rem;line-height:1.65;padding:12px;tab-size:4}
+#output{flex:1;background:var(--bg);font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.76rem;line-height:1.65;padding:12px;overflow:auto}
+
+/* cards */
+.card{margin:10px 12px;padding:10px 12px;border-radius:7px;font-size:.77rem;line-height:1.55;border:1px solid}
+.card.warn{background:#1c1800;border-color:#403010;color:#cca000}
+.card.info{background:#0d1f30;border-color:#1e3a5f;color:var(--blue)}
+.card.ok{background:#0f2010;border-color:#1a3a1a;color:var(--green)}
+.card.err{background:#1c0a0a;border-color:#3a1212;color:var(--red)}
+.card.pink{background:#1a0e28;border-color:#3d1a50;color:var(--pink)}
+.row{display:flex;align-items:start;gap:10px;padding:8px 12px;border-bottom:1px solid #1e242c;font-size:.76rem}
+.row-lbl{color:var(--muted);min-width:110px;font-size:.68rem;text-transform:uppercase;letter-spacing:.3px;padding-top:3px;flex-shrink:0}
+.row-val{color:var(--text);flex:1;word-break:break-word}
+.tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:.65rem;font-weight:700;margin:1px}
+.t-lua{background:#2d2200;color:var(--orange)}
+.t-moon{background:#2a1f40;color:var(--purple)}
+.t-iron{background:#1a2e35;color:var(--cyan)}
+.t-prom{background:#2a1f40;color:var(--purple)}
+.t-key{background:#2d1212;color:var(--red)}
+.t-ok{background:#0f2010;color:var(--green)}
+.t-info{background:#1f3240;color:var(--blue)}
+.t-dim{background:var(--surface2);color:var(--muted)}
+.t-pink{background:#1a0e28;color:var(--pink)}
+.sep{border:none;border-top:1px solid #1e242c;margin:6px 0}
+pre.code{white-space:pre-wrap;word-break:break-all;padding:10px 12px;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.74rem;line-height:1.6;color:var(--text);background:var(--bg);border-top:1px solid var(--border)}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--pink);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+  <h1>Lua Deobfuscator</h1>
+  <span class="badge badge-purple">Luraph 14.x</span>
+  <span class="badge badge-purple">Moonsec v1–v3</span>
+  <span class="badge badge-blue">IronBrew 2</span>
+  <span class="badge badge-blue">Prometheus</span>
+  <span class="badge badge-green">Key System Extractor</span>
+  <span class="badge badge-orange">VM Runner</span>
+</header>
+
+<div class="toolbar">
+  <button class="btn btn-detect" onclick="runDetect()">🔍 Detect</button>
+  <button class="btn btn-deob" onclick="runDeob()">✨ Deobfuscate</button>
+  <button class="btn btn-key" onclick="runKeyExtract()">🔑 Extract Key System</button>
+  <button class="btn btn-vm" onclick="runVMAnalysis()">⚙ VM Analysis</button>
+  <button class="btn btn-run" onclick="runVM()">▶ Run &amp; Capture (VM)</button>
+  <button class="btn btn-clear" onclick="clearAll()">✕ Clear</button>
+  <button class="btn btn-copy" onclick="copyOutput()">⎘ Copy</button>
+</div>
+
+<div class="panels">
+  <div class="pane">
+    <div class="pane-hdr">
+      Input
+      <span class="chip chip-info" id="inChip">ready</span>
+    </div>
+    <textarea id="inp" spellcheck="false" placeholder="-- Paste obfuscated Lua here
+-- Supports:
+--   Luraph v11 · v12 · v13 · v14.1–14.7
+--   Moonsec v1 · v2 · v2.1 · v3
+--   IronBrew 2
+--   Prometheus · PSU
+--   Junkie key system · generic key systems
+--   string.char · hex escape · base64 · XOR"></textarea>
+  </div>
+  <div class="pane">
+    <div class="pane-hdr">
+      Output
+      <span class="chip chip-info" id="outChip">waiting</span>
+    </div>
+    <div id="output"></div>
+  </div>
+</div>
+
+<!-- fengari Lua VM in JS -->
+<script src="https://cdn.jsdelivr.net/npm/fengari-web@0.1.4/dist/fengari-web.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const inp = $('inp'), out = $('output');
+const inChip = $('inChip'), outChip = $('outChip');
+
+inp.addEventListener('input', () => {
+  const v = inp.value;
+  inChip.textContent = v.split('\n').length + ' ln · ' + fmt(v.length);
+  inChip.className = 'chip chip-info';
+});
+
+function fmt(n){return n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB'}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function setOut(html,chip,cls){out.innerHTML=html;outChip.textContent=chip;outChip.className='chip '+cls}
+
+// ═══════════════════════════════════════════════════════
+//  SIGNATURES
+// ═══════════════════════════════════════════════════════
+const LURAPH_SIGS = [
+  {ver:'14.7', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.7/i},
+  {ver:'14.6', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.6/i},
+  {ver:'14.5', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.5/i},
+  {ver:'14.4', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.4/i},
+  {ver:'14.3', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.3/i},
+  {ver:'14.2', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.2/i},
+  {ver:'14.1', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.1/i},
+  {ver:'14.x', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14/i},
+  {ver:'13.x', pattern:/Luraph\s*(?:Obfuscator)?\s*v?13/i},
+  {ver:'12.x', pattern:/Luraph\s*(?:Obfuscator)?\s*v?12/i},
+  {ver:'11.x', pattern:/Luraph\s*(?:Obfuscator)?\s*v?11/i},
+  {ver:'unknown', pattern:/luraph|lura\.ph/i},
+];
+const MOONSEC_SIGS = [
+  {ver:'v3',   pattern:/moonsec[\s_-]*v?3|ms3_/i},
+  {ver:'v2.1', pattern:/moonsec[\s_-]*v?2\.1/i},
+  {ver:'v2',   pattern:/moonsec[\s_-]*v?2(?!\.)/i},
+  {ver:'v1',   pattern:/moonsec[\s_-]*v?1/i},
+  {ver:'unknown', pattern:/moonsec/i},
+];
+const KEY_SIGS = [
+  {label:'Junkie SDK',    pattern:/jnkie\.com|jnkie\.cc|Junkie\.(check_key|get_key_link|service)/},
+  {label:'Junkie API',   pattern:/api\.jnkie\.com/},
+  {label:'WhitelistHub', pattern:/whitelisthub|wlhub/i},
+  {label:'Linkvertise',  pattern:/linkvertise\.com/},
+  {label:'KeySystem v2', pattern:/KeySystem\s*v2|keysystemv2/i},
+  {label:'Generic key',  pattern:/\b(?:checkKey|verifyKey|getKey|KeySystem|key_system|keycheck)\b/},
+];
+
+function detect(code) {
+  const found = {vm:null,vmVer:null,moonsec:null,moonsecVer:null,keys:[],layers:[]};
+
+  for (const s of LURAPH_SIGS) {
+    if (s.pattern.test(code)) { found.vm='Luraph'; found.vmVer=s.ver; break; }
+  }
+  for (const s of MOONSEC_SIGS) {
+    if (s.pattern.test(code)) { found.moonsec='Moonsec'; found.moonsecVer=s.ver; break; }
+  }
+  if (!found.vm && /getfenv/.test(code) && /0x[0-9a-fA-F]{4,}/.test(code)) {
+    found.vm = /ironbrew/i.test(code) ? 'IronBrew 2' : 'IronBrew (likely)';
+    found.vmVer='detected';
+  }
+  if (!found.vm && /prometheus/i.test(code)) { found.vm='Prometheus'; found.vmVer='detected'; }
+  if (!found.vm && /\bPSU\b/.test(code) && /loadstring/.test(code)) { found.vm='PSU'; found.vmVer='detected'; }
+
+  for (const k of KEY_SIGS) {
+    if (k.pattern.test(code)) found.keys.push(k.label);
+  }
+
+  if (found.vm) found.layers.push(found.vm + (found.vmVer ? ' ' + found.vmVer : ''));
+  if (found.moonsec) found.layers.push(found.moonsec + ' ' + found.moonsecVer);
+  if (found.keys.length) found.layers.push('KeySystem:' + found.keys.join('+'));
+  if (/string\.char\(\s*\d/.test(code)) found.layers.push('string.char');
+  if (/\\x[0-9a-fA-F]{2}/.test(code)) found.layers.push('hex-escape');
+  if (/[A-Za-z0-9+/]{40,}={0,2}/.test(code)) found.layers.push('base64');
+
+  return found;
+}
+
+// ═══════════════════════════════════════════════════════
+//  DEOBFUSCATION PASSES
+// ═══════════════════════════════════════════════════════
+function deobPasses(code) {
+  let passes = [];
+  let c = code;
+
+  const apply = (label, fn) => { const b=c; c=fn(c); if(c!==b) passes.push(label); };
+
+  apply('hex-escape',  s=>s.replace(/\\x([0-9a-fA-F]{2})/g,(_,h)=>String.fromCharCode(parseInt(h,16))));
+  apply('dec-escape',  s=>s.replace(/\\(\d{1,3})/g,(_,d)=>{const n=parseInt(d);return n<=255?String.fromCharCode(n):'\\'+d}));
+  apply('string.char', s=>s.replace(/string\.char\(([\d,\s]+)\)/g,(_,a)=>{
+    const ch=a.split(',').map(n=>{const x=parseInt(n.trim());return isNaN(x)?'':String.fromCharCode(x)}).join('');
+    return `"${ch}"`;
+  }));
+  apply('bare-char',   s=>s.replace(/\bchar\(([\d,\s]+)\)/g,(_,a)=>{
+    const ch=a.split(',').map(n=>{const x=parseInt(n.trim());return isNaN(x)?'':String.fromCharCode(x)}).join('');
+    return `"${ch}"`;
+  }));
+  for(let i=0;i<12;i++) apply('concat',s=>s.replace(/"([^"\\]*)"\s*\.\.\s*"([^"\\]*)"/g,'"$1$2"'));
+  apply('base64-str',  s=>s.replace(/"([A-Za-z0-9+/]{20,}={0,2})"/g,(m,b)=>{
+    try{const d=atob(b);if(/^[\x20-\x7e\n\r\t]+$/.test(d))return`"${d}"`}catch{}return m;
+  }));
+  // strip Junkie header
+  apply('junkie-hdr',  s=>s.replace(/^local\s+\w+\s*=\s*loadstring\(game:HttpGet\("https?:\/\/jnkie[^"]+"\)\)\(\)\s*\n(?:\w+\.\w+\s*=\s*[^\n]+\n){1,6}/m,''));
+
+  return {code:c, passes};
+}
+
+// ═══════════════════════════════════════════════════════
+//  KEY SYSTEM EXTRACTION
+// ═══════════════════════════════════════════════════════
+function extractKey(code) {
+  let removed = [], cleaned = code;
+
+  const strip = (label, rx) => {
+    const m = cleaned.match(rx);
+    if (m) { removed.push({label, snippet: m[0].substring(0,200)}); cleaned = cleaned.replace(m[0],''); return true; }
+    return false;
+  };
+  const stripG = (label, rx) => {
+    let found=false;
+    cleaned = cleaned.replace(rx, m=>{ removed.push({label,snippet:m.substring(0,200)}); found=true; return ''; });
+    return found;
+  };
+
+  strip('Junkie SDK header', /^local\s+\w+\s*=\s*loadstring\(game:HttpGet\("https?:\/\/jnkie[^"]+"\)\)\(\)\s*\n(?:\w+\.\w+\s*=\s*[^\n]+\n){1,6}/m);
+  strip('Junkie key system block', /local\s+result\s*=\s*\(function\(\)[\s\S]*?(?:Junkie\.check_key|JunkieKeySystemUI|check_key)[\s\S]*?end\)\(\)/);
+  stripG('Junkie inline loader', /loadstring\(game:HttpGet\("https?:\/\/(?:api\.jnkie|jnkie)[^"]+"\)\)\(\)/g);
+  strip('Generic key function', /local\s+function\s+(?:checkKey|verifyKey|getKey|KeySystem)\b[\s\S]*?^end/m);
+  stripG('Linkvertise key loader', /loadstring\(game:HttpGet\("https?:\/\/linkvertise[^"]+"\)\)\(\)/g);
+
+  return { cleaned: cleaned.trim(), removed };
+}
+
+// ═══════════════════════════════════════════════════════
+//  VM ANALYSIS
+// ═══════════════════════════════════════════════════════
+function vmAnalysis(code, det) {
+  const res = {};
+
+  if (det.vm === 'Luraph') {
+    res.type='Luraph';
+    res.ver=det.vmVer;
+    res.cls='t-lua';
+    // extract blob
+    const blob = code.match(/\[=\[([\s\S]{50,}?)\]=\]/);
+    res.blobSize = blob ? fmt(blob[1].length) : null;
+    res.blobPreview = blob ? blob[1].substring(0,80)+'…' : null;
+    // extract readable strings from bytecode region
+    const strings = [];
+    if (blob) {
+      const rx = /[A-Za-z_][A-Za-z0-9_\.:\s]{4,80}/g;
+      let m; while((m=rx.exec(blob[1]))!==null && strings.length<20) strings.push(m[0].trim());
+    }
+    res.extractedStrings = strings;
+    res.runnable = true;
+    res.note = `Luraph ${det.vmVer} — Uses a custom Lua 5.1 bytecode VM. The inner script is encoded as a Lua long-string blob ([=[...]=]). "Run & Capture" will execute the VM in a sandboxed Lua runtime, hook loadstring, and capture the deobfuscated inner source.`;
+  } else if (det.vm && det.vm.includes('IronBrew')) {
+    res.type='IronBrew 2';res.ver='detected';res.cls='t-iron';
+    res.runnable=true;
+    res.note='IronBrew 2 serialises Lua bytecode as a large numeric table. "Run & Capture" will attempt to execute and hook the output.';
+  } else if (det.vm === 'Prometheus') {
+    res.type='Prometheus';res.ver='detected';res.cls='t-prom';
+    res.runnable=true;
+    res.note='Prometheus wraps Lua bytecode in a custom VM with scrambled opcodes.';
+  } else if (det.moonsec) {
+    res.type='Moonsec';res.ver=det.moonsecVer;res.cls='t-moon';
+    res.runnable=true;
+    res.note=`Moonsec ${det.moonsecVer} — encrypts Lua bytecode with a custom VM. "Run & Capture" will try to hook loadstring inside the VM execution to extract the inner source.`;
+  } else {
+    res.type='None';res.ver='';res.cls='t-ok';res.runnable=false;
+    res.note='No VM-based obfuscation detected. Text deobfuscation should recover the source.';
+  }
+
+  return res;
+}
+
+// ═══════════════════════════════════════════════════════
+//  FENGARI VM RUNNER
+// ═══════════════════════════════════════════════════════
+async function runVM() {
+  const code = inp.value.trim();
+  if (!code) { setOut('<div class="card info">Paste some code first.</div>', 'empty', 'chip-info'); return; }
+
+  const det = detect(code);
+  const vm  = vmAnalysis(code, det);
+
+  if (!vm.runnable && vm.type === 'None') {
+    setOut('<div class="card info">No VM detected — use ✨ Deobfuscate instead.</div>', 'no vm', 'chip-info');
+    return;
+  }
+
+  setOut('<div class="card pink"><span class="spinner"></span>Running VM in sandbox… hooking loadstring…</div>', 'running…', 'chip-pink');
+  await new Promise(r=>setTimeout(r,60));
+
+  // Strip key system first, then run
+  const {cleaned} = extractKey(code);
+  const {code: prepped} = deobPasses(cleaned);
+
+  const captured = [];
+  let errMsg = null;
+
+  try {
+    if (typeof fengari === 'undefined') throw new Error('Fengari VM not loaded — check your internet connection.');
+
+    const lua = fengari.lua;
+    const lauxlib = fengari.lauxlib;
+    const lualib = fengari.lualib;
+
+    const L = lauxlib.luaL_newstate();
+    lualib.luaL_openlibs(L);
+
+    // ── Roblox stubs ────────────────────────────────────
+    const stubLua = `
+-- Roblox global stubs so VM loaders don't crash
+local _rbxStub = setmetatable({}, {__index=function(t,k)
+  return setmetatable({},{__index=function(tt,kk) return function(...) return tt end end,
+                         __call=function(tt,...) return tt end,
+                         __newindex=function()end})
+end, __call=function()end, __newindex=function()end})
+
+game        = _rbxStub
+workspace   = _rbxStub
+script      = _rbxStub
+shared      = _rbxStub
+_G          = _G or {}
+getfenv     = getfenv or function(n) return _ENV end
+setfenv     = setfenv or function(n,t) end
+newproxy    = newproxy or function() return {} end
+bit         = bit or {bxor=function(a,b) local r,p=0,1 while a>0 or b>0 do if a%2~=b%2 then r=r+p end a=math.floor(a/2) b=math.floor(b/2) p=p*2 end return r end,band=function(a,b) local r,p=0,1 while a>0 and b>0 do if a%2+b%2>=2 then r=r+p end a=math.floor(a/2) b=math.floor(b/2) p=p*2 end return r end,bor=function(a,b) local r,p=0,1 while a>0 or b>0 do if a%2+b%2>0 then r=r+p end a=math.floor(a/2) b=math.floor(b/2) p=p*2 end return r end,bnot=function(a) return -(a+1) end,lshift=function(a,b) return a*2^b end,rshift=function(a,b) return math.floor(a/2^b) end}
+
+-- Hook: capture anything passed to loadstring instead of executing
+local _captured = {}
+local _orig_ls = loadstring
+loadstring = function(src, ...)
+  if type(src)=="string" and #src > 10 then
+    table.insert(_captured, src)
+  end
+  -- also try running it normally to cascade multi-layer VMs
+  local ok, fn = pcall(_orig_ls, src, ...)
+  if ok and type(fn)=="function" then return fn end
+  return function() end
+end
+
+-- Also hook load
+local _orig_load = load
+load = function(src, ...)
+  if type(src)=="string" and #src > 10 then
+    table.insert(_captured, src)
+  end
+  local ok, fn = pcall(_orig_load, src, ...)
+  if ok and type(fn)=="function" then return fn end
+  return function() end
+end
+
+__get_captured = function() return _captured end
+`;
+
+    // Run stubs
+    let r = lauxlib.luaL_dostring(L, fengari.to_luastring(stubLua));
+    if (r !== 0) {
+      const err = lua.lua_tostring(L, -1);
+      throw new Error('Stub setup failed: ' + fengari.to_jsstring(err));
+    }
+
+    // Run the actual obfuscated script (with timeout guard via error)
+    const timeoutGuard = `
+local _deadline = os.clock() + 8
+local _orig_pcall = pcall
+pcall = function(fn, ...)
+  if os.clock() > _deadline then error("timeout") end
+  return _orig_pcall(fn, ...)
+end
+`;
+    lauxlib.luaL_dostring(L, fengari.to_luastring(timeoutGuard));
+
+    // Wrap the user script so errors don't crash us
+    const wrapped = 'pcall(function()\n' + prepped + '\nend)';
+    r = lauxlib.luaL_dostring(L, fengari.to_luastring(wrapped));
+    // ignore execution errors — we only care about captured strings
+
+    // Retrieve captured sources
+    r = lauxlib.luaL_dostring(L, fengari.to_luastring('return __get_captured()'));
+    if (r === 0) {
+      lua.lua_pushnil(L);
+      while (lua.lua_next(L, -2)) {
+        const s = lua.lua_tostring(L, -1);
+        if (s) captured.push(fengari.to_jsstring(s));
+        lua.lua_pop(L, 1);
+      }
+    }
+
+  } catch(e) {
+    errMsg = e.message;
+  }
+
+  // Build output
+  let html = '';
+
+  if (errMsg) {
+    html += `<div class="card err">⚠ VM runner error: ${esc(errMsg)}</div>`;
+  }
+
+  if (captured.length === 0 && !errMsg) {
+    html += `<div class="card warn">⚠ VM ran but no inner source was captured via loadstring. The script may require Roblox-specific globals that can't be stubbed, or uses a non-loadstring code path.</div>`;
+    html += `<div class="card info">💡 Tip: Try pasting the raw VM body (without the key system), or use ⚙ VM Analysis to inspect the bytecode blob directly.</div>`;
+  } else if (captured.length > 0) {
+    html += `<div class="card ok">✓ Captured ${captured.length} source layer${captured.length>1?'s':''} from VM execution!</div>`;
+    captured.forEach((src, i) => {
+      html += `<div class="row"><span class="row-lbl">Layer ${i+1}</span><span class="row-val">${fmt(src.length)} · ${src.split('\n').length} lines</span></div>`;
+      html += `<pre class="code">${esc(src.substring(0, 8000))}${src.length>8000?'\n\n... [truncated — copy output for full source]':''}</pre>`;
+    });
+  }
+
+  if (errMsg && captured.length > 0) {
+    // partial success
+    html = html; // already added
+  }
+
+  if (!html) html = '<div class="card err">No output.</div>';
+
+  setOut(html,
+    captured.length > 0 ? captured.length + ' layer(s) captured' : (errMsg ? 'error' : 'no capture'),
+    captured.length > 0 ? 'chip-ok' : (errMsg ? 'chip-err' : 'chip-warn')
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+//  BUTTON HANDLERS
+// ═══════════════════════════════════════════════════════
+function runDetect() {
+  const code = inp.value;
+  if (!code.trim()) { setOut('<div class="card info">Paste some code first.</div>','empty','chip-info'); return; }
+  const det = detect(code);
+  const vm  = vmAnalysis(code, det);
+  let html = '';
+
+  // VM tag
+  if (det.vm) {
+    html += `<div class="row"><span class="row-lbl">VM</span><span class="row-val"><span class="tag ${vm.cls}">${vm.type} ${vm.ver}</span></span></div>`;
+  }
+  if (det.moonsec) {
+    html += `<div class="row"><span class="row-lbl">Moonsec</span><span class="row-val"><span class="tag t-moon">${det.moonsec} ${det.moonsecVer}</span></span></div>`;
+  }
+  if (det.keys.length) {
+    html += `<div class="row"><span class="row-lbl">Key System</span><span class="row-val">${det.keys.map(k=>`<span class="tag t-key">${k}</span>`).join(' ')}</span></div>`;
+  }
+  html += `<div class="row"><span class="row-lbl">Layers</span><span class="row-val">${det.layers.length ? det.layers.map(l=>`<span class="tag t-info">${l}</span>`).join(' ') : '<span class="tag t-ok">clean</span>'}</span></div>`;
+  html += `<div class="row"><span class="row-lbl">Lines</span><span class="row-val">${code.split('\n').length}</span></div>`;
+  html += `<div class="row"><span class="row-lbl">Size</span><span class="row-val">${fmt(code.length)}</span></div>`;
+
+  if (det.vm || det.moonsec) {
+    html += `<div class="card warn">⚠ VM obfuscation found — text-level passes won't recover the inner source. Use ▶ Run &amp; Capture to execute the VM and hook loadstring.</div>`;
+  }
+  if (det.keys.length) {
+    html += `<div class="card err">🔑 Key system detected — use 🔑 Extract Key System to strip it before running.</div>`;
+  }
+  if (!det.vm && !det.moonsec && !det.keys.length) {
+    html += `<div class="card ok">✓ No VM or key system found. ✨ Deobfuscate should recover the source.</div>`;
+  }
+
+  setOut(html, 'detected', 'chip-info');
+}
+
+function runDeob() {
+  const code = inp.value;
+  if (!code.trim()) { setOut('<div class="card info">Paste some code first.</div>','empty','chip-info'); return; }
+  const det = detect(code);
+  const {code:result, passes} = deobPasses(code);
+  let html = '';
+
+  if (passes.length) {
+    html += `<div class="row"><span class="row-lbl">Passes</span><span class="row-val">${passes.map(p=>`<span class="tag t-ok">${p}</span>`).join(' ')}</span></div>`;
+  } else {
+    html += `<div class="card warn">No text-level passes applied — code may be VM-protected or already clean.</div>`;
+  }
+
+  if (det.vm || det.moonsec) {
+    html += `<div class="card warn">⚠ VM layer still present. Use ▶ Run &amp; Capture to extract the inner source.</div>`;
+  }
+
+  html += `<hr class="sep"/><pre class="code">${esc(result)}</pre>`;
+  setOut(html, passes.length + ' passes', passes.length ? 'chip-ok' : 'chip-warn');
+}
+
+function runKeyExtract() {
+  const code = inp.value;
+  if (!code.trim()) { setOut('<div class="card info">Paste some code first.</div>','empty','chip-info'); return; }
+  const {cleaned, removed} = extractKey(code);
+  let html = '';
+
+  if (!removed.length) {
+    html = '<div class="card ok">✓ No key system patterns found.</div>';
+    setOut(html, 'clean', 'chip-ok'); return;
+  }
+
+  html += `<div class="card ok">✓ Removed ${removed.length} key system block(s).</div>`;
+  removed.forEach(r => {
+    html += `<div class="row"><span class="row-lbl">Removed</span><span class="row-val"><span class="tag t-key">${esc(r.label)}</span><br/><code style="font-size:.68rem;color:var(--muted)">${esc(r.snippet)}…</code></span></div>`;
+  });
+  html += `<hr class="sep"/><div style="padding:6px 12px;font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--muted)">Clean Script</div>`;
+  html += `<pre class="code">${esc(cleaned)}</pre>`;
+
+  setOut(html, 'key removed', 'chip-ok');
+}
+
+function runVMAnalysis() {
+  const code = inp.value;
+  if (!code.trim()) { setOut('<div class="card info">Paste some code first.</div>','empty','chip-info'); return; }
+  const det = detect(code);
+  const vm  = vmAnalysis(code, det);
+  let html = '';
+
+  html += `<div class="row"><span class="row-lbl">VM Type</span><span class="row-val"><span class="tag ${vm.cls}">${vm.type}</span>${vm.ver?' <span class="tag t-dim">'+vm.ver+'</span>':''}</span></div>`;
+  html += `<div class="row"><span class="row-lbl">Reversible</span><span class="row-val"><span class="tag ${vm.runnable?'t-ok':'t-key'}">${vm.runnable?'Run & Capture can try':'Text passes only'}</span></span></div>`;
+
+  if (vm.blobSize) {
+    html += `<div class="row"><span class="row-lbl">Blob size</span><span class="row-val">${vm.blobSize}</span></div>`;
+    html += `<div class="row"><span class="row-lbl">Blob preview</span><span class="row-val"><code style="font-size:.68rem;color:var(--muted)">${esc(vm.blobPreview||'')}</code></span></div>`;
+  }
+  if (vm.extractedStrings && vm.extractedStrings.length) {
+    html += `<div class="row"><span class="row-lbl">Strings in blob</span><span class="row-val" style="color:var(--muted);font-size:.72rem">${vm.extractedStrings.map(s=>`<code>${esc(s)}</code>`).join('<br/>')}</span></div>`;
+  }
+
+  html += `<div class="card ${vm.runnable?'warn':'ok'}">${esc(vm.note)}</div>`;
+
+  if (vm.runnable) {
+    html += `<div class="card pink">▶ Click <strong>Run &amp; Capture</strong> to execute the VM in a sandboxed Lua runtime (Fengari) and hook loadstring to capture the inner source.</div>`;
+  }
+
+  setOut(html, 'vm analysis', 'chip-info');
+}
+
+function clearAll() {
+  inp.value=''; out.innerHTML='';
+  outChip.textContent='waiting'; outChip.className='chip chip-info';
+  inChip.textContent='ready'; inChip.className='chip chip-info';
+}
+
+function copyOutput() {
+  navigator.clipboard.writeText(out.innerText||out.textContent).then(()=>{
+    const b=document.querySelector('.btn-copy');
+    const t=b.textContent; b.textContent='✓ Copied!';
+    setTimeout(()=>b.textContent=t,1500);
+  });
+}
+</script>
+</body>
+</html>
