@@ -9,556 +9,862 @@
 :root{
   --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;
   --blue:#58a6ff;--green:#3fb950;--red:#f85149;--orange:#d29922;
-  --purple:#8957e5;--cyan:#39d353;--pink:#f778ba;
+  --purple:#8957e5;--cyan:#39d353;--pink:#f778ba;--teal:#26a69a;
   --text:#e6edf3;--muted:#8b949e;--dim:#484f58;
 }
-body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column}
-header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-header h1{font-size:1.05rem;font-weight:700}
-.badge{font-size:.62rem;padding:2px 7px;border-radius:99px;font-weight:700;letter-spacing:.5px}
-.badge-purple{background:#3d1e6e;color:var(--purple)}
-.badge-blue{background:#1e3040;color:var(--blue)}
-.badge-green{background:#0f2010;color:var(--green)}
-.badge-orange{background:#2a1a00;color:var(--orange)}
-.toolbar{background:var(--surface);border-bottom:1px solid var(--border);padding:9px 16px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-.btn{border:none;border-radius:6px;padding:6px 13px;font-size:.78rem;font-weight:600;cursor:pointer;transition:.12s;white-space:nowrap}
-.btn-detect{background:#1f3240;color:var(--blue);border:1px solid #1e3a5f}.btn-detect:hover{background:#1e3a5f}
-.btn-deob{background:#1a2e1a;color:var(--green);border:1px solid #1a3a1a}.btn-deob:hover{background:#1a3a1a}
-.btn-key{background:#2d1f2d;color:var(--purple);border:1px solid #3d2050}.btn-key:hover{background:#3d2050}
-.btn-vm{background:#2d2200;color:var(--orange);border:1px solid #403010}.btn-vm:hover{background:#403010}
-.btn-run{background:#1e1230;color:var(--pink);border:1px solid #3d1a50}.btn-run:hover{background:#3d1a50}
-.btn-clear{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}.btn-clear:hover{background:var(--border)}
-.btn-copy{background:var(--surface2);color:var(--muted);border:1px solid var(--border);margin-left:auto}.btn-copy:hover{color:var(--text)}
-.panels{flex:1;display:grid;grid-template-columns:1fr 1fr;height:calc(100vh - 106px)}
-.pane{display:flex;flex-direction:column;border-right:1px solid var(--border)}
-.pane:last-child{border-right:none}
-.pane-hdr{background:var(--surface);padding:7px 14px;font-size:.7rem;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
-.pane-hdr .chip{margin-left:auto;font-size:.65rem;padding:2px 8px;border-radius:99px}
-.chip-ok{background:#0f2010;color:var(--green)}
-.chip-warn{background:#2a1a00;color:var(--orange)}
-.chip-err{background:#2d1212;color:var(--red)}
-.chip-info{background:#1f3240;color:var(--blue)}
-.chip-pink{background:#1e1230;color:var(--pink)}
-textarea{flex:1;background:var(--bg);color:var(--text);border:none;outline:none;resize:none;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.76rem;line-height:1.65;padding:12px;tab-size:4}
-#output{flex:1;background:var(--bg);font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.76rem;line-height:1.65;padding:12px;overflow:auto}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 18px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap}
+header h1{font-size:1rem;font-weight:700;white-space:nowrap}
+.badge{font-size:.6rem;padding:2px 6px;border-radius:99px;font-weight:700;letter-spacing:.4px;white-space:nowrap}
+.bpurple{background:#3d1e6e;color:var(--purple)}
+.bblue{background:#1e3040;color:var(--blue)}
+.bgreen{background:#0f2010;color:var(--green)}
+.borange{background:#2a1a00;color:var(--orange)}
+.bteal{background:#0a2020;color:var(--teal)}
 
-/* cards */
-.card{margin:10px 12px;padding:10px 12px;border-radius:7px;font-size:.77rem;line-height:1.55;border:1px solid}
-.card.warn{background:#1c1800;border-color:#403010;color:#cca000}
-.card.info{background:#0d1f30;border-color:#1e3a5f;color:var(--blue)}
-.card.ok{background:#0f2010;border-color:#1a3a1a;color:var(--green)}
-.card.err{background:#1c0a0a;border-color:#3a1212;color:var(--red)}
-.card.pink{background:#1a0e28;border-color:#3d1a50;color:var(--pink)}
-.row{display:flex;align-items:start;gap:10px;padding:8px 12px;border-bottom:1px solid #1e242c;font-size:.76rem}
-.row-lbl{color:var(--muted);min-width:110px;font-size:.68rem;text-transform:uppercase;letter-spacing:.3px;padding-top:3px;flex-shrink:0}
-.row-val{color:var(--text);flex:1;word-break:break-word}
-.tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:.65rem;font-weight:700;margin:1px}
-.t-lua{background:#2d2200;color:var(--orange)}
-.t-moon{background:#2a1f40;color:var(--purple)}
-.t-iron{background:#1a2e35;color:var(--cyan)}
-.t-prom{background:#2a1f40;color:var(--purple)}
-.t-key{background:#2d1212;color:var(--red)}
-.t-ok{background:#0f2010;color:var(--green)}
-.t-info{background:#1f3240;color:var(--blue)}
-.t-dim{background:var(--surface2);color:var(--muted)}
-.t-pink{background:#1a0e28;color:var(--pink)}
-.sep{border:none;border-top:1px solid #1e242c;margin:6px 0}
-pre.code{white-space:pre-wrap;word-break:break-all;padding:10px 12px;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.74rem;line-height:1.6;color:var(--text);background:var(--bg);border-top:1px solid var(--border)}
-.spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--pink);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+/* toolbar */
+.toolbar{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap}
+.btn{border:none;border-radius:5px;padding:5px 11px;font-size:.76rem;font-weight:600;cursor:pointer;transition:.1s;white-space:nowrap}
+.bdetect{background:#1f3240;color:var(--blue);border:1px solid #1e3a5f}.bdetect:hover{background:#1e3a5f}
+.bdeob{background:#1a2e1a;color:var(--green);border:1px solid #1a3a1a}.bdeob:hover{background:#1a3a1a}
+.bkey{background:#2d1f2d;color:var(--purple);border:1px solid #3d2050}.bkey:hover{background:#3d2050}
+.bvm{background:#2d2200;color:var(--orange);border:1px solid #403010}.bvm:hover{background:#403010}
+.brun{background:#1e1230;color:var(--pink);border:1px solid #3d1a50}.brun:hover{background:#3d1a50}
+.btrace{background:#0a2020;color:var(--teal);border:1px solid #0e3030}.btrace:hover{background:#0e3030}
+.bdis{background:#1a1830;color:#b39ddb;border:1px solid #2d2050}.bdis:hover{background:#2d2050}
+.bclear{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}.bclear:hover{background:var(--border)}
+.bcopy{background:var(--surface2);color:var(--muted);border:1px solid var(--border);margin-left:auto}.bcopy:hover{color:var(--text)}
+
+/* layout */
+.panels{flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden;min-height:0}
+.pane{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden;min-height:0}
+.pane:last-child{border-right:none}
+.phdr{background:var(--surface);padding:6px 12px;font-size:.68rem;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.chip{font-size:.63rem;padding:1px 7px;border-radius:99px;margin-left:auto}
+.cok{background:#0f2010;color:var(--green)}
+.cwarn{background:#2a1a00;color:var(--orange)}
+.cerr{background:#2d1212;color:var(--red)}
+.cinfo{background:#1f3240;color:var(--blue)}
+.cpink{background:#1e1230;color:var(--pink)}
+.cteal{background:#0a2020;color:var(--teal)}
+textarea{flex:1;background:var(--bg);color:var(--text);border:none;outline:none;resize:none;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.74rem;line-height:1.65;padding:12px;tab-size:4;min-height:0}
+#output{flex:1;background:var(--bg);font-size:.74rem;line-height:1.6;overflow:auto;min-height:0}
+
+/* output components */
+.card{margin:8px 10px;padding:9px 11px;border-radius:6px;font-size:.75rem;line-height:1.5;border:1px solid}
+.cwarn-card{background:#1c1800;border-color:#403010;color:#cca000}
+.cinfo-card{background:#0d1f30;border-color:#1e3a5f;color:var(--blue)}
+.cok-card{background:#0f2010;border-color:#1a3a1a;color:var(--green)}
+.cerr-card{background:#1c0a0a;border-color:#3a1212;color:var(--red)}
+.cpink-card{background:#1a0e28;border-color:#3d1a50;color:var(--pink)}
+.cteal-card{background:#0a1c1c;border-color:#0e3030;color:var(--teal)}
+
+.row{display:flex;align-items:start;gap:8px;padding:7px 10px;border-bottom:1px solid #1a2030;font-size:.73rem}
+.rl{color:var(--muted);min-width:105px;font-size:.65rem;text-transform:uppercase;letter-spacing:.3px;padding-top:3px;flex-shrink:0}
+.rv{color:var(--text);flex:1;word-break:break-word}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.63rem;font-weight:700;margin:1px}
+.tlua{background:#2d2200;color:var(--orange)}
+.tmoon{background:#2a1f40;color:var(--purple)}
+.tiron{background:#1a2e35;color:var(--cyan)}
+.tprom{background:#2a1f40;color:var(--purple)}
+.tkey{background:#2d1212;color:var(--red)}
+.tok{background:#0f2010;color:var(--green)}
+.tinfo{background:#1f3240;color:var(--blue)}
+.tdim{background:var(--surface2);color:var(--muted)}
+.tpink{background:#1a0e28;color:var(--pink)}
+.tteal{background:#0a2020;color:var(--teal)}
+
+pre.code{white-space:pre-wrap;word-break:break-all;padding:10px 12px;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.72rem;line-height:1.6;color:var(--text)}
+
+/* VM trace table */
+.trace-wrap{overflow:auto;padding:0}
+table.trace{width:100%;border-collapse:collapse;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.68rem}
+table.trace th{background:var(--surface);padding:4px 8px;text-align:left;font-size:.6rem;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);position:sticky;top:0;border-bottom:1px solid var(--border)}
+table.trace td{padding:3px 8px;border-bottom:1px solid #1a2030;vertical-align:top}
+table.trace tr:hover td{background:#161b22}
+.op-call{color:var(--blue)}
+.op-ret{color:var(--orange)}
+.op-jmp{color:var(--cyan)}
+.op-load{color:var(--green)}
+.op-set{color:#f778ba}
+.op-arith{color:#b39ddb}
+.op-cmp{color:var(--orange)}
+.op-other{color:var(--muted)}
+.pc{color:var(--dim)}
+.ln{color:var(--muted)}
+
+.spinner{display:inline-block;width:11px;height:11px;border:2px solid var(--border);border-top-color:var(--pink);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:5px}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* disassembly */
+.dis-fn{margin:0;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);font-size:.68rem;color:var(--muted);font-family:monospace}
+.dis-fn span{color:var(--blue)}
+.dis-line{display:flex;gap:0;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.68rem;line-height:1.7;padding:0 12px}
+.dis-line:hover{background:#161b22}
+.dis-pc{color:var(--dim);min-width:36px;text-align:right;margin-right:8px}
+.dis-ln{color:var(--dim);min-width:30px;text-align:right;margin-right:10px}
+.dis-op{min-width:110px;font-weight:700}
+.dis-args{color:var(--muted);flex:1}
+.dis-const{color:var(--green)}
+.dis-glob{color:var(--blue)}
+.dis-jmp{color:var(--cyan)}
 </style>
 </head>
 <body>
+
 <header>
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
   <h1>Lua Deobfuscator</h1>
-  <span class="badge badge-purple">Luraph 14.x</span>
-  <span class="badge badge-purple">Moonsec v1–v3</span>
-  <span class="badge badge-blue">IronBrew 2</span>
-  <span class="badge badge-blue">Prometheus</span>
-  <span class="badge badge-green">Key System Extractor</span>
-  <span class="badge badge-orange">VM Runner</span>
+  <span class="badge bpurple">Luraph 11–14.7</span>
+  <span class="badge bpurple">Moonsec v1–v3</span>
+  <span class="badge bblue">IronBrew 2</span>
+  <span class="badge bblue">Prometheus</span>
+  <span class="badge bgreen">Key Extractor</span>
+  <span class="badge borange">VM Runner</span>
+  <span class="badge bteal">VM Tracer</span>
+  <span class="badge" style="background:#1a1830;color:#b39ddb">Bytecode Disasm</span>
 </header>
 
 <div class="toolbar">
-  <button class="btn btn-detect" onclick="runDetect()">🔍 Detect</button>
-  <button class="btn btn-deob" onclick="runDeob()">✨ Deobfuscate</button>
-  <button class="btn btn-key" onclick="runKeyExtract()">🔑 Extract Key System</button>
-  <button class="btn btn-vm" onclick="runVMAnalysis()">⚙ VM Analysis</button>
-  <button class="btn btn-run" onclick="runVM()">▶ Run &amp; Capture (VM)</button>
-  <button class="btn btn-clear" onclick="clearAll()">✕ Clear</button>
-  <button class="btn btn-copy" onclick="copyOutput()">⎘ Copy</button>
+  <button class="btn bdetect" onclick="runDetect()">🔍 Detect</button>
+  <button class="btn bdeob"   onclick="runDeob()">✨ Deobfuscate</button>
+  <button class="btn bkey"    onclick="runKeyExtract()">🔑 Key System</button>
+  <button class="btn bvm"     onclick="runVMAnalysis()">⚙ VM Analysis</button>
+  <button class="btn brun"    onclick="runVM()">▶ Run &amp; Capture</button>
+  <button class="btn btrace"  onclick="runTrace()">🔬 VM Trace</button>
+  <button class="btn bdis"    onclick="runDisasm()">📋 Disassemble</button>
+  <button class="btn bclear"  onclick="clearAll()">✕ Clear</button>
+  <button class="btn bcopy"   onclick="copyOutput()">⎘ Copy</button>
 </div>
 
 <div class="panels">
   <div class="pane">
-    <div class="pane-hdr">
-      Input
-      <span class="chip chip-info" id="inChip">ready</span>
-    </div>
+    <div class="phdr">Input <span class="chip cinfo" id="inChip">ready</span></div>
     <textarea id="inp" spellcheck="false" placeholder="-- Paste obfuscated Lua here
 -- Supports:
 --   Luraph v11 · v12 · v13 · v14.1–14.7
 --   Moonsec v1 · v2 · v2.1 · v3
---   IronBrew 2
---   Prometheus · PSU
+--   IronBrew 2 · Prometheus · PSU
 --   Junkie key system · generic key systems
---   string.char · hex escape · base64 · XOR"></textarea>
+--   string.char · hex escape · base64 · XOR
+--
+-- New: 🔬 VM Trace — trace every opcode the VM executes
+--      📋 Disassemble — parse Lua 5.1 bytecode to instructions"></textarea>
   </div>
   <div class="pane">
-    <div class="pane-hdr">
-      Output
-      <span class="chip chip-info" id="outChip">waiting</span>
-    </div>
+    <div class="phdr">Output <span class="chip cinfo" id="outChip">waiting</span></div>
     <div id="output"></div>
   </div>
 </div>
 
-<!-- fengari Lua VM in JS -->
 <script src="https://cdn.jsdelivr.net/npm/fengari-web@0.1.4/dist/fengari-web.js"></script>
 <script>
-const $ = id => document.getElementById(id);
-const inp = $('inp'), out = $('output');
-const inChip = $('inChip'), outChip = $('outChip');
-
-inp.addEventListener('input', () => {
-  const v = inp.value;
-  inChip.textContent = v.split('\n').length + ' ln · ' + fmt(v.length);
-  inChip.className = 'chip chip-info';
+// ═══════════════════════════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════════════════════════
+const $=id=>document.getElementById(id);
+const inp=$('inp'),out=$('output'),inChip=$('inChip'),outChip=$('outChip');
+inp.addEventListener('input',()=>{
+  const v=inp.value;
+  inChip.textContent=v.split('\n').length+' ln · '+fmt(v.length);
+  inChip.className='chip cinfo';
 });
-
 function fmt(n){return n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB'}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function setOut(html,chip,cls){out.innerHTML=html;outChip.textContent=chip;outChip.className='chip '+cls}
 
-// ═══════════════════════════════════════════════════════
-//  SIGNATURES
-// ═══════════════════════════════════════════════════════
-const LURAPH_SIGS = [
-  {ver:'14.7', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.7/i},
-  {ver:'14.6', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.6/i},
-  {ver:'14.5', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.5/i},
-  {ver:'14.4', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.4/i},
-  {ver:'14.3', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.3/i},
-  {ver:'14.2', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.2/i},
-  {ver:'14.1', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14\.1/i},
-  {ver:'14.x', pattern:/Luraph\s*(?:Obfuscator)?\s*v?14/i},
-  {ver:'13.x', pattern:/Luraph\s*(?:Obfuscator)?\s*v?13/i},
-  {ver:'12.x', pattern:/Luraph\s*(?:Obfuscator)?\s*v?12/i},
-  {ver:'11.x', pattern:/Luraph\s*(?:Obfuscator)?\s*v?11/i},
-  {ver:'unknown', pattern:/luraph|lura\.ph/i},
-];
-const MOONSEC_SIGS = [
-  {ver:'v3',   pattern:/moonsec[\s_-]*v?3|ms3_/i},
-  {ver:'v2.1', pattern:/moonsec[\s_-]*v?2\.1/i},
-  {ver:'v2',   pattern:/moonsec[\s_-]*v?2(?!\.)/i},
-  {ver:'v1',   pattern:/moonsec[\s_-]*v?1/i},
-  {ver:'unknown', pattern:/moonsec/i},
-];
-const KEY_SIGS = [
-  {label:'Junkie SDK',    pattern:/jnkie\.com|jnkie\.cc|Junkie\.(check_key|get_key_link|service)/},
-  {label:'Junkie API',   pattern:/api\.jnkie\.com/},
-  {label:'WhitelistHub', pattern:/whitelisthub|wlhub/i},
-  {label:'Linkvertise',  pattern:/linkvertise\.com/},
-  {label:'KeySystem v2', pattern:/KeySystem\s*v2|keysystemv2/i},
-  {label:'Generic key',  pattern:/\b(?:checkKey|verifyKey|getKey|KeySystem|key_system|keycheck)\b/},
+// ═══════════════════════════════════════════════════════════════
+//  LUA 5.1 OPCODES
+// ═══════════════════════════════════════════════════════════════
+const LUA51_OPS = [
+  'MOVE','LOADK','LOADBOOL','LOADNIL','GETUPVAL','GETGLOBAL','GETTABLE',
+  'SETGLOBAL','SETUPVAL','SETTABLE','NEWTABLE','SELF',
+  'ADD','SUB','MUL','DIV','MOD','POW','UNM','NOT','LEN','CONCAT',
+  'JMP','EQ','LT','LE','TEST','TESTSET',
+  'CALL','TAILCALL','RETURN',
+  'FORLOOP','FORPREP','TFORLOOP','SETLIST',
+  'CLOSE','CLOSURE','VARARG'
 ];
 
-function detect(code) {
-  const found = {vm:null,vmVer:null,moonsec:null,moonsecVer:null,keys:[],layers:[]};
+// Instruction formats: A=iABC, B=iABx, C=iAsBx
+const OP_FMT = {
+  MOVE:'A',LOADK:'B',LOADBOOL:'A',LOADNIL:'A',GETUPVAL:'A',GETGLOBAL:'B',GETTABLE:'A',
+  SETGLOBAL:'B',SETUPVAL:'A',SETTABLE:'A',NEWTABLE:'A',SELF:'A',
+  ADD:'A',SUB:'A',MUL:'A',DIV:'A',MOD:'A',POW:'A',UNM:'A',NOT:'A',LEN:'A',CONCAT:'A',
+  JMP:'C',EQ:'A',LT:'A',LE:'A',TEST:'A',TESTSET:'A',
+  CALL:'A',TAILCALL:'A',RETURN:'A',
+  FORLOOP:'C',FORPREP:'C',TFORLOOP:'A',SETLIST:'A',
+  CLOSE:'A',CLOSURE:'B',VARARG:'A'
+};
 
-  for (const s of LURAPH_SIGS) {
-    if (s.pattern.test(code)) { found.vm='Luraph'; found.vmVer=s.ver; break; }
+const OP_CLASS = {
+  CALL:'op-call',TAILCALL:'op-call',RETURN:'op-ret',
+  JMP:'op-jmp',FORLOOP:'op-jmp',FORPREP:'op-jmp',TFORLOOP:'op-jmp',EQ:'op-cmp',LT:'op-cmp',LE:'op-cmp',TEST:'op-cmp',TESTSET:'op-cmp',
+  MOVE:'op-load',LOADK:'op-load',LOADBOOL:'op-load',LOADNIL:'op-load',GETUPVAL:'op-load',GETGLOBAL:'op-load',GETTABLE:'op-load',NEWTABLE:'op-load',SELF:'op-load',
+  SETGLOBAL:'op-set',SETUPVAL:'op-set',SETTABLE:'op-set',
+  ADD:'op-arith',SUB:'op-arith',MUL:'op-arith',DIV:'op-arith',MOD:'op-arith',POW:'op-arith',UNM:'op-arith',NOT:'op-arith',LEN:'op-arith',CONCAT:'op-arith',
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  LUA 5.1 BYTECODE DISASSEMBLER
+// ═══════════════════════════════════════════════════════════════
+class Lua51Dis {
+  constructor(bytes) {
+    this.b = typeof bytes==='string'
+      ? new Uint8Array([...bytes].map(c=>c.charCodeAt(0)&0xFF))
+      : new Uint8Array(bytes);
+    this.p = 0;
+    this.le = true;
+    this.intSz = 4;
+    this.sizetSz = 4;
   }
-  for (const s of MOONSEC_SIGS) {
-    if (s.pattern.test(code)) { found.moonsec='Moonsec'; found.moonsecVer=s.ver; break; }
+
+  ok() { return this.p < this.b.length; }
+  u8()  { return this.b[this.p++]; }
+  u32() {
+    const v = this.le
+      ? (this.b[this.p]|(this.b[this.p+1]<<8)|(this.b[this.p+2]<<16)|(this.b[this.p+3]<<24))>>>0
+      : ((this.b[this.p]<<24)|(this.b[this.p+1]<<16)|(this.b[this.p+2]<<8)|this.b[this.p+3])>>>0;
+    this.p+=4; return v;
   }
-  if (!found.vm && /getfenv/.test(code) && /0x[0-9a-fA-F]{4,}/.test(code)) {
-    found.vm = /ironbrew/i.test(code) ? 'IronBrew 2' : 'IronBrew (likely)';
-    found.vmVer='detected';
+  f64() {
+    const dv = new DataView(this.b.buffer, this.p, 8); this.p+=8;
+    return dv.getFloat64(0, this.le);
   }
-  if (!found.vm && /prometheus/i.test(code)) { found.vm='Prometheus'; found.vmVer='detected'; }
-  if (!found.vm && /\bPSU\b/.test(code) && /loadstring/.test(code)) { found.vm='PSU'; found.vmVer='detected'; }
-
-  for (const k of KEY_SIGS) {
-    if (k.pattern.test(code)) found.keys.push(k.label);
+  str() {
+    // Lua 5.1: size_t then bytes (size_t = 4 on 32-bit)
+    const len = this.u32();
+    if (len === 0) return null;
+    let s='';
+    for (let i=0;i<len;i++) s+=String.fromCharCode(this.u8());
+    return s.slice(0,-1); // strip null
   }
 
-  if (found.vm) found.layers.push(found.vm + (found.vmVer ? ' ' + found.vmVer : ''));
-  if (found.moonsec) found.layers.push(found.moonsec + ' ' + found.moonsecVer);
-  if (found.keys.length) found.layers.push('KeySystem:' + found.keys.join('+'));
-  if (/string\.char\(\s*\d/.test(code)) found.layers.push('string.char');
-  if (/\\x[0-9a-fA-F]{2}/.test(code)) found.layers.push('hex-escape');
-  if (/[A-Za-z0-9+/]{40,}={0,2}/.test(code)) found.layers.push('base64');
+  parseHeader() {
+    // magic: \x1bLua
+    if (this.b[0]!==0x1b||this.b[1]!==0x4c||this.b[2]!==0x75||this.b[3]!==0x61)
+      throw new Error('Not a Lua 5.1 bytecode file (bad magic)');
+    this.p=4;
+    const ver = this.u8(); // 0x51
+    if (ver !== 0x51) throw new Error(`Unexpected Lua version 0x${ver.toString(16)} (expected 0x51)`);
+    this.u8(); // format (0=official)
+    this.le = this.u8()===1;
+    this.intSz  = this.u8(); // 4
+    this.sizetSz= this.u8(); // 4
+    this.u8(); // instrSz = 4
+    this.u8(); // luaNumSz = 8
+    this.u8(); // integral = 0
+  }
 
-  return found;
-}
+  parseProto(depth=0) {
+    const fn={depth};
+    fn.source       = this.str();
+    fn.lineDef      = this.u32();
+    fn.lastLineDef  = this.u32();
+    fn.nups         = this.u8();
+    fn.nparams      = this.u8();
+    fn.isVararg     = this.u8();
+    fn.maxStack     = this.u8();
 
-// ═══════════════════════════════════════════════════════
-//  DEOBFUSCATION PASSES
-// ═══════════════════════════════════════════════════════
-function deobPasses(code) {
-  let passes = [];
-  let c = code;
+    // Code
+    fn.code=[]; const nc=this.u32();
+    for(let i=0;i<nc;i++) fn.code.push(this.u32());
 
-  const apply = (label, fn) => { const b=c; c=fn(c); if(c!==b) passes.push(label); };
-
-  apply('hex-escape',  s=>s.replace(/\\x([0-9a-fA-F]{2})/g,(_,h)=>String.fromCharCode(parseInt(h,16))));
-  apply('dec-escape',  s=>s.replace(/\\(\d{1,3})/g,(_,d)=>{const n=parseInt(d);return n<=255?String.fromCharCode(n):'\\'+d}));
-  apply('string.char', s=>s.replace(/string\.char\(([\d,\s]+)\)/g,(_,a)=>{
-    const ch=a.split(',').map(n=>{const x=parseInt(n.trim());return isNaN(x)?'':String.fromCharCode(x)}).join('');
-    return `"${ch}"`;
-  }));
-  apply('bare-char',   s=>s.replace(/\bchar\(([\d,\s]+)\)/g,(_,a)=>{
-    const ch=a.split(',').map(n=>{const x=parseInt(n.trim());return isNaN(x)?'':String.fromCharCode(x)}).join('');
-    return `"${ch}"`;
-  }));
-  for(let i=0;i<12;i++) apply('concat',s=>s.replace(/"([^"\\]*)"\s*\.\.\s*"([^"\\]*)"/g,'"$1$2"'));
-  apply('base64-str',  s=>s.replace(/"([A-Za-z0-9+/]{20,}={0,2})"/g,(m,b)=>{
-    try{const d=atob(b);if(/^[\x20-\x7e\n\r\t]+$/.test(d))return`"${d}"`}catch{}return m;
-  }));
-  // strip Junkie header
-  apply('junkie-hdr',  s=>s.replace(/^local\s+\w+\s*=\s*loadstring\(game:HttpGet\("https?:\/\/jnkie[^"]+"\)\)\(\)\s*\n(?:\w+\.\w+\s*=\s*[^\n]+\n){1,6}/m,''));
-
-  return {code:c, passes};
-}
-
-// ═══════════════════════════════════════════════════════
-//  KEY SYSTEM EXTRACTION
-// ═══════════════════════════════════════════════════════
-function extractKey(code) {
-  let removed = [], cleaned = code;
-
-  const strip = (label, rx) => {
-    const m = cleaned.match(rx);
-    if (m) { removed.push({label, snippet: m[0].substring(0,200)}); cleaned = cleaned.replace(m[0],''); return true; }
-    return false;
-  };
-  const stripG = (label, rx) => {
-    let found=false;
-    cleaned = cleaned.replace(rx, m=>{ removed.push({label,snippet:m.substring(0,200)}); found=true; return ''; });
-    return found;
-  };
-
-  strip('Junkie SDK header', /^local\s+\w+\s*=\s*loadstring\(game:HttpGet\("https?:\/\/jnkie[^"]+"\)\)\(\)\s*\n(?:\w+\.\w+\s*=\s*[^\n]+\n){1,6}/m);
-  strip('Junkie key system block', /local\s+result\s*=\s*\(function\(\)[\s\S]*?(?:Junkie\.check_key|JunkieKeySystemUI|check_key)[\s\S]*?end\)\(\)/);
-  stripG('Junkie inline loader', /loadstring\(game:HttpGet\("https?:\/\/(?:api\.jnkie|jnkie)[^"]+"\)\)\(\)/g);
-  strip('Generic key function', /local\s+function\s+(?:checkKey|verifyKey|getKey|KeySystem)\b[\s\S]*?^end/m);
-  stripG('Linkvertise key loader', /loadstring\(game:HttpGet\("https?:\/\/linkvertise[^"]+"\)\)\(\)/g);
-
-  return { cleaned: cleaned.trim(), removed };
-}
-
-// ═══════════════════════════════════════════════════════
-//  VM ANALYSIS
-// ═══════════════════════════════════════════════════════
-function vmAnalysis(code, det) {
-  const res = {};
-
-  if (det.vm === 'Luraph') {
-    res.type='Luraph';
-    res.ver=det.vmVer;
-    res.cls='t-lua';
-    // extract blob
-    const blob = code.match(/\[=\[([\s\S]{50,}?)\]=\]/);
-    res.blobSize = blob ? fmt(blob[1].length) : null;
-    res.blobPreview = blob ? blob[1].substring(0,80)+'…' : null;
-    // extract readable strings from bytecode region
-    const strings = [];
-    if (blob) {
-      const rx = /[A-Za-z_][A-Za-z0-9_\.:\s]{4,80}/g;
-      let m; while((m=rx.exec(blob[1]))!==null && strings.length<20) strings.push(m[0].trim());
+    // Constants
+    fn.k=[]; const nk=this.u32();
+    for(let i=0;i<nk;i++){
+      const t=this.u8();
+      if(t===0) fn.k.push({t:'nil',v:null});
+      else if(t===1) fn.k.push({t:'bool',v:!!this.u8()});
+      else if(t===3) fn.k.push({t:'num',v:this.f64()});
+      else if(t===4) fn.k.push({t:'str',v:this.str()});
+      else throw new Error(`Unknown const type ${t} at pos ${this.p}`);
     }
-    res.extractedStrings = strings;
-    res.runnable = true;
-    res.note = `Luraph ${det.vmVer} — Uses a custom Lua 5.1 bytecode VM. The inner script is encoded as a Lua long-string blob ([=[...]=]). "Run & Capture" will execute the VM in a sandboxed Lua runtime, hook loadstring, and capture the deobfuscated inner source.`;
-  } else if (det.vm && det.vm.includes('IronBrew')) {
-    res.type='IronBrew 2';res.ver='detected';res.cls='t-iron';
-    res.runnable=true;
-    res.note='IronBrew 2 serialises Lua bytecode as a large numeric table. "Run & Capture" will attempt to execute and hook the output.';
-  } else if (det.vm === 'Prometheus') {
-    res.type='Prometheus';res.ver='detected';res.cls='t-prom';
-    res.runnable=true;
-    res.note='Prometheus wraps Lua bytecode in a custom VM with scrambled opcodes.';
-  } else if (det.moonsec) {
-    res.type='Moonsec';res.ver=det.moonsecVer;res.cls='t-moon';
-    res.runnable=true;
-    res.note=`Moonsec ${det.moonsecVer} — encrypts Lua bytecode with a custom VM. "Run & Capture" will try to hook loadstring inside the VM execution to extract the inner source.`;
-  } else {
-    res.type='None';res.ver='';res.cls='t-ok';res.runnable=false;
-    res.note='No VM-based obfuscation detected. Text deobfuscation should recover the source.';
+
+    // Nested protos
+    fn.protos=[]; const np=this.u32();
+    for(let i=0;i<np;i++) fn.protos.push(this.parseProto(depth+1));
+
+    // Debug: line info
+    fn.lines=[]; const nl=this.u32();
+    for(let i=0;i<nl;i++) fn.lines.push(this.u32());
+
+    // Debug: locals
+    fn.locals=[]; const nlo=this.u32();
+    for(let i=0;i<nlo;i++) fn.locals.push({name:this.str(),start:this.u32(),end:this.u32()});
+
+    // Debug: upvalues
+    fn.ups=[]; const nu=this.u32();
+    for(let i=0;i<nu;i++) fn.ups.push(this.str());
+
+    return fn;
   }
 
-  return res;
+  decodeInstr(raw) {
+    const op   = raw & 0x3F;
+    const A    = (raw>>6) & 0xFF;
+    const C    = (raw>>14) & 0x1FF;
+    const B    = (raw>>23) & 0x1FF;
+    const Bx   = (raw>>14) & 0x3FFFF;
+    const sBx  = Bx - 131071;
+    return {op,A,B,C,Bx,sBx,opname:LUA51_OPS[op]||`OP_${op}`};
+  }
+
+  formatInstr(d, pc, fn) {
+    const {opname,A,B,C,Bx,sBx} = d;
+    const fmt = OP_FMT[opname]||'A';
+    const kStr = i => {
+      const isK = i>=256;
+      const ki = isK?i-256:i;
+      const k = fn.k[ki];
+      if(!k) return `K(${ki})`;
+      if(k.t==='str') return `"${k.v}"`;
+      if(k.t==='num') return String(k.v);
+      if(k.t==='nil') return 'nil';
+      if(k.t==='bool') return String(k.v);
+      return `K(${ki})`;
+    };
+    const rk = i => i>=256?kStr(i):`R(${i})`;
+    const lname = i => fn.locals[i]?.name||`R(${i})`;
+
+    let args='';
+    switch(opname){
+      case 'MOVE':     args=`${lname(A)} = ${lname(B)}`; break;
+      case 'LOADK':    args=`${lname(A)} = ${kStr(Bx)}`; break;
+      case 'LOADBOOL': args=`${lname(A)} = ${B?'true':'false'}${C?' ; skip next':''}`; break;
+      case 'LOADNIL':  args=`${lname(A)}..${lname(B)} = nil`; break;
+      case 'GETUPVAL': args=`${lname(A)} = UpVal[${B}]${fn.ups[B]?` -- ${fn.ups[B]}`:''}`; break;
+      case 'GETGLOBAL':args=`${lname(A)} = _G[${kStr(Bx)}]`; break;
+      case 'GETTABLE': args=`${lname(A)} = ${lname(B)}[${rk(C)}]`; break;
+      case 'SETGLOBAL':args=`_G[${kStr(Bx)}] = ${lname(A)}`; break;
+      case 'SETUPVAL': args=`UpVal[${B}] = ${lname(A)}`; break;
+      case 'SETTABLE': args=`${lname(A)}[${rk(B)}] = ${rk(C)}`; break;
+      case 'NEWTABLE': args=`${lname(A)} = {} -- size(arr=${B},hash=${C})`; break;
+      case 'SELF':     args=`${lname(A+1)} = ${lname(B)} ; ${lname(A)} = ${lname(B)}[${rk(C)}]`; break;
+      case 'ADD':      args=`${lname(A)} = ${rk(B)} + ${rk(C)}`; break;
+      case 'SUB':      args=`${lname(A)} = ${rk(B)} - ${rk(C)}`; break;
+      case 'MUL':      args=`${lname(A)} = ${rk(B)} * ${rk(C)}`; break;
+      case 'DIV':      args=`${lname(A)} = ${rk(B)} / ${rk(C)}`; break;
+      case 'MOD':      args=`${lname(A)} = ${rk(B)} % ${rk(C)}`; break;
+      case 'POW':      args=`${lname(A)} = ${rk(B)} ^ ${rk(C)}`; break;
+      case 'UNM':      args=`${lname(A)} = -${lname(B)}`; break;
+      case 'NOT':      args=`${lname(A)} = not ${lname(B)}`; break;
+      case 'LEN':      args=`${lname(A)} = #${lname(B)}`; break;
+      case 'CONCAT':   args=`${lname(A)} = ${lname(B)}..…..${lname(C)}`; break;
+      case 'JMP':      args=`→ PC+${sBx+1}`; break;
+      case 'EQ':       args=`if (${rk(B)} == ${rk(C)}) == ${A?'true':'false'} then skip`; break;
+      case 'LT':       args=`if (${rk(B)} < ${rk(C)}) == ${A?'true':'false'} then skip`; break;
+      case 'LE':       args=`if (${rk(B)} <= ${rk(C)}) == ${A?'true':'false'} then skip`; break;
+      case 'TEST':     args=`if bool(${lname(A)}) != ${C} then skip`; break;
+      case 'TESTSET':  args=`if bool(${lname(B)}) == ${C} then ${lname(A)}=${lname(B)} else skip`; break;
+      case 'CALL':     args=`${lname(A)}(${B>1?lname(A+1)+'…':'…'}) → ${C>1?C-1+' result(s)':'…'}`; break;
+      case 'TAILCALL': args=`return ${lname(A)}(…)`; break;
+      case 'RETURN':   args=`return ${B>1?lname(A)+'…'+(B===2?lname(A):''):B===1?'(nothing)':'…'}`; break;
+      case 'FORLOOP':  args=`R(${A})+=R(${A+2}); if R(${A})<=R(${A+1}) → PC${sBx>=0?'+':''}${sBx}`; break;
+      case 'FORPREP':  args=`R(${A})-=R(${A+2}); → PC${sBx>=0?'+':''}${sBx}`; break;
+      case 'TFORLOOP': args=`R(${A+2})…=R(${A})(R(${A+1}),R(${A+2})); if R(${A+2}) then R(${A+1})=R(${A+2})`; break;
+      case 'SETLIST':  args=`${lname(A)}[${(C-1)*50+1}..] = R(${A+1})..R(${A+B})`; break;
+      case 'CLOSE':    args=`close upvals ≥ ${lname(A)}`; break;
+      case 'CLOSURE':  args=`${lname(A)} = closure(Proto[${Bx}])`; break;
+      case 'VARARG':   args=`R(${A})..R(${A+B-2}) = vararg`; break;
+      default:         args=`A=${A} B=${B} C=${C} Bx=${Bx}`;
+    }
+
+    return {opname, args, cls: OP_CLASS[opname]||'op-other'};
+  }
+
+  renderProto(fn, fnIdx=0) {
+    const pad = '  '.repeat(fn.depth);
+    let name = fn.source||'?';
+    if(name.startsWith('@')) name=name.slice(1);
+    const header = `${pad}function [${fnIdx}] ${name} (${fn.nparams} params, ${fn.nups} upvals, ${fn.maxStack} stack, ${fn.code.length} instrs, ${fn.k.length} consts, ${fn.protos.length} protos)`;
+
+    let rows='';
+    fn.code.forEach((raw,i)=>{
+      const d = this.decodeInstr(raw);
+      const f = this.formatInstr(d, i, fn);
+      const line = fn.lines[i]||0;
+      rows+=`<div class="dis-line">
+        <span class="dis-pc">${i}</span>
+        <span class="dis-ln">[${line||'?'}]</span>
+        <span class="dis-op ${f.cls}">${esc(f.opname)}</span>
+        <span class="dis-args">${esc(f.args)}</span>
+      </div>`;
+    });
+
+    // constants
+    let consts='';
+    if(fn.k.length){
+      consts+=`<div class="dis-fn"><span>Constants (${fn.k.length})</span></div>`;
+      fn.k.forEach((k,i)=>{
+        const v = k.t==='str'?`"${esc(k.v)}"`:k.t==='nil'?'nil':String(k.v);
+        consts+=`<div class="dis-line"><span class="dis-pc">K${i}</span><span class="dis-ln"></span><span class="dis-op" style="color:var(--green)">${k.t}</span><span class="dis-args">${v}</span></div>`;
+      });
+    }
+
+    // locals
+    let locs='';
+    if(fn.locals.length){
+      locs+=`<div class="dis-fn"><span>Locals (${fn.locals.length})</span></div>`;
+      fn.locals.forEach((l,i)=>{ locs+=`<div class="dis-line"><span class="dis-pc">${i}</span><span class="dis-ln"></span><span class="dis-op" style="color:var(--purple)">${esc(l.name||'?')}</span><span class="dis-args">pc ${l.start}–${l.end}</span></div>`; });
+    }
+
+    let nested='';
+    fn.protos.forEach((p,i)=>{ nested+=this.renderProto(p,i); });
+
+    return `<div class="dis-fn"><span>${esc(header)}</span></div>${rows}${consts}${locs}${nested}`;
+  }
+
+  disassemble() {
+    this.parseHeader();
+    const root = this.parseProto();
+    return this.renderProto(root);
+  }
 }
 
-// ═══════════════════════════════════════════════════════
-//  FENGARI VM RUNNER
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+//  DETECT / DETECT HELPERS
+// ═══════════════════════════════════════════════════════════════
+const LURAPH_SIGS=[
+  {ver:'14.7',p:/Luraph\s*(?:Obfuscator)?\s*v?14\.7/i},
+  {ver:'14.6',p:/Luraph\s*(?:Obfuscator)?\s*v?14\.6/i},
+  {ver:'14.5',p:/Luraph\s*(?:Obfuscator)?\s*v?14\.5/i},
+  {ver:'14.4',p:/Luraph\s*(?:Obfuscator)?\s*v?14\.4/i},
+  {ver:'14.3',p:/Luraph\s*(?:Obfuscator)?\s*v?14\.3/i},
+  {ver:'14.2',p:/Luraph\s*(?:Obfuscator)?\s*v?14\.2/i},
+  {ver:'14.1',p:/Luraph\s*(?:Obfuscator)?\s*v?14\.1/i},
+  {ver:'14.x',p:/Luraph\s*(?:Obfuscator)?\s*v?14/i},
+  {ver:'13.x',p:/Luraph\s*(?:Obfuscator)?\s*v?13/i},
+  {ver:'12.x',p:/Luraph\s*(?:Obfuscator)?\s*v?12/i},
+  {ver:'11.x',p:/Luraph\s*(?:Obfuscator)?\s*v?11/i},
+  {ver:'unknown',p:/luraph|lura\.ph/i},
+];
+const MOON_SIGS=[
+  {ver:'v3',  p:/moonsec[\s_-]*v?3|ms3_/i},
+  {ver:'v2.1',p:/moonsec[\s_-]*v?2\.1/i},
+  {ver:'v2',  p:/moonsec[\s_-]*v?2(?!\.)/i},
+  {ver:'v1',  p:/moonsec[\s_-]*v?1/i},
+  {ver:'unk', p:/moonsec/i},
+];
+const KEY_SIGS=[
+  {label:'Junkie SDK',  p:/jnkie\.com|jnkie\.cc|Junkie\.(check_key|get_key_link|service)/},
+  {label:'Junkie API',  p:/api\.jnkie\.com/},
+  {label:'Linkvertise', p:/linkvertise\.com/},
+  {label:'KeySystem v2',p:/KeySystem\s*v2|keysystemv2/i},
+  {label:'Generic key', p:/\b(?:checkKey|verifyKey|getKey|KeySystem|key_system|keycheck)\b/},
+];
+
+function detect(code){
+  const d={vm:null,vmVer:null,moon:null,moonVer:null,keys:[],layers:[]};
+  for(const s of LURAPH_SIGS){if(s.p.test(code)){d.vm='Luraph';d.vmVer=s.ver;break;}}
+  for(const s of MOON_SIGS){if(s.p.test(code)){d.moon='Moonsec';d.moonVer=s.ver;break;}}
+  if(!d.vm&&/getfenv/.test(code)&&/0x[0-9a-fA-F]{4,}/.test(code)){d.vm=/ironbrew/i.test(code)?'IronBrew 2':'IronBrew';d.vmVer='detected';}
+  if(!d.vm&&/prometheus/i.test(code)){d.vm='Prometheus';d.vmVer='detected';}
+  if(!d.vm&&/\bPSU\b/.test(code)&&/loadstring/.test(code)){d.vm='PSU';d.vmVer='detected';}
+  for(const k of KEY_SIGS){if(k.p.test(code))d.keys.push(k.label);}
+  if(d.vm) d.layers.push(d.vm+(d.vmVer?' '+d.vmVer:''));
+  if(d.moon) d.layers.push(d.moon+' '+d.moonVer);
+  if(d.keys.length) d.layers.push('Key:'+d.keys.join('+'));
+  if(/string\.char\(\s*\d/.test(code)) d.layers.push('string.char');
+  if(/\\x[0-9a-fA-F]{2}/.test(code)) d.layers.push('hex-escape');
+  return d;
+}
+
+function vmCls(vm){
+  if(!vm)return 'tok';
+  if(vm.includes('Luraph'))return 'tlua';
+  if(vm.includes('IronBrew'))return 'tiron';
+  if(vm.includes('Moon'))return 'tmoon';
+  return 'tprom';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DEOBFUSCATION TEXT PASSES
+// ═══════════════════════════════════════════════════════════════
+function deobPasses(code){
+  let passes=[],c=code;
+  const ap=(lbl,fn)=>{const b=c;c=fn(c);if(c!==b)passes.push(lbl);};
+  ap('hex-escape',   s=>s.replace(/\\x([0-9a-fA-F]{2})/g,(_,h)=>String.fromCharCode(parseInt(h,16))));
+  ap('dec-escape',   s=>s.replace(/\\(\d{1,3})/g,(_,d)=>{const n=parseInt(d);return n<=255?String.fromCharCode(n):'\\'+d}));
+  ap('string.char',  s=>s.replace(/string\.char\(([\d,\s]+)\)/g,(_,a)=>'"'+a.split(',').map(n=>{const x=parseInt(n.trim());return isNaN(x)?'':String.fromCharCode(x)}).join('')+'"'));
+  ap('bare-char',    s=>s.replace(/\bchar\(([\d,\s]+)\)/g,(_,a)=>'"'+a.split(',').map(n=>{const x=parseInt(n.trim());return isNaN(x)?'':String.fromCharCode(x)}).join('')+'"'));
+  for(let i=0;i<12;i++) ap('concat', s=>s.replace(/"([^"\\]*)"\s*\.\.\s*"([^"\\]*)"/g,'"$1$2"'));
+  ap('base64-str',   s=>s.replace(/"([A-Za-z0-9+/]{20,}={0,2})"/g,(m,b)=>{try{const d=atob(b);if(/^[\x20-\x7e\n\r\t]+$/.test(d))return`"${d}"`}catch{}return m;}));
+  ap('junkie-hdr',   s=>s.replace(/^local\s+\w+\s*=\s*loadstring\(game:HttpGet\("https?:\/\/jnkie[^"]+"\)\)\(\)\s*\n(?:\w+\.\w+\s*=\s*[^\n]+\n){1,6}/m,''));
+  return{code:c,passes};
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  KEY SYSTEM EXTRACTION
+// ═══════════════════════════════════════════════════════════════
+function extractKey(code){
+  let removed=[],c=code;
+  const strip=(lbl,rx)=>{const m=c.match(rx);if(m){removed.push({lbl,snip:m[0].substring(0,200)});c=c.replace(m[0],'');return true;}return false;};
+  const stripG=(lbl,rx)=>{let f=false;c=c.replace(rx,m=>{removed.push({lbl,snip:m.substring(0,200)});f=true;return'';});return f;};
+  strip('Junkie SDK header',/^local\s+\w+\s*=\s*loadstring\(game:HttpGet\("https?:\/\/jnkie[^"]+"\)\)\(\)\s*\n(?:\w+\.\w+\s*=\s*[^\n]+\n){1,6}/m);
+  strip('Junkie key UI block',/local\s+result\s*=\s*\(function\(\)[\s\S]*?(?:Junkie\.check_key|JunkieKeySystemUI)[\s\S]*?end\)\(\)/);
+  stripG('Junkie inline',/loadstring\(game:HttpGet\("https?:\/\/(?:api\.jnkie|jnkie)[^"]+"\)\)\(\)/g);
+  strip('Generic key fn',/local\s+function\s+(?:checkKey|verifyKey|getKey|KeySystem)\b[\s\S]*?^end/m);
+  return{cleaned:c.trim(),removed};
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  FENGARI SANDBOX BUILDER
+// ═══════════════════════════════════════════════════════════════
+const STUBS = `
+-- Roblox stubs
+local _s=setmetatable({},{__index=function(t,k) return setmetatable({},{__index=function(tt,kk)return function(...)return tt end end,__call=function(tt,...)return tt end,__newindex=function()end}) end,__call=function()end,__newindex=function()end})
+game=_s;workspace=_s;script=_s;shared=_s
+_G=_G or {}
+getfenv=getfenv or function(n) return _ENV end
+setfenv=setfenv or function(n,t) end
+newproxy=newproxy or function() return {} end
+bit=bit or {bxor=function(a,b)local r,p=0,1 while a>0 or b>0 do if a%2~=b%2 then r=r+p end a=math.floor(a/2) b=math.floor(b/2) p=p*2 end return r end,band=function(a,b)local r,p=0,1 while a>0 and b>0 do if a%2+b%2>=2 then r=r+p end a=math.floor(a/2) b=math.floor(b/2) p=p*2 end return r end,bor=function(a,b)local r,p=0,1 while a>0 or b>0 do if a%2+b%2>0 then r=r+p end a=math.floor(a/2) b=math.floor(b/2) p=p*2 end return r end,bnot=function(a)return-(a+1)end,lshift=function(a,b)return math.floor(a*(2^b))end,rshift=function(a,b)return math.floor(a/(2^b))end}
+`;
+
+const CAPTURE_HOOKS = `
+local _cap={}
+local _orig_ls=loadstring or load
+loadstring=function(src,...) if type(src)=="string" and #src>10 then table.insert(_cap,src) end local ok,fn=pcall(_orig_ls,src,...) if ok and type(fn)=="function" then return fn end return function()end end
+load=loadstring
+__getcap=function() return _cap end
+`;
+
+const TRACE_HOOKS = `
+local _trace={}
+local _MAX=2000
+local _count=0
+debug.sethook(function(ev,line)
+  _count=_count+1
+  if _count>_MAX then debug.sethook() return end
+  local info=debug.getinfo(2,"nSl")
+  table.insert(_trace,{
+    ev=ev,
+    name=info and info.name or "?",
+    what=info and info.what or "?",
+    src=info and info.source or "?",
+    line=info and info.currentline or 0,
+    n=_count
+  })
+end,"clr",1)
+__gettrace=function() return _trace end
+`;
+
+function buildFengariState(extraLua='') {
+  if (typeof fengari==='undefined') throw new Error('Fengari not loaded — check internet connection.');
+  const {lua,lauxlib,lualib,to_luastring,to_jsstring}=fengari;
+  const L=lauxlib.luaL_newstate();
+  lualib.luaL_openlibs(L);
+  const run = src => {
+    const r=lauxlib.luaL_dostring(L,to_luastring(src));
+    if(r!==0){const e=lua.lua_tostring(L,-1);throw new Error(to_jsstring(e));}
+  };
+  return {L,lua,lauxlib,to_luastring,to_jsstring,run};
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  VM RUNNER  (▶ Run & Capture)
+// ═══════════════════════════════════════════════════════════════
 async function runVM() {
-  const code = inp.value.trim();
-  if (!code) { setOut('<div class="card info">Paste some code first.</div>', 'empty', 'chip-info'); return; }
-
-  const det = detect(code);
-  const vm  = vmAnalysis(code, det);
-
-  if (!vm.runnable && vm.type === 'None') {
-    setOut('<div class="card info">No VM detected — use ✨ Deobfuscate instead.</div>', 'no vm', 'chip-info');
-    return;
-  }
-
-  setOut('<div class="card pink"><span class="spinner"></span>Running VM in sandbox… hooking loadstring…</div>', 'running…', 'chip-pink');
+  const code=inp.value.trim();
+  if(!code){setOut('<div class="card cinfo-card">Paste some code first.</div>','empty','cinfo');return;}
+  setOut('<div class="card cpink-card"><span class="spinner"></span>Running VM in sandbox…</div>','running…','cpink');
   await new Promise(r=>setTimeout(r,60));
 
-  // Strip key system first, then run
-  const {cleaned} = extractKey(code);
-  const {code: prepped} = deobPasses(cleaned);
+  const {cleaned}=extractKey(code);
+  const {code:prepped}=deobPasses(cleaned);
+  const captured=[];let errMsg=null;
 
-  const captured = [];
-  let errMsg = null;
-
-  try {
-    if (typeof fengari === 'undefined') throw new Error('Fengari VM not loaded — check your internet connection.');
-
-    const lua = fengari.lua;
-    const lauxlib = fengari.lauxlib;
-    const lualib = fengari.lualib;
-
-    const L = lauxlib.luaL_newstate();
-    lualib.luaL_openlibs(L);
-
-    // ── Roblox stubs ────────────────────────────────────
-    const stubLua = `
--- Roblox global stubs so VM loaders don't crash
-local _rbxStub = setmetatable({}, {__index=function(t,k)
-  return setmetatable({},{__index=function(tt,kk) return function(...) return tt end end,
-                         __call=function(tt,...) return tt end,
-                         __newindex=function()end})
-end, __call=function()end, __newindex=function()end})
-
-game        = _rbxStub
-workspace   = _rbxStub
-script      = _rbxStub
-shared      = _rbxStub
-_G          = _G or {}
-getfenv     = getfenv or function(n) return _ENV end
-setfenv     = setfenv or function(n,t) end
-newproxy    = newproxy or function() return {} end
-bit         = bit or {bxor=function(a,b) local r,p=0,1 while a>0 or b>0 do if a%2~=b%2 then r=r+p end a=math.floor(a/2) b=math.floor(b/2) p=p*2 end return r end,band=function(a,b) local r,p=0,1 while a>0 and b>0 do if a%2+b%2>=2 then r=r+p end a=math.floor(a/2) b=math.floor(b/2) p=p*2 end return r end,bor=function(a,b) local r,p=0,1 while a>0 or b>0 do if a%2+b%2>0 then r=r+p end a=math.floor(a/2) b=math.floor(b/2) p=p*2 end return r end,bnot=function(a) return -(a+1) end,lshift=function(a,b) return a*2^b end,rshift=function(a,b) return math.floor(a/2^b) end}
-
--- Hook: capture anything passed to loadstring instead of executing
-local _captured = {}
-local _orig_ls = loadstring
-loadstring = function(src, ...)
-  if type(src)=="string" and #src > 10 then
-    table.insert(_captured, src)
-  end
-  -- also try running it normally to cascade multi-layer VMs
-  local ok, fn = pcall(_orig_ls, src, ...)
-  if ok and type(fn)=="function" then return fn end
-  return function() end
-end
-
--- Also hook load
-local _orig_load = load
-load = function(src, ...)
-  if type(src)=="string" and #src > 10 then
-    table.insert(_captured, src)
-  end
-  local ok, fn = pcall(_orig_load, src, ...)
-  if ok and type(fn)=="function" then return fn end
-  return function() end
-end
-
-__get_captured = function() return _captured end
-`;
-
-    // Run stubs
-    let r = lauxlib.luaL_dostring(L, fengari.to_luastring(stubLua));
-    if (r !== 0) {
-      const err = lua.lua_tostring(L, -1);
-      throw new Error('Stub setup failed: ' + fengari.to_jsstring(err));
-    }
-
-    // Run the actual obfuscated script (with timeout guard via error)
-    const timeoutGuard = `
-local _deadline = os.clock() + 8
-local _orig_pcall = pcall
-pcall = function(fn, ...)
-  if os.clock() > _deadline then error("timeout") end
-  return _orig_pcall(fn, ...)
-end
-`;
-    lauxlib.luaL_dostring(L, fengari.to_luastring(timeoutGuard));
-
-    // Wrap the user script so errors don't crash us
-    const wrapped = 'pcall(function()\n' + prepped + '\nend)';
-    r = lauxlib.luaL_dostring(L, fengari.to_luastring(wrapped));
-    // ignore execution errors — we only care about captured strings
-
-    // Retrieve captured sources
-    r = lauxlib.luaL_dostring(L, fengari.to_luastring('return __get_captured()'));
-    if (r === 0) {
+  try{
+    const {L,lua,lauxlib,to_luastring,to_jsstring,run}=buildFengariState();
+    run(STUBS);
+    run(CAPTURE_HOOKS);
+    lauxlib.luaL_dostring(L,to_luastring('pcall(function()\n'+prepped+'\nend)'));
+    const r=lauxlib.luaL_dostring(L,to_luastring('return __getcap()'));
+    if(r===0){
       lua.lua_pushnil(L);
-      while (lua.lua_next(L, -2)) {
-        const s = lua.lua_tostring(L, -1);
-        if (s) captured.push(fengari.to_jsstring(s));
-        lua.lua_pop(L, 1);
+      while(lua.lua_next(L,-2)){
+        const s=lua.lua_tostring(L,-1);
+        if(s) captured.push(to_jsstring(s));
+        lua.lua_pop(L,1);
+      }
+    }
+  }catch(e){errMsg=e.message;}
+
+  let html='';
+  if(errMsg) html+=`<div class="card cerr-card">⚠ ${esc(errMsg)}</div>`;
+  if(captured.length){
+    html+=`<div class="card cok-card">✓ Captured ${captured.length} inner source layer(s).</div>`;
+    captured.forEach((src,i)=>{
+      html+=`<div class="row"><span class="rl">Layer ${i+1}</span><span class="rv">${fmt(src.length)} · ${src.split('\n').length} lines</span></div>`;
+      html+=`<pre class="code">${esc(src.substring(0,10000))}${src.length>10000?'\n\n[truncated]':''}</pre>`;
+    });
+  } else if(!errMsg){
+    html+=`<div class="card cwarn-card">⚠ VM ran but no source was captured via loadstring. Try ▶ VM Trace to see what the VM executed.</div>`;
+  }
+  setOut(html||'<div class="card cerr-card">No output.</div>',
+    captured.length?captured.length+' captured':errMsg?'error':'no capture',
+    captured.length?'cok':errMsg?'cerr':'cwarn');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  VM TRACER  (🔬 VM Trace)
+// ═══════════════════════════════════════════════════════════════
+async function runTrace() {
+  const code=inp.value.trim();
+  if(!code){setOut('<div class="card cinfo-card">Paste some code first.</div>','empty','cinfo');return;}
+  setOut('<div class="card cteal-card"><span class="spinner"></span>Attaching debug hook to VM — tracing execution…</div>','tracing…','cteal');
+  await new Promise(r=>setTimeout(r,60));
+
+  const {cleaned}=extractKey(code);
+  const {code:prepped}=deobPasses(cleaned);
+  const trace=[];let errMsg=null,captured=[];
+
+  try{
+    const {L,lua,lauxlib,to_luastring,to_jsstring,run}=buildFengariState();
+    run(STUBS);
+    run(CAPTURE_HOOKS);
+    run(TRACE_HOOKS);
+    lauxlib.luaL_dostring(L,to_luastring('pcall(function()\n'+prepped+'\nend)'));
+
+    // collect trace
+    let r=lauxlib.luaL_dostring(L,to_luastring('return __gettrace()'));
+    if(r===0){
+      const tbl_idx=lua.lua_gettop(L);
+      lua.lua_pushnil(L);
+      while(lua.lua_next(L,tbl_idx)){
+        const entry_idx=lua.lua_gettop(L);
+        const get=(key)=>{
+          lua.lua_pushstring(L,to_luastring(key));
+          lua.lua_gettable(L,entry_idx);
+          const v=lua.lua_tostring(L,-1);
+          lua.lua_pop(L,1);
+          return v?to_jsstring(v):null;
+        };
+        trace.push({ev:get('ev'),name:get('name'),what:get('what'),src:get('src'),line:get('line'),n:get('n')});
+        lua.lua_pop(L,1);
       }
     }
 
-  } catch(e) {
-    errMsg = e.message;
-  }
+    // also collect any captured sources
+    r=lauxlib.luaL_dostring(L,to_luastring('return __getcap()'));
+    if(r===0){
+      lua.lua_pushnil(L);
+      while(lua.lua_next(L,-2)){
+        const s=lua.lua_tostring(L,-1);
+        if(s) captured.push(to_jsstring(s));
+        lua.lua_pop(L,1);
+      }
+    }
+  }catch(e){errMsg=e.message;}
 
-  // Build output
-  let html = '';
+  let html='';
+  if(errMsg) html+=`<div class="card cerr-card">⚠ ${esc(errMsg)}</div>`;
 
-  if (errMsg) {
-    html += `<div class="card err">⚠ VM runner error: ${esc(errMsg)}</div>`;
-  }
+  if(trace.length){
+    html+=`<div class="card cteal-card">🔬 Traced ${trace.length} VM events${trace.length>=2000?' (capped at 2000)':''}.</div>`;
 
-  if (captured.length === 0 && !errMsg) {
-    html += `<div class="card warn">⚠ VM ran but no inner source was captured via loadstring. The script may require Roblox-specific globals that can't be stubbed, or uses a non-loadstring code path.</div>`;
-    html += `<div class="card info">💡 Tip: Try pasting the raw VM body (without the key system), or use ⚙ VM Analysis to inspect the bytecode blob directly.</div>`;
-  } else if (captured.length > 0) {
-    html += `<div class="card ok">✓ Captured ${captured.length} source layer${captured.length>1?'s':''} from VM execution!</div>`;
-    captured.forEach((src, i) => {
-      html += `<div class="row"><span class="row-lbl">Layer ${i+1}</span><span class="row-val">${fmt(src.length)} · ${src.split('\n').length} lines</span></div>`;
-      html += `<pre class="code">${esc(src.substring(0, 8000))}${src.length>8000?'\n\n... [truncated — copy output for full source]':''}</pre>`;
+    // summary stats
+    const calls=trace.filter(t=>t.ev==='call').length;
+    const rets=trace.filter(t=>t.ev==='return').length;
+    const fns=[...new Set(trace.filter(t=>t.name&&t.name!='?').map(t=>t.name))];
+    html+=`<div class="row"><span class="rl">Events</span><span class="rv">${trace.length} total · ${calls} calls · ${rets} returns</span></div>`;
+    if(fns.length) html+=`<div class="row"><span class="rl">Functions seen</span><span class="rv" style="font-family:monospace;font-size:.7rem">${fns.slice(0,30).map(f=>`<span class="tag tteal">${esc(f)}</span>`).join('')}${fns.length>30?` +${fns.length-30} more`:''}</span></div>`;
+
+    if(captured.length) html+=`<div class="card cok-card">✓ Also captured ${captured.length} loadstring source(s) during trace.</div>`;
+
+    // trace table
+    html+=`<div class="trace-wrap"><table class="trace">
+      <thead><tr><th>#</th><th>Event</th><th>Name</th><th>What</th><th>Source</th><th>Line</th></tr></thead>
+      <tbody>`;
+    trace.forEach(t=>{
+      const evCls=t.ev==='call'?'op-call':t.ev==='return'?'op-ret':'op-jmp';
+      let src=t.src||'';
+      if(src.startsWith('@'))src=src.slice(1);
+      if(src.length>30)src='…'+src.slice(-30);
+      html+=`<tr>
+        <td class="pc">${t.n||''}</td>
+        <td class="${evCls}">${esc(t.ev||'')}</td>
+        <td>${esc(t.name||'')}</td>
+        <td class="ln">${esc(t.what||'')}</td>
+        <td class="ln" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(src)}</td>
+        <td class="pc">${t.line||''}</td>
+      </tr>`;
     });
+    html+=`</tbody></table></div>`;
+
+    // show captured sources
+    if(captured.length){
+      captured.forEach((src,i)=>{
+        html+=`<div class="row"><span class="rl">Captured ${i+1}</span><span class="rv">${fmt(src.length)}</span></div>`;
+        html+=`<pre class="code">${esc(src.substring(0,6000))}${src.length>6000?'\n[truncated]':''}</pre>`;
+      });
+    }
+  } else if(!errMsg){
+    html+=`<div class="card cwarn-card">⚠ No trace events collected. The script may have errored before executing, or requires Roblox globals.</div>`;
   }
 
-  if (errMsg && captured.length > 0) {
-    // partial success
-    html = html; // already added
-  }
-
-  if (!html) html = '<div class="card err">No output.</div>';
-
-  setOut(html,
-    captured.length > 0 ? captured.length + ' layer(s) captured' : (errMsg ? 'error' : 'no capture'),
-    captured.length > 0 ? 'chip-ok' : (errMsg ? 'chip-err' : 'chip-warn')
-  );
+  setOut(html||'<div class="card cerr-card">No output.</div>',
+    trace.length?trace.length+' events':errMsg?'error':'no trace',
+    trace.length?'cteal':errMsg?'cerr':'cwarn');
 }
 
-// ═══════════════════════════════════════════════════════
-//  BUTTON HANDLERS
-// ═══════════════════════════════════════════════════════
-function runDetect() {
-  const code = inp.value;
-  if (!code.trim()) { setOut('<div class="card info">Paste some code first.</div>','empty','chip-info'); return; }
-  const det = detect(code);
-  const vm  = vmAnalysis(code, det);
-  let html = '';
+// ═══════════════════════════════════════════════════════════════
+//  BYTECODE DISASSEMBLER  (📋 Disassemble)
+// ═══════════════════════════════════════════════════════════════
+async function runDisasm() {
+  const code=inp.value.trim();
+  if(!code){setOut('<div class="card cinfo-card">Paste some code first.</div>','empty','cinfo');return;}
+  setOut('<div class="card" style="background:#1a1830;border-color:#2d2050;color:#b39ddb"><span class="spinner"></span>Extracting and disassembling bytecode…</div>','disassembling…','cinfo');
+  await new Promise(r=>setTimeout(r,60));
 
-  // VM tag
-  if (det.vm) {
-    html += `<div class="row"><span class="row-lbl">VM</span><span class="row-val"><span class="tag ${vm.cls}">${vm.type} ${vm.ver}</span></span></div>`;
-  }
-  if (det.moonsec) {
-    html += `<div class="row"><span class="row-lbl">Moonsec</span><span class="row-val"><span class="tag t-moon">${det.moonsec} ${det.moonsecVer}</span></span></div>`;
-  }
-  if (det.keys.length) {
-    html += `<div class="row"><span class="row-lbl">Key System</span><span class="row-val">${det.keys.map(k=>`<span class="tag t-key">${k}</span>`).join(' ')}</span></div>`;
-  }
-  html += `<div class="row"><span class="row-lbl">Layers</span><span class="row-val">${det.layers.length ? det.layers.map(l=>`<span class="tag t-info">${l}</span>`).join(' ') : '<span class="tag t-ok">clean</span>'}</span></div>`;
-  html += `<div class="row"><span class="row-lbl">Lines</span><span class="row-val">${code.split('\n').length}</span></div>`;
-  html += `<div class="row"><span class="row-lbl">Size</span><span class="row-val">${fmt(code.length)}</span></div>`;
+  // First try to capture bytecode via fengari (running the VM)
+  const {cleaned}=extractKey(code);
+  const {code:prepped}=deobPasses(cleaned);
+  const captured=[];let errMsg=null;
 
-  if (det.vm || det.moonsec) {
-    html += `<div class="card warn">⚠ VM obfuscation found — text-level passes won't recover the inner source. Use ▶ Run &amp; Capture to execute the VM and hook loadstring.</div>`;
-  }
-  if (det.keys.length) {
-    html += `<div class="card err">🔑 Key system detected — use 🔑 Extract Key System to strip it before running.</div>`;
-  }
-  if (!det.vm && !det.moonsec && !det.keys.length) {
-    html += `<div class="card ok">✓ No VM or key system found. ✨ Deobfuscate should recover the source.</div>`;
+  try{
+    const {L,lua,lauxlib,to_luastring,to_jsstring,run}=buildFengariState();
+    run(STUBS);
+
+    // Override loadstring to also capture raw bytecode from string.dump or load
+    const hookLua=`
+local _cap={}
+local _orig=loadstring or load
+loadstring=function(src,...)
+  if type(src)=="string" and #src>4 then table.insert(_cap,src) end
+  local ok,fn=pcall(_orig,src,...) if ok and type(fn)=="function" then return fn end return function()end
+end
+load=loadstring
+__getcap=function() return _cap end
+`;
+    run(hookLua);
+    lauxlib.luaL_dostring(L,to_luastring('pcall(function()\n'+prepped+'\nend)'));
+    const r=lauxlib.luaL_dostring(L,to_luastring('return __getcap()'));
+    if(r===0){
+      lua.lua_pushnil(L);
+      while(lua.lua_next(L,-2)){
+        const s=lua.lua_tostring(L,-1);
+        if(s) captured.push(to_jsstring(s));
+        lua.lua_pop(L,1);
+      }
+    }
+  }catch(e){errMsg=e.message;}
+
+  let html='';
+  if(errMsg) html+=`<div class="card cerr-card">⚠ VM error: ${esc(errMsg)}</div>`;
+
+  // Try to disassemble each captured chunk
+  let disasmCount=0;
+  for(const src of captured){
+    // Check if this looks like Lua 5.1 bytecode (magic header)
+    if(src.length>12 && src.charCodeAt(0)===0x1b && src.charCodeAt(1)===0x4c && src.charCodeAt(2)===0x75 && src.charCodeAt(3)===0x61 && src.charCodeAt(4)===0x51){
+      try{
+        const dis=new Lua51Dis(src);
+        const disHTML=dis.disassemble();
+        html+=`<div class="card cok-card">✓ Lua 5.1 bytecode found and disassembled (${fmt(src.length)}).</div>`;
+        html+=`<div>${disHTML}</div>`;
+        disasmCount++;
+      }catch(e){
+        html+=`<div class="card cwarn-card">⚠ Found bytecode but disassembly failed: ${esc(e.message)}</div>`;
+        html+=`<pre class="code">${esc(src.substring(0,2000))}</pre>`;
+      }
+    } else {
+      // Plain source — show it
+      html+=`<div class="card cok-card">✓ Captured plain Lua source (${fmt(src.length)}).</div>`;
+      html+=`<pre class="code">${esc(src.substring(0,8000))}</pre>`;
+    }
   }
 
-  setOut(html, 'detected', 'chip-info');
+  // If nothing captured, try to parse the input directly as bytecode
+  if(!captured.length && !errMsg){
+    const raw=code.trim();
+    if(raw.charCodeAt(0)===0x1b){
+      try{
+        const dis=new Lua51Dis(raw);
+        const disHTML=dis.disassemble();
+        html+=`<div class="card cok-card">✓ Input is raw Lua 5.1 bytecode — disassembled.</div>`;
+        html+=`<div>${disHTML}</div>`;
+        disasmCount++;
+      }catch(e){html+=`<div class="card cwarn-card">Bytecode parse error: ${esc(e.message)}</div>`;}
+    } else {
+      html+=`<div class="card cwarn-card">⚠ No bytecode captured. The Luraph VM could not be fully emulated without Roblox globals. Try pasting the raw bytecode blob (starting with \\x1bLua) directly.</div>`;
+      html+=`<div class="card cinfo-card">💡 Tip: If you can run the script in a real Roblox executor, hook <code>loadstring</code> to dump the raw binary argument, then paste that here.</div>`;
+    }
+  }
+
+  setOut(html||'<div class="card cerr-card">No output.</div>',
+    disasmCount?disasmCount+' protos':captured.length?'source only':errMsg?'error':'no capture',
+    disasmCount?'cok':captured.length?'cteal':errMsg?'cerr':'cwarn');
 }
 
-function runDeob() {
-  const code = inp.value;
-  if (!code.trim()) { setOut('<div class="card info">Paste some code first.</div>','empty','chip-info'); return; }
-  const det = detect(code);
-  const {code:result, passes} = deobPasses(code);
-  let html = '';
-
-  if (passes.length) {
-    html += `<div class="row"><span class="row-lbl">Passes</span><span class="row-val">${passes.map(p=>`<span class="tag t-ok">${p}</span>`).join(' ')}</span></div>`;
-  } else {
-    html += `<div class="card warn">No text-level passes applied — code may be VM-protected or already clean.</div>`;
-  }
-
-  if (det.vm || det.moonsec) {
-    html += `<div class="card warn">⚠ VM layer still present. Use ▶ Run &amp; Capture to extract the inner source.</div>`;
-  }
-
-  html += `<hr class="sep"/><pre class="code">${esc(result)}</pre>`;
-  setOut(html, passes.length + ' passes', passes.length ? 'chip-ok' : 'chip-warn');
+// ═══════════════════════════════════════════════════════════════
+//  OTHER BUTTONS
+// ═══════════════════════════════════════════════════════════════
+function runDetect(){
+  const code=inp.value;
+  if(!code.trim()){setOut('<div class="card cinfo-card">Paste some code first.</div>','empty','cinfo');return;}
+  const d=detect(code);
+  let html='';
+  if(d.vm) html+=`<div class="row"><span class="rl">VM</span><span class="rv"><span class="tag ${vmCls(d.vm)}">${d.vm}</span> <span class="tag tdim">${d.vmVer}</span></span></div>`;
+  if(d.moon) html+=`<div class="row"><span class="rl">Moonsec</span><span class="rv"><span class="tag tmoon">${d.moon} ${d.moonVer}</span></span></div>`;
+  if(d.keys.length) html+=`<div class="row"><span class="rl">Key System</span><span class="rv">${d.keys.map(k=>`<span class="tag tkey">${k}</span>`).join(' ')}</span></div>`;
+  html+=`<div class="row"><span class="rl">Layers</span><span class="rv">${d.layers.length?d.layers.map(l=>`<span class="tag tinfo">${esc(l)}</span>`).join(' '):'<span class="tag tok">clean</span>'}</span></div>`;
+  html+=`<div class="row"><span class="rl">Lines / Size</span><span class="rv">${code.split('\n').length} lines · ${fmt(code.length)}</span></div>`;
+  if(d.vm||d.moon) html+=`<div class="card cwarn-card">⚠ VM obfuscation — use ▶ Run &amp; Capture or 🔬 VM Trace to extract inner source.</div>`;
+  if(d.keys.length) html+=`<div class="card cerr-card">🔑 Key system detected — strip with 🔑 Key System first.</div>`;
+  if(!d.vm&&!d.moon&&!d.keys.length) html+=`<div class="card cok-card">✓ No VM or key system. ✨ Deobfuscate should recover the source.</div>`;
+  setOut(html,'detected','cinfo');
 }
 
-function runKeyExtract() {
-  const code = inp.value;
-  if (!code.trim()) { setOut('<div class="card info">Paste some code first.</div>','empty','chip-info'); return; }
-  const {cleaned, removed} = extractKey(code);
-  let html = '';
-
-  if (!removed.length) {
-    html = '<div class="card ok">✓ No key system patterns found.</div>';
-    setOut(html, 'clean', 'chip-ok'); return;
-  }
-
-  html += `<div class="card ok">✓ Removed ${removed.length} key system block(s).</div>`;
-  removed.forEach(r => {
-    html += `<div class="row"><span class="row-lbl">Removed</span><span class="row-val"><span class="tag t-key">${esc(r.label)}</span><br/><code style="font-size:.68rem;color:var(--muted)">${esc(r.snippet)}…</code></span></div>`;
-  });
-  html += `<hr class="sep"/><div style="padding:6px 12px;font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--muted)">Clean Script</div>`;
-  html += `<pre class="code">${esc(cleaned)}</pre>`;
-
-  setOut(html, 'key removed', 'chip-ok');
+function runDeob(){
+  const code=inp.value;
+  if(!code.trim()){setOut('<div class="card cinfo-card">Paste some code first.</div>','empty','cinfo');return;}
+  const d=detect(code);
+  const {code:r,passes}=deobPasses(code);
+  let html='';
+  if(passes.length) html+=`<div class="row"><span class="rl">Passes</span><span class="rv">${passes.map(p=>`<span class="tag tok">${p}</span>`).join(' ')}</span></div>`;
+  else html+=`<div class="card cwarn-card">No text passes applied.</div>`;
+  if(d.vm||d.moon) html+=`<div class="card cwarn-card">⚠ VM layer present — use ▶ Run &amp; Capture for inner source.</div>`;
+  html+=`<pre class="code">${esc(r)}</pre>`;
+  setOut(html,passes.length+' passes',passes.length?'cok':'cwarn');
 }
 
-function runVMAnalysis() {
-  const code = inp.value;
-  if (!code.trim()) { setOut('<div class="card info">Paste some code first.</div>','empty','chip-info'); return; }
-  const det = detect(code);
-  const vm  = vmAnalysis(code, det);
-  let html = '';
-
-  html += `<div class="row"><span class="row-lbl">VM Type</span><span class="row-val"><span class="tag ${vm.cls}">${vm.type}</span>${vm.ver?' <span class="tag t-dim">'+vm.ver+'</span>':''}</span></div>`;
-  html += `<div class="row"><span class="row-lbl">Reversible</span><span class="row-val"><span class="tag ${vm.runnable?'t-ok':'t-key'}">${vm.runnable?'Run & Capture can try':'Text passes only'}</span></span></div>`;
-
-  if (vm.blobSize) {
-    html += `<div class="row"><span class="row-lbl">Blob size</span><span class="row-val">${vm.blobSize}</span></div>`;
-    html += `<div class="row"><span class="row-lbl">Blob preview</span><span class="row-val"><code style="font-size:.68rem;color:var(--muted)">${esc(vm.blobPreview||'')}</code></span></div>`;
-  }
-  if (vm.extractedStrings && vm.extractedStrings.length) {
-    html += `<div class="row"><span class="row-lbl">Strings in blob</span><span class="row-val" style="color:var(--muted);font-size:.72rem">${vm.extractedStrings.map(s=>`<code>${esc(s)}</code>`).join('<br/>')}</span></div>`;
-  }
-
-  html += `<div class="card ${vm.runnable?'warn':'ok'}">${esc(vm.note)}</div>`;
-
-  if (vm.runnable) {
-    html += `<div class="card pink">▶ Click <strong>Run &amp; Capture</strong> to execute the VM in a sandboxed Lua runtime (Fengari) and hook loadstring to capture the inner source.</div>`;
-  }
-
-  setOut(html, 'vm analysis', 'chip-info');
+function runKeyExtract(){
+  const code=inp.value;
+  if(!code.trim()){setOut('<div class="card cinfo-card">Paste some code first.</div>','empty','cinfo');return;}
+  const {cleaned,removed}=extractKey(code);
+  if(!removed.length){setOut('<div class="card cok-card">✓ No key system found.</div>','clean','cok');return;}
+  let html=`<div class="card cok-card">✓ Removed ${removed.length} key system block(s).</div>`;
+  removed.forEach(r=>{ html+=`<div class="row"><span class="rl">Removed</span><span class="rv"><span class="tag tkey">${esc(r.lbl)}</span><br/><code style="font-size:.67rem;color:var(--muted)">${esc(r.snip)}…</code></span></div>`; });
+  html+=`<pre class="code">${esc(cleaned)}</pre>`;
+  setOut(html,'key removed','cok');
 }
 
-function clearAll() {
-  inp.value=''; out.innerHTML='';
-  outChip.textContent='waiting'; outChip.className='chip chip-info';
-  inChip.textContent='ready'; inChip.className='chip chip-info';
+function runVMAnalysis(){
+  const code=inp.value;
+  if(!code.trim()){setOut('<div class="card cinfo-card">Paste some code first.</div>','empty','cinfo');return;}
+  const d=detect(code);
+  let html='';
+  if(d.vm) html+=`<div class="row"><span class="rl">VM</span><span class="rv"><span class="tag ${vmCls(d.vm)}">${d.vm}</span> <span class="tag tdim">${d.vmVer}</span></span></div>`;
+  if(d.moon) html+=`<div class="row"><span class="rl">Moonsec</span><span class="rv"><span class="tag tmoon">${d.moon} ${d.moonVer}</span></span></div>`;
+  const blob=code.match(/\[=\[([\s\S]{50,}?)\]=\]/);
+  if(blob) html+=`<div class="row"><span class="rl">Bytecode blob</span><span class="rv">${fmt(blob[1].length)} · <code style="font-size:.67rem;color:var(--muted)">${esc(blob[1].substring(0,60))}…</code></span></div>`;
+  html+=`<div class="row"><span class="rl">Approach</span><span class="rv"><span class="tag tteal">▶ Run &amp; Capture</span> <span class="tag tteal">🔬 VM Trace</span> <span class="tag" style="background:#1a1830;color:#b39ddb">📋 Disassemble</span></span></div>`;
+  html+=`<div class="card cpink-card">▶ Run &amp; Capture — execute VM, hook loadstring, capture inner source.<br/>🔬 VM Trace — attach debug hook, trace every call/return event the VM makes.<br/>📋 Disassemble — capture Lua 5.1 bytecode and parse every instruction.</div>`;
+  setOut(html,'vm analysis','cinfo');
 }
 
-function copyOutput() {
+function clearAll(){
+  inp.value='';out.innerHTML='';
+  outChip.textContent='waiting';outChip.className='chip cinfo';
+  inChip.textContent='ready';inChip.className='chip cinfo';
+}
+function copyOutput(){
   navigator.clipboard.writeText(out.innerText||out.textContent).then(()=>{
-    const b=document.querySelector('.btn-copy');
-    const t=b.textContent; b.textContent='✓ Copied!';
-    setTimeout(()=>b.textContent=t,1500);
+    const b=document.querySelector('.bcopy');const t=b.textContent;
+    b.textContent='✓ Copied!';setTimeout(()=>b.textContent=t,1500);
   });
 }
 </script>
