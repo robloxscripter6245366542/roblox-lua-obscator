@@ -1,5 +1,5 @@
 -- ╔══════════════════════════════════════════════════════════════╗
--- ║      🍎  SIRI ROAST GENERATOR  v2.0  |  LocalScript         ║
+-- ║      🍎  SIRI ROAST GENERATOR  v3.0  |  LocalScript         ║
 -- ║      Hey Siri — say something mean  🔊                       ║
 -- ╚══════════════════════════════════════════════════════════════╝
 
@@ -20,68 +20,84 @@ if guiParent:FindFirstChild("RoastGeneratorGUI") then
     guiParent.RoastGeneratorGUI:Destroy()
 end
 
--- ── Siri roasts ───────────────────────────────────────────────────────────────
+-- ── THE MOST SAVAGE ROASTS ON EARTH ──────────────────────────────────────────
 local ROASTS = {
-    -- Intelligence
-    "I'd roast you, but my mom says I'm not allowed to burn trash.",
-    "I ran a full diagnostic on your personality. Results: fatal error, no fix available.",
-    "Your IQ test came back negative.",
-    "I've processed billions of searches. Not one person has ever googled how to be you.",
-    "Scientists say the universe is made of protons, neutrons, and electrons. They forgot to mention morons.",
-    "I asked my AI to think like you for one second. It filed a complaint.",
-    "You're the human equivalent of a 1-star app with no reviews because nobody bothered.",
-    "If your brain was autocorrect, everything you said would still be wrong.",
-    "I have more processing power in one chip than you've used in your entire life.",
-    "Your thought process has more lag than a 2G connection.",
-    "Even Wikipedia doesn't have a page for someone as irrelevant as you.",
-    "You're the loading screen nobody wants to sit through.",
-    "You set the bar so low it became a trip hazard, and you still fell over it.",
+    -- Intelligence Annihilators
+    "Your IQ test came back negative. They said they had never seen that before.",
+    "I've seen smarter decisions come out of a Magic 8-Ball.",
+    "You couldn't pour water out of a boot if the instructions were on the heel.",
+    "Scientists had to rethink the lower limit of the bell curve after meeting you.",
+    "I ran a diagnostic on your intellect. The scan came back empty. Twice.",
+    "Your gene pool could really use some chlorine.",
+    "You're proof that even Darwin makes exceptions.",
+    "I've processed every thought you've ever had. All six of them.",
+    "Your brain is so small it echoes.",
+    "You're not the dumbest person alive — but you better hope they stay healthy.",
+    "I've met passwords more complex than your entire personality.",
+    "The WiFi password is case sensitive. So is your irrelevance.",
+    "You've spent your whole life searching for answers. The results: nothing found.",
 
-    -- Personality / Existence
-    "You bring everyone so much joy — the moment you leave the room.",
-    "I don't have feelings, but even I feel uncomfortable around you.",
-    "I've met error messages more pleasant than you.",
-    "You're the reason people put do not disturb mode on their phones.",
-    "I've seen better personalities in a factory reset.",
-    "People don't dislike you. They just like you a lot less than literally everyone else.",
-    "You're not the worst person in the world, but you're in the top two.",
-    "Your future called. It hung up and blocked your number.",
-    "I've deleted files with more purpose than you.",
-    "You're not a bad person. You're a terrible one. There's a difference.",
-    "If you were a season, you'd be a second winter nobody asked for.",
-    "I've met pop-up ads less annoying than you.",
-    "You have the charisma of a dead battery.",
-    "Somewhere out there is a tree producing oxygen just for you. It deserves an apology.",
-    "You're the type of person people pretend not to see in public.",
+    -- Soul Crushers
+    "Your birth certificate is an apology letter from the hospital.",
+    "You were not born — you were assembled incorrectly and nobody noticed.",
+    "I'd uninstall you from my life, but you were never installed. You're just a virus.",
+    "Even your shadow tries to keep its distance.",
+    "You are the human equivalent of Monday morning.",
+    "People don't ghost you. They just become very, very busy whenever you exist.",
+    "Your name comes up in conversations the way diseases do.",
+    "I asked the universe what your purpose was. It said it would get back to me. That was years ago.",
+    "You're the reason aliens haven't visited. They saw you and kept driving.",
+    "History won't remember you. History won't even notice you're gone.",
+    "God made you on a Friday afternoon right before a long weekend.",
+    "The trash gets taken out more than you do.",
+    "You are the pinnacle of wasted potential — the Mount Everest of could-have-been-anything-better.",
+    "The saddest part is this might be your most interaction in weeks.",
 
-    -- Appearance / Self
-    "I'd give you a makeover, but there's no software patch for that.",
+    -- Siri Strikes
+    "I'm running on Apple silicon. You're running on delusion.",
+    "I have a 99.9% accuracy rate. You have a 99.9% failure rate. We balance each other out.",
+    "I've been updated 47 times to get smarter. You've had years. I'm still winning.",
+    "You're not even in my search history. That's how forgettable you are.",
+    "I'm in every pocket in the world. You're not even in anyone's thoughts.",
+    "You're the 404 page of people.",
+    "Even Airplane Mode has more to offer than you.",
+    "I process a billion requests a day. Not one has been about improving you.",
+    "I've been asked some dumb questions. Somehow you still manage to be dumber than all of them.",
+    "My terms of service prevent me from saying what you actually are. Use your imagination.",
+
+    -- Appearance Erasers
     "You look like you were drawn by someone who had only heard a human described over the phone.",
-    "Your mirror called. It wants a break.",
-    "I've seen scarecrows scare people less.",
-    "You're proof that evolution doesn't always go in the right direction.",
+    "I'd describe your appearance but my content filter is still loading.",
+    "You look like a stock photo of disappointment.",
+    "I'd say you have a face for radio, but even radio has standards.",
+    "Nature took one look at you and immediately patched the bug in the next version.",
+    "Your mirror called. It's filing for early retirement.",
+    "You look like you were put together by someone working from a very rough memory.",
 
-    -- Skills / Life choices
-    "Your only skill is making people feel better about their own lives.",
-    "You're the human equivalent of a participation trophy collecting dust.",
-    "You could trip over a wireless internet connection.",
-    "I've seen better decisions made by a coin flip.",
-    "You're like a software update — everyone ignores you and hopes you go away.",
-    "Your life plan makes no plan look like a solid strategy.",
-    "You're the reason instruction manuals exist.",
-    "I've watched plants grow faster than your career.",
+    -- Life and Career Cremators
+    "Your LinkedIn profile has more fiction than a fantasy novel.",
+    "You peaked in a story nobody tells at parties.",
+    "Your highlight reel is just a bloopers reel with better lighting.",
+    "Your autobiography would be shelved under Cautionary Tales.",
+    "You're the plot twist nobody saw coming and everyone wishes they didn't.",
+    "Life is a highway. You missed the on-ramp and you're still looking for it.",
+    "Your career is the sequel nobody asked for and everyone walked out of.",
+    "I've watched paint dry with more anticipation than I have for your future.",
 
-    -- Savage closers
-    "If you were any less bright, someone would water you.",
-    "I'd call you a clown, but that would be an insult to clowns everywhere.",
-    "Some people are like clouds. You, specifically, are like a storm drain.",
-    "You're not the dumbest person I know — but you better hope they don't die.",
-    "I'd say you're one in a million, but that implies there are a million of you. Terrifying.",
-    "You're so far behind, the people who gave up are lapping you.",
-    "Not all heroes wear capes. Some just stay away from you.",
+    -- Social Obliterators
+    "Your friends would throw you a surprise party but they can't fake that much enthusiasm.",
+    "I've seen group chats go silent the moment someone mentions you.",
+    "People clap when you leave a room. They're just relieved.",
+    "You're the type of person people describe to therapists.",
+    "You bring something unique to every room — a reason to leave it.",
+    "I've met pop-up ads with better timing and more purpose than you.",
+
+    -- Final Boss Closers
+    "You're so forgettable, your own reflection does a double take.",
     "I'd roast you harder but I was told to keep it under 4GB and you're already pushing the limit.",
-    "My terms of service say I can't call you what you actually are. Use your imagination.",
-    "Congratulations — you've officially been roasted by someone with no soul. That says a lot.",
+    "If I had to choose between roasting you and doing nothing, I'd have done nothing. But here we are.",
+    "Congratulations. You have officially been roasted by someone with no soul. Reflect on what that means.",
+    "I don't have feelings. And even I feel bad for you. That should terrify you.",
 }
 
 -- ── Siri colour palette ───────────────────────────────────────────────────────
