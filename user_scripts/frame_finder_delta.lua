@@ -21,7 +21,7 @@ TABS
 
 -- ── Services ──────────────────────────────────────────────────────────────────
 local Players  = game:GetService("Players")
-local RS       = game:GetService("ReplicatedStorage")
+local _RS      = game:GetService("ReplicatedStorage") -- kept to prevent lazy-load errors
 local UIS      = game:GetService("UserInputService")
 local TS       = game:GetService("TweenService")
 local SG       = game:GetService("StarterGui")
@@ -147,14 +147,6 @@ local function listV(p, sp)
     local l = Instance.new("UIListLayout")
     l.Padding=UDim.new(0,sp or 4)
     l.HorizontalAlignment=Enum.HorizontalAlignment.Left
-    l.SortOrder=Enum.SortOrder.LayoutOrder
-    l.Parent=p; return l
-end
-local function listH(p, sp)
-    local l = Instance.new("UIListLayout")
-    l.Padding=UDim.new(0,sp or 4)
-    l.FillDirection=Enum.FillDirection.Horizontal
-    l.VerticalAlignment=Enum.VerticalAlignment.Center
     l.SortOrder=Enum.SortOrder.LayoutOrder
     l.Parent=p; return l
 end
@@ -751,7 +743,7 @@ local GUI_PARENT = getGuiParent()
 for _,old in ipairs(GUI_PARENT:GetChildren()) do
     if old.Name=="NexusAI" then pcall(function() old:Destroy() end) end
 end
-if PGUI:FindFirstChild("NexusAI") then PGUI.NexusAI:Destroy() end
+local _oldGui = PGUI:FindFirstChild("NexusAI"); if _oldGui then _oldGui:Destroy() end
 
 local GUI = Instance.new("ScreenGui")
 GUI.Name="NexusAI"; GUI.ResetOnSpawn=false
@@ -1041,14 +1033,14 @@ EXERUN.MouseButton1Click:Connect(function()
     flash(EXERUN,C.AMBER)
     setStatus("Running via loadstring...",C.AMBER)
     task.spawn(function()
-        local fn, err = pcall(loadstring, code)
-        if not fn or type(err)~="function" then
-            local msg = type(err)=="string" and err or "loadstring failed"
+        local lsOk, compiled = pcall(loadstring, code)
+        if not lsOk or type(compiled)~="function" then
+            local msg = type(compiled)=="string" and compiled or "loadstring not available"
             notify("Syntax Error", msg:sub(1,140), 6)
             setStatus("Syntax error", C.RED)
             return
         end
-        local ok, runErr = pcall(err)
+        local ok, runErr = pcall(compiled)
         if not ok then
             notify("Runtime Error", tostring(runErr):sub(1,140), 6)
             setStatus("Runtime error", C.RED)
@@ -1223,14 +1215,18 @@ SCANBTN.MouseButton1Click:Connect(function()
         if getScripts then pcall(function() scripts=getScripts() end) end
         if #scripts==0 then
             for _,v in ipairs(game:GetDescendants()) do
-                if v:IsA("LocalScript") or v:IsA("ModuleScript") or v:IsA("Script") then table.insert(scripts,v) end
+                if v:IsA("LocalScript") or v:IsA("ModuleScript") or v:IsA("Script") then
+                    table.insert(scripts,v)
+                    if #scripts>=60 then break end  -- cap: no decompile so .Source is instant
+                end
             end
         end
         local found={}
         for _,s in ipairs(scripts) do
+            task.wait()  -- yield each iteration to avoid freezing
             local src=""
-            if doDecomp then pcall(function() src=doDecomp(s) end) end
-            if src=="" then pcall(function() src=s.Source end) end
+            -- never call doDecomp here — 5-30s per script = infinite hang
+            pcall(function() src=s.Source end)
             if src and src~="" then for _,fn in ipairs(extractFns(src,s.Name)) do table.insert(found,fn) end end
         end
         if #found==0 then
