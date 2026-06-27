@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Stats = game:GetService("Stats")
 local LocalPlayer = Players.LocalPlayer
 
 -- Load Fluent UI Library
@@ -34,6 +35,19 @@ local showPlayerDetectors = true
 local showSpeedLabel = true
 local totalParries = 0
 local highSpeedParries = 0
+
+-- ============================================
+-- PING COMPENSATION CONFIGURATION
+-- ============================================
+-- With high ping the server "sees" you later than your screen shows. To still
+-- block in time we parry EARLY by the distance the ball travels during your
+-- latency window: extraRange = ballVelocity * (ping/1000) * pingMultiplier.
+
+local pingCompEnabled = true
+local pingMultiplier = 1.0       -- 1.0 = compensate full ping; raise for safety margin
+local MAX_PING_COMP = 60         -- cap the extra studs so it never over-extends absurdly
+local currentPing = 0            -- last measured round-trip ping in ms
+local currentPingComp = 0        -- last computed extra studs of detection range
 
 -- ============================================
 -- AUTO SPAM CONFIGURATION
@@ -111,6 +125,51 @@ local ParryStatusLabel = Tabs.Parry:AddParagraph({
 local ParryDistanceLabel = Tabs.Parry:AddParagraph({
     Title = "Distance Info",
     Content = "Waiting for data..."
+})
+
+Tabs.Parry:AddSection("Ping Compensation")
+
+Tabs.Parry:AddToggle("PingCompEnabled", {
+    Title = "Ping Compensation",
+    Description = "Parry earlier when ping is high",
+    Default = true,
+    Callback = function(Value)
+        pingCompEnabled = Value
+        Fluent:Notify({
+            Title = "Ping Compensation",
+            Content = Value and "Enabled" or "Disabled",
+            Duration = 3
+        })
+    end
+})
+
+Tabs.Parry:AddSlider("PingMultiplier", {
+    Title = "Compensation Strength",
+    Description = "1.0 = full ping. Higher = parry even earlier",
+    Default = 1.0,
+    Min = 0,
+    Max = 3,
+    Rounding = 2,
+    Callback = function(Value)
+        pingMultiplier = Value
+    end
+})
+
+Tabs.Parry:AddSlider("MaxPingComp", {
+    Title = "Max Extra Range (studs)",
+    Description = "Cap on extra detection studs from ping",
+    Default = 60,
+    Min = 0,
+    Max = 150,
+    Rounding = 0,
+    Callback = function(Value)
+        MAX_PING_COMP = Value
+    end
+})
+
+local PingInfoLabel = Tabs.Parry:AddParagraph({
+    Title = "Ping Status",
+    Content = "Measuring..."
 })
 
 Tabs.Spam:AddSection("Auto Spam Status")
@@ -322,6 +381,28 @@ local function getBallVelocity(ball)
     return 0
 end
 
+local function getPing()
+    -- Primary: Stats network item (round-trip ms). Fallback: GetNetworkPing()*1000.
+    local ok, ping = pcall(function()
+        return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+    end)
+    if ok and type(ping) == "number" and ping > 0 then return ping end
+    local ok2, p2 = pcall(function() return LocalPlayer:GetNetworkPing() * 1000 end)
+    if ok2 and type(p2) == "number" and p2 > 0 then return p2 end
+    return 0
+end
+
+-- Extra detection studs so a high-ping client triggers the parry earlier.
+local function getPingCompensation(velocity)
+    if not pingCompEnabled then return 0 end
+    currentPing = getPing()
+    local comp = velocity * (currentPing / 1000) * pingMultiplier
+    if comp > MAX_PING_COMP then comp = MAX_PING_COMP end
+    if comp < 0 then comp = 0 end
+    currentPingComp = comp
+    return comp
+end
+
 local function calculateDistance(velocity)
     if velocity >= HIGH_SPEED_THRESHOLD then return MAX_DISTANCE end
     local normalizedVelocity = math.clamp(velocity / 100, 0, 1)
@@ -476,8 +557,15 @@ task.spawn(function()
             spamsPerSecond = totalSpams / spamDuration
         end
         
-        SpamStatsLabel:SetDesc(string.format("• Total Spams: %d\n• Total Duration: %.1fs\n• Average Rate: %.1f spam/s\n• Status: %s", 
+        SpamStatsLabel:SetDesc(string.format("• Total Spams: %d\n• Total Duration: %.1fs\n• Average Rate: %.1f spam/s\n• Status: %s",
             totalSpams, spamDuration, spamsPerSecond, spamStarted and "🟢 ACTIVE" or "🔴 INACTIVE"))
+
+        local livePing = getPing()
+        PingInfoLabel:SetDesc(string.format("• Current Ping: %.0f ms\n• Compensation: %s\n• Strength: %.2fx\n• Last Extra Range: +%.1f studs",
+            livePing,
+            pingCompEnabled and "🟢 ON" or "🔴 OFF",
+            pingMultiplier,
+            currentPingComp))
     end
 end)
 
@@ -544,20 +632,25 @@ RunService.Heartbeat:Connect(function()
             currentParryDistance = frozenParryDistance
         end
         
+        -- Ping compensation: extend the trigger range so high-ping clients fire
+        -- early enough that the block still lands on the server in time.
+        local pingComp = getPingCompensation(velocity)
+        local effectiveParryDistance = currentParryDistance + pingComp
+
         ParryStatusLabel:SetDesc(string.format("Status: %s", autoParryEnabled and "🟢 ACTIVE" or "🔴 DISABLED"))
-        ParryDistanceLabel:SetDesc(string.format("• Detection Range: %.1f studs\n• Ball Velocity: %.1f studs/s\n• Distance to Ball: %.1f studs\n• Mode: %s\n• Frozen: %s", 
-            currentParryDistance, velocity, closestDistance,
+        ParryDistanceLabel:SetDesc(string.format("• Detection Range: %.1f studs\n• Ping Comp: +%.1f studs (%.0f ms)\n• Effective Range: %.1f studs\n• Ball Velocity: %.1f studs/s\n• Distance to Ball: %.1f studs\n• Mode: %s\n• Frozen: %s",
+            currentParryDistance, pingComp, currentPing, effectiveParryDistance, velocity, closestDistance,
             isHighSpeedMode and "🚀 MAX SPEED" or "⚡ Normal",
             isAutoParryFrozen and "Yes" or "No"))
-        
+
         if showSpeedLabel then
             local speedLabel = createSpeedLabel(closestBall)
             if speedLabel.Label then
                 speedLabel.Label.Text = string.format("%.1f%s", velocity, isHighSpeedMode and " 🚀" or "")
             end
         end
-        
-        if hasHighlight and closestDistance <= currentParryDistance then executeParry() end
+
+        if hasHighlight and closestDistance <= effectiveParryDistance then executeParry() end
     end
     
     if visualSphere and showVisualSphere then
