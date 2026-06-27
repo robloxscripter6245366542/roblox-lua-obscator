@@ -206,6 +206,7 @@ usage() {
   echo "  deobfusc --luraph <file>   Static Luraph decode: base85 → disasm Lua 5.1"
   echo "  deobfusc --vm <file>       Dynamic VM decode: run Luraph VM, dump bytecode"
   echo "  deobfusc --devirt <file>   Devirtualize: dump every function proto + report"
+  echo "  deobfusc --sandbox <file>  Full sandbox: capture layers + decrypted strings"
   echo "  deobfusc --detect <file>   Detect obfuscation type + signatures"
   echo "  deobfusc --keyrm <file>    Strip key system only"
   echo "  deobfusc --trace <file>    VM execution trace (debug hook)"
@@ -319,6 +320,20 @@ case "$CMD" in
     [ ! -f "${WORKDIR}/vm_interp.fixed.lua" ] && python3 "$VM_DECODER" "$FILE" "$WORKDIR"
     python3 "${SCRIPT_DIR}/devirt.py" "$WORKDIR"
     echo -e "  ${GREEN}report:${RESET} ${WORKDIR}/DEVIRT_REPORT.md"
+    ;;
+
+  --sandbox)
+    require_auth
+    [ -z "$FILE" ] && { err "Usage: deobfusc --sandbox <file> [workdir]"; exit 1; }
+    [ ! -f "$FILE" ] && { err "File not found: $FILE"; exit 1; }
+    [ -z "$LUA_BIN" ] && { err "No Lua runtime found (need lua5.4/lua5.3)."; exit 1; }
+    command -v python3 >/dev/null 2>&1 || { err "python3 required for --sandbox"; exit 1; }
+    WORKDIR="${3:-${FILE}.vmwork}"
+    header "Full Dynamic Sandbox: $FILE"
+    echo -e "  ${DIM}run in stubbed env → capture all layers + runtime-decrypted strings${RESET}"
+    [ ! -f "${WORKDIR}/vm_interp.fixed.lua" ] && python3 "$VM_DECODER" "$FILE" "$WORKDIR"
+    python3 "${SCRIPT_DIR}/sandbox.py" "$WORKDIR" "$FILE"
+    echo -e "  ${GREEN}strings:${RESET} ${WORKDIR}/strings.txt"
     ;;
 
   --stdin)
