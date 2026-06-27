@@ -157,6 +157,7 @@ find_lua() {
 LUA_BIN=$(find_lua)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENGINE="${SCRIPT_DIR}/engine.lua"
+VM_DECODER="${SCRIPT_DIR}/vm_decoder.py"
 
 deob_lua_passes() {
   local code="$1"
@@ -203,6 +204,7 @@ usage() {
   echo "  deobfusc <file>            Text deob + key strip (fast)"
   echo "  deobfusc --deep <file>     Deep: execute VM, capture all layers"
   echo "  deobfusc --luraph <file>   Static Luraph decode: base85 → disasm Lua 5.1"
+  echo "  deobfusc --vm <file>       Dynamic VM decode: run Luraph VM, dump bytecode"
   echo "  deobfusc --detect <file>   Detect obfuscation type + signatures"
   echo "  deobfusc --keyrm <file>    Strip key system only"
   echo "  deobfusc --trace <file>    VM execution trace (debug hook)"
@@ -289,6 +291,23 @@ case "$CMD" in
     header "Luraph Static Decode: $FILE"
     echo -e "  ${DIM}extract blob → decode base85 → disassemble Lua 5.1 bytecode${RESET}"
     "$LUA_BIN" "$ENGINE" luraph "$FILE"
+    ;;
+
+  --vm)
+    require_auth
+    [ -z "$FILE" ] && { err "Usage: deobfusc --vm <file> [workdir]"; exit 1; }
+    [ ! -f "$FILE" ] && { err "File not found: $FILE"; exit 1; }
+    [ -z "$LUA_BIN" ] && { err "No Lua runtime found (need lua5.4/lua5.3)."; exit 1; }
+    [ ! -f "$VM_DECODER" ] && { err "vm_decoder.py not found at $VM_DECODER"; exit 1; }
+    command -v python3 >/dev/null 2>&1 || { err "python3 required for --vm"; exit 1; }
+    header "Luraph Dynamic VM Decode: $FILE"
+    echo -e "  ${DIM}run VM in Lua 5.4 → LZMA-decompress → dump bytecode + constants${RESET}"
+    WORKDIR="${3:-}"
+    if [ -n "$WORKDIR" ]; then
+      python3 "$VM_DECODER" "$FILE" "$WORKDIR"
+    else
+      python3 "$VM_DECODER" "$FILE"
+    fi
     ;;
 
   --stdin)
