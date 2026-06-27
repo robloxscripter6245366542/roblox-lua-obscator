@@ -1202,43 +1202,34 @@ function buildAntiDump(innerSrc){
   const notTodayBytes = [...'Not today my friend 🔒']
     .map(c=>c.codePointAt(0)).join(',');
 
-  return `--[[
-\t\tCrystal Protected Script
-\t\tUnauthorized access or source dumping is prohibited.
-\t\tIf you are reading this as raw text: No access.
-\t\tIf you attempted a bypass: Not today my friend.
-\t\tCrystal Obfuscator v1.0
+  // typeof() only exists in Roblox — not in decompiler sandboxes or standard Lua
+  // No script-object check: executor-injected scripts don't have one
+  const header=`--[[
+  Crystal Protected Script
+  Unauthorized access or source dumping is prohibited.
+  Reading this as raw text: No access.
+  Bypass attempt: Not today my friend.
+  Crystal Obfuscator v1.0
 ]]
 local ${msgVar}=string.char(${noAccessBytes})
 local ${msg2Var}=string.char(${notTodayBytes})
 local function ${checkFn}()
-    local ${envVar}=getfenv and getfenv() or {}
-    if not game or type(game)~="userdata" then
+    if type(game)~="userdata" then
         print(${msgVar});return false
     end
-    local _sc=rawget(${envVar},"script")
-    if not _sc or type(_sc)~="userdata" then
+    if not(typeof and typeof(game)=="Instance") then
         error(${msg2Var},0);return false
     end
     local ${trapVar}=false
-    local _ok=pcall(function() ${trapVar}=true end)
-    if not _ok or not ${trapVar} then
-        error(${msg2Var},0);return false
-    end
-    if debug and type(debug.sethook)=="function" then
-        local _cnt=0
-        pcall(function()
-            debug.sethook(function() _cnt=_cnt+1 end,"c",1)
-            debug.sethook()
-        end)
-        if _cnt>3 then error(${msg2Var},0);return false end
-    end
+    pcall(function()${trapVar}=true end)
+    if not ${trapVar} then error(${msg2Var},0);return false end
     return true
 end
 local ${flagVar}
-if not ${checkFn}() then return end
+if not ${checkFn}()then return end
 ${flagVar}=true
-${innerSrc}`;
+`;
+  return header+'\n'+innerSrc;
 }
 
 // ── Layer 6: VM wrapper (executor-safe loader) ────────────────────

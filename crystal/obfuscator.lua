@@ -16,14 +16,15 @@ Obfuscator.__index = Obfuscator
 
 -- ── Crypto primitives ─────────────────────────────────────────────────────────
 
-local function xorBytes(data, key)
-    local out = {}
-    local klen = #key
-    for i = 1, #data do
-        local ki = ((i - 1) % klen) + 1
-        out[i] = string.char(bit32.bxor(data:byte(i), key:byte(ki)))
+-- Pure Lua XOR (no bit32) — works in all executors and standard Lua
+local function pureXor(a, b)
+    local acc, bt = 0, 1
+    while a > 0 or b > 0 do
+        if a % 2 ~= b % 2 then acc = acc + bt end
+        a, b = math.floor(a / 2), math.floor(b / 2)
+        bt = bt * 2
     end
-    return table.concat(out)
+    return acc
 end
 
 local function rollingXor(data, seed)
@@ -31,7 +32,7 @@ local function rollingXor(data, seed)
     local state = seed % 256
     for i = 1, #data do
         local b = data:byte(i)
-        local enc = bit32.bxor(b, state)
+        local enc = pureXor(b, state)
         out[i] = string.char(enc)
         state = (state * 31 + enc + 7) % 256
     end
@@ -234,23 +235,23 @@ local function encryptStrings(src, key, seed)
     local out    = {}
     local decFn  = randName(7)
 
-    -- Build decryptor preamble
-    local keyBytes = bytesToHex(key)
-    local preamble = ("local %s;do local _k=\"%s\";local _s=%d;_s=_s%%256;local function _d(s)local r={}local st=_s for i=1,#s do local b=s:byte(i)local e=bit32.bxor(b,st)r[i]=string.char(e)st=(st*31+e+7)%%256 end return table.concat(r)end;%s=_d end\n")
-        :format(decFn, keyBytes:gsub("\\%d+", function(e) return e end), seed, decFn)
+    -- Pure Lua XOR decryptor preamble (no bit32, works in all executors)
+    -- Decrypts byte table {n,n,...} using rolling XOR via math.floor+%
+    local preamble = ("local %s;do local _s=%d;%s=function(t)local r={}local s=_s%%256;for i=1,#t do local b=t[i];local x=b;local y=s;local acc=0;local bt=1;while x>0 or y>0 do if x%%2~=y%%2 then acc=acc+bt end;x=math.floor(x/2);y=math.floor(y/2);bt=bt*2 end;r[i]=string.char(acc);s=(s*31+acc+7)%%256 end;return table.concat(r)end end\n")
+        :format(decFn, seed, decFn)
 
     out[#out+1] = preamble
 
     for _, t in ipairs(tokens) do
         if t.kind == "STRING" then
-            -- Strip surrounding quotes, encrypt content
             local raw = t.value
-            local delim = raw:sub(1,1)
             local content = raw:sub(2, -2)
                 :gsub("\\n","\n"):gsub("\\t","\t"):gsub("\\\\","\\"):gsub('\\"','"'):gsub("\\'","'")
             local encrypted = rollingXor(content, seed)
-            local hexStr    = bytesToHex(encrypted)
-            out[#out+1] = ('%s("%s")'):format(decFn, hexStr)
+            -- Emit as numeric byte table so no escaping issues
+            local byteNums = {}
+            for i = 1, #encrypted do byteNums[i] = encrypted:byte(i) end
+            out[#out+1] = ('%s({%s})'):format(decFn, table.concat(byteNums, ","))
         else
             out[#out+1] = t.value
         end
@@ -329,58 +330,45 @@ local function buildAntiDump(innerSrc)
     local notToday = "Not today my friend \240\159\148\222"
     for i = 1, #notToday do notTodayBytes[i] = notToday:byte(i) end
 
-    return ([[
+    -- Build header separately — never put innerSrc in string.format
+    -- (obfuscated code contains % which breaks format)
+    -- Checks use typeof() which only exists in Roblox, not decompiler sandboxes.
+    -- No script-object check: executor-injected scripts don't have one.
+    local header = ([[
 --[[
-\9\9Crystal Protected Script
-\9\9Unauthorized access or source dumping is prohibited.
-\9\9If you are reading this as text: No access.
-\9\9If you attempted a bypass: Not today my friend.
-\9\9Crystal Obfuscator v1.0 \226\128\148 github.com/robloxscripter6245366542/roblox-lua-obscator
+  Crystal Protected Script
+  Unauthorized access or source dumping is prohibited.
+  Reading this as raw text: No access.
+  Bypass attempt: Not today my friend.
+  Crystal Obfuscator v1.0
 ]]
 local %s=string.char(%s)
 local %s=string.char(%s)
 local function %s()
-    local %s=getfenv and getfenv() or {}
-    if not game or type(game)~="userdata" then
-        print(%s); return false
+    if type(game)~="userdata" then
+        print(%s);return false
     end
-    local _sc=rawget(%s,"script")
-    if not _sc or type(_sc)~="userdata" then
-        error(%s, 0); return false
+    if not(typeof and typeof(game)=="Instance") then
+        error(%s,0);return false
     end
     local %s=false
-    local _ok=pcall(function() %s=true end)
-    if not _ok or not %s then
-        error(%s, 0); return false
-    end
-    if debug and type(debug.sethook)=="function" then
-        local _cnt=0
-        pcall(function()
-            debug.sethook(function() _cnt=_cnt+1 end,"c",1)
-            debug.sethook()
-        end)
-        if _cnt>3 then
-            error(%s, 0); return false
-        end
-    end
+    pcall(function()%s=true end)
+    if not %s then error(%s,0);return false end
     return true
 end
 local %s
-if not %s() then return end
+if not %s()then return end
 %s=true
-%s
 ]]):format(
         msgVar,  table.concat(noAccessBytes, ","),
         msg2Var, table.concat(notTodayBytes, ","),
         checkFn,
-        envVar,
         msgVar,
-        envVar, msg2Var,
-        trapVar, trapVar, trapVar, msg2Var,
         msg2Var,
-        flagVar, checkFn, flagVar,
-        innerSrc
+        trapVar, trapVar, trapVar, msg2Var,
+        flagVar, checkFn, flagVar
     )
+    return header .. "\n" .. innerSrc
 end
 
 -- ── Layer 7: Anti-debug / anti-deobfuscation stubs ───────────────────────────
@@ -389,33 +377,24 @@ local function injectAntiDebug()
     local v1 = randName(5)
     local v2 = randName(5)
     local v3 = randName(5)
-    return ([[
-local %s = debug and debug.sethook
-local %s = getinfo or debug and debug.getinfo
-local %s = 0
-if %s then %s(function() %s=%s+1 if %s>2 then error("Crystal: debugger detected",0) end end,"c",1) end
-if type(%s)=="function" then
-    local _ok,_e=pcall(%s,"_","n")
-    if not _ok then error("Crystal: inspection blocked",0) end
-end
-]]):format(v1, v2, v3, v1, v1, v3, v3, v3, v2, v2)
+    local v4 = randName(5)
+    -- Check pcall and tostring integrity without setting live hooks
+    -- (live sethook hooks trigger on every call and false-positive in all executors)
+    return ("local %s=tostring;local %s=pcall;local %s=type;local %s\nif %s(%s)~=%s(%s) then %s=true end\nif %s and %s(%s)~='function' then error('Crystal: environment tampered',0) end\n")
+        :format(v1, v2, v3, v4, v1, v2, v1, v2, v4, v4, v3, v1, v4)
 end
 
 -- ── Layer 5: Control flow flattening ─────────────────────────────────────────
 -- Wrap top-level code in a dispatcher pattern so linear flow isn't obvious
 
 local function flattenControlFlow(src)
-    local dispVar = randName(6)
+    local dispVar  = randName(6)
     local stateVar = randName(6)
-    -- Split source into chunks at function / do / if boundaries
-    -- For simplicity, wrap entire source in a stepped coroutine dispatcher
-    return ([[
-local %s = {[0]=function()
-%s
-end}
-local %s = 0
-while %s[%s] do %s[%s]() %s=%s+1 end
-]]):format(dispVar, src, stateVar, dispVar, stateVar, dispVar, stateVar, stateVar, stateVar)
+    -- Wrap source in stepped dispatcher; concatenate src to avoid % format issues
+    local header = ("local %s={[0]=function()\n"):format(dispVar)
+    local footer = ("\nend}\nlocal %s=0\nwhile %s[%s] do %s[%s]();%s=%s+1 end\n")
+        :format(stateVar, dispVar, stateVar, dispVar, stateVar, stateVar, stateVar)
+    return header .. src .. footer
 end
 
 -- ── Layer 8/9: VM wrapping + bytecode encryption ─────────────────────────────
@@ -441,33 +420,16 @@ local function vmWrap(src, buildKey)
     local decVar    = randName(5)
     local runVar    = randName(5)
 
-    return ([[
--- Crystal VM Loader (encrypted payload)
-local %s=%d
-local %s={%s}
-local function %s(t,s)
-    local r={}
-    local st=s%%256
-    for i=1,#t do
-        local b=t[i]
-        r[i]=string.char(bit32.bxor(b,st))
-        st=(st*31+bit32.bxor(b,st)+7)%%256
-    end
-    return table.concat(r)
-end
-local function %s(src)
-    local fn,err=load(src,"@crystal","t",getfenv and getfenv() or _ENV)
-    if not fn then error("Crystal load error: "..tostring(err),0) end
-    return fn()
-end
-%s(%s(%s,%s))
-]]):format(
-        seedVar, encSeed,
-        payVar, table.concat(hexPayload, ","),
-        decVar,
-        runVar,
-        runVar, decVar, payVar, seedVar
-    )
+    -- Pure Lua XOR decryptor + loadstring loader (no bit32, no _ENV, executor-safe)
+    local header = ("local %s=%d\nlocal %s={%s}\nlocal function %s(t,s)local r={}local st=s%%256;for i=1,#t do local b=t[i];local x=b;local y=st;local acc=0;local bt=1;while x>0 or y>0 do if x%%2~=y%%2 then acc=acc+bt end;x=math.floor(x/2);y=math.floor(y/2);bt=bt*2 end;r[i]=string.char(acc);st=(st*31+acc+7)%%256 end;return table.concat(r)end\nlocal function %s(s)local fn,e=(loadstring or load)(s);if not fn then error(\"Crystal: \"..tostring(e),0)end;return fn()end\n%s(%s(%s,%s))\n")
+        :format(
+            seedVar, encSeed,
+            payVar, table.concat(hexPayload, ","),
+            decVar,
+            runVar,
+            runVar, decVar, payVar, seedVar
+        )
+    return header
 end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
@@ -530,48 +492,36 @@ end
 
 function Obfuscator.obfuscateWithKeySystem(src, options)
     options = options or {}
+    -- Intermediate passes: skip anti-dump shield (added once at the very end)
+    local function makePass(opts)
+        local ob = Obfuscator.new(opts)
+        ob._skipShield = true  -- don't add anti-dump on intermediate layers
+        return ob
+    end
+
     -- Pass 1: name mangle + string encrypt + number split
-    local pass1 = Obfuscator.new({
-        mangleNames      = true,
-        encryptStrings   = true,
-        obfuscateNumbers = true,
-        injectDeadCode   = true,
-        antiDebug        = true,
-        vmWrap           = false,
-        strength         = "max",
-    })
-    local r1 = pass1:obfuscate(src, "key_inner")
+    local r1 = makePass({
+        mangleNames=true, encryptStrings=true, obfuscateNumbers=true,
+        injectDeadCode=true, antiDebug=true, vmWrap=false, strength="max",
+    }):obfuscate(src, "key_inner")
 
-    -- Pass 2: dead code + flow flatten
-    local pass2 = Obfuscator.new({
-        mangleNames      = true,
-        encryptStrings   = true,
-        obfuscateNumbers = true,
-        injectDeadCode   = true,
-        antiDebug        = false,  -- already added
-        vmWrap           = false,
-        flattenFlow      = true,
-        strength         = "max",
-    })
-    local r2 = pass2:obfuscate(r1, "key_mid")
+    -- Pass 2: flow flatten + more dead code
+    local r2 = makePass({
+        mangleNames=true, encryptStrings=true, obfuscateNumbers=true,
+        injectDeadCode=true, antiDebug=false, vmWrap=false,
+        flattenFlow=true, strength="max",
+    }):obfuscate(r1, "key_mid")
 
-    -- Pass 3: final VM wrap + encryption (double-sealed)
-    local pass3 = Obfuscator.new({
-        mangleNames      = false,  -- already done
-        encryptStrings   = false,  -- already done
-        obfuscateNumbers = false,  -- already done
-        injectDeadCode   = true,
-        antiDebug        = true,
-        vmWrap           = true,
-        strength         = "max",
-    })
-    local r3 = pass3:obfuscate(r2, "key_outer")
+    -- Pass 3: VM wrap #1
+    local r3 = makePass({
+        mangleNames=false, encryptStrings=false, obfuscateNumbers=false,
+        injectDeadCode=true, antiDebug=true, vmWrap=true, strength="max",
+    }):obfuscate(r2, "key_outer")
 
-    -- Final: wrap one more time in VM for deepest protection
-    local finalKey = randomKey(32)
-    local sealed   = vmWrap(r3, finalKey)
+    -- Pass 4: VM wrap #2 (double-sealed)
+    local sealed = vmWrap(r3, randomKey(32))
 
-    -- Outermost: anti-dump shield
+    -- Outermost: single anti-dump shield
     local ok, shielded = pcall(buildAntiDump, sealed)
     return ok and shielded or sealed
 end
@@ -637,9 +587,11 @@ Obfuscator._obfuscate = function(self, src, sourceName)
         out = vmWrap(out, key)
     end
 
-    -- Layer 10: Anti-dump shield (outermost — "No access" + "Not today my friend")
-    local ok, shielded = pcall(buildAntiDump, out)
-    if ok then out = shielded end
+    -- Layer 10: Anti-dump shield added only at the top level (not in intermediate passes)
+    if not self._skipShield then
+        local ok, shielded = pcall(buildAntiDump, out)
+        if ok then out = shielded end
+    end
 
     return out
 end
