@@ -304,6 +304,85 @@ local function injectDeadCode(src)
     return table.concat(lines, "\n")
 end
 
+-- ── Anti-dump shield (outermost wrapper) ─────────────────────────────────────
+-- Two-tier protection:
+--   Tier 1: when someone reads/dumps the script text, they see "No access"
+--   Tier 2: if they extract the inner payload and try to run it, they get
+--           "Not today my friend" via a runtime environment + bypass check
+
+local function buildAntiDump(innerSrc)
+    local msgVar    = randName(5)
+    local msg2Var   = randName(5)
+    local checkFn   = randName(7)
+    local envVar    = randName(5)
+    local trapVar   = randName(4)
+    local flagVar   = randName(4)
+
+    -- These byte sequences spell out the messages without revealing them as plain text
+    -- "Crystal: No access \226\128\148 this script is protected."
+    -- "Not today my friend \240\159\148\222"
+    local noAccessBytes = {}
+    local noAccess = "Crystal: No access \226\128\148 this script is protected."
+    for i = 1, #noAccess do noAccessBytes[i] = noAccess:byte(i) end
+
+    local notTodayBytes = {}
+    local notToday = "Not today my friend \240\159\148\222"
+    for i = 1, #notToday do notTodayBytes[i] = notToday:byte(i) end
+
+    return ([[
+--[[
+\9\9Crystal Protected Script
+\9\9Unauthorized access or source dumping is prohibited.
+\9\9If you are reading this as text: No access.
+\9\9If you attempted a bypass: Not today my friend.
+\9\9Crystal Obfuscator v1.0 \226\128\148 github.com/robloxscripter6245366542/roblox-lua-obscator
+]]
+local %s=string.char(%s)
+local %s=string.char(%s)
+local function %s()
+    local %s=getfenv and getfenv() or {}
+    if not game or type(game)~="userdata" then
+        print(%s); return false
+    end
+    local _sc=rawget(%s,"script")
+    if not _sc or type(_sc)~="userdata" then
+        error(%s, 0); return false
+    end
+    local %s=false
+    local _ok=pcall(function() %s=true end)
+    if not _ok or not %s then
+        error(%s, 0); return false
+    end
+    if debug and type(debug.sethook)=="function" then
+        local _cnt=0
+        pcall(function()
+            debug.sethook(function() _cnt=_cnt+1 end,"c",1)
+            debug.sethook()
+        end)
+        if _cnt>3 then
+            error(%s, 0); return false
+        end
+    end
+    return true
+end
+local %s
+if not %s() then return end
+%s=true
+%s
+]]):format(
+        msgVar,  table.concat(noAccessBytes, ","),
+        msg2Var, table.concat(notTodayBytes, ","),
+        checkFn,
+        envVar,
+        msgVar,
+        envVar, msg2Var,
+        trapVar, trapVar, trapVar, msg2Var,
+        msg2Var,
+        flagVar, checkFn, flagVar,
+        innerSrc
+    )
+end
+
 -- ── Layer 7: Anti-debug / anti-deobfuscation stubs ───────────────────────────
 
 local function injectAntiDebug()
@@ -489,9 +568,12 @@ function Obfuscator.obfuscateWithKeySystem(src, options)
     local r3 = pass3:obfuscate(r2, "key_outer")
 
     -- Final: wrap one more time in VM for deepest protection
-    local finalSeed = math.random(10, 250)
-    local finalKey  = randomKey(32)
-    return vmWrap(r3, finalKey)
+    local finalKey = randomKey(32)
+    local sealed   = vmWrap(r3, finalKey)
+
+    -- Outermost: anti-dump shield
+    local ok, shielded = pcall(buildAntiDump, sealed)
+    return ok and shielded or sealed
 end
 
 -- Strength presets
@@ -554,6 +636,10 @@ Obfuscator._obfuscate = function(self, src, sourceName)
     if self.layers.vmWrap then
         out = vmWrap(out, key)
     end
+
+    -- Layer 10: Anti-dump shield (outermost — "No access" + "Not today my friend")
+    local ok, shielded = pcall(buildAntiDump, out)
+    if ok then out = shielded end
 
     return out
 end

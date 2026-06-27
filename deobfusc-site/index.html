@@ -213,6 +213,7 @@ table.trace tr:hover td{background:#161b22}
     <span class="lchip lc5">Dead Code</span>
     <span class="lchip lc3">Anti-Debug</span>
     <span class="lchip lc3">VM Wrap</span>
+    <span class="lchip lc5">Anti-Dump</span>
   </div>
   <button class="obf-go" onclick="runObfuscate()">🔒 Obfuscate</button>
   <button class="obf-copy" onclick="copyObfOutput()">⎘ Copy Output</button>
@@ -1002,9 +1003,9 @@ function setStrength(s, el) {
   document.querySelectorAll('.strength-btn').forEach(b=>b.classList.remove('sel'));
   el.classList.add('sel');
   const chips = document.getElementById('layerChips');
-  if(s==='fast')     chips.innerHTML = '<span class="lchip lc1">Names</span><span class="lchip lc2">Strings</span><span class="lchip lc3">VM Wrap</span>';
-  else if(s==='balanced') chips.innerHTML = '<span class="lchip lc1">Names</span><span class="lchip lc2">Strings</span><span class="lchip lc4">Numbers</span><span class="lchip lc5">Dead Code</span><span class="lchip lc3">VM Wrap</span>';
-  else chips.innerHTML = '<span class="lchip lc1">Names</span><span class="lchip lc2">Strings</span><span class="lchip lc4">Numbers</span><span class="lchip lc5">Dead Code</span><span class="lchip lc3">Anti-Debug</span><span class="lchip lc3">VM Wrap</span>';
+  if(s==='fast')     chips.innerHTML = '<span class="lchip lc1">Names</span><span class="lchip lc2">Strings</span><span class="lchip lc3">VM Wrap</span><span class="lchip lc5">Anti-Dump</span>';
+  else if(s==='balanced') chips.innerHTML = '<span class="lchip lc1">Names</span><span class="lchip lc2">Strings</span><span class="lchip lc4">Numbers</span><span class="lchip lc5">Dead Code</span><span class="lchip lc3">VM Wrap</span><span class="lchip lc5">Anti-Dump</span>';
+  else chips.innerHTML = '<span class="lchip lc1">Names</span><span class="lchip lc2">Strings</span><span class="lchip lc4">Numbers</span><span class="lchip lc5">Dead Code</span><span class="lchip lc3">Anti-Debug</span><span class="lchip lc3">VM Wrap</span><span class="lchip lc5">Anti-Dump</span>';
 }
 
 // ── Crypto ──────────────────────────────────────────────────────────
@@ -1184,6 +1185,62 @@ function buildAntiDebug(){
   return `local ${v}=tostring;local ${v2}=pcall;if ${v}(${v2})~=${v}(pcall) then error("Crystal: integrity fail",0) end\n`;
 }
 
+// ── Anti-dump shield (outermost layer) ───────────────────────────
+// Tier 1: reading/dumping the script shows "No access" comment + message vars
+// Tier 2: bypassing (running inner code directly) triggers "Not today my friend"
+function buildAntiDump(innerSrc){
+  const msgVar   = randName(5);
+  const msg2Var  = randName(5);
+  const checkFn  = randName(7);
+  const envVar   = randName(5);
+  const trapVar  = randName(4);
+  const flagVar  = randName(4);
+
+  // Build byte-literal arrays so the messages aren't visible as plain strings
+  const noAccessBytes = [...'Crystal: No access — this script is protected.']
+    .map(c=>c.codePointAt(0)).join(',');
+  const notTodayBytes = [...'Not today my friend 🔒']
+    .map(c=>c.codePointAt(0)).join(',');
+
+  return `--[[
+\t\tCrystal Protected Script
+\t\tUnauthorized access or source dumping is prohibited.
+\t\tIf you are reading this as raw text: No access.
+\t\tIf you attempted a bypass: Not today my friend.
+\t\tCrystal Obfuscator v1.0
+]]
+local ${msgVar}=string.char(${noAccessBytes})
+local ${msg2Var}=string.char(${notTodayBytes})
+local function ${checkFn}()
+    local ${envVar}=getfenv and getfenv() or {}
+    if not game or type(game)~="userdata" then
+        print(${msgVar});return false
+    end
+    local _sc=rawget(${envVar},"script")
+    if not _sc or type(_sc)~="userdata" then
+        error(${msg2Var},0);return false
+    end
+    local ${trapVar}=false
+    local _ok=pcall(function() ${trapVar}=true end)
+    if not _ok or not ${trapVar} then
+        error(${msg2Var},0);return false
+    end
+    if debug and type(debug.sethook)=="function" then
+        local _cnt=0
+        pcall(function()
+            debug.sethook(function() _cnt=_cnt+1 end,"c",1)
+            debug.sethook()
+        end)
+        if _cnt>3 then error(${msg2Var},0);return false end
+    end
+    return true
+end
+local ${flagVar}
+if not ${checkFn}() then return end
+${flagVar}=true
+${innerSrc}`;
+}
+
 // ── Layer 6: VM wrapper (executor-safe loader) ────────────────────
 function vmWrap(src, seed){
   const bytes=strToBytes(src);
@@ -1288,6 +1345,9 @@ function singlePassObfuscate(src, strength, seed){
   }
   try{ out=vmWrap(out,seed); layersApplied.push('VM Wrap'); }catch(e){ console.error('vmWrap',e); }
 
+  // Outermost: Anti-dump shield
+  try{ out=buildAntiDump(out); layersApplied.push('Anti-Dump Shield'); }catch(e){}
+
   return {output:out, layers:layersApplied};
 }
 
@@ -1332,6 +1392,9 @@ function ultraObfuscate(src){
   const guardFn=randName(6);
   out=`local ${guardFn}=tostring;if type(${guardFn})~="function" then error("Crystal: environment check failed",0) end\n`+out;
   layersApplied.push('Integrity Guard');
+
+  // Outermost: Anti-dump shield — "No access" on read, "Not today my friend" on bypass
+  try{ out=buildAntiDump(out); layersApplied.push('Anti-Dump Shield'); }catch(e){}
 
   return {output:out, layers:layersApplied};
 }
