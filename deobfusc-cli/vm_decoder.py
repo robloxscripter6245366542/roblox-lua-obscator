@@ -181,7 +181,28 @@ def fix_continue(tokens):
         i += 1
     return out
 
+def normalize_luau_numbers(src):
+    """Luau number literals → Lua 5.4: binary 0b… and underscore separators
+    (e.g. 0X61__, 0b101__1, 1_000) which Luarmor 'superflow' uses heavily.
+    Strings/comments are protected via the tokenizer before the regex pass."""
+    holds, parts = [], []
+    for kind, text in tokenize(src):
+        if kind in ('str', 'comment'):
+            parts.append('\x00%d\x00' % len(holds)); holds.append(text)
+        else:
+            parts.append(text)
+    code = ''.join(parts)
+    code = re.sub(r'0[bB][01][01_]*',
+                  lambda m: str(int(m.group(0)[2:].replace('_', ''), 2) if m.group(0)[2:].replace('_', '') else 0), code)
+    code = re.sub(r'0[xX][0-9a-fA-F][0-9a-fA-F_]*',
+                  lambda m: '0x' + m.group(0)[2:].replace('_', ''), code)
+    code = re.sub(r'\b\d[\d_]*\.?[\d_]*(?:[eEpP][+\-]?\d[\d_]*)?',
+                  lambda m: m.group(0).replace('_', ''), code)
+    return re.sub('\x00(\\d+)\x00', lambda m: holds[int(m.group(1))], code)
+
+
 def luau_to_lua54(src):
+    src = normalize_luau_numbers(src)        # binary/underscore numbers first
     toks = list(tokenize(src))
     toks = fix_string_escapes(toks)
     toks = fix_compound_assignments(toks)
