@@ -64,10 +64,24 @@ typeof=function(x) local t=type(x) if t=="table" then return x.__type or "Instan
 identifyexecutor=function() return "Synapse X","2.0" end getexecutorname=identifyexecutor
 iscclosure=function() return false end islclosure=function() return true end
 checkcaller=function() return true end newcclosure=function(f) return f end clonefunction=function(f) return f end
-hookfunction=function(a,b) return b end getrawmetatable=function(o) return getmetatable(o) or {} end
+hookfunction=function(a,b) E.emit("UNC hookfunction") return b end
+getrawmetatable=function(o) return getmetatable(o) or {} end
 setreadonly=function() end isreadonly=function() return false end getgenv=function() return _G end
-getrenv=function() return _G end setclipboard=function() end writefile=function() end readfile=function() return "" end
-isfile=function() return false end isfolder=function() return false end makefolder=function() end
+getrenv=function() return _G end
+local function _u(name) return function(...) E.emit("UNC "..name.." "..E.serialize({...})) end end
+setclipboard=function(s) E.emit("UNC setclipboard "..E.serialize(s)) end toclipboard=setclipboard
+writefile=function(p,d) E.emit("UNC writefile "..E.serialize(p)) end
+appendfile=function(p,d) E.emit("UNC appendfile "..E.serialize(p)) end
+makefolder=function(p) E.emit("UNC makefolder "..E.serialize(p)) end
+delfile=_u("delfile") delfolder=_u("delfolder")
+readfile=function() return "" end isfile=function() return false end isfolder=function() return false end
+listfiles=function() return {} end
+fireclickdetector=_u("fireclickdetector") firetouchinterest=_u("firetouchinterest")
+fireproximityprompt=_u("fireproximityprompt") firesignal=_u("firesignal")
+queue_on_teleport=_u("queue_on_teleport") queueteleport=queue_on_teleport
+request=function(o) E.emit("UNC request "..E.serialize(o and o.Url)) return {Success=true,StatusCode=200,Body="{}"} end
+http={request=request} http_request=request
+local function _ret(name,r) return function(...) E.emit("UNC "..name) return r end end
 local _wc=0 __TICK=function() _wc=_wc+1 if _wc>3000 then error("[loop]",0) end end
 wait=function(n) __TICK() return n or 0 end
 task={wait=wait, spawn=function(f,...) if type(f)=="function" then pcall(f,...) end return f end,
@@ -120,17 +134,36 @@ def reconstruct(trace_path, out_path):
             body.append('%s.%s:Connect(function(...)\n    -- handler logic not observable from trace\nend)' % (ref, ev))
         elif op == "CALL":
             vid, meth = parts[1], parts[2]
+            args = parts[3] if len(parts) > 3 else ""
             ref = declared.get(vid, vid)
-            body.append('%s:%s()' % (ref, meth))
+            body.append('%s:%s(%s)' % (ref, meth, args))
+        elif op == "UNC":
+            name = parts[1]
+            rest = ' '.join(parts[2:]) if len(parts) > 2 else ""
+            # rest is a serialized {args} table or a single value
+            args = rest
+            if args.startswith('{') and args.endswith('}'):
+                args = args[1:-1]
+            body.append('%s(%s)' % (name, args))
         elif op == "HTTP":
-            body.append('-- HTTP: %s' % (' '.join(parts[1:])))
+            kind = parts[1] if len(parts) > 1 else ""
+            rest = ' '.join(parts[2:]) if len(parts) > 2 else ""
+            if kind in ("HttpGet", "GetAsync"):
+                body.append('game:HttpGet(%s)' % rest)
+            elif kind == "RequestAsync":
+                body.append('game:GetService("HttpService"):RequestAsync(%s)' % rest)
+            elif kind == "PostAsync":
+                body.append('game:GetService("HttpService"):PostAsync(%s)' % rest)
+            else:
+                body.append('-- HTTP %s %s' % (kind, rest))
     out += body
     with open(out_path, 'w') as f:
         f.write('\n'.join(out) + '\n')
     n_new = sum(1 for l in lines if l.startswith("NEW"))
     n_set = sum(1 for l in lines if l.startswith("SET"))
     n_conn = sum(1 for l in lines if l.startswith("CONN"))
-    return n_new, n_set, n_conn
+    n_call = sum(1 for l in lines if l.startswith("CALL") or l.startswith("UNC") or l.startswith("HTTP"))
+    return n_new, n_set, n_conn, n_call
 
 def main():
     if len(sys.argv) < 2:
@@ -157,8 +190,8 @@ def main():
     if not os.path.exists(trace_out):
         print("[!] no trace produced"); sys.exit(2)
     out_path = os.path.join(work, 'reconstructed.lua')
-    n, s, c = reconstruct(trace_out, out_path)
-    print(f"[*] reconstructed {n} instances, {s} property sets, {c} event handlers")
+    n, s, c, k = reconstruct(trace_out, out_path)
+    print(f"[*] reconstructed {n} instances, {s} property sets, {c} event handlers, {k} calls (method/UNC/HTTP)")
     print(f"[*] clean Lua -> {out_path}")
 
 if __name__ == '__main__':

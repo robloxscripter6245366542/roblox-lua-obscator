@@ -94,24 +94,51 @@ function Signal:Once(fn) return self:Connect(fn) end
 function Signal:Wait() if rawget(_G,"__TICK") then __TICK() end return end
 function Signal:Fire(...) end
 
+-- args serializer (skips leading self) ------------------------------------------
+local function argstr(owner, ...)
+  local a = {...}
+  local start = (a[1] == owner) and 2 or 1
+  local parts = {}
+  for i = start, select("#", ...) do parts[#parts+1] = serialize(a[i]) end
+  return table.concat(parts, ", ")
+end
+
 -- Instance -----------------------------------------------------------------------
+local EVENTNAMES = {Changed=1,ChildAdded=1,ChildRemoved=1,DescendantAdded=1,DescendantRemoving=1,
+  MouseButton1Click=1,MouseButton2Click=1,MouseButton1Down=1,MouseButton1Up=1,MouseEnter=1,
+  MouseLeave=1,Activated=1,InputBegan=1,InputEnded=1,InputChanged=1,FocusLost=1,Focused=1,
+  Touched=1,Heartbeat=1,RenderStepped=1,Stepped=1,
+  -- remotes:
+  OnClientEvent=1,OnServerEvent=1,OnClientInvoke=1,OnServerInvoke=1}
+-- method names whose CALLS we log (network / fs / fx) plus a generic fallback
+local LOGMETHODS = {FireServer=1,FireClient=1,FireAllClients=1,InvokeServer=1,InvokeClient=1,
+  Fire=1,Invoke=1,Play=1,Stop=1,Kick=1,SetCore=1,SetCoreGuiEnabled=1,Create=1,Pause=1}
+
 local function newInstance(class)
-  local children, props, events = {}, {}, {}
+  local children, props, events, proxies = {}, {}, {}, {}
   local self = setmetatable({}, {})
   local id = newid(self, "inst")
   emit("NEW "..id.." "..class)
   local methods
   local function ev(name) if not events[name] then events[name]=newSignal(self,name) end return events[name] end
+  -- a per-key callable proxy that LOGS the call (used for unknown/remote methods)
+  local function logproxy(k)
+    if proxies[k] then return proxies[k] end
+    local p; p = setmetatable({}, {
+      __call = function(_, ...) emit("CALL "..id.." "..k.." "..argstr(self, ...)) return p end,
+      __index = function() return 0 end, __tostring = function() return "" end,
+      __add=function() return 0 end,__sub=function() return 0 end,__concat=function() return "" end })
+    proxies[k] = p; return p
+  end
   getmetatable(self).__index = function(_, k)
     if k=="ClassName" then return class end
     if k=="Name" then return props.Name or class end
     if k=="Parent" then return props.Parent end
     if methods[k] then return methods[k] end
-    if type(k)=="string" and k:match("^%u") and (k:find("Click") or k:find("Mouse") or k:find("Began")
-        or k:find("Ended") or k:find("Changed") or k:find("Child") or k:find("Descendant")
-        or k:find("Focus") or k:find("Activated") or k:find("Touched") or k=="Heartbeat"
-        or k=="RenderStepped" or k=="Stepped") then return ev(k) end
+    if type(k)=="string" and EVENTNAMES[k] then return ev(k) end
     if props[k] ~= nil then return props[k] end
+    -- method-like (Capitalized) unknown key → logging proxy; else benign 0
+    if type(k)=="string" and (LOGMETHODS[k] or k:match("^%u")) then return logproxy(k) end
     return 0
   end
   getmetatable(self).__newindex = function(_, k, v)
@@ -175,5 +202,5 @@ return {
   TweenInfo=TweenInfo, NumberRange=NumberRange, Rect=Rect, ColorSequence=ColorSequence,
   NumberSequence=NumberSequence, ColorSequenceKeypoint=ColorSequenceKeypoint,
   NumberSequenceKeypoint=NumberSequenceKeypoint, Font=Font, BrickColor=BrickColor,
-  newSignal=newSignal,
+  newSignal=newSignal, emit=emit, serialize=serialize,
 }
