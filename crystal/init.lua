@@ -28,6 +28,8 @@ Crystal.globals = {
     CFrame   = CFrame,
     Enum     = Enum,
     Instance = Instance,
+    -- Built-in Glass UI — every Crystal program gets UI.Window, UI.Button, etc.
+    UI       = require(script.ui.glass),
 }
 
 -- Override import so Crystal scripts can require other Crystal modules
