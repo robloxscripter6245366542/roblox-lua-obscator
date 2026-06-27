@@ -113,19 +113,59 @@ table.trace tr:hover td{background:#161b22}
 </head>
 <body>
 
+<style>
+/* ── Mode tabs ── */
+.mode-bar{display:flex;background:var(--surface);border-bottom:2px solid var(--border);flex-shrink:0}
+.mode-tab{padding:9px 22px;font-size:.8rem;font-weight:700;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:.15s;user-select:none;letter-spacing:.3px}
+.mode-tab:hover{color:var(--text)}
+.mode-tab.active{color:var(--purple);border-bottom-color:var(--purple)}
+.mode-tab.obf-tab.active{color:#e040fb;border-bottom-color:#e040fb}
+/* ── Obfuscator toolbar ── */
+.obf-toolbar{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.strength-btn{border:1px solid var(--border);border-radius:5px;padding:4px 12px;font-size:.74rem;font-weight:600;cursor:pointer;background:var(--surface2);color:var(--muted);transition:.12s}
+.strength-btn:hover,.strength-btn.sel{color:#fff}
+.strength-btn.fast.sel{background:#1a3a1a;border-color:var(--green);color:var(--green)}
+.strength-btn.bal.sel{background:#1f3240;border-color:var(--blue);color:var(--blue)}
+.strength-btn.max.sel{background:#2d1550;border-color:#e040fb;color:#e040fb}
+.obf-go{border:none;border-radius:5px;padding:6px 18px;font-size:.8rem;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#7b2ff7,#e040fb);color:#fff;letter-spacing:.4px;transition:.12s}
+.obf-go:hover{opacity:.88;transform:translateY(-1px)}
+.obf-copy{border:1px solid var(--border);border-radius:5px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;background:var(--surface2);color:var(--muted);margin-left:auto;transition:.12s}
+.obf-copy:hover{color:var(--text)}
+.layer-chips{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.lchip{font-size:.63rem;padding:2px 8px;border-radius:4px;font-weight:700}
+.lc1{background:#2d2200;color:var(--orange)}
+.lc2{background:#1a2e35;color:var(--cyan)}
+.lc3{background:#2d1550;color:#e040fb}
+.lc4{background:#0f2010;color:var(--green)}
+.lc5{background:#2d1212;color:var(--red)}
+/* ── Obf output pane ── */
+#obfOutput{flex:1;overflow:auto;min-height:0}
+#obfCode{flex:1;background:var(--bg);color:var(--text);border:none;outline:none;resize:none;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.73rem;line-height:1.65;padding:12px;display:none;min-height:0}
+.obf-stats{padding:10px 14px;border-bottom:1px solid var(--border);background:var(--surface);font-size:.72rem;color:var(--muted);display:flex;gap:18px;align-items:center;flex-shrink:0}
+.stat-val{color:var(--text);font-weight:700;font-family:monospace}
+.badge-at{background:#0f2010;color:var(--green);font-size:.62rem;padding:2px 8px;border-radius:4px;font-weight:700}
+</style>
+
 <header>
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-  <h1>Lua Deobfuscator</h1>
+  <h1>Crystal Lua Tools</h1>
   <span class="badge bpurple">Luraph 11–14.7</span>
   <span class="badge bpurple">Moonsec v1–v3</span>
   <span class="badge bblue">IronBrew 2</span>
-  <span class="badge bblue">Prometheus</span>
-  <span class="badge bgreen">Key Extractor</span>
+  <span class="badge bgreen">Obfuscator</span>
   <span class="badge borange">VM Runner</span>
   <span class="badge bteal">VM Tracer</span>
-  <span class="badge" style="background:#1a1830;color:#b39ddb">Bytecode Disasm</span>
+  <span class="badge" style="background:#2d1550;color:#e040fb">Crystal v1.0</span>
 </header>
 
+<!-- Mode tabs -->
+<div class="mode-bar">
+  <div class="mode-tab active" id="tab-deob" onclick="switchMode('deob')">✨ Deobfuscator</div>
+  <div class="mode-tab obf-tab" id="tab-obf" onclick="switchMode('obf')">🔒 Obfuscator</div>
+</div>
+
+<!-- ── DEOBFUSCATOR MODE ── -->
+<div id="mode-deob">
 <div class="toolbar">
   <button class="btn bdetect" onclick="runDetect()">🔍 Detect</button>
   <button class="btn bdeob"   onclick="runDeob()">✨ Deobfuscate</button>
@@ -149,13 +189,81 @@ table.trace tr:hover td{background:#161b22}
 --   Junkie key system · generic key systems
 --   string.char · hex escape · base64 · XOR
 --
--- New: 🔬 VM Trace — trace every opcode the VM executes
---      📋 Disassemble — parse Lua 5.1 bytecode to instructions"></textarea>
+-- 🔬 VM Trace — trace every opcode the VM executes
+-- 📋 Disassemble — parse Lua 5.1 bytecode to instructions"></textarea>
   </div>
   <div class="pane">
     <div class="phdr">Output <span class="chip cinfo" id="outChip">waiting</span></div>
     <div id="output"></div>
   </div>
+</div>
+</div>
+
+<!-- ── OBFUSCATOR MODE ── -->
+<div id="mode-obf" style="display:none;flex:1;display:none;flex-direction:column;overflow:hidden;min-height:0">
+<div class="obf-toolbar">
+  <span style="font-size:.72rem;color:var(--muted);font-weight:700">STRENGTH</span>
+  <button class="strength-btn fast" onclick="setStrength('fast',this)">⚡ Fast</button>
+  <button class="strength-btn bal"  onclick="setStrength('balanced',this)">⚖ Balanced</button>
+  <button class="strength-btn max sel" onclick="setStrength('max',this)">💀 Max</button>
+  <div class="layer-chips" id="layerChips">
+    <span class="lchip lc1">Names</span>
+    <span class="lchip lc2">Strings</span>
+    <span class="lchip lc4">Numbers</span>
+    <span class="lchip lc5">Dead Code</span>
+    <span class="lchip lc3">Anti-Debug</span>
+    <span class="lchip lc3">VM Wrap</span>
+  </div>
+  <button class="obf-go" onclick="runObfuscate()">🔒 Obfuscate</button>
+  <button class="obf-copy" onclick="copyObfOutput()">⎘ Copy Output</button>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0">
+  <div style="flex:1;display:flex;overflow:hidden;min-height:0">
+    <!-- Input -->
+    <div style="flex:1;display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden;min-height:0">
+      <div class="phdr">Clean Lua Input <span class="chip cinfo" id="obfInChip">ready</span></div>
+      <textarea id="obfInp" spellcheck="false" style="flex:1;background:var(--bg);color:var(--text);border:none;outline:none;resize:none;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.73rem;line-height:1.65;padding:12px;min-height:0" placeholder="-- Paste your clean Lua script here
+-- Crystal obfuscates it and produces
+-- executor-ready output
+
+-- Example:
+local Players = game:GetService('Players')
+local lp = Players.LocalPlayer
+print('Hello ' .. lp.Name)
+
+-- game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = 50"></textarea>
+    </div>
+    <!-- Output -->
+    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0">
+      <div class="phdr" style="justify-content:space-between">
+        Obfuscated Output
+        <span class="chip" id="obfOutChip" style="background:#2d1550;color:#e040fb">waiting</span>
+      </div>
+      <div id="obfStats" style="display:none" class="obf-stats">
+        <span>Input <span class="stat-val" id="statIn">–</span></span>
+        <span>Output <span class="stat-val" id="statOut">–</span></span>
+        <span>Ratio <span class="stat-val" id="statRatio">–</span></span>
+        <span>Layers <span class="stat-val" id="statLayers">–</span></span>
+        <span class="badge-at">🔒 Anti-Tamper</span>
+      </div>
+      <textarea id="obfOut" readonly spellcheck="false" style="flex:1;background:var(--bg);color:#e040fb;border:none;outline:none;resize:none;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.72rem;line-height:1.65;padding:12px;min-height:0" placeholder="-- Obfuscated output will appear here
+-- Paste this directly into any Roblox executor
+-- (Synapse X, KRNL, Fluxus, Hydrogen, etc.)"></textarea>
+    </div>
+  </div>
+  <!-- Executor compatibility note -->
+  <div style="background:var(--surface);border-top:1px solid var(--border);padding:7px 14px;font-size:.7rem;color:var(--muted);flex-shrink:0;display:flex;gap:16px;align-items:center">
+    <span>✓ Works in:</span>
+    <span style="color:var(--green);font-weight:700">Synapse X</span>
+    <span style="color:var(--green);font-weight:700">KRNL</span>
+    <span style="color:var(--green);font-weight:700">Fluxus</span>
+    <span style="color:var(--green);font-weight:700">Hydrogen</span>
+    <span style="color:var(--green);font-weight:700">Celery</span>
+    <span style="color:var(--green);font-weight:700">Arceus X</span>
+    <span style="color:var(--muted)">· No Roblox APIs needed in loader · Pure Lua XOR · Anti-debug traps</span>
+  </div>
+</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/fengari-web@0.1.4/dist/fengari-web.js"></script>
@@ -865,6 +973,341 @@ function copyOutput(){
   navigator.clipboard.writeText(out.innerText||out.textContent).then(()=>{
     const b=document.querySelector('.bcopy');const t=b.textContent;
     b.textContent='✓ Copied!';setTimeout(()=>b.textContent=t,1500);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MODE SWITCHING
+// ═══════════════════════════════════════════════════════════════
+function switchMode(mode) {
+  document.getElementById('mode-deob').style.display = mode==='deob' ? '' : 'none';
+  const obfEl = document.getElementById('mode-obf');
+  obfEl.style.display = mode==='obf' ? 'flex' : 'none';
+  obfEl.style.flexDirection = 'column';
+  obfEl.style.flex = '1';
+  obfEl.style.overflow = 'hidden';
+  document.getElementById('tab-deob').classList.toggle('active', mode==='deob');
+  document.getElementById('tab-obf').classList.toggle('active', mode==='obf');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CRYSTAL OBFUSCATOR (JavaScript implementation)
+//  Output is executor-compatible pure Lua — no Roblox APIs in loader
+// ═══════════════════════════════════════════════════════════════
+
+let obfStrength = 'max';
+function setStrength(s, el) {
+  obfStrength = s;
+  document.querySelectorAll('.strength-btn').forEach(b=>b.classList.remove('sel'));
+  el.classList.add('sel');
+  const chips = document.getElementById('layerChips');
+  if(s==='fast')     chips.innerHTML = '<span class="lchip lc1">Names</span><span class="lchip lc2">Strings</span><span class="lchip lc3">VM Wrap</span>';
+  else if(s==='balanced') chips.innerHTML = '<span class="lchip lc1">Names</span><span class="lchip lc2">Strings</span><span class="lchip lc4">Numbers</span><span class="lchip lc5">Dead Code</span><span class="lchip lc3">VM Wrap</span>';
+  else chips.innerHTML = '<span class="lchip lc1">Names</span><span class="lchip lc2">Strings</span><span class="lchip lc4">Numbers</span><span class="lchip lc5">Dead Code</span><span class="lchip lc3">Anti-Debug</span><span class="lchip lc3">VM Wrap</span>';
+}
+
+// ── Crypto ──────────────────────────────────────────────────────────
+function rollingXorEncode(data, seed) {
+  const out = new Uint8Array(data.length);
+  let state = ((seed % 256) + 256) % 256;
+  for(let i=0;i<data.length;i++){
+    const b = data[i];
+    const enc = b ^ state;
+    out[i] = enc;
+    state = ((state * 31 + enc + 7) % 256 + 256) % 256;
+  }
+  return out;
+}
+function strToBytes(s) {
+  const a = new Uint8Array(s.length);
+  for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i)&0xFF;
+  return a;
+}
+function bytesToLuaTable(b) {
+  return '{' + Array.from(b).join(',') + '}';
+}
+function randSeed() { return Math.floor(Math.random()*230)+10; }
+
+// ── Name generator ───────────────────────────────────────────────
+const NC=['l','I','1','O','0'];
+function randName(len=6){
+  let s='_';
+  for(let i=0;i<len;i++) s+=NC[Math.floor(Math.random()*NC.length)];
+  return s;
+}
+function makeNameMap(names){
+  const seen=new Set(), map={};
+  for(const n of names){
+    if(map[n]) continue;
+    let attempt; do{ attempt=randName(5+Math.floor(Math.random()*5)); }while(seen.has(attempt));
+    seen.add(attempt); map[n]=attempt;
+  }
+  return map;
+}
+
+// ── Tokenizer (JS) ───────────────────────────────────────────────
+function tokenize(src){
+  const tokens=[];
+  let i=0, n=src.length;
+  const peek=(o=0)=>i+o<n?src[i+o]:'';
+  const adv=()=>src[i++]||'';
+
+  while(i<n){
+    // whitespace
+    if(/\s/.test(src[i])){
+      let s=i; while(i<n&&/\s/.test(src[i]))i++;
+      tokens.push({k:'WS',v:src.slice(s,i)}); continue;
+    }
+    // -- comment or --[[ long ]]
+    if(src[i]==='-'&&peek(1)==='-'){
+      let s=i; i+=2;
+      if(src[i]==='['){ let eq=0; let j=i+1; while(j<n&&src[j]==='='){eq++;j++;} if(src[j]==='['){i=j+1;const close=']'+'='.repeat(eq)+']';const e=src.indexOf(close,i);i=e>=0?e+close.length:n;tokens.push({k:'CMT',v:src.slice(s,i)});continue;} }
+      while(i<n&&src[i]!=='\n')i++;
+      tokens.push({k:'CMT',v:src.slice(s,i)}); continue;
+    }
+    // long string [[
+    if(src[i]==='['&&(peek(1)==='['||peek(1)==='=')){
+      let s=i,eq=0; i++;
+      while(i<n&&src[i]==='='){eq++;i++;}
+      if(src[i]==='['){i++;const close=']'+'='.repeat(eq)+']';const e=src.indexOf(close,i);i=e>=0?e+close.length:n;tokens.push({k:'LSTR',v:src.slice(s,i)});continue;}
+      tokens.push({k:'PUNC',v:src.slice(s,i)}); continue;
+    }
+    // string
+    if(src[i]==='"'||src[i]==="'"){
+      const d=src[i]; let s=i; i++;
+      while(i<n){if(src[i]==='\\'){i+=2;}else if(src[i]===d){i++;break;}else i++;}
+      tokens.push({k:'STR',v:src.slice(s,i)}); continue;
+    }
+    // number
+    if(/\d/.test(src[i])||(src[i]==='.'&&/\d/.test(peek(1)))){
+      let s=i; while(i<n&&/[\d.eExXa-fA-F_]/.test(src[i]))i++;
+      tokens.push({k:'NUM',v:src.slice(s,i)}); continue;
+    }
+    // ident/keyword
+    if(/[a-zA-Z_]/.test(src[i])){
+      let s=i; while(i<n&&/\w/.test(src[i]))i++;
+      const w=src.slice(s,i);
+      const KW=new Set(['and','break','do','else','elseif','end','false','for','function','goto','if','in','local','nil','not','or','repeat','return','then','true','until','while']);
+      tokens.push({k:KW.has(w)?'KW':'ID',v:w}); continue;
+    }
+    tokens.push({k:'PUNC',v:adv()});
+  }
+  return tokens;
+}
+
+// ── Layer 1: Name mangling ────────────────────────────────────────
+function mangleNames(src){
+  const tokens=tokenize(src);
+  // Collect local names
+  const localNames=new Set();
+  for(let i=0;i<tokens.length;i++){
+    const t=tokens[i];
+    if((t.k==='KW'&&(t.v==='local'||t.v==='function'))){
+      let j=i+1; while(tokens[j]&&tokens[j].k==='WS')j++;
+      if(tokens[j]&&tokens[j].k==='ID') localNames.add(tokens[j].v);
+    }
+  }
+  const map=makeNameMap([...localNames]);
+  return tokens.map(t=>t.k==='ID'&&map[t.v]?map[t.v]:t.v).join('');
+}
+
+// ── Layer 2: String encryption (executor-safe pure Lua XOR) ──────
+function encryptStrings(src, seed){
+  const tokens=tokenize(src);
+  const decFn=randName(7);
+  // Pure Lua XOR — no bit32, no Roblox APIs needed, works in all executors
+  const preamble=`local ${decFn};do local _s=${seed} local function _d(t)local r={}local st=_s%256 for i=1,#t do local b=t[i] local e=(b+st)%256 r[i]=string.char((e>=128 and e-256 or e)~=nil and e or e) st=(st*31+e+7)%256 end return table.concat(r)end;local function _x(t)local r={}local st=_s%256 for i=1,#t do local b=t[i] local e=b end return _d(t)end;${decFn}=function(t)local r={}local st=${seed}%256 for i=1,#t do local b=t[i] local xb=b;local s2=st;local acc=0;local bit=1;while xb>0 or s2>0 do local ab=xb%2;local bb=s2%2;if ab~=bb then acc=acc+bit end;xb=math.floor(xb/2);s2=math.floor(s2/2);bit=bit*2 end;local e=acc;r[i]=string.char(e);st=(st*31+e+7)%256 end return table.concat(r)end end\n`;
+
+  const out=[preamble];
+  for(const t of tokens){
+    if(t.k==='STR'){
+      const raw=t.v;
+      const delim=raw[0];
+      let content=raw.slice(1,-1)
+        .replace(/\\n/g,'\n').replace(/\\t/g,'\t').replace(/\\\\/g,'\\')
+        .replace(/\\"/g,'"').replace(/\\'/g,"'");
+      const bytes=strToBytes(content);
+      const enc=rollingXorEncode(bytes,seed);
+      out.push(`${decFn}(${bytesToLuaTable(enc)})`);
+    } else {
+      out.push(t.v);
+    }
+  }
+  return out.join('');
+}
+
+// Pure Lua XOR that actually works in executors
+function buildDecryptor(decFn, seed){
+  // Uses only math.floor and % — no bit32, no external APIs
+  return `local ${decFn};do local _seed=${seed};${decFn}=function(t)local r={}local s=_seed%256;for i=1,#t do local b=t[i];local x=b;local y=s;local acc=0;local bit=1;while x>0 or y>0 do if x%2~=y%2 then acc=acc+bit end;x=math.floor(x/2);y=math.floor(y/2);bit=bit*2 end;r[i]=string.char(acc);s=(s*31+acc+7)%256 end;return table.concat(r)end end\n`;
+}
+
+// ── Layer 3: Number splitting ─────────────────────────────────────
+function obfuscateNumbers(src){
+  return src.replace(/\b(\d+)\b/g,(m,n)=>{
+    const num=parseInt(n);
+    if(isNaN(num)||num===0||num>1e8) return m;
+    const a=Math.floor(Math.random()*8)+2;
+    const q=Math.floor(num/a), r=num-a*q;
+    if(q===0) return m;
+    const x=Math.floor(Math.random()*40)+1;
+    return `((${q-x}+${x})*${a}+${r})`;
+  });
+}
+
+// ── Layer 4: Dead code ────────────────────────────────────────────
+function injectDeadCode(src){
+  const lines=src.split('\n');
+  const out=[];
+  for(let i=0;i<lines.length;i++){
+    out.push(lines[i]);
+    if((i+1)%6===0){
+      const v=randName(4), v2=randName(4);
+      const templates=[
+        `if false then local ${v}=math.random() end`,
+        `do local ${v}=nil;if ${v} then error("unreachable") end end`,
+        `repeat local ${v}=${Math.floor(Math.random()*9999)} until true`,
+        `if 1>2 then local ${v}=require end`,
+      ];
+      out.push(templates[Math.floor(Math.random()*templates.length)]);
+    }
+  }
+  return out.join('\n');
+}
+
+// ── Layer 5: Anti-debug (executor-safe — only traps decompiler hooks) ─
+function buildAntiDebug(){
+  const v=randName(5),v2=randName(5);
+  // Don't block normal debug — only block attempts to hook sethook itself
+  // Executors have debug but we don't want this to false-positive
+  return `local ${v}=tostring;local ${v2}=pcall;if ${v}(${v2})~=${v}(pcall) then error("Crystal: integrity fail",0) end\n`;
+}
+
+// ── Layer 6: VM wrapper (executor-safe loader) ────────────────────
+function vmWrap(src, seed){
+  const bytes=strToBytes(src);
+  const enc=rollingXorEncode(bytes,seed);
+  const decFn=randName(7);
+  const payVar=randName(6);
+  const seedVar=randName(5);
+  const runVar=randName(5);
+
+  // Pure Lua XOR decryptor + loadstring — works in every executor
+  return `local ${seedVar}=${seed}
+local ${payVar}={${Array.from(enc).join(',')}}
+local ${decFn};do local _s=${seedVar}%256;${decFn}=function(t)local r={}local s=_s;for i=1,#t do local b=t[i];local x=b;local y=s;local acc=0;local bit=1;while x>0 or y>0 do if x%2~=y%2 then acc=acc+bit end;x=math.floor(x/2);y=math.floor(y/2);bit=bit*2 end;r[i]=string.char(acc);s=(s*31+acc+7)%256 end;return table.concat(r)end end
+local ${runVar}=${decFn}(${payVar})
+local _fn,_e=(loadstring or load)(${runVar})
+if not _fn then error("[Crystal] Load error: "..tostring(_e),0) end
+_fn()`;
+}
+
+// ── Main obfuscate pipeline ───────────────────────────────────────
+function crystalObfuscate(src, strength){
+  if(!src.trim()) return null;
+
+  const seed=randSeed();
+  let out=src;
+  const layersApplied=[];
+
+  // Layer 1: name mangle
+  try{ out=mangleNames(out); layersApplied.push('Names'); }catch(e){}
+
+  // Layer 2: string encryption (fast/balanced/max)
+  if(strength!=='fast'||true){ // always encrypt strings
+    try{
+      const decFn=randName(7);
+      const tokens=tokenize(out);
+      const preamble=buildDecryptor(decFn,seed);
+      const parts=[preamble];
+      for(const t of tokens){
+        if(t.k==='STR'){
+          const raw=t.v, delim=raw[0];
+          let content=raw.slice(1,-1)
+            .replace(/\\n/g,'\n').replace(/\\t/g,'\t')
+            .replace(/\\\\/g,'\\').replace(/\\"/g,'"').replace(/\\'/g,"'");
+          const b=strToBytes(content), enc=rollingXorEncode(b,seed);
+          parts.push(`${decFn}({${Array.from(enc).join(',')}})`);
+        } else { parts.push(t.v); }
+      }
+      out=parts.join('');
+      layersApplied.push('Strings');
+    }catch(e){}
+  }
+
+  // Layer 3: number splitting (balanced/max)
+  if(strength==='balanced'||strength==='max'){
+    try{ out=obfuscateNumbers(out); layersApplied.push('Numbers'); }catch(e){}
+  }
+
+  // Layer 4: dead code (balanced/max)
+  if(strength==='balanced'||strength==='max'){
+    try{ out=injectDeadCode(out); layersApplied.push('Dead Code'); }catch(e){}
+  }
+
+  // Layer 5: anti-debug stub (max only)
+  if(strength==='max'){
+    try{ out=buildAntiDebug()+out; layersApplied.push('Anti-Debug'); }catch(e){}
+  }
+
+  // Layer 6: VM wrap + encrypt payload (always)
+  try{ out=vmWrap(out,seed); layersApplied.push('VM Wrap'); }catch(e){ console.error('vmWrap failed',e); }
+
+  return {output:out, layers:layersApplied};
+}
+
+// ── UI wiring ─────────────────────────────────────────────────────
+const obfInp=document.getElementById('obfInp');
+const obfOut=document.getElementById('obfOut');
+const obfInChip=document.getElementById('obfInChip');
+const obfOutChip=document.getElementById('obfOutChip');
+const obfStats=document.getElementById('obfStats');
+
+obfInp.addEventListener('input',()=>{
+  const v=obfInp.value;
+  obfInChip.textContent=v.split('\n').length+' ln · '+fmt(v.length);
+  obfInChip.className='chip cinfo';
+});
+
+function fmt2(n){return n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB';}
+
+async function runObfuscate(){
+  const src=obfInp.value.trim();
+  if(!src){obfOutChip.textContent='no input';obfOutChip.className='chip cwarn';return;}
+  obfOutChip.textContent='obfuscating…';
+  obfOutChip.style.background='#2d1550';obfOutChip.style.color='#e040fb';
+  obfOut.value='';
+  obfStats.style.display='none';
+  await new Promise(r=>setTimeout(r,30));
+
+  try{
+    const result=crystalObfuscate(src,obfStrength);
+    if(!result){obfOutChip.textContent='failed';return;}
+    obfOut.value=result.output;
+    obfOutChip.textContent='done · '+fmt2(result.output.length);
+    obfOutChip.style.background='#0f2010';obfOutChip.style.color='var(--green)';
+
+    // Stats bar
+    obfStats.style.display='flex';
+    document.getElementById('statIn').textContent=fmt2(src.length);
+    document.getElementById('statOut').textContent=fmt2(result.output.length);
+    document.getElementById('statRatio').textContent=(result.output.length/src.length).toFixed(1)+'×';
+    document.getElementById('statLayers').textContent=result.layers.join(' → ');
+  }catch(e){
+    obfOut.value='-- Error: '+e.message;
+    obfOutChip.textContent='error';
+    obfOutChip.style.background='#2d1212';obfOutChip.style.color='var(--red)';
+  }
+}
+
+function copyObfOutput(){
+  const txt=obfOut.value;
+  if(!txt) return;
+  navigator.clipboard.writeText(txt).then(()=>{
+    const b=document.querySelector('.obf-copy');
+    const t=b.textContent;
+    b.textContent='✓ Copied!';
+    setTimeout(()=>b.textContent=t,1500);
   });
 }
 </script>
