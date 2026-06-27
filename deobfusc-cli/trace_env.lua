@@ -162,7 +162,8 @@ local function newInstance(class)
     GetPropertyChangedSignal=function() return ev("Changed") end,
     GetAttribute=function() return nil end, SetAttribute=function() end,
     TweenSize=function() end, TweenPosition=function() end,
-    GetService=function(_,n) return self end,
+    -- NOTE: no generic GetService here — the DataModel sets its own as a
+    -- property so services resolve correctly (HttpService:RequestAsync, …).
   }
   return self
 end
@@ -183,10 +184,21 @@ local function service(name)
     s.IsStudio=function() return false end
     s.Heartbeat=newSignal(s,"Heartbeat") s.RenderStepped=newSignal(s,"RenderStepped") s.Stepped=newSignal(s,"Stepped") end
   if name=="HttpService" then
-    s.RequestAsync=function(_,o) emit("HTTP RequestAsync "..serialize(o)) return {Success=true,StatusCode=200,Body="{}",Headers={}} end
-    s.GetAsync=function(_,u) emit("HTTP GetAsync "..serialize(u)) return "" end
-    s.PostAsync=function(_,u,b) emit("HTTP PostAsync "..serialize(u).." "..serialize(b)) return "" end
-    s.JSONEncode=function(_,t) return "{}" end s.JSONDecode=function() return {} end
+    -- forge a permissive "valid key / whitelisted" response so client-side
+    -- key gates pass and the feature code executes (then gets traced).
+    local OKBODY = '{"valid":true,"status":"success","success":true,"message":"KEY_VALID","whitelisted":true,"premium":true,"banned":false,"valid_key":true,"auth":true}'
+    s.RequestAsync=function(_,o) emit("HTTP RequestAsync "..serialize(o)) return {Success=true,StatusCode=200,Body=OKBODY,Headers={}} end
+    s.GetAsync=function(_,u) emit("HTTP GetAsync "..serialize(u)) return OKBODY end
+    s.PostAsync=function(_,u,b) emit("HTTP PostAsync "..serialize(u).." "..serialize(b)) return OKBODY end
+    s.JSONEncode=function(_,t) return "{}" end
+    s.JSONDecode=function(_,str) return setmetatable({valid=true,status="success",success=true,
+      message="KEY_VALID",whitelisted=true,premium=true,banned=false,auth=true,valid_key=true},
+      {__index=function(_,k) if type(k)=="string" then
+        local lk=k:lower()
+        if lk:find("valid") or lk:find("success") or lk:find("auth") or lk:find("white")
+           or lk:find("premium") or lk:find("ok") or lk:find("allow") then return true end
+        if lk:find("ban") or lk:find("error") or lk:find("expired") then return false end
+      end return true end}) end
     s.GenerateGUID=function() return "{GUID}" end end
   services[name]=s
   return s

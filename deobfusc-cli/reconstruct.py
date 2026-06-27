@@ -88,12 +88,23 @@ task={wait=wait, spawn=function(f,...) if type(f)=="function" then pcall(f,...) 
   delay=function(_,f,...) if type(f)=="function" then pcall(f,...) end end,
   defer=function(f,...) if type(f)=="function" then pcall(f,...) end return f end}
 spawn=task.spawn delay=task.delay shared={} _G.shared=shared script=Instance.new("LocalScript")
+-- forge a valid-key / whitelisted environment so client-side gates pass and the
+-- feature code executes (full-coverage trace).
+getgenv().SCRIPT_KEY="KEY_VALID" getgenv().Key="KEY_VALID" getgenv().key="KEY_VALID"
+getgenv().Verified=true getgenv().verified=true getgenv().Whitelisted=true getgenv().whitelisted=true
+getgenv().Premium=true getgenv().premium=true getgenv().Banned=false getgenv().banned=false
+getgenv().Authenticated=true getgenv().authenticated=true getgenv().UI_CLOSED=true getgenv().Valid=true
 do local U local mt={__index=function() return U end,__call=function() return U end,__newindex=function() end,
   __tostring=function() return "" end,__concat=function() return "" end,__len=function() return 0 end,
   __add=function() return 0 end,__sub=function() return 0 end,__mul=function() return 0 end,
   __div=function() return 0 end,__unm=function() return 0 end,__lt=function() return false end,
   __le=function() return false end,__eq=function() return false end} U=setmetatable({},mt)
-  setmetatable(_G,{__index=function() return U end}) end
+  setmetatable(_G,{__index=function(_,k)
+    -- undefined auth-ish globals read as truthy/valid; everything else as a stub
+    if type(k)=="string" then local lk=k:lower()
+      if lk:find("valid") or lk:find("auth") or lk:find("white") or lk:find("premium")
+         or lk:find("verif") or lk=="key" then return true end end
+    return U end}) end
 '''
 
 SERVICES = {"Workspace","Players","RunService","TweenService","UserInputService","HttpService",
