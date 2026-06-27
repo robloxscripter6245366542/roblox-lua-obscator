@@ -300,6 +300,223 @@ end]]):format(src)
     end,
 })
 
+-- ── Polyglot converter: JSON / JS / other languages → Lua ────────────────────
+-- If the script contains JSON objects, JS arrow functions, JS-style code, etc.
+-- Crystal converts them automatically so the script still works in Lua.
+
+local PolyConvert = {}
+
+-- Convert a JSON value (string) to its Lua literal equivalent
+local function jsonValueToLua(v)
+    v = v:match("^%s*(.-)%s*$") -- trim
+    if v == "true"  then return "true"
+    elseif v == "false" then return "false"
+    elseif v == "null"  then return "nil"
+    elseif v:match("^%-?%d+%.?%d*$") then return v  -- number
+    elseif v:sub(1,1) == '"' then
+        -- string: convert to Lua single-quoted or double-quoted
+        return v  -- JSON strings are already valid Lua strings
+    end
+    return v
+end
+
+-- Convert JSON object { "key": value, ... } to Lua table { key = value, ... }
+local function jsonObjectToLua(json)
+    local result = {}
+    -- Strip outer { }
+    local inner = json:match("^%s*{(.+)}%s*$")
+    if not inner then return json end
+
+    -- Simple key:value parser (handles one level, not nested)
+    for key, val in inner:gmatch('"([^"]+)"%s*:%s*([^,}]+)') do
+        val = val:match("^%s*(.-)%s*$")
+        result[#result+1] = ("[%q] = %s"):format(key, jsonValueToLua(val))
+    end
+
+    if #result == 0 then return json end
+    return "{ " .. table.concat(result, ", ") .. " }"
+end
+
+-- Convert JSON array [ val, val, ... ] to Lua table { val, val, ... }
+local function jsonArrayToLua(json)
+    local inner = json:match("^%s*%[(.+)%]%s*$")
+    if not inner then return json end
+    local items = {}
+    for val in (inner .. ","):gmatch("([^,]+),") do
+        items[#items+1] = jsonValueToLua(val:match("^%s*(.-)%s*$"))
+    end
+    return "{ " .. table.concat(items, ", ") .. " }"
+end
+
+-- Detect and convert standalone JSON blocks embedded in Lua comments or strings
+-- Pattern: -- json: { ... } or embedded as a variable assignment
+function PolyConvert.convertJSON(src)
+    local changed = false
+
+    -- Pattern 1: local x = { "key": value } (JSON-style table assignment)
+    local new = src:gsub('(local%s+%w+%s*=%s*)({[^{}]*"[^"]+"%s*:[^{}]*})', function(prefix, json)
+        local converted = jsonObjectToLua(json)
+        if converted ~= json then changed = true; return prefix .. converted end
+        return prefix .. json
+    end)
+    if new ~= src then src = new end
+
+    -- Pattern 2: JSON arrays used as assignments
+    new = src:gsub('(local%s+%w+%s*=%s*)(%[[^%[%]]+%])', function(prefix, arr)
+        -- Only if it contains comma-separated values (not Lua index access)
+        if arr:find(",") then
+            local converted = jsonArrayToLua(arr)
+            if converted ~= arr then changed = true; return prefix .. converted end
+        end
+        return prefix .. arr
+    end)
+    if new ~= src then src = new end
+
+    -- Pattern 3: null → nil (JSON null used outside strings)
+    new = src:gsub("%f[%w]null%f[%W]", "nil")
+    if new ~= src then changed = true; src = new end
+
+    -- Pattern 4: true/false are already valid Lua, skip
+
+    -- Pattern 5: JSON-style string keys in tables: {"key": val} → {["key"] = val}
+    new = src:gsub('"([%w_]+)"%s*:', function(key)
+        -- Only convert if it looks like a table key context (preceded by { or ,)
+        changed = true
+        return ("[%q] = "):format(key)
+    end)
+    if new ~= src then src = new end
+
+    return src, changed
+end
+
+-- Convert JS arrow functions to Lua functions
+-- x => x + 1  →  function(x) return x + 1 end
+-- (x, y) => x + y  →  function(x, y) return x + y end
+function PolyConvert.convertArrowFunctions(src)
+    local changed = false
+
+    -- (params) => expr
+    local new = src:gsub("%(([^%)]+)%)%s*=>%s*([^\n,%)%]]+)", function(params, expr)
+        expr = expr:match("^%s*(.-)%s*$")
+        changed = true
+        return ("function(%s) return %s end"):format(params, expr)
+    end)
+    if new ~= src then changed = true; src = new end
+
+    -- single param => expr
+    new = src:gsub("([%w_]+)%s*=>%s*([^\n,%)%]]+)", function(param, expr)
+        if param == "then" or param == "else" or param == "end" or param == "do" then return end
+        expr = expr:match("^%s*(.-)%s*$")
+        changed = true
+        return ("function(%s) return %s end"):format(param, expr)
+    end)
+    if new ~= src then changed = true; src = new end
+
+    return src, changed
+end
+
+-- Convert JS console.log / Python print() style calls
+function PolyConvert.convertPrintCalls(src)
+    local changed = false
+    -- console.log(...) → print(...)
+    local new = src:gsub("console%.log%(", "print(")
+    if new ~= src then changed = true; src = new end
+    -- console.warn(...) → warn(...)
+    new = src:gsub("console%.warn%(", "warn(")
+    if new ~= src then changed = true; src = new end
+    -- console.error(...) → warn(...)
+    new = src:gsub("console%.error%(", "warn(")
+    if new ~= src then changed = true; src = new end
+    return src, changed
+end
+
+-- Convert JS-style variable declarations: var x = / const x = / let x =  → local x =
+function PolyConvert.convertJSVars(src)
+    local changed = false
+    local new = src:gsub("%f[%w]var%s+([%w_]+)%s*=", function(name)
+        changed = true
+        return "local " .. name .. " ="
+    end)
+    if new ~= src then src = new end
+    new = src:gsub("%f[%w]const%s+([%w_]+)%s*=", function(name)
+        -- Only if it's not already "local const" — skip Lua keywords
+        changed = true
+        return "local " .. name .. " ="
+    end)
+    if new ~= src then changed = true; src = new end
+    new = src:gsub("%f[%w]let%s+([%w_]+)%s*=", function(name)
+        changed = true
+        return "local " .. name .. " ="
+    end)
+    if new ~= src then changed = true; src = new end
+    return src, changed
+end
+
+-- Convert JS === / !== → == / ~=
+function PolyConvert.convertJSOperators(src)
+    local changed = false
+    local new = src:gsub("===", "==")
+    if new ~= src then changed = true; src = new end
+    new = src:gsub("!==", "~=")
+    if new ~= src then changed = true; src = new end
+    new = src:gsub("!=([^=])", "~=%1")
+    if new ~= src then changed = true; src = new end
+    -- JS && → and,  || → or,  ! → not
+    new = src:gsub("&&", " and ")
+    if new ~= src then changed = true; src = new end
+    new = src:gsub("||", " or ")
+    if new ~= src then changed = true; src = new end
+    return src, changed
+end
+
+-- Convert Python-style string formatting: f"Hello {name}" → "Hello " .. tostring(name)
+-- (Crystal already handles f-strings in its parser, this handles raw embedded ones)
+function PolyConvert.convertFStrings(src)
+    local changed = false
+    local new = src:gsub('f"([^"]*)"', function(content)
+        local parts = {}
+        local last = 1
+        for expr_start, expr, expr_end in content:gmatch("()%{([^}]+)%}()") do
+            local literal = content:sub(last, expr_start - 1)
+            if literal ~= "" then
+                parts[#parts+1] = ('"' .. literal .. '"')
+            end
+            parts[#parts+1] = ("tostring(%s)"):format(expr)
+            last = expr_end
+        end
+        local tail = content:sub(last)
+        if tail ~= "" then parts[#parts+1] = ('"' .. tail .. '"') end
+        if #parts == 0 then return '""' end
+        changed = true
+        return table.concat(parts, " .. ")
+    end)
+    if new ~= src then src = new end
+    return src, changed
+end
+
+-- Master polyglot converter — run all conversions
+function PolyConvert.convert(src)
+    local log = {}
+    local changed = false
+    local function run(name, fn)
+        local ok, result, c = pcall(fn, src)
+        if ok and c then
+            log[#log+1] = "[Crystal Polyglot] Converted: " .. name
+            changed = true
+            src = result
+        end
+    end
+    run("JSON objects/arrays",   function(s) return PolyConvert.convertJSON(s)           end)
+    run("JS arrow functions",    function(s) return PolyConvert.convertArrowFunctions(s) end)
+    run("JS var/let/const",      function(s) return PolyConvert.convertJSVars(s)         end)
+    run("JS operators (&&,||,===)", function(s) return PolyConvert.convertJSOperators(s)  end)
+    run("console.log/warn/error",function(s) return PolyConvert.convertPrintCalls(s)    end)
+    run("f-strings",             function(s) return PolyConvert.convertFStrings(s)       end)
+    return src, log, changed
+end
+
+Analyzer.PolyConvert = PolyConvert
+
 -- ── Run all fixes ─────────────────────────────────────────────────────────────
 
 function Analyzer.autoFix(src, options)
@@ -342,11 +559,28 @@ end
 function Analyzer.prepare(src, options)
     options = options or {}
 
+    -- 0. Polyglot conversion: JSON/JS/f-strings → Lua (runs before anything else)
+    local polyLog     = {}
+    local polyChanged = false
+    if options.polyConvert ~= false then
+        local converted
+        converted, polyLog, polyChanged = PolyConvert.convert(src)
+        src = converted
+    end
+
     -- 1. Detect features
     local features = Analyzer.detectFeatures(src)
 
     -- 2. Auto-fix bugs
     local fixedSrc, fixLog, wasFixed = Analyzer.autoFix(src, options.fixes)
+
+    -- Merge poly log into fix log
+    if polyChanged then
+        for _, msg in ipairs(polyLog) do
+            table.insert(fixLog, 1, msg)
+        end
+        wasFixed = true
+    end
 
     -- 3. Inject HTTPS only if requested AND not already present
     local httpsInjected = false
@@ -363,6 +597,7 @@ function Analyzer.prepare(src, options)
         features       = features,
         fixLog         = fixLog,
         wasFixed       = wasFixed,
+        polyConverted  = polyChanged,
         httpsInjected  = httpsInjected,
         valid          = valid,
         syntaxError    = syntaxErr,
