@@ -208,6 +208,7 @@ usage() {
   echo "  deobfusc --devirt <file>   Devirtualize: dump every function proto + report"
   echo "  deobfusc --sandbox <file>  Full sandbox: capture layers + decrypted strings"
   echo "  deobfusc --unc <file>      Virtual UNC executor: run like a real executor"
+  echo "  deobfusc --reconstruct <f> Behavioral rebuild: trace what it does → clean Lua"
   echo "  deobfusc --detect <file>   Detect obfuscation type + signatures"
   echo "  deobfusc --keyrm <file>    Strip key system only"
   echo "  deobfusc --trace <file>    VM execution trace (debug hook)"
@@ -348,6 +349,20 @@ case "$CMD" in
     echo -e "  ${DIM}run in full UNC executor env → capture all + drive UI${RESET}"
     [ ! -f "${WORKDIR}/vm_interp.fixed.lua" ] && python3 "$VM_DECODER" "$FILE" "$WORKDIR"
     python3 "${SCRIPT_DIR}/unc_executor.py" "$WORKDIR" "$FILE"
+    ;;
+
+  --reconstruct)
+    require_auth
+    [ -z "$FILE" ] && { err "Usage: deobfusc --reconstruct <file> [workdir]"; exit 1; }
+    [ ! -f "$FILE" ] && { err "File not found: $FILE"; exit 1; }
+    [ -z "$LUA_BIN" ] && { err "No Lua runtime found (need lua5.4/lua5.3)."; exit 1; }
+    command -v python3 >/dev/null 2>&1 || { err "python3 required for --reconstruct"; exit 1; }
+    WORKDIR="${3:-${FILE}.vmwork}"
+    header "Behavioral Reconstruction: $FILE"
+    echo -e "  ${DIM}keep obfuscator → trace every action → regenerate clean Lua${RESET}"
+    [ ! -f "${WORKDIR}/vm_interp.fixed.lua" ] && python3 "$VM_DECODER" "$FILE" "$WORKDIR"
+    python3 "${SCRIPT_DIR}/reconstruct.py" "$WORKDIR" "$FILE"
+    echo -e "  ${GREEN}clean Lua:${RESET} ${WORKDIR}/reconstructed.lua"
     ;;
 
   --stdin)
