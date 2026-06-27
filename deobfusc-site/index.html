@@ -222,7 +222,7 @@ table.trace tr:hover td{background:#161b22}
   <div style="flex:1;display:flex;overflow:hidden;min-height:0">
     <!-- Input -->
     <div style="flex:1;display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden;min-height:0">
-      <div class="phdr">Clean Lua Input <span class="chip cinfo" id="obfInChip">ready</span></div>
+      <div class="phdr">Script Input <span class="chip cinfo" id="obfInChip">ready</span></div>
       <textarea id="obfInp" spellcheck="false" style="flex:1;background:var(--bg);color:var(--text);border:none;outline:none;resize:none;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.73rem;line-height:1.65;padding:12px;min-height:0" placeholder="-- Paste your clean Lua script here
 -- Crystal obfuscates it and produces
 -- executor-ready output
@@ -240,6 +240,7 @@ print('Hello ' .. lp.Name)
         Obfuscated Output
         <span class="chip" id="obfOutChip" style="background:#2d1550;color:#e040fb">waiting</span>
       </div>
+      <div id="obfNotices"></div>
       <div id="obfStats" style="display:none" class="obf-stats">
         <span>Input <span class="stat-val" id="statIn">–</span></span>
         <span>Output <span class="stat-val" id="statOut">–</span></span>
@@ -1202,58 +1203,212 @@ if not _fn then error("[Crystal] Load error: "..tostring(_e),0) end
 _fn()`;
 }
 
+// ── Loadstring / existing obfuscation detector ────────────────────
+function detectExistingObfuscation(src){
+  const patterns=[
+    /loadstring\s*\(/,/\bload\s*\(/,
+    /loadstring\s*\(game[:.]HttpGet/i,
+    /rawget\s*\(_G,/,/getfenv\s*\(\)/,
+    /bit32\.bxor/,/string\.char\(string\.byte/,
+    /[A-Za-z0-9+/=]{200,}/,   // long base64 blob
+    /\\d{1,3}\\d{1,3}\\d{1,3}\\d{1,3}\\d{1,3}/,  // byte escape blob
+    /KRNL_LOADED|Synapse|fluxus|hydrogen/i,
+  ];
+  const flags=[];
+  for(const p of patterns) if(p.test(src)) flags.push(p.toString());
+  return {detected:flags.length>0, flags};
+}
+
+function detectKeySystem(src){
+  const patterns=[
+    /getgenv\(\)\s*[\[.]\s*[Kk]ey/,
+    /[Kk]ey\s*==\s*["']/,
+    /[Ii]nvalid\s+[Kk]ey/i,
+    /[Kk]ey\s+[Ee]xpired/i,
+    /[Kk]ey\s+[Vv]erif/i,
+    /whitelist/i,
+    /\bhwid\b/i,
+    /[Kk]ey[Gg]et[Aa]sync/,
+    /HttpGet.*key/i,
+    /discord.*key/i,
+    /getgenv\(\)\.[Kk]ey/,
+  ];
+  return patterns.some(p=>p.test(src));
+}
+
+// Try to extract payload from a single loadstring wrapper
+function stripLoadstringLayer(src){
+  // loadstring([[...]]) or load([[...]])
+  let m=src.match(/loadstring\s*\(\[\[([^]*?)\]\]\s*\)\s*\(\)/);
+  if(!m) m=src.match(/load\s*\(\[\[([^]*?)\]\]\s*\)\s*\(\)/);
+  // loadstring("...") or loadstring('...')
+  if(!m) m=src.match(/loadstring\s*\("([^"]+)"\s*\)\s*\(\)/);
+  if(!m) m=src.match(/loadstring\s*\('([^']+)'\s*\)\s*\(\)/);
+  // bare: loadstring(...)()\n only
+  if(!m) m=src.match(/^\s*loadstring\s*\(([^]*)\)\s*\(\)\s*$/);
+  if(m&&m[1]&&m[1].length>10) return {inner:m[1], stripped:true};
+  return {inner:src, stripped:false};
+}
+
+// ── Single-pass core obfuscation ──────────────────────────────────
+function singlePassObfuscate(src, strength, seed){
+  let out=src;
+  const layersApplied=[];
+  seed=seed||randSeed();
+
+  // Name mangle
+  try{ out=mangleNames(out); layersApplied.push('Names'); }catch(e){}
+
+  // String encryption
+  try{
+    const decFn=randName(7);
+    const tokens=tokenize(out);
+    const preamble=buildDecryptor(decFn,seed);
+    const parts=[preamble];
+    for(const t of tokens){
+      if(t.k==='STR'){
+        const raw=t.v;
+        let content=raw.slice(1,-1)
+          .replace(/\\n/g,'\n').replace(/\\t/g,'\t')
+          .replace(/\\\\/g,'\\').replace(/\\"/g,'"').replace(/\\'/g,"'");
+        const b=strToBytes(content), enc=rollingXorEncode(b,seed);
+        parts.push(`${decFn}({${Array.from(enc).join(',')}})`);
+      } else { parts.push(t.v); }
+    }
+    out=parts.join('');
+    layersApplied.push('Strings');
+  }catch(e){}
+
+  if(strength==='balanced'||strength==='max'||strength==='ultra'){
+    try{ out=obfuscateNumbers(out); layersApplied.push('Numbers'); }catch(e){}
+    try{ out=injectDeadCode(out); layersApplied.push('Dead Code'); }catch(e){}
+  }
+  if(strength==='max'||strength==='ultra'){
+    try{ out=buildAntiDebug()+out; layersApplied.push('Anti-Debug'); }catch(e){}
+  }
+  try{ out=vmWrap(out,seed); layersApplied.push('VM Wrap'); }catch(e){ console.error('vmWrap',e); }
+
+  return {output:out, layers:layersApplied};
+}
+
+// ── ULTRA: 4-pass for key systems / pre-obfuscated scripts ────────
+function ultraObfuscate(src){
+  const layersApplied=['ULTRA'];
+  let out=src;
+  const s1=randSeed(), s2=randSeed(), s3=randSeed(), s4=randSeed();
+
+  // Pass 1: name mangle + strings + numbers
+  try{ out=mangleNames(out); }catch(e){}
+  try{
+    const decFn=randName(7);
+    const preamble=buildDecryptor(decFn,s1);
+    const tokens=tokenize(out);
+    const parts=[preamble];
+    for(const t of tokens){
+      if(t.k==='STR'){
+        let c=t.v.slice(1,-1).replace(/\\n/g,'\n').replace(/\\t/g,'\t').replace(/\\\\/g,'\\').replace(/\\"/g,'"').replace(/\\'/g,"'");
+        const enc=rollingXorEncode(strToBytes(c),s1);
+        parts.push(`${decFn}({${Array.from(enc).join(',')}})`);
+      } else parts.push(t.v);
+    }
+    out=parts.join('');
+  }catch(e){}
+  try{ out=obfuscateNumbers(out); }catch(e){}
+  try{ out=injectDeadCode(out); }catch(e){}
+  layersApplied.push('Pass 1: Mangle+Encrypt+Numbers');
+
+  // Pass 2: VM wrap #1
+  try{ out=vmWrap(out,s2); layersApplied.push('Pass 2: VM Wrap'); }catch(e){}
+
+  // Pass 3: anti-debug + dead code + more name scramble
+  try{ out=buildAntiDebug()+out; }catch(e){}
+  try{ out=injectDeadCode(out); }catch(e){}
+  layersApplied.push('Pass 3: Anti-Debug+Dead Code');
+
+  // Pass 4: VM wrap #2 (double-sealed)
+  try{ out=vmWrap(out,s3); layersApplied.push('Pass 4: VM Wrap x2'); }catch(e){}
+
+  // Final: outer integrity check wrapper
+  const guardFn=randName(6);
+  out=`local ${guardFn}=tostring;if type(${guardFn})~="function" then error("Crystal: environment check failed",0) end\n`+out;
+  layersApplied.push('Integrity Guard');
+
+  return {output:out, layers:layersApplied};
+}
+
 // ── Main obfuscate pipeline ───────────────────────────────────────
 function crystalObfuscate(src, strength){
   if(!src.trim()) return null;
 
-  const seed=randSeed();
-  let out=src;
-  const layersApplied=[];
+  let workSrc=src;
+  const notices=[];
+  let effectiveStrength=strength;
 
-  // Layer 1: name mangle
-  try{ out=mangleNames(out); layersApplied.push('Names'); }catch(e){}
-
-  // Layer 2: string encryption (fast/balanced/max)
-  if(strength!=='fast'||true){ // always encrypt strings
-    try{
-      const decFn=randName(7);
-      const tokens=tokenize(out);
-      const preamble=buildDecryptor(decFn,seed);
-      const parts=[preamble];
-      for(const t of tokens){
-        if(t.k==='STR'){
-          const raw=t.v, delim=raw[0];
-          let content=raw.slice(1,-1)
-            .replace(/\\n/g,'\n').replace(/\\t/g,'\t')
-            .replace(/\\\\/g,'\\').replace(/\\"/g,'"').replace(/\\'/g,"'");
-          const b=strToBytes(content), enc=rollingXorEncode(b,seed);
-          parts.push(`${decFn}({${Array.from(enc).join(',')}})`);
-        } else { parts.push(t.v); }
-      }
-      out=parts.join('');
-      layersApplied.push('Strings');
-    }catch(e){}
+  // Step 0: detect existing obfuscation + strip outer layer
+  const obfCheck=detectExistingObfuscation(workSrc);
+  if(obfCheck.detected){
+    notices.push({type:'warn', msg:'Existing obfuscation detected — stripping outer layer and re-obfuscating with Crystal MAX'});
+    const {inner, stripped}=stripLoadstringLayer(workSrc);
+    if(stripped){
+      workSrc=inner;
+      notices.push({type:'info', msg:'Outer loadstring layer removed. Applying Crystal '+(strength==='ultra'?'ULTRA':'MAX')+' obfuscation.'});
+      if(effectiveStrength==='fast') effectiveStrength='max';
+    }
   }
 
-  // Layer 3: number splitting (balanced/max)
-  if(strength==='balanced'||strength==='max'){
-    try{ out=obfuscateNumbers(out); layersApplied.push('Numbers'); }catch(e){}
+  // Step 1: detect key system → escalate to ULTRA
+  const hasKey=detectKeySystem(workSrc);
+  if(hasKey){
+    notices.push({type:'key', msg:'Key system detected — applying Crystal ULTRA protection (4-layer VM wrap, triple encryption, integrity guard)'});
+    effectiveStrength='ultra';
   }
 
-  // Layer 4: dead code (balanced/max)
-  if(strength==='balanced'||strength==='max'){
-    try{ out=injectDeadCode(out); layersApplied.push('Dead Code'); }catch(e){}
+  // Step 2: polyglot conversion (JSON/JS → Lua)
+  workSrc=polyConvert(workSrc, notices);
+
+  // Step 3: obfuscate
+  let result;
+  if(effectiveStrength==='ultra'||hasKey){
+    result=ultraObfuscate(workSrc);
+  } else {
+    result=singlePassObfuscate(workSrc, effectiveStrength);
   }
 
-  // Layer 5: anti-debug stub (max only)
-  if(strength==='max'){
-    try{ out=buildAntiDebug()+out; layersApplied.push('Anti-Debug'); }catch(e){}
-  }
+  return {output:result.output, layers:result.layers, notices, effectiveStrength};
+}
 
-  // Layer 6: VM wrap + encrypt payload (always)
-  try{ out=vmWrap(out,seed); layersApplied.push('VM Wrap'); }catch(e){ console.error('vmWrap failed',e); }
+// ── Polyglot: JSON/JS → Lua conversion (JS side) ─────────────────
+function polyConvert(src, notices){
+  let out=src, changed=false;
 
-  return {output:out, layers:layersApplied};
+  // console.log/warn/error → print/warn
+  let n=out.replace(/console\.log\s*\(/g,'print(').replace(/console\.warn\s*\(/g,'warn(').replace(/console\.error\s*\(/g,'warn(');
+  if(n!==out){changed=true;out=n;}
+
+  // var/let/const x = → local x =
+  n=out.replace(/\b(var|let|const)\s+([a-zA-Z_]\w*)\s*=/g,'local $2 =');
+  if(n!==out){changed=true;out=n;}
+
+  // === → ==, !== → ~=, != → ~=, && → and, || → or
+  n=out.replace(/===/g,'==').replace(/!==/g,'~=').replace(/!=([^=])/g,'~=$1')
+        .replace(/&&/g,' and ').replace(/\|\|/g,' or ');
+  if(n!==out){changed=true;out=n;}
+
+  // Arrow functions: (x,y) => expr and x => expr
+  n=out.replace(/\(([^)]*)\)\s*=>\s*([^\n,)\]]+)/g,'function($1) return $2 end')
+        .replace(/([a-zA-Z_]\w*)\s*=>\s*([^\n,)\]]+)/g,'function($1) return $2 end');
+  if(n!==out){changed=true;out=n;}
+
+  // null → nil
+  n=out.replace(/\bnull\b/g,'nil');
+  if(n!==out){changed=true;out=n;}
+
+  // JSON-style "key": value → ["key"] = value
+  n=out.replace(/"([a-zA-Z_]\w*)"\s*:/g,'["$1"] =');
+  if(n!==out){changed=true;out=n;}
+
+  if(changed && notices) notices.push({type:'info', msg:'Polyglot: converted JSON/JS syntax to valid Lua'});
+  return out;
 }
 
 // ── UI wiring ─────────────────────────────────────────────────────
@@ -1274,18 +1429,42 @@ function fmt2(n){return n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/104
 async function runObfuscate(){
   const src=obfInp.value.trim();
   if(!src){obfOutChip.textContent='no input';obfOutChip.className='chip cwarn';return;}
-  obfOutChip.textContent='obfuscating…';
+  obfOutChip.textContent='analysing…';
   obfOutChip.style.background='#2d1550';obfOutChip.style.color='#e040fb';
   obfOut.value='';
   obfStats.style.display='none';
+
+  // Clear any previous notice banners
+  const noticeArea=document.getElementById('obfNotices');
+  if(noticeArea) noticeArea.innerHTML='';
+
   await new Promise(r=>setTimeout(r,30));
 
   try{
+    obfOutChip.textContent='obfuscating…';
+    await new Promise(r=>setTimeout(r,10));
+
     const result=crystalObfuscate(src,obfStrength);
     if(!result){obfOutChip.textContent='failed';return;}
+
     obfOut.value=result.output;
-    obfOutChip.textContent='done · '+fmt2(result.output.length);
-    obfOutChip.style.background='#0f2010';obfOutChip.style.color='var(--green)';
+
+    // Show notices (obf detected, key system, polyglot, etc.)
+    if(noticeArea && result.notices && result.notices.length){
+      const colorMap={warn:'cwarn-card',info:'cinfo-card',key:'cerr-card',ok:'cok-card'};
+      const iconMap={warn:'⚠',info:'ℹ',key:'🔑',ok:'✓'};
+      noticeArea.innerHTML=result.notices.map(n=>{
+        const cls=colorMap[n.type]||'cinfo-card';
+        const ic=iconMap[n.type]||'•';
+        return `<div class="card ${cls}" style="margin:4px 10px;padding:7px 11px;font-size:.72rem">${ic} ${n.msg}</div>`;
+      }).join('');
+    }
+
+    const effectiveStr=result.effectiveStrength||obfStrength;
+    const isUltra=effectiveStr==='ultra';
+    obfOutChip.textContent=(isUltra?'ULTRA ':'')+'done · '+fmt2(result.output.length);
+    obfOutChip.style.background=isUltra?'#2d1212':'#0f2010';
+    obfOutChip.style.color=isUltra?'var(--red)':'var(--green)';
 
     // Stats bar
     obfStats.style.display='flex';

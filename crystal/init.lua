@@ -142,17 +142,27 @@ function Crystal.obfuscate(src, strength, options)
     strength = strength or "max"
     options  = options  or {}
 
-    -- Step 1: Analyze + auto-fix + smart HTTPS injection
+    -- Step 1: Analyze + auto-fix + smart HTTPS injection + strip existing layers
     local prepared = Crystal.prepare(src, {
-        injectHTTPS = options.injectHTTPS ~= false,
-        autoFix     = options.autoFix     ~= false,
-        fixes       = options.fixes,
+        injectHTTPS    = options.injectHTTPS ~= false,
+        autoFix        = options.autoFix     ~= false,
+        fixes          = options.fixes,
+        stripLoadstring = options.stripLoadstring ~= false,
+        polyConvert    = options.polyConvert ~= false,
     })
 
     local fixedSrc = prepared.source
     local log      = prepared.fixLog or {}
 
     -- Report what was done
+    if prepared.strippedLayer then
+        (warn or print)("[Crystal] Existing obfuscation layer stripped — re-obfuscating with Crystal MAX")
+    end
+    if prepared.hasKeySystem then
+        (warn or print)("[Crystal] Key system detected — applying Crystal ULTRA protection (4-layer VM wrap)")
+        -- Escalate to ultra if key system found and not already ultra
+        if strength ~= "ultra" then strength = "ultra" end
+    end
     if prepared.wasFixed then
         for _, msg in ipairs(log) do
             (warn or print)(msg)
@@ -170,11 +180,18 @@ function Crystal.obfuscate(src, strength, options)
         fast     = Obfuscator.FAST,
         balanced = Obfuscator.BALANCED,
         max      = Obfuscator.MAX,
+        ultra    = Obfuscator.ULTRA,
     }
     local preset = presets[strength] or Obfuscator.MAX
 
-    local ob     = Obfuscator.new(preset)
-    local result = ob:obfuscate(fixedSrc, options.name or "script")
+    local result
+    if strength == "ultra" or prepared.hasKeySystem then
+        -- Multi-pass key-system-hardened obfuscation
+        result = Obfuscator.obfuscateWithKeySystem(fixedSrc, { name = options.name or "script" })
+    else
+        local ob = Obfuscator.new(preset)
+        result = ob:obfuscate(fixedSrc, options.name or "script")
+    end
 
     return result, {
         originalLength  = #src,
@@ -184,6 +201,10 @@ function Crystal.obfuscate(src, strength, options)
         httpsInjected   = prepared.httpsInjected,
         featuresFound   = prepared.features,
         strength        = strength,
+        strippedLayer   = prepared.strippedLayer,
+        hadObfuscation  = prepared.hadObfuscation,
+        hasKeySystem    = prepared.hasKeySystem,
+        polyConverted   = prepared.polyConverted,
     }
 end
 

@@ -300,6 +300,74 @@ end]]):format(src)
     end,
 })
 
+-- ── Loadstring / existing obfuscation detector & stripper ────────────────────
+-- Detects if a script already has obfuscation layers (loadstring wrappers,
+-- base64 payloads, etc.) and attempts to strip the outer layer so Crystal
+-- can re-obfuscate from the actual payload with max power.
+
+local LOADSTRING_PATTERNS = {
+    "loadstring%s*%(", "load%s*%(", "loadstring%(game:HttpGet",
+    "loadstring%(game%.HttpGet", "loadstring%(require",
+    "rawget%s*%(_G,", "getfenv%(%)", "_ENV%b{}",
+    -- common obfuscator signatures
+    "KRNL_LOADED", "Synapse", "fluxus", "hydrogen",
+    "bit32%.bxor", "string%.char%(string%.byte",
+    -- base64/hex blobs embedded as strings
+    "([A-Za-z0-9+/=]{200,})",           -- long base64 blob
+    "\\%d+\\%d+\\%d+\\%d+\\%d+\\%d+",  -- long byte escape sequences
+}
+
+local KEY_SYSTEM_PATTERNS = {
+    -- key storage / checking
+    "getgenv%(%)[%.]?[Kk]ey", "getsenv%(%)[%.]?[Kk]ey",
+    "Key%s*==%s*", "key%s*==%s*",
+    "[Ii]nvalid%s+[Kk]ey", "[Kk]ey%s+[Ee]xpired",
+    "[Kk]ey%s+[Vv]erif", "whitelist", "hwid", "HWID",
+    "[Ss]erial[Nn]umber", "getHWID", "ExecutorID",
+    -- remote key verification
+    "HttpGet.*key", "HttpGet.*Key",
+    "webhook.*key", "discord.*key",
+    "[Kk]ey[Gg]et[Aa]sync", "[Kk]ey[Ss]et[Aa]sync",
+}
+
+function Analyzer.detectObfuscation(src)
+    local flags = {}
+    for _, pat in ipairs(LOADSTRING_PATTERNS) do
+        if src:find(pat) then
+            flags[#flags+1] = pat
+        end
+    end
+    return #flags > 0, flags
+end
+
+function Analyzer.detectKeySystem(src)
+    for _, pat in ipairs(KEY_SYSTEM_PATTERNS) do
+        if src:find(pat) then return true end
+    end
+    return false
+end
+
+-- Attempt to strip a single loadstring wrapper layer.
+-- Returns the inner source if found, or original src if not strippable.
+function Analyzer.stripOuterLoadstring(src)
+    -- Pattern 1: loadstring([[...]])()
+    local inner = src:match("loadstring%s*%(%[%[(.-)%]%]%s*%)%(%)") or
+                  src:match("loadstring%s*%(%[==%[(.-)%]==]%s*%)%(%)") or
+                  src:match('loadstring%s*%("([^"]+)"%s*%)%(%)') or
+                  src:match("loadstring%s*%('([^']+)'%s*%)%(%)") or
+    -- Pattern 2: load([[...]])()
+                  src:match("load%s*%(%[%[(.-)%]%]%s*%)%(%)") or
+                  src:match("load%s*%(%[==%[(.-)%]==]%s*%)%(%)") or
+    -- Pattern 3: (load or loadstring)("...") at top level
+                  src:match("^%s*loadstring%s*%((.+)%)%(%)%s*$") or
+                  src:match("^%s*load%s*%((.+)%)%(%)%s*$")
+
+    if inner and #inner > 10 then
+        return inner, true
+    end
+    return src, false
+end
+
 -- ── Polyglot converter: JSON / JS / other languages → Lua ────────────────────
 -- If the script contains JSON objects, JS arrow functions, JS-style code, etc.
 -- Crystal converts them automatically so the script still works in Lua.
@@ -559,6 +627,20 @@ end
 function Analyzer.prepare(src, options)
     options = options or {}
 
+    -- -1. Detect existing obfuscation + key system BEFORE stripping
+    local hasObf,   obfFlags = Analyzer.detectObfuscation(src)
+    local hasKeySystem       = Analyzer.detectKeySystem(src)
+
+    -- -0.5. Strip outer loadstring layer if present (so we re-obf the real payload)
+    local strippedLayer = false
+    if hasObf and options.stripLoadstring ~= false then
+        local stripped, didStrip = Analyzer.stripOuterLoadstring(src)
+        if didStrip then
+            src = stripped
+            strippedLayer = true
+        end
+    end
+
     -- 0. Polyglot conversion: JSON/JS/f-strings → Lua (runs before anything else)
     local polyLog     = {}
     local polyChanged = false
@@ -592,15 +674,19 @@ function Analyzer.prepare(src, options)
     local valid, syntaxErr = Analyzer.validate(fixedSrc)
 
     return {
-        source         = fixedSrc,
-        originalSource = src,
-        features       = features,
-        fixLog         = fixLog,
-        wasFixed       = wasFixed,
-        polyConverted  = polyChanged,
-        httpsInjected  = httpsInjected,
-        valid          = valid,
-        syntaxError    = syntaxErr,
+        source           = fixedSrc,
+        originalSource   = src,
+        features         = features,
+        fixLog           = fixLog,
+        wasFixed         = wasFixed,
+        polyConverted    = polyChanged,
+        httpsInjected    = httpsInjected,
+        valid            = valid,
+        syntaxError      = syntaxErr,
+        hadObfuscation   = hasObf,
+        obfuscationFlags = obfFlags,
+        strippedLayer    = strippedLayer,
+        hasKeySystem     = hasKeySystem,
     }
 end
 

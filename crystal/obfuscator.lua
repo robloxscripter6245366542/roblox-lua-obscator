@@ -409,7 +409,108 @@ function Obfuscator.new(options)
     }, Obfuscator)
 end
 
+-- Convenience: obfuscate a string and return the result
+function Obfuscator.run(src, options)
+    local ob = Obfuscator.new(options)
+    return ob:obfuscate(src)
+end
+
+-- ── Re-obfuscation: strip existing loadstring layers, replace with Crystal ────
+-- Used when input already has an obfuscation layer. Tries to decode the payload,
+-- then re-obfuscates with maximum Crystal power.
+
+function Obfuscator.reObfuscate(src, options)
+    options = options or {}
+    -- Attempt to unwrap loadstring payloads up to 3 levels deep
+    local unwrapped = src
+    local layers = 0
+    for _ = 1, 3 do
+        local inner = unwrapped:match("loadstring%s*%(%[%[(.-)%]%]%s*%)%(%)") or
+                      unwrapped:match('loadstring%s*%("([^"]+)"%s*%)%(%)') or
+                      unwrapped:match("loadstring%s*%('([^']+)'%s*%)%(%)") or
+                      unwrapped:match("load%s*%(%[%[(.-)%]%]%s*%)%(%)") or
+                      unwrapped:match("^%s*loadstring%s*%((.+)%)%(%)%s*$")
+        if inner and #inner > 20 then
+            unwrapped = inner
+            layers = layers + 1
+        else
+            break
+        end
+    end
+
+    -- Now re-obfuscate with max settings (or ULTRA if available)
+    local preset = Obfuscator.ULTRA or Obfuscator.MAX
+    local ob = Obfuscator.new(preset)
+    local result = ob:obfuscate(unwrapped, options.name or "script")
+    return result, layers
+end
+
+-- ── Multi-pass for key systems: triple-wrap the payload ───────────────────────
+-- If the script has a key system, we obfuscate in 3 passes so the key logic
+-- is buried under multiple VM layers and is nearly impossible to extract.
+
+function Obfuscator.obfuscateWithKeySystem(src, options)
+    options = options or {}
+    -- Pass 1: name mangle + string encrypt + number split
+    local pass1 = Obfuscator.new({
+        mangleNames      = true,
+        encryptStrings   = true,
+        obfuscateNumbers = true,
+        injectDeadCode   = true,
+        antiDebug        = true,
+        vmWrap           = false,
+        strength         = "max",
+    })
+    local r1 = pass1:obfuscate(src, "key_inner")
+
+    -- Pass 2: dead code + flow flatten
+    local pass2 = Obfuscator.new({
+        mangleNames      = true,
+        encryptStrings   = true,
+        obfuscateNumbers = true,
+        injectDeadCode   = true,
+        antiDebug        = false,  -- already added
+        vmWrap           = false,
+        flattenFlow      = true,
+        strength         = "max",
+    })
+    local r2 = pass2:obfuscate(r1, "key_mid")
+
+    -- Pass 3: final VM wrap + encryption (double-sealed)
+    local pass3 = Obfuscator.new({
+        mangleNames      = false,  -- already done
+        encryptStrings   = false,  -- already done
+        obfuscateNumbers = false,  -- already done
+        injectDeadCode   = true,
+        antiDebug        = true,
+        vmWrap           = true,
+        strength         = "max",
+    })
+    local r3 = pass3:obfuscate(r2, "key_outer")
+
+    -- Final: wrap one more time in VM for deepest protection
+    local finalSeed = math.random(10, 250)
+    local finalKey  = randomKey(32)
+    return vmWrap(r3, finalKey)
+end
+
+-- Strength presets
+Obfuscator.FAST = { mangleNames=true, encryptStrings=true, obfuscateNumbers=false, injectDeadCode=false, antiDebug=false, vmWrap=true,  strength="fast"     }
+Obfuscator.BALANCED = { mangleNames=true, encryptStrings=true, obfuscateNumbers=true,  injectDeadCode=true,  antiDebug=true,  vmWrap=true,  strength="balanced"  }
+Obfuscator.MAX = { mangleNames=true, encryptStrings=true, obfuscateNumbers=true,  injectDeadCode=true,  antiDebug=true,  vmWrap=true,  flattenFlow=true, strength="max" }
+-- ULTRA: 4-pass with double VM wrap — designed for key systems and high-value scripts
+Obfuscator.ULTRA = { mangleNames=true, encryptStrings=true, obfuscateNumbers=true,  injectDeadCode=true,  antiDebug=true,  vmWrap=true,  flattenFlow=true, strength="ultra", ultraPass=true }
+
 function Obfuscator:obfuscate(src, sourceName)
+    -- Override: ULTRA preset runs multi-pass key system obfuscation
+    if self.strength == "ultra" or (self.layers and self.layers.ultraPass) then
+        return Obfuscator.obfuscateWithKeySystem(src, { name = sourceName })
+    end
+    return self:_obfuscate(src, sourceName)
+end
+
+-- Rename internal implementation so ULTRA can call it safely
+Obfuscator._obfuscate = function(self, src, sourceName)
     math.randomseed(os.clock() * 1e9)
 
     local key  = randomKey(32)
@@ -456,16 +557,5 @@ function Obfuscator:obfuscate(src, sourceName)
 
     return out
 end
-
--- Convenience: obfuscate a string and return the result
-function Obfuscator.run(src, options)
-    local ob = Obfuscator.new(options)
-    return ob:obfuscate(src)
-end
-
--- Strength presets
-Obfuscator.FAST = { mangleNames=true, encryptStrings=true, obfuscateNumbers=false, injectDeadCode=false, antiDebug=false, vmWrap=true,  strength="fast"     }
-Obfuscator.BALANCED = { mangleNames=true, encryptStrings=true, obfuscateNumbers=true,  injectDeadCode=true,  antiDebug=true,  vmWrap=true,  strength="balanced"  }
-Obfuscator.MAX = { mangleNames=true, encryptStrings=true, obfuscateNumbers=true,  injectDeadCode=true,  antiDebug=true,  vmWrap=true,  flattenFlow=true, strength="max" }
 
 return Obfuscator
