@@ -31,7 +31,9 @@ function Signal:Connect(fn) self._h[#self._h + 1] = fn
     disconnect = function(c) c.Connected = false end }, {__index=function() return function() end end}) end
 Signal.connect = Signal.Connect
 function Signal:Once(fn) return self:Connect(fn) end
-function Signal:Wait(...) return ... end
+-- every Wait() is a frame yield — route it through the global tick so the UI
+-- driver gets a chance to fire the verify button from a render/animation loop.
+function Signal:Wait(...) if rawget(_G,"__TICK") then __TICK() end return ... end
 function Signal:Fire(...) for _, fn in ipairs(self._h) do pcall(fn, ...) end end
 Signal.fire = Signal.Fire
 

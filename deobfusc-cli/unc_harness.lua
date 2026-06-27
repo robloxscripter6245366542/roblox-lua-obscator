@@ -126,16 +126,22 @@ Random=setmetatable({new=function(seed) return setmetatable({
   Clone=function(s2) return s2 end, Shuffle=function() end},{}) end},{__call=function() return Random.new() end})
 
 -- ── task / scheduler + UI DRIVER ────────────────────────────────────────────
-local _w=0; local _fired=false
+-- A render/animation loop yields via task.wait OR Signal:Wait (RenderStepped /
+-- Heartbeat). BOTH route through __TICK so the driver fires the verify button
+-- regardless of which yield the hub uses, then forces the loop's exit flags.
+local _w=0; local _round=0
 local function drive()
-  -- after the GUI is built, fire every button click signal once to reach gated code
-  if not _fired and _w>30 then _fired=true
-    io.stderr:write("[unc] firing "..#UNC.clicks.." button signal(s) to drive UI\n")
-    for _,sig in ipairs(UNC.clicks) do pcall(function() sig:Fire() end) end
+  if _w==40 or (_w>40 and _w%400==0) then
+    _round=_round+1
+    io.stderr:write("[unc] driver round "..(_round)..": firing "..#UNC.clicks.." button signal(s)\n")
+    for _,sig in ipairs(UNC.clicks) do pcall(function() sig:Fire() end) pcall(function() sig:Fire(true) end) end
+    -- also flip common exit flags so the render loop can terminate
     getgenv().UI_CLOSED=true; getgenv().SCRIPT_KEY=getgenv().SCRIPT_KEY or "KEYLESS"
+    getgenv().Verified=true; getgenv().keySystem=false
   end
 end
-local function tick(n) _w=_w+1 drive() if _w>1500 then error("[unc] budget",0) end return n or 0 end
+__TICK=function() _w=_w+1 drive() if _w>4000 then error("[unc] budget",0) end end
+local function tick(n) __TICK() return n or 0 end
 wait=tick; spawn=function(f,...) if type(f)=="function" then pcall(f,...) end return f end
 delay=function(_,f,...) if type(f)=="function" then pcall(f,...) end end
 task={wait=tick, spawn=spawn, delay=function(_,f,...) if type(f)=="function" then pcall(f,...) end end,
