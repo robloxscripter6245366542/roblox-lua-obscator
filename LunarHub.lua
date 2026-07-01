@@ -430,8 +430,8 @@ do
 	})
 
 	AboutSection:Image({
-		Image = "https://repository-images.githubusercontent.com/880118829/22c020eb-d1b1-4b34-ac4d-e33fd88db38d",
-		AspectRatio = "16:9",
+		Image = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/1fa577c17a2d5aebacc5d1dae99de9b754c07644/assets/lunarhub/lunar-hub-banner.png",
+		AspectRatio = "16:5",
 		Radius = 9,
 	})
 
