@@ -127,51 +127,6 @@ local ParryDistanceLabel = Tabs.Parry:AddParagraph({
     Content = "Waiting for data..."
 })
 
-Tabs.Parry:AddSection("Ping Compensation")
-
-Tabs.Parry:AddToggle("PingCompEnabled", {
-    Title = "Ping Compensation",
-    Description = "Parry earlier when ping is high",
-    Default = true,
-    Callback = function(Value)
-        pingCompEnabled = Value
-        Fluent:Notify({
-            Title = "Ping Compensation",
-            Content = Value and "Enabled" or "Disabled",
-            Duration = 3
-        })
-    end
-})
-
-Tabs.Parry:AddSlider("PingMultiplier", {
-    Title = "Compensation Strength",
-    Description = "1.0 = full ping. Higher = parry even earlier",
-    Default = 1.0,
-    Min = 0,
-    Max = 3,
-    Rounding = 2,
-    Callback = function(Value)
-        pingMultiplier = Value
-    end
-})
-
-Tabs.Parry:AddSlider("MaxPingComp", {
-    Title = "Max Extra Range (studs)",
-    Description = "Cap on extra detection studs from ping",
-    Default = 60,
-    Min = 0,
-    Max = 150,
-    Rounding = 0,
-    Callback = function(Value)
-        MAX_PING_COMP = Value
-    end
-})
-
-local PingInfoLabel = Tabs.Parry:AddParagraph({
-    Title = "Ping Status",
-    Content = "Measuring..."
-})
-
 Tabs.Spam:AddSection("Auto Spam Status")
 
 local SpamStatusLabel = Tabs.Spam:AddParagraph({
@@ -559,13 +514,6 @@ task.spawn(function()
         
         SpamStatsLabel:SetDesc(string.format("• Total Spams: %d\n• Total Duration: %.1fs\n• Average Rate: %.1f spam/s\n• Status: %s",
             totalSpams, spamDuration, spamsPerSecond, spamStarted and "🟢 ACTIVE" or "🔴 INACTIVE"))
-
-        local livePing = getPing()
-        PingInfoLabel:SetDesc(string.format("• Current Ping: %.0f ms\n• Compensation: %s\n• Strength: %.2fx\n• Last Extra Range: +%.1f studs",
-            livePing,
-            pingCompEnabled and "🟢 ON" or "🔴 OFF",
-            pingMultiplier,
-            currentPingComp))
     end
 end)
 
@@ -638,8 +586,8 @@ RunService.Heartbeat:Connect(function()
         local effectiveParryDistance = currentParryDistance + pingComp
 
         ParryStatusLabel:SetDesc(string.format("Status: %s", autoParryEnabled and "🟢 ACTIVE" or "🔴 DISABLED"))
-        ParryDistanceLabel:SetDesc(string.format("• Detection Range: %.1f studs\n• Ping Comp: +%.1f studs (%.0f ms)\n• Effective Range: %.1f studs\n• Ball Velocity: %.1f studs/s\n• Distance to Ball: %.1f studs\n• Mode: %s\n• Frozen: %s",
-            currentParryDistance, pingComp, currentPing, effectiveParryDistance, velocity, closestDistance,
+        ParryDistanceLabel:SetDesc(string.format("• Detection Range: %.1f studs\n• Ball Velocity: %.1f studs/s\n• Distance to Ball: %.1f studs\n• Mode: %s\n• Frozen: %s",
+            currentParryDistance, velocity, closestDistance,
             isHighSpeedMode and "🚀 MAX SPEED" or "⚡ Normal",
             isAutoParryFrozen and "Yes" or "No"))
 
