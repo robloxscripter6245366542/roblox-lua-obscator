@@ -43,7 +43,7 @@ do
 		-- never a third party's.
 		WindUI = loadstring(
 			game:HttpGet(
-				"https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/eae2b5e2552cf248fc01730dc291a8bf2b859f43/assets/lunarhub.lua"
+				"https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/05ac33ea284b0d929d23c419eed5581f52abfbee/assets/lunarhub.lua"
 			)
 		)()
 	end
@@ -326,7 +326,7 @@ do
 	local WelcomeParagraph = WelcomeSection:Paragraph({
 		Title = "Welcome, " .. LocalPlayer.DisplayName .. "!",
 		Desc = "@" .. LocalPlayer.Name,
-		Image = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/4b5923a61994df03ab09dcb0ade5501e8c678043/assets/lunarhub/lunar-hub-avatar-placeholder.png",
+		Image = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/05ac33ea284b0d929d23c419eed5581f52abfbee/assets/lunarhub/lunar-hub-avatar-placeholder.png",
 		ImageSize = 48,
 		Buttons = {
 			{
@@ -436,7 +436,7 @@ do
 	})
 
 	AboutSection:Image({
-		Image = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/1fa577c17a2d5aebacc5d1dae99de9b754c07644/assets/lunarhub/lunar-hub-banner.png",
+		Image = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/05ac33ea284b0d929d23c419eed5581f52abfbee/assets/lunarhub/lunar-hub-banner.png",
 		AspectRatio = "16:5",
 		Radius = 9,
 	})
@@ -1373,7 +1373,7 @@ do
 			Title = "Discord invite is not available right now.",
 			TextSize = 20,
 			Justify = "Center",
-			Image = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/4b5923a61994df03ab09dcb0ade5501e8c678043/assets/lunarhub/lunar-hub-alert.png",
+			Image = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/05ac33ea284b0d929d23c419eed5581f52abfbee/assets/lunarhub/lunar-hub-alert.png",
 			Color = "Red",
 			Buttons = {
 				{
