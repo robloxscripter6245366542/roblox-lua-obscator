@@ -320,7 +320,7 @@ do
 	local WelcomeParagraph = WelcomeSection:Paragraph({
 		Title = "Welcome, " .. LocalPlayer.DisplayName .. "!",
 		Desc = "@" .. LocalPlayer.Name,
-		Image = "moon",
+		Image = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/4b5923a61994df03ab09dcb0ade5501e8c678043/assets/lunarhub/lunar-hub-avatar-placeholder.png",
 		ImageSize = 48,
 		Buttons = {
 			{
@@ -1367,7 +1367,7 @@ do
 			Title = "Discord invite is not available right now.",
 			TextSize = 20,
 			Justify = "Center",
-			Image = "solar:info-circle-bold",
+			Image = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/4b5923a61994df03ab09dcb0ade5501e8c678043/assets/lunarhub/lunar-hub-alert.png",
 			Color = "Red",
 			Buttons = {
 				{
