@@ -58,6 +58,15 @@ WindUI.Creator.AddIcons("solar", {
 	["SolarSquareTransferHorizontalBold"] = "rbxassetid://125444491429160",
 })
 
+-- */  Logo  /* --
+-- assets/lunarhub/lunar-hub-icon.png in this repo is the source art for the
+-- window/tab icon. rbxassetid:// values can't be guessed or fetched from an
+-- image URL — Roblox only accepts assets uploaded to *your* account. Upload
+-- that PNG via Studio's Asset Manager (or create.roblox.com), then paste the
+-- resulting id below. Until then this falls back to the built-in "moon" icon.
+local LunarLogoAssetId = nil -- e.g. "rbxassetid://123456789"
+local LunarLogoIcon = LunarLogoAssetId or "moon"
+
 -- */  Colors — Lunar palette (pink / violet glass)  /* --
 local Pink = Color3.fromHex("#FF6FB0")
 local Rose = Color3.fromHex("#EC4899")
@@ -93,7 +102,7 @@ WindUI:SetTheme("Lunar")
 local function createWelcomePopup()
 	return WindUI:Popup({
 		Title = "Welcome to Lunar Hub",
-		Icon = "moon",
+		Icon = LunarLogoIcon,
 		Content = "A pink glass UI built on WindUI. Enjoy the frosted panels!",
 		Buttons = {
 			{
@@ -124,7 +133,7 @@ end
 local Window = WindUI:CreateWindow({
 	Title = "Lunar Hub  |  Pink Glass Edition",
 	Folder = "LunarHub",
-	Icon = "moon",
+	Icon = LunarLogoIcon,
 	NewElements = true,
 
 	HideSearchBar = false,
@@ -163,7 +172,7 @@ createWelcomePopup()
 do
 	Window:Tag({
 		Title = "v" .. WindUI.Version,
-		Icon = "moon",
+		Icon = LunarLogoIcon,
 		Color = Color3.fromHex("#241129"),
 		Border = true,
 	})
@@ -298,7 +307,7 @@ do
 	local HomeTab = Window:Tab({
 		Title = "Home",
 		Desc = "Dashboard",
-		Icon = "moon",
+		Icon = LunarLogoIcon,
 		IconColor = Pink,
 		IconShape = "Square",
 		Border = true,
