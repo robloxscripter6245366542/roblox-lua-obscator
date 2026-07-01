@@ -3,9 +3,9 @@
     Lunar Hub  —  Pink Glass Edition
     Built on top of WindUI (https://github.com/Footagesus/WindUI)
 
-    A reskin of the WindUI example showcase: pink/violet "glass" theme
-    (Acrylic + translucent panels), safer loading (no remote loadstring),
-    and a few correctness fixes over the stock example.
+    Pink/violet "glass" theme (Acrylic + translucent panels), a Home
+    dashboard (player info, job id / rejoin, live ping), safer loading
+    (no remote loadstring), and a full WindUI element showcase.
 
 ]]
 
@@ -16,6 +16,12 @@ end)
 local RunService = cloneref(game:GetService("RunService"))
 local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
 local HttpService = cloneref(game:GetService("HttpService"))
+local Players = cloneref(game:GetService("Players"))
+local TeleportService = cloneref(game:GetService("TeleportService"))
+local Stats = cloneref(game:GetService("Stats"))
+local MarketplaceService = cloneref(game:GetService("MarketplaceService"))
+
+local LocalPlayer = Players.LocalPlayer
 
 -- */  Load WindUI (no remote loadstring — local module or ReplicatedStorage only)  /* --
 local WindUI
@@ -127,6 +133,7 @@ local Window = WindUI:CreateWindow({
 	Transparent = true,
 	HidePanelBackground = true,
 	Radius = 20,
+	ToggleKey = Enum.KeyCode.RightShift,
 
 	OpenButton = {
 		Title = "Open Lunar Hub",
@@ -286,6 +293,118 @@ local function tableToClipboard(luau_table, indent)
 	return jsonString
 end
 
+-- */  Home Tab  /* --
+do
+	local HomeTab = Window:Tab({
+		Title = "Home",
+		Desc = "Dashboard",
+		Icon = "moon",
+		IconColor = Pink,
+		IconShape = "Square",
+		Border = true,
+	})
+
+	local WelcomeSection = HomeTab:Section({
+		Title = "Welcome",
+	})
+
+	local WelcomeParagraph = WelcomeSection:Paragraph({
+		Title = "Welcome, " .. LocalPlayer.DisplayName .. "!",
+		Desc = "@" .. LocalPlayer.Name,
+		Image = "moon",
+		ImageSize = 48,
+		Buttons = {
+			{
+				Title = "Copy Job ID",
+				Icon = "clipboard-copy",
+				Callback = function()
+					if setclipboard then
+						setclipboard(game.JobId)
+					end
+					WindUI:Notify({
+						Title = "Copied",
+						Content = "Job ID copied to clipboard.",
+					})
+				end,
+			},
+			{
+				Title = "Rejoin",
+				Icon = "refresh-cw",
+				Callback = function()
+					pcall(function()
+						TeleportService:Teleport(game.PlaceId, LocalPlayer)
+					end)
+				end,
+			},
+		},
+	})
+
+	task.spawn(function()
+		local ok, thumbnail = pcall(function()
+			return Players:GetUserThumbnailAsync(
+				LocalPlayer.UserId,
+				Enum.ThumbnailType.HeadShot,
+				Enum.ThumbnailSize.Size100x100
+			)
+		end)
+		if ok and thumbnail then
+			WelcomeParagraph:SetImage(thumbnail)
+		end
+	end)
+
+	HomeTab:Space()
+
+	local SessionSection = HomeTab:Section({
+		Title = "Session Info",
+	})
+
+	local gameName = "Unknown Game"
+	do
+		local ok, info = pcall(function()
+			return MarketplaceService:GetProductInfo(game.PlaceId)
+		end)
+		if ok and info and info.Name then
+			gameName = info.Name
+		end
+	end
+
+	local SessionParagraph = SessionSection:Paragraph({
+		Title = gameName,
+		Desc = ("Players: %d  •  Ping: -- ms"):format(#Players:GetPlayers()),
+		Icon = "moon",
+	})
+
+	task.spawn(function()
+		while Window and not Window.Destroyed do
+			local ping = 0
+			pcall(function()
+				ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+			end)
+
+			SessionParagraph:SetDesc(("Players: %d  •  Ping: %d ms"):format(#Players:GetPlayers(), ping))
+
+			task.wait(5)
+		end
+	end)
+
+	HomeTab:Space()
+
+	HomeTab:Button({
+		Title = "Copy Game Link",
+		Icon = "link",
+		Justify = "Center",
+		Callback = function()
+			if setclipboard then
+				setclipboard("https://www.roblox.com/games/" .. game.PlaceId)
+			end
+			WindUI:Notify({
+				Title = "Copied",
+				Content = "Game link copied to clipboard.",
+			})
+		end,
+	})
+end
+
 -- */  About Tab  /* --
 do
 	local AboutTab = Window:Tab({
@@ -364,7 +483,25 @@ do
 		Icon = "shredder",
 		IconAlign = "Left",
 		Callback = function()
-			Window:Destroy()
+			Window:Dialog({
+				Title = "Destroy Lunar Hub?",
+				Icon = "shredder",
+				Content = "This closes the UI completely — you'll need to rerun the script to bring it back.",
+				Buttons = {
+					{
+						Title = "Cancel",
+						Variant = "Secondary",
+					},
+					{
+						Title = "Destroy",
+						Icon = "shredder",
+						Variant = "Primary",
+						Callback = function()
+							Window:Destroy()
+						end,
+					},
+				},
+			})
 		end,
 	})
 end
