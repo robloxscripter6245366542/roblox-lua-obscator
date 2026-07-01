@@ -58,6 +58,16 @@ local currentPingComp = 0         -- last computed extra studs of detection rang
 local currentTimeToImpact = math.huge
 local currentRequiredLead = 0
 
+-- Anti-curve: the ball's velocity vector alone only predicts a straight
+-- line, which misses curving/homing balls entirely. We also track the
+-- ball's acceleration (rate of change of velocity between frames) and
+-- simulate the resulting curved arc forward, instead of assuming it keeps
+-- going in whatever direction it's pointed right now.
+local antiCurveEnabled = true
+local ACCEL_SMOOTHING = 0.35      -- 0-1, higher = react faster to new curvature, lower = smoother/less jittery
+local CURVE_SIM_STEPS = 20        -- samples taken along the predicted arc, up to predictionHorizon seconds out
+local currentCurveAccel = 0       -- last measured curve (lateral acceleration) magnitude, studs/s^2
+
 -- ============================================
 -- AUTO SPAM CONFIGURATION
 -- ============================================
@@ -90,6 +100,7 @@ local getPlayerHRP
 local ballsCache = {}         -- [ballInstance] = true
 local playerHRPCache = {}     -- [player] = HumanoidRootPart
 local hasHighlightCache = false
+local ballMotionCache = {}    -- [ballInstance] = {vel, accel, time} - tracks curvature
 
 local Window = Fluent:CreateWindow({
     Title = "Anime Ball v1",
@@ -206,6 +217,27 @@ Tabs.Parry:AddSlider("MaxPingComp", {
     Rounding = 0,
     Callback = function(Value)
         MAX_PING_COMP = Value
+    end
+})
+
+Tabs.Parry:AddToggle("AntiCurveEnabled", {
+    Title = "Anti-Curve Prediction",
+    Description = "Simulate the ball's actual curved arc instead of a straight line",
+    Default = true,
+    Callback = function(Value)
+        antiCurveEnabled = Value
+    end
+})
+
+Tabs.Parry:AddSlider("AccelSmoothing", {
+    Title = "Curve Reactivity",
+    Description = "Higher = react to new curves faster but jitter more",
+    Default = 0.35,
+    Min = 0.05,
+    Max = 1,
+    Rounding = 2,
+    Callback = function(Value)
+        ACCEL_SMOOTHING = Value
     end
 })
 
@@ -446,6 +478,52 @@ local function getClosingSpeed(ballPos, ballVel, targetPos)
 end
 
 -- ============================================
+-- ANTI-CURVE PREDICTION
+-- ============================================
+-- A ball's current velocity vector only describes where it's headed *right
+-- now*. Curving/homing balls change direction over time, so extrapolating a
+-- straight line from one frame's velocity misses them - the whole point of
+-- "seeing the future" breaks down the moment the ball doesn't fly straight.
+-- Instead we measure how the velocity vector itself is changing frame to
+-- frame (acceleration = curvature), smooth it to cut down on per-frame
+-- jitter, then simulate the resulting curved arc forward in small steps to
+-- see whether it enters melee range within our ping lead time - rather than
+-- solving a single straight-line distance/speed division.
+
+-- Updates and returns the smoothed acceleration (curvature) vector for a
+-- ball, from the change in its velocity since the last frame we saw it.
+local function updateBallCurvature(ball, pos, vel, now)
+    local prev = ballMotionCache[ball]
+    local accel = Vector3.new()
+    if prev and now > prev.time then
+        local dt = now - prev.time
+        local rawAccel = (vel - prev.vel) / dt
+        accel = prev.accel:Lerp(rawAccel, ACCEL_SMOOTHING)
+    end
+    ballMotionCache[ball] = {vel = vel, accel = accel, time = now}
+    return accel
+end
+
+-- Simulates the curved arc (pos + vel*t + 0.5*accel*t^2) forward in small
+-- steps up to maxLookahead seconds, returning true (and the time) as soon as
+-- the predicted position comes within meleeRange of targetPos. This is what
+-- lets a curving ball still trigger an early "future" parry instead of only
+-- ever being caught once it's already in range.
+local function predictCurvedImpact(pos, vel, accel, targetPos, meleeRange, maxLookahead, steps)
+    if maxLookahead <= 0 then return false, nil end
+    steps = steps or CURVE_SIM_STEPS
+    local dt = maxLookahead / steps
+    for i = 1, steps do
+        local t = i * dt
+        local predictedPos = pos + vel * t + accel * (0.5 * t * t)
+        if (predictedPos - targetPos).Magnitude <= meleeRange then
+            return true, t
+        end
+    end
+    return false, nil
+end
+
+-- ============================================
 -- LIVE STATE HOOKS
 -- ============================================
 -- Balls, player HumanoidRootParts, and the local Highlight are tracked via
@@ -458,7 +536,10 @@ end
 local function trackBallsFolder(folder)
     for _, ball in pairs(folder:GetChildren()) do ballsCache[ball] = true end
     folder.ChildAdded:Connect(function(child) ballsCache[child] = true end)
-    folder.ChildRemoved:Connect(function(child) ballsCache[child] = nil end)
+    folder.ChildRemoved:Connect(function(child)
+        ballsCache[child] = nil
+        ballMotionCache[child] = nil
+    end)
 end
 
 local function bindHighlightFolder(folder)
@@ -724,6 +805,8 @@ RunService.Heartbeat:Connect(function()
         local ballVel = getBallVelocityVector(closestBall)
         local velocity = ballVel.Magnitude
         local closingSpeed = ballPos and getClosingSpeed(ballPos, ballVel, humanoidRootPart.Position) or 0
+        local ballAccel = ballPos and updateBallCurvature(closestBall, ballPos, ballVel, currentTime) or Vector3.new()
+        currentCurveAccel = ballAccel.Magnitude
 
         if velocity >= HIGH_SPEED_THRESHOLD then
             if not isHighSpeedMode then
@@ -771,11 +854,35 @@ RunService.Heartbeat:Connect(function()
         -- moving away or past the player never triggers an early parry.
         local pingComp = getPingCompensation(closingSpeed)
         local effectiveParryDistance = currentParryDistance + pingComp
-        currentTimeToImpact = closingSpeed > 0 and (closestDistance / closingSpeed) or math.huge
+
+        -- Parry if the ball is already inside melee range, OR if its
+        -- predicted path enters melee range before our ping round-trip
+        -- completes. With Anti-Curve on, the path is a simulated curved arc
+        -- (using measured curvature) rather than a straight line, so a
+        -- curving/homing ball is caught too, not just ones flying straight.
+        local withinRange = closestDistance <= currentParryDistance
+        local willArriveInTime = false
+        if pingCompEnabled and currentRequiredLead > 0 and ballPos then
+            if antiCurveEnabled then
+                local arrives, arriveTime = predictCurvedImpact(
+                    ballPos, ballVel, ballAccel, humanoidRootPart.Position,
+                    currentParryDistance, currentRequiredLead)
+                willArriveInTime = arrives
+                currentTimeToImpact = arrives and arriveTime or (closingSpeed > 0 and (closestDistance / closingSpeed) or math.huge)
+            elseif closingSpeed > 0 then
+                willArriveInTime = ((closestDistance - currentParryDistance) / closingSpeed) <= currentRequiredLead
+                currentTimeToImpact = closestDistance / closingSpeed
+            else
+                currentTimeToImpact = math.huge
+            end
+        else
+            currentTimeToImpact = closingSpeed > 0 and (closestDistance / closingSpeed) or math.huge
+        end
 
         ParryStatusLabel:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
-        ParryDistanceLabel:SetDesc(string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Mode: %s\n- Frozen: %s",
-            currentParryDistance, pingComp, currentPing, currentRequiredLead, effectiveParryDistance, velocity, closingSpeed, closestDistance,
+        ParryDistanceLabel:SetDesc(string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Curve: %.1f studs/s^2 (%s)\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Mode: %s\n- Frozen: %s",
+            currentParryDistance, pingComp, currentPing, currentRequiredLead, effectiveParryDistance, velocity, closingSpeed,
+            currentCurveAccel, antiCurveEnabled and "ON" or "OFF", closestDistance,
             currentTimeToImpact < math.huge and string.format("%.2fs", currentTimeToImpact) or "n/a",
             isHighSpeedMode and "MAX SPEED" or "Normal",
             isAutoParryFrozen and "Yes" or "No"))
@@ -786,15 +893,6 @@ RunService.Heartbeat:Connect(function()
                 speedLabel.Label.Text = string.format("%.1f%s", velocity, isHighSpeedMode and " [FAST]" or "")
             end
         end
-
-        -- Parry if the ball is already inside melee range, OR if it will be
-        -- within melee range before our ping round-trip completes (i.e. the
-        -- predicted time-to-impact at the melee boundary is within the
-        -- compensation lead time) - this is what lets us "see" up to
-        -- predictionHorizon seconds into the future.
-        local withinRange = closestDistance <= currentParryDistance
-        local willArriveInTime = pingCompEnabled and closingSpeed > 0
-            and ((closestDistance - currentParryDistance) / closingSpeed) <= currentRequiredLead
 
         if hasHighlight and (withinRange or willArriveInTime) then executeParry() end
     end
