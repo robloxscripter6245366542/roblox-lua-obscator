@@ -1,11 +1,13 @@
 --[[
 
     Lunar Hub  —  Pink Glass Edition
-    Built on top of WindUI (https://github.com/Footagesus/WindUI)
+    Built on top of WindUI (https://github.com/Footagesus/WindUI, MIT).
+    A vendored copy ships in this repo (assets/lunarhub/WindUI) so the
+    remote-load fallback below pulls from our own hosting.
 
     Pink/violet "glass" theme (Acrylic + translucent panels), a Home
-    dashboard (player info, job id / rejoin, live ping), safer loading
-    (no remote loadstring), and a full WindUI element showcase.
+    dashboard (player info, job id / rejoin, live ping), and a full
+    WindUI element showcase.
 
 ]]
 
@@ -23,7 +25,7 @@ local MarketplaceService = cloneref(game:GetService("MarketplaceService"))
 
 local LocalPlayer = Players.LocalPlayer
 
--- */  Load WindUI (no remote loadstring — local module or ReplicatedStorage only)  /* --
+-- */  Load WindUI  /* --
 local WindUI
 do
 	local ok, result = pcall(function()
@@ -35,11 +37,13 @@ do
 	elseif RunService:IsStudio() then
 		WindUI = require(cloneref(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init")))
 	else
-		error(
-			"Lunar Hub: WindUI could not be found. Place the WindUI module at './src/Init' "
-				.. "(relative require) or under ReplicatedStorage/WindUI/Init before running this script.",
-			0
-		)
+		-- Self-hosted: our own vendored copy of WindUI (assets/lunarhub/WindUI/main.lua),
+		-- not a third party's repo, so Lunar Hub doesn't depend on anyone else's hosting.
+		WindUI = loadstring(
+			game:HttpGet(
+				"https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/efdbb8356d5e697f2cc96c49de7b778fbc9768f8/assets/lunarhub/WindUI/main.lua"
+			)
+		)()
 	end
 end
 
