@@ -2,8 +2,9 @@
 
     Lunar Hub  —  Pink Glass Edition
     Built on top of WindUI (https://github.com/Footagesus/WindUI, MIT).
-    A vendored copy ships in this repo (assets/lunarhub/WindUI) so the
-    remote-load fallback below pulls from our own hosting.
+    A vendored copy ships in this repo as assets/lunarhub.lua, so the
+    remote-load fallback below pulls from our own hosting only — no
+    third-party loadstring URL.
 
     Pink/violet "glass" theme (Acrylic + translucent panels), a Home
     dashboard (player info, job id / rejoin, live ping), and a full
@@ -37,11 +38,12 @@ do
 	elseif RunService:IsStudio() then
 		WindUI = require(cloneref(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init")))
 	else
-		-- Self-hosted: our own vendored copy of WindUI (assets/lunarhub/WindUI/main.lua),
-		-- not a third party's repo, so Lunar Hub doesn't depend on anyone else's hosting.
+		-- Self-hosted only: assets/lunarhub.lua is our own vendored copy of WindUI.
+		-- This is the one and only loadstring URL, and it points at our own repo -
+		-- never a third party's.
 		WindUI = loadstring(
 			game:HttpGet(
-				"https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/efdbb8356d5e697f2cc96c49de7b778fbc9768f8/assets/lunarhub/WindUI/main.lua"
+				"https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/eae2b5e2552cf248fc01730dc291a8bf2b859f43/assets/lunarhub.lua"
 			)
 		)()
 	end
