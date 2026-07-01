@@ -82,6 +82,14 @@ local createOrUpdatePlayerDetectorSphere
 local createPlayerDetectorSpheres
 local updatePlayerDetectorSpheres
 local clearPlayerDetectorSpheres
+local getPlayerHRP
+
+-- Live state kept up to date by event hooks (see LIVE STATE HOOKS below)
+-- instead of being re-scanned with GetChildren()/FindFirstChild() on every
+-- single Heartbeat frame.
+local ballsCache = {}         -- [ballInstance] = true
+local playerHRPCache = {}     -- [player] = HumanoidRootPart
+local hasHighlightCache = false
 
 local Window = Fluent:CreateWindow({
     Title = "Anime Ball v1",
@@ -362,9 +370,7 @@ end
 -- (previously this logic was duplicated in two places).
 createOrUpdatePlayerDetectorSphere = function(player)
     if not showPlayerDetectors then return end
-    local character = player.Character
-    if not character then return end
-    local hrp = character:FindFirstChild("HumanoidRootPart")
+    local hrp = getPlayerHRP(player)
     if not hrp then return end
 
     local sphere = playerDetectorSpheres[player.Name]
@@ -440,6 +446,71 @@ local function getClosingSpeed(ballPos, ballVel, targetPos)
 end
 
 -- ============================================
+-- LIVE STATE HOOKS
+-- ============================================
+-- Balls, player HumanoidRootParts, and the local Highlight are tracked via
+-- signal hooks (ChildAdded/ChildRemoved/CharacterAdded/CharacterRemoving)
+-- instead of being re-discovered with GetChildren()/FindFirstChild() on
+-- every Heartbeat frame. This removes the duplicate independent folder
+-- scans Auto Parry and Auto Spam used to each run, and reacts the instant a
+-- ball spawns/despawns or the Highlight appears instead of polling for it.
+
+local function trackBallsFolder(folder)
+    for _, ball in pairs(folder:GetChildren()) do ballsCache[ball] = true end
+    folder.ChildAdded:Connect(function(child) ballsCache[child] = true end)
+    folder.ChildRemoved:Connect(function(child) ballsCache[child] = nil end)
+end
+
+local function bindHighlightFolder(folder)
+    hasHighlightCache = folder:FindFirstChild("Highlight") ~= nil
+    folder.ChildAdded:Connect(function(child)
+        if child.Name == "Highlight" then hasHighlightCache = true end
+    end)
+    folder.ChildRemoved:Connect(function(child)
+        if child.Name == "Highlight" then hasHighlightCache = false end
+    end)
+end
+
+getPlayerHRP = function(player)
+    local hrp = playerHRPCache[player]
+    if hrp and hrp.Parent then return hrp end
+    return nil
+end
+
+local function bindCharacter(player, character)
+    playerHRPCache[player] = nil
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        playerHRPCache[player] = hrp
+        return
+    end
+    -- HRP hasn't streamed in yet (fresh spawn) - wait for it off-thread so
+    -- this doesn't stall the CharacterAdded handler.
+    task.spawn(function()
+        local waited = character:WaitForChild("HumanoidRootPart", 5)
+        if waited and character.Parent then
+            playerHRPCache[player] = waited
+        end
+    end)
+end
+
+local function bindPlayer(player)
+    if player.Character then bindCharacter(player, player.Character) end
+    player.CharacterAdded:Connect(function(character) bindCharacter(player, character) end)
+    player.CharacterRemoving:Connect(function() playerHRPCache[player] = nil end)
+end
+
+-- Calls onFound immediately if `name` already exists under workspace,
+-- otherwise hooks ChildAdded and calls it the instant it appears.
+local function watchForNamedChild(name, onFound)
+    local existing = workspace:FindFirstChild(name)
+    if existing then onFound(existing) end
+    workspace.ChildAdded:Connect(function(child)
+        if child.Name == name then onFound(child) end
+    end)
+end
+
+-- ============================================
 -- PING
 -- ============================================
 
@@ -511,12 +582,13 @@ local function createSpeedLabel(ball)
     return billboardCache[ball]
 end
 
+-- Iterates the event-maintained ballsCache instead of re-scanning
+-- workspace.Balls:GetChildren() (Auto Parry and Auto Spam previously ran
+-- this scan independently every frame - now there's a single shared cache).
 local function findClosestBall(humanoidRootPart)
-    local ballsFolder = workspace:FindFirstChild("Balls")
-    if not ballsFolder then return nil, math.huge end
     local closestBall = nil
     local closestDistance = math.huge
-    for _, ball in pairs(ballsFolder:GetChildren()) do
+    for ball in pairs(ballsCache) do
         local ballPos = getBallPosition(ball)
         if ballPos then
             local distance = (humanoidRootPart.Position - ballPos).Magnitude
@@ -530,19 +602,16 @@ local function findClosestBall(humanoidRootPart)
 end
 
 local function hasPlayerHighlight()
-    local playerFolder = workspace:FindFirstChild(LocalPlayer.Name)
-    return playerFolder and playerFolder:FindFirstChild("Highlight") ~= nil
+    return hasHighlightCache
 end
 
 local function isBallInPlayerRange(ball, distanceRange)
     local ballPos = getBallPosition(ball)
     if not ballPos then return false end
     for _, player in pairs(Players:GetPlayers()) do
-        if player.Character then
-            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-            if hrp and (hrp.Position - ballPos).Magnitude <= distanceRange then
-                return true
-            end
+        local hrp = getPlayerHRP(player)
+        if hrp and (hrp.Position - ballPos).Magnitude <= distanceRange then
+            return true
         end
     end
     return false
@@ -556,14 +625,13 @@ local function executeSpam()
 end
 
 local function checkPlayerDistance()
-    local character = LocalPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return false, nil, math.huge end
-    local hrp = character.HumanoidRootPart
+    local hrp = getPlayerHRP(LocalPlayer)
+    if not hrp then return false, nil, math.huge end
     local closestPlayer = nil
     local closestDistance = math.huge
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            local otherHRP = player.Character:FindFirstChild("HumanoidRootPart")
+        if player ~= LocalPlayer then
+            local otherHRP = getPlayerHRP(player)
             if otherHRP then
                 local distance = (hrp.Position - otherHRP.Position).Magnitude
                 if distance <= SPAM_DETECTION_DISTANCE and distance < closestDistance then
@@ -576,17 +644,14 @@ local function checkPlayerDistance()
     return closestPlayer ~= nil, closestPlayer, closestDistance
 end
 
--- Reuses getBallPosition (deep descendant search) instead of the previous
--- direct-children-only lookup, so balls with a nested BasePart are no longer
--- silently missed by Auto Spam's ball detector.
+-- Reuses getBallPosition (deep descendant search) and the shared ballsCache
+-- so balls with a nested BasePart are no longer silently missed, and the
+-- ball folder is no longer re-scanned separately from findClosestBall.
 local function checkBallDistance()
-    local character = LocalPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return false, math.huge end
-    local hrp = character.HumanoidRootPart
-    local ballsFolder = workspace:FindFirstChild("Balls")
-    if not ballsFolder then return false, math.huge end
+    local hrp = getPlayerHRP(LocalPlayer)
+    if not hrp then return false, math.huge end
     local closestDistance = math.huge
-    for _, ball in pairs(ballsFolder:GetChildren()) do
+    for ball in pairs(ballsCache) do
         local ballPos = getBallPosition(ball)
         if ballPos then
             local distance = (hrp.Position - ballPos).Magnitude
@@ -630,6 +695,13 @@ task.spawn(function()
     end
 end)
 
+-- Wire up the live-state hooks before anything reads from their caches.
+for _, player in pairs(Players:GetPlayers()) do bindPlayer(player) end
+Players.PlayerAdded:Connect(bindPlayer)
+Players.PlayerRemoving:Connect(function(player) playerHRPCache[player] = nil end)
+watchForNamedChild("Balls", trackBallsFolder)
+watchForNamedChild(LocalPlayer.Name, bindHighlightFolder)
+
 createVisualSphere()
 createPlayerDetectorSpheres()
 
@@ -639,9 +711,7 @@ RunService.Heartbeat:Connect(function()
     if currentTime - lastUpdateTime < UPDATE_INTERVAL then return end
     lastUpdateTime = currentTime
 
-    local character = LocalPlayer.Character
-    if not character then return end
-    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    local humanoidRootPart = getPlayerHRP(LocalPlayer)
     if not humanoidRootPart then return end
 
     local hasHighlight = hasPlayerHighlight()
@@ -755,7 +825,6 @@ RunService.Heartbeat:Connect(function()
 
     local playerInRange, closestPlayer, playerDistance = checkPlayerDistance()
     local ballInRange, ballDistance = checkBallDistance()
-    local hasHL = hasPlayerHighlight()
 
     if playerInRange and closestPlayer then
         PlayerDetectionLabel:SetDesc(string.format("Player: %s\nDistance: %.1f studs", closestPlayer.Name, playerDistance))
@@ -769,9 +838,9 @@ RunService.Heartbeat:Connect(function()
         BallDetectionLabel:SetDesc(string.format("No ball in range\nClosest: %.1f studs", ballDistance))
     end
 
-    HighlightDetectionLabel:SetDesc(hasHL and "Highlight Active" or "No Highlight")
+    HighlightDetectionLabel:SetDesc(hasHighlight and "Highlight Active" or "No Highlight")
 
-    if playerInRange and ballInRange and hasHL then
+    if playerInRange and ballInRange and hasHighlight then
         if not spamStarted then
             spamStarted = true
             lastSpamStartTime = tick()
@@ -794,11 +863,11 @@ RunService.Heartbeat:Connect(function()
         executeSpam()
     else
         SpamStatusLabel:SetDesc("AUTO SPAM: INACTIVE\nWaiting for conditions...")
-        local conditionText = (playerInRange and "[OK] Player" or "[--] Player") .. " | " .. (ballInRange and "[OK] Ball" or "[--] Ball") .. " | " .. (hasHL and "[OK] Highlight" or "[--] Highlight") .. "\nWaiting for all conditions..."
+        local conditionText = (playerInRange and "[OK] Player" or "[--] Player") .. " | " .. (ballInRange and "[OK] Ball" or "[--] Ball") .. " | " .. (hasHighlight and "[OK] Highlight" or "[--] Highlight") .. "\nWaiting for all conditions..."
         SpamConditionsLabel:SetDesc(conditionText)
         LiveStatsLabel:SetDesc(string.format("- Parry Status: %s\n- Spam Status: WAITING\n- Player in Range: %s\n- Ball in Range: %s\n- Highlight: %s\n- Parry Range: %.1f studs",
             autoParryEnabled and "Active" or "Disabled",
-            playerInRange and "Yes" or "No", ballInRange and "Yes" or "No", hasHL and "Active" or "Inactive", currentParryDistance))
+            playerInRange and "Yes" or "No", ballInRange and "Yes" or "No", hasHighlight and "Active" or "Inactive", currentParryDistance))
     end
 end)
 
