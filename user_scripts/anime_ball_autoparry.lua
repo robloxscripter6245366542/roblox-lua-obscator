@@ -63,10 +63,11 @@ local currentRequiredLead = 0
 -- ============================================
 
 local SPAM_DETECTION_DISTANCE = 34.3
-local SPAM_INTERVAL = 0.05 -- min seconds between spam remote calls (20/s) - avoids remote-spam kicks
+-- Fires every single Heartbeat frame, uncapped, for as long as the clash
+-- conditions (player + ball + Highlight) hold - no duration limit, so a
+-- clash can be held indefinitely (an hour+) without the loop giving up.
 local autoSpamEnabled = true
 local spamStarted = false
-local lastSpamFireTime = 0
 local totalSpams = 0
 local spamDuration = 0
 local lastSpamStartTime = 0
@@ -548,9 +549,6 @@ local function isBallInPlayerRange(ball, distanceRange)
 end
 
 local function executeSpam()
-    local currentTime = tick()
-    if currentTime - lastSpamFireTime < SPAM_INTERVAL then return end
-    lastSpamFireTime = currentTime
     pcall(function()
         ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {-0.759547233581543})
     end)
