@@ -129,7 +129,14 @@ local Window = WindUI:CreateWindow({
     Icon = "sword",
     Folder = "AnimeBallComplete",
     ToggleKey = Enum.KeyCode.LeftControl,
+
+    Acrylic = true,
+    Transparent = true,
+    HidePanelBackground = true,
+    Radius = 20,
 })
+
+Window:SetBackgroundTransparency(0.35)
 
 local Tabs = {
     Main = Window:Tab({ Title = "Main", Icon = "home" }),
