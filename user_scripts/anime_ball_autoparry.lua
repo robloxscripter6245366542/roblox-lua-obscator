@@ -12,7 +12,7 @@ local LocalPlayer = Players.LocalPlayer
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 
 -- "Crimson Clash" color theme
-local AccentRed = Color3.fromHex("#E11D48")
+local AccentRed = Color3.fromHex("#DC143C") -- true crimson
 local Gold = Color3.fromHex("#FFC107")
 local Cyan = Color3.fromHex("#22D3EE")
 local Emerald = Color3.fromHex("#34D399")
@@ -117,7 +117,7 @@ WindUI:AddTheme({
     Button = Color3.fromHex("#3A0F16"),
     Icon = Color3.fromHex("#FFB4C0"),
     Toggle = AccentRed,
-    Slider = Color3.fromHex("#FF6B81"),
+    Slider = Color3.fromHex("#FF4D5E"),
     Checkbox = AccentRed,
     ElementBackground = Color3.fromHex("#240A0E"),
     ElementBackgroundTransparency = 0.35,
