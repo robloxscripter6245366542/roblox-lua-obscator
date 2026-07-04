@@ -70,7 +70,19 @@ local currentRequiredLead = 0
 local antiCurveEnabled = true
 local ACCEL_SMOOTHING = 0.35      -- 0-1, higher = react faster to new curvature, lower = smoother/less jittery
 local CURVE_SIM_STEPS = 20        -- samples taken along the predicted arc, up to predictionHorizon seconds out
+local MAX_CURVE_ACCEL = 400       -- studs/s^2 cap; a parry flips ball velocity in one frame, which would otherwise read as a huge fake curve
 local currentCurveAccel = 0       -- last measured curve (lateral acceleration) magnitude, studs/s^2
+
+-- Panic Burst: the single executeParry() + 0.3s cooldown is exactly what
+-- loses to super-fast/curving balls - one block fires (sometimes early, on
+-- prediction), and if it whiffs the cooldown eats the real parry while the
+-- ball crosses the last gap in under 0.2s. When predicted time-to-impact
+-- drops below the panic window, fire block every frame (bypassing the
+-- cooldown) until the ball is deflected - same spam the game already
+-- tolerates from Auto Spam.
+local panicBurstEnabled = true
+local PANIC_TTI = 0.35            -- seconds; time-to-impact below this triggers per-frame block spam
+local totalBurstBlocks = 0
 
 -- ============================================
 -- AUTO SPAM CONFIGURATION
@@ -275,6 +287,27 @@ PingSection:Slider({
     end
 })
 
+PingSection:Toggle({
+    Flag = "PanicBurst",
+    Title = "Panic Burst",
+    Desc = "Spam block every frame when impact is imminent - catches super fast balls",
+    Value = true,
+    Callback = function(Value)
+        panicBurstEnabled = Value
+    end
+})
+
+PingSection:Slider({
+    Flag = "PanicWindow",
+    Title = "Panic Window (seconds)",
+    Desc = "Time-to-impact below this fires block every frame",
+    Step = 0.05,
+    Value = { Min = 0.1, Max = 1, Default = 0.35 },
+    Callback = function(Value)
+        PANIC_TTI = Value
+    end
+})
+
 local PingInfoLabel = PingSection:Paragraph({
     Title = "Ping Status",
     Desc = "Measuring..."
@@ -393,6 +426,7 @@ PerfStatsSection:Button({
     Callback = function()
         totalParries = 0
         highSpeedParries = 0
+        totalBurstBlocks = 0
         totalSpams = 0
         spamDuration = 0
         WindUI:Notify({
@@ -515,10 +549,6 @@ local function getBallVelocityVector(ball)
     return part and part.AssemblyLinearVelocity or Vector3.new()
 end
 
-local function getBallVelocity(ball)
-    return getBallVelocityVector(ball).Magnitude
-end
-
 -- Component of the ball's velocity that is actually closing the distance to
 -- `targetPos` (positive = approaching, negative/zero = moving away or level).
 -- Using this instead of raw speed means a ball that whizzes past the player
@@ -545,12 +575,23 @@ end
 
 -- Updates and returns the smoothed acceleration (curvature) vector for a
 -- ball, from the change in its velocity since the last frame we saw it.
-local function updateBallCurvature(ball, pos, vel, now)
+local function updateBallCurvature(ball, vel, now)
     local prev = ballMotionCache[ball]
     local accel = Vector3.new()
     if prev and now > prev.time then
         local dt = now - prev.time
         local rawAccel = (vel - prev.vel) / dt
+        -- A parry/bounce reverses the ball's velocity within a single frame;
+        -- read as delta-v/dt that's a one-frame "acceleration" in the
+        -- thousands of studs/s^2, and the smoothing would carry that phantom
+        -- curve for several frames - enough for predictCurvedImpact to
+        -- hallucinate an arc back into range and waste a parry (0.3s
+        -- cooldown) on a ball that's actually flying away. Real curve/homing
+        -- forces are far below this cap.
+        local mag = rawAccel.Magnitude
+        if mag > MAX_CURVE_ACCEL then
+            rawAccel = rawAccel * (MAX_CURVE_ACCEL / mag)
+        end
         accel = prev.accel:Lerp(rawAccel, ACCEL_SMOOTHING)
     end
     ballMotionCache[ball] = {vel = vel, accel = accel, time = now}
@@ -559,12 +600,18 @@ end
 
 -- Simulates the curved arc (pos + vel*t + 0.5*accel*t^2) forward in small
 -- steps up to maxLookahead seconds, returning true (and the time) as soon as
--- the predicted position comes within meleeRange of the player's own
--- predicted position (targetPos + targetVel*t). This is what lets a curving
--- ball still trigger an early "future" parry instead of only ever being
--- caught once it's already in range - and, since the player's position is
--- projected forward too, running/strafing during the clash no longer causes
--- the prediction to aim at a stale spot the player has already left.
+-- the predicted ball position comes within meleeRange of the player. This is
+-- what lets a curving ball still trigger an early "future" parry instead of
+-- only ever being caught once it's already in range.
+--
+-- The player's future position is genuinely unknowable when they're dodging
+-- erratically - a straight projection of current velocity is wrong the
+-- moment they dash or flip direction, and would predict the ball "misses"
+-- when it's actually homing in. So the arc is checked against BOTH movement
+-- hypotheses - the player keeps moving (targetPos + targetVel*t) and the
+-- player stops/turns (targetPos) - and arrival against either one counts.
+-- Erring toward parrying is the right bias: a slightly-early block costs
+-- nothing here, a missed one loses the round.
 local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, meleeRange, maxLookahead, steps)
     if maxLookahead <= 0 then return false, nil end
     steps = steps or CURVE_SIM_STEPS
@@ -572,8 +619,11 @@ local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, meleeR
     for i = 1, steps do
         local t = i * dt
         local predictedPos = pos + vel * t + accel * (0.5 * t * t)
-        local predictedTargetPos = targetPos + targetVel * t
-        if (predictedPos - predictedTargetPos).Magnitude <= meleeRange then
+        if (predictedPos - targetPos).Magnitude <= meleeRange then
+            return true, t
+        end
+        local movedTargetPos = targetPos + targetVel * t
+        if (predictedPos - movedTargetPos).Magnitude <= meleeRange then
             return true, t
         end
     end
@@ -596,7 +646,23 @@ local function trackBallsFolder(folder)
     folder.ChildRemoved:Connect(function(child)
         ballsCache[child] = nil
         ballMotionCache[child] = nil
+        -- Also drop (and destroy) the speed-label billboard for this ball,
+        -- otherwise billboardCache grows without bound as balls spawn and
+        -- despawn over a long session.
+        local cached = billboardCache[child]
+        if cached and cached.Billboard then cached.Billboard:Destroy() end
+        billboardCache[child] = nil
     end)
+end
+
+-- Lazily drop balls whose instance has left the game tree without the
+-- folder's ChildRemoved firing (e.g. the whole Balls folder was reparented
+-- rather than destroyed) - otherwise dead balls linger in the cache forever
+-- and corrupt closest-ball selection.
+local function purgeDeadBall(ball)
+    ballsCache[ball] = nil
+    ballMotionCache[ball] = nil
+    billboardCache[ball] = nil
 end
 
 local function bindHighlightFolder(folder)
@@ -703,15 +769,26 @@ local function calculateDistance(velocity)
     return math.clamp(distance, MIN_DISTANCE, MAX_DISTANCE)
 end
 
+-- InvokeServer on a RemoteFunction YIELDS until the server replies. Fired
+-- inline from the Heartbeat handler, that stalls everything after it in the
+-- same frame (status UI, the whole Auto Spam section) for a full round-trip
+-- - the worse your ping, the longer the stall. Fire-and-forget in a fresh
+-- thread so the handler never blocks on the network.
+local function fireBlockRemote()
+    task.spawn(function()
+        pcall(function()
+            ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {-0.759547233581543})
+        end)
+    end)
+end
+
 local function executeParry()
     local currentTime = tick()
     if currentTime - lastParryTime < PARRY_COOLDOWN then return end
     lastParryTime = currentTime
     totalParries = totalParries + 1
     if isHighSpeedMode then highSpeedParries = highSpeedParries + 1 end
-    pcall(function()
-        ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {-0.759547233581543})
-    end)
+    fireBlockRemote()
 end
 
 local function createSpeedLabel(ball)
@@ -742,12 +819,16 @@ local function findClosestBall(humanoidRootPart)
     local closestBall = nil
     local closestDistance = math.huge
     for ball in pairs(ballsCache) do
-        local ballPos = getBallPosition(ball)
-        if ballPos then
-            local distance = (humanoidRootPart.Position - ballPos).Magnitude
-            if distance < closestDistance then
-                closestDistance = distance
-                closestBall = ball
+        if not ball.Parent then
+            purgeDeadBall(ball)
+        else
+            local ballPos = getBallPosition(ball)
+            if ballPos then
+                local distance = (humanoidRootPart.Position - ballPos).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestBall = ball
+                end
             end
         end
     end
@@ -771,9 +852,7 @@ local function isBallInPlayerRange(ball, distanceRange)
 end
 
 local function executeSpam()
-    pcall(function()
-        ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {-0.759547233581543})
-    end)
+    fireBlockRemote()
     totalSpams = totalSpams + 1
 end
 
@@ -805,10 +884,14 @@ local function checkBallDistance()
     if not hrp then return false, math.huge end
     local closestDistance = math.huge
     for ball in pairs(ballsCache) do
-        local ballPos = getBallPosition(ball)
-        if ballPos then
-            local distance = (hrp.Position - ballPos).Magnitude
-            if distance < closestDistance then closestDistance = distance end
+        if not ball.Parent then
+            purgeDeadBall(ball)
+        else
+            local ballPos = getBallPosition(ball)
+            if ballPos then
+                local distance = (hrp.Position - ballPos).Magnitude
+                if distance < closestDistance then closestDistance = distance end
+            end
         end
     end
     return closestDistance <= SPAM_DETECTION_DISTANCE, closestDistance
@@ -821,8 +904,8 @@ task.spawn(function()
             autoParryEnabled and "ON" or "OFF",
             autoSpamEnabled and "ON" or "OFF"))
 
-        ParryStatsLabel:SetDesc(string.format("- Total Parries: %d\n- High Speed Parries: %d\n- High Speed Rate: %.1f%%\n- Current Mode: %s",
-            totalParries, highSpeedParries,
+        ParryStatsLabel:SetDesc(string.format("- Total Parries: %d\n- High Speed Parries: %d\n- Burst Blocks: %d\n- High Speed Rate: %.1f%%\n- Current Mode: %s",
+            totalParries, highSpeedParries, totalBurstBlocks,
             totalParries > 0 and (highSpeedParries / totalParries * 100) or 0,
             isHighSpeedMode and "MAX SPEED" or "Normal"))
 
@@ -867,17 +950,22 @@ RunService.Heartbeat:Connect(function()
     local humanoidRootPart = getPlayerHRP(LocalPlayer)
     if not humanoidRootPart then return end
 
+    -- Keep the spam-detector spheres tracking players regardless of parry
+    -- state - previously this only ran inside the parry-with-ball branch,
+    -- so the spheres froze in place whenever no ball existed (between
+    -- rounds) or Auto Parry was toggled off.
+    updatePlayerDetectorSpheres()
+
     local hasHighlight = hasPlayerHighlight()
     local closestBall, closestDistance = findClosestBall(humanoidRootPart)
 
     if autoParryEnabled and closestBall then
-        updatePlayerDetectorSpheres()
         local ballInDetectorRange = isBallInPlayerRange(closestBall, PLAYER_DETECTOR_DISTANCE)
         local ballPos = getBallPosition(closestBall)
         local ballVel = getBallVelocityVector(closestBall)
         local velocity = ballVel.Magnitude
         local closingSpeed = ballPos and getClosingSpeed(ballPos, ballVel, humanoidRootPart.Position) or 0
-        local ballAccel = ballPos and updateBallCurvature(closestBall, ballPos, ballVel, currentTime) or Vector3.new()
+        local ballAccel = ballPos and updateBallCurvature(closestBall, ballVel, currentTime) or Vector3.new()
         currentCurveAccel = ballAccel.Magnitude
 
         if velocity >= HIGH_SPEED_THRESHOLD then
@@ -933,34 +1021,41 @@ RunService.Heartbeat:Connect(function()
         -- completes. With Anti-Curve on, the path is a simulated curved arc
         -- (using measured curvature) rather than a straight line, so a
         -- curving/homing ball is caught too, not just ones flying straight.
+        -- The look-ahead runs to the larger of the ping lead and the panic
+        -- window, so time-to-impact is known even at low ping - previously
+        -- prediction only looked ping-far ahead, which at 30ms ping meant a
+        -- 30ms warning against a 500 stud/s ball.
         local withinRange = closestDistance <= currentParryDistance
         local willArriveInTime = false
-        if pingCompEnabled and currentRequiredLead > 0 and ballPos then
-            if antiCurveEnabled then
-                -- Project the player's own current movement forward too, so
-                -- running/strafing while ping is high doesn't make the
-                -- prediction aim at a position the player has already left.
+        local panicNow = false
+        currentTimeToImpact = math.huge
+        if ballPos then
+            local lookahead = math.max(currentRequiredLead, panicBurstEnabled and PANIC_TTI or 0)
+            if antiCurveEnabled and lookahead > 0 then
                 local playerVel = humanoidRootPart.AssemblyLinearVelocity
                 local arrives, arriveTime = predictCurvedImpact(
                     ballPos, ballVel, ballAccel, humanoidRootPart.Position, playerVel,
-                    currentParryDistance, currentRequiredLead)
-                willArriveInTime = arrives
-                currentTimeToImpact = arrives and arriveTime or (closingSpeed > 0 and (closestDistance / closingSpeed) or math.huge)
+                    currentParryDistance, lookahead)
+                if arrives then
+                    currentTimeToImpact = arriveTime
+                elseif closingSpeed > 0 then
+                    currentTimeToImpact = closestDistance / closingSpeed
+                end
+                willArriveInTime = pingCompEnabled and arrives and arriveTime <= currentRequiredLead
             elseif closingSpeed > 0 then
-                willArriveInTime = ((closestDistance - currentParryDistance) / closingSpeed) <= currentRequiredLead
                 currentTimeToImpact = closestDistance / closingSpeed
-            else
-                currentTimeToImpact = math.huge
+                willArriveInTime = pingCompEnabled and currentRequiredLead > 0
+                    and ((closestDistance - currentParryDistance) / closingSpeed) <= currentRequiredLead
             end
-        else
-            currentTimeToImpact = closingSpeed > 0 and (closestDistance / closingSpeed) or math.huge
+            panicNow = panicBurstEnabled and currentTimeToImpact <= PANIC_TTI
         end
 
         ParryStatusLabel:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
-        ParryDistanceLabel:SetDesc(string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Curve: %.1f studs/s^2 (%s)\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Mode: %s\n- Frozen: %s",
+        ParryDistanceLabel:SetDesc(string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Curve: %.1f studs/s^2 (%s)\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Panic Burst: %s\n- Mode: %s\n- Frozen: %s",
             currentParryDistance, pingComp, currentPing, currentRequiredLead, effectiveParryDistance, velocity, closingSpeed,
             currentCurveAccel, antiCurveEnabled and "ON" or "OFF", closestDistance,
             currentTimeToImpact < math.huge and string.format("%.2fs", currentTimeToImpact) or "n/a",
+            panicNow and "FIRING" or (panicBurstEnabled and "armed" or "off"),
             isHighSpeedMode and "MAX SPEED" or "Normal",
             isAutoParryFrozen and "Yes" or "No"))
 
@@ -971,7 +1066,16 @@ RunService.Heartbeat:Connect(function()
             end
         end
 
-        if hasHighlight and (withinRange or willArriveInTime) then executeParry() end
+        if hasHighlight then
+            if withinRange or willArriveInTime then executeParry() end
+            -- Impact imminent: keep firing block every frame (no cooldown)
+            -- until the ball is deflected, so a single early/whiffed parry
+            -- can never leave a super-fast or hard-curving ball unblocked.
+            if panicNow then
+                fireBlockRemote()
+                totalBurstBlocks = totalBurstBlocks + 1
+            end
+        end
     end
 
     if visualSphere and showVisualSphere then
@@ -1050,6 +1154,11 @@ LocalPlayer.CharacterRemoving:Connect(function()
     if visualSphere then visualSphere:Destroy() visualSphere = nil end
     clearPlayerDetectorSpheres()
     isHighSpeedMode = false
+    -- The highlight lives under the (now removed) character's workspace
+    -- entry; without this reset the cache holds its last value until the
+    -- respawned character rebinds, letting a phantom highlight gate parries
+    -- while dead.
+    hasHighlightCache = false
 end)
 
 WindUI:Notify({
