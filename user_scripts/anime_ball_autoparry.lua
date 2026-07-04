@@ -8,10 +8,15 @@ local RunService = game:GetService("RunService")
 local Stats = game:GetService("Stats")
 local LocalPlayer = Players.LocalPlayer
 
--- Load Fluent UI Library
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+-- Load WindUI Library
+local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+
+-- "Crimson Clash" color theme
+local AccentRed = Color3.fromHex("#E11D48")
+local Gold = Color3.fromHex("#FFC107")
+local Cyan = Color3.fromHex("#22D3EE")
+local Emerald = Color3.fromHex("#34D399")
+local Amber = Color3.fromHex("#FFD84D")
 
 -- ============================================
 -- AUTO PARRY CONFIGURATION
@@ -102,33 +107,48 @@ local playerHRPCache = {}     -- [player] = HumanoidRootPart
 local hasHighlightCache = false
 local ballMotionCache = {}    -- [ballInstance] = {vel, accel, time} - tracks curvature
 
-local Window = Fluent:CreateWindow({
-    Title = "Anime Ball v1",
-    SubTitle = "RaptureHub or https://discord.gg/CM7rWRXAJf",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460),
-    Acrylic = true,
-    Theme = "Darker",
-    MinimizeKey = Enum.KeyCode.LeftControl
+WindUI:AddTheme({
+    Name = "CrimsonClash",
+    Accent = AccentRed,
+    Dialog = Color3.fromHex("#1A0508"),
+    Text = Color3.fromHex("#FFE8EC"),
+    Placeholder = Color3.fromHex("#C97C88"),
+    Background = Color3.fromHex("#120306"),
+    Button = Color3.fromHex("#3A0F16"),
+    Icon = Color3.fromHex("#FFB4C0"),
+    Toggle = AccentRed,
+    Slider = Color3.fromHex("#FF6B81"),
+    Checkbox = AccentRed,
+    ElementBackground = Color3.fromHex("#240A0E"),
+    ElementBackgroundTransparency = 0.35,
+})
+WindUI:SetTheme("CrimsonClash")
+
+local Window = WindUI:CreateWindow({
+    Title = "Anime Ball v2 | Crimson Clash",
+    Icon = "sword",
+    Folder = "AnimeBallComplete",
+    ToggleKey = Enum.KeyCode.LeftControl,
 })
 
 local Tabs = {
-    Main = Window:AddTab({ Title = "Main", Icon = "home" }),
-    Parry = Window:AddTab({ Title = "Auto Parry", Icon = "shield" }),
-    Spam = Window:AddTab({ Title = "Auto Spam", Icon = "zap" }),
-    Visuals = Window:AddTab({ Title = "Visuals", Icon = "eye" }),
-    Stats = Window:AddTab({ Title = "Statistics", Icon = "bar-chart" })
+    Main = Window:Tab({ Title = "Main", Icon = "home" }),
+    Parry = Window:Tab({ Title = "Auto Parry", Icon = "shield" }),
+    Spam = Window:Tab({ Title = "Auto Spam", Icon = "zap" }),
+    Visuals = Window:Tab({ Title = "Visuals", Icon = "eye" }),
+    Stats = Window:Tab({ Title = "Statistics", Icon = "bar-chart" })
 }
 
-Tabs.Main:AddSection("Feature Control")
+local FeatureSection = Tabs.Main:Section({ Title = "Feature Control" })
 
-Tabs.Main:AddToggle("AutoParryMain", {
+FeatureSection:Toggle({
+    Flag = "AutoParryMain",
     Title = "Auto Parry",
-    Description = "Itself Parry Ball",
-    Default = true,
+    Desc = "Itself Parry Ball",
+    Value = true,
     Callback = function(Value)
         autoParryEnabled = Value
-        Fluent:Notify({
+        WindUI:Notify({
             Title = "Auto Parry",
             Content = Value and "Enabled" or "Disabled",
             Duration = 3
@@ -136,13 +156,14 @@ Tabs.Main:AddToggle("AutoParryMain", {
     end
 })
 
-Tabs.Main:AddToggle("AutoSpamMain", {
+FeatureSection:Toggle({
+    Flag = "AutoSpamMain",
     Title = "Auto Spam (Beta)",
-    Description = "Distance near player",
-    Default = true,
+    Desc = "Distance near player",
+    Value = true,
     Callback = function(Value)
         autoSpamEnabled = Value
-        Fluent:Notify({
+        WindUI:Notify({
             Title = "Auto Spam",
             Content = Value and "Enabled" or "Disabled",
             Duration = 3
@@ -150,33 +171,34 @@ Tabs.Main:AddToggle("AutoSpamMain", {
     end
 })
 
-Tabs.Main:AddSection("Quick Stats")
-local QuickStatsLabel = Tabs.Main:AddParagraph({
+local QuickStatsSection = Tabs.Main:Section({ Title = "Quick Stats" })
+local QuickStatsLabel = QuickStatsSection:Paragraph({
     Title = "Performance",
-    Content = "Loading..."
+    Desc = "Loading..."
 })
 
-Tabs.Parry:AddSection("Auto Parry Status")
+local ParryStatusSection = Tabs.Parry:Section({ Title = "Auto Parry Status" })
 
-local ParryStatusLabel = Tabs.Parry:AddParagraph({
+local ParryStatusLabel = ParryStatusSection:Paragraph({
     Title = "Detection Status",
-    Content = "Initializing..."
+    Desc = "Initializing..."
 })
 
-local ParryDistanceLabel = Tabs.Parry:AddParagraph({
+local ParryDistanceLabel = ParryStatusSection:Paragraph({
     Title = "Distance Info",
-    Content = "Waiting for data..."
+    Desc = "Waiting for data..."
 })
 
-Tabs.Parry:AddSection("Ping Compensation & Future Prediction")
+local PingSection = Tabs.Parry:Section({ Title = "Ping Compensation & Future Prediction" })
 
-Tabs.Parry:AddToggle("PingCompEnabled", {
+PingSection:Toggle({
+    Flag = "PingCompEnabled",
     Title = "Ping Compensation",
-    Description = "Parry earlier when ping is high",
-    Default = true,
+    Desc = "Parry earlier when ping is high",
+    Value = true,
     Callback = function(Value)
         pingCompEnabled = Value
-        Fluent:Notify({
+        WindUI:Notify({
             Title = "Ping Compensation",
             Content = Value and "Enabled" or "Disabled",
             Duration = 3
@@ -184,107 +206,105 @@ Tabs.Parry:AddToggle("PingCompEnabled", {
     end
 })
 
-Tabs.Parry:AddSlider("PingMultiplier", {
+PingSection:Slider({
+    Flag = "PingMultiplier",
     Title = "Compensation Strength",
-    Description = "1.0 = full ping. Higher = parry even earlier",
-    Default = 1.0,
-    Min = 0,
-    Max = 3,
-    Rounding = 2,
+    Desc = "1.0 = full ping. Higher = parry even earlier",
+    Step = 0.05,
+    Value = { Min = 0, Max = 3, Default = 1.0 },
     Callback = function(Value)
         pingMultiplier = Value
     end
 })
 
-Tabs.Parry:AddSlider("PredictionHorizon", {
+PingSection:Slider({
+    Flag = "PredictionHorizon",
     Title = "Prediction Horizon (seconds)",
-    Description = "Max look-ahead into the future used for early parry (0-5s)",
-    Default = 1.5,
-    Min = 0,
-    Max = 5,
-    Rounding = 2,
+    Desc = "Max look-ahead into the future used for early parry (0-5s)",
+    Step = 0.1,
+    Value = { Min = 0, Max = 5, Default = 1.5 },
     Callback = function(Value)
         predictionHorizon = Value
     end
 })
 
-Tabs.Parry:AddSlider("MaxPingComp", {
+PingSection:Slider({
+    Flag = "MaxPingComp",
     Title = "Max Extra Range (studs)",
-    Description = "Cap on extra detection studs from ping",
-    Default = 60,
-    Min = 0,
-    Max = 150,
-    Rounding = 0,
+    Desc = "Cap on extra detection studs from ping",
+    Step = 1,
+    Value = { Min = 0, Max = 150, Default = 60 },
     Callback = function(Value)
         MAX_PING_COMP = Value
     end
 })
 
-Tabs.Parry:AddToggle("AntiCurveEnabled", {
+PingSection:Toggle({
+    Flag = "AntiCurveEnabled",
     Title = "Anti-Curve Prediction",
-    Description = "Simulate the ball's actual curved arc instead of a straight line",
-    Default = true,
+    Desc = "Simulate the ball's actual curved arc instead of a straight line",
+    Value = true,
     Callback = function(Value)
         antiCurveEnabled = Value
     end
 })
 
-Tabs.Parry:AddSlider("AccelSmoothing", {
+PingSection:Slider({
+    Flag = "AccelSmoothing",
     Title = "Curve Reactivity",
-    Description = "Higher = react to new curves faster but jitter more",
-    Default = 0.35,
-    Min = 0.05,
-    Max = 1,
-    Rounding = 2,
+    Desc = "Higher = react to new curves faster but jitter more",
+    Step = 0.05,
+    Value = { Min = 0.05, Max = 1, Default = 0.35 },
     Callback = function(Value)
         ACCEL_SMOOTHING = Value
     end
 })
 
-local PingInfoLabel = Tabs.Parry:AddParagraph({
+local PingInfoLabel = PingSection:Paragraph({
     Title = "Ping Status",
-    Content = "Measuring..."
+    Desc = "Measuring..."
 })
 
-Tabs.Spam:AddSection("Auto Spam Status")
+local SpamStatusSection = Tabs.Spam:Section({ Title = "Auto Spam Status" })
 
-local SpamStatusLabel = Tabs.Spam:AddParagraph({
+local SpamStatusLabel = SpamStatusSection:Paragraph({
     Title = "System Status",
-    Content = "Initializing..."
+    Desc = "Initializing..."
 })
 
-local SpamConditionsLabel = Tabs.Spam:AddParagraph({
+local SpamConditionsLabel = SpamStatusSection:Paragraph({
     Title = "Detection Status",
-    Content = "Checking conditions..."
+    Desc = "Checking conditions..."
 })
 
-Tabs.Spam:AddSection("Live Detection")
+local LiveDetectionSection = Tabs.Spam:Section({ Title = "Live Detection" })
 
-local PlayerDetectionLabel = Tabs.Spam:AddParagraph({
+local PlayerDetectionLabel = LiveDetectionSection:Paragraph({
     Title = "Player Detection",
-    Content = "Scanning..."
+    Desc = "Scanning..."
 })
 
-local BallDetectionLabel = Tabs.Spam:AddParagraph({
+local BallDetectionLabel = LiveDetectionSection:Paragraph({
     Title = "Ball Detection",
-    Content = "Scanning..."
+    Desc = "Scanning..."
 })
 
-local HighlightDetectionLabel = Tabs.Spam:AddParagraph({
+local HighlightDetectionLabel = LiveDetectionSection:Paragraph({
     Title = "Highlight Detection",
-    Content = "Checking..."
+    Desc = "Checking..."
 })
 
 -- ============================================
 -- VISUALS TAB
 -- ============================================
 
-Tabs.Visuals:AddSection("Visual Indicators")
+local VisualIndicatorsSection = Tabs.Visuals:Section({ Title = "Visual Indicators" })
 
-Tabs.Visuals:AddToggle("VisualSphere", {
+VisualIndicatorsSection:Toggle({
+    Flag = "VisualSphere",
     Title = "Show Parry Detection Sphere",
-    Description = "Display the auto parry detection range",
-    Default = true,
+    Desc = "Display the auto parry detection range",
+    Value = true,
     Callback = function(Value)
         showVisualSphere = Value
         if not Value and visualSphere then
@@ -293,10 +313,11 @@ Tabs.Visuals:AddToggle("VisualSphere", {
     end
 })
 
-Tabs.Visuals:AddToggle("PlayerDetector", {
+VisualIndicatorsSection:Toggle({
+    Flag = "PlayerDetector",
     Title = "Show Spam Detection Sphere",
-    Description = "Display 17 stud spheres around players",
-    Default = true,
+    Desc = "Display 17 stud spheres around players",
+    Value = true,
     Callback = function(Value)
         showPlayerDetectors = Value
         if not Value then
@@ -307,10 +328,11 @@ Tabs.Visuals:AddToggle("PlayerDetector", {
     end
 })
 
-Tabs.Visuals:AddToggle("SpeedLabel", {
+VisualIndicatorsSection:Toggle({
+    Flag = "SpeedLabel",
     Title = "Show Ball Speed Labels",
-    Description = "Display velocity above balls",
-    Default = true,
+    Desc = "Display velocity above balls",
+    Value = true,
     Callback = function(Value)
         showSpeedLabel = Value
         if not Value then
@@ -324,41 +346,41 @@ Tabs.Visuals:AddToggle("SpeedLabel", {
     end
 })
 
-Tabs.Visuals:AddParagraph({
+VisualIndicatorsSection:Paragraph({
     Title = "Color Guide",
-    Content = "Blue = Normal Mode\nRed = High Speed Mode\nGreen = Player Detectors\nYellow = Ball Velocity"
+    Desc = "Cyan = Normal Mode\nGold = High Speed Mode\nEmerald = Player Detectors\nAmber = Ball Velocity"
 })
 
 -- ============================================
 -- STATS TAB
 -- ============================================
 
-Tabs.Stats:AddSection("Performance Statistics")
+local PerfStatsSection = Tabs.Stats:Section({ Title = "Performance Statistics" })
 
-local ParryStatsLabel = Tabs.Stats:AddParagraph({
+local ParryStatsLabel = PerfStatsSection:Paragraph({
     Title = "Auto Parry Stats",
-    Content = "Waiting for data..."
+    Desc = "Waiting for data..."
 })
 
-local SpamStatsLabel = Tabs.Stats:AddParagraph({
+local SpamStatsLabel = PerfStatsSection:Paragraph({
     Title = "Auto Spam Stats",
-    Content = "Waiting for data..."
+    Desc = "Waiting for data..."
 })
 
-local LiveStatsLabel = Tabs.Stats:AddParagraph({
+local LiveStatsLabel = PerfStatsSection:Paragraph({
     Title = "Live Monitoring",
-    Content = "Monitoring..."
+    Desc = "Monitoring..."
 })
 
-Tabs.Stats:AddButton({
+PerfStatsSection:Button({
     Title = "Reset All Statistics",
-    Description = "Reset both parry and spam counters",
+    Desc = "Reset both parry and spam counters",
     Callback = function()
         totalParries = 0
         highSpeedParries = 0
         totalSpams = 0
         spamDuration = 0
-        Fluent:Notify({
+        WindUI:Notify({
             Title = "Stats Reset",
             Content = "All statistics have been reset",
             Duration = 3
@@ -367,17 +389,33 @@ Tabs.Stats:AddButton({
 })
 
 -- ============================================
--- SAVE MANAGER
+-- CONFIG
 -- ============================================
 
-SaveManager:SetLibrary(Fluent)
-InterfaceManager:SetLibrary(Fluent)
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({})
-InterfaceManager:SetFolder("AnimeBallComplete")
-SaveManager:SetFolder("AnimeBallComplete/configs")
-SaveManager:BuildConfigSection(Tabs.Stats)
-Window:SelectTab(1)
+local ConfigSection = Tabs.Stats:Section({ Title = "Config" })
+local CONFIG_NAME = "default"
+
+ConfigSection:Button({
+    Title = "Save Config",
+    Desc = "Save all current settings",
+    Callback = function()
+        local cfg = Window.ConfigManager:Config(CONFIG_NAME)
+        if cfg:Save() then
+            WindUI:Notify({ Title = "Config Saved", Content = "Saved to '" .. CONFIG_NAME .. "'", Duration = 3 })
+        end
+    end
+})
+
+ConfigSection:Button({
+    Title = "Load Config",
+    Desc = "Restore saved settings",
+    Callback = function()
+        local cfg = Window.ConfigManager:CreateConfig(CONFIG_NAME)
+        if cfg:Load() then
+            WindUI:Notify({ Title = "Config Loaded", Content = "Loaded '" .. CONFIG_NAME .. "'", Duration = 3 })
+        end
+    end
+})
 
 -- ============================================
 -- VISUALS
@@ -389,7 +427,7 @@ createVisualSphere = function()
     visualSphere.Name = "VisualDetector"
     visualSphere.Shape = Enum.PartType.Ball
     visualSphere.Material = Enum.Material.ForceField
-    visualSphere.Color = Color3.fromRGB(100, 100, 255)
+    visualSphere.Color = Cyan
     visualSphere.Transparency = 0.7
     visualSphere.CanCollide = false
     visualSphere.CanQuery = false
@@ -411,7 +449,7 @@ createOrUpdatePlayerDetectorSphere = function(player)
         sphere.Name = "PlayerDetector_" .. player.Name
         sphere.Shape = Enum.PartType.Ball
         sphere.Material = Enum.Material.ForceField
-        sphere.Color = Color3.fromRGB(100, 255, 100)
+        sphere.Color = Emerald
         sphere.Transparency = 0.7
         sphere.CanCollide = false
         sphere.CanQuery = false
@@ -506,17 +544,21 @@ end
 
 -- Simulates the curved arc (pos + vel*t + 0.5*accel*t^2) forward in small
 -- steps up to maxLookahead seconds, returning true (and the time) as soon as
--- the predicted position comes within meleeRange of targetPos. This is what
--- lets a curving ball still trigger an early "future" parry instead of only
--- ever being caught once it's already in range.
-local function predictCurvedImpact(pos, vel, accel, targetPos, meleeRange, maxLookahead, steps)
+-- the predicted position comes within meleeRange of the player's own
+-- predicted position (targetPos + targetVel*t). This is what lets a curving
+-- ball still trigger an early "future" parry instead of only ever being
+-- caught once it's already in range - and, since the player's position is
+-- projected forward too, running/strafing during the clash no longer causes
+-- the prediction to aim at a stale spot the player has already left.
+local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, meleeRange, maxLookahead, steps)
     if maxLookahead <= 0 then return false, nil end
     steps = steps or CURVE_SIM_STEPS
     local dt = maxLookahead / steps
     for i = 1, steps do
         local t = i * dt
         local predictedPos = pos + vel * t + accel * (0.5 * t * t)
-        if (predictedPos - targetPos).Magnitude <= meleeRange then
+        local predictedTargetPos = targetPos + targetVel * t
+        if (predictedPos - predictedTargetPos).Magnitude <= meleeRange then
             return true, t
         end
     end
@@ -654,7 +696,7 @@ local function createSpeedLabel(ball)
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, 0, 1, 0)
     label.BackgroundTransparency = 1
-    label.TextColor3 = Color3.fromRGB(255, 255, 100)
+    label.TextColor3 = Amber
     label.TextSize = 18
     label.Font = Enum.Font.GothamBold
     label.TextStrokeTransparency = 0.5
@@ -864,8 +906,12 @@ RunService.Heartbeat:Connect(function()
         local willArriveInTime = false
         if pingCompEnabled and currentRequiredLead > 0 and ballPos then
             if antiCurveEnabled then
+                -- Project the player's own current movement forward too, so
+                -- running/strafing while ping is high doesn't make the
+                -- prediction aim at a position the player has already left.
+                local playerVel = humanoidRootPart.AssemblyLinearVelocity
                 local arrives, arriveTime = predictCurvedImpact(
-                    ballPos, ballVel, ballAccel, humanoidRootPart.Position,
+                    ballPos, ballVel, ballAccel, humanoidRootPart.Position, playerVel,
                     currentParryDistance, currentRequiredLead)
                 willArriveInTime = arrives
                 currentTimeToImpact = arrives and arriveTime or (closingSpeed > 0 and (closestDistance / closingSpeed) or math.huge)
@@ -903,9 +949,9 @@ RunService.Heartbeat:Connect(function()
         visualSphere.Position = humanoidRootPart.Position
         visualSphere.Transparency = 0.7
         if isHighSpeedMode then
-            visualSphere.Color = Color3.fromRGB(255, 50, 50)
+            visualSphere.Color = Gold
         else
-            visualSphere.Color = Color3.fromRGB(100, 100, 255)
+            visualSphere.Color = Cyan
         end
     elseif visualSphere then
         visualSphere.Transparency = 1
@@ -975,7 +1021,7 @@ LocalPlayer.CharacterRemoving:Connect(function()
     isHighSpeedMode = false
 end)
 
-Fluent:Notify({
+WindUI:Notify({
     Title = "Anime Ball Loaded!",
     Content = "Auto Parry + Ping Compensation ready",
     Duration = 5
