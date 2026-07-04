@@ -604,15 +604,20 @@ end
 -- what lets a curving ball still trigger an early "future" parry instead of
 -- only ever being caught once it's already in range.
 --
--- The player's future position is genuinely unknowable when they're dodging
--- erratically - a straight projection of current velocity is wrong the
--- moment they dash or flip direction, and would predict the ball "misses"
--- when it's actually homing in. So the arc is checked against BOTH movement
--- hypotheses - the player keeps moving (targetPos + targetVel*t) and the
--- player stops/turns (targetPos) - and arrival against either one counts.
+-- The player's future position is genuinely unknowable when they're jumping,
+-- dashing, and flipping direction - a straight projection of current
+-- velocity is wrong the moment any of that happens, and would predict the
+-- ball "misses" when it's actually homing in. So the arc is checked against
+-- THREE movement hypotheses, and arrival against any one counts:
+--   1. player stops/turns          (targetPos)
+--   2. player keeps moving         (targetPos + targetVel*t, minus gravity
+--                                    drop while airborne - a jump is an arc,
+--                                    not a straight line up)
+--   3. player decelerates          (half velocity - a dash bleeds speed, so
+--                                    reality sits between hypotheses 1 and 2)
 -- Erring toward parrying is the right bias: a slightly-early block costs
 -- nothing here, a missed one loses the round.
-local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, meleeRange, maxLookahead, steps)
+local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, targetGravity, meleeRange, maxLookahead, steps)
     if maxLookahead <= 0 then return false, nil end
     steps = steps or CURVE_SIM_STEPS
     local dt = maxLookahead / steps
@@ -622,8 +627,13 @@ local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, meleeR
         if (predictedPos - targetPos).Magnitude <= meleeRange then
             return true, t
         end
-        local movedTargetPos = targetPos + targetVel * t
-        if (predictedPos - movedTargetPos).Magnitude <= meleeRange then
+        local drop = Vector3.new(0, -0.5 * targetGravity * t * t, 0)
+        local fullMovePos = targetPos + targetVel * t + drop
+        if (predictedPos - fullMovePos).Magnitude <= meleeRange then
+            return true, t
+        end
+        local halfMovePos = targetPos + targetVel * (0.5 * t) + drop
+        if (predictedPos - halfMovePos).Magnitude <= meleeRange then
             return true, t
         end
     end
@@ -1033,8 +1043,15 @@ RunService.Heartbeat:Connect(function()
             local lookahead = math.max(currentRequiredLead, panicBurstEnabled and PANIC_TTI or 0)
             if antiCurveEnabled and lookahead > 0 then
                 local playerVel = humanoidRootPart.AssemblyLinearVelocity
+                -- Mid-jump the player follows a gravity arc, not a straight
+                -- line up - project the fall only while airborne (a grounded
+                -- humanoid counteracts gravity).
+                local character = humanoidRootPart.Parent
+                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                local airborne = humanoid ~= nil and humanoid.FloorMaterial == Enum.Material.Air
+                local playerGravity = airborne and workspace.Gravity or 0
                 local arrives, arriveTime = predictCurvedImpact(
-                    ballPos, ballVel, ballAccel, humanoidRootPart.Position, playerVel,
+                    ballPos, ballVel, ballAccel, humanoidRootPart.Position, playerVel, playerGravity,
                     currentParryDistance, lookahead)
                 if arrives then
                     currentTimeToImpact = arriveTime
@@ -1047,7 +1064,17 @@ RunService.Heartbeat:Connect(function()
                 willArriveInTime = pingCompEnabled and currentRequiredLead > 0
                     and ((closestDistance - currentParryDistance) / closingSpeed) <= currentRequiredLead
             end
-            panicNow = panicBurstEnabled and currentTimeToImpact <= PANIC_TTI
+            -- Worst-case bound: a fast-curving ball can turn fully onto you
+            -- at any moment, so the estimated time-to-impact (which trusts
+            -- the ball's current direction) is not enough on its own. If the
+            -- ball's raw speed could carry it to you within the panic window
+            -- - regardless of where it's pointed right now - and you're the
+            -- highlighted target, treat impact as imminent. This is what
+            -- makes the burst immune to both hard curves and the player's
+            -- own jump/dash movement scrambling the direction estimates.
+            local worstCaseTTI = velocity > 0 and (closestDistance / velocity) or math.huge
+            panicNow = panicBurstEnabled
+                and (currentTimeToImpact <= PANIC_TTI or worstCaseTTI <= PANIC_TTI)
         end
 
         ParryStatusLabel:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
