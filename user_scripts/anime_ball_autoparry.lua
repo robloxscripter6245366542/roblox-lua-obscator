@@ -14,7 +14,6 @@ local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footag
 -- "Crimson Clash" color theme
 local AccentRed = Color3.fromHex("#DC143C") -- true crimson
 local Gold = Color3.fromHex("#FFC107")
-local Cyan = Color3.fromHex("#22D3EE")
 local Emerald = Color3.fromHex("#34D399")
 local Amber = Color3.fromHex("#FFD84D")
 
@@ -107,19 +106,24 @@ local playerHRPCache = {}     -- [player] = HumanoidRootPart
 local hasHighlightCache = false
 local ballMotionCache = {}    -- [ballInstance] = {vel, accel, time} - tracks curvature
 
+-- Previous background/element colors were near-black (#120306, #240A0E) with
+-- only a faint red tinge, so behind glass transparency the panel just read
+-- as plain dark glass instead of crimson. Bumped to an actual visible
+-- crimson-wine hue so the glass itself carries the color, not just the
+-- small accent elements (toggles/sliders).
 WindUI:AddTheme({
     Name = "CrimsonClash",
     Accent = AccentRed,
-    Dialog = Color3.fromHex("#1A0508"),
-    Text = Color3.fromHex("#FFE8EC"),
-    Placeholder = Color3.fromHex("#C97C88"),
-    Background = Color3.fromHex("#120306"),
-    Button = Color3.fromHex("#3A0F16"),
-    Icon = Color3.fromHex("#FFB4C0"),
+    Dialog = Color3.fromHex("#3D0F19"),
+    Text = Color3.fromHex("#FFE9EE"),
+    Placeholder = Color3.fromHex("#D98FA0"),
+    Background = Color3.fromHex("#2B0A12"),
+    Button = Color3.fromHex("#521624"),
+    Icon = Color3.fromHex("#FFC4D1"),
     Toggle = AccentRed,
     Slider = Color3.fromHex("#FF4D5E"),
     Checkbox = AccentRed,
-    ElementBackground = Color3.fromHex("#240A0E"),
+    ElementBackground = Color3.fromHex("#451420"),
     ElementBackgroundTransparency = 0.35,
 })
 WindUI:SetTheme("CrimsonClash")
@@ -129,6 +133,7 @@ local Window = WindUI:CreateWindow({
     Icon = "sword",
     Folder = "AnimeBallComplete",
     ToggleKey = Enum.KeyCode.LeftControl,
+    Theme = "CrimsonClash",
 
     Acrylic = true,
     Transparent = true,
@@ -136,6 +141,9 @@ local Window = WindUI:CreateWindow({
     Radius = 20,
 })
 
+-- Re-applied after CreateWindow as a safety net in case window construction
+-- resets to a built-in default theme.
+WindUI:SetTheme("CrimsonClash")
 Window:SetBackgroundTransparency(0.35)
 
 local Tabs = {
@@ -355,7 +363,7 @@ VisualIndicatorsSection:Toggle({
 
 VisualIndicatorsSection:Paragraph({
     Title = "Color Guide",
-    Desc = "Cyan = Normal Mode\nGold = High Speed Mode\nEmerald = Player Detectors\nAmber = Ball Velocity"
+    Desc = "Crimson = Normal Mode\nGold = High Speed Mode\nEmerald = Player Detectors\nAmber = Ball Velocity"
 })
 
 -- ============================================
@@ -434,7 +442,7 @@ createVisualSphere = function()
     visualSphere.Name = "VisualDetector"
     visualSphere.Shape = Enum.PartType.Ball
     visualSphere.Material = Enum.Material.ForceField
-    visualSphere.Color = Cyan
+    visualSphere.Color = AccentRed
     visualSphere.Transparency = 0.7
     visualSphere.CanCollide = false
     visualSphere.CanQuery = false
@@ -655,18 +663,33 @@ local function getPing()
     return 0
 end
 
--- Extra detection studs so a high-ping client triggers the parry earlier,
--- based on the closing speed of the ball (not its raw magnitude) and capped
--- by both MAX_PING_COMP (studs) and predictionHorizon (seconds of look-ahead).
-local function getPingCompensation(closingSpeed)
-    if not pingCompEnabled or closingSpeed <= 0 then
-        currentPingComp = 0
+-- The ping lead time is purely a function of latency/settings - it must NOT
+-- depend on the ball's straight-line closing speed. (It previously did, via
+-- getPingCompensation zeroing it out whenever closingSpeed <= 0, which
+-- silently disabled the curved-arc prediction below for exactly the balls it
+-- exists to catch: ones that aren't closing in a straight line *right now*
+-- but are about to, because they're curving in.)
+local function getPingLeadTime()
+    if not pingCompEnabled then
         currentRequiredLead = 0
         return 0
     end
     currentPing = getPing()
     local leadTime = math.clamp((currentPing / 1000) * pingMultiplier, 0, predictionHorizon)
     currentRequiredLead = leadTime
+    return leadTime
+end
+
+-- Extra detection studs (legacy straight-line display value) so a high-ping
+-- client's effective range readout reflects the compensation, capped by
+-- MAX_PING_COMP. Only meaningful when the ball is actually closing in a
+-- straight line; the curved-arc prediction below is what actually decides
+-- whether to parry early.
+local function getPingCompensation(closingSpeed, leadTime)
+    if not pingCompEnabled or closingSpeed <= 0 then
+        currentPingComp = 0
+        return 0
+    end
     local comp = math.clamp(closingSpeed * leadTime, 0, MAX_PING_COMP)
     currentPingComp = comp
     return comp
@@ -901,7 +924,8 @@ RunService.Heartbeat:Connect(function()
         -- high-ping clients fire early enough that the block still lands on
         -- the server in time. Uses closing speed (not raw speed) so a ball
         -- moving away or past the player never triggers an early parry.
-        local pingComp = getPingCompensation(closingSpeed)
+        local leadTime = getPingLeadTime()
+        local pingComp = getPingCompensation(closingSpeed, leadTime)
         local effectiveParryDistance = currentParryDistance + pingComp
 
         -- Parry if the ball is already inside melee range, OR if its
@@ -958,7 +982,7 @@ RunService.Heartbeat:Connect(function()
         if isHighSpeedMode then
             visualSphere.Color = Gold
         else
-            visualSphere.Color = Cyan
+            visualSphere.Color = AccentRed
         end
     elseif visualSphere then
         visualSphere.Transparency = 1
