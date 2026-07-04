@@ -845,8 +845,18 @@ local function findClosestBall(humanoidRootPart)
     return closestBall, closestDistance
 end
 
+-- The event cache can go stale-FALSE: it's reset on death, but some games
+-- keep the Highlight instance alive across deaths and only re-add it when
+-- the target changes - in that case no ChildAdded ever fires again and a
+-- stale false would permanently disable ALL parrying ("it never blocks").
+-- So false is always verified with a direct lookup; a missed event can slow
+-- one frame down, never turn the parry off for good.
 local function hasPlayerHighlight()
-    return hasHighlightCache
+    if hasHighlightCache then return true end
+    local folder = workspace:FindFirstChild(LocalPlayer.Name)
+    local has = folder ~= nil and folder:FindFirstChild("Highlight") ~= nil
+    if has then hasHighlightCache = true end
+    return has
 end
 
 local function isBallInPlayerRange(ball, distanceRange)
@@ -1073,8 +1083,13 @@ RunService.Heartbeat:Connect(function()
             -- makes the burst immune to both hard curves and the player's
             -- own jump/dash movement scrambling the direction estimates.
             local worstCaseTTI = velocity > 0 and (closestDistance / velocity) or math.huge
+            -- withinRange is included explicitly: a ball already inside the
+            -- parry radius is always an imminent threat, even when its
+            -- time-to-impact estimate is unusable (hovering pre-serve at
+            -- zero velocity, orbiting with no closing speed, or Anti-Curve
+            -- disabled). Burst-while-inside beats one parry per 0.3s.
             panicNow = panicBurstEnabled
-                and (currentTimeToImpact <= PANIC_TTI or worstCaseTTI <= PANIC_TTI)
+                and (withinRange or currentTimeToImpact <= PANIC_TTI or worstCaseTTI <= PANIC_TTI)
         end
 
         ParryStatusLabel:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
