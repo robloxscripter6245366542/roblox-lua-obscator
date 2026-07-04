@@ -70,6 +70,7 @@ local currentRequiredLead = 0
 local antiCurveEnabled = true
 local ACCEL_SMOOTHING = 0.35      -- 0-1, higher = react faster to new curvature, lower = smoother/less jittery
 local CURVE_SIM_STEPS = 20        -- samples taken along the predicted arc, up to predictionHorizon seconds out
+local MAX_CURVE_ACCEL = 400       -- studs/s^2 cap; a parry flips ball velocity in one frame, which would otherwise read as a huge fake curve
 local currentCurveAccel = 0       -- last measured curve (lateral acceleration) magnitude, studs/s^2
 
 -- ============================================
@@ -515,10 +516,6 @@ local function getBallVelocityVector(ball)
     return part and part.AssemblyLinearVelocity or Vector3.new()
 end
 
-local function getBallVelocity(ball)
-    return getBallVelocityVector(ball).Magnitude
-end
-
 -- Component of the ball's velocity that is actually closing the distance to
 -- `targetPos` (positive = approaching, negative/zero = moving away or level).
 -- Using this instead of raw speed means a ball that whizzes past the player
@@ -545,12 +542,23 @@ end
 
 -- Updates and returns the smoothed acceleration (curvature) vector for a
 -- ball, from the change in its velocity since the last frame we saw it.
-local function updateBallCurvature(ball, pos, vel, now)
+local function updateBallCurvature(ball, vel, now)
     local prev = ballMotionCache[ball]
     local accel = Vector3.new()
     if prev and now > prev.time then
         local dt = now - prev.time
         local rawAccel = (vel - prev.vel) / dt
+        -- A parry/bounce reverses the ball's velocity within a single frame;
+        -- read as delta-v/dt that's a one-frame "acceleration" in the
+        -- thousands of studs/s^2, and the smoothing would carry that phantom
+        -- curve for several frames - enough for predictCurvedImpact to
+        -- hallucinate an arc back into range and waste a parry (0.3s
+        -- cooldown) on a ball that's actually flying away. Real curve/homing
+        -- forces are far below this cap.
+        local mag = rawAccel.Magnitude
+        if mag > MAX_CURVE_ACCEL then
+            rawAccel = rawAccel * (MAX_CURVE_ACCEL / mag)
+        end
         accel = prev.accel:Lerp(rawAccel, ACCEL_SMOOTHING)
     end
     ballMotionCache[ball] = {vel = vel, accel = accel, time = now}
@@ -596,7 +604,23 @@ local function trackBallsFolder(folder)
     folder.ChildRemoved:Connect(function(child)
         ballsCache[child] = nil
         ballMotionCache[child] = nil
+        -- Also drop (and destroy) the speed-label billboard for this ball,
+        -- otherwise billboardCache grows without bound as balls spawn and
+        -- despawn over a long session.
+        local cached = billboardCache[child]
+        if cached and cached.Billboard then cached.Billboard:Destroy() end
+        billboardCache[child] = nil
     end)
+end
+
+-- Lazily drop balls whose instance has left the game tree without the
+-- folder's ChildRemoved firing (e.g. the whole Balls folder was reparented
+-- rather than destroyed) - otherwise dead balls linger in the cache forever
+-- and corrupt closest-ball selection.
+local function purgeDeadBall(ball)
+    ballsCache[ball] = nil
+    ballMotionCache[ball] = nil
+    billboardCache[ball] = nil
 end
 
 local function bindHighlightFolder(folder)
@@ -703,15 +727,26 @@ local function calculateDistance(velocity)
     return math.clamp(distance, MIN_DISTANCE, MAX_DISTANCE)
 end
 
+-- InvokeServer on a RemoteFunction YIELDS until the server replies. Fired
+-- inline from the Heartbeat handler, that stalls everything after it in the
+-- same frame (status UI, the whole Auto Spam section) for a full round-trip
+-- - the worse your ping, the longer the stall. Fire-and-forget in a fresh
+-- thread so the handler never blocks on the network.
+local function fireBlockRemote()
+    task.spawn(function()
+        pcall(function()
+            ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {-0.759547233581543})
+        end)
+    end)
+end
+
 local function executeParry()
     local currentTime = tick()
     if currentTime - lastParryTime < PARRY_COOLDOWN then return end
     lastParryTime = currentTime
     totalParries = totalParries + 1
     if isHighSpeedMode then highSpeedParries = highSpeedParries + 1 end
-    pcall(function()
-        ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {-0.759547233581543})
-    end)
+    fireBlockRemote()
 end
 
 local function createSpeedLabel(ball)
@@ -742,12 +777,16 @@ local function findClosestBall(humanoidRootPart)
     local closestBall = nil
     local closestDistance = math.huge
     for ball in pairs(ballsCache) do
-        local ballPos = getBallPosition(ball)
-        if ballPos then
-            local distance = (humanoidRootPart.Position - ballPos).Magnitude
-            if distance < closestDistance then
-                closestDistance = distance
-                closestBall = ball
+        if not ball.Parent then
+            purgeDeadBall(ball)
+        else
+            local ballPos = getBallPosition(ball)
+            if ballPos then
+                local distance = (humanoidRootPart.Position - ballPos).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestBall = ball
+                end
             end
         end
     end
@@ -771,9 +810,7 @@ local function isBallInPlayerRange(ball, distanceRange)
 end
 
 local function executeSpam()
-    pcall(function()
-        ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {-0.759547233581543})
-    end)
+    fireBlockRemote()
     totalSpams = totalSpams + 1
 end
 
@@ -805,10 +842,14 @@ local function checkBallDistance()
     if not hrp then return false, math.huge end
     local closestDistance = math.huge
     for ball in pairs(ballsCache) do
-        local ballPos = getBallPosition(ball)
-        if ballPos then
-            local distance = (hrp.Position - ballPos).Magnitude
-            if distance < closestDistance then closestDistance = distance end
+        if not ball.Parent then
+            purgeDeadBall(ball)
+        else
+            local ballPos = getBallPosition(ball)
+            if ballPos then
+                local distance = (hrp.Position - ballPos).Magnitude
+                if distance < closestDistance then closestDistance = distance end
+            end
         end
     end
     return closestDistance <= SPAM_DETECTION_DISTANCE, closestDistance
@@ -867,17 +908,22 @@ RunService.Heartbeat:Connect(function()
     local humanoidRootPart = getPlayerHRP(LocalPlayer)
     if not humanoidRootPart then return end
 
+    -- Keep the spam-detector spheres tracking players regardless of parry
+    -- state - previously this only ran inside the parry-with-ball branch,
+    -- so the spheres froze in place whenever no ball existed (between
+    -- rounds) or Auto Parry was toggled off.
+    updatePlayerDetectorSpheres()
+
     local hasHighlight = hasPlayerHighlight()
     local closestBall, closestDistance = findClosestBall(humanoidRootPart)
 
     if autoParryEnabled and closestBall then
-        updatePlayerDetectorSpheres()
         local ballInDetectorRange = isBallInPlayerRange(closestBall, PLAYER_DETECTOR_DISTANCE)
         local ballPos = getBallPosition(closestBall)
         local ballVel = getBallVelocityVector(closestBall)
         local velocity = ballVel.Magnitude
         local closingSpeed = ballPos and getClosingSpeed(ballPos, ballVel, humanoidRootPart.Position) or 0
-        local ballAccel = ballPos and updateBallCurvature(closestBall, ballPos, ballVel, currentTime) or Vector3.new()
+        local ballAccel = ballPos and updateBallCurvature(closestBall, ballVel, currentTime) or Vector3.new()
         currentCurveAccel = ballAccel.Magnitude
 
         if velocity >= HIGH_SPEED_THRESHOLD then
@@ -1050,6 +1096,11 @@ LocalPlayer.CharacterRemoving:Connect(function()
     if visualSphere then visualSphere:Destroy() visualSphere = nil end
     clearPlayerDetectorSpheres()
     isHighSpeedMode = false
+    -- The highlight lives under the (now removed) character's workspace
+    -- entry; without this reset the cache holds its last value until the
+    -- respawned character rebinds, letting a phantom highlight gate parries
+    -- while dead.
+    hasHighlightCache = false
 end)
 
 WindUI:Notify({
