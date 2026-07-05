@@ -540,6 +540,15 @@ ConfigSection:Button({
     end
 })
 
+-- Auto-save: load saved settings on startup, then persist them in the
+-- background so any change you make is remembered without pressing Save.
+task.spawn(function()
+    pcall(function() Window.ConfigManager:CreateConfig(CONFIG_NAME):Load() end)
+    while task.wait(3) do
+        pcall(function() Window.ConfigManager:Config(CONFIG_NAME):Save() end)
+    end
+end)
+
 -- ============================================
 -- VISUALS
 -- ============================================
