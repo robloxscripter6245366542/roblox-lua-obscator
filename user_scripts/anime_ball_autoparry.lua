@@ -713,6 +713,16 @@ end
 local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, targetGravity, meleeRange, maxLookahead, steps)
     if maxLookahead <= 0 then return false, nil end
     steps = steps or CURVE_SIM_STEPS
+    -- Anti-tunneling: at a fixed step count a fast ball can jump much further
+    -- than the parry radius between samples and pass straight through the
+    -- sphere unseen (temporal aliasing). Raise the step count so no single
+    -- step advances more than half the melee radius, using the arc's peak
+    -- speed (current speed + accel over the window). Capped so the loop can
+    -- never blow up on absurd inputs.
+    local peakSpeed = vel.Magnitude + accel.Magnitude * maxLookahead
+    local safeStep = math.max(meleeRange * 0.5, 1)
+    local neededSteps = math.ceil(peakSpeed * maxLookahead / safeStep)
+    steps = math.clamp(math.max(steps, neededSteps), 1, 400)
     local dt = maxLookahead / steps
     for i = 1, steps do
         local t = i * dt
