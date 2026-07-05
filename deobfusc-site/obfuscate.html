@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Lua Obfuscator — Roblox Lua Obscator</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;
+  --blue:#58a6ff;--green:#3fb950;--red:#f85149;--orange:#d29922;
+  --purple:#8957e5;--cyan:#39d353;--pink:#f778ba;--teal:#26a69a;
+  --text:#e6edf3;--muted:#8b949e;--dim:#484f58;
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 18px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap}
+header h1{font-size:1rem;font-weight:700;white-space:nowrap}
+header a.navlink{margin-left:auto;color:var(--muted);text-decoration:none;font-size:.78rem;border:1px solid var(--border);padding:5px 11px;border-radius:5px}
+header a.navlink:hover{color:var(--text);background:var(--surface2)}
+.badge{font-size:.6rem;padding:2px 6px;border-radius:99px;font-weight:700;letter-spacing:.4px;white-space:nowrap}
+.bpurple{background:#3d1e6e;color:var(--purple)}
+.bgreen{background:#0f2010;color:var(--green)}
+.bblue{background:#1e3040;color:var(--blue)}
+.borange{background:#2a1a00;color:var(--orange)}
+
+.toolbar{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:14px;flex-shrink:0;flex-wrap:wrap}
+.opt{display:flex;align-items:center;gap:5px;font-size:.72rem;color:var(--muted);cursor:pointer;user-select:none}
+.opt input{accent-color:var(--purple);cursor:pointer}
+.opt:hover{color:var(--text)}
+.spacer{flex:1}
+.btn{border:none;border-radius:5px;padding:7px 16px;font-size:.78rem;font-weight:700;cursor:pointer;transition:.1s;white-space:nowrap}
+.bgo{background:#1a2e1a;color:var(--green);border:1px solid #1a3a1a}.bgo:hover{background:#1a3a1a}
+.bclear{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}.bclear:hover{background:var(--border)}
+.bcopy{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}.bcopy:hover{color:var(--text)}
+
+.panels{flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden;min-height:0}
+.pane{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden;min-height:0}
+.pane:last-child{border-right:none}
+.phdr{background:var(--surface);padding:6px 12px;font-size:.68rem;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.chip{font-size:.63rem;padding:1px 7px;border-radius:99px;margin-left:auto}
+.cok{background:#0f2010;color:var(--green)}
+.cinfo{background:#1f3240;color:var(--blue)}
+.cerr{background:#2d1212;color:var(--red)}
+textarea{flex:1;background:var(--bg);color:var(--text);border:none;outline:none;resize:none;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.74rem;line-height:1.65;padding:12px;tab-size:4;min-height:0;white-space:pre}
+#output{flex:1;background:var(--bg);color:var(--text);font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.72rem;line-height:1.6;overflow:auto;min-height:0;padding:12px;white-space:pre-wrap;word-break:break-all}
+.stats{padding:8px 12px;background:var(--surface);border-top:1px solid var(--border);font-size:.68rem;color:var(--muted);display:flex;gap:16px;flex-shrink:0;flex-wrap:wrap}
+.stats b{color:var(--text)}
+.hint{padding:9px 11px;margin:0;color:var(--muted);font-size:.72rem;line-height:1.5}
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v6c0 5 4 9 9 9s9-4 9-9V7l-9-5z"/></svg>
+  <h1>Lua Obfuscator</h1>
+  <span class="badge bpurple">Scope-aware renaming</span>
+  <span class="badge bblue">String encoding</span>
+  <span class="badge bgreen">Number obfuscation</span>
+  <span class="badge borange">XOR + Base64 wrapper</span>
+  <a class="navlink" href="index.html">↔ Deobfuscator</a>
+</header>
+
+<div class="toolbar">
+  <label class="opt"><input type="checkbox" id="optRename" checked/> Rename locals</label>
+  <label class="opt"><input type="checkbox" id="optStrings" checked/> Encode strings</label>
+  <label class="opt"><input type="checkbox" id="optNumbers" checked/> Obfuscate numbers</label>
+  <label class="opt"><input type="checkbox" id="optJunk" checked/> Junk code</label>
+  <label class="opt"><input type="checkbox" id="optWrap" checked/> Encrypt whole file</label>
+  <div class="spacer"></div>
+  <button class="btn bclear" onclick="clearAll()">✕ Clear</button>
+  <button class="btn bcopy" onclick="copyOutput()">⎘ Copy</button>
+  <button class="btn bgo" onclick="runObfuscate()">⚡ Obfuscate</button>
+</div>
+
+<div class="panels">
+  <div class="pane">
+    <div class="phdr">Input <span class="chip cinfo" id="inChip">ready</span></div>
+    <textarea id="inp" spellcheck="false" placeholder="-- Paste your Lua / Luau source here.
+-- Everything runs locally in your browser — nothing is uploaded.
+--
+-- local function greet(name)
+--   print('hello ' .. name)
+-- end
+-- greet('world')"></textarea>
+  </div>
+  <div class="pane">
+    <div class="phdr">Output <span class="chip cinfo" id="outChip">waiting</span></div>
+    <div id="output"><p class="hint">Click <b>⚡ Obfuscate</b> to generate protected output. All passes are free — there is no paid tier.</p></div>
+    <div class="stats" id="stats" style="display:none"></div>
+  </div>
+</div>
+
+<script src="obfuscator-engine.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const inp=$('inp'),out=$('output'),inChip=$('inChip'),outChip=$('outChip'),stats=$('stats');
+let lastOutput='';
+
+inp.addEventListener('input',()=>{
+  const v=inp.value;
+  inChip.textContent=v.split('\n').length+' ln · '+fmt(v.length);
+  inChip.className='chip cinfo';
+});
+function fmt(n){return n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB'}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+function runObfuscate(){
+  const code=inp.value;
+  if(!code.trim()){
+    out.innerHTML='<p class="hint">Paste some code first.</p>';
+    outChip.textContent='empty';outChip.className='chip cinfo';
+    stats.style.display='none';
+    return;
+  }
+  outChip.textContent='working…';outChip.className='chip cinfo';
+  out.innerHTML='<p class="hint">Obfuscating…</p>';
+  setTimeout(()=>{
+    const opts={
+      renameLocals: $('optRename').checked,
+      strings: $('optStrings').checked,
+      numbers: $('optNumbers').checked,
+      junk: $('optJunk').checked,
+      wrap: $('optWrap').checked,
+    };
+    try{
+      const result = LuaObfuscator.obfuscate(code, opts);
+      lastOutput = result.code;
+      out.textContent = result.code;
+      outChip.textContent='done';outChip.className='chip cok';
+      const ratio = (result.stats.outputSize / result.stats.originalSize).toFixed(2);
+      stats.style.display='flex';
+      stats.innerHTML =
+        `<span>Original: <b>${fmt(result.stats.originalSize)}</b></span>`+
+        `<span>Output: <b>${fmt(result.stats.outputSize)}</b></span>`+
+        `<span>Ratio: <b>${ratio}×</b></span>`+
+        `<span>Lines in: <b>${result.stats.originalLines}</b></span>`;
+    }catch(e){
+      out.innerHTML = `<p class="hint" style="color:var(--red)">Error: ${esc(e.message)}</p>`;
+      outChip.textContent='error';outChip.className='chip cerr';
+      stats.style.display='none';
+    }
+  }, 10);
+}
+
+function clearAll(){
+  inp.value='';lastOutput='';
+  out.innerHTML='<p class="hint">Click <b>⚡ Obfuscate</b> to generate protected output. All passes are free — there is no paid tier.</p>';
+  outChip.textContent='waiting';outChip.className='chip cinfo';
+  inChip.textContent='ready';inChip.className='chip cinfo';
+  stats.style.display='none';
+}
+function copyOutput(){
+  if(!lastOutput) return;
+  navigator.clipboard.writeText(lastOutput).then(()=>{
+    const b=document.querySelector('.bcopy');const t=b.textContent;
+    b.textContent='✓ Copied!';setTimeout(()=>b.textContent=t,1500);
+  });
+}
+</script>
+</body>
+</html>
