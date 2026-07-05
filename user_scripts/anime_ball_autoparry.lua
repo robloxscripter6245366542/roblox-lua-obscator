@@ -54,13 +54,17 @@ local highSpeedParries = 0
 -- triggers an early parry.
 
 local pingCompEnabled = true
-local pingMultiplier = 1.0        -- 1.0 = compensate the full ping; raise for extra safety margin
+local pingAutoEnabled = true      -- auto-tune the strength from your live ping instead of the manual slider
+local pingMultiplier = 1.0        -- manual strength (used only when Auto is OFF): 1.0 = full ping
 local MAX_PING_COMP = 60          -- cap on extra studs so it never over-extends absurdly
 local predictionHorizon = 1.5     -- max seconds of look-ahead allowed (0 - 5s)
 local currentPing = 0             -- last measured round-trip ping in ms
+local smoothedPing = 0            -- exponentially-smoothed ping so comp changes gradually, never jerks
 local currentPingComp = 0         -- last computed extra studs of detection range
+local currentAutoMult = 1.0       -- last effective multiplier chosen by Auto mode
 local currentTimeToImpact = math.huge
 local currentRequiredLead = 0
+local PING_SMOOTHING = 0.1        -- 0-1; how fast smoothedPing chases the raw ping (low = smoother)
 
 -- Anti-curve: the ball's velocity vector alone only predicts a straight
 -- line, which misses curving/homing balls entirely. We also track the
@@ -119,6 +123,14 @@ local Clash = {
     lastVelBall = nil,   -- ball the last stored velocity belongs to
     lastVelVec = nil,
 }
+
+-- Keep-moving guard: firing block used to yield the main thread on every
+-- parry (a full ping round-trip stall = felt movement stutter); that's fixed
+-- by firing block in its own thread (fireBlockRemote). This table additionally
+-- restores WalkSpeed if the game zeroes it while blocking, so a block can
+-- never leave you rooted. Bundled so a dedicated connection captures one
+-- upvalue. cachedSpeed learns the game's real walk speed (last non-zero seen).
+local Move = { keep = true, cachedSpeed = 16 }
 
 -- Forward declarations (assigned further down, but referenced by UI callbacks
 -- that can fire before those definitions run).
@@ -225,6 +237,16 @@ FeatureSection:Toggle({
     end
 })
 
+FeatureSection:Toggle({
+    Flag = "KeepMoving",
+    Title = "Keep Moving While Blocking",
+    Desc = "Restore your walk speed if a block ever roots you - blocking/parry never interrupts movement",
+    Value = true,
+    Callback = function(Value)
+        Move.keep = Value
+    end
+})
+
 local QuickStatsSection = Tabs.Main:Section({ Title = "Quick Stats" })
 HUD.QuickStats = QuickStatsSection:Paragraph({
     Title = "Performance",
@@ -260,10 +282,25 @@ PingSection:Toggle({
     end
 })
 
+PingSection:Toggle({
+    Flag = "PingAutoEnabled",
+    Title = "Auto (adjust by your ping)",
+    Desc = "Set the strength automatically from your live ping - more comp the higher it is. Off = use the manual slider below",
+    Value = true,
+    Callback = function(Value)
+        pingAutoEnabled = Value
+        WindUI:Notify({
+            Title = "Auto Ping Compensation",
+            Content = Value and "ON - tuning to your ping" or "OFF - using manual slider",
+            Duration = 3
+        })
+    end
+})
+
 PingSection:Slider({
     Flag = "PingMultiplier",
-    Title = "Compensation Strength",
-    Desc = "1.0 = full ping. Higher = parry even earlier",
+    Title = "Compensation Strength (manual)",
+    Desc = "Only used when Auto is OFF. 1.0 = full ping, higher = parry even earlier",
     Step = 0.05,
     Value = { Min = 0, Max = 3, Default = 1.0 },
     Callback = function(Value)
@@ -788,7 +825,27 @@ local function getPingLeadTime()
         return 0
     end
     currentPing = getPing()
-    local leadTime = math.clamp((currentPing / 1000) * pingMultiplier, 0, predictionHorizon)
+    -- Smooth the raw ping with an exponential moving average. Roblox's ping
+    -- reading jitters frame-to-frame; feeding it straight into the lead time
+    -- makes the parry window twitch, which is felt as stutter. Chasing a
+    -- smoothed value means the compensation eases up/down gradually instead.
+    if smoothedPing == 0 then
+        smoothedPing = currentPing
+    else
+        smoothedPing = smoothedPing + (currentPing - smoothedPing) * PING_SMOOTHING
+    end
+    -- Auto mode: pick the strength from your live ping instead of the manual
+    -- slider. Low ping needs almost nothing; the safety margin grows with
+    -- ping (1.0x at 0ms up to 2.0x at 400ms+), so the worse your connection,
+    -- the earlier it blocks - with no knob to tune.
+    local mult
+    if pingAutoEnabled then
+        mult = math.clamp(1.0 + smoothedPing / 400, 1.0, 2.0)
+    else
+        mult = pingMultiplier
+    end
+    currentAutoMult = mult
+    local leadTime = math.clamp((smoothedPing / 1000) * mult, 0, predictionHorizon)
     currentRequiredLead = leadTime
     return leadTime
 end
@@ -978,10 +1035,12 @@ task.spawn(function()
             totalSpams, spamDuration, spamsPerSecond, spamStarted and "ACTIVE" or "INACTIVE"))
 
         local livePing = getPing()
-        HUD.PingInfo:SetDesc(string.format("- Current Ping: %.0f ms\n- Compensation: %s\n- Strength: %.2fx\n- Prediction Horizon: %.2fs\n- Last Extra Range: +%.1f studs\n- Last Time-To-Impact: %s",
-            livePing,
+        HUD.PingInfo:SetDesc(string.format("- Current Ping: %.0f ms (smoothed %.0f)\n- Compensation: %s\n- Mode: %s\n- Strength: %.2fx%s\n- Prediction Horizon: %.2fs\n- Last Extra Range: +%.1f studs\n- Last Time-To-Impact: %s",
+            livePing, smoothedPing,
             pingCompEnabled and "ON" or "OFF",
-            pingMultiplier,
+            pingAutoEnabled and "AUTO" or "Manual",
+            pingAutoEnabled and currentAutoMult or pingMultiplier,
+            pingAutoEnabled and " (auto)" or "",
             predictionHorizon,
             currentPingComp,
             currentTimeToImpact < math.huge and string.format("%.2fs", currentTimeToImpact) or "n/a"))
@@ -1272,6 +1331,26 @@ LocalPlayer.CharacterRemoving:Connect(function()
     -- respawned character rebinds, letting a phantom highlight gate parries
     -- while dead.
     hasHighlightCache = false
+end)
+
+-- Movement guard, in its own connection so it doesn't add to the main
+-- Heartbeat closure's upvalue count (Lua 5.1's 60-per-function limit). Learns
+-- the game's real walk speed from the last non-zero value seen, and restores
+-- it whenever a block roots the character - so blocking never interrupts
+-- movement. Toggle: Main tab > Keep Moving While Blocking.
+RunService.Heartbeat:Connect(function()
+    if not Move.keep then return end
+    local hrp = getPlayerHRP(LocalPlayer)
+    if not hrp then return end
+    local character = hrp.Parent
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    local ws = humanoid.WalkSpeed
+    if ws > 0.5 then
+        Move.cachedSpeed = ws
+    elseif Move.cachedSpeed > 0.5 then
+        humanoid.WalkSpeed = Move.cachedSpeed
+    end
 end)
 
 WindUI:Notify({
