@@ -90,13 +90,35 @@ local totalBurstBlocks = 0
 
 local SPAM_DETECTION_DISTANCE = 34.3
 -- Fires every single Heartbeat frame, uncapped, for as long as the clash
--- conditions (player + ball + Highlight) hold - no duration limit, so a
--- clash can be held indefinitely (an hour+) without the loop giving up.
+-- holds - no duration limit, so a clash can be held indefinitely (an hour+)
+-- without the loop giving up.
 local autoSpamEnabled = true
 local spamStarted = false
 local totalSpams = 0
 local spamDuration = 0
 local lastSpamStartTime = 0
+
+-- Smart clash detection: proximity alone (player near + ball near +
+-- highlight) can't tell "clashing" apart from "jumping around next to
+-- someone", and jump-clashing can stretch those checks enough to drop the
+-- spam mid-clash. The actual physical signature of a clash is the ball
+-- rapidly REVERSING direction as it ping-pongs between the two players, so
+-- that's what we detect: velocity reversals within a sliding time window.
+-- Entering the clash requires the highlight (proof you're a participant,
+-- not a bystander next to someone else's clash); staying in it only
+-- requires the reversals to continue, so highlight flicker between the two
+-- clashers or jump-stretched distances can't break the hold.
+-- Bundled into one table so the big Heartbeat closure captures a single
+-- upvalue instead of seven (Lua 5.1 caps a function at 60 upvalues).
+local Clash = {
+    enabled = true,
+    WINDOW = 1.2,        -- seconds; reversals are counted inside this sliding window
+    MIN_FLIPS = 2,       -- reversals needed inside the window to call it a clash
+    MIN_SPEED = 10,      -- studs/s; ignore direction jitter of a near-stationary ball
+    flipTimes = {},
+    lastVelBall = nil,   -- ball the last stored velocity belongs to
+    lastVelVec = nil,
+}
 
 -- Forward declarations (assigned further down, but referenced by UI callbacks
 -- that can fire before those definitions run).
@@ -166,6 +188,11 @@ local Tabs = {
     Stats = Window:Tab({ Title = "Statistics", Icon = "bar-chart" })
 }
 
+-- Live status paragraph handles, bundled into one table so the Heartbeat
+-- closure captures a single upvalue for all of them (Lua 5.1's 60-upvalue
+-- function limit).
+local HUD = {}
+
 local FeatureSection = Tabs.Main:Section({ Title = "Feature Control" })
 
 FeatureSection:Toggle({
@@ -199,19 +226,19 @@ FeatureSection:Toggle({
 })
 
 local QuickStatsSection = Tabs.Main:Section({ Title = "Quick Stats" })
-local QuickStatsLabel = QuickStatsSection:Paragraph({
+HUD.QuickStats = QuickStatsSection:Paragraph({
     Title = "Performance",
     Desc = "Loading..."
 })
 
 local ParryStatusSection = Tabs.Parry:Section({ Title = "Auto Parry Status" })
 
-local ParryStatusLabel = ParryStatusSection:Paragraph({
+HUD.ParryStatus = ParryStatusSection:Paragraph({
     Title = "Detection Status",
     Desc = "Initializing..."
 })
 
-local ParryDistanceLabel = ParryStatusSection:Paragraph({
+HUD.ParryDistance = ParryStatusSection:Paragraph({
     Title = "Distance Info",
     Desc = "Waiting for data..."
 })
@@ -308,36 +335,46 @@ PingSection:Slider({
     end
 })
 
-local PingInfoLabel = PingSection:Paragraph({
+HUD.PingInfo = PingSection:Paragraph({
     Title = "Ping Status",
     Desc = "Measuring..."
 })
 
 local SpamStatusSection = Tabs.Spam:Section({ Title = "Auto Spam Status" })
 
-local SpamStatusLabel = SpamStatusSection:Paragraph({
+SpamStatusSection:Toggle({
+    Flag = "ClashDetect",
+    Title = "Smart Clash Detection",
+    Desc = "Only spam during a real clash (ball rapidly bouncing back and forth) - not just when standing near someone",
+    Value = true,
+    Callback = function(Value)
+        Clash.enabled = Value
+    end
+})
+
+HUD.SpamStatus = SpamStatusSection:Paragraph({
     Title = "System Status",
     Desc = "Initializing..."
 })
 
-local SpamConditionsLabel = SpamStatusSection:Paragraph({
+HUD.SpamConditions = SpamStatusSection:Paragraph({
     Title = "Detection Status",
     Desc = "Checking conditions..."
 })
 
 local LiveDetectionSection = Tabs.Spam:Section({ Title = "Live Detection" })
 
-local PlayerDetectionLabel = LiveDetectionSection:Paragraph({
+HUD.PlayerDetection = LiveDetectionSection:Paragraph({
     Title = "Player Detection",
     Desc = "Scanning..."
 })
 
-local BallDetectionLabel = LiveDetectionSection:Paragraph({
+HUD.BallDetection = LiveDetectionSection:Paragraph({
     Title = "Ball Detection",
     Desc = "Scanning..."
 })
 
-local HighlightDetectionLabel = LiveDetectionSection:Paragraph({
+HUD.HighlightDetection = LiveDetectionSection:Paragraph({
     Title = "Highlight Detection",
     Desc = "Checking..."
 })
@@ -405,17 +442,17 @@ VisualIndicatorsSection:Paragraph({
 
 local PerfStatsSection = Tabs.Stats:Section({ Title = "Performance Statistics" })
 
-local ParryStatsLabel = PerfStatsSection:Paragraph({
+HUD.ParryStats = PerfStatsSection:Paragraph({
     Title = "Auto Parry Stats",
     Desc = "Waiting for data..."
 })
 
-local SpamStatsLabel = PerfStatsSection:Paragraph({
+HUD.SpamStats = PerfStatsSection:Paragraph({
     Title = "Auto Spam Stats",
     Desc = "Waiting for data..."
 })
 
-local LiveStatsLabel = PerfStatsSection:Paragraph({
+HUD.LiveStats = PerfStatsSection:Paragraph({
     Title = "Live Monitoring",
     Desc = "Monitoring..."
 })
@@ -919,12 +956,12 @@ end
 
 task.spawn(function()
     while task.wait(0.5) do
-        QuickStatsLabel:SetDesc(string.format("- Total Parries: %d (High Speed: %d)\n- Total Spams: %d\n- Auto Parry: %s\n- Auto Spam: %s",
+        HUD.QuickStats:SetDesc(string.format("- Total Parries: %d (High Speed: %d)\n- Total Spams: %d\n- Auto Parry: %s\n- Auto Spam: %s",
             totalParries, highSpeedParries, totalSpams,
             autoParryEnabled and "ON" or "OFF",
             autoSpamEnabled and "ON" or "OFF"))
 
-        ParryStatsLabel:SetDesc(string.format("- Total Parries: %d\n- High Speed Parries: %d\n- Burst Blocks: %d\n- High Speed Rate: %.1f%%\n- Current Mode: %s",
+        HUD.ParryStats:SetDesc(string.format("- Total Parries: %d\n- High Speed Parries: %d\n- Burst Blocks: %d\n- High Speed Rate: %.1f%%\n- Current Mode: %s",
             totalParries, highSpeedParries, totalBurstBlocks,
             totalParries > 0 and (highSpeedParries / totalParries * 100) or 0,
             isHighSpeedMode and "MAX SPEED" or "Normal"))
@@ -937,11 +974,11 @@ task.spawn(function()
             spamsPerSecond = totalSpams / spamDuration
         end
 
-        SpamStatsLabel:SetDesc(string.format("- Total Spams: %d\n- Total Duration: %.1fs\n- Average Rate: %.1f spam/s\n- Status: %s",
+        HUD.SpamStats:SetDesc(string.format("- Total Spams: %d\n- Total Duration: %.1fs\n- Average Rate: %.1f spam/s\n- Status: %s",
             totalSpams, spamDuration, spamsPerSecond, spamStarted and "ACTIVE" or "INACTIVE"))
 
         local livePing = getPing()
-        PingInfoLabel:SetDesc(string.format("- Current Ping: %.0f ms\n- Compensation: %s\n- Strength: %.2fx\n- Prediction Horizon: %.2fs\n- Last Extra Range: +%.1f studs\n- Last Time-To-Impact: %s",
+        HUD.PingInfo:SetDesc(string.format("- Current Ping: %.0f ms\n- Compensation: %s\n- Strength: %.2fx\n- Prediction Horizon: %.2fs\n- Last Extra Range: +%.1f studs\n- Last Time-To-Impact: %s",
             livePing,
             pingCompEnabled and "ON" or "OFF",
             pingMultiplier,
@@ -979,11 +1016,31 @@ RunService.Heartbeat:Connect(function()
     local hasHighlight = hasPlayerHighlight()
     local closestBall, closestDistance = findClosestBall(humanoidRootPart)
 
+    -- Clash detection: count rapid direction reversals of the closest ball.
+    -- Runs outside the parry branch so Auto Spam's clash sensing works even
+    -- with Auto Parry toggled off.
+    local ballPos, ballVel
+    if closestBall then
+        ballPos = getBallPosition(closestBall)
+        ballVel = getBallVelocityVector(closestBall)
+        if Clash.lastVelBall == closestBall and Clash.lastVelVec then
+            local m1, m2 = Clash.lastVelVec.Magnitude, ballVel.Magnitude
+            if m1 > Clash.MIN_SPEED and m2 > Clash.MIN_SPEED
+                and Clash.lastVelVec:Dot(ballVel) / (m1 * m2) < -0.3 then
+                table.insert(Clash.flipTimes, currentTime)
+            end
+        end
+    end
+    Clash.lastVelBall = closestBall
+    Clash.lastVelVec = ballVel
+    while #Clash.flipTimes > 0 and currentTime - Clash.flipTimes[1] > Clash.WINDOW do
+        table.remove(Clash.flipTimes, 1)
+    end
+    local clashDetected = #Clash.flipTimes >= Clash.MIN_FLIPS
+
     if autoParryEnabled and closestBall then
         local ballInDetectorRange = isBallInPlayerRange(closestBall, PLAYER_DETECTOR_DISTANCE)
-        local ballPos = getBallPosition(closestBall)
-        local ballVel = getBallVelocityVector(closestBall)
-        local velocity = ballVel.Magnitude
+        local velocity = ballVel and ballVel.Magnitude or 0
         local closingSpeed = ballPos and getClosingSpeed(ballPos, ballVel, humanoidRootPart.Position) or 0
         local ballAccel = ballPos and updateBallCurvature(closestBall, ballVel, currentTime) or Vector3.new()
         currentCurveAccel = ballAccel.Magnitude
@@ -1092,8 +1149,8 @@ RunService.Heartbeat:Connect(function()
                 and (withinRange or currentTimeToImpact <= PANIC_TTI or worstCaseTTI <= PANIC_TTI)
         end
 
-        ParryStatusLabel:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
-        ParryDistanceLabel:SetDesc(string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Curve: %.1f studs/s^2 (%s)\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Panic Burst: %s\n- Mode: %s\n- Frozen: %s",
+        HUD.ParryStatus:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
+        HUD.ParryDistance:SetDesc(string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Curve: %.1f studs/s^2 (%s)\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Panic Burst: %s\n- Mode: %s\n- Frozen: %s",
             currentParryDistance, pingComp, currentPing, currentRequiredLead, effectiveParryDistance, velocity, closingSpeed,
             currentCurveAccel, antiCurveEnabled and "ON" or "OFF", closestDistance,
             currentTimeToImpact < math.huge and string.format("%.2fs", currentTimeToImpact) or "n/a",
@@ -1139,8 +1196,8 @@ RunService.Heartbeat:Connect(function()
             spamDuration = spamDuration + (tick() - lastSpamStartTime)
             spamStarted = false
         end
-        SpamStatusLabel:SetDesc("AUTO SPAM: DISABLED")
-        SpamConditionsLabel:SetDesc("Auto Spam is turned off")
+        HUD.SpamStatus:SetDesc("AUTO SPAM: DISABLED")
+        HUD.SpamConditions:SetDesc("Auto Spam is turned off")
         return
     end
 
@@ -1148,47 +1205,61 @@ RunService.Heartbeat:Connect(function()
     local ballInRange, ballDistance = checkBallDistance()
 
     if playerInRange and closestPlayer then
-        PlayerDetectionLabel:SetDesc(string.format("Player: %s\nDistance: %.1f studs", closestPlayer.Name, playerDistance))
+        HUD.PlayerDetection:SetDesc(string.format("Player: %s\nDistance: %.1f studs", closestPlayer.Name, playerDistance))
     else
-        PlayerDetectionLabel:SetDesc("No players in range")
+        HUD.PlayerDetection:SetDesc("No players in range")
     end
 
     if ballInRange then
-        BallDetectionLabel:SetDesc(string.format("Ball Found\nDistance: %.1f studs", ballDistance))
+        HUD.BallDetection:SetDesc(string.format("Ball Found\nDistance: %.1f studs", ballDistance))
     else
-        BallDetectionLabel:SetDesc(string.format("No ball in range\nClosest: %.1f studs", ballDistance))
+        HUD.BallDetection:SetDesc(string.format("No ball in range\nClosest: %.1f studs", ballDistance))
     end
 
-    HighlightDetectionLabel:SetDesc(hasHighlight and "Highlight Active" or "No Highlight")
+    HUD.HighlightDetection:SetDesc(hasHighlight and "Highlight Active" or "No Highlight")
 
-    if playerInRange and ballInRange and hasHighlight then
-        if not spamStarted then
-            spamStarted = true
-            lastSpamStartTime = tick()
-        end
+    -- Start vs. stay conditions differ on purpose:
+    --  * START needs proof this clash is YOURS, not one you're standing next
+    --    to - the highlight plus (with smart detection) real clash reversals,
+    --    so merely jumping around near someone never triggers it.
+    --  * STAY only needs the clash to still be going (reversals continuing)
+    --    OR the ball still nearby - so highlight flicker between the two
+    --    clashers and jump-stretched distances can't drop the spam mid-clash.
+    local spamStartCond, spamStayCond
+    if Clash.enabled then
+        spamStartCond = clashDetected and hasHighlight and ballInRange
+        spamStayCond = clashDetected or ballInRange
+    else
+        spamStartCond = playerInRange and ballInRange and hasHighlight
+        spamStayCond = ballInRange
     end
 
-    if not ballInRange then
-        if spamStarted then
-            spamDuration = spamDuration + (tick() - lastSpamStartTime)
-            spamStarted = false
-        end
+    if spamStartCond and not spamStarted then
+        spamStarted = true
+        lastSpamStartTime = tick()
+    elseif spamStarted and not spamStayCond then
+        spamDuration = spamDuration + (tick() - lastSpamStartTime)
+        spamStarted = false
     end
 
     if spamStarted then
-        SpamStatusLabel:SetDesc("AUTO SPAM: ACTIVE\nSpamming block!")
-        SpamConditionsLabel:SetDesc("Player | Ball | Highlight\nAll conditions met!")
-        LiveStatsLabel:SetDesc(string.format("- Parry Status: %s\n- Spam Status: SPAMMING\n- Player: %s (%.1f studs)\n- Ball Distance: %.1f studs\n- Parry Range: %.1f studs\n- Total Spams: %d",
+        HUD.SpamStatus:SetDesc("AUTO SPAM: ACTIVE\nSpamming block!")
+        HUD.SpamConditions:SetDesc(string.format("Clash: %s | Ball | Highlight\nClashing - all in!",
+            Clash.enabled and (clashDetected and "LIVE" or "holding") or "off"))
+        HUD.LiveStats:SetDesc(string.format("- Parry Status: %s\n- Spam Status: SPAMMING\n- Clash: %s (%d flips/%.1fs)\n- Player: %s (%.1f studs)\n- Ball Distance: %.1f studs\n- Total Spams: %d",
             autoParryEnabled and "Active" or "Disabled",
-            closestPlayer and closestPlayer.Name or "Unknown", playerDistance, ballDistance, currentParryDistance, totalSpams))
+            clashDetected and "LIVE" or "cooling", #Clash.flipTimes, Clash.WINDOW,
+            closestPlayer and closestPlayer.Name or "Unknown", playerDistance, ballDistance, totalSpams))
         executeSpam()
     else
-        SpamStatusLabel:SetDesc("AUTO SPAM: INACTIVE\nWaiting for conditions...")
-        local conditionText = (playerInRange and "[OK] Player" or "[--] Player") .. " | " .. (ballInRange and "[OK] Ball" or "[--] Ball") .. " | " .. (hasHighlight and "[OK] Highlight" or "[--] Highlight") .. "\nWaiting for all conditions..."
-        SpamConditionsLabel:SetDesc(conditionText)
-        LiveStatsLabel:SetDesc(string.format("- Parry Status: %s\n- Spam Status: WAITING\n- Player in Range: %s\n- Ball in Range: %s\n- Highlight: %s\n- Parry Range: %.1f studs",
+        HUD.SpamStatus:SetDesc("AUTO SPAM: INACTIVE\nWaiting for a clash...")
+        local clashText = Clash.enabled and (clashDetected and "[OK] Clash" or "[--] Clash") or "[off] Clash"
+        local conditionText = clashText .. " | " .. (ballInRange and "[OK] Ball" or "[--] Ball") .. " | " .. (hasHighlight and "[OK] Highlight" or "[--] Highlight") .. "\nWaiting for a real clash..."
+        HUD.SpamConditions:SetDesc(conditionText)
+        HUD.LiveStats:SetDesc(string.format("- Parry Status: %s\n- Spam Status: WAITING\n- Clash Detected: %s (%d flips)\n- Ball in Range: %s\n- Highlight: %s",
             autoParryEnabled and "Active" or "Disabled",
-            playerInRange and "Yes" or "No", ballInRange and "Yes" or "No", hasHighlight and "Active" or "Inactive", currentParryDistance))
+            clashDetected and "Yes" or "No", #Clash.flipTimes,
+            ballInRange and "Yes" or "No", hasHighlight and "Active" or "Inactive"))
     end
 end)
 
