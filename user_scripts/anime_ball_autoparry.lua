@@ -100,6 +100,14 @@ local currentCurveAccel = 0       -- last measured curve (lateral acceleration) 
 -- harmless). The panic window must stay <= BLOCK_DURATION: fire any earlier
 -- and the 0.6s protection expires before the ball actually arrives.
 local BLOCK_DURATION = 0.6
+-- The ball connects with you before its CENTER reaches your center - it has a
+-- hit radius. The game's own BallController tutorial reveals the exact value:
+-- it counts the ball as arriving when (distance - 8) / ballSpeed <= 0.6, i.e.
+-- a ball is "on you" at ~8 studs of center-to-center distance, and its block
+-- threshold is BLOCK_DURATION. We mirror that 8-stud radius so every
+-- time-to-impact estimate reflects when the ball SURFACE hits, not its center
+-- - otherwise we chronically under-estimate how soon impact lands.
+local BALL_HIT_RADIUS = 8
 local panicBurstEnabled = true
 local PANIC_TTI = 0.45            -- s; TTI below this triggers per-frame block spam. Widened toward BLOCK_DURATION for more reaction margin (block still covers the arrival).
 local totalBurstBlocks = 0
@@ -156,7 +164,12 @@ local Move = { keep = true, cachedSpeed = 16 }
 -- Framework:Get("MovementController").Dashing; while that's true (and for a
 -- short grace after), we stop trusting the "it'll miss" math and just block
 -- through any nearby ball that's targeting us. Bundled into one table.
-local Dash = { aware = true, controller = nil, endTime = 0, GRACE = 0.35, MARGIN = 25 }
+-- SPEED/GRACE come from the game's real AbilityInfo.Settings: DashSpeed = 90
+-- studs/s, DashCooldown = 1.1s. MARGIN is how far a dash can still carry you
+-- during the grace window (SPEED * GRACE = 90 * 0.35 = 31.5), so a ball that's
+-- that far out can still reach you the instant the dash stops - which is
+-- exactly the case the old hand-guessed 25 under-covered.
+local Dash = { aware = true, controller = nil, endTime = 0, GRACE = 0.35, SPEED = 90, MARGIN = 32 }
 
 -- Forward declarations (assigned further down, but referenced by UI callbacks
 -- that can fire before those definitions run).
@@ -1396,7 +1409,14 @@ RunService.Heartbeat:Connect(function()
             -- highlighted target, treat impact as imminent. This is what
             -- makes the burst immune to both hard curves and the player's
             -- own jump/dash movement scrambling the direction estimates.
-            local worstCaseTTI = velocity > 0 and (closestDistance / velocity) or math.huge
+            -- This is the game's own block-timing formula, verified from
+            -- BallController: impactTime = (distance - BALL_HIT_RADIUS) / speed,
+            -- using the ball's raw AssemblyLinearVelocity magnitude. Subtracting
+            -- the 8-stud hit radius means we treat the ball as landing when its
+            -- surface reaches us, exactly like the game does - firing the burst
+            -- a touch earlier and never a frame too late.
+            local worstCaseTTI = velocity > 0
+                and (math.max(closestDistance - BALL_HIT_RADIUS, 0) / velocity) or math.huge
             -- withinRange is included explicitly: a ball already inside the
             -- parry radius is always an imminent threat, even when its
             -- time-to-impact estimate is unusable (hovering pre-serve at
