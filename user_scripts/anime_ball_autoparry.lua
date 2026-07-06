@@ -948,9 +948,16 @@ end
 -- Iterates the event-maintained ballsCache instead of re-scanning
 -- workspace.Balls:GetChildren() (Auto Parry and Auto Spam previously ran
 -- this scan independently every frame - now there's a single shared cache).
+-- Returns the closest ball + its distance, and additionally the smallest
+-- worst-case time-to-impact across ALL balls (distance / ball speed). That
+-- third value lets Panic Burst react to the most imminent threat even when
+-- it isn't the closest ball - so in a multi-ball mode a fast ball rushing
+-- you can't be ignored just because a slow one is sitting nearer. With a
+-- single ball it equals that ball's own TTI, so behavior is unchanged.
 local function findClosestBall(humanoidRootPart)
     local closestBall = nil
     local closestDistance = math.huge
+    local minThreatTTI = math.huge
     for ball in pairs(ballsCache) do
         if not ball.Parent then
             purgeDeadBall(ball)
@@ -962,10 +969,15 @@ local function findClosestBall(humanoidRootPart)
                     closestDistance = distance
                     closestBall = ball
                 end
+                local speed = getBallVelocityVector(ball).Magnitude
+                if speed > 0 then
+                    local tti = distance / speed
+                    if tti < minThreatTTI then minThreatTTI = tti end
+                end
             end
         end
     end
-    return closestBall, closestDistance
+    return closestBall, closestDistance, minThreatTTI
 end
 
 -- The event cache can go stale-FALSE: it's reset on death, but some games
@@ -1102,7 +1114,7 @@ RunService.Heartbeat:Connect(function()
     updatePlayerDetectorSpheres()
 
     local hasHighlight = hasPlayerHighlight()
-    local closestBall, closestDistance = findClosestBall(humanoidRootPart)
+    local closestBall, closestDistance, minThreatTTI = findClosestBall(humanoidRootPart)
 
     -- Clash detection: count rapid direction reversals of the closest ball.
     -- Runs outside the parry branch so Auto Spam's clash sensing works even
@@ -1233,8 +1245,11 @@ RunService.Heartbeat:Connect(function()
             -- time-to-impact estimate is unusable (hovering pre-serve at
             -- zero velocity, orbiting with no closing speed, or Anti-Curve
             -- disabled). Burst-while-inside beats one parry per 0.3s.
+            -- minThreatTTI covers ALL balls, so a second, faster ball that
+            -- isn't the closest still arms the burst.
             panicNow = panicBurstEnabled
-                and (withinRange or currentTimeToImpact <= PANIC_TTI or worstCaseTTI <= PANIC_TTI)
+                and (withinRange or currentTimeToImpact <= PANIC_TTI
+                    or worstCaseTTI <= PANIC_TTI or (minThreatTTI or math.huge) <= PANIC_TTI)
         end
 
         HUD.ParryStatus:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
