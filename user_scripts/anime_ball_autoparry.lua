@@ -627,6 +627,18 @@ end
 -- BALL HELPERS
 -- ============================================
 
+-- The Balls folder can also hold static map objects (BallPad, BallSpawn per
+-- the game's own hierarchy) that are NOT balls. Treating them as balls makes
+-- the auto-parry lock onto the pad and even burst-block while you stand near
+-- it. Skip anything on this ignore list.
+local IGNORED_BALL_NAMES = {
+    BallPad = true,
+    BallSpawn = true,
+}
+local function isRealBall(ball)
+    return not IGNORED_BALL_NAMES[ball.Name]
+end
+
 local function getBallPart(ball)
     if ball:IsA("BasePart") then return ball end
     return ball:FindFirstChildWhichIsA("BasePart", true)
@@ -754,8 +766,15 @@ end
 -- ball spawns/despawns or the Highlight appears instead of polling for it.
 
 local function trackBallsFolder(folder)
-    for _, ball in pairs(folder:GetChildren()) do ballsCache[ball] = true end
-    folder.ChildAdded:Connect(function(child) ballsCache[child] = true end)
+    -- Only cache real balls, never the static BallPad/BallSpawn map objects
+    -- that also live in this folder (filtering here means every consumer of
+    -- ballsCache is automatically correct).
+    for _, ball in pairs(folder:GetChildren()) do
+        if isRealBall(ball) then ballsCache[ball] = true end
+    end
+    folder.ChildAdded:Connect(function(child)
+        if isRealBall(child) then ballsCache[child] = true end
+    end)
     folder.ChildRemoved:Connect(function(child)
         ballsCache[child] = nil
         ballMotionCache[child] = nil
@@ -948,9 +967,16 @@ end
 -- Iterates the event-maintained ballsCache instead of re-scanning
 -- workspace.Balls:GetChildren() (Auto Parry and Auto Spam previously ran
 -- this scan independently every frame - now there's a single shared cache).
+-- Returns the closest ball + its distance, and additionally the smallest
+-- worst-case time-to-impact across ALL balls (distance / ball speed). That
+-- third value lets Panic Burst react to the most imminent threat even when
+-- it isn't the closest ball - so in a multi-ball mode a fast ball rushing
+-- you can't be ignored just because a slow one is sitting nearer. With a
+-- single ball it equals that ball's own TTI, so behavior is unchanged.
 local function findClosestBall(humanoidRootPart)
     local closestBall = nil
     local closestDistance = math.huge
+    local minThreatTTI = math.huge
     for ball in pairs(ballsCache) do
         if not ball.Parent then
             purgeDeadBall(ball)
@@ -962,10 +988,15 @@ local function findClosestBall(humanoidRootPart)
                     closestDistance = distance
                     closestBall = ball
                 end
+                local speed = getBallVelocityVector(ball).Magnitude
+                if speed > 0 then
+                    local tti = distance / speed
+                    if tti < minThreatTTI then minThreatTTI = tti end
+                end
             end
         end
     end
-    return closestBall, closestDistance
+    return closestBall, closestDistance, minThreatTTI
 end
 
 -- The event cache can go stale-FALSE: it's reset on death, but some games
@@ -1102,7 +1133,15 @@ RunService.Heartbeat:Connect(function()
     updatePlayerDetectorSpheres()
 
     local hasHighlight = hasPlayerHighlight()
-    local closestBall, closestDistance = findClosestBall(humanoidRootPart)
+    local closestBall, closestDistance, minThreatTTI = findClosestBall(humanoidRootPart)
+
+    -- The ball controller stores its assigned target as an attribute
+    -- (ball:SetAttribute("Target", playerName)); that is the game's own
+    -- source of truth for "this ball is coming for ME". Unlike the highlight
+    -- it also works for invisible balls, whose highlight is force-disabled.
+    -- OR'd with the highlight so it's strictly more reliable, never less.
+    local amTargeted = hasHighlight
+        or (closestBall ~= nil and closestBall:GetAttribute("Target") == LocalPlayer.Name)
 
     -- Clash detection: count rapid direction reversals of the closest ball.
     -- Runs outside the parry branch so Auto Spam's clash sensing works even
@@ -1233,8 +1272,11 @@ RunService.Heartbeat:Connect(function()
             -- time-to-impact estimate is unusable (hovering pre-serve at
             -- zero velocity, orbiting with no closing speed, or Anti-Curve
             -- disabled). Burst-while-inside beats one parry per 0.3s.
+            -- minThreatTTI covers ALL balls, so a second, faster ball that
+            -- isn't the closest still arms the burst.
             panicNow = panicBurstEnabled
-                and (withinRange or currentTimeToImpact <= PANIC_TTI or worstCaseTTI <= PANIC_TTI)
+                and (withinRange or currentTimeToImpact <= PANIC_TTI
+                    or worstCaseTTI <= PANIC_TTI or (minThreatTTI or math.huge) <= PANIC_TTI)
         end
 
         HUD.ParryStatus:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
@@ -1253,7 +1295,7 @@ RunService.Heartbeat:Connect(function()
             end
         end
 
-        if hasHighlight then
+        if amTargeted then
             if withinRange or willArriveInTime then executeParry() end
             -- Impact imminent: keep firing block every frame (no cooldown)
             -- until the ball is deflected, so a single early/whiffed parry
@@ -1304,7 +1346,7 @@ RunService.Heartbeat:Connect(function()
         HUD.BallDetection:SetDesc(string.format("No ball in range\nClosest: %.1f studs", ballDistance))
     end
 
-    HUD.HighlightDetection:SetDesc(hasHighlight and "Highlight Active" or "No Highlight")
+    HUD.HighlightDetection:SetDesc(amTargeted and "Targeted (you)" or "Not targeted")
 
     -- Start vs. stay conditions differ on purpose:
     --  * START needs proof this clash is YOURS, not one you're standing next
@@ -1315,10 +1357,10 @@ RunService.Heartbeat:Connect(function()
     --    clashers and jump-stretched distances can't drop the spam mid-clash.
     local spamStartCond, spamStayCond
     if Clash.enabled then
-        spamStartCond = clashDetected and hasHighlight and ballInRange
+        spamStartCond = clashDetected and amTargeted and ballInRange
         spamStayCond = clashDetected or ballInRange
     else
-        spamStartCond = playerInRange and ballInRange and hasHighlight
+        spamStartCond = playerInRange and ballInRange and amTargeted
         spamStayCond = ballInRange
     end
 
@@ -1342,12 +1384,12 @@ RunService.Heartbeat:Connect(function()
     else
         HUD.SpamStatus:SetDesc("AUTO SPAM: INACTIVE\nWaiting for a clash...")
         local clashText = Clash.enabled and (clashDetected and "[OK] Clash" or "[--] Clash") or "[off] Clash"
-        local conditionText = clashText .. " | " .. (ballInRange and "[OK] Ball" or "[--] Ball") .. " | " .. (hasHighlight and "[OK] Highlight" or "[--] Highlight") .. "\nWaiting for a real clash..."
+        local conditionText = clashText .. " | " .. (ballInRange and "[OK] Ball" or "[--] Ball") .. " | " .. (amTargeted and "[OK] Targeted" or "[--] Targeted") .. "\nWaiting for a real clash..."
         HUD.SpamConditions:SetDesc(conditionText)
         HUD.LiveStats:SetDesc(string.format("- Parry Status: %s\n- Spam Status: WAITING\n- Clash Detected: %s (%d flips)\n- Ball in Range: %s\n- Highlight: %s",
             autoParryEnabled and "Active" or "Disabled",
             clashDetected and "Yes" or "No", #Clash.flipTimes,
-            ballInRange and "Yes" or "No", hasHighlight and "Active" or "Inactive"))
+            ballInRange and "Yes" or "No", amTargeted and "Yes" or "No"))
     end
 end)
 
