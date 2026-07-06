@@ -1,5 +1,5 @@
 -- Anime Ball v2 - Auto Parry / Auto Spam
--- Requires: ReplicatedStorage.Framework.RemoteFunction ("SwordService","Block",{-0.759547233581543})
+-- Requires: ReplicatedStorage.Framework.RemoteFunction ("SwordService","Block",{camLookY})
 -- Requires: workspace.Balls (folder of ball parts/models) and workspace[Player.Name].Highlight
 
 local Players = game:GetService("Players")
@@ -982,10 +982,18 @@ end
 -- same frame (status UI, the whole Auto Spam section) for a full round-trip
 -- - the worse your ping, the longer the stall. Fire-and-forget in a fresh
 -- thread so the handler never blocks on the network.
+--
+-- The block argument is the CAMERA's vertical look direction. The real
+-- SwordController sends SwordService.Block:Invoke(CurrentCamera.CFrame
+-- .LookVector.Y) - a LIVE value. The old hardcoded -0.759... was one frozen
+-- camera angle; sending your actual live pitch matches a legit client and
+-- avoids the server ever seeing a stale/mismatched block direction.
 local function fireBlockRemote()
     task.spawn(function()
         pcall(function()
-            ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {-0.759547233581543})
+            local cam = workspace.CurrentCamera
+            local lookY = cam and cam.CFrame.LookVector.Y or -0.759547233581543
+            ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {lookY})
         end)
     end)
 end
@@ -1246,7 +1254,19 @@ RunService.Heartbeat:Connect(function()
     while #Clash.flipTimes > 0 and currentTime - Clash.flipTimes[1] > Clash.WINDOW do
         table.remove(Clash.flipTimes, 1)
     end
-    local clashDetected = #Clash.flipTimes >= Clash.MIN_FLIPS
+    -- Authoritative clash state from the game itself: the ClashController sets
+    -- workspace.Effects.ClashEffect (and the active ball's ClashEffect attr)
+    -- to true during a real clash and clears it on EndClash. That's ground
+    -- truth - the velocity-reversal count below is kept only as a fallback for
+    -- when those attributes aren't present.
+    local realClash = false
+    local effects = workspace:FindFirstChild("Effects")
+    if effects and effects:GetAttribute("ClashEffect") == true then
+        realClash = true
+    elseif closestBall and closestBall:GetAttribute("ClashEffect") == true then
+        realClash = true
+    end
+    local clashDetected = realClash or (#Clash.flipTimes >= Clash.MIN_FLIPS)
 
     if autoParryEnabled and closestBall then
         local ballInDetectorRange = isBallInPlayerRange(closestBall, PLAYER_DETECTOR_DISTANCE)
@@ -1472,10 +1492,10 @@ RunService.Heartbeat:Connect(function()
     if spamStarted then
         HUD.SpamStatus:SetDesc("AUTO SPAM: ACTIVE\nSpamming block!")
         HUD.SpamConditions:SetDesc(string.format("Clash: %s | Ball | Highlight\nClashing - all in!",
-            Clash.enabled and (clashDetected and "LIVE" or "holding") or "off"))
+            Clash.enabled and (clashDetected and (realClash and "LIVE (game)" or "LIVE (detected)") or "holding") or "off"))
         HUD.LiveStats:SetDesc(string.format("- Parry Status: %s\n- Spam Status: SPAMMING\n- Clash: %s (%d flips/%.1fs)\n- Player: %s (%.1f studs)\n- Ball Distance: %.1f studs\n- Total Spams: %d",
             autoParryEnabled and "Active" or "Disabled",
-            clashDetected and "LIVE" or "cooling", #Clash.flipTimes, Clash.WINDOW,
+            realClash and "GAME" or (clashDetected and "detected" or "cooling"), #Clash.flipTimes, Clash.WINDOW,
             closestPlayer and closestPlayer.Name or "Unknown", playerDistance, ballDistance, totalSpams))
         executeSpam()
     else
