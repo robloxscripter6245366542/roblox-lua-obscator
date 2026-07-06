@@ -1,5 +1,5 @@
 -- Anime Ball v2 - Auto Parry / Auto Spam
--- Requires: ReplicatedStorage.Framework.RemoteFunction ("SwordService","Block",{-0.759547233581543})
+-- Requires: ReplicatedStorage.Framework.RemoteFunction ("SwordService","Block",{camLookY})
 -- Requires: workspace.Balls (folder of ball parts/models) and workspace[Player.Name].Highlight
 
 local Players = game:GetService("Players")
@@ -982,10 +982,18 @@ end
 -- same frame (status UI, the whole Auto Spam section) for a full round-trip
 -- - the worse your ping, the longer the stall. Fire-and-forget in a fresh
 -- thread so the handler never blocks on the network.
+--
+-- The block argument is the CAMERA's vertical look direction. The real
+-- SwordController sends SwordService.Block:Invoke(CurrentCamera.CFrame
+-- .LookVector.Y) - a LIVE value. The old hardcoded -0.759... was one frozen
+-- camera angle; sending your actual live pitch matches a legit client and
+-- avoids the server ever seeing a stale/mismatched block direction.
 local function fireBlockRemote()
     task.spawn(function()
         pcall(function()
-            ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {-0.759547233581543})
+            local cam = workspace.CurrentCamera
+            local lookY = cam and cam.CFrame.LookVector.Y or -0.759547233581543
+            ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {lookY})
         end)
     end)
 end
