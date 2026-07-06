@@ -1028,11 +1028,34 @@ end
 -- .LookVector.Y) - a LIVE value. The old hardcoded -0.759... was one frozen
 -- camera angle; sending your actual live pitch matches a legit client and
 -- avoids the server ever seeing a stale/mismatched block direction.
+--
+-- Transport: the decompiled SwordController fires the block through the
+-- framework's service proxy - framework:Fetch("SwordService").Block:Invoke(lookY)
+-- - passing lookY as a single argument. That is the game's OWN verified path,
+-- so we use it first (cached). If it's ever unavailable in this environment we
+-- fall back to the generic RemoteFunction router, which also works; the two
+-- together make the block call bulletproof.
+local swordServiceProxy = nil
+local function getSwordService()
+    if swordServiceProxy then return swordServiceProxy end
+    pcall(function()
+        swordServiceProxy = require(ReplicatedStorage:WaitForChild("Framework")):Fetch("SwordService")
+    end)
+    return swordServiceProxy
+end
 local function fireBlockRemote()
     task.spawn(function()
+        local cam = workspace.CurrentCamera
+        local lookY = cam and cam.CFrame.LookVector.Y or -0.759547233581543
+        -- Preferred: the game's exact call path.
+        local svc = getSwordService()
+        if svc then
+            local ok = pcall(function() svc.Block:Invoke(lookY) end)
+            if ok then return end
+            swordServiceProxy = nil -- proxy went stale; re-fetch next time
+        end
+        -- Fallback: generic framework RemoteFunction router.
         pcall(function()
-            local cam = workspace.CurrentCamera
-            local lookY = cam and cam.CFrame.LookVector.Y or -0.759547233581543
             ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {lookY})
         end)
     end)
