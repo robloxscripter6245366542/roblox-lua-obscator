@@ -715,15 +715,22 @@ end
 -- the EXACT velocity the game is steering it at - cleaner and more immediate
 -- than AssemblyLinearVelocity (the physics-interpolated, collision-noisy
 -- measured result). Reading the constraint means a curve/homing turn shows up
--- the instant the server commands it, not a frame later. Falls back to the
--- measured velocity when the constraint is missing, disabled, or reads ~0
--- (e.g. a held/pre-serve ball, or a non-Vector constraint mode).
+-- the instant the server commands it, not a frame later.
+--
+-- CRITICAL: VectorVelocity is only a WORLD-space vector when RelativeTo ==
+-- World. If it's relative to an attachment it's in the ball's local frame,
+-- and feeding that into the world-space closing-speed / curvature math would
+-- produce garbage. So only trust it when world-relative and in Vector mode;
+-- otherwise fall back to AssemblyLinearVelocity, which is always world-space
+-- (and was the proven source before this optimization).
 local function getBallVelocityVector(ball)
     local part = getBallPart(ball)
     if not part then return Vector3.new() end
     local lv = ball:FindFirstChildOfClass("LinearVelocity")
         or part:FindFirstChildOfClass("LinearVelocity")
-    if lv and lv.Enabled then
+    if lv and lv.Enabled
+        and lv.RelativeTo == Enum.ActuatorRelativeTo.World
+        and lv.VelocityConstraintMode == Enum.VelocityConstraintMode.Vector then
         local vv = lv.VectorVelocity
         if vv.Magnitude > 0.1 then return vv end
     end
