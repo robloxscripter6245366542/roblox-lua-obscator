@@ -1404,9 +1404,23 @@ RunService.Heartbeat:Connect(function()
             -- disabled). Burst-while-inside beats one parry per 0.3s.
             -- minThreatTTI covers ALL balls, so a second, faster ball that
             -- isn't the closest still arms the burst.
+            -- Ping-scaled panic window. THIS is why high-ping (180-200ms+)
+            -- players couldn't block: the ball you see is ~half-a-ping stale
+            -- AND the Block invoke takes a round-trip to register, so the
+            -- burst must START firing earlier the higher the ping. A fixed
+            -- window (~0.45s) simply doesn't begin soon enough at 200 ping -
+            -- by the time TTI drops under 0.45s the block already can't reach
+            -- the server before the (already-stale) ball connects. Add the
+            -- ping lead (currentRequiredLead, which scales with smoothed ping)
+            -- to the window so at 200 ping the burst opens ~0.75s out. Capped
+            -- at ping + BLOCK_DURATION so the block's 0.6s protection window
+            -- still covers the ball's actual arrival and never expires early.
+            -- At low ping currentRequiredLead ~= 0, so this is a no-op.
+            local pingSec = currentPing / 1000
+            local effectivePanicTTI = math.clamp(PANIC_TTI + currentRequiredLead, PANIC_TTI, pingSec + BLOCK_DURATION)
             panicNow = panicBurstEnabled
-                and (withinRange or currentTimeToImpact <= PANIC_TTI
-                    or worstCaseTTI <= PANIC_TTI or (minThreatTTI or math.huge) <= PANIC_TTI)
+                and (withinRange or currentTimeToImpact <= effectivePanicTTI
+                    or worstCaseTTI <= effectivePanicTTI or (minThreatTTI or math.huge) <= effectivePanicTTI)
 
             -- Dash-aware: while you're dashing (and briefly after), your
             -- position is changing so fast that the "it'll miss me" math is
