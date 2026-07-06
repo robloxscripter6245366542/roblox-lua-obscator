@@ -94,8 +94,14 @@ local currentCurveAccel = 0       -- last measured curve (lateral acceleration) 
 -- drops below the panic window, fire block every frame (bypassing the
 -- cooldown) until the ball is deflected - same spam the game already
 -- tolerates from Auto Spam.
+-- Real timing from the game's SwordInfo module: a block lasts BLOCK_DURATION
+-- (0.6s of protection) and can only be re-cast once per second (the server
+-- enforces that 1s cooldown, so per-frame spam beyond it is simply ignored -
+-- harmless). The panic window must stay <= BLOCK_DURATION: fire any earlier
+-- and the 0.6s protection expires before the ball actually arrives.
+local BLOCK_DURATION = 0.6
 local panicBurstEnabled = true
-local PANIC_TTI = 0.35            -- seconds; time-to-impact below this triggers per-frame block spam
+local PANIC_TTI = 0.45            -- s; TTI below this triggers per-frame block spam. Widened toward BLOCK_DURATION for more reaction margin (block still covers the arrival).
 local totalBurstBlocks = 0
 
 -- ============================================
@@ -420,11 +426,11 @@ PingSection:Toggle({
 PingSection:Slider({
     Flag = "PanicWindow",
     Title = "Panic Window (seconds)",
-    Desc = "Time-to-impact below this fires block every frame",
+    Desc = "Time-to-impact below this fires block every frame. Capped at 0.6s = the block's protection duration; blocking earlier just expires before impact",
     Step = 0.05,
-    Value = { Min = 0.1, Max = 1, Default = 0.35 },
+    Value = { Min = 0.1, Max = 0.6, Default = 0.45 },
     Callback = function(Value)
-        PANIC_TTI = Value
+        PANIC_TTI = math.min(Value, BLOCK_DURATION)
     end
 })
 
