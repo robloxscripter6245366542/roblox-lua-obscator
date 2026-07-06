@@ -977,6 +977,8 @@ local function findClosestBall(humanoidRootPart)
     local closestBall = nil
     local closestDistance = math.huge
     local minThreatTTI = math.huge
+    local targetedByAny = false
+    local myName = LocalPlayer.Name
     for ball in pairs(ballsCache) do
         if not ball.Parent then
             purgeDeadBall(ball)
@@ -988,15 +990,24 @@ local function findClosestBall(humanoidRootPart)
                     closestDistance = distance
                     closestBall = ball
                 end
-                local speed = getBallVelocityVector(ball).Magnitude
-                if speed > 0 then
-                    local tti = distance / speed
-                    if tti < minThreatTTI then minThreatTTI = tti end
+                -- Targeting must consider EVERY ball, not just the closest:
+                -- the ball assigned to me may not be the nearest one.
+                local target = ball:GetAttribute("Target")
+                if target == myName then targetedByAny = true end
+                -- Only balls aimed at me (or not yet assigned) can threaten
+                -- me; a ball assigned to another player won't hit me, so it
+                -- must not arm my panic burst.
+                if target == myName or target == nil then
+                    local speed = getBallVelocityVector(ball).Magnitude
+                    if speed > 0 then
+                        local tti = distance / speed
+                        if tti < minThreatTTI then minThreatTTI = tti end
+                    end
                 end
             end
         end
     end
-    return closestBall, closestDistance, minThreatTTI
+    return closestBall, closestDistance, minThreatTTI, targetedByAny
 end
 
 -- The event cache can go stale-FALSE: it's reset on death, but some games
@@ -1133,15 +1144,15 @@ RunService.Heartbeat:Connect(function()
     updatePlayerDetectorSpheres()
 
     local hasHighlight = hasPlayerHighlight()
-    local closestBall, closestDistance, minThreatTTI = findClosestBall(humanoidRootPart)
+    local closestBall, closestDistance, minThreatTTI, targetedByAny = findClosestBall(humanoidRootPart)
 
     -- The ball controller stores its assigned target as an attribute
     -- (ball:SetAttribute("Target", playerName)); that is the game's own
     -- source of truth for "this ball is coming for ME". Unlike the highlight
     -- it also works for invisible balls, whose highlight is force-disabled.
-    -- OR'd with the highlight so it's strictly more reliable, never less.
-    local amTargeted = hasHighlight
-        or (closestBall ~= nil and closestBall:GetAttribute("Target") == LocalPlayer.Name)
+    -- targetedByAny checks every ball (not just the closest), OR'd with the
+    -- highlight so it's strictly more reliable, never less.
+    local amTargeted = hasHighlight or targetedByAny
 
     -- Clash detection: count rapid direction reversals of the closest ball.
     -- Runs outside the parry branch so Auto Spam's clash sensing works even
