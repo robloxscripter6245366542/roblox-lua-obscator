@@ -142,6 +142,16 @@ local Clash = {
 -- upvalue. cachedSpeed learns the game's real walk speed (last non-zero seen).
 local Move = { keep = true, cachedSpeed = 16 }
 
+-- Dash awareness: a SuperDash flings the character fast for a fraction of a
+-- second, then stops. The parry prediction projects your CURRENT velocity
+-- forward, so mid-dash it thinks you'll be far away and can wrongly decide a
+-- ball "misses" - then the dash ends, the ball catches up, and you eat it
+-- unblocked. The game exposes the dash state via
+-- Framework:Get("MovementController").Dashing; while that's true (and for a
+-- short grace after), we stop trusting the "it'll miss" math and just block
+-- through any nearby ball that's targeting us. Bundled into one table.
+local Dash = { aware = true, controller = nil, endTime = 0, GRACE = 0.35, MARGIN = 25 }
+
 -- Forward declarations (assigned further down, but referenced by UI callbacks
 -- that can fire before those definitions run).
 local billboardCache = {}
@@ -415,6 +425,16 @@ PingSection:Slider({
     Value = { Min = 0.1, Max = 1, Default = 0.35 },
     Callback = function(Value)
         PANIC_TTI = Value
+    end
+})
+
+PingSection:Toggle({
+    Flag = "DashAware",
+    Title = "Dash-Aware Blocking",
+    Desc = "Keep blocking correctly while you dash - a dash won't cause a missed parry",
+    Value = true,
+    Callback = function(Value)
+        Dash.aware = Value
     end
 })
 
@@ -1161,6 +1181,22 @@ Players.PlayerRemoving:Connect(function(player) playerHRPCache[player] = nil end
 watchForNamedChild("Balls", trackBallsFolder)
 watchForNamedChild(LocalPlayer.Name, bindHighlightFolder)
 
+-- Grab the game's MovementController so we can read its .Dashing flag. It may
+-- not exist immediately, so retry a few times; if it never loads, Dash-Aware
+-- simply stays inert (controller nil) and nothing breaks.
+task.spawn(function()
+    for _ = 1, 15 do
+        local ok, controller = pcall(function()
+            return require(ReplicatedStorage:WaitForChild("Framework")):Get("MovementController")
+        end)
+        if ok and controller then
+            Dash.controller = controller
+            break
+        end
+        task.wait(1)
+    end
+end)
+
 createVisualSphere()
 createPlayerDetectorSpheres()
 
@@ -1324,6 +1360,20 @@ RunService.Heartbeat:Connect(function()
             panicNow = panicBurstEnabled
                 and (withinRange or currentTimeToImpact <= PANIC_TTI
                     or worstCaseTTI <= PANIC_TTI or (minThreatTTI or math.huge) <= PANIC_TTI)
+
+            -- Dash-aware: while you're dashing (and briefly after), your
+            -- position is changing so fast that the "it'll miss me" math is
+            -- unreliable - the dash ends and the ball catches up. So during
+            -- the dash grace, if a targeting ball is anywhere near, force the
+            -- burst instead of trusting the prediction. This is what stops a
+            -- dash from causing a missed block.
+            if Dash.aware and Dash.controller then
+                if Dash.controller.Dashing == true then Dash.endTime = currentTime end
+                if (currentTime - Dash.endTime) <= Dash.GRACE
+                    and closestDistance <= effectiveParryDistance + Dash.MARGIN then
+                    panicNow = true
+                end
+            end
         end
 
         HUD.ParryStatus:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
