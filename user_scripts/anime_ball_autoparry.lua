@@ -1522,12 +1522,24 @@ RunService.Heartbeat:Connect(function()
             end
         end
 
-        if amTargeted then
+        -- During a real, game-confirmed clash we fire regardless of amTargeted:
+        -- the ball's Target attribute flips to the OTHER clasher every time it
+        -- heads their way, so amTargeted drops false for a fraction of a second
+        -- each exchange - and if Auto Spam is off, nothing would fire in that
+        -- gap and the ball returns before we react. Because we're one of the two
+        -- clashers, the ball is always about to come back; blocking every frame
+        -- keeps a fresh 0.6s block up for every return, and the server resets
+        -- the block cooldown on each successful parry, so this holds a clash
+        -- indefinitely. realClash (workspace.Effects/ball ClashEffect) is the
+        -- game's own authoritative signal, so this can't false-fire outside a
+        -- genuine clash.
+        if amTargeted or realClash then
             if withinRange or willArriveInTime then executeParry() end
-            -- Impact imminent: keep firing block every frame (no cooldown)
-            -- until the ball is deflected, so a single early/whiffed parry
-            -- can never leave a super-fast or hard-curving ball unblocked.
-            if panicNow then
+            -- Impact imminent (or mid-clash): keep firing block every frame (no
+            -- cooldown) until the ball is deflected, so a single early/whiffed
+            -- parry can never leave a super-fast or hard-curving ball - or a
+            -- clash return - unblocked.
+            if panicNow or realClash then
                 fireBlockRemote()
                 totalBurstBlocks = totalBurstBlocks + 1
             end
