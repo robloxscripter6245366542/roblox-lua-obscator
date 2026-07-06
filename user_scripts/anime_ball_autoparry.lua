@@ -207,8 +207,44 @@ local Tabs = {
     Parry = Window:Tab({ Title = "Auto Parry", Icon = "shield" }),
     Spam = Window:Tab({ Title = "Auto Spam", Icon = "zap" }),
     Visuals = Window:Tab({ Title = "Visuals", Icon = "eye" }),
-    Stats = Window:Tab({ Title = "Statistics", Icon = "bar-chart" })
+    Stats = Window:Tab({ Title = "Statistics", Icon = "bar-chart" }),
+    Discord = Window:Tab({ Title = "Discord", Icon = "message-circle" })
 }
+
+-- ============================================
+-- DISCORD TAB
+-- ============================================
+
+local DISCORD_INVITE = "https://discord.gg/sA5448GTS"
+
+local DiscordSection = Tabs.Discord:Section({ Title = "Community" })
+
+DiscordSection:Paragraph({
+    Title = "Join the Discord",
+    Desc = DISCORD_INVITE,
+})
+
+DiscordSection:Button({
+    Title = "Copy Invite Link",
+    Desc = "Copies the Discord invite to your clipboard",
+    Callback = function()
+        local ok = pcall(function()
+            if setclipboard then
+                setclipboard(DISCORD_INVITE)
+            elseif toclipboard then
+                toclipboard(DISCORD_INVITE)
+            else
+                error("no clipboard function")
+            end
+        end)
+        WindUI:Notify({
+            Title = ok and "Copied!" or "Copy Failed",
+            Content = ok and ("Invite copied: " .. DISCORD_INVITE)
+                or ("Copy this manually: " .. DISCORD_INVITE),
+            Duration = 5,
+        })
+    end
+})
 
 -- Live status paragraph handles, bundled into one table so the Heartbeat
 -- closure captures a single upvalue for all of them (Lua 5.1's 60-upvalue
