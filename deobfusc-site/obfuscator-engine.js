@@ -440,12 +440,50 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  //  STRING OBFUSCATION
+  //  OPCODE TAPES — shared by every custom-VM below.
+  //  Real operations get random, per-build integer opcodes; every other
+  //  integer in range is an implicit no-op. A tape mixes real opcodes
+  //  (in required order) with random no-op filler so the instruction
+  //  stream itself carries no fixed, greppable shape.
+  // ══════════════════════════════════════════════════════════════
+  function allocOpcodes(names, rangeMax) {
+    const pool = [];
+    for (let i = 1; i <= rangeMax; i++) pool.push(i);
+    const chosen = {};
+    for (const name of names) {
+      const i = randInt(0, pool.length - 1);
+      chosen[name] = pool.splice(i, 1)[0];
+    }
+    return chosen;
+  }
+  function buildTape(realOpsInOrder, rangeMax, minLen, maxLen) {
+    const used = new Set(realOpsInOrder);
+    const len = Math.max(realOpsInOrder.length, randInt(minLen, maxLen));
+    const positions = [];
+    while (positions.length < realOpsInOrder.length) {
+      const p = randInt(0, len - 1);
+      if (!positions.includes(p)) positions.push(p);
+    }
+    positions.sort((a, b) => a - b);
+    const tape = new Array(len).fill(0);
+    positions.forEach((p, i) => { tape[p] = realOpsInOrder[i]; });
+    for (let i = 0; i < len; i++) {
+      if (tape[i] !== 0) continue;
+      let filler;
+      do { filler = randInt(1, rangeMax); } while (used.has(filler));
+      tape[i] = filler;
+    }
+    return tape;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  STRING OBFUSCATION — routed through a tiny opcode-tape VM instead
+  //  of a plainly-named decode function.
   // ══════════════════════════════════════════════════════════════
   const MAX_STRING_ENCODE_LEN = 4000;
 
   function buildStringPass(sig, nameGen) {
-    // First: does any string qualify? If not, skip entirely (no helper emitted).
+    // First: does any string qualify? If not, skip entirely (no VM emitted).
     const candidates = sig.filter(t => (t.type === 'string' || t.type === 'longstring'));
     let qualifies = false;
     for (const tok of candidates) {
@@ -457,9 +495,10 @@
     const key = [];
     const keyLen = randInt(24, 48);
     for (let i = 0; i < keyLen; i++) key.push(randInt(0, 255));
-    const bxorName = nameGen();
     const keyName = nameGen();
-    const decodeName = nameGen();
+    const vmName = nameGen();
+    const opRange = randInt(24, 48);
+    const ops = allocOpcodes(['SDEC'], opRange);
 
     for (const tok of candidates) {
       const decoded = tok.type === 'string' ? decodeShortString(tok.value) : tok.content;
@@ -468,12 +507,20 @@
       for (let i = 0; i < decoded.length; i++) {
         bytes.push((decoded.charCodeAt(i) & 0xFF) ^ key[i % key.length]);
       }
-      tok.value = `(${decodeName}({${bytes.join(',')}}))`;
+      const tape = buildTape([ops.SDEC], opRange, 2, 5);
+      tok.value = `(${vmName}({${tape.join(',')}},{${bytes.join(',')}}))`;
     }
 
-    return `local function ${bxorName}(a,b)local r,p=0,1 while a>0 or b>0 do if a%2~=b%2 then r=r+p end a=(a-a%2)/2 b=(b-b%2)/2 p=p*2 end return r end ` +
-      `local ${keyName}={${key.join(',')}} ` +
-      `local function ${decodeName}(t)local r={}for i=1,#t do r[i]=string.char(${bxorName}(t[i],${keyName}[((i-1)%#${keyName})+1]))end return table.concat(r)end `;
+    return `local ${keyName}={${key.join(',')}} ` +
+      `local function ${vmName}(_tp,_dt)` +
+      `local _rs=_dt for _pc=1,#_tp do local _op=_tp[_pc] ` +
+      `if _op==${ops.SDEC} then ` +
+      `local _r={} for _i=1,#_dt do ` +
+      `local _a,_bv=_dt[_i],${keyName}[((_i-1)%#${keyName})+1] ` +
+      `local _x,_bit=0,1 while _a>0 or _bv>0 do if _a%2~=_bv%2 then _x=_x+_bit end _a=(_a-_a%2)/2 _bv=(_bv-_bv%2)/2 _bit=_bit*2 end ` +
+      `_r[_i]=string.char(_x) end ` +
+      `_rs=table.concat(_r) end end ` +
+      `return _rs end `;
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -567,8 +614,11 @@
     }
 
     const cAlias = nameGen(), fcAlias = nameGen(), sbAlias = nameGen(), tcAlias = nameGen(),
-      mfAlias = nameGen(), ldAlias = nameGen(), aAlias = nameGen(), bdName = nameGen(),
-      xdName = nameGen(), kName = nameGen(), fnName = nameGen(), erName = nameGen(), pName = nameGen();
+      mfAlias = nameGen(), ldAlias = nameGen(), aAlias = nameGen(), vmName = nameGen(),
+      kName = nameGen(), fnName = nameGen(), erName = nameGen(), pName = nameGen(),
+      tapeName = nameGen(), pcName = nameGen(), opName = nameGen(), regName = nameGen();
+    const opRange = randInt(32, 64);
+    const ops = allocOpcodes(['B64', 'XOR', 'LOAD'], opRange);
 
     const lines = [];
     lines.push('-- ' + charLit('Obfuscated with the roblox-lua-obscator web tool.'));
@@ -587,38 +637,6 @@
     for (const ch of alphabet) alphaBytes.push(ch.charCodeAt(0));
     lines.push(`local ${aAlias}=${cAlias}(${alphaBytes.join(',')})`);
 
-    lines.push(`local function ${bdName}(${pName})`);
-    lines.push(`  local r,v,b={},0,0`);
-    lines.push(`  ${pName}=${pName}:gsub('[^'..${aAlias}..'=]','')`);
-    lines.push(`  for n=1,#${pName} do`);
-    lines.push(`    local ch=${sbAlias}(${pName},n,n)`);
-    lines.push(`    if ch=='=' then break end`);
-    lines.push(`    local p=${fcAlias}(${aAlias},ch,1,true)`);
-    lines.push(`    if not p then break end`);
-    lines.push(`    v=v*64+(p-1);b=b+6`);
-    lines.push(`    if b>=8 then`);
-    lines.push(`      b=b-8`);
-    lines.push(`      r[#r+1]=${cAlias}(${mfAlias}(v/2^b)%256)`);
-    lines.push(`      v=v%(2^b)`);
-    lines.push(`    end`);
-    lines.push(`  end`);
-    lines.push(`  return ${tcAlias}(r)`);
-    lines.push(`end`);
-
-    lines.push(`local function ${xdName}(d,k)`);
-    lines.push(`  local r,kl={},#k`);
-    lines.push(`  for i=1,#d do`);
-    lines.push(`    local a,bv=d:byte(i),k[((i-1)%kl)+1]`);
-    lines.push(`    local rs,bt=0,1`);
-    lines.push(`    while a>0 or bv>0 do`);
-    lines.push(`      if a%2~=bv%2 then rs=rs+bt end`);
-    lines.push(`      a=${mfAlias}(a/2);bv=${mfAlias}(bv/2);bt=bt*2`);
-    lines.push(`    end`);
-    lines.push(`    r[i]=${cAlias}(rs)`);
-    lines.push(`  end`);
-    lines.push(`  return ${tcAlias}(r)`);
-    lines.push(`end`);
-
     const chunkWidth = randInt(64, 96);
     const chunks = [];
     for (let i = 0; i < encoded.length; i += chunkWidth) chunks.push(encoded.slice(i, i + chunkWidth));
@@ -628,24 +646,55 @@
     lines.push('}');
     lines.push(`local ${payloadName}=${tcAlias}(${tblName})`);
 
-    // Small opcode dispatcher for the final decode->decrypt->run sequence,
-    // so the tail isn't three linear, easily-signatured statements.
-    const stateName = nameGen(), resName = nameGen();
-    const opDecode = randInt(1, 1), opDecrypt = 2, opRun = 3; // fixed order but routed through a loop
-    lines.push(`local ${stateName},${resName}=1,${payloadName}`);
-    lines.push(`while ${stateName}<=3 do`);
-    lines.push(`  if ${stateName}==1 then ${resName}=${bdName}(${resName})`);
-    lines.push(`  elseif ${stateName}==2 then ${resName}=${xdName}(${resName},${kName})`);
-    lines.push(`  else`);
-    lines.push(`    local ${fnName},${erName}=${ldAlias}(${resName})`);
-    lines.push(`    if not ${fnName} then`);
-    lines.push(`      warn(${charLit('[roblox-lua-obscator] load error: ')}..tostring(${erName}))`);
-    lines.push(`    else`);
-    lines.push(`      ${fnName}()`);
+    // A single opcode-tape VM replaces separate named decode/decrypt/run
+    // helpers. Real opcodes get random per-build numbers; every other
+    // number on the tape is an implicit no-op, so the executed program
+    // is a noisy instruction stream rather than three plain statements.
+    const tape = buildTape([ops.B64, ops.XOR, ops.LOAD], opRange, 5, 12);
+    lines.push(`local ${tapeName}={${tape.join(',')}}`);
+    lines.push(`local function ${vmName}()`);
+    lines.push(`  local ${regName}=${payloadName}`);
+    lines.push(`  for ${pcName}=1,#${tapeName} do`);
+    lines.push(`    local ${opName}=${tapeName}[${pcName}]`);
+    lines.push(`    if ${opName}==${ops.B64} then`);
+    lines.push(`      local r,v,b={},0,0`);
+    lines.push(`      local ${pName}=${regName}:gsub('[^'..${aAlias}..'=]','')`);
+    lines.push(`      for n=1,#${pName} do`);
+    lines.push(`        local ch=${sbAlias}(${pName},n,n)`);
+    lines.push(`        if ch=='=' then break end`);
+    lines.push(`        local p=${fcAlias}(${aAlias},ch,1,true)`);
+    lines.push(`        if not p then break end`);
+    lines.push(`        v=v*64+(p-1);b=b+6`);
+    lines.push(`        if b>=8 then`);
+    lines.push(`          b=b-8`);
+    lines.push(`          r[#r+1]=${cAlias}(${mfAlias}(v/2^b)%256)`);
+    lines.push(`          v=v%(2^b)`);
+    lines.push(`        end`);
+    lines.push(`      end`);
+    lines.push(`      ${regName}=${tcAlias}(r)`);
+    lines.push(`    elseif ${opName}==${ops.XOR} then`);
+    lines.push(`      local r,kl={},#${kName}`);
+    lines.push(`      for i=1,#${regName} do`);
+    lines.push(`        local a,bv=${regName}:byte(i),${kName}[((i-1)%kl)+1]`);
+    lines.push(`        local rs,bt=0,1`);
+    lines.push(`        while a>0 or bv>0 do`);
+    lines.push(`          if a%2~=bv%2 then rs=rs+bt end`);
+    lines.push(`          a=${mfAlias}(a/2);bv=${mfAlias}(bv/2);bt=bt*2`);
+    lines.push(`        end`);
+    lines.push(`        r[i]=${cAlias}(rs)`);
+    lines.push(`      end`);
+    lines.push(`      ${regName}=${tcAlias}(r)`);
+    lines.push(`    elseif ${opName}==${ops.LOAD} then`);
+    lines.push(`      local ${fnName},${erName}=${ldAlias}(${regName})`);
+    lines.push(`      if not ${fnName} then`);
+    lines.push(`        warn(${charLit('[roblox-lua-obscator] load error: ')}..tostring(${erName}))`);
+    lines.push(`      else`);
+    lines.push(`        ${fnName}()`);
+    lines.push(`      end`);
     lines.push(`    end`);
     lines.push(`  end`);
-    lines.push(`  ${stateName}=${stateName}+1`);
     lines.push(`end`);
+    lines.push(`${vmName}()`);
 
     return lines.join('\n') + '\n';
   }
