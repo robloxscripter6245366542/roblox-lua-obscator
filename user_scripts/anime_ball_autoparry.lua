@@ -156,7 +156,12 @@ local Move = { keep = true, cachedSpeed = 16 }
 -- Framework:Get("MovementController").Dashing; while that's true (and for a
 -- short grace after), we stop trusting the "it'll miss" math and just block
 -- through any nearby ball that's targeting us. Bundled into one table.
-local Dash = { aware = true, controller = nil, endTime = 0, GRACE = 0.35, MARGIN = 25 }
+-- SPEED/GRACE come from the game's real AbilityInfo.Settings: DashSpeed = 90
+-- studs/s, DashCooldown = 1.1s. MARGIN is how far a dash can still carry you
+-- during the grace window (SPEED * GRACE = 90 * 0.35 = 31.5), so a ball that's
+-- that far out can still reach you the instant the dash stops - which is
+-- exactly the case the old hand-guessed 25 under-covered.
+local Dash = { aware = true, controller = nil, endTime = 0, GRACE = 0.35, SPEED = 90, MARGIN = 32 }
 
 -- Forward declarations (assigned further down, but referenced by UI callbacks
 -- that can fire before those definitions run).
