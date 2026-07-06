@@ -711,9 +711,23 @@ local function getBallPosition(ball)
     return part and part.Position or nil
 end
 
+-- The ball is driven by a LinearVelocity constraint whose VectorVelocity is
+-- the EXACT velocity the game is steering it at - cleaner and more immediate
+-- than AssemblyLinearVelocity (the physics-interpolated, collision-noisy
+-- measured result). Reading the constraint means a curve/homing turn shows up
+-- the instant the server commands it, not a frame later. Falls back to the
+-- measured velocity when the constraint is missing, disabled, or reads ~0
+-- (e.g. a held/pre-serve ball, or a non-Vector constraint mode).
 local function getBallVelocityVector(ball)
     local part = getBallPart(ball)
-    return part and part.AssemblyLinearVelocity or Vector3.new()
+    if not part then return Vector3.new() end
+    local lv = ball:FindFirstChildOfClass("LinearVelocity")
+        or part:FindFirstChildOfClass("LinearVelocity")
+    if lv and lv.Enabled then
+        local vv = lv.VectorVelocity
+        if vv.Magnitude > 0.1 then return vv end
+    end
+    return part.AssemblyLinearVelocity
 end
 
 -- Component of the ball's velocity that is actually closing the distance to
