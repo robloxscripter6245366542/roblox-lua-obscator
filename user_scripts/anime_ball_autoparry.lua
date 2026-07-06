@@ -1098,10 +1098,25 @@ local function findClosestBall(humanoidRootPart)
                 -- the ball assigned to me may not be the nearest one.
                 local target = ball:GetAttribute("Target")
                 if target == myName then targetedByAny = true end
-                -- Only balls aimed at me (or not yet assigned) can threaten
-                -- me; a ball assigned to another player won't hit me, so it
-                -- must not arm my panic burst.
-                if target == myName or target == nil then
+                -- Invisible balls are a special threat: the game's BallController
+                -- bails out of ChangeBallColor BEFORE it writes the Target
+                -- attribute whenever a ball is Invisible, so an invisible ball
+                -- that retargets onto you may never report target == your name -
+                -- which would leave amTargeted false and cause a guaranteed miss
+                -- (this is exactly what the Invisibility ability exploits). So
+                -- if an invisible ball is actually closing on us, treat it as
+                -- aimed at us regardless of its (possibly stale) Target attr.
+                local invisible = ball:GetAttribute("Invisible") == true
+                if invisible then
+                    local vel = getBallVelocityVector(ball)
+                    if vel.Magnitude > 0 and vel:Dot(humanoidRootPart.Position - ballPos) > 0 then
+                        targetedByAny = true
+                    end
+                end
+                -- Only balls aimed at me (or not yet assigned, or hidden and
+                -- closing) can threaten me; a ball assigned to another player
+                -- won't hit me, so it must not arm my panic burst.
+                if target == myName or target == nil or invisible then
                     local speed = getBallVelocityVector(ball).Magnitude
                     if speed > 0 then
                         local tti = distance / speed
