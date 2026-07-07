@@ -1466,14 +1466,16 @@ RunService.Heartbeat:Connect(function()
         local withinRange = closestDistance <= currentParryDistance
         local willArriveInTime = false
         local panicNow = false
-        -- A ball inside your parry radius, closing on you, and about to land is
-        -- a threat REGARDLESS of amTargeted/ClashEffect. This closes the "lose
-        -- the first exchange of a super-close clash" gap: on that first frame the
-        -- ball's Target attribute hasn't replicated to you yet (the other player
-        -- only just hit it) and the game hasn't set ClashEffect, so both gates
-        -- are false even though the ball is inches away. Firing on physical
-        -- imminence catches it. Requires closing + in-range + imminent, so a ball
-        -- clashing between two OTHER nearby players (not headed at you) won't trip it.
+        -- A ball inside your parry radius whose imminent arrival lands within the
+        -- panic window is a threat REGARDLESS of amTargeted/ClashEffect. This
+        -- closes two gaps: (1) the first frame of a super-close clash, where the
+        -- ball's Target hasn't replicated and ClashEffect isn't set yet, and
+        -- (2) fast/hard-curving balls that fly sideways and only turn onto you at
+        -- the last instant. The actual condition (computed below, once
+        -- worstCaseTTI/effectivePanicTTI exist) is direction-AGNOSTIC: in-range
+        -- AND (worst-case raw-speed arrival OR curve-predicted arrival) within the
+        -- window - deliberately NOT gated on closing speed, since a curving ball's
+        -- closing speed is <= 0 right up until it snaps in.
         local imminentThreat = false
         currentTimeToImpact = math.huge
         if ballPos then
