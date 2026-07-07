@@ -1542,14 +1542,22 @@ RunService.Heartbeat:Connect(function()
                 and (withinRange or currentTimeToImpact <= effectivePanicTTI
                     or worstCaseTTI <= effectivePanicTTI or (minThreatTTI or math.huge) <= effectivePanicTTI)
 
-            -- Target-agnostic imminent threat: the closest ball is inside the
-            -- effective parry radius, actually closing on us, and its worst-case
-            -- arrival is within the (ping-scaled) panic window. That's a ball
-            -- about to hit us physically, so fire even if Target/ClashEffect
-            -- haven't arrived yet (the first-frame close-clash case).
-            imminentThreat = panicBurstEnabled and closingSpeed > 0
+            -- Target-agnostic imminent threat: a ball inside the effective parry
+            -- radius whose imminent arrival lands within the (ping-scaled) panic
+            -- window fires the block even if Target/ClashEffect haven't arrived.
+            -- Deliberately NOT gated on closingSpeed > 0: a hard-curving ball
+            -- (e.g. Wind Shuriken) moves SIDEWAYS and only sharp-turns into you at
+            -- the last moment, so its closing speed is <= 0 right up until impact -
+            -- gating on it meant curving/fast balls slipped through when amTargeted
+            -- also flickered. Instead we use the direction-agnostic worst-case
+            -- (raw speed could carry it to us) OR the anti-curve predicted arrival,
+            -- so a ball that COULD reach us in time is blocked regardless of where
+            -- it's pointed this frame. Erring toward blocking is the right bias -
+            -- an extra block is harmless (server gates the cooldown), a miss loses.
+            imminentThreat = panicBurstEnabled
                 and closestDistance <= effectiveParryDistance
-                and worstCaseTTI <= effectivePanicTTI
+                and (worstCaseTTI <= effectivePanicTTI
+                    or currentTimeToImpact <= effectivePanicTTI)
 
             -- Dash-aware: while you're dashing (and briefly after), your
             -- position is changing so fast that the "it'll miss me" math is
