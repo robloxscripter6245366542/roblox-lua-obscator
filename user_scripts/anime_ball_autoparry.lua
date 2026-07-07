@@ -109,7 +109,7 @@ local BLOCK_DURATION = 0.6
 -- - otherwise we chronically under-estimate how soon impact lands.
 local BALL_HIT_RADIUS = 8
 local panicBurstEnabled = true
-local PANIC_TTI = 0.45            -- s; TTI below this triggers per-frame block spam. Widened toward BLOCK_DURATION for more reaction margin (block still covers the arrival).
+local PANIC_TTI = 0.6             -- s; TTI below this triggers per-frame block spam. Set to the FULL BLOCK_DURATION - the earliest safe point: because the burst re-fires every frame, the block is refreshed each frame and never expires before impact, so opening the window at the max gives the most reaction margin with no downside.
 local totalBurstBlocks = 0
 
 -- ============================================
@@ -146,6 +146,15 @@ local Clash = {
     flipTimes = {},
     lastVelBall = nil,   -- ball the last stored velocity belongs to
     lastVelVec = nil,
+    -- Clash-hold grace: the game clears/re-sets workspace.Effects.ClashEffect as
+    -- the ball changes hands each exchange, so the authoritative signal can blink
+    -- off for a frame or two mid-clash. Without a hold, force-firing stops in that
+    -- gap and a fast return sneaks through - dropping the clash. Once a real clash
+    -- is seen we keep force-firing for GRACE seconds past the last true reading,
+    -- so a momentary flicker can never break the clash. Re-armed every frame the
+    -- signal is genuinely on, so it only ends when the clash actually ends.
+    GRACE = 0.4,
+    forceUntil = 0,
 }
 
 -- Keep-moving guard: firing block used to yield the main thread on every
@@ -468,7 +477,7 @@ PingSection:Slider({
     Title = "Panic Window (seconds)",
     Desc = "Time-to-impact below this fires block every frame. Capped at 0.6s = the block's protection duration; blocking earlier just expires before impact",
     Step = 0.05,
-    Value = { Min = 0.1, Max = 0.6, Default = 0.45 },
+    Value = { Min = 0.1, Max = 0.6, Default = 0.6 },
     Callback = function(Value)
         PANIC_TTI = math.min(Value, BLOCK_DURATION)
     end
@@ -1375,7 +1384,13 @@ RunService.Heartbeat:Connect(function()
     elseif closestBall and closestBall:GetAttribute("ClashEffect") == true then
         realClash = true
     end
-    local clashDetected = realClash or (#Clash.flipTimes >= Clash.MIN_FLIPS)
+    -- Hold the authoritative clash signal through brief flickers (see Clash.GRACE):
+    -- arm the grace whenever it's genuinely on, and treat the clash as active for
+    -- GRACE seconds afterward so a one-frame blink of ClashEffect can't stop the
+    -- force-fire mid-exchange and let a return through.
+    if realClash then Clash.forceUntil = currentTime + Clash.GRACE end
+    local clashActive = realClash or currentTime < Clash.forceUntil
+    local clashDetected = clashActive or (#Clash.flipTimes >= Clash.MIN_FLIPS)
 
     if autoParryEnabled and closestBall then
         local ballInDetectorRange = isBallInPlayerRange(closestBall, PLAYER_DETECTOR_DISTANCE)
@@ -1551,15 +1566,15 @@ RunService.Heartbeat:Connect(function()
         -- keeps a fresh 0.6s block up for every return, and the server resets
         -- the block cooldown on each successful parry, so this holds a clash
         -- indefinitely. realClash (workspace.Effects/ball ClashEffect) is the
-        -- game's own authoritative signal, so this can't false-fire outside a
-        -- genuine clash.
-        if amTargeted or realClash then
+        -- game's own authoritative signal (held briefly through flickers by
+        -- clashActive), so this can't false-fire outside a genuine clash.
+        if amTargeted or clashActive then
             if withinRange or willArriveInTime then executeParry() end
             -- Impact imminent (or mid-clash): keep firing block every frame (no
             -- cooldown) until the ball is deflected, so a single early/whiffed
             -- parry can never leave a super-fast or hard-curving ball - or a
             -- clash return - unblocked.
-            if panicNow or realClash then
+            if panicNow or clashActive then
                 fireBlockRemote()
                 totalBurstBlocks = totalBurstBlocks + 1
             end
