@@ -35,7 +35,7 @@ local MIN_DISTANCE = 1.5
 local MAX_DISTANCE = 100
 local UPDATE_INTERVAL = 0 -- run every Heartbeat frame
 local PARRY_COOLDOWN = 0.3
-local HIGH_SPEED_THRESHOLD = 300
+local HIGH_SPEED_THRESHOLD = 50   -- studs/s; from live telemetry: real ball speed runs ~29 median / 50 p90 / 57-143 peak (ability balls). The old 300 never triggered, so high-speed mode (max detection range) was effectively dead. 50 = the p90, where a ball is genuinely "fast".
 local PLAYER_DETECTOR_DISTANCE = 17
 
 local autoParryEnabled = true
@@ -84,7 +84,7 @@ local PING_SMOOTHING = 0.1        -- 0-1; how fast smoothedPing chases the raw p
 local antiCurveEnabled = true
 local ACCEL_SMOOTHING = 0.35      -- 0-1, higher = react faster to new curvature, lower = smoother/less jittery
 local CURVE_SIM_STEPS = 20        -- samples taken along the predicted arc, up to predictionHorizon seconds out
-local MAX_CURVE_ACCEL = 400       -- studs/s^2 cap; a parry flips ball velocity in one frame, which would otherwise read as a huge fake curve
+local MAX_CURVE_ACCEL = 150       -- studs/s^2 cap; a parry flips ball velocity in one frame, which would otherwise read as a huge fake curve. Live telemetry: real curve accel peaks ~98 (avg 12). 150 leaves headroom for hard-curve abilities not in that sample, while still sitting far below the thousands-magnitude parry-bounce spikes it exists to reject. (Old 400 was ~4x too loose.)
 local currentCurveAccel = 0       -- last measured curve (lateral acceleration) magnitude, studs/s^2
 
 -- Panic Burst: the single executeParry() + 0.3s cooldown is exactly what
