@@ -2,6 +2,7 @@
   "name": "seedance-root",
   "private": true,
   "scripts": {
-    "build": "npm --prefix seedance-react install && npm --prefix seedance-react run build"
+    "build": "npm --prefix seedance-react install && npm --prefix seedance-react run build",
+    "obfuscate:moonsec": "node scripts/moonsec_obfuscate.js"
   }
 }
