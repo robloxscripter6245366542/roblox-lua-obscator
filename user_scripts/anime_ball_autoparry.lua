@@ -1466,6 +1466,15 @@ RunService.Heartbeat:Connect(function()
         local withinRange = closestDistance <= currentParryDistance
         local willArriveInTime = false
         local panicNow = false
+        -- A ball inside your parry radius, closing on you, and about to land is
+        -- a threat REGARDLESS of amTargeted/ClashEffect. This closes the "lose
+        -- the first exchange of a super-close clash" gap: on that first frame the
+        -- ball's Target attribute hasn't replicated to you yet (the other player
+        -- only just hit it) and the game hasn't set ClashEffect, so both gates
+        -- are false even though the ball is inches away. Firing on physical
+        -- imminence catches it. Requires closing + in-range + imminent, so a ball
+        -- clashing between two OTHER nearby players (not headed at you) won't trip it.
+        local imminentThreat = false
         currentTimeToImpact = math.huge
         if ballPos then
             local lookahead = math.max(currentRequiredLead, panicBurstEnabled and PANIC_TTI or 0)
@@ -1533,6 +1542,15 @@ RunService.Heartbeat:Connect(function()
                 and (withinRange or currentTimeToImpact <= effectivePanicTTI
                     or worstCaseTTI <= effectivePanicTTI or (minThreatTTI or math.huge) <= effectivePanicTTI)
 
+            -- Target-agnostic imminent threat: the closest ball is inside the
+            -- effective parry radius, actually closing on us, and its worst-case
+            -- arrival is within the (ping-scaled) panic window. That's a ball
+            -- about to hit us physically, so fire even if Target/ClashEffect
+            -- haven't arrived yet (the first-frame close-clash case).
+            imminentThreat = panicBurstEnabled and closingSpeed > 0
+                and closestDistance <= effectiveParryDistance
+                and worstCaseTTI <= effectivePanicTTI
+
             -- Dash-aware: while you're dashing (and briefly after), your
             -- position is changing so fast that the "it'll miss me" math is
             -- unreliable - the dash ends and the ball catches up. So during
@@ -1575,13 +1593,13 @@ RunService.Heartbeat:Connect(function()
         -- indefinitely. realClash (workspace.Effects/ball ClashEffect) is the
         -- game's own authoritative signal (held briefly through flickers by
         -- clashActive), so this can't false-fire outside a genuine clash.
-        if amTargeted or clashActive then
+        if amTargeted or clashActive or imminentThreat then
             if withinRange or willArriveInTime then executeParry() end
             -- Impact imminent (or mid-clash): keep firing block every frame (no
             -- cooldown) until the ball is deflected, so a single early/whiffed
-            -- parry can never leave a super-fast or hard-curving ball - or a
-            -- clash return - unblocked.
-            if panicNow or clashActive then
+            -- parry can never leave a super-fast or hard-curving ball - a clash
+            -- return, or a super-close first exchange - unblocked.
+            if panicNow or clashActive or imminentThreat then
                 fireBlockRemote()
                 totalBurstBlocks = totalBurstBlocks + 1
             end
