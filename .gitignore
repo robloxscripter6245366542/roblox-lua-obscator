@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Obfuscated payload - keep OUT of the public repo (host privately)
+user_scripts/anime_ball_protected.lua
