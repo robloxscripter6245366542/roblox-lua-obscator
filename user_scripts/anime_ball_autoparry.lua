@@ -291,6 +291,18 @@ DiscordSection:Button({
 -- function limit).
 local HUD = {}
 
+-- Big logo banner across the top of the Main tab. The source art is square, so
+-- a 1:1 aspect shows the full logo undistorted (no crop, no stretch) at the
+-- panel's full width. pcall-guarded: if an executor's WindUI build has no Image
+-- element (or can't load URL images), the banner is simply skipped and the rest
+-- of the menu builds normally.
+pcall(function()
+    Tabs.Main:Image({
+        Image = LOGO_ICON,
+        AspectRatio = "1:1",
+    })
+end)
+
 local FeatureSection = Tabs.Main:Section({ Title = "Feature Control" })
 
 FeatureSection:Toggle({
