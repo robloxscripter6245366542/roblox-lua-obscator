@@ -160,7 +160,12 @@ local Clash = {
     -- is seen we keep force-firing for GRACE seconds past the last true reading,
     -- so a momentary flicker can never break the clash. Re-armed every frame the
     -- signal is genuinely on, so it only ends when the clash actually ends.
-    GRACE = 0.4,
+    -- Widened to 0.8s because a CURVING clash ball arcs OUT of your parry radius
+    -- (dropping withinRange/ClashEffect) for longer than a flicker before it
+    -- curves back into you - the shorter 0.4s hold lapsed mid-arc and the return
+    -- landed unblocked ("clash curve loses"). 0.8 covers a full curve arc; the
+    -- extra held blocks are harmless (server gates the cooldown).
+    GRACE = 0.8,
     forceUntil = 0,
 }
 
