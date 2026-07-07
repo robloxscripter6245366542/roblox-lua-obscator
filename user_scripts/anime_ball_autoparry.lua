@@ -109,7 +109,14 @@ local BLOCK_DURATION = 0.6
 -- - otherwise we chronically under-estimate how soon impact lands.
 local BALL_HIT_RADIUS = 8
 local panicBurstEnabled = true
-local PANIC_TTI = 0.6             -- s; TTI below this triggers per-frame block spam. Set to the FULL BLOCK_DURATION - the earliest safe point: because the burst re-fires every frame, the block is refreshed each frame and never expires before impact, so opening the window at the max gives the most reaction margin with no downside.
+-- s; TTI below this triggers per-frame block spam. Deliberately LESS than
+-- BLOCK_DURATION (0.6): the server's 1s cooldown means only the FIRST block in
+-- the burst registers, so its protection window is [impact - PANIC_TTI, impact
+-- - PANIC_TTI + 0.6]. At 0.6 that window ends exactly at impact (zero margin -
+-- any latency/jitter and the block expires a hair too early = miss). At 0.45 the
+-- ball lands with 0.15s of protection still left, absorbing latency/jitter. Ping
+-- compensation adds currentRequiredLead on top for high ping.
+local PANIC_TTI = 0.45
 local totalBurstBlocks = 0
 
 -- ============================================
@@ -475,9 +482,9 @@ PingSection:Toggle({
 PingSection:Slider({
     Flag = "PanicWindow",
     Title = "Panic Window (seconds)",
-    Desc = "Time-to-impact below this fires block every frame. Capped at 0.6s = the block's protection duration; blocking earlier just expires before impact",
+    Desc = "Time-to-impact below this fires block every frame. Best kept below 0.6 (the block's protection): at exactly 0.6 the block expires right at impact with no margin; ~0.45 leaves 0.15s of protection to absorb latency/jitter",
     Step = 0.05,
-    Value = { Min = 0.1, Max = 0.6, Default = 0.6 },
+    Value = { Min = 0.1, Max = 0.6, Default = 0.45 },
     Callback = function(Value)
         PANIC_TTI = math.min(Value, BLOCK_DURATION)
     end
