@@ -1628,13 +1628,24 @@ RunService.Heartbeat:Connect(function()
         -- super-close, super-fast clash held. Scoped to withinRange so a lone
         -- ball bouncing near other players can't trip it.
         local fastClashHold = clashDetected and withinRange
-        if amTargeted or clashActive or imminentThreat or fastClashHold then
+        -- Point-blank guarantee: a ball essentially ON TOP of you (you're inside
+        -- each other) MUST be blocked continuously, with zero gating - no target,
+        -- no clash signal, no TTI, no direction. At thousands of studs/s inside
+        -- each other the ball reverses many times per frame, the reversal detector
+        -- can alias, and Target/ClashEffect never settle - but a 0.6s block covers
+        -- ALL of those reversals, and firing it every frame keeps one always up.
+        -- This is the extreme "clash inside someone at max speed" case, made
+        -- unmissable. Radius is the ball's own 8-stud hit distance + a small
+        -- margin, so it only trips when the ball is genuinely on you.
+        local pointBlank = closestBall ~= nil and closestDistance <= (BALL_HIT_RADIUS + 14)
+        if amTargeted or clashActive or imminentThreat or fastClashHold or pointBlank then
             if withinRange or willArriveInTime then executeParry() end
-            -- Impact imminent (or mid-clash): keep firing block every frame (no
-            -- cooldown) until the ball is deflected, so a single early/whiffed
-            -- parry can never leave a super-fast or hard-curving ball - a clash
-            -- return, or a super-close first exchange - unblocked.
-            if panicNow or clashActive or imminentThreat or fastClashHold then
+            -- Impact imminent (or mid-clash / point-blank): keep firing block
+            -- every frame (no cooldown) until the ball is deflected, so a single
+            -- early/whiffed parry can never leave a super-fast or hard-curving
+            -- ball - a clash return, a super-close first exchange, or a
+            -- thousand-speed point-blank clash - unblocked.
+            if panicNow or clashActive or imminentThreat or fastClashHold or pointBlank then
                 fireBlockRemote()
                 totalBurstBlocks = totalBurstBlocks + 1
             end
