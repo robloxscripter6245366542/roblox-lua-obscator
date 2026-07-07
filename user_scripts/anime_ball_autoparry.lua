@@ -1593,13 +1593,23 @@ RunService.Heartbeat:Connect(function()
         -- indefinitely. realClash (workspace.Effects/ball ClashEffect) is the
         -- game's own authoritative signal (held briefly through flickers by
         -- clashActive), so this can't false-fire outside a genuine clash.
-        if amTargeted or clashActive or imminentThreat then
+        --
+        -- fastClashHold: a point-blank, super-fast clash (you're inside each
+        -- other, the ball reversing every frame) sometimes never sets ClashEffect
+        -- and its Target flickers too fast for amTargeted to catch. But a ball
+        -- flipping direction every frame is EXACTLY what the reversal detector
+        -- picks up instantly (clashDetected), so if that fires while the ball is
+        -- in our parry radius, force the block too - this is what keeps a
+        -- super-close, super-fast clash held. Scoped to withinRange so a lone
+        -- ball bouncing near other players can't trip it.
+        local fastClashHold = clashDetected and withinRange
+        if amTargeted or clashActive or imminentThreat or fastClashHold then
             if withinRange or willArriveInTime then executeParry() end
             -- Impact imminent (or mid-clash): keep firing block every frame (no
             -- cooldown) until the ball is deflected, so a single early/whiffed
             -- parry can never leave a super-fast or hard-curving ball - a clash
             -- return, or a super-close first exchange - unblocked.
-            if panicNow or clashActive or imminentThreat then
+            if panicNow or clashActive or imminentThreat or fastClashHold then
                 fireBlockRemote()
                 totalBurstBlocks = totalBurstBlocks + 1
             end
