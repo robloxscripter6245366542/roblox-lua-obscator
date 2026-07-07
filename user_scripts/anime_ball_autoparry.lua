@@ -1440,7 +1440,16 @@ RunService.Heartbeat:Connect(function()
             if currentTime - lastDistanceUpdate >= 0.1 then
                 if currentParryDistance ~= targetParryDistance then
                     if currentParryDistance < targetParryDistance then
-                        currentParryDistance = math.min(currentParryDistance + 0.4, targetParryDistance)
+                        -- Expand the detection range INSTANTLY. Previously it grew
+                        -- at only +0.4 per 0.1s (4 studs/s): after a clash - where
+                        -- the slow/reversing ball shrinks the range toward its
+                        -- speed-scaled minimum - it took ~8 seconds to recover, and
+                        -- during that time any ball outside the collapsed radius
+                        -- went undetected and unblocked ("clash ends, I walk, it no
+                        -- blocks"). Growing instantly can only ADD safety; a bigger
+                        -- range never causes a miss. Shrinking stays gradual so the
+                        -- range doesn't twitch on a momentary speed dip.
+                        currentParryDistance = targetParryDistance
                     elseif currentParryDistance > targetParryDistance then
                         currentParryDistance = math.max(currentParryDistance - 10, targetParryDistance)
                     end
