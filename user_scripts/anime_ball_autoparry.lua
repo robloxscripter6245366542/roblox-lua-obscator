@@ -300,6 +300,7 @@ pcall(function()
     Tabs.Main:Image({
         Image = LOGO_ICON,
         AspectRatio = "1:1",
+        Radius = 16,        -- rounded banner corners
     })
 end)
 
