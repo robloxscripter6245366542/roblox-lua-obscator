@@ -109,7 +109,7 @@ local BLOCK_DURATION = 0.6
 -- - otherwise we chronically under-estimate how soon impact lands.
 local BALL_HIT_RADIUS = 8
 local panicBurstEnabled = true
-local PANIC_TTI = 0.45            -- s; TTI below this triggers per-frame block spam. Widened toward BLOCK_DURATION for more reaction margin (block still covers the arrival).
+local PANIC_TTI = 0.6             -- s; TTI below this triggers per-frame block spam. Set to the FULL BLOCK_DURATION - the earliest safe point: because the burst re-fires every frame, the block is refreshed each frame and never expires before impact, so opening the window at the max gives the most reaction margin with no downside.
 local totalBurstBlocks = 0
 
 -- ============================================
@@ -477,7 +477,7 @@ PingSection:Slider({
     Title = "Panic Window (seconds)",
     Desc = "Time-to-impact below this fires block every frame. Capped at 0.6s = the block's protection duration; blocking earlier just expires before impact",
     Step = 0.05,
-    Value = { Min = 0.1, Max = 0.6, Default = 0.45 },
+    Value = { Min = 0.1, Max = 0.6, Default = 0.6 },
     Callback = function(Value)
         PANIC_TTI = math.min(Value, BLOCK_DURATION)
     end
