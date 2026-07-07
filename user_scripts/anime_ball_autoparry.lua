@@ -219,7 +219,10 @@ WindUI:SetTheme("CrimsonClash")
 -- executor's getcustomasset, so we just point at the self-hosted asset in this
 -- repo. If an executor can't load URL images, WindUI silently skips the icon
 -- (the window still builds) - safe fallback.
-local LOGO_ICON = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/assets/anime_ball_logo_full.png"
+-- Rounded-corner variant (corners baked transparent) so the logo reads rounded
+-- everywhere - the big banner AND the small title-bar icon - regardless of how
+-- a given executor renders the WindUI corner radius.
+local LOGO_ICON = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/assets/anime_ball_logo_rounded.png"
 
 local Window = WindUI:CreateWindow({
     Title = "Anime Ball v2 | Crimson Clash",
