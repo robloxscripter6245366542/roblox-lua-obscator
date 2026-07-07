@@ -1515,8 +1515,18 @@ RunService.Heartbeat:Connect(function()
             -- the 8-stud hit radius means we treat the ball as landing when its
             -- surface reaches us, exactly like the game does - firing the burst
             -- a touch earlier and never a frame too late.
-            local worstCaseTTI = velocity > 0
-                and (math.max(closestDistance - BALL_HIT_RADIUS, 0) / velocity) or math.huge
+            -- Include the PLAYER's own speed in the closing rate. When you move
+            -- crazy (dash/jump/strafe), you and the ball can close on each other
+            -- far faster than the ball travels alone - worst case, both rush
+            -- together at ball speed + your speed. Counting only the ball made
+            -- the burst arm too late while you were moving fast at high ping (the
+            -- block was sent, but the real gap had already closed). Adding your
+            -- speed shrinks the worst-case TTI exactly when you're moving hard,
+            -- so the burst opens early enough to still land.
+            local playerSpeed = humanoidRootPart.AssemblyLinearVelocity.Magnitude
+            local closeRate = velocity + playerSpeed
+            local worstCaseTTI = closeRate > 0
+                and (math.max(closestDistance - BALL_HIT_RADIUS, 0) / closeRate) or math.huge
             -- withinRange is included explicitly: a ball already inside the
             -- parry radius is always an imminent threat, even when its
             -- time-to-impact estimate is unusable (hovering pre-serve at
