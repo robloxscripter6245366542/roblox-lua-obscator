@@ -213,16 +213,20 @@ WindUI:AddTheme({
 })
 WindUI:SetTheme("CrimsonClash")
 
--- Custom Anime Ball logo (the cracked crimson "C" emblem) instead of a generic
--- Lucide icon. WindUI's Creator.Image natively downloads http(s) URLs and turns
--- them into a usable image via the executor's getcustomasset, so we just point
--- at the self-hosted asset in this repo. If an executor can't load URL images,
--- WindUI silently skips the icon (the window still builds) - safe fallback.
-local LOGO_ICON = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/assets/anime_ball_icon.png"
+-- Custom Anime Ball logo (the full crimson poster - character, ball, cracked
+-- "C" emblem and title) instead of a generic Lucide icon. WindUI's Creator.Image
+-- natively downloads http(s) URLs and turns them into a usable image via the
+-- executor's getcustomasset, so we just point at the self-hosted asset in this
+-- repo. If an executor can't load URL images, WindUI silently skips the icon
+-- (the window still builds) - safe fallback.
+local LOGO_ICON = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/assets/anime_ball_logo_full.png"
 
 local Window = WindUI:CreateWindow({
     Title = "Anime Ball v2 | Crimson Clash",
     Icon = LOGO_ICON,
+    -- Bigger than the default 22 so the full logo actually reads in the title
+    -- bar. 46 fills most of the 52px topbar height without crowding it.
+    IconSize = 46,
     Folder = "AnimeBallComplete",
     ToggleKey = Enum.KeyCode.LeftControl,
     Theme = "CrimsonClash",
