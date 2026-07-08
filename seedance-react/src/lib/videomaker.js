@@ -39,7 +39,9 @@ async function generateScenes(prompt) {
     const json = await resp.json()
     const arr = Array.isArray(json) ? json : (json.choices?.[0]?.message?.content && JSON.parse(json.choices[0].message.content))
     if (Array.isArray(arr) && arr.length >= 2) return arr.slice(0, 4)
-  } catch {}
+  } catch (e) {
+    console.warn('generateScenes: AI scene planning failed, using fallback scenes', e)
+  }
   return fallbackScenes(prompt)
 }
 
@@ -71,7 +73,8 @@ function loadPollinationsImage(scene, seed) {
 }
 
 function assembleVideo(images, resolution, durationSec) {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
+    try {
     const [w, h] = resolution === '4k' ? [1920, 1080] : resolution === '1080p' ? [1280, 720] : [854, 480]
     const canvas = document.createElement('canvas')
     canvas.width = w; canvas.height = h
@@ -86,6 +89,7 @@ function assembleVideo(images, resolution, durationSec) {
     const chunks = []
     recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data) }
     recorder.onstop = () => resolve(URL.createObjectURL(new Blob(chunks, { type: 'video/webm' })))
+    recorder.onerror = e => reject(e.error || new Error('MediaRecorder failed while assembling video'))
     recorder.start()
 
     const start = Date.now()
@@ -134,5 +138,8 @@ function assembleVideo(images, resolution, durationSec) {
       setTimeout(draw, 1000 / fps)
     }
     draw()
+    } catch (e) {
+      reject(e)
+    }
   })
 }

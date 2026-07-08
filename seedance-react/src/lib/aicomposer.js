@@ -32,7 +32,9 @@ export async function makeAIVideo(prompt, { resolution, duration, onStep }) {
   const stream = composite.captureStream(30)
   const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 12_000_000 })
   const chunks = []
+  let recorderError = null
   recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data) }
+  recorder.onerror = e => { recorderError = e.error || new Error('MediaRecorder failed while composing video') }
 
   const scenes = plan.scenes || []
   const totalDuration = parseInt(duration, 10)
@@ -106,7 +108,11 @@ export async function makeAIVideo(prompt, { resolution, duration, onStep }) {
   recorder.stop()
   onStep('Encoding final video…', 96)
 
-  await new Promise(r => { recorder.onstop = r })
+  await new Promise((resolve, reject) => {
+    if (recorderError) { reject(recorderError); return }
+    recorder.onstop = resolve
+    recorder.onerror = e => reject(e.error || new Error('MediaRecorder failed while composing video'))
+  })
   stopSpeech()
   renderer.dispose()
 
@@ -167,7 +173,9 @@ async function fetchPlan(prompt) {
       body: JSON.stringify({ prompt }),
     })
     if (resp.ok) return await resp.json()
-  } catch {}
+  } catch (e) {
+    console.warn('fetchPlan: plan request failed, using fallback plan', e)
+  }
   return buildFallbackPlan(prompt)
 }
 

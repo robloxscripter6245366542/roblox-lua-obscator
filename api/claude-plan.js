@@ -50,7 +50,9 @@ module.exports = async function handler(req, res) {
         const text = d.content?.[0]?.text
         if (text) return res.json(JSON.parse(text))
       }
-    } catch {}
+    } catch (e) {
+      console.error('claude-plan: Anthropic request failed, falling back', e)
+    }
   }
 
   // Fall back to Pollinations Claude proxy (free)
@@ -73,7 +75,9 @@ module.exports = async function handler(req, res) {
       const text = d.choices?.[0]?.message?.content
       if (text) return res.json(typeof text === 'string' ? JSON.parse(text) : text)
     }
-  } catch {}
+  } catch (e) {
+    console.error('claude-plan: Pollinations fallback failed, using static plan', e)
+  }
 
   // Hardcoded fallback plan
   res.json(buildFallback(prompt))
