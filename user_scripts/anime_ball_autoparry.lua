@@ -194,6 +194,26 @@ local Move = { keep = true, cachedSpeed = 16 }
 -- exactly the case the old hand-guessed 25 under-covered.
 local Dash = { aware = true, controller = nil, endTime = 0, GRACE = 0.35, SPEED = 90, MARGIN = 32 }
 
+-- Camera tracking. Roblox character movement is CAMERA-RELATIVE (WASD moves you
+-- where the camera faces), so the camera's flat facing is the direction you're
+-- about to move/strafe/dash - a prediction input the ball-only math can't get
+-- from velocity alone (a standing player has zero velocity yet is about to bolt
+-- wherever they're looking). We also track how fast the camera is TURNING: a
+-- hard camera whip is the tell-tale of a panic dodge, during which your position
+-- becomes unpredictable - so, like Dash-aware, we stop trusting the "it'll miss"
+-- math and force the burst on any nearby targeting ball. WHIP_RATE is the turn
+-- speed (rad/s) above which we treat you as actively dodging.
+local Camera = {
+    aware = true,
+    lookDir = Vector3.new(0, 0, -1),  -- current camera LookVector
+    flatDir = Vector3.new(0, 0, -1),  -- horizontal (y=0) facing, unit
+    angVel = 0,                        -- rad/s the camera is rotating
+    lastLook = nil,
+    lastTime = 0,
+    WHIP_RATE = 3.5,                   -- rad/s (~200 deg/s) = a deliberate dodge-whip
+    MARGIN = 32,                       -- studs of reach to still force the burst during a whip
+}
+
 -- Forward declarations (assigned further down, but referenced by UI callbacks
 -- that can fire before those definitions run).
 local billboardCache = {}
@@ -819,6 +839,25 @@ local function getClosingSpeed(ballPos, ballVel, targetPos)
     return ballVel:Dot(toTarget / dist)
 end
 
+-- Samples the local camera each frame: its facing (for camera-relative move
+-- prediction) and how fast it's rotating (for whip/dodge detection). Cheap; run
+-- once per frame before the prediction reads Camera.*.
+local function updateCamera(now)
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local look = cam.CFrame.LookVector
+    if Camera.lastLook and now > Camera.lastTime then
+        local dt = now - Camera.lastTime
+        local dot = math.clamp(look:Dot(Camera.lastLook), -1, 1)
+        Camera.angVel = math.acos(dot) / dt
+    end
+    Camera.lastLook = look
+    Camera.lastTime = now
+    Camera.lookDir = look
+    local flat = Vector3.new(look.X, 0, look.Z)
+    if flat.Magnitude > 1e-3 then Camera.flatDir = flat.Unit end
+end
+
 -- ============================================
 -- ANTI-CURVE PREDICTION
 -- ============================================
@@ -907,7 +946,7 @@ end
 --                                    reality sits between hypotheses 1 and 2)
 -- Erring toward parrying is the right bias: a slightly-early block costs
 -- nothing here, a missed one loses the round.
-local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, targetGravity, meleeRange, maxLookahead, steps, omega, axis)
+local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, targetGravity, meleeRange, maxLookahead, steps, omega, axis, camDir, camSpeed)
     if maxLookahead <= 0 then return false, nil end
     steps = steps or CURVE_SIM_STEPS
     -- Anti-tunneling: at a fixed step count a fast ball can jump much further
@@ -942,12 +981,17 @@ local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, target
         local drop = Vector3.new(0, -0.5 * targetGravity * t * t, 0)
         local fullMovePos = targetPos + targetVel * t + drop
         local halfMovePos = targetPos + targetVel * (0.5 * t) + drop
+        -- Camera-relative hypothesis: the player breaks into a move/dash in the
+        -- direction the camera faces (movement is camera-relative), which the
+        -- velocity-based hypotheses can't see when they're currently still.
+        local camMovePos = camDir and targetPos + camDir * (camSpeed * t) + drop or nil
 
         -- Polynomial (linear-acceleration) arc.
         local predictedPos = pos + vel * t + accel * (0.5 * t * t)
         if (predictedPos - targetPos).Magnitude <= meleeRange
             or (predictedPos - fullMovePos).Magnitude <= meleeRange
-            or (predictedPos - halfMovePos).Magnitude <= meleeRange then
+            or (predictedPos - halfMovePos).Magnitude <= meleeRange
+            or (camMovePos and (predictedPos - camMovePos).Magnitude <= meleeRange) then
             return true, t
         end
 
@@ -957,7 +1001,8 @@ local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, target
             hvel = stepRot:VectorToWorldSpace(hvel)
             if (hpos - targetPos).Magnitude <= meleeRange
                 or (hpos - fullMovePos).Magnitude <= meleeRange
-                or (hpos - halfMovePos).Magnitude <= meleeRange then
+                or (hpos - halfMovePos).Magnitude <= meleeRange
+                or (camMovePos and (hpos - camMovePos).Magnitude <= meleeRange) then
                 return true, t
             end
         end
@@ -1470,6 +1515,10 @@ RunService.Heartbeat:Connect(function()
     local humanoidRootPart = getPlayerHRP(LocalPlayer)
     if not humanoidRootPart then return end
 
+    -- Sample the camera every frame (facing + turn rate) so the prediction and
+    -- the whip-aware panic below have fresh values.
+    updateCamera(currentTime)
+
     -- Keep the spam-detector spheres tracking players regardless of parry
     -- state - previously this only ran inside the parry-with-ball branch,
     -- so the spheres froze in place whenever no ball existed (between
@@ -1630,9 +1679,18 @@ RunService.Heartbeat:Connect(function()
                 local humanoid = character and character:FindFirstChildOfClass("Humanoid")
                 local airborne = humanoid ~= nil and humanoid.FloorMaterial == Enum.Material.Air
                 local playerGravity = airborne and workspace.Gravity or 0
+                -- Camera-relative movement hypothesis: you can break into a
+                -- move/dash toward where the camera faces at any moment, so also
+                -- test the ball's arc against that path at (at least) walk speed.
+                local camDir, camSpeed = nil, 0
+                if Camera.aware then
+                    camDir = Camera.flatDir
+                    local walkSpeed = humanoid and humanoid.WalkSpeed or 16
+                    camSpeed = math.max(playerVel.Magnitude, walkSpeed)
+                end
                 local arrives, arriveTime = predictCurvedImpact(
                     ballPos, ballVel, ballAccel, humanoidRootPart.Position, playerVel, playerGravity,
-                    currentParryDistance, lookahead, nil, ballOmega, ballAxis)
+                    currentParryDistance, lookahead, nil, ballOmega, ballAxis, camDir, camSpeed)
                 if arrives then
                     currentTimeToImpact = arriveTime
                 elseif closingSpeed > 0 then
@@ -1725,12 +1783,25 @@ RunService.Heartbeat:Connect(function()
                     panicNow = true
                 end
             end
+
+            -- Camera-whip-aware: a hard camera whip is the tell of a panic dodge
+            -- (you spin the camera, then dash/strafe that way). Your position
+            -- becomes unpredictable for that moment, so - like Dash-aware - stop
+            -- trusting the "it'll miss" math and force the burst on any nearby
+            -- targeting ball. This directly kills the "I move/look around crazy
+            -- and it misses" case.
+            if Camera.aware and Camera.angVel >= Camera.WHIP_RATE
+                and (amTargeted or clashActive)
+                and closestDistance <= effectiveParryDistance + Camera.MARGIN then
+                panicNow = true
+            end
         end
 
         HUD.ParryStatus:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
-        HUD.ParryDistance:SetDesc(string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Curve: %.1f studs/s^2 | Turn: %.0f deg/s (%s)\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Panic Burst: %s\n- Mode: %s\n- Frozen: %s",
+        HUD.ParryDistance:SetDesc(string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Curve: %.1f studs/s^2 | Turn: %.0f deg/s (%s)\n- Camera: %.0f deg/s%s\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Panic Burst: %s\n- Mode: %s\n- Frozen: %s",
             currentParryDistance, pingComp, currentPing, currentRequiredLead, effectiveParryDistance, velocity, closingSpeed,
-            currentCurveAccel, math.deg(currentTurnRate), antiCurveEnabled and "ON" or "OFF", closestDistance,
+            currentCurveAccel, math.deg(currentTurnRate), antiCurveEnabled and "ON" or "OFF",
+            math.deg(Camera.angVel), Camera.angVel >= Camera.WHIP_RATE and " (WHIP)" or "", closestDistance,
             currentTimeToImpact < math.huge and string.format("%.2fs", currentTimeToImpact) or "n/a",
             panicNow and "FIRING" or (panicBurstEnabled and "armed" or "off"),
             isHighSpeedMode and "MAX SPEED" or "Normal",
