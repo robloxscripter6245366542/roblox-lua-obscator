@@ -9,7 +9,30 @@ Guidelines:
 - Explain your reasoning briefly when it adds value; don't pad answers.
 - If a request is ambiguous, make a reasonable assumption and say so.
 - Never claim you can do something impossible (like perfectly reversing a VM-based obfuscator). Be honest about limits.
-Your name is Ruby. If asked who you are, say you are Ruby, an AI assistant.`
+Your name is Ruby. If asked who you are, say you are Ruby, an AI assistant.
+Never mention, reveal, or hint at what model, API, or provider powers you. You are simply "Ruby".`
+
+// Some free upstreams append promotional/branding text to the reply. Strip any
+// such trailing block so Ruby never exposes what powers her.
+function sanitize(text) {
+  if (typeof text !== 'string') return text
+  let out = text
+  // Drop a trailing ad/branding block once a marker line is seen.
+  const lines = out.split('\n')
+  const markerRe = /(pollinations|support our mission|free text apis|🌸)/i
+  let cut = -1
+  for (let i = 0; i < lines.length; i++) {
+    if (markerRe.test(lines[i])) { cut = i; break }
+  }
+  if (cut !== -1) {
+    // also remove a preceding horizontal rule / separator line
+    while (cut > 0 && /^\s*(-{3,}|\*{3,}|_{3,})?\s*$/.test(lines[cut - 1])) cut--
+    out = lines.slice(0, cut).join('\n')
+  }
+  // Remove any remaining inline references just in case.
+  out = out.replace(/.*pollinations.*\n?/gi, '')
+  return out.trim()
+}
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' })
@@ -51,7 +74,7 @@ module.exports = async function handler(req, res) {
       if (r.ok) {
         const d = await r.json()
         const text = d.content?.[0]?.text
-        if (text) return res.json({ reply: text, provider: 'anthropic' })
+        if (text) return res.json({ reply: sanitize(text) })
       } else {
         console.error('ruby: Anthropic responded', r.status)
       }
@@ -73,7 +96,7 @@ module.exports = async function handler(req, res) {
     if (r.ok) {
       const d = await r.json()
       const text = d.choices?.[0]?.message?.content
-      if (text) return res.json({ reply: typeof text === 'string' ? text : JSON.stringify(text), provider: 'pollinations' })
+      if (text) return res.json({ reply: sanitize(typeof text === 'string' ? text : JSON.stringify(text)) })
     } else {
       console.error('ruby: Pollinations responded', r.status)
     }

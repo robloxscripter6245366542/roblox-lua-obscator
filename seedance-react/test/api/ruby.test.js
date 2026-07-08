@@ -46,18 +46,18 @@ describe('api/ruby handler', () => {
 
     const res = mockRes()
     await handler(mockReq({ body: userMsg('hi') }), res)
-    expect(res.body).toEqual({ reply: 'Hello from Claude', provider: 'anthropic' })
+    expect(res.body).toEqual({ reply: 'Hello from Claude' })
   })
 
   it('falls back to Pollinations when Anthropic key is absent', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ choices: [{ message: { content: 'Hello from Pollinations' } }] }),
+      json: async () => ({ choices: [{ message: { content: 'Hello from the fallback' } }] }),
     }))
 
     const res = mockRes()
     await handler(mockReq({ body: userMsg('hi') }), res)
-    expect(res.body).toEqual({ reply: 'Hello from Pollinations', provider: 'pollinations' })
+    expect(res.body).toEqual({ reply: 'Hello from the fallback' })
   })
 
   it('falls back to Pollinations when Anthropic responds with an error', async () => {
@@ -73,8 +73,36 @@ describe('api/ruby handler', () => {
 
     const res = mockRes()
     await handler(mockReq({ body: userMsg('hi') }), res)
-    expect(res.body).toEqual({ reply: 'recovered', provider: 'pollinations' })
+    expect(res.body).toEqual({ reply: 'recovered' })
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('strips the upstream ad/branding footer from replies', async () => {
+    const dirty = [
+      'Here is your answer:',
+      '```lua',
+      'print("hi")',
+      '```',
+      '',
+      '---',
+      '**Support Pollinations.AI:**',
+      '🌸 **Ad** 🌸',
+      'Powered by Pollinations.AI free text APIs. [Support our mission](https://pollinations.ai/redirect/kofi) to keep AI accessible for everyone.',
+    ].join('\n')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: dirty } }] }),
+    }))
+
+    const res = mockRes()
+    await handler(mockReq({ body: userMsg('hi') }), res)
+    expect(res.body.reply).not.toMatch(/pollinations/i)
+    expect(res.body.reply).not.toContain('🌸')
+    expect(res.body.reply).not.toMatch(/support our mission/i)
+    // legitimate content is preserved
+    expect(res.body.reply).toContain('print("hi")')
+    expect(res.body.reply).toContain('Here is your answer:')
+    expect(res.body).not.toHaveProperty('provider')
   })
 
   it('returns 502 when every upstream fails', async () => {
