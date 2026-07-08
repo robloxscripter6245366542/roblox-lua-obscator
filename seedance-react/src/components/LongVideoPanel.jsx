@@ -36,6 +36,8 @@ export default function LongVideoPanel({ settings, onToast, timer, apiKey, onCli
     }))
     setClips(initial)
 
+    let doneCount = 0
+    let failedCount = 0
     for (let idx = 0; idx < totalClips; idx++) {
       if (abortRef.current) break
       setClips(c => c.map((cl, i) => i === idx ? { ...cl, status: 'running' } : cl))
@@ -46,13 +48,20 @@ export default function LongVideoPanel({ settings, onToast, timer, apiKey, onCli
         const url = await generateDemo(p, { resolution: settings.resolution, duration: String(clipSecs), onStep: () => {} })
         setClips(c => c.map((cl, i) => i === idx ? { ...cl, status: 'done', url } : cl))
         onClipDone(url, p)
-      } catch {
+        doneCount++
+      } catch (e) {
+        console.error(`LongVideoPanel: clip ${idx + 1}/${totalClips} failed`, e)
+        failedCount++
         setClips(c => c.map((cl, i) => i === idx ? { ...cl, status: 'failed' } : cl))
       }
       setOverall(Math.round(((idx + 1) / totalClips) * 100))
     }
     setRunning(false)
-    onToast(`Long video done! ${totalClips} clips generated.`, 'success')
+    if (failedCount > 0) {
+      onToast(`Long video finished with ${doneCount} clip(s) generated, ${failedCount} failed.`, failedCount === totalClips ? 'error' : 'info')
+    } else {
+      onToast(`Long video done! ${doneCount} clips generated.`, 'success')
+    }
   }
 
   function stop() { abortRef.current = true; setRunning(false); onToast('Generation stopped', 'info') }

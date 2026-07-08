@@ -30,7 +30,7 @@ async function kvGet(k) {
     if (!r.ok) return undefined
     const j = await r.json()
     return j && j.result != null ? j.result : undefined
-  } catch { return undefined }
+  } catch (e) { console.error('animeballhub: kvGet failed', e); return undefined }
 }
 async function kvSet(k, v) {
   const base = process.env.UPSTASH_REDIS_REST_URL, tok = process.env.UPSTASH_REDIS_REST_TOKEN
@@ -40,21 +40,21 @@ async function kvSet(k, v) {
       headers: { Authorization: `Bearer ${tok}` },
     })
     return r.ok
-  } catch { return false }
+  } catch (e) { console.error('animeballhub: kvSet failed', e); return false }
 }
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'POST only' })
 
   let body = req.body
-  if (typeof body === 'string') { try { body = JSON.parse(body) } catch { body = {} } }
+  if (typeof body === 'string') { try { body = JSON.parse(body) } catch (e) { console.warn('animeballhub: invalid JSON body', e); body = {} } }
   const key = ((body && body.key) || '').toString().trim()
   const hwid = ((body && body.hwid) || '').toString().trim()
   if (!key || !hwid) return res.status(400).json({ ok: false, error: 'key and hwid required' })
 
   // --- validate key ---
   let keys = {}
-  try { keys = JSON.parse(process.env.ANIMEBALL_KEYS || '{}') } catch { keys = {} }
+  try { keys = JSON.parse(process.env.ANIMEBALL_KEYS || '{}') } catch (e) { console.error('animeballhub: ANIMEBALL_KEYS is not valid JSON; all keys will be rejected', e); keys = {} }
   const entry = keys[key]
   if (!entry) return res.status(403).json({ ok: false, error: 'invalid key' })
 

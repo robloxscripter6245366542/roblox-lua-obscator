@@ -67,7 +67,8 @@ export async function generateDemo(prompt, settings) {
 }
 
 function generateCanvasVideo(prompt, { resolution, duration }) {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
+    try {
     const [w, h] = resolution === '4k' ? [1920, 1080] : resolution === '1080p' ? [1280, 720] : [854, 480]
     const canvas = document.createElement('canvas')
     canvas.width = w; canvas.height = h
@@ -84,6 +85,7 @@ function generateCanvasVideo(prompt, { resolution, duration }) {
     const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 10_000_000 })
     recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data) }
     recorder.onstop = () => resolve(URL.createObjectURL(new Blob(chunks, { type: 'video/webm' })))
+    recorder.onerror = e => reject(e.error || new Error('MediaRecorder failed while generating video'))
     recorder.start()
     const totalFrames = 30 * parseInt(duration, 10)
     let frame = 0
@@ -119,6 +121,9 @@ function generateCanvasVideo(prompt, { resolution, duration }) {
       frame++; setTimeout(draw, 1000/30)
     }
     draw()
+    } catch (e) {
+      reject(e)
+    }
   })
 }
 

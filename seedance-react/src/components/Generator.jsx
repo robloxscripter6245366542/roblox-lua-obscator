@@ -71,7 +71,8 @@ export default function Generator({ timer, onToast }) {
             setOutputState(s => ({ ...s, label, progress, step: Math.floor(progress / 25) }))
           },
         })
-      } catch {
+      } catch (e) {
+        console.warn('makeAIVideo failed, falling back to demo generator', e)
         url = await generateDemo(p, {
           resolution: settings.resolution,
           duration: settings.duration,
@@ -96,7 +97,13 @@ export default function Generator({ timer, onToast }) {
     onToast('Download started!', 'success')
   }
   async function handleShare() {
-    try { await navigator.clipboard.writeText(window.location.href); onToast('Link copied!', 'info') } catch {}
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      onToast('Link copied!', 'info')
+    } catch (e) {
+      console.error('Clipboard write failed', e)
+      onToast('Could not copy link to clipboard', 'error')
+    }
   }
 
   return (
