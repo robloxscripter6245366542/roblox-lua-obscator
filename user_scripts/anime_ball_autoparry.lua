@@ -880,8 +880,16 @@ local function updatePerFrame(now)
     updateCamera(now)
     if lastFrameClock > 0 then
         local dt = now - lastFrameClock
-        if dt > frameLag then frameLag = dt else frameLag = frameLag + (dt - frameLag) * 0.1 end
-        frameLag = math.clamp(frameLag, 0, FRAME_LAG_CAP)
+        -- A multi-second gap is a tab-out / loading pause, NOT gameplay stutter;
+        -- feeding it in would peg frameLag to its cap and hold the panic window
+        -- wide for ~0.5s after you return (spurious early firing). Only real
+        -- frame hitches (below this bound) should count as lag.
+        if dt <= 1 then
+            if dt > frameLag then frameLag = dt else frameLag = frameLag + (dt - frameLag) * 0.1 end
+            frameLag = math.clamp(frameLag, 0, FRAME_LAG_CAP)
+        else
+            frameLag = 0  -- resumed from a pause; start clean
+        end
     end
     lastFrameClock = now
     return frameLag
