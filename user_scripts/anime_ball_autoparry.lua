@@ -85,7 +85,9 @@ local antiCurveEnabled = true
 local ACCEL_SMOOTHING = 0.35      -- 0-1, higher = react faster to new curvature, lower = smoother/less jittery
 local CURVE_SIM_STEPS = 20        -- samples taken along the predicted arc, up to predictionHorizon seconds out
 local MAX_CURVE_ACCEL = 150       -- studs/s^2 cap; a parry flips ball velocity in one frame, which would otherwise read as a huge fake curve. Live telemetry: real curve accel peaks ~98 (avg 12). 150 leaves headroom for hard-curve abilities not in that sample, while still sitting far below the thousands-magnitude parry-bounce spikes it exists to reject. (Old 400 was ~4x too loose.)
+local MAX_TURN_RATE = 12          -- rad/s cap on the ball's velocity-vector rotation ("curve angle" rate). Real homing curves top out near a_perp/speed ~= 98/29 ~= 3.4 rad/s; 12 leaves headroom for sharper abilities while rejecting parry/bounce direction flips (a ~180 deg reversal in one 60fps frame reads as ~188 rad/s), which must NOT be modelled as sustained turning.
 local currentCurveAccel = 0       -- last measured curve (lateral acceleration) magnitude, studs/s^2
+local currentTurnRate = 0         -- last measured turn rate (velocity-vector rotation) in rad/s
 
 -- Panic Burst: the single executeParry() + 0.3s cooldown is exactly what
 -- loses to super-fast/curving balls - one block fires (sometimes early, on
@@ -835,6 +837,14 @@ end
 local function updateBallCurvature(ball, vel, now)
     local prev = ballMotionCache[ball]
     local accel = Vector3.new()
+    -- Curve-angle (turn-rate) state: how fast, and about which axis, the ball's
+    -- velocity VECTOR is rotating. This is the missing piece the linear-accel
+    -- (parabolic) model can't express - a homing ball keeps turning, tracing a
+    -- circular arc, and only a constant-turn-rate model reproduces that arc.
+    local omega = 0                      -- rad/s, smoothed
+    local axis = prev and prev.axis or Vector3.yAxis  -- rotation axis, smoothed
+    local speed = vel.Magnitude
+    local dir = speed > 1e-3 and (vel / speed) or (prev and prev.dir) or nil
     if prev and now > prev.time then
         local dt = now - prev.time
         local rawAccel = (vel - prev.vel) / dt
@@ -850,9 +860,32 @@ local function updateBallCurvature(ball, vel, now)
             rawAccel = rawAccel * (MAX_CURVE_ACCEL / mag)
         end
         accel = prev.accel:Lerp(rawAccel, ACCEL_SMOOTHING)
+
+        -- Measure the angle the velocity direction swept this frame and its
+        -- axis. Same anti-bounce logic as the accel cap: a near-180 deg flip in
+        -- one frame is a bounce/parry, NOT a sustained curve - reject it (omega
+        -- 0) so we don't extrapolate a phantom loop. Genuine curves sit far
+        -- under MAX_TURN_RATE.
+        if dir and prev.dir then
+            local dot = math.clamp(dir:Dot(prev.dir), -1, 1)
+            local sweptAngle = math.acos(dot)          -- radians turned this frame
+            local rawOmega = sweptAngle / dt
+            if rawOmega <= MAX_TURN_RATE then
+                local cross = prev.dir:Cross(dir)
+                if cross.Magnitude > 1e-4 then
+                    axis = prev.axis and prev.axis:Lerp(cross.Unit, ACCEL_SMOOTHING).Unit or cross.Unit
+                end
+                local prevOmega = prev.omega or 0
+                omega = prevOmega + (rawOmega - prevOmega) * ACCEL_SMOOTHING
+            else
+                -- bounce frame: keep the previously smoothed turn but decay it,
+                -- never spike it up from a reversal.
+                omega = (prev.omega or 0) * (1 - ACCEL_SMOOTHING)
+            end
+        end
     end
-    ballMotionCache[ball] = {vel = vel, accel = accel, time = now}
-    return accel
+    ballMotionCache[ball] = {vel = vel, accel = accel, time = now, dir = dir, omega = omega, axis = axis}
+    return accel, omega, axis
 end
 
 -- Simulates the curved arc (pos + vel*t + 0.5*accel*t^2) forward in small
@@ -874,7 +907,7 @@ end
 --                                    reality sits between hypotheses 1 and 2)
 -- Erring toward parrying is the right bias: a slightly-early block costs
 -- nothing here, a missed one loses the round.
-local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, targetGravity, meleeRange, maxLookahead, steps)
+local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, targetGravity, meleeRange, maxLookahead, steps, omega, axis)
     if maxLookahead <= 0 then return false, nil end
     steps = steps or CURVE_SIM_STEPS
     -- Anti-tunneling: at a fixed step count a fast ball can jump much further
@@ -888,20 +921,45 @@ local function predictCurvedImpact(pos, vel, accel, targetPos, targetVel, target
     local neededSteps = math.ceil(peakSpeed * maxLookahead / safeStep)
     steps = math.clamp(math.max(steps, neededSteps), 1, 400)
     local dt = maxLookahead / steps
+
+    -- Constant-turn-rate ("homing") arc: integrate a SECOND ball forward whose
+    -- velocity vector rotates by omega*dt about `axis` every step. Where the
+    -- polynomial (pos + v t + 0.5 a t^2) arc straightens a hard-curving ball
+    -- out and loses it, this one keeps turning with it - reproducing the actual
+    -- circular path a homing ball flies. We test BOTH arcs each step and count
+    -- arrival by EITHER (bias toward blocking; an extra parry is harmless, a
+    -- miss loses). The rotation is precomputed once as a per-step CFrame.
+    omega = omega or 0
+    local doHoming = omega > 1e-3 and axis ~= nil and axis.Magnitude > 1e-3
+    local stepRot, hpos, hvel
+    if doHoming then
+        stepRot = CFrame.fromAxisAngle(axis.Unit, omega * dt)
+        hpos, hvel = pos, vel
+    end
+
     for i = 1, steps do
         local t = i * dt
-        local predictedPos = pos + vel * t + accel * (0.5 * t * t)
-        if (predictedPos - targetPos).Magnitude <= meleeRange then
-            return true, t
-        end
         local drop = Vector3.new(0, -0.5 * targetGravity * t * t, 0)
         local fullMovePos = targetPos + targetVel * t + drop
-        if (predictedPos - fullMovePos).Magnitude <= meleeRange then
+        local halfMovePos = targetPos + targetVel * (0.5 * t) + drop
+
+        -- Polynomial (linear-acceleration) arc.
+        local predictedPos = pos + vel * t + accel * (0.5 * t * t)
+        if (predictedPos - targetPos).Magnitude <= meleeRange
+            or (predictedPos - fullMovePos).Magnitude <= meleeRange
+            or (predictedPos - halfMovePos).Magnitude <= meleeRange then
             return true, t
         end
-        local halfMovePos = targetPos + targetVel * (0.5 * t) + drop
-        if (predictedPos - halfMovePos).Magnitude <= meleeRange then
-            return true, t
+
+        -- Turn-rate (homing) arc, integrated incrementally.
+        if doHoming then
+            hpos = hpos + hvel * dt
+            hvel = stepRot:VectorToWorldSpace(hvel)
+            if (hpos - targetPos).Magnitude <= meleeRange
+                or (hpos - fullMovePos).Magnitude <= meleeRange
+                or (hpos - halfMovePos).Magnitude <= meleeRange then
+                return true, t
+            end
         end
     end
     return false, nil
@@ -1473,8 +1531,12 @@ RunService.Heartbeat:Connect(function()
         local ballInDetectorRange = isBallInPlayerRange(closestBall, PLAYER_DETECTOR_DISTANCE)
         local velocity = ballVel and ballVel.Magnitude or 0
         local closingSpeed = ballPos and getClosingSpeed(ballPos, ballVel, humanoidRootPart.Position) or 0
-        local ballAccel = ballPos and updateBallCurvature(closestBall, ballVel, currentTime) or Vector3.new()
+        local ballAccel, ballOmega, ballAxis = Vector3.new(), 0, nil
+        if ballPos then
+            ballAccel, ballOmega, ballAxis = updateBallCurvature(closestBall, ballVel, currentTime)
+        end
         currentCurveAccel = ballAccel.Magnitude
+        currentTurnRate = ballOmega or 0
 
         if velocity >= HIGH_SPEED_THRESHOLD then
             if not isHighSpeedMode then
@@ -1570,7 +1632,7 @@ RunService.Heartbeat:Connect(function()
                 local playerGravity = airborne and workspace.Gravity or 0
                 local arrives, arriveTime = predictCurvedImpact(
                     ballPos, ballVel, ballAccel, humanoidRootPart.Position, playerVel, playerGravity,
-                    currentParryDistance, lookahead)
+                    currentParryDistance, lookahead, nil, ballOmega, ballAxis)
                 if arrives then
                     currentTimeToImpact = arriveTime
                 elseif closingSpeed > 0 then
@@ -1666,9 +1728,9 @@ RunService.Heartbeat:Connect(function()
         end
 
         HUD.ParryStatus:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
-        HUD.ParryDistance:SetDesc(string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Curve: %.1f studs/s^2 (%s)\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Panic Burst: %s\n- Mode: %s\n- Frozen: %s",
+        HUD.ParryDistance:SetDesc(string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Curve: %.1f studs/s^2 | Turn: %.0f deg/s (%s)\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Panic Burst: %s\n- Mode: %s\n- Frozen: %s",
             currentParryDistance, pingComp, currentPing, currentRequiredLead, effectiveParryDistance, velocity, closingSpeed,
-            currentCurveAccel, antiCurveEnabled and "ON" or "OFF", closestDistance,
+            currentCurveAccel, math.deg(currentTurnRate), antiCurveEnabled and "ON" or "OFF", closestDistance,
             currentTimeToImpact < math.huge and string.format("%.2fs", currentTimeToImpact) or "n/a",
             panicNow and "FIRING" or (panicBurstEnabled and "armed" or "off"),
             isHighSpeedMode and "MAX SPEED" or "Normal",
