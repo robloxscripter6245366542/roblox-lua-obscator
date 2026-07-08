@@ -8,6 +8,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/languages/lua.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -122,6 +125,53 @@ header.bar .newchat:hover{background:rgba(255,46,116,.22)}
 #send:disabled{opacity:.4;cursor:not-allowed}
 .hint{text-align:center;color:var(--dim);font-size:.68rem;margin-top:8px}
 ::-webkit-scrollbar{width:9px}::-webkit-scrollbar-thumb{background:rgba(255,46,116,.3);border-radius:9px}
+
+/* code block chrome */
+.codewrap{position:relative;margin:8px 0}
+.codewrap .codebar{display:flex;align-items:center;justify-content:space-between;
+  background:rgba(0,0,0,.55);border:1px solid rgba(255,46,116,.22);border-bottom:none;
+  border-radius:10px 10px 0 0;padding:5px 10px;font-size:.7rem;color:var(--muted)}
+.codewrap .codebar .lang{text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.codewrap .copybtn{border:1px solid var(--glass-brd);background:rgba(255,46,116,.12);
+  color:var(--text);font-size:.68rem;font-weight:600;padding:3px 9px;border-radius:6px;cursor:pointer;transition:.15s}
+.codewrap .copybtn:hover{background:rgba(255,46,116,.26)}
+.codewrap pre{margin:0!important;border-radius:0 0 10px 10px!important}
+
+/* file commit toolbar under an AI bubble */
+.filebar{margin-top:10px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  padding-top:10px;border-top:1px dashed rgba(255,46,116,.25)}
+.filebar .files{color:var(--muted);font-size:.72rem}
+.filebar .files code{font-size:.72rem}
+.commitbtn{border:1px solid var(--glass-brd);
+  background:linear-gradient(135deg,rgba(255,46,116,.3),rgba(138,11,60,.3));
+  color:#fff;font-size:.74rem;font-weight:600;padding:6px 12px;border-radius:8px;cursor:pointer;transition:.15s}
+.commitbtn:hover{transform:translateY(-1px)}
+
+/* modal */
+.modal{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
+  background:rgba(10,1,5,.6);backdrop-filter:blur(4px);padding:20px}
+.modal.show{display:flex}
+.modal .card{width:100%;max-width:440px;border:1px solid var(--glass-brd);border-radius:18px;
+  background:linear-gradient(160deg,#2a0511,#3d0a1c);box-shadow:0 20px 60px rgba(0,0,0,.55);
+  padding:22px;animation:rise .35s ease both}
+.modal h3{font-family:'Dancing Script',cursive;font-size:1.6rem;font-weight:700;
+  background:linear-gradient(92deg,#ff2e74,#ff9cbb);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px}
+.modal .desc{color:var(--muted);font-size:.76rem;margin-bottom:14px}
+.modal label{display:block;color:var(--dim);font-size:.68rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin:10px 0 4px}
+.modal input,.modal textarea{width:100%;background:rgba(0,0,0,.32);border:1px solid var(--glass-brd);
+  border-radius:9px;color:var(--text);font-family:inherit;font-size:.85rem;padding:9px 11px;outline:none;transition:border-color .15s}
+.modal input:focus,.modal textarea:focus{border-color:var(--ruby)}
+.modal .row{display:flex;gap:10px}.modal .row>div{flex:1}
+.modal .filelist{margin:6px 0 2px;font-size:.72rem;color:var(--muted);max-height:80px;overflow:auto}
+.modal .filelist code{display:block;padding:1px 0}
+.modal .actions{display:flex;gap:10px;margin-top:16px}
+.modal .actions button{flex:1;border-radius:10px;padding:10px;font-weight:600;font-size:.82rem;cursor:pointer;border:1px solid var(--glass-brd)}
+.modal .cancel{background:rgba(255,255,255,.06);color:var(--muted)}
+.modal .go{background:linear-gradient(135deg,var(--ruby),var(--ruby-dk));color:#fff;border:none}
+.modal .go:disabled{opacity:.5;cursor:not-allowed}
+.modal .result{margin-top:12px;font-size:.8rem;line-height:1.5;word-break:break-word}
+.modal .result a{color:var(--ruby-lt);font-weight:600}
+.modal .result.err{color:#ffb4c6}
 </style>
 </head>
 <body>
@@ -157,6 +207,33 @@ header.bar .newchat:hover{background:rgba(255,46,116,.22)}
   </div>
 </div>
 
+<div class="modal" id="ghModal">
+  <div class="card">
+    <h3>Commit to GitHub</h3>
+    <div class="desc">Ruby will create a new branch, commit these files, and open a pull request.</div>
+    <div class="filelist" id="ghFiles"></div>
+    <label>Repository (owner/name)</label>
+    <input id="ghRepo" placeholder="octocat/hello-world" autocomplete="off" spellcheck="false"/>
+    <div class="row">
+      <div>
+        <label>Base branch</label>
+        <input id="ghBase" placeholder="default" autocomplete="off" spellcheck="false"/>
+      </div>
+      <div>
+        <label>New branch</label>
+        <input id="ghBranch" placeholder="ruby/auto" autocomplete="off" spellcheck="false"/>
+      </div>
+    </div>
+    <label>Commit message</label>
+    <input id="ghMsg" placeholder="Ruby: add files" autocomplete="off"/>
+    <div class="result" id="ghResult" style="display:none"></div>
+    <div class="actions">
+      <button class="cancel" id="ghCancel">Cancel</button>
+      <button class="go" id="ghGo">Commit &amp; open PR</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const landing=document.getElementById('landing');
 const app=document.getElementById('app');
@@ -174,13 +251,45 @@ document.getElementById('newChat').addEventListener('click',()=>{
   history.length=0;chat.innerHTML='';greet();input.focus();
 });
 
-marked.setOptions({breaks:true,gfm:true});
+marked.setOptions({
+  breaks:true,gfm:true,
+  highlight:(code,lang)=>{
+    try{
+      if(lang&&window.hljs&&hljs.getLanguage(lang))return hljs.highlight(code,{language:lang}).value;
+      if(window.hljs)return hljs.highlightAuto(code).value;
+    }catch(e){}
+    return code;
+  }
+});
 
 // conversation history sent to the API
 const history=[];
 
 function greet(){
-  addBubble('ai',"Hi, I'm **Ruby** 💎\n\nAsk me anything — I'm especially good with **Lua** and **Roblox scripting**. Paste code, describe a bug, or just say hi.");
+  addBubble('ai',"Hi, I'm **Ruby** 💎\n\nAsk me anything — I'm a world-class coder across **Lua**, **TypeScript**, **Python** and more. Paste code, describe a bug, or ask me to build something. When I write files, I can **commit them to GitHub** and open a PR for you.");
+}
+
+// Extract file blocks: a `path` line (inline code or plain) immediately before a fenced block.
+function extractFiles(markdown){
+  const files=[];
+  const lines=markdown.split('\n');
+  for(let i=0;i<lines.length;i++){
+    const m=lines[i].match(/^```([\w.+-]*)\s*$/);
+    if(!m)continue;
+    // find prior non-empty line as a candidate path
+    let p=i-1;while(p>=0&&lines[p].trim()==='')p--;
+    let path=null;
+    if(p>=0){
+      const raw=lines[p].trim().replace(/^`|`$/g,'').replace(/^\*\*|\*\*$/g,'').trim();
+      if(/^[\w./-]+\.[\w]+$/.test(raw)&&raw.includes('.')&&!raw.includes(' '))path=raw;
+    }
+    // collect body until closing fence
+    const buf=[];let j=i+1;
+    for(;j<lines.length;j++){if(/^```\s*$/.test(lines[j]))break;buf.push(lines[j]);}
+    if(path)files.push({path,content:buf.join('\n')});
+    i=j;
+  }
+  return files;
 }
 
 function addBubble(role,markdown){
@@ -190,12 +299,46 @@ function addBubble(role,markdown){
   av.textContent=role==='user'?'You':'R';
   const bubble=document.createElement('div');bubble.className='bubble';
   bubble.innerHTML=role==='user'?escapeHtml(markdown):marked.parse(markdown);
+  if(role!=='user'){
+    decorateCode(bubble);
+    const files=extractFiles(markdown);
+    if(files.length)addFileBar(bubble,files);
+  }
   msg.appendChild(av);msg.appendChild(bubble);
   chat.appendChild(msg);
   chat.scrollTop=chat.scrollHeight;
   return bubble;
 }
 function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])).replace(/\n/g,'<br>');}
+
+// wrap each <pre> with a bar showing the language + a copy button
+function decorateCode(bubble){
+  bubble.querySelectorAll('pre').forEach(pre=>{
+    const code=pre.querySelector('code');if(!code)return;
+    const cls=[...code.classList].find(c=>c.startsWith('language-'));
+    const lang=cls?cls.slice(9):'code';
+    const wrap=document.createElement('div');wrap.className='codewrap';
+    const bar=document.createElement('div');bar.className='codebar';
+    bar.innerHTML='<span class="lang">'+escapeHtml(lang)+'</span>';
+    const btn=document.createElement('button');btn.className='copybtn';btn.textContent='Copy';
+    btn.addEventListener('click',()=>{
+      navigator.clipboard.writeText(code.innerText).then(()=>{btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1400);});
+    });
+    bar.appendChild(btn);
+    pre.parentNode.insertBefore(wrap,pre);wrap.appendChild(bar);wrap.appendChild(pre);
+  });
+}
+
+function addFileBar(bubble,files){
+  const bar=document.createElement('div');bar.className='filebar';
+  const label=document.createElement('span');label.className='files';
+  label.innerHTML=files.length+' file'+(files.length>1?'s':'')+': '+files.map(f=>'<code>'+escapeHtml(f.path)+'</code>').join(', ');
+  const btn=document.createElement('button');btn.className='commitbtn';
+  btn.textContent='💎 Commit to GitHub';
+  btn.addEventListener('click',()=>openGh(files));
+  bar.appendChild(label);bar.appendChild(btn);
+  bubble.appendChild(bar);
+}
 
 function showTyping(){
   const msg=document.createElement('div');msg.className='msg ai';msg.id='typing';
@@ -236,6 +379,52 @@ async function sendMessage(){
 send.addEventListener('click',sendMessage);
 input.addEventListener('keydown',e=>{
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}
+});
+
+/* ---------- GitHub commit modal ---------- */
+const ghModal=document.getElementById('ghModal');
+const ghResult=document.getElementById('ghResult');
+const ghGo=document.getElementById('ghGo');
+let ghPending=[];
+function openGh(files){
+  ghPending=files;
+  document.getElementById('ghFiles').innerHTML=files.map(f=>'<code>'+escapeHtml(f.path)+'</code>').join('');
+  document.getElementById('ghMsg').value='Ruby: add '+files.map(f=>f.path.split('/').pop()).join(', ');
+  ghResult.style.display='none';ghResult.className='result';ghResult.innerHTML='';
+  ghModal.classList.add('show');
+  document.getElementById('ghRepo').focus();
+}
+function closeGh(){ghModal.classList.remove('show');}
+document.getElementById('ghCancel').addEventListener('click',closeGh);
+ghModal.addEventListener('click',e=>{if(e.target===ghModal)closeGh();});
+
+ghGo.addEventListener('click',async()=>{
+  const repo=document.getElementById('ghRepo').value.trim();
+  if(!repo){ghResult.style.display='block';ghResult.className='result err';ghResult.textContent='Enter a repository (owner/name).';return;}
+  const payload={
+    repo,
+    files:ghPending,
+    base:document.getElementById('ghBase').value.trim()||undefined,
+    branch:document.getElementById('ghBranch').value.trim()||undefined,
+    message:document.getElementById('ghMsg').value.trim()||undefined,
+  };
+  ghGo.disabled=true;ghGo.textContent='Committing…';
+  ghResult.style.display='block';ghResult.className='result';ghResult.textContent='Creating branch, committing files, opening PR…';
+  try{
+    const r=await fetch('/api/github',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json();
+    if(r.ok&&d.prUrl){
+      ghResult.className='result';
+      ghResult.innerHTML='✅ Opened PR #'+d.prNumber+' on branch <code>'+escapeHtml(d.branch)+'</code>.<br><a href="'+d.prUrl+'" target="_blank" rel="noopener">'+escapeHtml(d.prUrl)+'</a>';
+    }else{
+      ghResult.className='result err';
+      ghResult.textContent='⚠️ '+(d.error||('GitHub returned '+r.status));
+    }
+  }catch(e){
+    ghResult.className='result err';ghResult.textContent='⚠️ Network error reaching the server.';
+  }finally{
+    ghGo.disabled=false;ghGo.textContent='Commit & open PR';
+  }
 });
 function autoGrow(){input.style.height='auto';input.style.height=Math.min(input.scrollHeight,180)+'px';}
 input.addEventListener('input',autoGrow);
