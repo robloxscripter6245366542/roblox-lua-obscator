@@ -211,6 +211,14 @@ local ballsCache = {}         -- [ballInstance] = true
 local playerHRPCache = {}     -- [player] = HumanoidRootPart
 local hasHighlightCache = false
 local ballMotionCache = {}    -- [ballInstance] = {vel, accel, time} - tracks curvature
+-- Server-authoritative target capture. The game's BallController.Server.ChangeBallColor
+-- is invoked by the SERVER with the ball's real target the instant it retargets -
+-- and for INVISIBLE balls it bails out BEFORE writing the Target attribute, so this
+-- hook is the ONLY client-visible source of an invisible ball's true target. We record
+-- [ball] = {target = name, time = tick()} so findClosestBall can arm the panic even
+-- when ball:GetAttribute("Target") never reports us. (Hook installed lazily below.)
+local serverTargetCache = {}  -- [ballInstance] = {target=playerName, time=tick()}
+local SERVER_TARGET_TTL = 2.5 -- seconds a captured target stays trusted before it goes stale
 
 -- Previous background/element colors were near-black (#120306, #240A0E) with
 -- only a faint red tinge, so behind glass transparency the panel just read
@@ -922,6 +930,7 @@ local function trackBallsFolder(folder)
     folder.ChildRemoved:Connect(function(child)
         ballsCache[child] = nil
         ballMotionCache[child] = nil
+        serverTargetCache[child] = nil
         -- Also drop (and destroy) the speed-label billboard for this ball,
         -- otherwise billboardCache grows without bound as balls spawn and
         -- despawn over a long session.
@@ -938,6 +947,7 @@ end
 local function purgeDeadBall(ball)
     ballsCache[ball] = nil
     ballMotionCache[ball] = nil
+    serverTargetCache[ball] = nil
     billboardCache[ball] = nil
 end
 
@@ -1169,6 +1179,15 @@ local function findClosestBall(humanoidRootPart)
                 -- the ball assigned to me may not be the nearest one.
                 local target = ball:GetAttribute("Target")
                 if target == myName then targetedByAny = true end
+                -- Server-hook capture (see serverTargetCache): the game told us
+                -- the server's real target for this ball, which for invisible
+                -- balls is the ONLY truthful source (the attribute is never
+                -- written). If it's fresh and it names us, we're targeted -
+                -- even if the attribute above says otherwise/nil.
+                local sm = serverTargetCache[ball]
+                local serverSaysMe = sm ~= nil and sm.target == myName
+                    and (tick() - sm.time) < SERVER_TARGET_TTL
+                if serverSaysMe then targetedByAny = true end
                 -- Only balls aimed at me (or not yet assigned, or hidden and
                 -- closing) can threaten me; a ball assigned to another player
                 -- won't hit me, so it must not arm my panic burst.
@@ -1181,7 +1200,7 @@ local function findClosestBall(humanoidRootPart)
                 -- if an invisible ball is actually closing on us, treat it as
                 -- aimed at us regardless of its (possibly stale) Target attr.
                 local invisible = ball:GetAttribute("Invisible") == true
-                if target == myName or target == nil or invisible then
+                if target == myName or target == nil or invisible or serverSaysMe then
                     local vel = getBallVelocityVector(ball)
                     local speed = vel.Magnitude
                     if invisible and speed > 0
@@ -1332,6 +1351,52 @@ task.spawn(function()
             break
         end
         task.wait(1)
+    end
+end)
+
+-- Hook BallController.Server.ChangeBallColor to capture the SERVER's real target
+-- for each ball the instant it retargets. The server invokes this every time a
+-- ball is (re)assigned, and for INVISIBLE balls it runs this callback but bails
+-- before writing the Target attribute - so this is the only client-visible truth
+-- for an invisible ball's target. We record it into serverTargetCache, which
+-- findClosestBall consults to arm the panic even when the attribute never names
+-- us. Fully pcall-guarded and lazy: if the controller never loads or the game
+-- changes the signature, capture just stays inert - it never touches the game's
+-- own return value and never breaks parrying.
+task.spawn(function()
+    local BC
+    for _ = 1, 15 do
+        local ok, controller = pcall(function()
+            return require(ReplicatedStorage:WaitForChild("Framework")):Get("BallController")
+        end)
+        if ok and controller and controller.Server
+            and type(controller.Server.ChangeBallColor) == "function" then
+            BC = controller
+            break
+        end
+        task.wait(1)
+    end
+    if not BC then return end
+    local orig = BC.Server.ChangeBallColor
+    BC.Server.ChangeBallColor = function(...)
+        local args = table.pack(...)
+        pcall(function()
+            -- Robust arg-scan (signature-agnostic): first Instance is the ball,
+            -- first string is the target player name.
+            local ball, name
+            for i = 1, args.n do
+                local v = args[i]
+                if ball == nil and typeof(v) == "Instance" then
+                    ball = v
+                elseif name == nil and type(v) == "string" then
+                    name = v
+                end
+            end
+            if ball and name and (ballsCache[ball] or isRealBall(ball)) then
+                serverTargetCache[ball] = { target = name, time = tick() }
+            end
+        end)
+        return orig(...)
     end
 end)
 
