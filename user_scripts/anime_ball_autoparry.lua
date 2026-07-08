@@ -76,6 +76,18 @@ local currentTimeToImpact = math.huge
 local currentRequiredLead = 0
 local PING_SMOOTHING = 0.1        -- 0-1; how fast smoothedPing chases the raw ping (low = smoother)
 
+-- Client-side frame-lag compensation. Ping comp covers NETWORK latency, but a
+-- laggy client (frame stutter / low FPS) is a SEPARATE problem: if your frames
+-- are 100ms apart, the parry decision is made up to a full frame late relative
+-- to where the ball really is, and you can die during the freeze before the
+-- next frame ever runs. So we measure the real frame time and, on a laggy
+-- client, fire that much EARLIER - the last frame before a stutter still sends
+-- the block. Tracked as a decaying max because lag is bursty: one 150ms hitch
+-- matters even when the average frame time looks fine.
+local frameLag = 0                -- decaying-max estimate of local frame time (seconds)
+local FRAME_LAG_CAP = 0.3         -- max seconds of frame-lag comp to apply (beyond this the client is basically frozen and nothing helps)
+local lastFrameClock = 0
+
 -- Anti-curve: the ball's velocity vector alone only predicts a straight
 -- line, which misses curving/homing balls entirely. We also track the
 -- ball's acceleration (rate of change of velocity between frames) and
@@ -858,6 +870,23 @@ local function updateCamera(now)
     if flat.Magnitude > 1e-3 then Camera.flatDir = flat.Unit end
 end
 
+-- Per-frame sampler: camera + client frame-lag, run once at the top of the main
+-- loop. Frame lag is a decaying max - it jumps straight to a spike so a stutter
+-- is compensated on the very frame it appears, then decays slowly so one hitch
+-- keeps the window widened for a short while after (bursty lag tends to recur).
+-- Capped so a full freeze doesn't blow the window open. Returns the current
+-- frame lag so the caller can hold it as a local (zero upvalue cost).
+local function updatePerFrame(now)
+    updateCamera(now)
+    if lastFrameClock > 0 then
+        local dt = now - lastFrameClock
+        if dt > frameLag then frameLag = dt else frameLag = frameLag + (dt - frameLag) * 0.1 end
+        frameLag = math.clamp(frameLag, 0, FRAME_LAG_CAP)
+    end
+    lastFrameClock = now
+    return frameLag
+end
+
 -- ============================================
 -- ANTI-CURVE PREDICTION
 -- ============================================
@@ -1422,8 +1451,10 @@ task.spawn(function()
             totalSpams, spamDuration, spamsPerSecond, spamStarted and "ACTIVE" or "INACTIVE"))
 
         local livePing = getPing()
-        HUD.PingInfo:SetDesc(string.format("- Current Ping: %.0f ms (smoothed %.0f)\n- Compensation: %s\n- Mode: %s\n- Strength: %.2fx%s\n- Prediction Horizon: %.2fs\n- Last Extra Range: +%.1f studs\n- Last Time-To-Impact: %s",
+        HUD.PingInfo:SetDesc(string.format("- Current Ping: %.0f ms (smoothed %.0f)\n- Frame Lag: %.0f ms (%.0f FPS)%s\n- Compensation: %s\n- Mode: %s\n- Strength: %.2fx%s\n- Prediction Horizon: %.2fs\n- Last Extra Range: +%.1f studs\n- Last Time-To-Impact: %s",
             livePing, smoothedPing,
+            frameLag * 1000, frameLag > 0 and (1 / frameLag) or 0,
+            frameLag >= 0.05 and " (LAGGING - firing early)" or "",
             pingCompEnabled and "ON" or "OFF",
             pingAutoEnabled and "AUTO" or "Manual",
             pingAutoEnabled and currentAutoMult or pingMultiplier,
@@ -1515,9 +1546,11 @@ RunService.Heartbeat:Connect(function()
     local humanoidRootPart = getPlayerHRP(LocalPlayer)
     if not humanoidRootPart then return end
 
-    -- Sample the camera every frame (facing + turn rate) so the prediction and
-    -- the whip-aware panic below have fresh values.
-    updateCamera(currentTime)
+    -- Sample the camera (facing + turn rate) and measure client frame lag for
+    -- this frame. Kept as a single call returning a closure-LOCAL frameLag so
+    -- neither the lag state nor the camera sampler costs the big Heartbeat
+    -- closure any upvalues (Lua 5.1's 60-per-function cap).
+    local frameLag = updatePerFrame(currentTime)
 
     -- Keep the spam-detector spheres tracking players regardless of parry
     -- state - previously this only ran inside the parry-with-ball branch,
@@ -1669,7 +1702,10 @@ RunService.Heartbeat:Connect(function()
         local imminentThreat = false
         currentTimeToImpact = math.huge
         if ballPos then
-            local lookahead = math.max(currentRequiredLead, panicBurstEnabled and PANIC_TTI or 0)
+            -- Add frameLag to every look-ahead: on a laggy client the next
+            -- frame may not run until frameLag seconds from now, so we must see
+            -- (and fire on) impacts that far ahead right now.
+            local lookahead = math.max(currentRequiredLead + frameLag, panicBurstEnabled and (PANIC_TTI + frameLag) or 0)
             if antiCurveEnabled and lookahead > 0 then
                 local playerVel = humanoidRootPart.AssemblyLinearVelocity
                 -- Mid-jump the player follows a gravity arc, not a straight
@@ -1747,8 +1783,13 @@ RunService.Heartbeat:Connect(function()
             -- at ping + BLOCK_DURATION so the block's 0.6s protection window
             -- still covers the ball's actual arrival and never expires early.
             -- At low ping currentRequiredLead ~= 0, so this is a no-op.
+            -- frameLag widens the window (and its ceiling) too: a laggy client
+            -- must open the burst frameLag earlier so the last frame before a
+            -- stutter still fires, and the ceiling grows with it so that clamp
+            -- doesn't cancel the compensation out.
             local pingSec = currentPing / 1000
-            local effectivePanicTTI = math.clamp(PANIC_TTI + currentRequiredLead, PANIC_TTI, pingSec + BLOCK_DURATION)
+            local effectivePanicTTI = math.clamp(PANIC_TTI + currentRequiredLead + frameLag,
+                PANIC_TTI, pingSec + frameLag + BLOCK_DURATION)
             panicNow = panicBurstEnabled
                 and (withinRange or currentTimeToImpact <= effectivePanicTTI
                     or worstCaseTTI <= effectivePanicTTI or (minThreatTTI or math.huge) <= effectivePanicTTI)
