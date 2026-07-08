@@ -147,6 +147,41 @@ local function getRoot() local c=LP and LP.Character; return c and c:FindFirstCh
 local function getHum()  local c=LP and LP.Character; return c and c:FindFirstChildOfClass("Humanoid")   end
 local function getChar() return LP and LP.Character end
 
+-- ── Shared execution helpers ──────────────────────────────────────────────────
+-- Compile then run a chunk of Lua.
+-- Returns: ok(bool), err(string|nil), stage("compile"|"runtime"|nil)
+local function runCode(code)
+    local fn, cerr = _ld(code)
+    if not fn then return false, tostring(cerr), "compile" end
+    local ok, rerr = pcall(fn)
+    if not ok then return false, tostring(rerr), "runtime" end
+    return true
+end
+
+-- Depth-first walk of every script instance under `root`, calling fn(scriptInst).
+local function forEachScript(root, fn)
+    for _, ch in root:GetChildren() do
+        if ch:IsA("LocalScript") or ch:IsA("ModuleScript") or ch:IsA("Script") then
+            fn(ch)
+        end
+        forEachScript(ch, fn)
+    end
+end
+
+-- Detect whether a (possibly dotted, e.g. "debug.getinfo") global exists.
+local function hasGlobal(name)
+    local root = name:match("^([^%.]+)%.")
+    if root then
+        local tbl = (getfenv and getfenv()[root]) or _G[root]
+        if type(tbl) == "table" then
+            return tbl[name:match("%.(.+)$")] ~= nil
+        end
+        return false
+    end
+    if getfenv and getfenv()[name] ~= nil then return true end
+    return _G[name] ~= nil
+end
+
 -- ── Session ───────────────────────────────────────────────────────────────────
 local SESSION = {
     startTime   = os.time(),
@@ -576,6 +611,32 @@ local function OUT(par, sz, pos, ph)
     stroke(b, C.BDR, 1)
     pad(b, 6, 10)
     return b
+end
+
+-- Single-line, timestamped status console. Returns a writer fn(msg, ok)
+-- that colours the box green on success / red on failure.
+local function statusOut(par, sz, pos, ph)
+    local box = OUT(par, sz, pos, ph)
+    return function(msg, ok)
+        box.TextColor3 = ok and C.GRN or C.RED
+        box.Text = ts() .. tostring(msg)
+    end
+end
+
+-- Remove every child of a layout container except its UIListLayout.
+local function clearLayout(container)
+    for _, ch in container:GetChildren() do
+        if not ch:IsA("UIListLayout") then ch:Destroy() end
+    end
+end
+
+-- Assign sequential LayoutOrder + a common TextSize to a row of buttons.
+local function styleRow(btns, textSize)
+    for i, b in btns do
+        b.LayoutOrder = i
+        b.TextSize    = textSize or 11
+    end
+    return btns
 end
 
 -- ScrollingFrame (auto canvas, vertical by default)
@@ -1106,9 +1167,7 @@ local BCopy  = B(aRow,"Copy",    UDim2.new(0,64,1,0), nil, C.GREY)
 local BPrev  = B(aRow,"◀ Prev",  UDim2.new(0,68,1,0), nil, C.GREY)
 local BNext  = B(aRow,"Next ▶",  UDim2.new(0,68,1,0), nil, C.GREY)
 local BSave  = B(aRow,"Save",    UDim2.new(0,60,1,0), nil, C.GREY)
-for i, b in {BExec,BClear,BCopy,BPrev,BNext,BSave} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BExec,BClear,BCopy,BPrev,BNext,BSave})
 hov(BExec,  C.ACC,  C.ACCHV)
 hov(BClear, C.GREY, C.GRYHV)
 hov(BCopy,  C.GREY, C.GRYHV)
@@ -1137,10 +1196,11 @@ BExec.MouseButton1Click:Connect(function()
 
     if curMode == 1 then
         -- Client loadstring
-        local fn, ce = _ld(code)
-        if not fn then exOut("Compile error:\n" .. tostring(ce), true); return end
-        local ok2, re = pcall(fn)
-        exOut(ok2 and "Client exec ✓" or "Runtime error:\n" .. tostring(re), not ok2)
+        local ok2, err, stage = runCode(code)
+        if not ok2 then
+            exOut((stage=="compile" and "Compile error:\n" or "Runtime error:\n")..err, true); return
+        end
+        exOut("Client exec ✓", false)
 
     elseif curMode == 2 then
         -- Server-side via bridge
@@ -1163,10 +1223,11 @@ BExec.MouseButton1Click:Connect(function()
         task.spawn(function()
             local ok2, src = pcall(game.HttpGet, game, url, true)
             if not ok2 then exOut("HTTP error:\n" .. tostring(src), true); return end
-            local fn, ce = _ld(src)
-            if not fn then exOut("Compile error:\n" .. tostring(ce), true); return end
-            local ok3, re = pcall(fn)
-            exOut(ok3 and "URL exec ✓  (" .. #src .. " bytes)" or "Runtime error:\n" .. tostring(re), not ok3)
+            local ok3, err, stage = runCode(src)
+            if not ok3 then
+                exOut((stage=="compile" and "Compile error:\n" or "Runtime error:\n")..err, true); return
+            end
+            exOut("URL exec ✓  (" .. #src .. " bytes)", false)
         end)
 
     elseif curMode == 5 then
@@ -1176,11 +1237,11 @@ BExec.MouseButton1Click:Connect(function()
         if path == "" then exOut("Enter a file path.", true); return end
         local ok2, src = pcall(readfile, path)
         if not ok2 then exOut("readfile error:\n" .. tostring(src), true); return end
-        local fn, ce = _ld(src)
-        if not fn then exOut("Compile error:\n" .. tostring(ce), true); return end
-        local ok3, re = pcall(fn)
-        exOut(ok3 and "File exec ✓  (" .. #src .. " bytes, path: " .. path .. ")"
-            or "Runtime error:\n" .. tostring(re), not ok3)
+        local ok3, err, stage = runCode(src)
+        if not ok3 then
+            exOut((stage=="compile" and "Compile error:\n" or "Runtime error:\n")..err, true); return
+        end
+        exOut("File exec ✓  (" .. #src .. " bytes, path: " .. path .. ")", false)
     end
 end)
 
@@ -1240,18 +1301,12 @@ local BSrvRun  = B(sr1, "▶ Run Server",  UDim2.new(0,116,1,0), nil, C.GRN)
 local BSrvURL  = B(sr1, "Run URL",        UDim2.new(0,88,1,0),  nil, C.GREY)
 local BSrvReq  = B(sr1, "Require ID",     UDim2.new(0,92,1,0),  nil, C.GREY)
 local BSrvPing = B(sr1, "Ping",           UDim2.new(0,60,1,0),  nil, C.ACC)
-for i, b in {BSrvRun,BSrvURL,BSrvReq,BSrvPing} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BSrvRun,BSrvURL,BSrvReq,BSrvPing})
 hov(BSrvRun, C.GRN, C.GRNHV); hov(BSrvURL, C.GREY, C.GRYHV)
 hov(BSrvReq, C.GREY, C.GRYHV); hov(BSrvPing, C.ACC, C.ACCHV)
 
 -- ── Output ────────────────────────────────────────────────────────────────────
-local SrvOut = OUT(P2, UDim2.new(1,0,0,50), UDim2.new(0,0,0,134))
-local function srvOut(msg, ok2)
-    SrvOut.TextColor3 = ok2 and C.GRN or C.RED
-    SrvOut.Text = ts() .. tostring(msg)
-end
+local srvOut = statusOut(P2, UDim2.new(1,0,0,50), UDim2.new(0,0,0,134))
 local function bOut(act, pay)
     local ok2, msg2, data = callBridge(act, pay)
     local lines = {msg2 or ""}
@@ -1284,9 +1339,7 @@ local BGetPlrs = B(sr2, "Get Players",  UDim2.new(0,100,1,0), nil, C.GREY)
 local BGetScr  = B(sr2, "Get Scripts",  UDim2.new(0,100,1,0), nil, C.GREY)
 local BKillAll = B(sr2, "Kill Scripts", UDim2.new(0,106,1,0), nil, C.RED)
 local BBridge  = B(sr2, "Re-Ping",      UDim2.new(0,80,1,0),  nil, C.GREY)
-for i, b in {BGetPlrs,BGetScr,BKillAll,BBridge} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BGetPlrs,BGetScr,BKillAll,BBridge})
 hov(BGetPlrs, C.GREY, C.GRYHV); hov(BGetScr,  C.GREY, C.GRYHV)
 hov(BKillAll, C.RED,  C.REDHV); hov(BBridge,  C.GREY, C.GRYHV)
 
@@ -1310,9 +1363,7 @@ local PlrScr = SCR(P2, UDim2.new(1,0,1,-244), UDim2.new(0,0,0,242))
 listV(PlrScr, 3)
 
 local function refreshPlrs()
-    for _, ch in PlrScr:GetChildren() do
-        if not ch:IsA("UIListLayout") then ch:Destroy() end
-    end
+    clearLayout(PlrScr)
     for _, plr in Players:GetPlayers() do
         local row = F(PlrScr, UDim2.new(1,-4,0,34), nil, C.PANEL); corner(row,6)
         local isMe = (plr == LP)
@@ -1362,11 +1413,7 @@ refreshPlrs()
 local P3 = newTab("⛓", "Sandbox")
 L(P3, "SANDBOX & BYPASS TOOLS", UDim2.new(1,0,0,16), UDim2.new(0,0,0,0), C.TXTS, FB, 11)
 
-local SBOut = OUT(P3, UDim2.new(1,0,0,44), UDim2.new(0,0,1,-46))
-local function sbOut(msg, ok2)
-    SBOut.TextColor3 = ok2 and C.GRN or C.RED
-    SBOut.Text = ts() .. tostring(msg)
-end
+local sbOut = statusOut(P3, UDim2.new(1,0,0,44), UDim2.new(0,0,1,-46))
 
 local SBScr = SCR(P3, UDim2.new(1,0,1,-104), UDim2.new(0,0,0,20))
 listV(SBScr, 4)
@@ -1513,10 +1560,11 @@ BSnip.TextSize = 11; hov(BSnip, C.ACC, C.ACCHV)
 BSnip.MouseButton1Click:Connect(function()
     local code = SnipBox.Text
     if trim(code) == "" then sbOut("No snippet entered.", false); return end
-    local fn, ce = _ld(code)
-    if not fn then sbOut("Compile error:\n" .. tostring(ce), false); return end
-    local ok2, re = pcall(fn)
-    sbOut(ok2 and "✓ Snippet executed OK." or "✗ " .. tostring(re), ok2)
+    local ok2, err, stage = runCode(code)
+    if not ok2 then
+        sbOut(stage=="compile" and ("Compile error:\n"..err) or ("✗ "..err), false); return
+    end
+    sbOut("✓ Snippet executed OK.", true)
 end)
 
 -- ── Auto-detect available bypass functions ────────────────────────────────────
@@ -1528,7 +1576,7 @@ task.spawn(function()
     }
     local have, miss = {}, {}
     for _, name in check do
-        if _G[name] or (getfenv and getfenv()[name]) then
+        if hasGlobal(name) then
             have[#have+1] = name
         else
             miss[#miss+1] = name
@@ -1552,11 +1600,7 @@ end)
 local P4 = newTab("👤", "Player")
 L(P4, "PLAYER & CHARACTER TOOLS", UDim2.new(1,0,0,16), UDim2.new(0,0,0,0), C.TXTS, FB, 11)
 
-local PlrOut = OUT(P4, UDim2.new(1,0,0,38), UDim2.new(0,0,1,-40))
-local function plrOut(msg, ok2)
-    PlrOut.TextColor3 = ok2 and C.GRN or C.RED
-    PlrOut.Text = ts() .. tostring(msg)
-end
+local plrOut = statusOut(P4, UDim2.new(1,0,0,38), UDim2.new(0,0,1,-40))
 
 -- ── Stats row ─────────────────────────────────────────────────────────────────
 local statsF = F(P4, UDim2.new(1,0,0,60), UDim2.new(0,0,0,20), C.PANEL); corner(statsF,7)
@@ -1591,9 +1635,7 @@ local BInfJump = B(tRow, "∞ Jump",  UDim2.new(0,72,1,0), nil, C.GREY)
 local BNoclip  = B(tRow, "Noclip",   UDim2.new(0,68,1,0), nil, C.GREY)
 local BFreeze  = B(tRow, "Freeze",   UDim2.new(0,68,1,0), nil, C.GREY)
 local BFly     = B(tRow, "Fly",      UDim2.new(0,58,1,0), nil, C.GREY)
-for i, b in {BRespawn,BGod,BInfJump,BNoclip,BFreeze,BFly} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BRespawn,BGod,BInfJump,BNoclip,BFreeze,BFly})
 hov(BRespawn, C.BLUE, C.BLHV)
 for _, b in {BGod,BInfJump,BNoclip,BFreeze,BFly} do hov(b, C.GREY, C.GRYHV) end
 
@@ -1774,9 +1816,7 @@ local BSpyOff  = B(rRow, "■ Stop",   UDim2.new(0,80,1,0), nil, C.GREY)
 local BSpyClr  = B(rRow, "Clear",    UDim2.new(0,68,1,0), nil, C.GREY)
 local BSpyExp  = B(rRow, "Export",   UDim2.new(0,76,1,0), nil, C.BLUE)
 local BSpyCopy = B(rRow, "Copy All", UDim2.new(0,82,1,0), nil, C.GREY)
-for i, b in {BSpyOn,BSpyOff,BSpyClr,BSpyExp,BSpyCopy} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BSpyOn,BSpyOff,BSpyClr,BSpyExp,BSpyCopy})
 hov(BSpyOn,   C.GRN,  C.GRNHV); hov(BSpyOff, C.GREY, C.GRYHV)
 hov(BSpyClr,  C.GREY, C.GRYHV); hov(BSpyExp,  C.BLUE, C.BLHV)
 hov(BSpyCopy, C.GREY, C.GRYHV)
@@ -1904,9 +1944,7 @@ BSpyOff.MouseButton1Click:Connect(function()
 end)
 
 BSpyClr.MouseButton1Click:Connect(function()
-    for _, ch in SpyScr:GetChildren() do
-        if not ch:IsA("UIListLayout") then ch:Destroy() end
-    end
+    clearLayout(SpyScr)
     spyLog = {}; spyCountLbl.Text = "Captured: 0"
 end)
 
@@ -1949,15 +1987,12 @@ local BScanKill = B(scRow, "Kill All LS", UDim2.new(0,92,1,0),  nil, C.RED)
 local BScanList = B(scRow, "List Scripts",UDim2.new(0,106,1,0), nil, C.BLUE)
 local BScanBrdg = B(scRow, "Bridge Scan", UDim2.new(0,106,1,0), nil, C.GREY)
 local BScanKill1= B(scRow, "Kill Name",   UDim2.new(0,96,1,0),  nil, C.GREY)
-for i, b in {BScanRun,BScanKill,BScanList,BScanBrdg,BScanKill1} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BScanRun,BScanKill,BScanList,BScanBrdg,BScanKill1})
 hov(BScanRun,  C.ACC,  C.ACCHV); hov(BScanKill, C.RED,  C.REDHV)
 hov(BScanList, C.BLUE, C.BLHV);  hov(BScanBrdg, C.GREY, C.GRYHV)
 hov(BScanKill1,C.GREY, C.GRYHV)
 
-local ScanOut = OUT(P6, UDim2.new(1,0,1,-52), UDim2.new(0,0,0,50))
-local function scanOut(msg, ok2) ScanOut.TextColor3 = ok2 and C.GRN or C.RED; ScanOut.Text = ts()..tostring(msg) end
+local scanOut = statusOut(P6, UDim2.new(1,0,1,-52), UDim2.new(0,0,0,50))
 
 -- Kill-by-name input (inline below buttons)
 local KillNameIn = INS(P6, "Script name to kill…", UDim2.new(0.55,0,0,20), UDim2.new(0,0,0,48))
@@ -2022,24 +2057,18 @@ BScanRun.MouseButton1Click:Connect(function()
         local flagged  = 0
         local highCnt  = 0
 
-        local function recurse(obj)
-            for _, ch in obj:GetChildren() do
-                if ch:IsA("LocalScript") or ch:IsA("ModuleScript") or ch:IsA("Script") then
-                    total += 1
-                    local hits = scanScript(ch)
-                    if #hits > 0 then
-                        flagged += 1
-                        results[#results+1] = "⚠  " .. ch:GetFullName()
-                        for _, h in hits do
-                            results[#results+1] = "   [" .. h.sev .. "] " .. h.lbl
-                            if h.sev == "HIGH" then highCnt += 1 end
-                        end
-                    end
+        forEachScript(game, function(ch)
+            total += 1
+            local hits = scanScript(ch)
+            if #hits > 0 then
+                flagged += 1
+                results[#results+1] = "⚠  " .. ch:GetFullName()
+                for _, h in hits do
+                    results[#results+1] = "   [" .. h.sev .. "] " .. h.lbl
+                    if h.sev == "HIGH" then highCnt += 1 end
                 end
-                recurse(ch)
             end
-        end
-        recurse(game)
+        end)
 
         if #results == 0 then
             scanOut(("Scanned %d scripts — no signatures found ✓"):format(total), true)
@@ -2058,16 +2087,10 @@ end)
 
 BScanList.MouseButton1Click:Connect(function()
     local lines = {}; local n = 0
-    local function recurse(obj)
-        for _, ch in obj:GetChildren() do
-            if ch:IsA("LocalScript") or ch:IsA("ModuleScript") or ch:IsA("Script") then
-                n += 1
-                lines[#lines+1] = ("[%s] %s"):format(ch.ClassName, ch:GetFullName())
-            end
-            recurse(ch)
-        end
-    end
-    recurse(game)
+    forEachScript(game, function(ch)
+        n += 1
+        lines[#lines+1] = ("[%s] %s"):format(ch.ClassName, ch:GetFullName())
+    end)
     scanOut(n .. " scripts found:\n" .. table.concat(lines, "\n"), true)
 end)
 
@@ -2103,9 +2126,7 @@ local BDDeob = B(dRow1, "Deobfuscate",  UDim2.new(0,116,1,0), nil, C.ACC)
 local BDB64  = B(dRow1, "Base64 Dec",   UDim2.new(0,100,1,0), nil, C.GREY)
 local BDHex  = B(dRow1, "Hex Dec",      UDim2.new(0,80,1,0),  nil, C.GREY)
 local BDChar = B(dRow1, "Chr Dec",      UDim2.new(0,80,1,0),  nil, C.GREY)
-for i, b in {BDDet,BDDeob,BDB64,BDHex,BDChar} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BDDet,BDDeob,BDB64,BDHex,BDChar})
 hov(BDDet,  C.BLUE, C.BLHV); hov(BDDeob, C.ACC,  C.ACCHV)
 hov(BDB64,  C.GREY, C.GRYHV); hov(BDHex,  C.GREY, C.GRYHV)
 hov(BDChar, C.GREY, C.GRYHV)
@@ -2115,7 +2136,7 @@ local BDSwap = B(dRow2, "Swap I↔O",  UDim2.new(0,96,1,0),  nil, C.GREY)
 local BDCopy = B(dRow2, "Copy Out",   UDim2.new(0,90,1,0),  nil, C.GREY)
 local BDSave = B(dRow2, "Save Out",   UDim2.new(0,90,1,0),  nil, C.GREY)
 local BDRun  = B(dRow2, "▶ Run Out",  UDim2.new(0,90,1,0),  nil, C.GRN)
-for i, b in {BDSwap,BDCopy,BDSave,BDRun} do b.LayoutOrder=i; b.TextSize=11 end
+styleRow({BDSwap,BDCopy,BDSave,BDRun})
 hov(BDSwap, C.GREY, C.GRYHV); hov(BDCopy, C.GREY, C.GRYHV)
 hov(BDSave, C.GREY, C.GRYHV); hov(BDRun,  C.GRN,  C.GRNHV)
 
@@ -2265,11 +2286,12 @@ end)
 BDRun.MouseButton1Click:Connect(function()
     local code = DOut.Text
     if trim(code) == "" then DOut.TextColor3=C.RED; DOut.Text="Output is empty."; return end
-    local fn, ce = _ld(code)
-    if not fn then DOut.TextColor3=C.RED; DOut.Text="Compile error:\n"..tostring(ce); return end
-    local ok2, re = pcall(fn)
+    local ok2, err, stage = runCode(code)
     DOut.TextColor3 = ok2 and C.GRN or C.RED
-    DOut.Text = ok2 and "Output executed OK." or "Runtime error:\n" .. tostring(re)
+    if not ok2 then
+        DOut.Text = (stage=="compile" and "Compile error:\n" or "Runtime error:\n")..err; return
+    end
+    DOut.Text = "Output executed OK."
 end)
 
 -- ════════════════════════════════════════
@@ -2320,26 +2342,9 @@ local LISTS = {UNC_LIST, SUNC_LIST, MYRIAD_LIST}
 local LCOLS = {C.ACC, C.BLUE, C.YELL}
 local LNAMES = {"UNC", "SUNC", "Myriad"}
 
--- ── hasFunc — detect function presence ───────────────────────────────────────
-local function hasFunc(name)
-    local root = name:match("^([^%.]+)%.")
-    if root then
-        local tbl = (getfenv and getfenv()[root]) or _G[root]
-        if type(tbl) == "table" then
-            local sub = name:match("%.(.+)$")
-            return tbl[sub] ~= nil
-        end
-        return false
-    end
-    if getfenv and getfenv()[name] ~= nil then return true end
-    return _G[name] ~= nil
-end
-
 -- ── buildList ─────────────────────────────────────────────────────────────────
 buildList = function(li)
-    for _, ch in ChkScr:GetChildren() do
-        if not ch:IsA("UIListLayout") then ch:Destroy() end
-    end
+    clearLayout(ChkScr)
     local list    = LISTS[li]
     local col     = LCOLS[li]
     local listNm  = LNAMES[li]
@@ -2348,7 +2353,7 @@ buildList = function(li)
 
     for _, name in list do
         if filter == "" or name:lower():find(filter, 1, true) then
-            local ok2 = hasFunc(name)
+            local ok2 = hasGlobal(name)
             if ok2 then pass += 1 else fail += 1 end
 
             local Row = F(ChkScr, UDim2.new(1,-4,0,22), nil, C.BLK)
@@ -2376,7 +2381,7 @@ buildList = function(li)
         if not writefile then return end
         local lines = {listNm .. " CHECK — " .. os.date("%Y-%m-%d %H:%M:%S")}
         for _, name in list do
-            lines[#lines+1] = (hasFunc(name) and "[✓] " or "[✗] ") .. name
+            lines[#lines+1] = (hasGlobal(name) and "[✓] " or "[✗] ") .. name
         end
         local fname = "nexus_checker_" .. listNm:lower() .. ".txt"
         writefile(fname, table.concat(lines, "\n"))
@@ -2421,8 +2426,7 @@ for i, cat in CATS do
     end)
 end
 
-local SHOut = OUT(P9, UDim2.new(1,0,0,38), UDim2.new(0,0,1,-40))
-local function shOut(msg, ok2) SHOut.TextColor3=ok2 and C.GRN or C.RED; SHOut.Text=ts()..tostring(msg) end
+local shOut = statusOut(P9, UDim2.new(1,0,0,38), UDim2.new(0,0,1,-40))
 
 local SHScr = SCR(P9, UDim2.new(1,0,1,-110), UDim2.new(0,0,0,76))
 listV(SHScr, 4)
@@ -2459,9 +2463,7 @@ local SCRIPTS = {
 
 -- ── Build / rebuild listing ───────────────────────────────────────────────────
 buildScripts = function(filter)
-    for _, ch in SHScr:GetChildren() do
-        if not ch:IsA("UIListLayout") then ch:Destroy() end
-    end
+    clearLayout(SHScr)
     local shown = 0
     for _, entry in SCRIPTS do
         local catMatch = selCat == "All" or entry.cat == selCat
@@ -2487,11 +2489,11 @@ buildScripts = function(filter)
                 task.spawn(function()
                     local ok, src = pcall(game.HttpGet, game, url, true)
                     if not ok then shOut("HTTP fail: " .. tostring(src), false); return end
-                    local fn, ce = _ld(src)
-                    if not fn then shOut("Compile:\n" .. tostring(ce), false); return end
-                    local ok2, re = pcall(fn)
-                    shOut(ok2 and (nm .. " loaded ✓  (" .. #src .. " bytes)")
-                        or "Error:\n" .. tostring(re), ok2)
+                    local ok2, err, stage = runCode(src)
+                    if not ok2 then
+                        shOut((stage=="compile" and "Compile:\n" or "Error:\n")..err, false); return
+                    end
+                    shOut(nm .. " loaded ✓  (" .. #src .. " bytes)", true)
                 end)
             end)
             BCpy.MouseButton1Click:Connect(function()
@@ -2525,7 +2527,7 @@ local eRow = rowBar(P10, 18, 26)
 local BEnvRun  = B(eRow, "Run Check",   UDim2.new(0,108,1,0), nil, C.ACC)
 local BEnvCopy = B(eRow, "Copy Report", UDim2.new(0,102,1,0), nil, C.GREY)
 local BEnvSave = B(eRow, "Save File",   UDim2.new(0,88,1,0),  nil, C.GREY)
-for i, b in {BEnvRun,BEnvCopy,BEnvSave} do b.LayoutOrder=i; b.TextSize=11 end
+styleRow({BEnvRun,BEnvCopy,BEnvSave})
 hov(BEnvRun, C.ACC, C.ACCHV); hov(BEnvCopy, C.GREY, C.GRYHV); hov(BEnvSave, C.GREY, C.GRYHV)
 
 local ExecLbl = L(P10, "Executor: …", UDim2.new(1,0,0,16), UDim2.new(0,0,0,48), C.TXTS, FC, 11)
@@ -2534,7 +2536,7 @@ listV(EnvScr, 2)
 local reportLines = {}
 
 local function clrEnv()
-    for _, ch in EnvScr:GetChildren() do if not ch:IsA("UIListLayout") then ch:Destroy() end end
+    clearLayout(EnvScr)
     reportLines = {}
 end
 

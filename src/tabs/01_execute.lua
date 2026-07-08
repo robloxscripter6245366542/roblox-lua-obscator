@@ -81,9 +81,7 @@ local BCopy  = B(aRow,"Copy",    UDim2.new(0,64,1,0), nil, C.GREY)
 local BPrev  = B(aRow,"◀ Prev",  UDim2.new(0,68,1,0), nil, C.GREY)
 local BNext  = B(aRow,"Next ▶",  UDim2.new(0,68,1,0), nil, C.GREY)
 local BSave  = B(aRow,"Save",    UDim2.new(0,60,1,0), nil, C.GREY)
-for i, b in {BExec,BClear,BCopy,BPrev,BNext,BSave} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BExec,BClear,BCopy,BPrev,BNext,BSave})
 hov(BExec,  C.ACC,  C.ACCHV)
 hov(BClear, C.GREY, C.GRYHV)
 hov(BCopy,  C.GREY, C.GRYHV)
@@ -112,10 +110,11 @@ BExec.MouseButton1Click:Connect(function()
 
     if curMode == 1 then
         -- Client loadstring
-        local fn, ce = _ld(code)
-        if not fn then exOut("Compile error:\n" .. tostring(ce), true); return end
-        local ok2, re = pcall(fn)
-        exOut(ok2 and "Client exec ✓" or "Runtime error:\n" .. tostring(re), not ok2)
+        local ok2, err, stage = runCode(code)
+        if not ok2 then
+            exOut((stage=="compile" and "Compile error:\n" or "Runtime error:\n")..err, true); return
+        end
+        exOut("Client exec ✓", false)
 
     elseif curMode == 2 then
         -- Server-side via bridge
@@ -138,10 +137,11 @@ BExec.MouseButton1Click:Connect(function()
         task.spawn(function()
             local ok2, src = pcall(game.HttpGet, game, url, true)
             if not ok2 then exOut("HTTP error:\n" .. tostring(src), true); return end
-            local fn, ce = _ld(src)
-            if not fn then exOut("Compile error:\n" .. tostring(ce), true); return end
-            local ok3, re = pcall(fn)
-            exOut(ok3 and "URL exec ✓  (" .. #src .. " bytes)" or "Runtime error:\n" .. tostring(re), not ok3)
+            local ok3, err, stage = runCode(src)
+            if not ok3 then
+                exOut((stage=="compile" and "Compile error:\n" or "Runtime error:\n")..err, true); return
+            end
+            exOut("URL exec ✓  (" .. #src .. " bytes)", false)
         end)
 
     elseif curMode == 5 then
@@ -151,11 +151,11 @@ BExec.MouseButton1Click:Connect(function()
         if path == "" then exOut("Enter a file path.", true); return end
         local ok2, src = pcall(readfile, path)
         if not ok2 then exOut("readfile error:\n" .. tostring(src), true); return end
-        local fn, ce = _ld(src)
-        if not fn then exOut("Compile error:\n" .. tostring(ce), true); return end
-        local ok3, re = pcall(fn)
-        exOut(ok3 and "File exec ✓  (" .. #src .. " bytes, path: " .. path .. ")"
-            or "Runtime error:\n" .. tostring(re), not ok3)
+        local ok3, err, stage = runCode(src)
+        if not ok3 then
+            exOut((stage=="compile" and "Compile error:\n" or "Runtime error:\n")..err, true); return
+        end
+        exOut("File exec ✓  (" .. #src .. " bytes, path: " .. path .. ")", false)
     end
 end)
 
