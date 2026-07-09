@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Render3D Platform — GPU-accelerated 3D pipeline</title>
+  <meta name="description" content="A backend + rendering stack for AI-driven 3D asset processing: mesh optimization, Blender automation, and real-time web preview." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <span class="brand">render3d<span class="accent">.</span></span>
+      <div class="nav-links">
+        <a href="#stack">Stack</a>
+        <a href="#pipeline">Pipeline</a>
+        <a href="#demo">Live demo</a>
+        <a href="#generate">Generate</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="hero-inner">
+      <p class="eyebrow">GPU-accelerated · production-ready scaffold</p>
+      <h1>A backend built to turn meshes into<br class="hide-mobile" /> real-time 3D, fast.</h1>
+      <p class="hero-sub">
+        FastAPI + gRPC services orchestrate Celery/GPU workers that run Blender,
+        Open3D, and Trimesh over Kubernetes with the NVIDIA GPU Operator —
+        exporting Draco-compressed glTF/GLB straight to the browser.
+      </p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="#demo">See it render</a>
+        <a class="btn btn-ghost" href="#stack">Explore the stack</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="section" id="pipeline">
+    <h2>How a job moves through the system</h2>
+    <ol class="pipeline">
+      <li><span class="step-num">1</span><div><strong>Upload</strong><p>Client PUTs a mesh (OBJ/FBX/USD) to S3-compatible storage via a presigned URL.</p></div></li>
+      <li><span class="step-num">2</span><div><strong>Queue</strong><p>FastAPI writes a job row in PostgreSQL and enqueues it on Redis via Celery (or gRPC for low-latency paths).</p></div></li>
+      <li><span class="step-num">3</span><div><strong>Process</strong><p>A GPU worker pod — scheduled by Kubernetes + NVIDIA GPU Operator — runs Open3D/Trimesh decimation or a headless Blender Cycles/Eevee render.</p></div></li>
+      <li><span class="step-num">4</span><div><strong>Export</strong><p>Output is Draco-compressed and written back as glTF/GLB (or OpenUSD), ready for Three.js, Babylon.js, or Omniverse.</p></div></li>
+      <li><span class="step-num">5</span><div><strong>Preview</strong><p>The web client polls job status and streams the finished asset straight into a WebGPU/WebGL viewport.</p></div></li>
+    </ol>
+  </section>
+
+  <section class="section" id="stack">
+    <h2>The stack, by layer</h2>
+    <div class="grid">
+      <article class="card">
+        <h3>API</h3>
+        <ul><li>Python</li><li>FastAPI</li><li>gRPC (service-to-service)</li></ul>
+      </article>
+      <article class="card">
+        <h3>AI</h3>
+        <ul><li>PyTorch</li><li>CUDA</li><li>TensorRT</li><li>ONNX Runtime</li></ul>
+      </article>
+      <article class="card">
+        <h3>Job processing</h3>
+        <ul><li>Celery / Ray</li><li>Redis</li><li>RabbitMQ / Kafka</li></ul>
+      </article>
+      <article class="card">
+        <h3>Storage</h3>
+        <ul><li>PostgreSQL</li><li>Redis</li><li>S3-compatible (MinIO)</li></ul>
+      </article>
+      <article class="card">
+        <h3>GPU orchestration</h3>
+        <ul><li>Kubernetes</li><li>NVIDIA GPU Operator</li><li>Docker</li></ul>
+      </article>
+      <article class="card">
+        <h3>3D processing</h3>
+        <ul><li>Blender (scripted)</li><li>Open3D · Trimesh</li><li>OpenUSD · Assimp · MeshLab</li><li>Draco · glTF/GLB</li></ul>
+      </article>
+      <article class="card">
+        <h3>Rendering</h3>
+        <ul><li>Blender Cycles / Eevee</li><li>NVIDIA Omniverse</li><li>Three.js · Babylon.js</li><li>WebGPU</li></ul>
+      </article>
+    </div>
+  </section>
+
+  <section class="section demo-section" id="demo">
+    <h2>Live demo — this mesh was decimated & exported by the pipeline above</h2>
+    <p class="demo-sub">Drag to orbit, scroll to zoom. Rendered client-side with Three.js (WebGL2, WebGPU-ready).</p>
+    <div class="viewport-wrap">
+      <div id="viewport"></div>
+      <div class="viewport-hud">
+        <div class="hud-row"><span>Renderer</span><strong id="hud-renderer">—</strong></div>
+        <div class="hud-row"><span>Triangles</span><strong id="hud-tris">—</strong></div>
+        <div class="hud-row"><span>Format</span><strong>GLB · Draco-ready</strong></div>
+      </div>
+      <div class="viewport-controls">
+        <button id="toggle-wire" class="btn btn-ghost btn-sm">Toggle wireframe</button>
+        <button id="toggle-spin" class="btn btn-ghost btn-sm">Pause spin</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="section generate-section" id="generate">
+    <h2>Generate a character from text</h2>
+    <p class="demo-sub">
+      Calls <code>POST /api/v1/generate/text-to-3d</code> on the backend, which hands the
+      prompt to whichever text-to-3D provider you configure (Meshy, Tripo3D, CSM.ai, ...)
+      via <code>TEXT23D_API_URL</code> / <code>TEXT23D_API_KEY</code>, then streams the
+      resulting glTF/GLB back through the same job pipeline as the demo above.
+    </p>
+    <form id="generate-form" class="generate-form">
+      <input
+        id="generate-prompt"
+        type="text"
+        placeholder="anime character, full body, T-pose, clean topology"
+        value="anime character, full body, T-pose"
+        required
+      />
+      <select id="generate-style">
+        <option value="anime" selected>Anime</option>
+        <option value="realistic">Realistic</option>
+        <option value="stylized">Stylized</option>
+        <option value="low-poly">Low-poly</option>
+      </select>
+      <button type="submit" class="btn btn-primary btn-sm">Generate</button>
+    </form>
+    <p id="generate-status" class="generate-status"></p>
+  </section>
+
+  <footer class="footer">
+    <p>render3d-platform — scaffold for an AI-driven 3D rendering backend.</p>
+  </footer>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/build/three.module.js",
+        "three/addons/": "./vendor/three/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

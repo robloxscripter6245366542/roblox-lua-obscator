@@ -1,0 +1,16 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+celery==5.4.0
+redis==5.2.1
+boto3==1.35.90
+trimesh==4.5.3
+numpy==1.26.4
+fast-simplification==0.1.13
+grpcio==1.68.1
+grpcio-tools==1.68.1
+python-multipart==0.0.20
+requests==2.32.3
