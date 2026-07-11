@@ -61,9 +61,16 @@ local function candidateDirections(rootPart, wallPart)
 	local dirs = {}
 	local function add(v)
 		local flat = Vector3.new(v.X, 0, v.Z)
-		if flat.Magnitude > 1e-3 then
-			table.insert(dirs, flat.Unit)
+		if flat.Magnitude < 1e-3 then
+			return
 		end
+		local unit = flat.Unit
+		for _, existing in ipairs(dirs) do
+			if existing:Dot(unit) > 0.966 then -- within ~15deg: skip near-duplicate
+				return
+			end
+		end
+		table.insert(dirs, unit)
 	end
 	add(wallPart.Position - rootPart.Position)
 	local vel = rootPart.AssemblyLinearVelocity
@@ -78,14 +85,19 @@ end
 local function findWall(character, rootPart, wallPart)
 	local params = makeParams(character)
 	local best
+	local bestDist
 
 	for _, dir in ipairs(candidateDirections(rootPart, wallPart)) do
 		for _, dy in ipairs({ -1.5, 0, 1.5 }) do
 			local origin = rootPart.Position + Vector3.new(0, dy, 0)
 			local hit = workspace:Raycast(origin, dir * WALL_MAX_DISTANCE, params)
 			if hit and math.abs(hit.Normal.Y) < WALL_NORMAL_MAX_Y then
-				if not best or hit.Distance < best.Distance then
+				-- Measure from the character's center (not the probe origin) so
+				-- probes at different heights are compared consistently.
+				local dist = (hit.Position - rootPart.Position).Magnitude
+				if not best or dist < bestDist then
 					best = hit
+					bestDist = dist
 				end
 			end
 		end
@@ -95,12 +107,11 @@ local function findWall(character, rootPart, wallPart)
 		return nil
 	end
 
-	-- Confirm the wall extends far enough above us to actually climb: cast back
-	-- into the wall from a point higher up, just outside its face.
-	local aboveOrigin = Vector3.new(best.Position.X, rootPart.Position.Y, best.Position.Z)
-		+ best.Normal * 0.5
-		+ Vector3.new(0, WALL_MIN_HEIGHT, 0)
-	local aboveHit = workspace:Raycast(aboveOrigin, -best.Normal * 2, params)
+	-- Confirm the wall extends far enough above us to actually climb: cast into
+	-- the wall from a raised point at the character's position, reaching as far
+	-- as the initial probe so recessed/angled upper geometry is still found.
+	local aboveOrigin = rootPart.Position + Vector3.new(0, WALL_MIN_HEIGHT, 0)
+	local aboveHit = workspace:Raycast(aboveOrigin, -best.Normal * (WALL_MAX_DISTANCE + 1), params)
 	if not aboveHit or math.abs(aboveHit.Normal.Y) >= WALL_NORMAL_MAX_Y then
 		return nil
 	end
