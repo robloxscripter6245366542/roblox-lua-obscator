@@ -1708,12 +1708,26 @@ RunService.Heartbeat:Connect(function()
         -- window - deliberately NOT gated on closing speed, since a curving ball's
         -- closing speed is <= 0 right up until it snaps in.
         local imminentThreat = false
+        -- coverable: is the ball's impact within the window a block fired NOW
+        -- would actually protect (ping + BLOCK_DURATION + frameLag)? Set inside
+        -- the ballPos block once the TTIs are known; gates the fire so we don't
+        -- burn the cooldown too early. Pre-declared here so the fire block below
+        -- (outside the ballPos scope) can read it.
+        local coverable = false
         currentTimeToImpact = math.huge
         if ballPos then
-            -- Add frameLag to every look-ahead: on a laggy client the next
-            -- frame may not run until frameLag seconds from now, so we must see
-            -- (and fire on) impacts that far ahead right now.
-            local lookahead = math.max(currentRequiredLead + frameLag, panicBurstEnabled and (PANIC_TTI + frameLag) or 0)
+            -- The block fired now protects for BLOCK_DURATION, starting after a
+            -- ping round-trip; this is the furthest-out impact it can still
+            -- cover. Also the horizon we search and the gate we fire within.
+            local coverWindow = (currentPing / 1000) + BLOCK_DURATION + frameLag
+            -- Look-ahead must reach AT LEAST the coverage window, plus frameLag
+            -- for laggy clients. Previously it was only ~PANIC_TTI (0.45s) - too
+            -- short: when you MOVE, your own speed closes the gap so the ball
+            -- reaches you further out in time than a 0.45s arc ever sees, so the
+            -- arc never found the arrival, currentTimeToImpact stayed huge, and
+            -- the coverable gate suppressed the block ("moving, no block").
+            local lookahead = math.max(currentRequiredLead + frameLag,
+                panicBurstEnabled and (PANIC_TTI + frameLag) or 0, coverWindow)
             if antiCurveEnabled and lookahead > 0 then
                 local playerVel = humanoidRootPart.AssemblyLinearVelocity
                 -- Mid-jump the player follows a gravity arc, not a straight
@@ -1772,6 +1786,16 @@ RunService.Heartbeat:Connect(function()
             local closeRate = velocity + playerSpeed
             local worstCaseTTI = closeRate > 0
                 and (math.max(closestDistance - BALL_HIT_RADIUS, 0) / closeRate) or math.huge
+            -- The ball's impact is coverable if ANY realistic estimate puts it
+            -- inside the block's coverage window: the arc/closing prediction
+            -- (currentTimeToImpact) OR the movement-aware worst case (which adds
+            -- YOUR speed to the closing rate) OR a second, faster ball
+            -- (minThreatTTI). Including worstCaseTTI is what fixes "moving, no
+            -- block": when you run at the ball your own speed makes it arrive
+            -- sooner, and only this term sees that.
+            coverable = currentTimeToImpact <= coverWindow
+                or worstCaseTTI <= coverWindow
+                or (minThreatTTI or math.huge) <= coverWindow
             -- withinRange is included explicitly: a ball already inside the
             -- parry radius is always an imminent threat, even when its
             -- time-to-impact estimate is unusable (hovering pre-serve at
@@ -1894,20 +1918,14 @@ RunService.Heartbeat:Connect(function()
         -- unmissable. Radius is the ball's own 8-stud hit distance + a small
         -- margin, so it only trips when the ball is genuinely on you.
         local pointBlank = closestBall ~= nil and closestDistance <= (BALL_HIT_RADIUS + 14)
-        -- Coverage window: the block only PROTECTS for BLOCK_DURATION (0.6s) and
-        -- then sits on the server's 1s cooldown. Firing while the ball is still
-        -- further out than the block can reach just burns that cooldown - and
-        -- because 0.6s of protection tiles inside a 1s cooldown, ~40% of the
-        -- time you're firing but UNPROTECTED, so a ball arriving in that gap
-        -- isn't blocked ("misses most of the time"). So for a normal incoming
-        -- ball we HOLD fire until its real predicted impact is within the
-        -- window a block fired now would actually cover (ping + protection,
-        -- plus frameLag headroom). Then the protection lands on the impact.
-        local coverWindow = (currentPing / 1000) + BLOCK_DURATION + frameLag
-        local coverable = currentTimeToImpact <= coverWindow
-        -- Clash / point-blank fire EVERY frame regardless: there each successful
-        -- parry resets the server cooldown, so continuous fire stays protected
-        -- (no tiling gap) and holds the exchange indefinitely.
+        -- coverable (computed above) holds fire for a normal incoming ball until
+        -- its impact is within the window a block fired now would actually cover
+        -- (ping + BLOCK_DURATION + frameLag). This stops the block being sprayed
+        -- too early and burning the server's 1s cooldown into a ~0.4s gap where
+        -- the ball lands unblocked ("misses most of the time"). Clash /
+        -- point-blank fire EVERY frame regardless: there each successful parry
+        -- resets the cooldown, so continuous fire stays protected and holds the
+        -- exchange indefinitely.
         local alwaysFire = clashActive or fastClashHold or pointBlank
         if amTargeted or clashActive or imminentThreat or fastClashHold or pointBlank then
             if (withinRange or willArriveInTime) and (alwaysFire or coverable) then executeParry() end
