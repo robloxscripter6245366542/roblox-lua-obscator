@@ -22,27 +22,48 @@ local HOP_COOLDOWN = 0.18 -- min seconds between hops
 local HOP_UP_VELOCITY = 55 -- upward speed applied on each hop
 local HOP_INTO_WALL_SPEED = 14 -- speed pushed into the wall so you keep climbing
 local WALL_NORMAL_MAX_Y = 0.5 -- |normal.Y| below this = a wall (not floor/ceiling)
-local WALL_MAX_DISTANCE = 5 -- studs: wall must be at least this close to hop
+local WALL_MAX_DISTANCE = 5 -- studs: max reach to a wall we'll still hop on
 local WALL_MIN_HEIGHT = 3 -- studs: wall must continue this far above us to be hoppable
 local SHIFT_LOCK = true -- force shift lock (mouse lock) on
 -- ==================================================================
 
 -- Force shift lock via the default PlayerModule camera controller. Wrapped in
--- pcall since the internal API is not guaranteed across every game.
-local function setMouseLocked(locked)
+-- pcall since the internal API is not guaranteed across every game. Returns true
+-- only when the lock was actually applied, so callers can retry if it wasn't.
+local function applyMouseLock()
 	if not SHIFT_LOCK then
-		return
+		return false
 	end
-	pcall(function()
+	local ok, applied = pcall(function()
 		local playerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
 		local playerModule = playerScripts and playerScripts:FindFirstChild("PlayerModule")
 		if not playerModule then
-			return
+			return false
 		end
-		local cameras = require(playerModule):GetCameras()
-		local controller = cameras and cameras.activeCameraController
+		local cameraModule = require(playerModule):GetCameras()
+		local controller = cameraModule and cameraModule.activeCameraController
 		if controller and controller.SetIsMouseLocked then
-			controller:SetIsMouseLocked(locked)
+			controller:SetIsMouseLocked(true)
+			return true
+		end
+		return false
+	end)
+	return ok and applied
+end
+
+-- The camera controller isn't ready for the first few frames after spawn, so a
+-- single attempt usually fails silently. Keep retrying (in its own thread, so it
+-- never blocks a hop) until the lock takes.
+local function ensureMouseLock()
+	if not SHIFT_LOCK then
+		return
+	end
+	task.spawn(function()
+		for _ = 1, 30 do
+			if applyMouseLock() then
+				return
+			end
+			task.wait(0.1)
 		end
 	end)
 end
@@ -129,11 +150,13 @@ local function findWall(character, rootPart, wallPart)
 		return nil
 	end
 
-	-- Confirm the wall extends far enough above us to actually climb: cast into
-	-- the wall from a raised point at the character's position, reaching as far
-	-- as the initial probe so recessed/angled upper geometry is still found.
-	local aboveOrigin = rootPart.Position + Vector3.new(0, WALL_MIN_HEIGHT, 0)
-	local aboveHit = workspace:Raycast(aboveOrigin, -best.Normal * (WALL_MAX_DISTANCE + 1), params)
+	-- Confirm the wall extends far enough above us to actually climb. Probe at the
+	-- exact column we hit (not the character's center): step just outside the wall
+	-- face, rise by WALL_MIN_HEIGHT, then cast back into the wall along its own
+	-- normal. This holds for a wall of any orientation; casting from the
+	-- character's position only worked when the wall was directly ahead.
+	local aboveOrigin = best.Position + best.Normal * 0.5 + Vector3.new(0, WALL_MIN_HEIGHT, 0)
+	local aboveHit = workspace:Raycast(aboveOrigin, -best.Normal * 2, params)
 	if not aboveHit or math.abs(aboveHit.Normal.Y) >= WALL_NORMAL_MAX_Y then
 		return nil
 	end
@@ -176,14 +199,15 @@ local function tryHop(character, wallPart, otherPart)
 		intoWall = Vector3.zero
 	end
 
-	-- Keep shift lock engaged (game code / respawn can clear it) and launch. We
-	-- set velocity directly AND request a jump: ChangeState/Jump alone won't
-	-- re-fire while airborne mid-climb, so the direct velocity is what keeps the
-	-- hop going on every wall touch.
-	setMouseLocked(true)
-	rootPart.AssemblyLinearVelocity = intoWall + Vector3.new(0, HOP_UP_VELOCITY, 0)
+	-- Keep shift lock engaged (game code / respawn can clear it) and launch. The
+	-- direct velocity is what actually climbs, so it must be the last word this
+	-- frame: switch to the Jumping state first (so the humanoid doesn't snap us
+	-- back onto the ground), then set the velocity. We deliberately do NOT toggle
+	-- Humanoid.Jump — a real jump overwrites our upward velocity with JumpPower
+	-- (usually lower, costing height) and does nothing at all while airborne.
+	applyMouseLock()
 	humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-	humanoid.Jump = true
+	rootPart.AssemblyLinearVelocity = intoWall + Vector3.new(0, HOP_UP_VELOCITY, 0)
 end
 
 local function connectCharacter(character)
@@ -219,13 +243,13 @@ local function connectCharacter(character)
 	table.insert(touchConnections, character.DescendantAdded:Connect(connectPart))
 
 	-- Re-apply shift lock once the new character's camera controller exists.
-	task.defer(setMouseLocked, true)
+	ensureMouseLock()
 end
 
 if LocalPlayer.Character then
 	connectCharacter(LocalPlayer.Character)
 end
 LocalPlayer.CharacterAdded:Connect(connectCharacter)
-setMouseLocked(true)
+ensureMouseLock()
 
 print("✅ Universal WallHop loaded! Detects hoppable walls of any orientation via raycasts.")
