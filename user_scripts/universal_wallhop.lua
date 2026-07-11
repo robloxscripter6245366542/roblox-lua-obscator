@@ -1,20 +1,18 @@
 -- Universal WallHop Script (works on ANY wall, at any orientation)
 --
--- Improvements over the original:
---   * Detects the WALL surface itself via a raycast normal instead of guessing
---     from part height, so it reliably finds vertical / horizontally-facing
---     walls no matter how the part is rotated (angled, thin, or rotated parts).
---   * Only listens to the local character's own parts touching things, instead
---     of connecting a Touched handler to every BasePart in the workspace. This
---     removes the huge memory/perf cost (and the double-connect bug) of the
---     original and gives us the wall part directly.
---   * Reconnects cleanly on respawn and disconnects stale connections.
---   * Climbs by applying a real "into-the-wall + up" velocity impulse each hop
---     rather than a cosmetic camera yaw twist that never affected height.
---   * Supports both R6 ("Torso") and R15 ("UpperTorso"/"LowerTorso") rigs.
+-- Detection rework:
+--   * A body-part Touched event only tells us *something* was touched. To decide
+--     whether it is actually a wall we can hop on, we probe with several
+--     horizontal rays (toward the touched part, along our movement, and along
+--     our facing) at foot/torso/head height and pick the closest wall-like hit.
+--   * A hit counts as a wall only if its surface normal is (nearly) horizontal,
+--     it is within reach, and the surface continues far enough *above* us — i.e.
+--     it is a wall we can keep hopping up, not a low lip, railing, or the floor.
+--   * Climbs by applying a real "into-the-wall + up" velocity impulse each hop.
+--   * Listens only on the local character's own parts (no whole-workspace
+--     Touched storm), reconnects cleanly on respawn, supports R6 and R15 rigs.
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -22,8 +20,9 @@ local LocalPlayer = Players.LocalPlayer
 local HOP_COOLDOWN = 0.18 -- min seconds between hops
 local HOP_UP_VELOCITY = 55 -- upward speed applied on each hop
 local HOP_INTO_WALL_SPEED = 14 -- speed pushed into the wall so you keep climbing
-local WALL_NORMAL_MAX_Y = 0.5 -- |normal.Y| below this = a wall (not a floor/ceiling)
-local RAY_EXTRA_REACH = 6 -- studs added to the ray so we still hit the wall
+local WALL_NORMAL_MAX_Y = 0.5 -- |normal.Y| below this = a wall (not floor/ceiling)
+local WALL_MAX_DISTANCE = 5 -- studs: wall must be at least this close to hop
+local WALL_MIN_HEIGHT = 3 -- studs: wall must continue this far above us to be hoppable
 -- ==================================================================
 
 local validBodyParts = {
@@ -48,34 +47,65 @@ local function disconnectTouches()
 	table.clear(touchConnections)
 end
 
--- Returns the outward-facing normal of the wall the character is touching,
--- or nil if the touched surface is not a (roughly vertical) wall.
-local function getWallNormal(character, rootPart, wallPart)
-	local toWall = wallPart.Position - rootPart.Position
-	local horizontal = Vector3.new(toWall.X, 0, toWall.Z)
-	if horizontal.Magnitude < 1e-3 then
-		return nil
-	end
-
+local function makeParams(character)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { character }
 	params.IgnoreWater = true
+	return params
+end
 
-	local direction = horizontal.Unit * (horizontal.Magnitude + RAY_EXTRA_REACH)
-	local result = workspace:Raycast(rootPart.Position, direction, params)
-	if not result then
+-- Collect the horizontal directions worth probing for a wall face: toward the
+-- touched part, along our horizontal velocity, and along our facing.
+local function candidateDirections(rootPart, wallPart)
+	local dirs = {}
+	local function add(v)
+		local flat = Vector3.new(v.X, 0, v.Z)
+		if flat.Magnitude > 1e-3 then
+			table.insert(dirs, flat.Unit)
+		end
+	end
+	add(wallPart.Position - rootPart.Position)
+	local vel = rootPart.AssemblyLinearVelocity
+	if Vector3.new(vel.X, 0, vel.Z).Magnitude > 1 then
+		add(vel)
+	end
+	add(rootPart.CFrame.LookVector)
+	return dirs
+end
+
+-- Returns a RaycastResult for the closest hoppable wall, or nil.
+local function findWall(character, rootPart, wallPart)
+	local params = makeParams(character)
+	local best
+
+	for _, dir in ipairs(candidateDirections(rootPart, wallPart)) do
+		for _, dy in ipairs({ -1.5, 0, 1.5 }) do
+			local origin = rootPart.Position + Vector3.new(0, dy, 0)
+			local hit = workspace:Raycast(origin, dir * WALL_MAX_DISTANCE, params)
+			if hit and math.abs(hit.Normal.Y) < WALL_NORMAL_MAX_Y then
+				if not best or hit.Distance < best.Distance then
+					best = hit
+				end
+			end
+		end
+	end
+
+	if not best then
 		return nil
 	end
 
-	-- A wall's surface normal is (nearly) horizontal; a floor/ceiling normal
-	-- points mostly up/down. This is what lets us hop on horizontally-facing
-	-- walls at any orientation while ignoring the ground.
-	if math.abs(result.Normal.Y) >= WALL_NORMAL_MAX_Y then
+	-- Confirm the wall extends far enough above us to actually climb: cast back
+	-- into the wall from a point higher up, just outside its face.
+	local aboveOrigin = Vector3.new(best.Position.X, rootPart.Position.Y, best.Position.Z)
+		+ best.Normal * 0.5
+		+ Vector3.new(0, WALL_MIN_HEIGHT, 0)
+	local aboveHit = workspace:Raycast(aboveOrigin, -best.Normal * 2, params)
+	if not aboveHit or math.abs(aboveHit.Normal.Y) >= WALL_NORMAL_MAX_Y then
 		return nil
 	end
 
-	return result.Normal
+	return best
 end
 
 local function tryHop(character, wallPart, otherPart)
@@ -93,15 +123,12 @@ local function tryHop(character, wallPart, otherPart)
 
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local rootPart = character:FindFirstChild("HumanoidRootPart")
-	if not humanoid or not rootPart then
-		return
-	end
-	if humanoid.Health <= 0 then
+	if not humanoid or not rootPart or humanoid.Health <= 0 then
 		return
 	end
 
-	local normal = getWallNormal(character, rootPart, wallPart)
-	if not normal then
+	local wall = findWall(character, rootPart, wallPart)
+	if not wall then
 		return
 	end
 
@@ -109,7 +136,7 @@ local function tryHop(character, wallPart, otherPart)
 
 	-- Push into the wall (opposite of its outward normal) and upward, so each
 	-- hop climbs the wall instead of merely jumping in place.
-	local intoWall = Vector3.new(-normal.X, 0, -normal.Z)
+	local intoWall = Vector3.new(-wall.Normal.X, 0, -wall.Normal.Z)
 	if intoWall.Magnitude > 1e-3 then
 		intoWall = intoWall.Unit * HOP_INTO_WALL_SPEED
 	else
@@ -126,7 +153,6 @@ local function connectCharacter(character)
 	for _, part in ipairs(character:GetDescendants()) do
 		if part:IsA("BasePart") and validBodyParts[part.Name] then
 			local conn = part.Touched:Connect(function(wallPart)
-				-- Ignore other parts of our own character.
 				if wallPart:IsDescendantOf(character) then
 					return
 				end
@@ -145,4 +171,4 @@ if LocalPlayer.Character then
 end
 LocalPlayer.CharacterAdded:Connect(connectCharacter)
 
-print("✅ Universal WallHop loaded! Detects walls of any orientation via surface normals.")
+print("✅ Universal WallHop loaded! Detects hoppable walls of any orientation via raycasts.")
