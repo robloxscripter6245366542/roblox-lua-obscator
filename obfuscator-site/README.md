@@ -48,6 +48,12 @@ LocalScripts/ModuleScripts. The `pack` layer's loader calls `loadstring or load`
 so packed output needs an executor (or a server with `LoadStringEnabled`). The UI
 shows which target the current layer selection produces.
 
+## Verified on a real Luau VM
+
+The obfuscated output was validated on an actual Luau interpreter (`mlua`,
+Luau 0.663), which surfaced and fixed a keystream-precision bug that only
+manifests under Luau's doubles (see the repo's `ferret/README.md`).
+
 ## Local preview
 
 Any static server works, e.g.:
