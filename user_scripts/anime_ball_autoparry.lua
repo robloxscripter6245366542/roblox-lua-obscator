@@ -1894,14 +1894,31 @@ RunService.Heartbeat:Connect(function()
         -- unmissable. Radius is the ball's own 8-stud hit distance + a small
         -- margin, so it only trips when the ball is genuinely on you.
         local pointBlank = closestBall ~= nil and closestDistance <= (BALL_HIT_RADIUS + 14)
+        -- Coverage window: the block only PROTECTS for BLOCK_DURATION (0.6s) and
+        -- then sits on the server's 1s cooldown. Firing while the ball is still
+        -- further out than the block can reach just burns that cooldown - and
+        -- because 0.6s of protection tiles inside a 1s cooldown, ~40% of the
+        -- time you're firing but UNPROTECTED, so a ball arriving in that gap
+        -- isn't blocked ("misses most of the time"). So for a normal incoming
+        -- ball we HOLD fire until its real predicted impact is within the
+        -- window a block fired now would actually cover (ping + protection,
+        -- plus frameLag headroom). Then the protection lands on the impact.
+        local coverWindow = (currentPing / 1000) + BLOCK_DURATION + frameLag
+        local coverable = currentTimeToImpact <= coverWindow
+        -- Clash / point-blank fire EVERY frame regardless: there each successful
+        -- parry resets the server cooldown, so continuous fire stays protected
+        -- (no tiling gap) and holds the exchange indefinitely.
+        local alwaysFire = clashActive or fastClashHold or pointBlank
         if amTargeted or clashActive or imminentThreat or fastClashHold or pointBlank then
-            if withinRange or willArriveInTime then executeParry() end
+            if (withinRange or willArriveInTime) and (alwaysFire or coverable) then executeParry() end
             -- Impact imminent (or mid-clash / point-blank): keep firing block
             -- every frame (no cooldown) until the ball is deflected, so a single
             -- early/whiffed parry can never leave a super-fast or hard-curving
             -- ball - a clash return, a super-close first exchange, or a
-            -- thousand-speed point-blank clash - unblocked.
-            if panicNow or clashActive or imminentThreat or fastClashHold or pointBlank then
+            -- thousand-speed point-blank clash - unblocked. For the plain
+            -- incoming-ball path the coverable gate keeps this from starting too
+            -- early and burning the cooldown into a gap.
+            if alwaysFire or ((panicNow or imminentThreat) and coverable) then
                 fireBlockRemote()
                 totalBurstBlocks = totalBurstBlocks + 1
             end
