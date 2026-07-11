@@ -11,6 +11,7 @@
 --   * Climbs by applying a real "into-the-wall + up" velocity impulse each hop.
 --   * Listens only on the local character's own parts (no whole-workspace
 --     Touched storm), reconnects cleanly on respawn, supports R6 and R15 rigs.
+--   * Forces shift lock (mouse lock) on so hops go straight into the wall.
 
 local Players = game:GetService("Players")
 
@@ -23,7 +24,28 @@ local HOP_INTO_WALL_SPEED = 14 -- speed pushed into the wall so you keep climbin
 local WALL_NORMAL_MAX_Y = 0.5 -- |normal.Y| below this = a wall (not floor/ceiling)
 local WALL_MAX_DISTANCE = 5 -- studs: wall must be at least this close to hop
 local WALL_MIN_HEIGHT = 3 -- studs: wall must continue this far above us to be hoppable
+local SHIFT_LOCK = true -- force shift lock (mouse lock) on
 -- ==================================================================
+
+-- Force shift lock via the default PlayerModule camera controller. Wrapped in
+-- pcall since the internal API is not guaranteed across every game.
+local function setMouseLocked(locked)
+	if not SHIFT_LOCK then
+		return
+	end
+	pcall(function()
+		local playerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
+		local playerModule = playerScripts and playerScripts:FindFirstChild("PlayerModule")
+		if not playerModule then
+			return
+		end
+		local cameras = require(playerModule):GetCameras()
+		local controller = cameras and cameras.activeCameraController
+		if controller and controller.SetIsMouseLocked then
+			controller:SetIsMouseLocked(locked)
+		end
+	end)
+end
 
 local validBodyParts = {
 	Head = true,
@@ -154,8 +176,14 @@ local function tryHop(character, wallPart, otherPart)
 		intoWall = Vector3.zero
 	end
 
+	-- Keep shift lock engaged (game code / respawn can clear it) and launch. We
+	-- set velocity directly AND request a jump: ChangeState/Jump alone won't
+	-- re-fire while airborne mid-climb, so the direct velocity is what keeps the
+	-- hop going on every wall touch.
+	setMouseLocked(true)
 	rootPart.AssemblyLinearVelocity = intoWall + Vector3.new(0, HOP_UP_VELOCITY, 0)
 	humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+	humanoid.Jump = true
 end
 
 local function connectCharacter(character)
@@ -189,11 +217,15 @@ local function connectCharacter(character)
 	-- On respawn, CharacterAdded can fire before every body part has streamed
 	-- in, so GetDescendants misses them. Catch late-added parts too.
 	table.insert(touchConnections, character.DescendantAdded:Connect(connectPart))
+
+	-- Re-apply shift lock once the new character's camera controller exists.
+	task.defer(setMouseLocked, true)
 end
 
 if LocalPlayer.Character then
 	connectCharacter(LocalPlayer.Character)
 end
 LocalPlayer.CharacterAdded:Connect(connectCharacter)
+setMouseLocked(true)
 
 print("✅ Universal WallHop loaded! Detects hoppable walls of any orientation via raycasts.")
