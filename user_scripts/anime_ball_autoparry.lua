@@ -125,6 +125,22 @@ local DefaultCooldown = 1.0
 -- time-to-impact estimate reflects when the ball SURFACE hits, not its center
 -- - otherwise we chronically under-estimate how soon impact lands.
 local BALL_HIT_RADIUS = 8
+-- The ball collides with your WHOLE avatar - any body part (an outstretched
+-- arm, a leg, the head, the torso edge), not just the HumanoidRootPart center
+-- we measure distance from. So the ball effectively reaches you a
+-- character-radius SOONER than a center-to-center measure says; measuring only
+-- to the HRP chronically over-estimates how much time you have, and the block
+-- times for the center while the ball already clipped a limb ("it misses").
+-- Fold the avatar's half-extent into every impact estimate so the block fires
+-- when the ball meets your avatar's EDGE. ~3 studs ~= a standard character's
+-- reach from HRP center to an arm/leg/torso surface. Erring larger only fires a
+-- touch earlier (the 0.6s block still covers it), so it's the safe direction.
+local PLAYER_HIT_RADIUS = 3
+-- Combined ball+avatar contact radius: the ball is "on you" when its centre is
+-- within this of your HRP centre. Precomputed as one value so the hot loop
+-- references a single constant (keeps the big Heartbeat closure under Lua 5.1's
+-- 60-upvalue cap).
+local EFFECTIVE_HIT_RADIUS = BALL_HIT_RADIUS + PLAYER_HIT_RADIUS
 local panicBurstEnabled = true
 -- s; TTI below this triggers per-frame block spam. Deliberately LESS than
 -- BLOCK_DURATION (0.6): the server's 1s cooldown means only the FIRST block in
@@ -1390,7 +1406,7 @@ local function findClosestBall(humanoidRootPart)
                         -- center, so a fast NON-closest ball (a second ball, a
                         -- split) arms the panic burst at the same moment the
                         -- closest-ball path would - never a few ms later.
-                        local tti = math.max(distance - BALL_HIT_RADIUS, 0) / speed
+                        local tti = math.max(distance - EFFECTIVE_HIT_RADIUS, 0) / speed
                         if tti < minThreatTTI then minThreatTTI = tti end
                     end
                 end
@@ -1791,11 +1807,11 @@ RunService.Heartbeat:Connect(function()
                 if arrives then
                     currentTimeToImpact = arriveTime
                 elseif closingSpeed > 0 then
-                    currentTimeToImpact = closestDistance / closingSpeed
+                    currentTimeToImpact = math.max(closestDistance - EFFECTIVE_HIT_RADIUS, 0) / closingSpeed
                 end
                 willArriveInTime = pingCompEnabled and arrives and arriveTime <= currentRequiredLead
             elseif closingSpeed > 0 then
-                currentTimeToImpact = closestDistance / closingSpeed
+                currentTimeToImpact = math.max(closestDistance - EFFECTIVE_HIT_RADIUS, 0) / closingSpeed
                 willArriveInTime = pingCompEnabled and currentRequiredLead > 0
                     and ((closestDistance - currentParryDistance) / closingSpeed) <= currentRequiredLead
             end
@@ -1824,7 +1840,7 @@ RunService.Heartbeat:Connect(function()
             local playerSpeed = humanoidRootPart.AssemblyLinearVelocity.Magnitude
             local closeRate = velocity + playerSpeed
             local worstCaseTTI = closeRate > 0
-                and (math.max(closestDistance - BALL_HIT_RADIUS, 0) / closeRate) or math.huge
+                and (math.max(closestDistance - EFFECTIVE_HIT_RADIUS, 0) / closeRate) or math.huge
             -- The ball's impact is coverable if ANY realistic estimate puts it
             -- inside the block's coverage window: the arc/closing prediction
             -- (currentTimeToImpact) OR the movement-aware worst case (which adds
@@ -1956,7 +1972,7 @@ RunService.Heartbeat:Connect(function()
         -- This is the extreme "clash inside someone at max speed" case, made
         -- unmissable. Radius is the ball's own 8-stud hit distance + a small
         -- margin, so it only trips when the ball is genuinely on you.
-        local pointBlank = closestBall ~= nil and closestDistance <= (BALL_HIT_RADIUS + 14)
+        local pointBlank = closestBall ~= nil and closestDistance <= (EFFECTIVE_HIT_RADIUS + 11)
         -- coverable (computed above) holds fire for a normal incoming ball until
         -- its impact is within the window a block fired now would actually cover
         -- (ping + BLOCK_DURATION + frameLag). This stops the block being sprayed
