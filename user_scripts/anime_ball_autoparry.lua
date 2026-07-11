@@ -114,6 +114,9 @@ local currentTurnRate = 0         -- last measured turn rate (velocity-vector ro
 -- harmless). The panic window must stay <= BLOCK_DURATION: fire any earlier
 -- and the 0.6s protection expires before the ball actually arrives.
 local BLOCK_DURATION = 0.6
+-- Server block cooldown (game's SwordInfo DefaultCooldown): after a block lands
+-- you can't block again for this long unless a successful parry resets it.
+local DefaultCooldown = 1.0
 -- The ball connects with you before its CENTER reaches your center - it has a
 -- hit radius. The game's own BallController tutorial reveals the exact value:
 -- it counts the ball as arriving when (distance - 8) / ballSpeed <= 0.6, i.e.
@@ -132,6 +135,17 @@ local panicBurstEnabled = true
 -- compensation adds currentRequiredLead on top for high ping.
 local PANIC_TTI = 0.45
 local totalBurstBlocks = 0
+
+-- Block-result telemetry. SwordService.Block:Invoke returns the server's verdict
+-- (truthy = the block landed/was accepted, falsy = rejected, typically because
+-- you're still on the 1s cooldown). We were discarding it; capturing it is the
+-- ground truth for WHY a ball got through - accepted-but-still-hit vs
+-- rejected-on-cooldown vs never-sent.
+local blockSent = 0        -- total Block:Invoke calls that completed
+local blockLanded = 0      -- returned truthy (accepted)
+local blockRejected = 0    -- returned falsy (cooldown/denied)
+local lastBlockResult = "-" -- "landed" / "rejected" / "error"
+local knownCooldownUntil = 0 -- tick() until which the server block is on cooldown (from a landed result)
 
 -- ============================================
 -- AUTO SPAM CONFIGURATION
@@ -678,6 +692,10 @@ PerfStatsSection:Button({
         totalBurstBlocks = 0
         totalSpams = 0
         spamDuration = 0
+        blockSent = 0
+        blockLanded = 0
+        blockRejected = 0
+        lastBlockResult = "-"
         WindUI:Notify({
             Title = "Stats Reset",
             Content = "All statistics have been reset",
@@ -1241,21 +1259,40 @@ local function getSwordService()
     end)
     return swordServiceProxy
 end
+-- Records what the server returned for a Block call so the HUD can show whether
+-- our blocks are landing or being rejected on cooldown.
+local function recordBlockResult(ok, result)
+    blockSent = blockSent + 1
+    if not ok then
+        lastBlockResult = "error"
+    elseif result then
+        blockLanded = blockLanded + 1
+        lastBlockResult = "landed"
+        -- A landed block puts the server on its ~1s cooldown; remember that so
+        -- we don't waste frames re-firing into a guaranteed rejection.
+        knownCooldownUntil = tick() + DefaultCooldown
+    else
+        blockRejected = blockRejected + 1
+        lastBlockResult = "rejected"
+    end
+end
 local function fireBlockRemote()
     task.spawn(function()
         local cam = workspace.CurrentCamera
         local lookY = cam and cam.CFrame.LookVector.Y or -0.759547233581543
-        -- Preferred: the game's exact call path.
+        -- Preferred: the game's exact call path. Capture the RETURN (server's
+        -- accept/reject verdict), not just whether the call errored.
         local svc = getSwordService()
         if svc then
-            local ok = pcall(function() svc.Block:Invoke(lookY) end)
-            if ok then return end
+            local ok, result = pcall(function() return svc.Block:Invoke(lookY) end)
+            if ok then recordBlockResult(true, result) return end
             swordServiceProxy = nil -- proxy went stale; re-fetch next time
         end
         -- Fallback: generic framework RemoteFunction router.
-        pcall(function()
-            ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {lookY})
+        local ok, result = pcall(function()
+            return ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {lookY})
         end)
+        recordBlockResult(ok, result)
     end)
 end
 
@@ -1442,10 +1479,12 @@ task.spawn(function()
             autoParryEnabled and "ON" or "OFF",
             autoSpamEnabled and "ON" or "OFF"))
 
-        HUD.ParryStats:SetDesc(string.format("- Total Parries: %d\n- High Speed Parries: %d\n- Burst Blocks: %d\n- High Speed Rate: %.1f%%\n- Current Mode: %s",
+        HUD.ParryStats:SetDesc(string.format("- Total Parries: %d\n- High Speed Parries: %d\n- Burst Blocks: %d\n- High Speed Rate: %.1f%%\n- Current Mode: %s\n- Blocks Sent: %d | Landed: %d | Rejected(cooldown): %d\n- Land Rate: %.0f%% | Last: %s",
             totalParries, highSpeedParries, totalBurstBlocks,
             totalParries > 0 and (highSpeedParries / totalParries * 100) or 0,
-            isHighSpeedMode and "MAX SPEED" or "Normal"))
+            isHighSpeedMode and "MAX SPEED" or "Normal",
+            blockSent, blockLanded, blockRejected,
+            blockSent > 0 and (blockLanded / blockSent * 100) or 0, lastBlockResult))
 
         local spamsPerSecond = 0
         if spamStarted and lastSpamStartTime > 0 then
