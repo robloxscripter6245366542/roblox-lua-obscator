@@ -150,20 +150,34 @@ end
 local function connectCharacter(character)
 	disconnectTouches()
 
-	for _, part in ipairs(character:GetDescendants()) do
-		if part:IsA("BasePart") and validBodyParts[part.Name] then
-			local conn = part.Touched:Connect(function(wallPart)
-				if wallPart:IsDescendantOf(character) then
-					return
-				end
-				if not wallPart.CanCollide then
-					return
-				end
-				tryHop(character, wallPart, part)
-			end)
-			table.insert(touchConnections, conn)
+	local connected = {}
+	local function connectPart(part)
+		if connected[part] then
+			return
 		end
+		if not (part:IsA("BasePart") and validBodyParts[part.Name]) then
+			return
+		end
+		connected[part] = true
+		local conn = part.Touched:Connect(function(wallPart)
+			if wallPart:IsDescendantOf(character) then
+				return
+			end
+			if not wallPart.CanCollide then
+				return
+			end
+			tryHop(character, wallPart, part)
+		end)
+		table.insert(touchConnections, conn)
 	end
+
+	for _, part in ipairs(character:GetDescendants()) do
+		connectPart(part)
+	end
+
+	-- On respawn, CharacterAdded can fire before every body part has streamed
+	-- in, so GetDescendants misses them. Catch late-added parts too.
+	table.insert(touchConnections, character.DescendantAdded:Connect(connectPart))
 end
 
 if LocalPlayer.Character then
