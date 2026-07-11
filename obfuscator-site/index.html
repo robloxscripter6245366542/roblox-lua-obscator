@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>ferret — Lua / Luau Obfuscator</title>
+<meta name="description" content="Free client-side Lua & Roblox Luau obfuscator. Runs entirely in your browser — your code never leaves the page."/>
+<link rel="icon" href="data:,"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#08090d;
+  --panel:#0f1118;
+  --panel2:#141722;
+  --line:#20242f;
+  --line2:#2b303d;
+  --text:#eef1f7;
+  --muted:#9aa3b2;
+  --dim:#5b6472;
+  --v1:#8b5cf6;      /* violet */
+  --v2:#6366f1;      /* indigo */
+  --v-soft:#a78bfa;
+  --ok:#34d399;
+  --err:#fb7185;
+  --grad:linear-gradient(135deg,#8b5cf6,#6366f1);
+  --radius:14px;
+  --mono:ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,monospace;
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--text);font-family:var(--sans);
+  display:flex;flex-direction:column;min-height:100vh;overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+/* ambient background glows */
+body::before,body::after{
+  content:"";position:fixed;z-index:0;pointer-events:none;border-radius:50%;
+  filter:blur(120px);opacity:.5;
+}
+body::before{width:640px;height:640px;top:-260px;left:-160px;background:#4c2fb0}
+body::after{width:560px;height:560px;bottom:-300px;right:-160px;background:#1e3a8a;opacity:.4}
+a{color:var(--v-soft);text-decoration:none}
+a:hover{color:#c4b5fd}
+
+/* ---------- top nav ---------- */
+.nav{
+  position:relative;z-index:2;display:flex;align-items:center;gap:14px;
+  padding:14px 22px;border-bottom:1px solid var(--line);
+  background:rgba(12,14,20,.72);backdrop-filter:blur(12px);
+}
+.brand{display:flex;align-items:center;gap:11px}
+.brand .mark{
+  width:34px;height:34px;border-radius:10px;background:var(--grad);
+  display:grid;place-items:center;font-family:var(--mono);font-weight:800;
+  font-size:1.15rem;color:#fff;box-shadow:0 6px 20px -6px rgba(124,92,255,.7);
+}
+.brand .name{font-size:1.12rem;font-weight:750;letter-spacing:-.01em}
+.brand .name b{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.tag{
+  font-size:.7rem;color:var(--muted);padding:4px 10px;border:1px solid var(--line2);
+  border-radius:99px;background:rgba(255,255,255,.02);white-space:nowrap
+}
+.tag .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ok);margin-right:6px;vertical-align:middle;box-shadow:0 0 8px var(--ok)}
+.nav .grow{flex:1}
+.nav nav{display:flex;align-items:center;gap:6px}
+.nav nav a{font-size:.82rem;color:var(--muted);padding:7px 12px;border-radius:8px;transition:.15s}
+.nav nav a:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.nav nav a.gh{border:1px solid var(--line2)}
+
+/* ---------- controls ---------- */
+.controls{
+  position:relative;z-index:1;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:14px 22px;border-bottom:1px solid var(--line);
+}
+.group{display:flex;align-items:center;gap:8px}
+.group .glabel{font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);font-weight:700}
+.pill{
+  position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;
+  padding:8px 13px;border-radius:10px;border:1px solid var(--line2);background:var(--panel2);
+  font-size:.82rem;font-weight:600;color:var(--muted);transition:.15s;
+}
+.pill input{position:absolute;opacity:0;pointer-events:none}
+.pill .swatch{width:9px;height:9px;border-radius:50%;background:var(--dim);transition:.15s}
+.pill:hover{border-color:var(--line2);color:var(--text)}
+.pill:has(input:checked){
+  color:var(--text);border-color:rgba(139,92,246,.55);
+  background:linear-gradient(180deg,rgba(139,92,246,.16),rgba(99,102,241,.06));
+  box-shadow:0 0 0 1px rgba(139,92,246,.15),0 6px 18px -10px rgba(124,92,255,.6);
+}
+.pill:has(input:checked) .swatch{background:var(--v-soft);box-shadow:0 0 8px var(--v-soft)}
+.pill:focus-within{outline:2px solid rgba(139,92,246,.5);outline-offset:2px}
+
+.seed{display:flex;align-items:center;gap:0;border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:var(--panel2)}
+.seed input{background:transparent;border:none;outline:none;color:var(--text);padding:8px 10px;width:120px;font-family:var(--mono);font-size:.82rem}
+.seed button{background:transparent;border:none;border-left:1px solid var(--line2);color:var(--muted);padding:8px 11px;cursor:pointer;font-size:.9rem;transition:.15s}
+.seed button:hover{background:rgba(255,255,255,.05);color:var(--text)}
+
+.controls .grow{flex:1}
+.btn{border:none;border-radius:10px;padding:9px 16px;font-size:.85rem;font-weight:700;cursor:pointer;transition:.15s;font-family:inherit;white-space:nowrap;display:inline-flex;align-items:center;gap:7px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line2)}
+.btn.ghost:hover{background:#1b1f2b;border-color:#333a49}
+.btn.primary{background:var(--grad);color:#fff;box-shadow:0 8px 22px -8px rgba(124,92,255,.75)}
+.btn.primary:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.btn.primary:active{transform:translateY(0)}
+.kbd{font-family:var(--mono);font-size:.68rem;opacity:.7;border:1px solid rgba(255,255,255,.25);border-radius:5px;padding:1px 5px;margin-left:2px}
+
+/* ---------- editor ---------- */
+.editor{position:relative;z-index:1;flex:1;display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px 22px;min-height:0}
+.panel{
+  display:flex;flex-direction:column;min-width:0;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+  box-shadow:0 20px 50px -30px rgba(0,0,0,.9);
+}
+.panel .phead{
+  display:flex;align-items:center;gap:10px;padding:11px 15px;
+  border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.02),transparent)
+}
+.panel .phead .lbl{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.panel .phead .cnt{font-family:var(--mono);font-size:.72rem;color:var(--dim)}
+.panel .phead .grow{flex:1}
+.chip{
+  font-size:.72rem;font-weight:600;color:var(--muted);background:var(--panel2);
+  border:1px solid var(--line2);border-radius:7px;padding:5px 10px;cursor:pointer;transition:.15s
+}
+.chip:hover{color:var(--text);background:#1b1f2b;border-color:#333a49}
+.chip.accent{color:#c4b5fd;border-color:rgba(139,92,246,.4)}
+.chip.accent:hover{background:rgba(139,92,246,.12)}
+textarea{
+  flex:1;width:100%;background:transparent;color:var(--text);border:none;outline:none;resize:none;
+  padding:16px 18px;font-family:var(--mono);font-size:.82rem;line-height:1.65;tab-size:2;
+}
+textarea::placeholder{color:var(--dim)}
+#output{white-space:pre;overflow:auto;color:#d7dce7}
+textarea::selection{background:rgba(139,92,246,.35)}
+/* custom scrollbars */
+textarea::-webkit-scrollbar{width:11px;height:11px}
+textarea::-webkit-scrollbar-thumb{background:#262b38;border-radius:8px;border:3px solid var(--panel)}
+textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
+
+/* ---------- status ---------- */
+.status{
+  position:relative;z-index:2;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:9px 22px;border-top:1px solid var(--line);background:rgba(12,14,20,.72);backdrop-filter:blur(12px);
+  font-size:.78rem;color:var(--muted)
+}
+.status .grow{flex:1}
+.status .ok{color:var(--ok);font-weight:600}
+.status .err{color:var(--err);font-weight:600}
+.status .note{color:var(--dim);display:flex;align-items:center;gap:7px}
+.status .note svg{opacity:.7}
+
+@media(max-width:860px){
+  body{overflow:auto}
+  .editor{grid-template-columns:1fr;min-height:0}
+  .panel{min-height:280px}
+  .nav .tag{display:none}
+  .controls .grow{display:none}
+}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="brand">
+    <div class="mark">f</div>
+    <div class="name"><b>ferret</b> obfuscator</div>
+  </div>
+  <span class="tag"><span class="dot"></span>Lua 5.1–5.4 · Roblox Luau</span>
+  <div class="grow"></div>
+  <nav>
+    <a href="/deobfuscator.html">Deobfuscator</a>
+    <a class="gh" href="https://github.com/robloxscripter6245366542/roblox-lua-obscator" target="_blank" rel="noopener">GitHub ↗</a>
+  </nav>
+</header>
+
+<section class="controls">
+  <div class="group">
+    <span class="glabel">Layers</span>
+    <label class="pill" title="Rename locals/params to opaque names, scope-aware (AST)">
+      <input type="checkbox" id="lRename" checked><span class="swatch"></span>Rename
+    </label>
+    <label class="pill" title="Integer literals become arithmetic expressions">
+      <input type="checkbox" id="lNumbers" checked><span class="swatch"></span>Numbers
+    </label>
+    <label class="pill" title="String literals are encrypted and decoded at runtime">
+      <input type="checkbox" id="lStrings" checked><span class="swatch"></span>Strings
+    </label>
+    <label class="pill" title="Encrypt the whole chunk and emit a loader (recommended)">
+      <input type="checkbox" id="lPack" checked><span class="swatch"></span>Pack
+    </label>
+  </div>
+  <div class="group">
+    <span class="glabel">Seed</span>
+    <div class="seed">
+      <input type="number" id="seed" value="7" min="0" max="2147483647" aria-label="Seed">
+      <button id="randSeed" title="Random seed">🎲</button>
+    </div>
+  </div>
+  <div class="grow"></div>
+  <button class="btn ghost" id="sample">Load sample</button>
+  <button class="btn primary" id="run">Obfuscate<span class="kbd">⌘⏎</span></button>
+</section>
+
+<main class="editor">
+  <section class="panel">
+    <div class="phead">
+      <span class="lbl">Source</span>
+      <span class="cnt" id="inStat">0 bytes</span>
+      <div class="grow"></div>
+      <button class="chip" id="clear">Clear</button>
+    </div>
+    <textarea id="input" spellcheck="false" placeholder="-- Paste your Lua / Luau script here&#10;&#10;print('hello world')"></textarea>
+  </section>
+  <section class="panel">
+    <div class="phead">
+      <span class="lbl">Obfuscated</span>
+      <span class="cnt" id="outStat">—</span>
+      <div class="grow"></div>
+      <button class="chip" id="download">Download</button>
+      <button class="chip accent" id="copy">Copy</button>
+    </div>
+    <textarea id="output" spellcheck="false" readonly placeholder="-- Output appears here — encrypted, packed, ready to ship"></textarea>
+  </section>
+</main>
+
+<footer class="status">
+  <span id="status">Ready.</span>
+  <div class="grow"></div>
+  <span class="note" id="target"></span>
+  <span class="note" style="opacity:.6">·</span>
+  <span class="note">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    100% in-browser
+  </span>
+</footer>
+
+<script src="ferret.web.js"></script>
+<script src="ferret.ast.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var input=$("input"), output=$("output"), status=$("status");
+  var inStat=$("inStat"), outStat=$("outStat");
+
+  var SAMPLE =
+'-- sample Roblox-style script\n' +
+'local Players = game and game:GetService("Players")\n' +
+'local Config = { name = "ferret demo", speed = 16, keys = {"a","b","c"} }\n\n' +
+'local function greet(who)\n' +
+'  return "hello, " .. tostring(who) .. "!"\n' +
+'end\n\n' +
+'for i = 1, #Config.keys do\n' +
+'  print(i, Config.keys[i], greet(Config.name))\n' +
+'end\n\n' +
+'local total = 0\n' +
+'for _, n in ipairs({10, 20, 30, 42}) do total = total + n end\n' +
+'print("total =", total, "speed =", Config.speed)\n';
+
+  function fmtBytes(n){
+    if(n<1024) return n+" bytes";
+    return (n/1024).toFixed(1)+" KB";
+  }
+  function updateInStat(){ inStat.textContent = fmtBytes(input.value.length); }
+
+  function updateTarget(){
+    var t = $("target");
+    if($("lPack").checked){
+      t.innerHTML = '⚙️ Pack on — needs <code style="font-family:var(--mono)">loadstring</code> (executors / server)';
+    }else{
+      t.innerHTML = '✅ Pure Luau — runs in vanilla Roblox (LocalScripts)';
+    }
+  }
+
+  function selectedLayers(){
+    var L=[];
+    if($("lRename").checked) L.push("rename");
+    if($("lNumbers").checked) L.push("numbers");
+    if($("lStrings").checked) L.push("strings");
+    if($("lPack").checked) L.push("pack");
+    return L;
+  }
+
+  function run(){
+    var src = input.value;
+    if(!src.trim()){ status.innerHTML='<span class="err">✗ Nothing to obfuscate — paste some Lua first.</span>'; return; }
+    var layers = selectedLayers();
+    if(layers.length===0){ status.innerHTML='<span class="err">✗ Select at least one layer.</span>'; return; }
+    var seed = parseInt($("seed").value,10); if(isNaN(seed)) seed=7;
+    var t0 = performance.now();
+    try{
+      var out = FerretAST.obfuscate(src, { seed: seed, layers: layers, chunkname: "input.lua" });
+      output.value = out;
+      var ms = (performance.now()-t0).toFixed(0);
+      var ratio = src.length ? (out.length/src.length).toFixed(1) : "0";
+      outStat.textContent = fmtBytes(out.length)+"  ("+ratio+"×)";
+      status.innerHTML = '<span class="ok">✓ Obfuscated</span> &nbsp;'+fmtBytes(src.length)+' → '+fmtBytes(out.length)+
+        ' &nbsp;·&nbsp; '+layers.join(" + ")+' &nbsp;·&nbsp; seed '+seed+' &nbsp;·&nbsp; '+ms+' ms';
+    }catch(e){
+      output.value="";
+      outStat.textContent="—";
+      status.innerHTML='<span class="err">✗ '+(e && e.message ? e.message : e)+'</span>';
+    }
+  }
+
+  $("run").onclick = run;
+  $("sample").onclick = function(){ input.value=SAMPLE; updateInStat(); run(); };
+  $("clear").onclick = function(){ input.value=""; output.value=""; updateInStat(); outStat.textContent="—"; status.textContent="Ready."; input.focus(); };
+  $("randSeed").onclick = function(){ $("seed").value = Math.floor(Math.random()*2147483647); };
+  ["lRename","lNumbers","lStrings","lPack"].forEach(function(id){ $(id).addEventListener("change", updateTarget); });
+  input.addEventListener("input", updateInStat);
+  input.addEventListener("keydown", function(e){
+    if((e.ctrlKey||e.metaKey) && e.key==="Enter"){ e.preventDefault(); run(); }
+  });
+  $("copy").onclick = function(){
+    if(!output.value) return;
+    navigator.clipboard.writeText(output.value).then(function(){
+      var el=$("copy"); var t=el.textContent; el.textContent="Copied ✓"; setTimeout(function(){el.textContent=t;},1200);
+    });
+  };
+  $("download").onclick = function(){
+    if(!output.value) return;
+    var blob = new Blob([output.value], {type:"text/plain"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "obfuscated.lua";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  };
+
+  updateInStat();
+  updateTarget();
+})();
+</script>
+</body>
+</html>

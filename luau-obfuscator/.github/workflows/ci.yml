@@ -1,0 +1,50 @@
+name: luau-obfuscator CI
+
+on:
+  push:
+    paths:
+      - 'luau-obfuscator/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    paths:
+      - 'luau-obfuscator/**'
+
+defaults:
+  run:
+    working-directory: luau-obfuscator
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: luau-obfuscator/package-lock.json
+
+      - name: Install Lua 5.4 (for behavior-equivalence tests)
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit + equivalence tests
+        run: npm test
+
+      - name: Coverage
+        run: npm run coverage
+
+      - name: Benchmark (smoke)
+        run: node dist/bench/bench.js --sizes=50,200

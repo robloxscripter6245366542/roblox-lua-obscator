@@ -1,5 +1,5 @@
 {
   "buildCommand": "",
-  "outputDirectory": "deobfusc-site",
+  "outputDirectory": "obfuscator-site",
   "installCommand": ""
 }

@@ -85,6 +85,24 @@ upvalue, so the debug library correctly observes the transformation. A global
 decoder would hide it but would break the `_ENV`-swap sandbox tests, so the safe
 local decoder is used instead.
 
+## Roblox / Luau compatibility
+
+Verified on a real Luau VM (`mlua`, Luau 0.663), not just Lua 5.4:
+
+| Mode | Runs in… | Luau corpus result |
+|------|----------|--------------------|
+| `numbers,strings` | **vanilla Roblox** (LocalScript/ModuleScript) — pure Luau, no `loadstring` | 260/263 (98.9%) |
+| `+ pack` | executors, or server with `LoadStringEnabled` — the emitted loader calls `loadstring or load` | works; only debug-introspection diffs |
+
+The runtime keystream uses a Park-Miller generator (`st = (st*16807) % 2147483647`)
+whose products stay below 2^53, so it is exact in Luau's doubles as well as Lua
+5.3/5.4 integers — obfuscated strings decode identically on every runtime. (A
+naïve LCG that overflows 2^53 decodes fine in Lua 5.4 but produces garbage in
+Luau; that trap is deliberately avoided.)
+
+The 3 Luau residuals are `goto` and `&|~` bitwise operators (which Luau doesn't
+support, so the *original* fails too) and a traceback-format edge case.
+
 ## Limitations
 
 - **Luau type-annotation syntax** (`local x: T`, `T?`, `type X = {...}`) is not
