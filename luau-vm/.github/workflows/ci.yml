@@ -1,0 +1,32 @@
+name: luau-vm CI
+
+on:
+  push:
+    paths:
+      - 'luau-vm/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    paths:
+      - 'luau-vm/**'
+
+defaults:
+  run:
+    working-directory: luau-vm
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lua 5.4
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+
+      - name: VM core (hand-assembled bytecode)
+        run: lua5.4 test/vmcore_test.lua
+
+      - name: Equivalence (native vs VM, direct + serialized)
+        run: lua5.4 test/verify.lua
+
+      - name: Benchmark (smoke)
+        run: lua5.4 bench/bench.lua
