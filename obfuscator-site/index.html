@@ -9,113 +9,227 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;
-  --blue:#58a6ff;--green:#3fb950;--red:#f85149;--orange:#d29922;
-  --purple:#8957e5;--text:#e6edf3;--muted:#8b949e;--dim:#484f58;
+  --bg:#08090d;
+  --panel:#0f1118;
+  --panel2:#141722;
+  --line:#20242f;
+  --line2:#2b303d;
+  --text:#eef1f7;
+  --muted:#9aa3b2;
+  --dim:#5b6472;
+  --v1:#8b5cf6;      /* violet */
+  --v2:#6366f1;      /* indigo */
+  --v-soft:#a78bfa;
+  --ok:#34d399;
+  --err:#fb7185;
+  --grad:linear-gradient(135deg,#8b5cf6,#6366f1);
+  --radius:14px;
+  --mono:ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,monospace;
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
 }
-body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column}
-a{color:var(--blue);text-decoration:none}
-a:hover{text-decoration:underline}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--text);font-family:var(--sans);
+  display:flex;flex-direction:column;min-height:100vh;overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+/* ambient background glows */
+body::before,body::after{
+  content:"";position:fixed;z-index:0;pointer-events:none;border-radius:50%;
+  filter:blur(120px);opacity:.5;
+}
+body::before{width:640px;height:640px;top:-260px;left:-160px;background:#4c2fb0}
+body::after{width:560px;height:560px;bottom:-300px;right:-160px;background:#1e3a8a;opacity:.4}
+a{color:var(--v-soft);text-decoration:none}
+a:hover{color:#c4b5fd}
 
-header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-header .logo{font-size:1.15rem;font-weight:800;letter-spacing:.3px;display:flex;align-items:center;gap:8px}
-header .logo .mark{color:var(--purple)}
-.badge{font-size:.6rem;padding:2px 7px;border-radius:99px;font-weight:700;letter-spacing:.4px}
-.bpurple{background:#3d1e6e;color:#c8a6ff}
-.bgreen{background:#0f2010;color:var(--green)}
-.bblue{background:#1e3040;color:var(--blue)}
-header .spacer{flex:1}
-header nav a{font-size:.8rem;color:var(--muted);margin-left:16px}
+/* ---------- top nav ---------- */
+.nav{
+  position:relative;z-index:2;display:flex;align-items:center;gap:14px;
+  padding:14px 22px;border-bottom:1px solid var(--line);
+  background:rgba(12,14,20,.72);backdrop-filter:blur(12px);
+}
+.brand{display:flex;align-items:center;gap:11px}
+.brand .mark{
+  width:34px;height:34px;border-radius:10px;background:var(--grad);
+  display:grid;place-items:center;font-family:var(--mono);font-weight:800;
+  font-size:1.15rem;color:#fff;box-shadow:0 6px 20px -6px rgba(124,92,255,.7);
+}
+.brand .name{font-size:1.12rem;font-weight:750;letter-spacing:-.01em}
+.brand .name b{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.tag{
+  font-size:.7rem;color:var(--muted);padding:4px 10px;border:1px solid var(--line2);
+  border-radius:99px;background:rgba(255,255,255,.02);white-space:nowrap
+}
+.tag .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ok);margin-right:6px;vertical-align:middle;box-shadow:0 0 8px var(--ok)}
+.nav .grow{flex:1}
+.nav nav{display:flex;align-items:center;gap:6px}
+.nav nav a{font-size:.82rem;color:var(--muted);padding:7px 12px;border-radius:8px;transition:.15s}
+.nav nav a:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.nav nav a.gh{border:1px solid var(--line2)}
 
-.toolbar{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.opt{display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)}
-.opt input[type=checkbox]{accent-color:var(--purple);width:15px;height:15px}
-.opt label{cursor:pointer;user-select:none}
-.opt input[type=number]{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:4px 7px;width:110px;font-family:inherit;font-size:.8rem}
-.tsep{width:1px;height:22px;background:var(--border)}
-.btn{border:none;border-radius:6px;padding:7px 15px;font-size:.82rem;font-weight:700;cursor:pointer;transition:.12s;white-space:nowrap}
+/* ---------- controls ---------- */
+.controls{
+  position:relative;z-index:1;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:14px 22px;border-bottom:1px solid var(--line);
+}
+.group{display:flex;align-items:center;gap:8px}
+.group .glabel{font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);font-weight:700}
+.pill{
+  position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;
+  padding:8px 13px;border-radius:10px;border:1px solid var(--line2);background:var(--panel2);
+  font-size:.82rem;font-weight:600;color:var(--muted);transition:.15s;
+}
+.pill input{position:absolute;opacity:0;pointer-events:none}
+.pill .swatch{width:9px;height:9px;border-radius:50%;background:var(--dim);transition:.15s}
+.pill:hover{border-color:var(--line2);color:var(--text)}
+.pill:has(input:checked){
+  color:var(--text);border-color:rgba(139,92,246,.55);
+  background:linear-gradient(180deg,rgba(139,92,246,.16),rgba(99,102,241,.06));
+  box-shadow:0 0 0 1px rgba(139,92,246,.15),0 6px 18px -10px rgba(124,92,255,.6);
+}
+.pill:has(input:checked) .swatch{background:var(--v-soft);box-shadow:0 0 8px var(--v-soft)}
+.pill:focus-within{outline:2px solid rgba(139,92,246,.5);outline-offset:2px}
+
+.seed{display:flex;align-items:center;gap:0;border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:var(--panel2)}
+.seed input{background:transparent;border:none;outline:none;color:var(--text);padding:8px 10px;width:120px;font-family:var(--mono);font-size:.82rem}
+.seed button{background:transparent;border:none;border-left:1px solid var(--line2);color:var(--muted);padding:8px 11px;cursor:pointer;font-size:.9rem;transition:.15s}
+.seed button:hover{background:rgba(255,255,255,.05);color:var(--text)}
+
+.controls .grow{flex:1}
+.btn{border:none;border-radius:10px;padding:9px 16px;font-size:.85rem;font-weight:700;cursor:pointer;transition:.15s;font-family:inherit;white-space:nowrap;display:inline-flex;align-items:center;gap:7px}
 .btn:disabled{opacity:.5;cursor:not-allowed}
-.bgo{background:var(--purple);color:#fff}.bgo:hover{background:#7a4bd8}
-.bghost{background:var(--surface2);color:var(--text);border:1px solid var(--border)}.bghost:hover{background:#2d333b}
-.spacer{flex:1}
+.btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line2)}
+.btn.ghost:hover{background:#1b1f2b;border-color:#333a49}
+.btn.primary{background:var(--grad);color:#fff;box-shadow:0 8px 22px -8px rgba(124,92,255,.75)}
+.btn.primary:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.btn.primary:active{transform:translateY(0)}
+.kbd{font-family:var(--mono);font-size:.68rem;opacity:.7;border:1px solid rgba(255,255,255,.25);border-radius:5px;padding:1px 5px;margin-left:2px}
 
-main{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);min-height:0}
-.pane{background:var(--bg);display:flex;flex-direction:column;min-width:0}
-.pane .head{padding:8px 16px;font-size:.72rem;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
-.pane .head .stat{font-weight:500;text-transform:none;letter-spacing:0;color:var(--dim)}
-.pane .head .spacer{flex:1}
-.pane .head .mini{font-size:.7rem;padding:3px 9px;border-radius:5px;background:var(--surface2);border:1px solid var(--border);color:var(--text);cursor:pointer;font-weight:600}
-.pane .head .mini:hover{background:#2d333b}
-textarea{flex:1;width:100%;background:var(--bg);color:var(--text);border:none;outline:none;resize:none;padding:14px 16px;font-family:'JetBrains Mono','Consolas','Courier New',monospace;font-size:.82rem;line-height:1.55;tab-size:2}
+/* ---------- editor ---------- */
+.editor{position:relative;z-index:1;flex:1;display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px 22px;min-height:0}
+.panel{
+  display:flex;flex-direction:column;min-width:0;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+  box-shadow:0 20px 50px -30px rgba(0,0,0,.9);
+}
+.panel .phead{
+  display:flex;align-items:center;gap:10px;padding:11px 15px;
+  border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.02),transparent)
+}
+.panel .phead .lbl{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.panel .phead .cnt{font-family:var(--mono);font-size:.72rem;color:var(--dim)}
+.panel .phead .grow{flex:1}
+.chip{
+  font-size:.72rem;font-weight:600;color:var(--muted);background:var(--panel2);
+  border:1px solid var(--line2);border-radius:7px;padding:5px 10px;cursor:pointer;transition:.15s
+}
+.chip:hover{color:var(--text);background:#1b1f2b;border-color:#333a49}
+.chip.accent{color:#c4b5fd;border-color:rgba(139,92,246,.4)}
+.chip.accent:hover{background:rgba(139,92,246,.12)}
+textarea{
+  flex:1;width:100%;background:transparent;color:var(--text);border:none;outline:none;resize:none;
+  padding:16px 18px;font-family:var(--mono);font-size:.82rem;line-height:1.65;tab-size:2;
+}
 textarea::placeholder{color:var(--dim)}
-#output{white-space:pre;overflow:auto}
+#output{white-space:pre;overflow:auto;color:#d7dce7}
+textarea::selection{background:rgba(139,92,246,.35)}
+/* custom scrollbars */
+textarea::-webkit-scrollbar{width:11px;height:11px}
+textarea::-webkit-scrollbar-thumb{background:#262b38;border-radius:8px;border:3px solid var(--panel)}
+textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
 
-.statusbar{background:var(--surface);border-top:1px solid var(--border);padding:6px 20px;font-size:.74rem;color:var(--muted);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.statusbar .ok{color:var(--green)}
-.statusbar .err{color:var(--red)}
-.note{color:var(--dim)}
+/* ---------- status ---------- */
+.status{
+  position:relative;z-index:2;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:9px 22px;border-top:1px solid var(--line);background:rgba(12,14,20,.72);backdrop-filter:blur(12px);
+  font-size:.78rem;color:var(--muted)
+}
+.status .grow{flex:1}
+.status .ok{color:var(--ok);font-weight:600}
+.status .err{color:var(--err);font-weight:600}
+.status .note{color:var(--dim);display:flex;align-items:center;gap:7px}
+.status .note svg{opacity:.7}
 
-@media(max-width:820px){
-  main{grid-template-columns:1fr;grid-template-rows:1fr 1fr}
-  header nav a{margin-left:10px}
+@media(max-width:860px){
+  body{overflow:auto}
+  .editor{grid-template-columns:1fr;min-height:0}
+  .panel{min-height:280px}
+  .nav .tag{display:none}
+  .controls .grow{display:none}
 }
 </style>
 </head>
 <body>
-<header>
-  <div class="logo"><span class="mark">🦡</span> ferret <span class="badge bpurple">LUA / LUAU</span></div>
-  <span class="badge bgreen">100% CLIENT-SIDE</span>
-  <div class="spacer"></div>
+
+<header class="nav">
+  <div class="brand">
+    <div class="mark">f</div>
+    <div class="name"><b>ferret</b> obfuscator</div>
+  </div>
+  <span class="tag"><span class="dot"></span>Lua 5.1–5.4 · Roblox Luau</span>
+  <div class="grow"></div>
   <nav>
     <a href="/deobfuscator.html">Deobfuscator</a>
-    <a href="https://github.com/robloxscripter6245366542/roblox-lua-obscator" target="_blank" rel="noopener">GitHub</a>
+    <a class="gh" href="https://github.com/robloxscripter6245366542/roblox-lua-obscator" target="_blank" rel="noopener">GitHub ↗</a>
   </nav>
 </header>
 
-<div class="toolbar">
-  <div class="opt" title="Integer literals become arithmetic expressions">
-    <input type="checkbox" id="lNumbers" checked><label for="lNumbers">Numbers</label>
+<section class="controls">
+  <div class="group">
+    <span class="glabel">Layers</span>
+    <label class="pill" title="Integer literals become arithmetic expressions">
+      <input type="checkbox" id="lNumbers" checked><span class="swatch"></span>Numbers
+    </label>
+    <label class="pill" title="String literals are encrypted and decoded at runtime">
+      <input type="checkbox" id="lStrings" checked><span class="swatch"></span>Strings
+    </label>
+    <label class="pill" title="Encrypt the whole chunk and emit a loader (recommended)">
+      <input type="checkbox" id="lPack" checked><span class="swatch"></span>Pack
+    </label>
   </div>
-  <div class="opt" title="String literals are encrypted and decoded at runtime">
-    <input type="checkbox" id="lStrings" checked><label for="lStrings">Strings</label>
+  <div class="group">
+    <span class="glabel">Seed</span>
+    <div class="seed">
+      <input type="number" id="seed" value="7" min="0" max="2147483647" aria-label="Seed">
+      <button id="randSeed" title="Random seed">🎲</button>
+    </div>
   </div>
-  <div class="opt" title="Encrypt the whole chunk and emit a loader (recommended)">
-    <input type="checkbox" id="lPack" checked><label for="lPack">Pack (encrypt&nbsp;+&nbsp;loader)</label>
-  </div>
-  <div class="tsep"></div>
-  <div class="opt">
-    <label for="seed">Seed</label>
-    <input type="number" id="seed" value="7" min="0" max="2147483647">
-    <button class="mini bghost" id="randSeed" style="padding:4px 9px;font-size:.72rem" title="Random seed">🎲</button>
-  </div>
-  <div class="spacer"></div>
-  <button class="btn bghost" id="sample">Load sample</button>
-  <button class="btn bgo" id="run">Obfuscate ▸</button>
-</div>
+  <div class="grow"></div>
+  <button class="btn ghost" id="sample">Load sample</button>
+  <button class="btn primary" id="run">Obfuscate<span class="kbd">⌘⏎</span></button>
+</section>
 
-<main>
-  <section class="pane">
-    <div class="head">Input <span class="stat" id="inStat">0 bytes</span>
-      <div class="spacer"></div>
-      <span class="mini" id="clear">Clear</span>
+<main class="editor">
+  <section class="panel">
+    <div class="phead">
+      <span class="lbl">Source</span>
+      <span class="cnt" id="inStat">0 bytes</span>
+      <div class="grow"></div>
+      <button class="chip" id="clear">Clear</button>
     </div>
-    <textarea id="input" spellcheck="false" placeholder="-- Paste your Lua / Luau script here&#10;print('hello world')"></textarea>
+    <textarea id="input" spellcheck="false" placeholder="-- Paste your Lua / Luau script here&#10;&#10;print('hello world')"></textarea>
   </section>
-  <section class="pane">
-    <div class="head">Output <span class="stat" id="outStat">—</span>
-      <div class="spacer"></div>
-      <span class="mini" id="copy">Copy</span>
-      <span class="mini" id="download">Download</span>
+  <section class="panel">
+    <div class="phead">
+      <span class="lbl">Obfuscated</span>
+      <span class="cnt" id="outStat">—</span>
+      <div class="grow"></div>
+      <button class="chip" id="download">Download</button>
+      <button class="chip accent" id="copy">Copy</button>
     </div>
-    <textarea id="output" spellcheck="false" readonly placeholder="-- Obfuscated output appears here"></textarea>
+    <textarea id="output" spellcheck="false" readonly placeholder="-- Output appears here — encrypted, packed, ready to ship"></textarea>
   </section>
 </main>
 
-<div class="statusbar">
+<footer class="status">
   <span id="status">Ready.</span>
-  <div class="spacer" style="flex:1"></div>
-  <span class="note">Everything runs in your browser — your code is never uploaded. Output runs on Lua 5.1–5.4 &amp; Roblox Luau.</span>
-</div>
+  <div class="grow"></div>
+  <span class="note">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    100% in-browser — your code is never uploaded
+  </span>
+</footer>
 
 <script src="ferret.web.js"></script>
 <script>
@@ -154,9 +268,9 @@ textarea::placeholder{color:var(--dim)}
 
   function run(){
     var src = input.value;
-    if(!src.trim()){ status.innerHTML='<span class="err">Nothing to obfuscate — paste some Lua first.</span>'; return; }
+    if(!src.trim()){ status.innerHTML='<span class="err">✗ Nothing to obfuscate — paste some Lua first.</span>'; return; }
     var layers = selectedLayers();
-    if(layers.length===0){ status.innerHTML='<span class="err">Select at least one layer.</span>'; return; }
+    if(layers.length===0){ status.innerHTML='<span class="err">✗ Select at least one layer.</span>'; return; }
     var seed = parseInt($("seed").value,10); if(isNaN(seed)) seed=7;
     var t0 = performance.now();
     try{
@@ -165,8 +279,8 @@ textarea::placeholder{color:var(--dim)}
       var ms = (performance.now()-t0).toFixed(0);
       var ratio = src.length ? (out.length/src.length).toFixed(1) : "0";
       outStat.textContent = fmtBytes(out.length)+"  ("+ratio+"×)";
-      status.innerHTML = '<span class="ok">✓ Obfuscated</span> — '+fmtBytes(src.length)+' → '+fmtBytes(out.length)+
-        '  ·  layers: '+layers.join(", ")+'  ·  seed '+seed+'  ·  '+ms+' ms';
+      status.innerHTML = '<span class="ok">✓ Obfuscated</span> &nbsp;'+fmtBytes(src.length)+' → '+fmtBytes(out.length)+
+        ' &nbsp;·&nbsp; '+layers.join(" + ")+' &nbsp;·&nbsp; seed '+seed+' &nbsp;·&nbsp; '+ms+' ms';
     }catch(e){
       output.value="";
       outStat.textContent="—";
@@ -176,7 +290,7 @@ textarea::placeholder{color:var(--dim)}
 
   $("run").onclick = run;
   $("sample").onclick = function(){ input.value=SAMPLE; updateInStat(); run(); };
-  $("clear").onclick = function(){ input.value=""; output.value=""; updateInStat(); outStat.textContent="—"; status.textContent="Ready."; };
+  $("clear").onclick = function(){ input.value=""; output.value=""; updateInStat(); outStat.textContent="—"; status.textContent="Ready."; input.focus(); };
   $("randSeed").onclick = function(){ $("seed").value = Math.floor(Math.random()*2147483647); };
   input.addEventListener("input", updateInStat);
   input.addEventListener("keydown", function(e){
@@ -185,7 +299,7 @@ textarea::placeholder{color:var(--dim)}
   $("copy").onclick = function(){
     if(!output.value) return;
     navigator.clipboard.writeText(output.value).then(function(){
-      var el=$("copy"); var t=el.textContent; el.textContent="Copied!"; setTimeout(function(){el.textContent=t;},1200);
+      var el=$("copy"); var t=el.textContent; el.textContent="Copied ✓"; setTimeout(function(){el.textContent=t;},1200);
     });
   };
   $("download").onclick = function(){
