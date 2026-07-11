@@ -36,6 +36,18 @@ node obfuscator-site/validate_js.js /path/to/Lua-crypt 7
 Results match the Lua version exactly: the only differences are the 3 `08_debug`
 tests that inspect closure upvalues (they observe the string decoder by design).
 
+Set `LUA_BIN` to validate against a different runtime — e.g. a real Luau VM:
+
+```sh
+LUA_BIN=./luau node obfuscator-site/validate_js.js /path/to/Lua-crypt 7 numbers,strings
+# Luau: 260/263 (98.9%) — numbers,strings output runs in vanilla Roblox
+```
+
+**Roblox targeting:** `numbers,strings` is pure Luau and runs in vanilla Roblox
+LocalScripts/ModuleScripts. The `pack` layer's loader calls `loadstring or load`,
+so packed output needs an executor (or a server with `LoadStringEnabled`). The UI
+shows which target the current layer selection produces.
+
 ## Local preview
 
 Any static server works, e.g.:

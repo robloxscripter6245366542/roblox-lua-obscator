@@ -225,9 +225,11 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
 <footer class="status">
   <span id="status">Ready.</span>
   <div class="grow"></div>
+  <span class="note" id="target"></span>
+  <span class="note" style="opacity:.6">·</span>
   <span class="note">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-    100% in-browser — your code is never uploaded
+    100% in-browser
   </span>
 </footer>
 
@@ -257,6 +259,15 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
     return (n/1024).toFixed(1)+" KB";
   }
   function updateInStat(){ inStat.textContent = fmtBytes(input.value.length); }
+
+  function updateTarget(){
+    var t = $("target");
+    if($("lPack").checked){
+      t.innerHTML = '⚙️ Pack on — needs <code style="font-family:var(--mono)">loadstring</code> (executors / server)';
+    }else{
+      t.innerHTML = '✅ Pure Luau — runs in vanilla Roblox (LocalScripts)';
+    }
+  }
 
   function selectedLayers(){
     var L=[];
@@ -292,6 +303,7 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
   $("sample").onclick = function(){ input.value=SAMPLE; updateInStat(); run(); };
   $("clear").onclick = function(){ input.value=""; output.value=""; updateInStat(); outStat.textContent="—"; status.textContent="Ready."; input.focus(); };
   $("randSeed").onclick = function(){ $("seed").value = Math.floor(Math.random()*2147483647); };
+  ["lNumbers","lStrings","lPack"].forEach(function(id){ $(id).addEventListener("change", updateTarget); });
   input.addEventListener("input", updateInStat);
   input.addEventListener("keydown", function(e){
     if((e.ctrlKey||e.metaKey) && e.key==="Enter"){ e.preventDefault(); run(); }
@@ -312,6 +324,7 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
   };
 
   updateInStat();
+  updateTarget();
 })();
 </script>
 </body>

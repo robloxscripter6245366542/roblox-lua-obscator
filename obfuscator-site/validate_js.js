@@ -18,14 +18,16 @@ function walk(dir, acc) {
   return acc;
 }
 function normalize(s) {
-  s = s.replace(/\S*\.lua/g, "CHUNK");
-  s = s.replace(/CHUNK:\d+/g, "CHUNK:L");
+  s = s.replace(/\[string "[^"]*"\]/g, "CHUNK"); // Luau chunk names
+  s = s.replace(/\S*\.lua/g, "CHUNK");           // path chunk names
+  s = s.replace(/CHUNK:\d+/g, "CHUNK:L");         // line numbers in either form
   s = s.replace(/\s*\(\.\.\.tail calls\.\.\.\)\n?/g, "\n");
   return s;
 }
+const LUA_BIN = process.env.LUA_BIN || "lua5.4";
 function runLua(file) {
   try {
-    return cp.execSync(`lua5.4 '${file}' 2>&1`, { encoding: "latin1", maxBuffer: 1 << 26 });
+    return cp.execSync(`${LUA_BIN} '${file}' 2>&1`, { encoding: "latin1", maxBuffer: 1 << 26 });
   } catch (e) {
     return (e.stdout || "") + (e.stderr || "");
   }

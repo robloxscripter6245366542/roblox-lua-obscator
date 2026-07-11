@@ -20,10 +20,11 @@ local function bxor(a, b)
     return r
 end
 
+-- Park-Miller keystream (see layers.lua): exact in Luau/Lua 5.1 doubles too.
 local function xorStream(data, key)
-    local out, st = {}, key % 2147483648
+    local out, st = {}, key % 2147483646 + 1
     for i = 1, #data do
-        st = (st * 1103515245 + 12345) % 2147483648
+        st = (st * 16807) % 2147483647
         out[i] = string.char(bxor(data:byte(i), st % 256))
     end
     return table.concat(out)
@@ -100,9 +101,9 @@ function Pack.wrap(body, rng)
 
     -- xor decryptor (keystream identical to build-time xorStream)
     e("local function " .. nXd .. "(d,k)")
-    e("  local r,st={},k%2147483648")
+    e("  local r,st={},k%2147483646+1")
     e("  for i=1,#d do")
-    e("    st=(st*1103515245+12345)%2147483648")
+    e("    st=(st*16807)%2147483647")
     e("    local a,b=d:byte(i),st%256")
     e("    local x,p=0,1")
     e("    while a>0 or b>0 do")

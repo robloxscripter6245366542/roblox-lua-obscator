@@ -33,13 +33,16 @@
     return out;
   };
 
-  // ---- keystream identical to the emitted Lua decoder (BigInt exact) --------
+  // ---- keystream identical to the emitted Lua decoder ------------------------
+  // Park-Miller LCG (mult 16807, mod 2^31-1). Every product stays below 2^53,
+  // so it is exact in plain JS doubles AND in Luau/Lua 5.1 doubles and Lua 5.4
+  // integers -- output decodes identically on every runtime (incl. Roblox).
   function keystream(salt, n) {
-    var st = BigInt(((salt % 2147483648) + 2147483648) % 2147483648);
+    var st = (salt % 2147483646) + 1;
     var out = new Array(n);
     for (var i = 0; i < n; i++) {
-      st = (st * 1103515245n + 12345n) % 2147483648n;
-      out[i] = Number(st % 256n);
+      st = (st * 16807) % 2147483647;
+      out[i] = st % 256;
     }
     return out;
   }
@@ -327,9 +330,9 @@
       "local cv=" + cache + "[ck]",
       "if cv~=nil then return cv end",
       "local t={}",
-      "local st=s%2147483648",
+      "local st=s%2147483646+1",
       "for i=1,#e do",
-      "st=(st*1103515245+12345)%2147483648",
+      "st=(st*16807)%2147483647",
       "local k=st%256",
       "local a,b=" + sb + "(e,i),k",
       "local r,p=0,1",
@@ -418,9 +421,9 @@
     L.push("end");
 
     L.push("local function " + nXd + "(d,k)");
-    L.push("  local r,st={},k%2147483648");
+    L.push("  local r,st={},k%2147483646+1");
     L.push("  for i=1,#d do");
-    L.push("    st=(st*1103515245+12345)%2147483648");
+    L.push("    st=(st*16807)%2147483647");
     L.push("    local a,b=d:byte(i),st%256");
     L.push("    local x,p=0,1");
     L.push("    while a>0 or b>0 do");
