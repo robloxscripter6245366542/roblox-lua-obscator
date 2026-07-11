@@ -97,7 +97,9 @@ local function findWall(character, rootPart, wallPart)
 
 	-- Confirm the wall extends far enough above us to actually climb: cast back
 	-- into the wall from a point higher up, just outside its face.
-	local aboveOrigin = best.Position + best.Normal * 0.5 + Vector3.new(0, WALL_MIN_HEIGHT, 0)
+	local aboveOrigin = Vector3.new(best.Position.X, rootPart.Position.Y, best.Position.Z)
+		+ best.Normal * 0.5
+		+ Vector3.new(0, WALL_MIN_HEIGHT, 0)
 	local aboveHit = workspace:Raycast(aboveOrigin, -best.Normal * 2, params)
 	if not aboveHit or math.abs(aboveHit.Normal.Y) >= WALL_NORMAL_MAX_Y then
 		return nil
