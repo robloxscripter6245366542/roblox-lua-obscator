@@ -3,24 +3,44 @@
 A static, **100% client-side** website for the ferret Lua/Luau obfuscator. Paste
 Lua, pick layers, get obfuscated output — nothing is uploaded; all work happens
 in the browser. Deployed as the repo's Vercel site (`vercel.json` →
-`outputDirectory: site`).
+`outputDirectory: obfuscator-site`).
 
-## Pages
+## Pages / files
 - `index.html` — the obfuscator UI (input/output panes, layer toggles, seed).
 - `deobfuscator.html` — the existing Lua deobfuscator, kept reachable.
-- `ferret.web.js` — browser/Node port of the pure-Lua obfuscator in `../ferret/`.
+- `ferret.web.js` — browser/Node port of the token-level pipeline in `../ferret/`
+  (numbers / strings / pack).
+- `ferret.ast.js` — AST front end: a real Lua/Luau parser, scope resolver,
+  scope-aware renamer, and Luau code generator. Adds the `rename` layer and is
+  the composed entry point the site calls (`FerretAST.obfuscate`).
 
-## `ferret.web.js`
+## `ferret.web.js` (token layers)
 
 A faithful JavaScript port of the Lua pipeline (`lexer → layers → pack`). The
-build-time keystream uses `BigInt` so it is **bit-identical** to the Lua runtime
-decoder it emits, meaning output generated in the browser runs correctly on Lua
-5.1–5.4 and Roblox Luau. It works in both the browser (`window.Ferret`) and Node
-(`module.exports`).
+runtime keystream is a Park-Miller generator whose products stay below 2^53, so
+it is exact in plain JS numbers, Lua 5.1–5.4, **and Luau's doubles** — output
+generated in the browser decodes identically on Roblox. Works in both the
+browser (`window.Ferret`) and Node (`module.exports`).
 
 ```js
-Ferret.obfuscate(source, { seed: 7, layers: ["numbers", "strings", "pack"] });
+FerretAST.obfuscate(source, { seed: 7, layers: ["rename","numbers","strings","pack"] });
 ```
+
+## `ferret.ast.js` (rename layer)
+
+Renaming variables safely needs structure, so this parses the source into an
+AST, resolves every identifier to its binding (respecting block scope,
+shadowing, `repeat…until` visibility, loop vars, params, and upvalues), renames
+only **locals** — never globals, fields, method names, `self`, or table keys —
+to opaque names, and regenerates valid Luau. The renamed source then flows
+through the token layers.
+
+- AST round-trip (parse → generate): **262/262 (100%)**
+- rename, lua5.4: **258/263 (98.5%)** · rename, real Luau: **252/263 (95.8%)**
+
+Residuals are `debug.getlocal`/`getupvalue`/`traceback` (which read local names,
+so renaming changes what they observe) and Luau-unsupported syntax (`goto`,
+`&|~`) where the original already fails.
 
 ## Parity with the Lua implementation
 

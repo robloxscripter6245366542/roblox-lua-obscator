@@ -178,6 +178,9 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
 <section class="controls">
   <div class="group">
     <span class="glabel">Layers</span>
+    <label class="pill" title="Rename locals/params to opaque names, scope-aware (AST)">
+      <input type="checkbox" id="lRename" checked><span class="swatch"></span>Rename
+    </label>
     <label class="pill" title="Integer literals become arithmetic expressions">
       <input type="checkbox" id="lNumbers" checked><span class="swatch"></span>Numbers
     </label>
@@ -234,6 +237,7 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
 </footer>
 
 <script src="ferret.web.js"></script>
+<script src="ferret.ast.js"></script>
 <script>
 (function(){
   var $ = function(id){ return document.getElementById(id); };
@@ -271,6 +275,7 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
 
   function selectedLayers(){
     var L=[];
+    if($("lRename").checked) L.push("rename");
     if($("lNumbers").checked) L.push("numbers");
     if($("lStrings").checked) L.push("strings");
     if($("lPack").checked) L.push("pack");
@@ -285,7 +290,7 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
     var seed = parseInt($("seed").value,10); if(isNaN(seed)) seed=7;
     var t0 = performance.now();
     try{
-      var out = Ferret.obfuscate(src, { seed: seed, layers: layers, chunkname: "input.lua" });
+      var out = FerretAST.obfuscate(src, { seed: seed, layers: layers, chunkname: "input.lua" });
       output.value = out;
       var ms = (performance.now()-t0).toFixed(0);
       var ratio = src.length ? (out.length/src.length).toFixed(1) : "0";
@@ -303,7 +308,7 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
   $("sample").onclick = function(){ input.value=SAMPLE; updateInStat(); run(); };
   $("clear").onclick = function(){ input.value=""; output.value=""; updateInStat(); outStat.textContent="—"; status.textContent="Ready."; input.focus(); };
   $("randSeed").onclick = function(){ $("seed").value = Math.floor(Math.random()*2147483647); };
-  ["lNumbers","lStrings","lPack"].forEach(function(id){ $(id).addEventListener("change", updateTarget); });
+  ["lRename","lNumbers","lStrings","lPack"].forEach(function(id){ $(id).addEventListener("change", updateTarget); });
   input.addEventListener("input", updateInStat);
   input.addEventListener("keydown", function(e){
     if((e.ctrlKey||e.metaKey) && e.key==="Enter"){ e.preventDefault(); run(); }
