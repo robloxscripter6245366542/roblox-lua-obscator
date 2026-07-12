@@ -103,7 +103,11 @@ local function readValue(r)
 end
 
 -- ── proto encoding ───────────────────────────────────────────────────────────
-local function writeProto(w, p)
+-- opMap (optional): canonical opcode -> the byte written for it. Lets a build
+-- ship a per-build opcode numbering so the bytecode can't be read by a
+-- devirtualizer keyed to the canonical set. ins.op stays canonical internally,
+-- so operand-layout lookup and the VM's dispatch are unaffected.
+local function writeProto(w, p, opMap)
   writeUVarint(w, p.numparams)
   writeByte(w, p.isVararg and 1 or 0)
   writeUVarint(w, p.maxstack)
@@ -119,17 +123,18 @@ local function writeProto(w, p)
   -- code
   writeUVarint(w, #p.code)
   for _, ins in ipairs(p.code) do
-    writeByte(w, ins.op)
+    writeByte(w, opMap and opMap[ins.op] or ins.op)
     for _, field in ipairs(Opcodes.operands[ins.op]) do
       writeSVarint(w, ins[field] or 0)
     end
   end
   -- nested protos
   writeUVarint(w, #p.protos)
-  for _, child in ipairs(p.protos) do writeProto(w, child) end
+  for _, child in ipairs(p.protos) do writeProto(w, child, opMap) end
 end
 
-local function readProto(r)
+-- invMap (optional): the inverse of opMap (written byte -> canonical opcode).
+local function readProto(r, invMap)
   local p = { upvals = {}, consts = {}, code = {}, protos = {}, lines = {} }
   p.numparams = readUVarint(r)
   p.isVararg = readByte(r) == 1
@@ -142,11 +147,12 @@ local function readProto(r)
   local ncode = readUVarint(r)
   for i = 1, ncode do
     local op = readByte(r)
+    if invMap then op = invMap[op] end
     local ins = { op = op }
     for _, field in ipairs(Opcodes.operands[op]) do ins[field] = readSVarint(r) end
     p.code[i] = ins
   end
-  for i = 1, readUVarint(r) do p.protos[i] = readProto(r) end
+  for i = 1, readUVarint(r) do p.protos[i] = readProto(r, invMap) end
   return p
 end
 
@@ -164,9 +170,9 @@ local function fnv1a(s)
 end
 
 -- ── public API ───────────────────────────────────────────────────────────────
-function Serializer.serialize(proto)
+function Serializer.serialize(proto, opMap)
   local w = Writer()
-  writeProto(w, proto)
+  writeProto(w, proto, opMap)
   local body = table.concat(w.buf)
   local head = Writer()
   head:put(MAGIC)
@@ -176,7 +182,7 @@ function Serializer.serialize(proto)
   return table.concat(head.buf) .. body
 end
 
-function Serializer.deserialize(bytes)
+function Serializer.deserialize(bytes, invMap)
   local r = Reader(bytes)
   if bytes:sub(1, 3) ~= MAGIC then error('serializer: bad magic (not ferret bytecode)') end
   r.pos = 4
@@ -187,7 +193,7 @@ function Serializer.deserialize(bytes)
   local body = bytes:sub(r.pos, r.pos + bodyLen - 1)
   if fnv1a(body) ~= checksum then error('serializer: checksum mismatch (corrupt bytecode)') end
   local br = Reader(body)
-  return readProto(br)
+  return readProto(br, invMap)
 end
 
 Serializer.MAGIC = MAGIC

@@ -181,10 +181,10 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
 <section class="controls" id="controls">
   <div class="group">
     <span class="glabel">Engine</span>
-    <label class="pill eng" title="AST source-to-source obfuscation (rename, encode, pack)">
+    <label class="pill eng" title="AST source-to-source obfuscation (rename, encode numbers/strings) — stays pure Luau">
       <input type="radio" name="engine" id="engTransform" checked><span class="swatch"></span>Transform
     </label>
-    <label class="pill eng" title="Compile to a custom bytecode VM — no loadstring, source never present">
+    <label class="pill eng" title="Compile to a hardened custom bytecode VM — encrypted, per-build opcodes, no loadstring, source never present">
       <input type="radio" name="engine" id="engVM"><span class="swatch"></span>VM&nbsp;bytecode
     </label>
   </div>
@@ -198,9 +198,6 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
     </label>
     <label class="pill" title="String literals are encrypted and decoded at runtime">
       <input type="checkbox" id="lStrings" checked><span class="swatch"></span>Strings
-    </label>
-    <label class="pill" title="Encrypt the whole chunk and emit a loader (recommended)">
-      <input type="checkbox" id="lPack" checked><span class="swatch"></span>Pack
     </label>
   </div>
   <div class="group tx-only">
@@ -233,7 +230,7 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
       <button class="chip" id="download">Download</button>
       <button class="chip accent" id="copy">Copy</button>
     </div>
-    <textarea id="output" spellcheck="false" readonly placeholder="-- Output appears here — encrypted, packed, ready to ship"></textarea>
+    <textarea id="output" spellcheck="false" readonly placeholder="-- Output appears here — obfuscated or VM-protected, ready to ship"></textarea>
   </section>
 </main>
 
@@ -281,9 +278,7 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
   function updateTarget(){
     var t = $("target");
     if(isVM()){
-      t.innerHTML = '🧬 Custom bytecode VM — runs on Roblox/Luau, no <code style="font-family:var(--mono)">loadstring</code>, source never present';
-    }else if($("lPack").checked){
-      t.innerHTML = '⚙️ Pack on — needs <code style="font-family:var(--mono)">loadstring</code> (executors / server)';
+      t.innerHTML = '🧬 Hardened bytecode VM — encrypted, per-build opcodes, no <code style="font-family:var(--mono)">loadstring</code>, source never present';
     }else{
       t.innerHTML = '✅ Pure Luau — runs in vanilla Roblox (LocalScripts)';
     }
@@ -318,7 +313,6 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
     if($("lRename").checked) L.push("rename");
     if($("lNumbers").checked) L.push("numbers");
     if($("lStrings").checked) L.push("strings");
-    if($("lPack").checked) L.push("pack");
     return L;
   }
 
@@ -372,7 +366,7 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
   $("sample").onclick = function(){ input.value=SAMPLE; updateInStat(); run(); };
   $("clear").onclick = function(){ input.value=""; output.value=""; updateInStat(); outStat.textContent="—"; status.textContent="Ready."; input.focus(); };
   $("randSeed").onclick = function(){ $("seed").value = Math.floor(Math.random()*2147483647); };
-  ["lRename","lNumbers","lStrings","lPack"].forEach(function(id){ $(id).addEventListener("change", updateTarget); });
+  ["lRename","lNumbers","lStrings"].forEach(function(id){ $(id).addEventListener("change", updateTarget); });
   ["engTransform","engVM"].forEach(function(id){ $(id).addEventListener("change", updateEngine); });
   input.addEventListener("input", updateInStat);
   input.addEventListener("keydown", function(e){

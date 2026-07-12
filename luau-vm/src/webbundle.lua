@@ -1,10 +1,18 @@
 -- luau-vm/src/webbundle.lua
--- Browser-friendly bundler: compile a Luau source string to a self-contained
--- VM-protected script. Unlike tools/bundle.lua it never touches the filesystem;
--- the runtime module sources are passed in (the website embeds them), so this
--- runs unchanged inside Fengari (Lua-in-JS) in the browser.
+-- Browser-friendly bundler: compile a Luau source string to a self-contained,
+-- HARDENED VM-protected script. Unlike tools/bundle.lua it never touches the
+-- filesystem; the runtime module sources are passed in (the website embeds
+-- them), so this runs unchanged inside Fengari (Lua-in-JS) in the browser.
+--
+-- Hardening applied per build (see harden.lua): opcode permutation, bytecode
+-- encryption (Park-Miller XOR keystream), a factored (non-literal) key, and
+-- comment-stripped runtime sources. Still no loadstring, and the original
+-- source is never reconstructed — the logic exists only as encrypted bytecode.
 
-local API = require('api')
+local Compiler = require('compiler')
+local Serializer = require('serializer')
+local Opcodes = require('opcodes')
+local Harden = require('harden')
 
 local M = {}
 
@@ -24,41 +32,83 @@ local function b64encode(data)
   return table.concat(out)
 end
 
+-- Pick a per-build seed. Deterministic when opts.seed is given (tests); else
+-- derived from wall clock + math.random so each build differs.
+local function pickSeed(opts)
+  if opts and opts.seed then return opts.seed end
+  local t = (os and os.time and os.time()) or 0
+  local r = math.random(1, 2147483646)
+  local s = (t * 2654435761 + r) % 2147483647
+  if s <= 0 then s = s + 2147483646 end
+  return s
+end
+
+-- Strip comments from a runtime source, but only if the result still parses.
+local function safeStrip(src)
+  local stripped = Harden.stripComments(src)
+  local chunk = (loadstring or load)(stripped)
+  if chunk then return stripped end
+  return src
+end
+
 -- runtimeSrc: table of Lua source strings for { opcodes, bitops, serializer, vm }.
-function M.bundle(src, runtimeSrc, chunkName)
-  local bytes = API.serialize(src, chunkName or 'input')
-  local payload = b64encode(bytes)
+function M.bundle(src, runtimeSrc, chunkName, opts)
+  local seed = pickSeed(opts)
+  local rng = Harden.prng(seed)
+
+  -- 1. compile, 2. permute opcodes, 3. serialize with the permutation,
+  -- 4. encrypt the whole blob with a keystream seeded off the same build seed.
+  local proto = Compiler.compile(src, chunkName or 'input')
+  local fwd, inv = Harden.opPermutation(Opcodes.count, rng)
+  local plain = Serializer.serialize(proto, fwd)
+  local cipherSeed = rng.next() % 2147483647
+  if cipherSeed <= 0 then cipherSeed = cipherSeed + 2147483646 end
+  local cipher = Harden.encrypt(plain, cipherSeed)
+  local payload = b64encode(cipher)
+
+  local keyExpr = Harden.factorKey(cipherSeed, rng)
+  local invLit = Harden.invMapLiteral(inv)
 
   local order = { 'opcodes', 'bitops', 'serializer', 'vm' }
   local parts = {}
-  parts[#parts + 1] = '-- ferret VM-protected script (custom bytecode; no loadstring)'
+  parts[#parts + 1] = '-- ferret VM-protected script (custom bytecode; encrypted; no loadstring)'
   parts[#parts + 1] = 'local __m,__c={},{}'
   parts[#parts + 1] = 'local function require(n) if __c[n]==nil then __c[n]=__m[n]() end return __c[n] end'
   for _, name in ipairs(order) do
     local s = runtimeSrc[name]
     if not s then error('webbundle: missing runtime source for ' .. name) end
-    parts[#parts + 1] = "__m['" .. name .. "']=function()\n" .. s .. '\nend'
+    parts[#parts + 1] = "__m['" .. name .. "']=function()\n" .. safeStrip(s) .. '\nend'
   end
-  parts[#parts + 1] = [[
-local __A='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-local function __b64(s)
-  local r,v,b={},0,0
-  s=s:gsub('[^'..__A..'=]','')
-  for i=1,#s do
-    local c=s:sub(i,i)
-    if c=='=' then break end
-    local p=__A:find(c,1,true)
-    if not p then break end
-    v=v*64+(p-1) b=b+6
-    if b>=8 then b=b-8 r[#r+1]=string.char(math.floor(v/2^b)%256) v=v%(2^b) end
-  end
-  return table.concat(r)
-end
-local __Ser=require('serializer')
-local __VM=require('vm')
-local __proto=__Ser.deserialize(__b64(__PAYLOAD__))
-local __env=(getfenv and getfenv(1)) or (type(_ENV)=='table' and _ENV) or _G
-return __VM.load(__proto,__env)()]]
+  -- base64 decoder + keystream decryptor + bootstrap
+  parts[#parts + 1] = table.concat({
+    "local __A='" .. B64 .. "'",
+    'local function __b64(s)',
+    '  local r,v,b={},0,0',
+    "  s=s:gsub('[^'..__A..'=]','')",
+    '  for i=1,#s do',
+    '    local c=s:sub(i,i)',
+    "    if c=='=' then break end",
+    '    local p=__A:find(c,1,true)',
+    '    if not p then break end',
+    '    v=v*64+(p-1) b=b+6',
+    '    if b>=8 then b=b-8 r[#r+1]=string.char(math.floor(v/2^b)%256) v=v%(2^b) end',
+    '  end',
+    '  return table.concat(r)',
+    'end',
+    'local __Bit=require("bitops")',
+    'local function __dec(s)',
+    '  local st=' .. keyExpr,
+    '  local o={}',
+    '  for i=1,#s do st=(st*16807)%2147483647 o[i]=string.char(__Bit.bxor(s:byte(i),st%256)) end',
+    '  return table.concat(o)',
+    'end',
+    'local __INV=' .. invLit,
+    'local __Ser=require("serializer")',
+    'local __VM=require("vm")',
+    'local __proto=__Ser.deserialize(__dec(__b64(__PAYLOAD__)),__INV)',
+    "local __env=(getfenv and getfenv(1)) or (type(_ENV)=='table' and _ENV) or _G",
+    'return __VM.load(__proto,__env)()',
+  }, '\n')
   local body = table.concat(parts, '\n')
   local out = body:gsub('__PAYLOAD__', function() return "'" .. payload .. "'" end)
   return out
