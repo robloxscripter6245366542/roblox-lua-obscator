@@ -18,6 +18,13 @@ local Compiler = {}
 
 local function isMultiExpr(e) return e.k == 'CallE' or e.k == 'Method' or e.k == 'Vararg' end
 
+-- '...' is only valid inside a vararg function (Lua/Luau reject it otherwise).
+local function assertVararg(fs, line)
+  if not fs.proto.isVararg then
+    error("ferret-vm: cannot use '...' outside a vararg function (line " .. tostring(line) .. ')')
+  end
+end
+
 -- ── function state ───────────────────────────────────────────────────────────
 local FS = {}
 FS.__index = FS
@@ -147,6 +154,7 @@ function FS:explistOpen(exprs, base)
   if isMultiExpr(last) then
     self.freereg = lastReg
     if last.k == 'Vararg' then
+      assertVararg(self, last.line)
       self:reserve(1)
       self:emit({ op = Op.VARARG, a = lastReg, b = 0 }, last.line)
     else
@@ -159,6 +167,46 @@ function FS:explistOpen(exprs, base)
     compileExprInto(self, last, lastReg)
     return n + 1
   end
+end
+
+-- Compile `exprs` so EXACTLY `want` values land in base..base+want-1. A trailing
+-- call/vararg is closed to the exact number still needed (so a call returning
+-- fewer values nil-fills the rest, instead of leaving stale registers), and any
+-- shortfall is padded with nil. Used by local-decl and multi-assign, which — unlike
+-- return/call-args — need a fixed value count regardless of what the RHS produces.
+function FS:explistExact(exprs, base, want)
+  local n = #exprs
+  self.freereg = base
+  if n == 0 then
+    for i = 0, want - 1 do self:emit({ op = Op.LOADNIL, a = base + i, b = 0 }) end
+  else
+    for i = 1, n - 1 do -- all but the last: one value each (evaluated for effect even if beyond want)
+      local r = base + i - 1
+      self.freereg = r; self:reserve(1)
+      compileExprInto(self, exprs[i], r)
+    end
+    local last = exprs[n]
+    local lastReg = base + n - 1
+    local remaining = want - (n - 1) -- values the last expr must supply
+    if isMultiExpr(last) then
+      local req = remaining >= 1 and remaining or 1 -- evaluate even when discarded (side effects)
+      self.freereg = lastReg; self:reserve(req)
+      if last.k == 'Vararg' then
+        assertVararg(self, last.line)
+        self:emit({ op = Op.VARARG, a = lastReg, b = req + 1 }, last.line)
+      else
+        compileCall(self, last, lastReg, req, last.line)
+      end
+    else
+      self.freereg = lastReg; self:reserve(1)
+      compileExprInto(self, last, lastReg)
+      for i = 1, remaining - 1 do -- want > #exprs: pad the extra targets with nil
+        self:emit({ op = Op.LOADNIL, a = lastReg + i, b = 0 }, last.line)
+      end
+    end
+  end
+  self.freereg = base + want
+  if self.freereg > self.proto.maxstack then self.proto.maxstack = self.freereg end
 end
 
 local BINOP = {
@@ -184,7 +232,7 @@ compileExprInto = function(fs, node, target)
       fs:emit({ op = Op.LOADK, a = target, bx = fs:const(v) }, line)
     end
   elseif k == 'String' then fs:emit({ op = Op.LOADK, a = target, bx = fs:const(node.value) }, line)
-  elseif k == 'Vararg' then fs:emit({ op = Op.VARARG, a = target, b = 2 }, line)
+  elseif k == 'Vararg' then assertVararg(fs, line); fs:emit({ op = Op.VARARG, a = target, b = 2 }, line)
   elseif k == 'Paren' then
     compileExprInto(fs, node.expr, target) -- single value already
   elseif k == 'Name' then
@@ -292,6 +340,7 @@ function compileTable(fs, node, target)
       fs.freereg = r
       if i == nfields and isMultiExpr(f.value) then
         if f.value.k == 'Vararg' then
+          assertVararg(fs, node.line)
           fs:reserve(1)
           fs:emit({ op = Op.VARARG, a = r, b = 0 }, node.line)
         else
@@ -369,20 +418,8 @@ compileStmt = function(fs, s)
   local line = s.line
   if k == 'Local' then
     local base = fs.freereg
-    local count = fs:explistOpen(s.exprs, base)
-    -- adjust to exactly #names values
-    local nnames = #s.names
-    fs.freereg = base
-    -- ensure registers base..base+nnames-1 hold the values (pad with nil)
-    local haveExact = (count ~= 0)
-    if haveExact then
-      local nvals = count - 1
-      for i = nvals, nnames - 1 do
-        fs:emit({ op = Op.LOADNIL, a = base + i, b = 0 }, line)
-      end
-    end
-    fs.freereg = base + nnames
-    if fs.freereg > fs.proto.maxstack then fs.proto.maxstack = fs.freereg end
+    -- produce exactly #names values (nil-filling short calls / vararg) — see explistExact
+    fs:explistExact(s.exprs, base, #s.names)
     for i, decl in ipairs(s.decls) do
       decl.owner = fs
       decl.reg = base + i - 1
@@ -447,13 +484,10 @@ function compileAssign(fs, s)
     fs.freereg = save
     return
   end
-  -- evaluate all RHS into consecutive temps, then store
+  -- evaluate exactly n RHS values into consecutive temps (nil-filling short
+  -- calls / vararg — see explistExact), then store into the targets
   local base = fs.freereg
-  local count = fs:explistOpen(s.exprs, base)
-  local nvals = (count == 0) and n or (count - 1)
-  for i = nvals + 1, n do
-    fs:emit({ op = Op.LOADNIL, a = base + i - 1, b = 0 }, s.line)
-  end
+  fs:explistExact(s.exprs, base, n)
   fs.freereg = base + n
   for i = 1, n do
     compileStoreReg(fs, s.targets[i], base + i - 1, s.line)

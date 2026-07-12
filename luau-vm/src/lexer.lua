@@ -27,6 +27,22 @@ local function isAlpha(c)
 end
 local function isAlphaNum(c) return isAlpha(c) or isDigit(c) end
 
+-- Encode a Unicode code point as UTF-8 (mirrors Lua's luaO_utf8esc: up to 6
+-- bytes for values through 0x7FFFFFFF), so \u{...} matches native Lua/Luau.
+local function utf8esc(cp)
+  if cp < 0x80 then return string.char(cp) end
+  local cont, mfb, x = {}, 0x3f, cp
+  repeat
+    cont[#cont + 1] = 0x80 + (x % 0x40)
+    x = math.floor(x / 0x40)
+    mfb = math.floor(mfb / 2)
+  until x <= mfb
+  local firstByte = ((255 - mfb) * 2) % 256 + x -- (~mfb << 1) | x, byte-wide
+  local out = { string.char(firstByte) }
+  for i = #cont, 1, -1 do out[#out + 1] = string.char(cont[i]) end -- continuation bytes, high→low
+  return table.concat(out)
+end
+
 function Lexer.tokenize(src, chunk)
   chunk = chunk or 'input'
   local tokens = {}
@@ -96,6 +112,19 @@ function Lexer.tokenize(src, chunk)
             elseif w == ' ' or w == '\t' or w == '\f' or w == '\v' then pos = pos + 1
             else break end
           end
+        elseif e == 'u' then
+          -- \u{XXXX}: Unicode code point, UTF-8 encoded (Lua 5.3+/Luau)
+          pos = pos + 1
+          if peek() ~= '{' then err("missing '{' in \\u{XXXX}") end
+          pos = pos + 1
+          local h = ''
+          while isHex(peek()) do h = h .. peek(); pos = pos + 1 end
+          if #h == 0 then err('hexadecimal digit expected') end
+          if peek() ~= '}' then err("missing '}' in \\u{XXXX}") end
+          pos = pos + 1
+          local cp = tonumber(h, 16)
+          if cp > 0x7FFFFFFF then err('UTF-8 value too large') end
+          buf[#buf + 1] = utf8esc(cp)
         elseif isDigit(e) then
           local d = ''
           for _ = 1, 3 do if isDigit(peek()) then d = d .. peek(); pos = pos + 1 else break end end
