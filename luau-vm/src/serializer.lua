@@ -47,7 +47,14 @@ end
 
 -- ── reader ───────────────────────────────────────────────────────────────────
 local function Reader(s) return { s = s, pos = 1 } end
-local function readByte(r) local b = string.byte(r.s, r.pos); r.pos = r.pos + 1; return b end
+-- EOF-safe: a truncated/corrupt stream reports its position instead of faulting
+-- later on a nil (e.g. `nil % 128`). Keeps malformed input from crashing the host.
+local function readByte(r)
+  local b = string.byte(r.s, r.pos)
+  if b == nil then error('serializer: unexpected end of bytecode at offset ' .. r.pos) end
+  r.pos = r.pos + 1
+  return b
+end
 local function readUVarint(r)
   local x, shift = 0, 1
   while true do
@@ -194,6 +201,20 @@ function Serializer.deserialize(bytes, invMap)
   if fnv1a(body) ~= checksum then error('serializer: checksum mismatch (corrupt bytecode)') end
   local br = Reader(body)
   return readProto(br, invMap)
+end
+
+-- Recompute the container checksum over the current body. Lets tooling (e.g.
+-- the malformed-bytecode fuzzer) craft *well-formed-but-nonsense* bytecode that
+-- passes the checksum, so the structural validator — not the checksum — is what
+-- must catch it. Returns a resealed container the loader will accept.
+function Serializer.reseal(bytes)
+  local body = bytes:sub(13) -- MAGIC(3)+VERSION(1)+checksum(4)+bodyLen(4)
+  local head = Writer()
+  head:put(MAGIC)
+  writeByte(head, VERSION)
+  writeU32(head, fnv1a(body))
+  writeU32(head, #body)
+  return table.concat(head.buf) .. body
 end
 
 Serializer.MAGIC = MAGIC

@@ -105,8 +105,35 @@ lua5.4 test/property.lua 300     # property-based differential tests
 lua5.4 test/fuzz.lua 5000        # differential fuzzer (seeded, reproducible)
 lua5.4 test/determinism.lua      # reproducible-build check
 lua5.4 test/harden.lua           # hardening: permutation, encryption, bundle
+lua5.4 test/opcode_coverage.lua  # every emittable opcode, validated + diffed
+lua5.4 test/fuzz_bytecode.lua    # malformed-bytecode fuzzer (loader safety)
 lua5.4 bench/bench.lua           # timings, sizes, throughput, opcode histogram
 ```
+
+Bytecode tools:
+
+```sh
+lua5.4 tools/disasm.lua input.lua            # human-readable disassembly
+lua5.4 tools/disasm.lua bytecode.fvm --bytecode
+lua5.4 tools/bundle.lua input.lua [seed]     # hardened self-contained script
+```
+
+## Robustness
+
+The container checksum (FNV-1a) catches random corruption, but a *well-formed*
+stream can still encode nonsense. [`src/validate.lua`](src/validate.lua) walks a
+deserialized proto tree and rejects out-of-range register/constant/proto/upvalue
+indices and jump targets that land outside the code, with a precise message
+(`Validate.bytecode(bytes)` → `ok, err|proto`). The reader is EOF-safe, so a
+truncated stream reports its offset instead of faulting on a `nil`.
+
+`test/fuzz_bytecode.lua` fuzzes the **loader** with malformed bytecode — random
+byte flips and checksum-repaired body corruption (so the structural validator,
+not the checksum, is the line of defense) — asserting the loader **never crashes
+the host** (5000 iterations in CI; accepted-but-corrupt protos are additionally
+run under an instruction budget). `test/opcode_coverage.lua` derives its target
+set from the compiler itself and asserts a corpus exercises **every** emittable
+opcode (50/50), each validated and differential-checked.
 
 Produce a self-contained, hardened protected script:
 
