@@ -288,9 +288,28 @@ local function robloxEnv()
   Vector3.__add = function(a, b) return setmetatable({ x = a.x + b.x, y = a.y + b.y, z = a.z + b.z }, Vector3) end
   function Vector3.new(x, y, z) return setmetatable({ x = x or 0, y = y or 0, z = z or 0 }, Vector3) end
   function Vector3:Dot(o) return self.x * o.x + self.y * o.y + self.z * o.z end
+  -- signal object with :Connect (returns a connection with :Disconnect); :fire is
+  -- the test-only loopback that drives connected handlers.
+  local function makeSignal()
+    local hs = {}
+    return {
+      Connect = function(_, fn) hs[#hs + 1] = fn; return { Disconnect = function() end } end,
+      fire = function(_, ...) for _, h in ipairs(hs) do h(...) end end,
+    }
+  end
   local Instance = {
     new = function(class)
       local props = { ClassName = class, Name = class }
+      if class == 'RemoteEvent' or class == 'BindableEvent' then
+        local sig = makeSignal()
+        props.OnClientEvent = sig; props.OnServerEvent = sig; props.Event = sig
+        props.FireServer = function(_, ...) sig:fire(...) end     -- loopback for test
+        props.FireClient = function(_, _plr, ...) sig:fire(...) end
+        props.Fire = function(_, ...) sig:fire(...) end
+      elseif class == 'RemoteFunction' or class == 'BindableFunction' then
+        props.InvokeServer = function(self, ...) return self.OnServerInvoke(...) end
+        props.Invoke = function(self, ...) return self.OnInvoke(...) end
+      end
       return setmetatable({}, {
         __index = function(_, k) if k == 'Destroy' then return function() props.destroyed = true end end return props[k] end,
         __newindex = function(_, k, v) props[k] = v end,
@@ -309,6 +328,39 @@ for i=1,5 do local p=Instance.new("Part") p.Name="P"..i p.Position=Vector3.new(i
 local total=Vector3.new(0,0,0)
 for _,p in ipairs(parts) do total=total+p.Position end
 return total.x,total.y,total.z, #parts, parts[3].Name]], robloxEnv())
+
+-- remotes / signals: the host calls BACK into VM closures (event handlers,
+-- RemoteFunction callbacks). Proves VM functions are real callable values.
+case('remote-event-connect', [[
+local ev=Instance.new("RemoteEvent")
+local total=0
+ev.OnClientEvent:Connect(function(a,b) total=total+a*b end)
+ev:FireServer(3,4); ev:FireServer(5,6)
+return total]], robloxEnv())
+case('remote-function-callback', [[
+local rf=Instance.new("RemoteFunction")
+rf.OnServerInvoke=function(x,y) return x*10+y end
+return rf:InvokeServer(5,2)]], robloxEnv())
+case('remote-handler-upvalues', [[
+local ev=Instance.new("RemoteEvent")
+local log={}
+local function make(prefix) return function(msg) log[#log+1]=prefix..msg end end
+ev.OnClientEvent:Connect(make("got:"))
+ev:FireServer("hello"); ev:FireServer("world")
+return table.concat(log,",")]], robloxEnv())
+case('bindable-event', [[
+local be=Instance.new("BindableEvent")
+local sum=0
+be.Event:Connect(function(n) sum=sum+n end)
+for i=1,5 do be:Fire(i) end
+return sum]], robloxEnv())
+case('remote-multiple-connections', [[
+local ev=Instance.new("RemoteEvent")
+local a,b=0,0
+ev.OnClientEvent:Connect(function(n) a=a+n end)
+ev.OnClientEvent:Connect(function(n) b=b+n*2 end)
+ev:FireServer(10)
+return a,b]], robloxEnv())
 
 -- ── report ────────────────────────────────────────────────────────────────────
 print(string.format('compat: %d cases, %d passed, %d failed', pass + fail, pass, fail))
