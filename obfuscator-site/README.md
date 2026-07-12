@@ -9,13 +9,38 @@ in the browser. Deployed as the repo's Vercel site (`vercel.json` →
 
 The UI has an **Engine** toggle:
 
-- **Transform** — AST source-to-source obfuscation (rename / numbers / strings /
-  pack), via `ferret.ast.js` + `ferret.web.js`. Output is still Luau.
-- **VM bytecode** — compiles the source to a **custom bytecode VM** and emits a
-  self-contained protected script (VM runtime + base64 bytecode + loader). The
-  original source is never present and there is no `loadstring`. Runs the
-  *validated* Lua compiler from `../luau-vm` in the browser via **Fengari**
-  (Lua-in-JS), lazy-loaded from `vm/` on first use. See `vm/`.
+- **Transform** — AST source-to-source obfuscation (rename / numbers / strings),
+  via `ferret.ast.js` + `ferret.web.js`. Output stays **pure Luau** and runs in
+  vanilla Roblox. This is *light* obfuscation — it raises the effort to read the
+  code, not a protection boundary.
+- **VM bytecode** — compiles the source to a **hardened custom bytecode VM** and
+  emits a self-contained protected script (VM runtime + **encrypted** bytecode +
+  decryptor). The original source is never present and there is no `loadstring`.
+  Runs the *validated* Lua compiler from `../luau-vm` in the browser via
+  **Fengari** (Lua-in-JS), lazy-loaded from `vm/` on first use. See `vm/`.
+
+> **Note.** The old **`pack`** layer (whole-chunk XOR + a `loadstring` loader)
+> was removed from the UI. It embedded its key in the script and reconstructed
+> the original source in memory before running it, so hooking `loadstring`
+> recovered the source — a weak protection model. Use **VM bytecode** instead:
+> the logic only ever exists as encrypted bytecode, executed opcode-by-opcode.
+
+### What the VM hardening does (per build)
+
+- **Opcode permutation** — the serialized bytecode uses a per-build opcode
+  numbering, so a devirtualizer keyed to the canonical opcode set can't read it.
+- **Bytecode encryption** — a Park-Miller XOR keystream over the whole
+  serialized blob, so a base64 decode no longer reveals the proto tables.
+- **Factored key** — the keystream seed is emitted as an arithmetic expression,
+  not a single grep-able literal.
+- **Comment-stripped runtime** — the bundled interpreter ships without its
+  self-documenting comments.
+
+Two builds of the same source differ (opcodes + key). This is not unbreakable —
+no self-contained client-side obfuscator can be, since the decryptor and key
+must be present to run — but it defeats generic/automated tooling and casual
+copy-paste, which is the realistic threat. The interpreter itself is still
+present (it must be, to run the bytecode); it contains none of your logic.
 
 ## Pages / files
 - `index.html` — the obfuscator UI (engine toggle, layer toggles, seed).
@@ -40,7 +65,7 @@ generated in the browser decodes identically on Roblox. Works in both the
 browser (`window.Ferret`) and Node (`module.exports`).
 
 ```js
-FerretAST.obfuscate(source, { seed: 7, layers: ["rename","numbers","strings","pack"] });
+FerretAST.obfuscate(source, { seed: 7, layers: ["rename","numbers","strings"] });
 ```
 
 ## `ferret.ast.js` (rename layer)
@@ -80,10 +105,10 @@ LUA_BIN=./luau node obfuscator-site/validate_js.js /path/to/Lua-crypt 7 numbers,
 # Luau: 260/263 (98.9%) — numbers,strings output runs in vanilla Roblox
 ```
 
-**Roblox targeting:** `numbers,strings` is pure Luau and runs in vanilla Roblox
-LocalScripts/ModuleScripts. The `pack` layer's loader calls `loadstring or load`,
-so packed output needs an executor (or a server with `LoadStringEnabled`). The UI
-shows which target the current layer selection produces.
+**Roblox targeting:** every Transform layer (`rename,numbers,strings`) is pure
+Luau and runs in vanilla Roblox LocalScripts/ModuleScripts — no `loadstring`. The
+**VM bytecode** engine is also `loadstring`-free and runs in vanilla Roblox. The
+UI shows which target the current selection produces.
 
 ## Verified on a real Luau VM
 

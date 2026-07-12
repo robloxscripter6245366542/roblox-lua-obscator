@@ -104,8 +104,38 @@ lua5.4 test/verify.lua           # native-vs-VM equivalence (VM + serialized)
 lua5.4 test/property.lua 300     # property-based differential tests
 lua5.4 test/fuzz.lua 5000        # differential fuzzer (seeded, reproducible)
 lua5.4 test/determinism.lua      # reproducible-build check
+lua5.4 test/harden.lua           # hardening: permutation, encryption, bundle
 lua5.4 bench/bench.lua           # timings, sizes, throughput, opcode histogram
 ```
+
+Produce a self-contained, hardened protected script:
+
+```sh
+lua5.4 tools/bundle.lua input.lua [seed] > out.lua   # runs on Roblox/Luau + Lua 5.1-5.4
+```
+
+## Hardening
+
+`tools/bundle.lua` and the website share `src/webbundle.lua`, which wraps a build
+with the primitives in [`src/harden.lua`](src/harden.lua):
+
+- **Opcode permutation** — the serialized bytecode carries a per-build opcode
+  numbering (`Serializer.serialize(proto, opMap)` / `deserialize(bytes, invMap)`;
+  `ins.op` stays canonical internally, so the VM and operand layout are
+  unchanged). Defeats a devirtualizer keyed to the canonical opcode set.
+- **Bytecode encryption** — a Park-Miller XOR keystream over the whole blob, so a
+  base64 decode no longer reveals the `FVM` container or proto tables. The
+  bootstrap runs the identical routine to decrypt before deserializing.
+- **Factored key** — the keystream seed is emitted as `(m*q+r)`, not a literal.
+- **Comment-stripped runtime** — the bundled interpreter ships without its
+  documentation comments (guarded by a re-parse; falls back if stripping fails).
+
+Same seed → identical output (reproducible); different seed → different opcodes
+and key. This raises the cost of a *generic* devirtualizer and defeats casual
+copy-paste. It is **not** unbreakable: any self-contained client-side scheme must
+carry its decryptor and key, and the interpreter is present (it holds none of the
+user's logic — that lives only in the encrypted bytecode). Deeper resistance
+(polymorphic handlers, VM-in-VM, anti-tamper self-check) is future work.
 
 ## Performance
 

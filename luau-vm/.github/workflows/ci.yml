@@ -37,5 +37,8 @@ jobs:
       - name: Determinism / reproducible builds
         run: lua5.4 test/determinism.lua
 
+      - name: Hardening (opcode permutation, encryption, key factoring, bundle)
+        run: lua5.4 test/harden.lua
+
       - name: Benchmark (smoke)
         run: lua5.4 bench/bench.lua
