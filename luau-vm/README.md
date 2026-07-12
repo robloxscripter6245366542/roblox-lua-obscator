@@ -44,8 +44,18 @@ Measured **200/200** on an mlua-vendored Luau VM, plus a hand-written feature
 sweep (metatables `__index`/`__len`, OOP method chaining, closures/upvalues,
 varargs/`select`, `bit32`, `pcall`, numeric/generic `for`, string methods).
 Luau-compat specifics the emitted loader relies on, all confirmed present:
-`getfenv(1)` (Roblox and this Luau have it; falls back to `_ENV`→`_G` otherwise),
-`bit32` (native in Luau — `bitops` uses it), and `table.pack`/`table.unpack`.
+
+- **Global environment.** Luau has no `_ENV` (it isn't Lua 5.2), so the loader
+  resolves the env as: explicit `_ENV` if a runtime provides one (Lua 5.2+) →
+  else `getfenv(1)`, pcall-guarded (Roblox/5.1) → else `_G`. Verified all three
+  paths, including with `getfenv` removed (falls through to `_G` and still
+  resolves `print`/`math`/`table`). `getfenv` appears only in the one-line
+  bootstrap, never in the interpreter loop, so Luau's `getfenv` deopt never
+  touches hot code.
+- **`bit32`** — native in Luau; `bitops` uses it directly (arithmetic fallback
+  elsewhere). Confirmed via a `bit32.*` program.
+- **`table.pack`/`table.unpack`** — present in Luau; `vm.lua` polyfills them if
+  absent. Confirmed via varargs / multiple returns.
 
 Covers closures, upvalues (shared + per-iteration capture), recursion, deep
 recursion, varargs, multiple returns, tables/constructors, metatables

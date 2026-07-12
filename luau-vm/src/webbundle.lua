@@ -106,7 +106,15 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
     'local __Ser=require("serializer")',
     'local __VM=require("vm")',
     'local __proto=__Ser.deserialize(__dec(__b64(__PAYLOAD__)),__INV)',
-    "local __env=(getfenv and getfenv(1)) or (type(_ENV)=='table' and _ENV) or _G",
+    -- Resolve the global environment for the VM. Roblox Luau has no _ENV, so we
+    -- prefer an explicit _ENV where a runtime provides one (Lua 5.2+), else the
+    -- Roblox/5.1 getfenv (pcall-guarded so a sandbox that errors on it can't
+    -- break loading), else _G. getfenv appears only here in the tiny bootstrap,
+    -- never in the interpreter loop, so Luau's getfenv deopt doesn't touch hot code.
+    'local __env',
+    'if type(_ENV)=="table" then __env=_ENV',
+    'elseif getfenv then local __ok,__e=pcall(getfenv,1) __env=(__ok and type(__e)=="table") and __e or _G',
+    'else __env=_G end',
     'return __VM.load(__proto,__env)()',
   }, '\n')
   local body = table.concat(parts, '\n')
