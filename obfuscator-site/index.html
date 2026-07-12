@@ -90,6 +90,9 @@ a:hover{color:#c4b5fd}
 }
 .pill:has(input:checked) .swatch{background:var(--v-soft);box-shadow:0 0 8px var(--v-soft)}
 .pill:focus-within{outline:2px solid rgba(139,92,246,.5);outline-offset:2px}
+.controls.vmmode .tx-only{opacity:.3;pointer-events:none;filter:grayscale(1)}
+.pill.eng:has(input:checked){border-color:rgba(52,211,153,.6);background:linear-gradient(180deg,rgba(52,211,153,.16),rgba(52,211,153,.05))}
+.pill.eng:has(input:checked) .swatch{background:var(--ok);box-shadow:0 0 8px var(--ok)}
 
 .seed{display:flex;align-items:center;gap:0;border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:var(--panel2)}
 .seed input{background:transparent;border:none;outline:none;color:var(--text);padding:8px 10px;width:120px;font-family:var(--mono);font-size:.82rem}
@@ -175,8 +178,17 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
   </nav>
 </header>
 
-<section class="controls">
+<section class="controls" id="controls">
   <div class="group">
+    <span class="glabel">Engine</span>
+    <label class="pill eng" title="AST source-to-source obfuscation (rename, encode, pack)">
+      <input type="radio" name="engine" id="engTransform" checked><span class="swatch"></span>Transform
+    </label>
+    <label class="pill eng" title="Compile to a custom bytecode VM — no loadstring, source never present">
+      <input type="radio" name="engine" id="engVM"><span class="swatch"></span>VM&nbsp;bytecode
+    </label>
+  </div>
+  <div class="group tx-only">
     <span class="glabel">Layers</span>
     <label class="pill" title="Rename locals/params to opaque names, scope-aware (AST)">
       <input type="checkbox" id="lRename" checked><span class="swatch"></span>Rename
@@ -191,7 +203,7 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
       <input type="checkbox" id="lPack" checked><span class="swatch"></span>Pack
     </label>
   </div>
-  <div class="group">
+  <div class="group tx-only">
     <span class="glabel">Seed</span>
     <div class="seed">
       <input type="number" id="seed" value="7" min="0" max="2147483647" aria-label="Seed">
@@ -264,13 +276,41 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
   }
   function updateInStat(){ inStat.textContent = fmtBytes(input.value.length); }
 
+  function isVM(){ return $("engVM").checked; }
+
   function updateTarget(){
     var t = $("target");
-    if($("lPack").checked){
+    if(isVM()){
+      t.innerHTML = '🧬 Custom bytecode VM — runs on Roblox/Luau, no <code style="font-family:var(--mono)">loadstring</code>, source never present';
+    }else if($("lPack").checked){
       t.innerHTML = '⚙️ Pack on — needs <code style="font-family:var(--mono)">loadstring</code> (executors / server)';
     }else{
       t.innerHTML = '✅ Pure Luau — runs in vanilla Roblox (LocalScripts)';
     }
+  }
+
+  // Lazy-load the in-browser VM compiler (Fengari + embedded Lua) on first use.
+  var vmReady=false, vmLoading=false, vmQueue=[];
+  function loadScript(src, cb){ var s=document.createElement('script'); s.src=src; s.onload=function(){cb();}; s.onerror=function(){cb(new Error('failed to load '+src));}; document.head.appendChild(s); }
+  function ensureVM(cb){
+    if(vmReady) return cb();
+    vmQueue.push(cb);
+    if(vmLoading) return;
+    vmLoading=true;
+    status.innerHTML='<span class="note">⏳ Loading VM compiler…</span>';
+    loadScript('vm/fengari-web.js', function(e){
+      if(e) return finishVM(e);
+      loadScript('vm/modules.js', function(e2){
+        if(e2) return finishVM(e2);
+        loadScript('vm/ferret-vm.js', function(e3){ finishVM(e3); });
+      });
+    });
+  }
+  function finishVM(err){
+    vmLoading=false;
+    if(!err && window.FerretVM){ vmReady=true; }
+    var q=vmQueue; vmQueue=[];
+    q.forEach(function(cb){ cb(err); });
   }
 
   function selectedLayers(){
@@ -282,11 +322,18 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
     return L;
   }
 
+  function fail(msg){ output.value=""; outStat.textContent="—"; status.innerHTML='<span class="err">✗ '+msg+'</span>'; }
+
   function run(){
     var src = input.value;
     if(!src.trim()){ status.innerHTML='<span class="err">✗ Nothing to obfuscate — paste some Lua first.</span>'; return; }
+    if(isVM()) return runVM(src);
+    return runTransform(src);
+  }
+
+  function runTransform(src){
     var layers = selectedLayers();
-    if(layers.length===0){ status.innerHTML='<span class="err">✗ Select at least one layer.</span>'; return; }
+    if(layers.length===0){ return fail('Select at least one layer.'); }
     var seed = parseInt($("seed").value,10); if(isNaN(seed)) seed=7;
     var t0 = performance.now();
     try{
@@ -297,11 +344,28 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
       outStat.textContent = fmtBytes(out.length)+"  ("+ratio+"×)";
       status.innerHTML = '<span class="ok">✓ Obfuscated</span> &nbsp;'+fmtBytes(src.length)+' → '+fmtBytes(out.length)+
         ' &nbsp;·&nbsp; '+layers.join(" + ")+' &nbsp;·&nbsp; seed '+seed+' &nbsp;·&nbsp; '+ms+' ms';
-    }catch(e){
-      output.value="";
-      outStat.textContent="—";
-      status.innerHTML='<span class="err">✗ '+(e && e.message ? e.message : e)+'</span>';
-    }
+    }catch(e){ fail(e && e.message ? e.message : e); }
+  }
+
+  function runVM(src){
+    ensureVM(function(err){
+      if(err || !window.FerretVM){ return fail('Could not load VM compiler.'); }
+      var t0 = performance.now();
+      try{
+        var out = FerretVM.compile(src);
+        output.value = out;
+        var ms = (performance.now()-t0).toFixed(0);
+        var ratio = src.length ? (out.length/src.length).toFixed(1) : "0";
+        outStat.textContent = fmtBytes(out.length)+"  ("+ratio+"×)";
+        status.innerHTML = '<span class="ok">✓ VM-compiled</span> &nbsp;'+fmtBytes(src.length)+' → '+fmtBytes(out.length)+
+          ' &nbsp;·&nbsp; custom bytecode &nbsp;·&nbsp; '+ms+' ms';
+      }catch(e){ fail((e && e.message ? e.message : e)); }
+    });
+  }
+
+  function updateEngine(){
+    $("controls").classList.toggle("vmmode", isVM());
+    updateTarget();
   }
 
   $("run").onclick = run;
@@ -309,6 +373,7 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
   $("clear").onclick = function(){ input.value=""; output.value=""; updateInStat(); outStat.textContent="—"; status.textContent="Ready."; input.focus(); };
   $("randSeed").onclick = function(){ $("seed").value = Math.floor(Math.random()*2147483647); };
   ["lRename","lNumbers","lStrings","lPack"].forEach(function(id){ $(id).addEventListener("change", updateTarget); });
+  ["engTransform","engVM"].forEach(function(id){ $(id).addEventListener("change", updateEngine); });
   input.addEventListener("input", updateInStat);
   input.addEventListener("keydown", function(e){
     if((e.ctrlKey||e.metaKey) && e.key==="Enter"){ e.preventDefault(); run(); }
