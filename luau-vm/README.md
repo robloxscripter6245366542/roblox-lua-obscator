@@ -18,13 +18,13 @@ VM**, across four layers:
 
 ```
 test/verify.lua       47/47   curated regression (VM + serialize→deserialize paths)
-test/compat.lua      338/338   language-compatibility suite (see below)
+test/compat.lua      343/343   language-compatibility suite (see below)
 test/property.lua   2100/2100  property-based: fixed structures × random inputs
 test/fuzz.lua       5000/5000  randomized program generation, seeded/reproducible
 test/determinism.lua  10/10    same source ⇒ byte-identical bytecode + stable output
 ```
 
-`test/compat.lua` runs **338 differential cases** — each executed native, VM, and
+`test/compat.lua` runs **343 differential cases** — each executed native, VM, and
 VM-serialized — across closures/nested closures, upvalues (shared + per-iteration),
 recursion/mutual/deep, metatables (`__index`/`__newindex`/`__call`/`__len`/`__add`/
 `__eq`/`__lt`/`__concat`/`__unm`/`__tostring`), `pcall`/`xpcall`, coroutines
@@ -32,7 +32,11 @@ recursion/mutual/deep, metatables (`__index`/`__newindex`/`__call`/`__len`/`__ad
 multiple returns, tail calls, `select`, large constant tables, and deep nesting,
 plus a **Roblox-API pass-through** section (`Instance.new`, `task.wait`,
 `Vector3`) that proves global/field/method lookups forward to the host env
-unchanged — the mechanism by which real Roblox APIs work at runtime.
+unchanged — the mechanism by which real Roblox APIs work at runtime. It includes
+**remotes/signals** (`RemoteEvent:FireServer` + `OnClientEvent:Connect`,
+`RemoteFunction.OnServerInvoke` + `:InvokeServer`, `BindableEvent`, multiple
+connections, upvalue-capturing handlers), which exercise the host **calling back
+into** VM closures — the key requirement for event-driven Roblox code.
 
 The fuzzer found (and drove the fix for) a real register-allocation bug that the
 curated tests missed — differential fuzzing is the backbone of correctness here.
