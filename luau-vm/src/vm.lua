@@ -23,6 +23,11 @@ local unpack = table.unpack or unpack
 
 local VM = {}
 
+-- Optional dynamic opcode profiler. When non-nil, the dispatch loop counts
+-- executed opcodes into it (one nil-check per instruction when disabled).
+local PROF = nil
+function VM.setProfile(counters) PROF = counters end
+
 -- Forward declaration: execute runs a proto with its upvalues/env/args.
 local execute
 
@@ -62,69 +67,12 @@ execute = function(proto, upvals, env, args, argN)
     pc = pc + 1
     local op = ins.op
     local a = ins.a
+    if PROF then PROF[op] = (PROF[op] or 0) + 1 end
 
+    -- Dispatch is ordered hottest-first: in a linear if/elseif chain each branch
+    -- costs one comparison, so the common ops (calls, arithmetic, compares,
+    -- jumps, moves, loads) are checked before the rare ones. See docs/perf.md.
     if op == Op.MOVE then R[a] = R[ins.b]
-    elseif op == Op.LOADK then R[a] = K[ins.bx]
-    elseif op == Op.LOADINT then R[a] = ins.sbx
-    elseif op == Op.LOADBOOL then R[a] = (ins.b ~= 0)
-    elseif op == Op.LOADNIL then for i = a, a + ins.b do R[i] = nil end
-
-    elseif op == Op.GETGLOBAL then R[a] = env[K[ins.bx]]
-    elseif op == Op.SETGLOBAL then env[K[ins.bx]] = R[a]
-
-    elseif op == Op.NEWCELL then R[a] = { v = R[a] }
-    elseif op == Op.GETCELL then R[a] = R[ins.b].v
-    elseif op == Op.SETCELL then R[a].v = R[ins.b]
-    elseif op == Op.GETUPVAL then R[a] = upvals[ins.b].v
-    elseif op == Op.SETUPVAL then upvals[ins.b].v = R[a]
-
-    elseif op == Op.NEWTABLE then R[a] = {}
-    elseif op == Op.GETTABLE then R[a] = R[ins.b][R[ins.c]]
-    elseif op == Op.SETTABLE then R[a][R[ins.b]] = R[ins.c]
-    elseif op == Op.GETFIELD then R[a] = R[ins.b][K[ins.bx]]
-    elseif op == Op.SETFIELD then R[a][K[ins.bx]] = R[ins.c]
-    elseif op == Op.SELF then
-      R[a + 1] = R[ins.b]
-      R[a] = R[ins.b][K[ins.c]]
-    elseif op == Op.SETLIST then
-      local t = R[a]
-      local count = ins.b
-      if count == 0 then count = top - a - 1 end
-      local base = ins.c
-      for i = 1, count do t[base + i] = R[a + i] end
-
-    elseif op == Op.ADD then R[a] = R[ins.b] + R[ins.c]
-    elseif op == Op.SUB then R[a] = R[ins.b] - R[ins.c]
-    elseif op == Op.MUL then R[a] = R[ins.b] * R[ins.c]
-    elseif op == Op.DIV then R[a] = R[ins.b] / R[ins.c]
-    elseif op == Op.MOD then R[a] = R[ins.b] % R[ins.c]
-    elseif op == Op.POW then R[a] = R[ins.b] ^ R[ins.c]
-    elseif op == Op.IDIV then R[a] = math.floor(R[ins.b] / R[ins.c])
-
-    elseif op == Op.BAND then R[a] = Bit.band(R[ins.b], R[ins.c])
-    elseif op == Op.BOR then R[a] = Bit.bor(R[ins.b], R[ins.c])
-    elseif op == Op.BXOR then R[a] = Bit.bxor(R[ins.b], R[ins.c])
-    elseif op == Op.SHL then R[a] = Bit.lshift(R[ins.b], R[ins.c])
-    elseif op == Op.SHR then R[a] = Bit.rshift(R[ins.b], R[ins.c])
-
-    elseif op == Op.CONCAT then
-      local s = R[ins.b]
-      for i = ins.b + 1, ins.c do s = s .. R[i] end
-      R[a] = s
-
-    elseif op == Op.UNM then R[a] = -R[ins.b]
-    elseif op == Op.NOT then R[a] = not R[ins.b]
-    elseif op == Op.LEN then R[a] = #R[ins.b]
-    elseif op == Op.BNOT then R[a] = Bit.bnot(R[ins.b])
-
-    elseif op == Op.EQ then R[a] = (R[ins.b] == R[ins.c])
-    elseif op == Op.LT then R[a] = (R[ins.b] < R[ins.c])
-    elseif op == Op.LE then R[a] = (R[ins.b] <= R[ins.c])
-
-    elseif op == Op.JMP then pc = pc + ins.sbx
-    elseif op == Op.JMPIF then if R[a] then pc = pc + ins.sbx end
-    elseif op == Op.JMPIFNOT then if not R[a] then pc = pc + ins.sbx end
-
     elseif op == Op.CALL then
       local fn = R[a]
       local b = ins.b
@@ -139,15 +87,6 @@ execute = function(proto, upvals, env, args, argN)
       else
         for i = 1, c - 1 do R[a + i - 1] = res[i] end
       end
-
-    elseif op == Op.TAILCALL then
-      local fn = R[a]
-      local b = ins.b
-      local nargs = (b == 0) and (top - a - 1) or (b - 1)
-      local callArgs = {}
-      for i = 1, nargs do callArgs[i] = R[a + i] end
-      return pack(fn(unpack(callArgs, 1, nargs)))
-
     elseif op == Op.RETURN then
       local b = ins.b
       local nret = (b == 0) and (top - a) or (b - 1)
@@ -155,25 +94,24 @@ execute = function(proto, upvals, env, args, argN)
       for i = 1, nret do out[i] = R[a + i - 1] end
       out.n = nret
       return out
-
-    elseif op == Op.CLOSURE then
-      local child = protos[ins.bx]
-      local newUp = {}
-      for i, d in ipairs(child.upvals) do
-        if d.kind == 'reg' then newUp[i] = R[d.index]
-        else newUp[i] = upvals[d.index] end
-      end
-      R[a] = makeClosure(child, newUp, env)
-
-    elseif op == Op.VARARG then
-      local b = ins.b
-      local count = (b == 0) and varargN or (b - 1)
-      for i = 1, count do R[a + i - 1] = varargs[i] end
-      if b == 0 then top = a + varargN end
-
-    elseif op == Op.FORPREP then
-      R[a] = R[a] - R[a + 2]
-      pc = pc + ins.sbx
+    elseif op == Op.ADD then R[a] = R[ins.b] + R[ins.c]
+    elseif op == Op.SUB then R[a] = R[ins.b] - R[ins.c]
+    elseif op == Op.LT then R[a] = (R[ins.b] < R[ins.c])
+    elseif op == Op.JMPIFNOT then if not R[a] then pc = pc + ins.sbx end
+    elseif op == Op.JMPIF then if R[a] then pc = pc + ins.sbx end
+    elseif op == Op.JMP then pc = pc + ins.sbx
+    elseif op == Op.LOADINT then R[a] = ins.sbx
+    elseif op == Op.LOADK then R[a] = K[ins.bx]
+    elseif op == Op.GETGLOBAL then R[a] = env[K[ins.bx]]
+    elseif op == Op.GETCELL then R[a] = R[ins.b].v
+    elseif op == Op.SETCELL then R[a].v = R[ins.b]
+    elseif op == Op.GETUPVAL then R[a] = upvals[ins.b].v
+    elseif op == Op.SETUPVAL then upvals[ins.b].v = R[a]
+    elseif op == Op.MUL then R[a] = R[ins.b] * R[ins.c]
+    elseif op == Op.LE then R[a] = (R[ins.b] <= R[ins.c])
+    elseif op == Op.EQ then R[a] = (R[ins.b] == R[ins.c])
+    elseif op == Op.GETFIELD then R[a] = R[ins.b][K[ins.bx]]
+    elseif op == Op.GETTABLE then R[a] = R[ins.b][R[ins.c]]
     elseif op == Op.FORLOOP then
       local step = R[a + 2]
       local idx = R[a] + step
@@ -183,6 +121,64 @@ execute = function(proto, upvals, env, args, argN)
         R[a + 3] = idx
         pc = pc + ins.sbx
       end
+    elseif op == Op.FORPREP then
+      R[a] = R[a] - R[a + 2]
+      pc = pc + ins.sbx
+
+    -- ── colder opcodes ──
+    elseif op == Op.SETTABLE then R[a][R[ins.b]] = R[ins.c]
+    elseif op == Op.SETFIELD then R[a][K[ins.bx]] = R[ins.c]
+    elseif op == Op.SETGLOBAL then env[K[ins.bx]] = R[a]
+    elseif op == Op.NEWTABLE then R[a] = {}
+    elseif op == Op.SELF then
+      R[a + 1] = R[ins.b]
+      R[a] = R[ins.b][K[ins.c]]
+    elseif op == Op.SETLIST then
+      local t = R[a]
+      local count = ins.b
+      if count == 0 then count = top - a - 1 end
+      local base = ins.c
+      for i = 1, count do t[base + i] = R[a + i] end
+    elseif op == Op.CLOSURE then
+      local child = protos[ins.bx]
+      local newUp = {}
+      for i, d in ipairs(child.upvals) do
+        if d.kind == 'reg' then newUp[i] = R[d.index]
+        else newUp[i] = upvals[d.index] end
+      end
+      R[a] = makeClosure(child, newUp, env)
+    elseif op == Op.VARARG then
+      local b = ins.b
+      local count = (b == 0) and varargN or (b - 1)
+      for i = 1, count do R[a + i - 1] = varargs[i] end
+      if b == 0 then top = a + varargN end
+    elseif op == Op.NEWCELL then R[a] = { v = R[a] }
+    elseif op == Op.LOADBOOL then R[a] = (ins.b ~= 0)
+    elseif op == Op.LOADNIL then for i = a, a + ins.b do R[i] = nil end
+    elseif op == Op.DIV then R[a] = R[ins.b] / R[ins.c]
+    elseif op == Op.MOD then R[a] = R[ins.b] % R[ins.c]
+    elseif op == Op.POW then R[a] = R[ins.b] ^ R[ins.c]
+    elseif op == Op.IDIV then R[a] = math.floor(R[ins.b] / R[ins.c])
+    elseif op == Op.BAND then R[a] = Bit.band(R[ins.b], R[ins.c])
+    elseif op == Op.BOR then R[a] = Bit.bor(R[ins.b], R[ins.c])
+    elseif op == Op.BXOR then R[a] = Bit.bxor(R[ins.b], R[ins.c])
+    elseif op == Op.SHL then R[a] = Bit.lshift(R[ins.b], R[ins.c])
+    elseif op == Op.SHR then R[a] = Bit.rshift(R[ins.b], R[ins.c])
+    elseif op == Op.CONCAT then
+      local s = R[ins.b]
+      for i = ins.b + 1, ins.c do s = s .. R[i] end
+      R[a] = s
+    elseif op == Op.UNM then R[a] = -R[ins.b]
+    elseif op == Op.NOT then R[a] = not R[ins.b]
+    elseif op == Op.LEN then R[a] = #R[ins.b]
+    elseif op == Op.BNOT then R[a] = Bit.bnot(R[ins.b])
+    elseif op == Op.TAILCALL then
+      local fn = R[a]
+      local b = ins.b
+      local nargs = (b == 0) and (top - a - 1) or (b - 1)
+      local callArgs = {}
+      for i = 1, nargs do callArgs[i] = R[a + i] end
+      return pack(fn(unpack(callArgs, 1, nargs)))
     elseif op == Op.TFORCALL then
       local fn = R[a]
       local res = pack(fn(R[a + 1], R[a + 2]))
@@ -192,9 +188,7 @@ execute = function(proto, upvals, env, args, argN)
         R[a + 2] = R[a + 3]
         pc = pc + ins.sbx
       end
-
     elseif op == Op.NOP then -- nothing
-
     else
       error('ferret-vm: bad opcode ' .. Opcodes.mnemonic(op) .. ' at pc ' .. (pc - 1))
     end

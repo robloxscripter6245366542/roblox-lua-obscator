@@ -473,7 +473,18 @@ function compileStore(fs, target, valueNode, line)
         local r = exprNext(fs, valueNode)
         fs:emit({ op = Op.SETCELL, a = d.reg, b = r }, line)
       else
-        compileExprInto(fs, valueNode, d.reg)
+        -- Calls/methods/tables use [target+1..] as scratch, which would clobber
+        -- other live locals (and args read from them). Evaluate into a fresh
+        -- temp above the locals, then move into place.
+        local vk = valueNode.k
+        if vk == 'CallE' or vk == 'Method' or vk == 'Table' then
+          local save = fs.freereg
+          local tmp = exprNext(fs, valueNode)
+          if tmp ~= d.reg then fs:emit({ op = Op.MOVE, a = d.reg, b = tmp }, line) end
+          fs.freereg = save
+        else
+          compileExprInto(fs, valueNode, d.reg)
+        end
       end
     else
       local r = exprNext(fs, valueNode)

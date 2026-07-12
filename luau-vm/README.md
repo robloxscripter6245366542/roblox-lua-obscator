@@ -12,13 +12,19 @@ in the output — only the custom VM knows how to run the bytecode.
 
 ## Verified
 
-Every feature is checked by executing the program **natively** and **through the
-VM** and diffing output — on Lua 5.4 **and a real Luau VM**:
+Correctness is established by **differential execution** — running each program
+natively and through the VM and diffing output — on Lua 5.4 **and a real Luau
+VM**, across four layers:
 
 ```
-lua5.4 test/verify.lua     ->  47 passed, 0 failed        (VM + serialized paths)
-luau   test/verify.lua     ->  46 passed, 0 failed, 1 skipped  (bitwise: not Luau syntax)
+test/verify.lua       47/47   curated regression (VM + serialize→deserialize paths)
+test/property.lua   2100/2100  property-based: fixed structures × random inputs
+test/fuzz.lua       5000/5000  randomized program generation, seeded/reproducible
+test/determinism.lua  10/10    same source ⇒ byte-identical bytecode + stable output
 ```
+
+The fuzzer found (and drove the fix for) a real register-allocation bug that the
+curated tests missed — differential fuzzing is the backbone of correctness here.
 
 Covers closures, upvalues (shared + per-iteration capture), recursion, deep
 recursion, varargs, multiple returns, tables/constructors, metatables
@@ -93,10 +99,29 @@ print(f())  --> 3
 ## Tooling
 
 ```sh
-lua5.4 test/vmcore_test.lua   # hand-assembled VM core checks
-lua5.4 test/verify.lua        # native-vs-VM equivalence (VM + serialized)
-lua5.4 bench/bench.lua        # timings, sizes, throughput, opcode histogram
+lua5.4 test/vmcore_test.lua      # hand-assembled VM core checks
+lua5.4 test/verify.lua           # native-vs-VM equivalence (VM + serialized)
+lua5.4 test/property.lua 300     # property-based differential tests
+lua5.4 test/fuzz.lua 5000        # differential fuzzer (seeded, reproducible)
+lua5.4 test/determinism.lua      # reproducible-build check
+lua5.4 bench/bench.lua           # timings, sizes, throughput, opcode histogram
 ```
+
+## Performance
+
+Register-based with a **frequency-ordered dispatch** loop and static + dynamic
+(`Profiler.dynamic`) profiling. Reordering dispatch hottest-first measured a
+**1.5× speedup** on a recursion+loop workload with identical behavior — see
+[docs/perf.md](docs/perf.md) for the quantitative dispatch study and the
+optimization roadmap (superinstructions, call-buffer reuse, register windows).
+
+## Specification
+
+The bytecode container and instruction encoding are a **versioned spec**
+([docs/spec.md](docs/spec.md)): `FVM` magic + version byte + FNV-1a checksum,
+varint operands, `%.17g` number round-tripping, and a single operand-layout
+table shared by encoder and decoder. Compilation is deterministic → reproducible
+builds.
 
 ## Scope & limits
 

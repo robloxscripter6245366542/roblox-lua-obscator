@@ -40,6 +40,19 @@ function Profiler.report(proto)
   return rows, total
 end
 
+-- Dynamic opcode histogram: run `fn` with the VM's profiler hook enabled and
+-- return {mnemonic->count} of opcodes actually executed, plus the total.
+function Profiler.dynamic(VM, fn)
+  local counters = {}
+  VM.setProfile(counters)
+  local ok, err = pcall(fn)
+  VM.setProfile(nil)
+  if not ok then error(err) end
+  local named, total = {}, 0
+  for op, c in pairs(counters) do named[Opcodes.mnemonic(op)] = c; total = total + c end
+  return named, total
+end
+
 -- Measure wall-clock throughput of a callable over `iterations` runs.
 function Profiler.throughput(fn, iterations)
   iterations = iterations or 1000
