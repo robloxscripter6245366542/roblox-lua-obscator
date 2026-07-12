@@ -40,5 +40,11 @@ jobs:
       - name: Hardening (opcode permutation, encryption, key factoring, bundle)
         run: lua5.4 test/harden.lua
 
+      - name: Per-opcode coverage (every emittable opcode, validated + diffed)
+        run: lua5.4 test/opcode_coverage.lua
+
+      - name: Malformed-bytecode fuzzer (loader must never crash the host)
+        run: lua5.4 test/fuzz_bytecode.lua 5000 1
+
       - name: Benchmark (smoke)
         run: lua5.4 bench/bench.lua
