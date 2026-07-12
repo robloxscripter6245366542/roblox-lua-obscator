@@ -26,6 +26,27 @@ test/determinism.lua  10/10    same source ⇒ byte-identical bytecode + stable 
 The fuzzer found (and drove the fix for) a real register-allocation bug that the
 curated tests missed — differential fuzzing is the backbone of correctness here.
 
+### The emitted (hardened) script actually runs on real Luau
+
+The tests above diff native-vs-VM *in one process*. `test/luau_differential.sh`
+goes further: it **executes the emitted self-contained bundle on a real Luau
+interpreter** and diffs its stdout against the original program (also on Luau).
+Compilation runs on lua5.4 (the build step); execution is 100% Luau, so the whole
+toolchain — compiler → serializer → interpreter — must agree on the bytecode
+format and the runtime must use only Luau-available features.
+
+```
+LUAU=/path/to/luau  bash test/luau_differential.sh 200
+# luau_differential: 200 matched, 0 differed, 0 bundle-errors (of 200)
+```
+
+Measured **200/200** on an mlua-vendored Luau VM, plus a hand-written feature
+sweep (metatables `__index`/`__len`, OOP method chaining, closures/upvalues,
+varargs/`select`, `bit32`, `pcall`, numeric/generic `for`, string methods).
+Luau-compat specifics the emitted loader relies on, all confirmed present:
+`getfenv(1)` (Roblox and this Luau have it; falls back to `_ENV`→`_G` otherwise),
+`bit32` (native in Luau — `bitops` uses it), and `table.pack`/`table.unpack`.
+
 Covers closures, upvalues (shared + per-iteration capture), recursion, deep
 recursion, varargs, multiple returns, tables/constructors, metatables
 (`__index`/`__newindex`/`__add`/`__call`/`__eq`/`__lt`), method calls,
