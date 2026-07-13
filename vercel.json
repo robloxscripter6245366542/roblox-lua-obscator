@@ -1,5 +1,5 @@
 {
-  "buildCommand": "",
-  "outputDirectory": "obfuscator-site",
-  "installCommand": ""
+  "installCommand": "cd granite-lock && npm install",
+  "buildCommand": "cd granite-lock && npm run build",
+  "outputDirectory": "granite-lock/out"
 }
