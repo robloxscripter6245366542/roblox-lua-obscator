@@ -1,4 +1,7 @@
-# ferret obfuscator — website
+# Granite Lock — website
+
+The **Granite Lock** obfuscator site (formerly "ferret"). The internal JS API
+names (`FerretVM`, `FerretAST`) are unchanged; only the branding is Granite Lock.
 
 A static, **100% client-side** website for the ferret Lua/Luau obfuscator. Paste
 Lua, pick layers, get obfuscated output — nothing is uploaded; all work happens
