@@ -192,6 +192,22 @@ local function inner(...) return select("#",...), ... end
 local function outer(...) return inner(...) end
 return outer("x","y","z")]])
 
+-- multi-value adjustment (regressions: a call/vararg RHS must nil-fill or
+-- truncate to the exact number of targets, never leave stale registers)
+case('adjust-zero-return-local', 'local function f() return end local a,b,c=f() return type(a),type(b),type(c)')
+case('adjust-one-to-three-local', 'local function f() return 7 end local a,b,c=f() return a,tostring(b),tostring(c)')
+case('adjust-zero-return-assign', 'local a,b=1,2 local function f() return end a,b=f() return type(a),type(b)')
+case('adjust-call-then-scalar', 'local function f() return 1,2 end local a,b,c=f(),9 return a,b,tostring(c)')
+case('adjust-scalar-then-call', 'local function f() return 8,9 end local a,b,c=0,f() return a,b,c')
+case('adjust-vararg-to-locals', 'local function g(...) local a,b,c=... return tostring(a),tostring(b),tostring(c) end return g(10)')
+case('adjust-truncate-call', 'local function f() return 1,2,3,4 end local a,b=f() return a,b')
+case('adjust-assign-from-call', 'local function f() return 10,20 end local a,b,c=3,4,5 a,b,c=f() return a,b,type(c)')
+
+-- \u{...} unicode escapes (regression: lexer must UTF-8 encode like native)
+case('unicode-bmp', 'return "\\u{48}\\u{65}\\u{6C}\\u{6C}\\u{6F}"')
+case('unicode-astral', 'return #"\\u{1F600}", ("\\u{1F600}"):byte(1)')
+case('unicode-mixed', 'return "\\x41\\66\\u{43}", #"\\u{20AC}"')
+
 -- tail calls
 case('tail-call-loop', [[
 local function count(n,acc) if n==0 then return acc end return count(n-1,acc+n) end
