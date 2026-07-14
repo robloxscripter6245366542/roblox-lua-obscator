@@ -73,7 +73,7 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
   local parts = {}
   -- banner (ASCII only — the browser build ASCII-sanitizes this source)
   parts[#parts + 1] = '-- ================================================================'
-  parts[#parts + 1] = '--  Obfuscated by Granite Lock  |  https://roblox-lua-obscator.vercel.app'
+  parts[#parts + 1] = '--  Obfuscated by Granite Lock  |  https://granitelock.com'
   parts[#parts + 1] = '--  Custom bytecode VM  |  encrypted  |  no loadstring'
   parts[#parts + 1] = '-- ================================================================'
   parts[#parts + 1] = 'local __m,__c={},{}'
