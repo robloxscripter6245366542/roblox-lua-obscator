@@ -5,7 +5,7 @@
 --
 --   * opcode permutation  — the serialized bytecode uses a per-build opcode
 --     numbering, so tooling keyed to the canonical opcode set can't read it.
---   * bytecode encryption — a Park-Miller XOR keystream over the whole
+--   * bytecode encryption — a custom GraniteRNG XOR keystream over the whole
 --     serialized blob, so a base64 decode no longer reveals the proto tables.
 --   * key factoring       — the keystream seed is emitted as an arithmetic
 --     expression, not a single grep-able literal.
@@ -20,21 +20,42 @@ local Bit = require('bitops')
 
 local H = {}
 
--- Park-Miller minimal-standard LCG. Products stay < 2^53, so the sequence is
--- identical in Lua 5.1-5.4 doubles AND Luau doubles (the same reason the ferret
--- keystream uses it). Returns a stateful generator.
+-- ── GraniteRNG: our own PRNG (not Park-Miller / not any named generator) ──────
+-- A full-period LCG over 2^32 (GA % 4 == 1, GC odd) whose raw output is run
+-- through a custom multiply-rotate-multiply avalanche so the emitted bytes mix
+-- well. Every product stays < 2^53, so the sequence is bit-identical in Lua
+-- 5.1-5.4 doubles AND Luau doubles. Uses no bit32 and no recognizable constant.
+local GA, GC = 3218467781, 2596069031     -- LCG multiplier / increment
+local GM1, GM2 = 3812015801, 1274126177   -- avalanche multipliers (odd)
+local TWO32 = 4294967296
+
+-- (a * b) mod 2^32, computed split so the intermediate stays exact in doubles.
+local function gmul(a, b)
+  local al = a % 65536
+  return ((al * b) + (((a - al) / 65536 * b) % 65536) * 65536) % TWO32
+end
+
+-- Custom avalanche: multiply, swap the two 16-bit halves, multiply again.
+local function gmix(s)
+  local x = gmul(s, GM1)
+  x = (x % 65536) * 65536 + (x - x % 65536) / 65536
+  return gmul(x, GM2)
+end
+
+-- Stateful generator. `int`/`byte` advance the LCG and return a mixed value;
+-- `next` returns the full mixed 32-bit word (used to draw sub-seeds).
 function H.prng(seed)
-  local st = seed % 2147483647
-  if st <= 0 then st = st + 2147483646 end
+  local st = seed % TWO32
+  local function step() st = (gmul(st, GA) + GC) % TWO32; return gmix(st) end
   return {
-    -- next raw state in [1, 2147483646]
-    next = function() st = (st * 16807) % 2147483647; return st end,
-    -- next integer in [0, n-1]
-    int = function(n) st = (st * 16807) % 2147483647; return st % n end,
-    -- next byte in [0, 255]
-    byte = function() st = (st * 16807) % 2147483647; return st % 256 end,
+    next = function() return step() end,
+    int = function(n) return step() % n end,
+    byte = function() return step() % 256 end,
   }
 end
+
+H.gmul = gmul
+H.gmix = gmix
 
 -- Build a per-build opcode permutation for `count` canonical opcodes (1..count).
 -- Returns fwd (canonical -> emitted byte) and inv (emitted byte -> canonical),
@@ -56,7 +77,7 @@ function H.opPermutation(count, rng)
   return fwd, inv
 end
 
--- XOR `data` with a Park-Miller keystream seeded by `seed`. Symmetric: the
+-- XOR `data` with a GraniteRNG keystream seeded by `seed`. Symmetric: the
 -- emitted bootstrap runs the identical routine to decrypt.
 function H.encrypt(data, seed)
   local rng = H.prng(seed)
@@ -77,7 +98,7 @@ end
 --     ▼
 --   (4) byte substitution    per-build bijective S-box over byte VALUES
 --     ▼
---   (5) stream masking        Park-Miller keystream XOR with cipher-feedback
+--   (5) stream masking        GraniteRNG keystream XOR with cipher-feedback
 --                             chaining (CBC-like), so one flipped byte
 --                             avalanches through the rest
 --     ▼
@@ -112,13 +133,18 @@ function H.permSwaps(seed, n)
   return js
 end
 
--- Custom 32-bit rolling checksum (djb2-style). Products stay < 2^53 so it is
--- exact in Lua 5.1-5.4 doubles and Luau. Independent of the serializer's own
--- FNV container sum — this authenticates the *ciphertext* before any decode.
+-- Our own 32-bit integrity checksum ("GraniteSum") — NOT djb2/FNV/CRC. Two
+-- coupled accumulators: lane `a` folds each byte with a custom multiplier, lane
+-- `b` sums the running `a` (so position matters and one flipped byte avalanches
+-- through the tail). Products stay < 2^53, exact in Lua 5.1-5.4 + Luau doubles.
+-- Authenticates the *ciphertext* before any decode.
 function H.checksum(s)
-  local h = 5381
-  for i = 1, #s do h = (h * 33 + s:byte(i)) % 4294967296 end
-  return h
+  local a, b = 19088743, 1985229328
+  for i = 1, #s do
+    a = (a * 178711 + s:byte(i) + 1) % 4294967296
+    b = (b + a) % 4294967296
+  end
+  return (a + gmul(b, 40503)) % 4294967296
 end
 
 -- Seal `plain` with the full chain using per-build sub-seeds drawn from `rng`.

@@ -18,8 +18,13 @@ end
 -- tests catch it; here it pins the build-time chain to its own inverse.
 local function unseal(sealed, cp)
   local c = sealed:sub(5)
-  local h = 5381
-  for i = 1, #c do h = (h * 33 + c:byte(i)) % 4294967296 end
+  -- GraniteSum checksum (mirrors harden.lua / the emitted decoder)
+  local a, b = 19088743, 1985229328
+  for i = 1, #c do
+    a = (a * 178711 + c:byte(i) + 1) % 4294967296
+    b = (b + a) % 4294967296
+  end
+  local h = (a + Harden.gmul(b, 40503)) % 4294967296
   local want = sealed:byte(1) * 16777216 + sealed:byte(2) * 65536
     + sealed:byte(3) * 256 + sealed:byte(4)
   if h ~= want then error('cipher: integrity check failed') end

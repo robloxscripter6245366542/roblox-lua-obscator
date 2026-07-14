@@ -67,8 +67,9 @@ Luau-compat specifics the emitted loader relies on, all confirmed present:
   resolves `print`/`math`/`table`). `getfenv` appears only in the one-line
   bootstrap, never in the interpreter loop, so Luau's `getfenv` deopt never
   touches hot code.
-- **`bit32`** — native in Luau; `bitops` uses it directly (arithmetic fallback
-  elsewhere). Confirmed via a `bit32.*` program.
+- **`bit32`** — native in Luau, but `bitops` deliberately does NOT call it:
+  it implements its own 32-bit ops from per-nibble lookup tables (same
+  unsigned semantics Luau uses). Confirmed via a `bit32.*` program.
 - **`table.pack`/`table.unpack`** — present in Luau; `vm.lua` polyfills them if
   absent. Confirmed via varargs / multiple returns.
 
@@ -96,7 +97,7 @@ source ─▶ lexer ─▶ parser ─▶ AST ─▶ scope (capture) ─▶ optim
 | `src/compiler.lua` | AST → register bytecode (allocation, upvalues, multi-values) |
 | `src/opcodes.lua` | instruction set + operand layouts |
 | `src/vm.lua` | register interpreter |
-| `src/bitops.lua` | portable bitwise (bit32 or arithmetic) |
+| `src/bitops.lua` | portable custom bitwise (nibble-table, no bit32) |
 | `src/serializer.lua` | compact versioned binary format + checksum + loader |
 | `src/profiler.lua` | opcode histogram, instruction counts, throughput |
 | `src/api.lua` | `compile` / `load` / `serialize` / `loadBytecode` |
@@ -232,8 +233,8 @@ builds.
 - **Supported:** the executable Luau grammar (see the verified list). `goto`/labels
   are rejected with a clear diagnostic (Luau has no `goto`).
 - **Bitwise:** `&|~<<>>` operators are Lua 5.3/5.4 syntax; Luau code uses `bit32.*`
-  (ordinary calls the VM already runs). The VM's own bitwise uses `bit32` when
-  present, else arithmetic — 32-bit semantics.
+  (ordinary calls the VM already runs). The VM's own bitwise is a custom
+  nibble-table implementation (no `bit32` dependency) — 32-bit semantics.
 - **Tail calls:** `TAILCALL` is result-preserving but does not eliminate host
   stack frames (documented; deep non-recursive tail loops are bounded by host
   stack).
