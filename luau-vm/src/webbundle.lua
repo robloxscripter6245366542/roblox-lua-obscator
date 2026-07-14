@@ -71,7 +71,11 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
 
   local order = { 'opcodes', 'bitops', 'serializer', 'vm' }
   local parts = {}
-  parts[#parts + 1] = '-- ferret VM-protected script (custom bytecode; encrypted; no loadstring)'
+  -- banner (ASCII only — the browser build ASCII-sanitizes this source)
+  parts[#parts + 1] = '-- ================================================================'
+  parts[#parts + 1] = '--  Obfuscated by Granite Lock  |  https://roblox-lua-obscator.vercel.app'
+  parts[#parts + 1] = '--  Custom bytecode VM  |  encrypted  |  no loadstring'
+  parts[#parts + 1] = '-- ================================================================'
   parts[#parts + 1] = 'local __m,__c={},{}'
   parts[#parts + 1] = 'local function require(n) if __c[n]==nil then __c[n]=__m[n]() end return __c[n] end'
   for _, name in ipairs(order) do
