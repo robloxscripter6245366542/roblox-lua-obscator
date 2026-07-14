@@ -45,7 +45,7 @@ local function seed1(sk, i)
   if s == 0 then s = 1 end
   return s
 end
--- independent keystream seed for constant i (different domain from seed1)
+-- independent keystream seed for string constant i (its own domain)
 local function seedK(sk, i)
   local s = (gmul(sk, 40503) + i * 2654435761 + 7) % 4294967296
   if s == 0 then s = 1 end
@@ -54,6 +54,18 @@ end
 local function nextByte(st)
   st = (gmul(st, 3218467781) + 2596069031) % 4294967296
   return st, st % 256
+end
+
+-- Additive mask for numeric constant i (own domain). A 31-bit integer, so for an
+-- integer-valued constant with |v| <= 2^52 the sum v+mask stays < 2^53 and is
+-- exact in both Lua integers (modular) and Luau doubles; subtracting the same
+-- mask recovers v exactly, and Lua's arithmetic preserves the int/float subtype.
+local function maskFor(sk, i)
+  local st = (gmul(sk, 2246822519) + i * 3266489917 + 11) % 4294967296
+  st = (gmul(st, 3218467781) + 2596069031) % 4294967296
+  -- math.floor forces an integer subtype on Lua 5.4 (gmul's `/` yields a float),
+  -- so an integer constant + mask stays an integer and keeps its subtype.
+  return math.floor(st) % 2147483648 + 1 -- integer in 1 .. 2^31
 end
 
 -- Seal a proto tree in place: proto.code -> proto.sealed (encrypted slices),
@@ -83,24 +95,32 @@ function M.seal(proto, sk)
   -- recovers the bytecode. Non-strings pass through. Strings intern in Lua, so
   -- decrypting the same constant twice yields the same object (identity safe).
   local K = proto.consts
-  local realK, hasStr, nk = {}, false, #K
+  local realK, hasEnc, nk = {}, false, #K
   for i = 1, nk do
     local v = K[i]
-    if type(v) == 'string' then
-      hasStr = true
+    local t = type(v)
+    if t == 'string' then
+      hasEnc = true
       local st, kb = seedK(sk, i), nil
       local out = {}
       for j = 1, #v do st, kb = nextByte(st); out[j] = string.char((v:byte(j) + kb) % 256) end
       realK[i] = { s = table.concat(out) }
+    elseif t == 'number' and v == v and v <= 4503599627370496 and v >= -4503599627370496
+        and math.floor(v) == v then
+      -- integer-valued number: hide behind an additive keystream mask (fractional
+      -- / inf / nan pass through untouched to avoid any precision or subtype bug)
+      hasEnc = true
+      realK[i] = { n = v + maskFor(sk, i) }
     else
       realK[i] = v
     end
   end
-  if hasStr then
+  if hasEnc then
     proto.consts = setmetatable({}, { __index = function(_, i)
       local e = realK[i]
       if type(e) == 'table' then
-        local st, kb = seedK(sk, i), nil
+        if e.n ~= nil then return e.n - maskFor(sk, i) end -- numeric constant
+        local st, kb = seedK(sk, i), nil                   -- string constant
         local enc, o = e.s, {}
         for j = 1, #enc do st, kb = nextByte(st); o[j] = string.char((enc:byte(j) - kb) % 256) end
         return table.concat(o)

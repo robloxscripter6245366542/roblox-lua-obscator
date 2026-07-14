@@ -695,9 +695,18 @@ function Compiler.compile(src, chunkName, opts)
   if opts.optimize ~= false then
     local Optimizer = require('optimizer')
     Optimizer.optimizeAST(chunk)
+    -- Opaque-predicate injection runs AFTER folding (so predicates aren't
+    -- folded) and BEFORE scope analysis / codegen (so the compiler allocates
+    -- registers and jumps for the injected code). opts.opaque is a Harden.prng.
+    if opts.opaque then
+      require('obfuscate').inject(chunk, opts.opaque, { density = opts.opaqueDensity })
+    end
     local proto = Compiler.compileAST(chunk)
     Optimizer.peephole(proto)
     return proto
+  end
+  if opts.opaque then
+    require('obfuscate').inject(chunk, opts.opaque, { density = opts.opaqueDensity })
   end
   return Compiler.compileAST(chunk)
 end
