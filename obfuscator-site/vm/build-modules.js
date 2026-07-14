@@ -13,7 +13,7 @@ const OUT = path.join(__dirname, 'modules.js');
 
 // modules needed to COMPILE in the browser
 const COMPILE = ['opcodes', 'bitops', 'lexer', 'parser', 'scope', 'optimizer',
-  'compiler', 'serializer', 'seal', 'vm', 'api', 'harden', 'webbundle'];
+  'obfuscate', 'compiler', 'serializer', 'seal', 'vm', 'api', 'harden', 'webbundle'];
 // modules bundled into the emitted output (the runtime that executes bytecode)
 const RUNTIME = ['opcodes', 'bitops', 'serializer', 'seal', 'vm'];
 

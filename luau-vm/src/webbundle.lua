@@ -114,7 +114,16 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
   -- 1. compile, 2. permute opcodes, 3. serialize with the permutation,
   -- 4. compress + wrap in a versioned, fingerprinted envelope,
   -- 5. seal with the multi-round GraniteCipher, 6. encode (permuted alphabet).
-  local proto = Compiler.compile(src, chunkName or 'input')
+  -- Opaque-predicate injection (bogus, always-taken/never-taken control flow)
+  -- uses an INDEPENDENT prng derived from the build seed, so it does not disturb
+  -- the main rng stream used for opcode mutation / cipher below. Deterministic
+  -- per build; disable with opts.opaque == false.
+  local copts = { chunkName = chunkName }
+  if not (opts and opts.opaque == false) then
+    copts.opaque = Harden.prng((seed + 2166136261) % 4294967296)
+    copts.opaqueDensity = (opts and opts.opaqueDensity) or 350
+  end
+  local proto = Compiler.compile(src, chunkName or 'input', copts)
   -- opcode MUTATION: each opcode has several interchangeable byte encodings,
   -- picked per instruction, so one opcode appears as different bytes.
   local fwd, inv = Harden.opMutationMap(Opcodes.count, rng, 3)
