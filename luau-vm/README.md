@@ -234,6 +234,13 @@ runtime per execution (so the in-memory encrypted form differs every run), and a
 sealed execution re-decodes each instruction every time it runs, so it is slower
 than the plain interpreter — the security/speed exchange of streaming.
 
+**Constant encryption.** Sealing also encrypts every **string constant** (the
+usual dump target — URLs, `RemoteEvent` names, keys, messages) behind a proxy
+that decrypts on access. So even an attacker who devirtualizes the VM and
+recovers the bytecode finds the `K` table holding ciphertext, not plaintext —
+the strings only exist transiently, per access, at run time. (Strings intern in
+Lua, so identity is preserved.)
+
 Same seed → identical output (reproducible); different seed → different opcodes,
 aliases, keys, names, and junk. This raises the cost of a *generic* devirtualizer
 and a static memory dump, and defeats casual copy-paste. It is **not** cryptography and **not** unbreakable:

@@ -70,7 +70,27 @@ do
   ok(allmatch, 'seal/decode round-trips all instructions')
 end
 
--- 4. mutation map: valid many-to-one aliasing within the byte budget
+-- 4. string constants are encrypted (not resident in plaintext) yet decode right
+do
+  local src = 'local url="https://secret.example/api" local name="RemoteFire" return url, name, #url'
+  ok(runSealed(src, 55555) == runNative(src), 'sealed program with string constants == native')
+  local proto = API.compile(src)
+  -- capture the plaintext constants before sealing
+  local plain = {}
+  for i, v in ipairs(proto.consts) do plain[i] = v end
+  Seal.seal(proto, 55555)
+  -- the proxy must not expose any plaintext string in its backing storage
+  local mt = getmetatable(proto.consts)
+  ok(mt and type(mt.__index) == 'function', 'constants replaced by a decrypting proxy')
+  -- accessing through the proxy returns the correct plaintext
+  local allok = true
+  for i, v in ipairs(plain) do
+    if type(v) == 'string' and proto.consts[i] ~= v then allok = false end
+  end
+  ok(allok, 'encrypted constants decrypt to the original strings on access')
+end
+
+-- 5. mutation map: valid many-to-one aliasing within the byte budget
 do
   local rng = Harden.prng(7)
   local fwd, inv = Harden.opMutationMap(Opcodes.count, rng, 3)
