@@ -112,5 +112,71 @@ do
   ok(not pcall(unseal, badhdr, cp), 'tampered checksum header fails the integrity check')
 end
 
+-- Multi-round unseal, peeling each layer in reverse (mirrors webbundle.lua).
+local function unsealN(sealed, cp)
+  local c = sealed:sub(5)
+  local n = #c
+  local t = {}
+  for i = 1, n do t[i] = c:byte(i) end
+  for r = #cp.layers, 1, -1 do
+    local L = cp.layers[r]
+    local mr = Harden.prng(L.maskSeed)
+    local prev = L.iv
+    for i = 1, n do
+      local k = mr.byte(); local cur = t[i]
+      t[i] = Bit.bxor(Bit.bxor(cur, k), prev); prev = cur
+    end
+    local sb = Harden.sbox(L.sboxSeed)
+    local inv = {}
+    for i = 0, 255 do inv[sb[i]] = i end
+    for i = 1, n do t[i] = inv[t[i]] end
+    local ps = Harden.permSwaps(L.permSeed, n)
+    for i = 2, n do t[i], t[ps[i]] = t[ps[i]], t[i] end
+  end
+  local bb = {}
+  for i = 1, n do bb[i] = string.char(t[i]) end
+  return table.concat(bb)
+end
+
+-- 6. custom compression (GraniteRLE) round-trips arbitrary bytes
+do
+  local samples = {
+    '', 'a', string.rep('\0', 300), ('abcabc'):rep(80),
+    string.rep(string.char(200), 260),
+  }
+  local allok = true
+  for _, s in ipairs(samples) do
+    if Harden.decompress(Harden.compress(s)) ~= s then allok = false end
+  end
+  ok(allok, 'compress/decompress round-trips every sample')
+  local runs = string.rep('\7', 500)
+  ok(#Harden.compress(runs) < #runs, 'repetitive input compresses smaller')
+end
+
+-- 7. envelope carries the VM version + a fingerprint that detects tampering
+do
+  local env = Harden.envelope(Harden.compress('serialized bytecode'))
+  ok(env:byte(1) == Harden.VM_VERSION, 'envelope leads with the VM version byte')
+  local payload = env:sub(6)
+  local fp = env:byte(2) * 16777216 + env:byte(3) * 65536 + env:byte(4) * 256 + env:byte(5)
+  ok(Harden.checksum(string.char(env:byte(1)) .. payload) == fp, 'fingerprint matches payload')
+  local bad = env:sub(1, 5) .. string.char((env:byte(6) + 1) % 256) .. env:sub(7)
+  local bfp = bad:byte(2) * 16777216 + bad:byte(3) * 65536 + bad:byte(4) * 256 + bad:byte(5)
+  ok(Harden.checksum(string.char(bad:byte(1)) .. bad:sub(6)) ~= bfp, 'tampered payload breaks fingerprint')
+end
+
+-- 8. multiple encryption layers round-trip and actually differ per round count
+do
+  local plain = Harden.envelope(Harden.compress('the quick brown fox ' .. string.rep('z', 200)))
+  for _, R in ipairs({ 1, 2, 3, 5 }) do
+    local sealed, cp = Harden.seal(plain, Harden.prng(555), R)
+    ok(#cp.layers == R, R .. '-round seal records ' .. R .. ' layers')
+    ok(unsealN(sealed, cp) == plain, R .. '-round seal round-trips')
+  end
+  local s2 = Harden.seal(plain, Harden.prng(555), 2)
+  local s3 = Harden.seal(plain, Harden.prng(555), 3)
+  ok(s2 ~= s3, 'different round counts -> different ciphertext')
+end
+
 print(string.format('cipher: %d passed, %d failed', pass, fail))
 os.exit(fail == 0 and 0 or 1)

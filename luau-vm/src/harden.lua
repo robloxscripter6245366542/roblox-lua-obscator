@@ -20,6 +20,12 @@ local Bit = require('bitops')
 
 local H = {}
 
+-- Hardened-bundle format version. Bumped when the emitted envelope (version +
+-- build fingerprint + compression + multi-round cipher) changes shape. Emitted
+-- into the sealed payload and gated by the decoder, so a bundle produced by a
+-- newer builder refuses to run on a mismatched decoder instead of misbehaving.
+H.VM_VERSION = 2
+
 -- ── GraniteRNG: our own PRNG (not Park-Miller / not any named generator) ──────
 -- A full-period LCG over 2^32 (GA % 4 == 1, GC odd) whose raw output is run
 -- through a custom multiply-rotate-multiply avalanche so the emitted bytes mix
@@ -147,27 +153,89 @@ function H.checksum(s)
   return (a + gmul(b, 40503)) % 4294967296
 end
 
--- Seal `plain` with the full chain using per-build sub-seeds drawn from `rng`.
--- Returns the sealed byte string (checksum-prefixed ciphertext) and the params
--- the emitted decoder needs to invert it.
-function H.seal(plain, rng)
-  local permSeed = rng.next()
-  local sboxSeed = rng.next()
-  local maskSeed = rng.next()
-  local iv = rng.byte()
-  local n = #plain
+-- ── custom bytecode compression ("GraniteRLE") ───────────────────────────────
+-- A tiny run-length scheme with a self-describing escape byte, applied to the
+-- serialized bytecode BEFORE encryption so the plaintext exposed after a decrypt
+-- is still compressed (and smaller). Not zlib/LZ77/any named codec. Layout:
+--   flag(1)  0 = stored (raw bytes follow), 1 = RLE
+--   RLE body: esc(1) then a stream where `esc,val,count` means val x count and
+--             any other byte is a literal (literals are never the esc byte).
+-- `esc` is chosen as the least-frequent byte so forced escapes are minimal; the
+-- stored fallback guarantees output never grows by more than one byte.
+function H.compress(s)
+  local n = #s
+  if n == 0 then return string.char(0) end
+  local freq = {}
+  for v = 0, 255 do freq[v] = 0 end
+  for i = 1, n do local v = s:byte(i); freq[v] = freq[v] + 1 end
+  local esc, best = 0, freq[0]
+  for v = 1, 255 do if freq[v] < best then best = freq[v]; esc = v end end
+  local out, i = {}, 1
+  while i <= n do
+    local b = s:byte(i)
+    local run = 1
+    while i + run <= n and s:byte(i + run) == b and run < 255 do run = run + 1 end
+    if run >= 4 or b == esc then
+      out[#out + 1] = string.char(esc, b, run)
+    else
+      for _ = 1, run do out[#out + 1] = string.char(b) end
+    end
+    i = i + run
+  end
+  local rle = string.char(esc) .. table.concat(out)
+  if #rle + 1 < n + 1 then return string.char(1) .. rle end
+  return string.char(0) .. s
+end
 
-  -- (3) byte permutation
-  local a = {}
-  for i = 1, n do a[i] = plain:byte(i) end
+function H.decompress(s)
+  local flag = s:byte(1)
+  local rest = s:sub(2)
+  if flag == 0 then return rest end
+  local esc = rest:byte(1)
+  local out, i, n = {}, 2, #rest
+  while i <= n do
+    local c = rest:byte(i)
+    if c == esc then
+      local val, cnt = rest:byte(i + 1), rest:byte(i + 2)
+      out[#out + 1] = string.rep(string.char(val), cnt)
+      i = i + 3
+    else
+      out[#out + 1] = string.char(c)
+      i = i + 1
+    end
+  end
+  return table.concat(out)
+end
+
+-- Pack a 32-bit value big-endian.
+local function u32be(x)
+  x = x % 4294967296
+  return string.char(
+    math.floor(x / 16777216) % 256,
+    math.floor(x / 65536) % 256,
+    math.floor(x / 256) % 256,
+    x % 256)
+end
+H.u32be = u32be
+
+-- Wrap already-compressed bytecode in a verifiable envelope: a version byte and
+-- a 4-byte build fingerprint (GraniteSum over version+payload). The decoder
+-- checks the version (VM versioning) and the fingerprint (anti-tamper: editing
+-- the payload, seeds, or version after the fact fails closed with a clear
+-- error, instead of silently running altered bytecode).
+function H.envelope(payload)
+  local v = string.char(H.VM_VERSION)
+  local fp = H.checksum(v .. payload)
+  return v .. u32be(fp) .. payload
+end
+
+-- Apply one cipher round (byte permutation -> S-box -> chained stream mask) to
+-- the byte array `a` (length n) in place, using the given sub-seeds/iv.
+local function sealRound(a, n, permSeed, sboxSeed, maskSeed, iv)
   local js = H.permSwaps(permSeed, n)
   for i = n, 2, -1 do a[i], a[js[i]] = a[js[i]], a[i] end
-
-  -- (4) byte substitution
   local sbox = H.sbox(sboxSeed)
   for i = 1, n do a[i] = sbox[a[i]] end
-
-  -- (5) stream masking with cipher-feedback chaining
   local mrng = H.prng(maskSeed)
   local prev = iv
   for i = 1, n do
@@ -175,20 +243,48 @@ function H.seal(plain, rng)
     a[i] = c
     prev = c
   end
+end
+
+-- Seal `plain` with the full chain using per-build sub-seeds drawn from `rng`.
+-- `rounds` (default 1) stacks independent cipher layers, each with its own
+-- sub-seeds, so peeling one layer leaves another. Returns the sealed byte
+-- string (checksum-prefixed ciphertext) and the per-layer params the emitted
+-- decoder needs to invert it (outermost layer last, so the decoder peels the
+-- list in reverse).
+function H.seal(plain, rng, rounds)
+  rounds = rounds or 1
+  local n = #plain
+  local a = {}
+  for i = 1, n do a[i] = plain:byte(i) end
+
+  local layers = {}
+  for _ = 1, rounds do
+    local L = {
+      permSeed = rng.next(),
+      sboxSeed = rng.next(),
+      maskSeed = rng.next(),
+      iv = rng.byte(),
+    }
+    sealRound(a, n, L.permSeed, L.sboxSeed, L.maskSeed, L.iv)
+    layers[#layers + 1] = L
+  end
 
   local body = {}
   for i = 1, n do body[i] = string.char(a[i]) end
   local cipher = table.concat(body)
 
-  -- (6) integrity checksum, 4 bytes big-endian, prepended
-  local sum = H.checksum(cipher)
-  local head = string.char(
-    math.floor(sum / 16777216) % 256,
-    math.floor(sum / 65536) % 256,
-    math.floor(sum / 256) % 256,
-    sum % 256)
-
-  return head .. cipher, { permSeed = permSeed, sboxSeed = sboxSeed, maskSeed = maskSeed, iv = iv }
+  -- (6) integrity checksum over the whole ciphertext, 4 bytes big-endian
+  local head = u32be(H.checksum(cipher))
+  -- Back-compat single-layer fields plus the full layer list.
+  local first = layers[1] or {}
+  return head .. cipher, {
+    rounds = rounds,
+    layers = layers,
+    permSeed = first.permSeed,
+    sboxSeed = first.sboxSeed,
+    maskSeed = first.maskSeed,
+    iv = first.iv,
+  }
 end
 
 -- Emit `seed` as an arithmetic expression `(m*q+r)` rather than a bare literal,

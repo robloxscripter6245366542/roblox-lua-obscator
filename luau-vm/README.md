@@ -194,23 +194,36 @@ lua5.4 tools/bundle.lua input.lua [seed] > out.lua   # runs on Roblox/Luau + Lua
 `tools/bundle.lua` and the website share `src/webbundle.lua`, which wraps a build
 with the primitives in [`src/harden.lua`](src/harden.lua):
 
-- **Opcode permutation** — the serialized bytecode carries a per-build opcode
-  numbering (`Serializer.serialize(proto, opMap)` / `deserialize(bytes, invMap)`;
-  `ins.op` stays canonical internally, so the VM and operand layout are
+- **Per-build opcode layout** — the serialized bytecode carries a per-build
+  opcode numbering (`Serializer.serialize(proto, opMap)` / `deserialize(bytes,
+  invMap)`; `ins.op` stays canonical internally, so the VM and operand layout are
   unchanged). Defeats a devirtualizer keyed to the canonical opcode set.
-- **Bytecode encryption** — a Park-Miller XOR keystream over the whole blob, so a
-  base64 decode no longer reveals the `FVM` container or proto tables. The
-  bootstrap runs the identical routine to decrypt before deserializing.
-- **Factored key** — the keystream seed is emitted as `(m*q+r)`, not a literal.
+- **Bytecode compression** — a custom RLE (`Harden.compress`, self-describing
+  escape byte, stored fallback) shrinks the serialized blob *before* encryption.
+- **Versioned, fingerprinted envelope** — `Harden.envelope` prepends a VM-version
+  byte and a build fingerprint (GraniteSum over version+payload). The decoder
+  gates on both: a bundle from a mismatched builder or an edited payload fails
+  closed instead of running altered bytecode (**VM versioning + anti-tamper**).
+- **Multi-round GraniteCipher** — `Harden.seal(plain, rng, rounds)` stacks
+  independent cipher layers (default 2), each its own byte permutation → custom
+  S-box → cipher-feedback stream mask with per-layer sub-seeds. A ciphertext
+  checksum guards the whole blob; the decoder peels the layers in reverse.
+- **Custom primitives** — bespoke PRNG, checksum/hash, bitwise ops, and a
+  per-build permuted output alphabet (no Park-Miller / DJB2 / FNV-1a / bit32 /
+  standard Base64). Sub-seeds are emitted as `(m*q+r)`, not literals.
+- **Randomized decoder + junk** — every decoder local is renamed per build and
+  inert dead-code statements are interleaved. A best-effort `debug.gethook`
+  probe aborts under an active hook (weak by nature — the decoder runs client-side).
 - **Comment-stripped runtime** — the bundled interpreter ships without its
   documentation comments (guarded by a re-parse; falls back if stripping fails).
 
-Same seed → identical output (reproducible); different seed → different opcodes
-and key. This raises the cost of a *generic* devirtualizer and defeats casual
-copy-paste. It is **not** unbreakable: any self-contained client-side scheme must
-carry its decryptor and key, and the interpreter is present (it holds none of the
-user's logic — that lives only in the encrypted bytecode). Deeper resistance
-(polymorphic handlers, VM-in-VM, anti-tamper self-check) is future work.
+Same seed → identical output (reproducible); different seed → different opcodes,
+keys, names, and junk. This raises the cost of a *generic* devirtualizer and
+defeats casual copy-paste. It is **not** cryptography and **not** unbreakable:
+any self-contained client-side scheme must carry its decryptor and keys, and the
+interpreter is present (it holds none of the user's logic — that lives only in
+the encrypted bytecode). Deeper resistance (polymorphic handlers, VM-in-VM) is
+future work.
 
 ## Performance
 
