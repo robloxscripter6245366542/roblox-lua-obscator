@@ -84,16 +84,49 @@ end
 
 -- ── value (constant) encoding ────────────────────────────────────────────────
 local T_NIL, T_TRUE, T_FALSE, T_INT, T_NUM, T_STR = 0, 1, 2, 3, 4, 5
+-- Largest magnitude a double represents as an exact integer; the zig-zag varint
+-- stays lossless within it, so genuine integers up to here go through T_INT.
+local INT_EXACT = 9007199254740992 -- 2^53
+
+-- Format a float so tonumber() reconstructs the identical value AND float
+-- subtype: %.17g is round-trippable, but an integer-valued float ("2", "-0")
+-- would read back as an integer, so a trailing ".0" forces the float subtype.
+-- inf/nan have no numeric literal, so they use their own text sentinels.
+local function numToStr(v)
+  if v ~= v then return 'nan' end
+  if v == math.huge then return 'inf' end
+  if v == -math.huge then return '-inf' end
+  local s = string.format('%.17g', v)
+  if not s:find('[.eE]') then s = s .. '.0' end
+  return s
+end
+
+local function isIntegerValue(v)
+  if math.type then return math.type(v) == 'integer' end
+  -- Lua 5.1 / Luau: no integer subtype; treat exact integers (but not -0.0,
+  -- whose sign must survive) as integers for compact storage.
+  if v ~= v or v == math.huge or v == -math.huge then return false end
+  if v == 0 and 1 / v < 0 then return false end
+  return math.floor(v) == v
+end
+
 local function writeValue(w, v)
   local t = type(v)
   if v == nil then writeByte(w, T_NIL)
   elseif v == true then writeByte(w, T_TRUE)
   elseif v == false then writeByte(w, T_FALSE)
   elseif t == 'number' then
-    if math.floor(v) == v and v >= -2147483648 and v <= 2147483647 then
-      writeByte(w, T_INT); writeSVarint(w, v)
+    if isIntegerValue(v) then
+      if v >= -INT_EXACT and v <= INT_EXACT then
+        writeByte(w, T_INT); writeSVarint(w, v)
+      else
+        -- integer past exact-double range: plain integer text (no forced ".0",
+        -- so it reads back as an integer rather than a lossy float)
+        writeByte(w, T_NUM); writeString(w, string.format('%.17g', v))
+      end
     else
-      writeByte(w, T_NUM); writeString(w, string.format('%.17g', v))
+      -- float subtype: keep the value, sign of -0.0, and float-ness
+      writeByte(w, T_NUM); writeString(w, numToStr(v))
     end
   elseif t == 'string' then writeByte(w, T_STR); writeString(w, v)
   else error('serializer: cannot encode constant of type ' .. t) end
@@ -104,7 +137,14 @@ local function readValue(r)
   elseif t == T_TRUE then return true
   elseif t == T_FALSE then return false
   elseif t == T_INT then return readSVarint(r)
-  elseif t == T_NUM then return tonumber(readString(r))
+  elseif t == T_NUM then
+    local s = readString(r)
+    local n = tonumber(s)
+    if n ~= nil then return n end
+    if s == 'inf' then return math.huge end
+    if s == '-inf' then return -math.huge end
+    if s == 'nan' or s == '-nan' then return 0 / 0 end
+    error('serializer: bad number literal ' .. tostring(s))
   elseif t == T_STR then return readString(r)
   else error('serializer: bad constant tag ' .. tostring(t)) end
 end

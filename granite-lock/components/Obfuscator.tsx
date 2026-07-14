@@ -110,12 +110,17 @@ export default function Obfuscator() {
   };
   const download = () => {
     if (!output) return;
-    const blob = new Blob([output], { type: 'text/plain' });
+    const blob = new Blob([output], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    a.href = url;
     a.download = isVM ? 'protected.lua' : 'obfuscated.lua';
+    // Firefox needs the anchor in the DOM, and revoking the URL synchronously
+    // after click() can abort the download — defer it to the next tick.
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(a.href);
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
   // ⌘/Ctrl+Enter to run
