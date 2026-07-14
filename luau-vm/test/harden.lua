@@ -83,11 +83,30 @@ do
   local result = (load or loadstring)(out1)()
   ok(result == 385, 'hardened bundle executes with correct result (385)')
 
-  -- the serialized magic must not appear in cleartext in the payload region
-  local payload = out1:match("__b64%('([^']*)'%)")
+  -- the serialized magic must not appear in cleartext in the payload region.
+  -- Decoder locals are randomized per build, so find the payload as the longest
+  -- single-quoted string (the base64 blob) rather than by a fixed variable name.
+  local payload = nil
+  for lit in out1:gmatch("'([^']*)'") do
+    if payload == nil or #lit > #payload then payload = lit end
+  end
   ok(payload ~= nil, 'payload present')
   local decoded_has_magic = false -- magic is encrypted; only the serializer source mentions 'FVM'
   ok(not decoded_has_magic, 'bytecode magic is encrypted (not in payload cleartext)')
+
+  -- no recognizable off-the-shelf primitives in the emitted decoder
+  ok(out1:find('16807', 1, true) == nil, 'no Park-Miller constant 16807 emitted')
+  ok(out1:find('5381', 1, true) == nil, 'no djb2 constant 5381 emitted')
+  ok(out1:find('2166136261', 1, true) == nil, 'no FNV-1a offset basis emitted')
+  ok(out1:find('bit32%.') == nil, 'no bit32.* calls emitted')
+  ok(out1:find('loadstring%s*%(') == nil, 'no loadstring call emitted (banner text aside)')
+  ok(out1:find('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789%+/') == nil,
+    'no standard Base64 alphabet emitted')
+
+  -- decoder local names are randomized per build, but deterministic per seed
+  local function firstLocal(s) return s:match('local ([%w_]+)') end
+  ok(firstLocal(out1) == firstLocal(out1b), 'same seed -> identical decoder names')
+  ok(firstLocal(out1) ~= firstLocal(out2), 'different seed -> different decoder names')
 end
 
 print(string.format('harden: %d passed, %d failed', pass, fail))

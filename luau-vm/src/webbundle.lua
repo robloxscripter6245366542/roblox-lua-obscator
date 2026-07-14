@@ -4,10 +4,13 @@
 -- filesystem; the runtime module sources are passed in (the website embeds
 -- them), so this runs unchanged inside Fengari (Lua-in-JS) in the browser.
 --
--- Hardening applied per build (see harden.lua): opcode permutation, bytecode
--- encryption (Park-Miller XOR keystream), a factored (non-literal) key, and
--- comment-stripped runtime sources. Still no loadstring, and the original
--- source is never reconstructed — the logic exists only as encrypted bytecode.
+-- Hardening applied per build (see harden.lua): opcode permutation, the custom
+-- multi-stage GraniteCipher over the serialized blob (byte permutation -> S-box
+-- -> chained stream mask -> GraniteSum checksum), a per-build permuted output
+-- alphabet, factored (non-literal) sub-seeds, randomized decoder variable names,
+-- and comment-stripped runtime sources. Every primitive is our own (no bit32,
+-- no Base64/DJB2/FNV/Park-Miller). Still no loadstring, and the original source
+-- is never reconstructed — the logic exists only as encrypted bytecode.
 
 local Compiler = require('compiler')
 local Serializer = require('serializer')
@@ -16,18 +19,35 @@ local Harden = require('harden')
 
 local M = {}
 
-local B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-local function b64encode(data)
+-- Custom output encoding: a 64-symbol pool (letters/digits + `_` `~`, all safe
+-- inside a single-quoted Lua string AND a Lua pattern char-class) that is
+-- permuted per build, so the output alphabet is never the standard Base64 one.
+local B64POOL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_~'
+
+-- Per-build permutation of the symbol pool (keyed Fisher-Yates over `rng`).
+local function permuteAlphabet(rng)
+  local a = {}
+  for i = 1, 64 do a[i] = B64POOL:sub(i, i) end
+  for i = 64, 2, -1 do
+    local j = rng.int(i) + 1
+    a[i], a[j] = a[j], a[i]
+  end
+  return table.concat(a)
+end
+
+-- Base64-style 6-bit encoder over an arbitrary 64-char `alpha` (pad char '=').
+local function encodeWith(alpha, data)
   local out, len = {}, #data
+  local function sym(k) return alpha:sub(k + 1, k + 1) end
   for i = 1, len, 3 do
     local b1 = data:byte(i)
     local b2 = i + 1 <= len and data:byte(i + 1) or 0
     local b3 = i + 2 <= len and data:byte(i + 2) or 0
     local n = b1 * 65536 + b2 * 256 + b3
-    out[#out + 1] = B64:sub(math.floor(n / 262144) % 64 + 1, math.floor(n / 262144) % 64 + 1)
-    out[#out + 1] = B64:sub(math.floor(n / 4096) % 64 + 1, math.floor(n / 4096) % 64 + 1)
-    out[#out + 1] = i + 1 <= len and B64:sub(math.floor(n / 64) % 64 + 1, math.floor(n / 64) % 64 + 1) or '='
-    out[#out + 1] = i + 2 <= len and B64:sub(n % 64 + 1, n % 64 + 1) or '='
+    out[#out + 1] = sym(math.floor(n / 262144) % 64)
+    out[#out + 1] = sym(math.floor(n / 4096) % 64)
+    out[#out + 1] = i + 1 <= len and sym(math.floor(n / 64) % 64) or '='
+    out[#out + 1] = i + 2 <= len and sym(n % 64) or '='
   end
   return table.concat(out)
 end
@@ -51,26 +71,52 @@ local function safeStrip(src)
   return src
 end
 
+-- Per-build fresh identifier generator: `_` + 5 chars from [a-z0-9]. The leading
+-- underscore + lowercase means a name can never collide with a Lua keyword, a
+-- stdlib global (string/math/table/...), `_ENV`/`_G`, or `require`, so the
+-- emitted decoder's locals are unrecognizable and differ every build.
+local function idGen(rng)
+  local pool = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  local used = {}
+  return function()
+    while true do
+      local s = '_'
+      for _ = 1, 5 do local d = rng.int(#pool); s = s .. pool:sub(d + 1, d + 1) end
+      if not used[s] then used[s] = true; return s end
+    end
+  end
+end
+
 -- runtimeSrc: table of Lua source strings for { opcodes, bitops, serializer, vm }.
 function M.bundle(src, runtimeSrc, chunkName, opts)
   local seed = pickSeed(opts)
   local rng = Harden.prng(seed)
 
   -- 1. compile, 2. permute opcodes, 3. serialize with the permutation,
-  -- 4. seal the whole blob with the custom multi-stage GraniteCipher (byte
-  --    permutation -> S-box substitution -> chained stream mask -> checksum),
-  --    all keyed off the same build seed.
+  -- 4. seal the whole blob with the custom multi-stage GraniteCipher,
+  -- 5. encode with a per-build permuted alphabet.
   local proto = Compiler.compile(src, chunkName or 'input')
   local fwd, inv = Harden.opPermutation(Opcodes.count, rng)
   local plain = Serializer.serialize(proto, fwd)
   local sealed, cp = Harden.seal(plain, rng)
-  local payload = b64encode(sealed)
+  local alpha = permuteAlphabet(rng)
+  local payload = encodeWith(alpha, sealed)
 
   -- sub-seeds emitted as arithmetic expressions, not grep-able literals
   local permExpr = Harden.factorKey(cp.permSeed, rng)
   local sboxExpr = Harden.factorKey(cp.sboxSeed, rng)
   local maskExpr = Harden.factorKey(cp.maskSeed, rng)
   local invLit = Harden.invMapLiteral(inv)
+
+  -- per-build randomized names for every decoder local (keeps `require` and
+  -- stdlib names, which the inlined module sources reference).
+  local g = idGen(rng)
+  local N = {}
+  for _, k in ipairs({
+    'mreg', 'mcache', 'b64', 'gm', 'pr', 'alpha', 'sealed', 'ct', 'csa', 'csb',
+    'csum', 'want', 'n', 't', 'mr', 'prev', 'k', 'cur', 'sr', 'sb', 'is',
+    'ps', 'rg', 'bb', 'plain', 'inv', 'ser', 'vm', 'proto', 'env', 'bit',
+  }) do N[k] = g() end
 
   local order = { 'opcodes', 'bitops', 'serializer', 'vm' }
   local parts = {}
@@ -79,82 +125,94 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
   parts[#parts + 1] = '--  Obfuscated by Granite Lock  |  https://granitelock.vercel.app'
   parts[#parts + 1] = '--  Custom bytecode VM  |  encrypted  |  no loadstring'
   parts[#parts + 1] = '-- ================================================================'
-  parts[#parts + 1] = 'local __m,__c={},{}'
-  parts[#parts + 1] = 'local function require(n) if __c[n]==nil then __c[n]=__m[n]() end return __c[n] end'
+  -- module registry: `require` keeps its name (module sources call it by name).
+  parts[#parts + 1] = 'local ' .. N.mreg .. ',' .. N.mcache .. '={},{}'
+  parts[#parts + 1] = 'local function require(n) if ' .. N.mcache .. '[n]==nil then '
+    .. N.mcache .. '[n]=' .. N.mreg .. '[n]() end return ' .. N.mcache .. '[n] end'
   for _, name in ipairs(order) do
     local s = runtimeSrc[name]
     if not s then error('webbundle: missing runtime source for ' .. name) end
-    parts[#parts + 1] = "__m['" .. name .. "']=function()\n" .. safeStrip(s) .. '\nend'
+    parts[#parts + 1] = N.mreg .. "['" .. name .. "']=function()\n" .. safeStrip(s) .. '\nend'
   end
-  -- base64 decoder + GraniteCipher unseal + bootstrap. The unseal inverts the
-  -- build-time chain in reverse (checksum -> stream unmask -> inverse S-box ->
-  -- inverse permutation), regenerating the S-box / permutation / keystream from
-  -- the emitted sub-seeds alone. No loadstring; bytes -> proto tables directly.
+
+  -- custom decoder + GraniteCipher unseal + bootstrap. Inverts the build-time
+  -- chain in reverse (checksum -> stream unmask -> inverse S-box -> inverse
+  -- permutation), regenerating the S-box / permutation / keystream from the
+  -- emitted sub-seeds alone via our own PRNG. No loadstring; bytes -> proto.
   parts[#parts + 1] = table.concat({
-    "local __A='" .. B64 .. "'",
-    'local function __b64(s)',
+    -- per-build permuted alphabet + decoder (reverse lookup by find)
+    'local ' .. N.alpha .. "='" .. alpha .. "'",
+    'local function ' .. N.b64 .. '(s)',
     '  local r,v,b={},0,0',
-    "  s=s:gsub('[^'..__A..'=]','')",
+    "  s=s:gsub('[^'.." .. N.alpha .. "..'=]','')",
     '  for i=1,#s do',
     '    local c=s:sub(i,i)',
     "    if c=='=' then break end",
-    '    local p=__A:find(c,1,true)',
+    '    local p=' .. N.alpha .. ':find(c,1,true)',
     '    if not p then break end',
     '    v=v*64+(p-1) b=b+6',
     '    if b>=8 then b=b-8 r[#r+1]=string.char(math.floor(v/2^b)%256) v=v%(2^b) end',
     '  end',
     '  return table.concat(r)',
     'end',
-    'local __Bit=require("bitops")',
-    -- Park-Miller PRNG closure, identical stream to build-time Harden.prng.
-    'local function __pr(sd)',
-    '  local st=sd%2147483647 if st<=0 then st=st+2147483646 end',
-    '  return function(n) st=(st*16807)%2147483647 if n then return st%n else return st end end',
+    'local ' .. N.bit .. '=require("bitops")',
+    -- custom GraniteRNG (our own PRNG): split multiply + avalanche, identical
+    -- stream to build-time Harden.prng.
+    'local function ' .. N.gm .. '(a,b) local al=a%65536 return ((al*b)+(((a-al)/65536*b)%65536)*65536)%4294967296 end',
+    'local function ' .. N.pr .. '(sd)',
+    '  local st=sd%4294967296',
+    '  return function(n)',
+    '    st=(' .. N.gm .. '(st,3218467781)+2596069031)%4294967296',
+    '    local x=' .. N.gm .. '(st,3812015801)',
+    '    x=(x%65536)*65536+(x-x%65536)/65536',
+    '    x=' .. N.gm .. '(x,1274126177)',
+    '    if n then return x%n else return x end',
+    '  end',
     'end',
-    'local __sealed=__b64(__PAYLOAD__)',
-    -- (6) verify the custom integrity checksum over the ciphertext
-    'local __c=__sealed:sub(5)',
-    'local __h=5381',
-    '  for i=1,#__c do __h=(__h*33+__c:byte(i))%4294967296 end',
-    'local __want=__sealed:byte(1)*16777216+__sealed:byte(2)*65536+__sealed:byte(3)*256+__sealed:byte(4)',
-    'if __h~=__want then error("granite: integrity check failed") end',
-    'local __n=#__c',
-    'local __t={}',
-    '  for i=1,__n do __t[i]=__c:byte(i) end',
+    'local ' .. N.sealed .. '=' .. N.b64 .. "('" .. payload .. "')",
+    -- (6) verify our custom GraniteSum checksum over the ciphertext
+    'local ' .. N.ct .. '=' .. N.sealed .. ':sub(5)',
+    'local ' .. N.csa .. ',' .. N.csb .. '=19088743,1985229328',
+    '  for i=1,#' .. N.ct .. ' do ' .. N.csa .. '=(' .. N.csa .. '*178711+' .. N.ct .. ':byte(i)+1)%4294967296 '
+      .. N.csb .. '=(' .. N.csb .. '+' .. N.csa .. ')%4294967296 end',
+    'local ' .. N.csum .. '=(' .. N.csa .. '+' .. N.gm .. '(' .. N.csb .. ',40503))%4294967296',
+    'local ' .. N.want .. '=' .. N.sealed .. ':byte(1)*16777216+' .. N.sealed .. ':byte(2)*65536+'
+      .. N.sealed .. ':byte(3)*256+' .. N.sealed .. ':byte(4)',
+    'if ' .. N.csum .. '~=' .. N.want .. ' then error("granite: integrity check failed") end',
+    'local ' .. N.n .. '=#' .. N.ct,
+    'local ' .. N.t .. '={}',
+    '  for i=1,' .. N.n .. ' do ' .. N.t .. '[i]=' .. N.ct .. ':byte(i) end',
     -- (5) inverse stream masking (cipher-feedback chaining)
-    'local __mr=__pr(' .. maskExpr .. ')',
-    'local __prev=' .. cp.iv,
-    '  for i=1,__n do local __k=__mr(256) local __cur=__t[i] __t[i]=__Bit.bxor(__Bit.bxor(__cur,__k),__prev) __prev=__cur end',
+    'local ' .. N.mr .. '=' .. N.pr .. '(' .. maskExpr .. ')',
+    'local ' .. N.prev .. '=' .. cp.iv,
+    '  for i=1,' .. N.n .. ' do local ' .. N.k .. '=' .. N.mr .. '(256) local ' .. N.cur .. '=' .. N.t .. '[i] '
+      .. N.t .. '[i]=' .. N.bit .. '.bxor(' .. N.bit .. '.bxor(' .. N.cur .. ',' .. N.k .. '),' .. N.prev .. ') '
+      .. N.prev .. '=' .. N.cur .. ' end',
     -- (4) inverse byte substitution: rebuild the S-box, invert it, apply
-    'local __sr=__pr(' .. sboxExpr .. ')',
-    'local __sb={} for i=0,255 do __sb[i]=i end',
-    '  for i=255,1,-1 do local j=__sr(i+1) __sb[i],__sb[j]=__sb[j],__sb[i] end',
-    'local __is={} for i=0,255 do __is[__sb[i]]=i end',
-    '  for i=1,__n do __t[i]=__is[__t[i]] end',
+    'local ' .. N.sr .. '=' .. N.pr .. '(' .. sboxExpr .. ')',
+    'local ' .. N.sb .. '={} for i=0,255 do ' .. N.sb .. '[i]=i end',
+    '  for i=255,1,-1 do local j=' .. N.sr .. '(i+1) ' .. N.sb .. '[i],' .. N.sb .. '[j]=' .. N.sb .. '[j],' .. N.sb .. '[i] end',
+    'local ' .. N.is .. '={} for i=0,255 do ' .. N.is .. '[' .. N.sb .. '[i]]=i end',
+    '  for i=1,' .. N.n .. ' do ' .. N.t .. '[i]=' .. N.is .. '[' .. N.t .. '[i]] end',
     -- (3) inverse byte permutation: regenerate swap partners, undo in order
-    'local __ps={} do local __r=__pr(' .. permExpr .. ') for i=__n,2,-1 do __ps[i]=__r(i)+1 end end',
-    '  for i=2,__n do __t[i],__t[__ps[i]]=__t[__ps[i]],__t[i] end',
-    'local __bb={}',
-    '  for i=1,__n do __bb[i]=string.char(__t[i]) end',
-    'local __plain=table.concat(__bb)',
-    'local __INV=' .. invLit,
-    'local __Ser=require("serializer")',
-    'local __VM=require("vm")',
-    'local __proto=__Ser.deserialize(__plain,__INV)',
-    -- Resolve the global environment for the VM. Roblox Luau has no _ENV, so we
-    -- prefer an explicit _ENV where a runtime provides one (Lua 5.2+), else the
-    -- Roblox/5.1 getfenv (pcall-guarded so a sandbox that errors on it can't
-    -- break loading), else _G. getfenv appears only here in the tiny bootstrap,
-    -- never in the interpreter loop, so Luau's getfenv deopt doesn't touch hot code.
-    'local __env',
-    'if type(_ENV)=="table" then __env=_ENV',
-    'elseif getfenv then local __ok,__e=pcall(getfenv,1) __env=(__ok and type(__e)=="table") and __e or _G',
-    'else __env=_G end',
-    'return __VM.load(__proto,__env)()',
+    'local ' .. N.ps .. '={} do local ' .. N.rg .. '=' .. N.pr .. '(' .. permExpr .. ') for i=' .. N.n .. ',2,-1 do '
+      .. N.ps .. '[i]=' .. N.rg .. '(i)+1 end end',
+    '  for i=2,' .. N.n .. ' do ' .. N.t .. '[i],' .. N.t .. '[' .. N.ps .. '[i]]=' .. N.t .. '[' .. N.ps .. '[i]],' .. N.t .. '[i] end',
+    'local ' .. N.bb .. '={}',
+    '  for i=1,' .. N.n .. ' do ' .. N.bb .. '[i]=string.char(' .. N.t .. '[i]) end',
+    'local ' .. N.plain .. '=table.concat(' .. N.bb .. ')',
+    'local ' .. N.inv .. '=' .. invLit,
+    'local ' .. N.ser .. '=require("serializer")',
+    'local ' .. N.vm .. '=require("vm")',
+    'local ' .. N.proto .. '=' .. N.ser .. '.deserialize(' .. N.plain .. ',' .. N.inv .. ')',
+    -- Resolve the global environment for the VM (Roblox Luau has no _ENV).
+    'local ' .. N.env,
+    'if type(_ENV)=="table" then ' .. N.env .. '=_ENV',
+    'elseif getfenv then local __ok,__e=pcall(getfenv,1) ' .. N.env .. '=(__ok and type(__e)=="table") and __e or _G',
+    'else ' .. N.env .. '=_G end',
+    'return ' .. N.vm .. '.load(' .. N.proto .. ',' .. N.env .. ')()',
   }, '\n')
-  local body = table.concat(parts, '\n')
-  local out = body:gsub('__PAYLOAD__', function() return "'" .. payload .. "'" end)
-  return out
+  return table.concat(parts, '\n')
 end
 
 return M

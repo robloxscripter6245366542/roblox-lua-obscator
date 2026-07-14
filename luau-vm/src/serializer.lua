@@ -4,14 +4,13 @@
 --
 -- Format
 --   magic  'FVM' , version(1 byte)
---   uint32 checksum (FNV-1a over the body)
+--   uint32 checksum (custom GraniteSum over the body)
 --   uint32 bodyLength
 --   body:  proto (recursive)
 -- Integers use zig-zag LEB128 varints; numbers round-trip via %.17g text so no
 -- string.pack dependency (works on Lua 5.1+/Luau uniformly).
 
 local Opcodes = require('opcodes')
-local Bit = require('bitops')
 
 local Serializer = {}
 
@@ -203,17 +202,20 @@ local function readProto(r, invMap)
   return p
 end
 
--- ── FNV-1a checksum (32-bit, portable) ───────────────────────────────────────
-local function fnv1a(s)
-  local h = 2166136261
+-- ── custom container hash (32-bit, portable) ─────────────────────────────────
+-- Our own body hash ("GraniteSum") — NOT FNV-1a/CRC/djb2, and needs no bit32:
+-- two coupled accumulators (custom multiplier on lane `a`, positional sum on
+-- lane `b`) folded with a final multiply. Products stay < 2^53 so it is exact
+-- in Lua 5.1-5.4 + Luau doubles. Detects any body corruption before deserialize.
+local function ghash(s)
+  local a, b = 305419896, 2596069031
   for i = 1, #s do
-    h = Bit.bxor(h, s:byte(i))
-    -- h * 16777619 mod 2^32, split to stay exact in doubles
-    local lo = (h % 65536) * 16777619
-    local hi = (math.floor(h / 65536) * 16777619) % 65536
-    h = (lo + hi * 65536) % 4294967296
+    a = (a * 524287 + s:byte(i) + 1) % 4294967296
+    b = (b + a) % 4294967296
   end
-  return math.floor(h)
+  local bl = b % 65536
+  b = ((bl * 40503) + (((b - bl) / 65536 * 40503) % 65536) * 65536) % 4294967296
+  return (a + b) % 4294967296
 end
 
 -- ── public API ───────────────────────────────────────────────────────────────
@@ -224,7 +226,7 @@ function Serializer.serialize(proto, opMap)
   local head = Writer()
   head:put(MAGIC)
   writeByte(head, VERSION)
-  writeU32(head, fnv1a(body))
+  writeU32(head, ghash(body))
   writeU32(head, #body)
   return table.concat(head.buf) .. body
 end
@@ -238,7 +240,7 @@ function Serializer.deserialize(bytes, invMap)
   local checksum = readU32(r)
   local bodyLen = readU32(r)
   local body = bytes:sub(r.pos, r.pos + bodyLen - 1)
-  if fnv1a(body) ~= checksum then error('serializer: checksum mismatch (corrupt bytecode)') end
+  if ghash(body) ~= checksum then error('serializer: checksum mismatch (corrupt bytecode)') end
   local br = Reader(body)
   return readProto(br, invMap)
 end
@@ -252,7 +254,7 @@ function Serializer.reseal(bytes)
   local head = Writer()
   head:put(MAGIC)
   writeByte(head, VERSION)
-  writeU32(head, fnv1a(body))
+  writeU32(head, ghash(body))
   writeU32(head, #body)
   return table.concat(head.buf) .. body
 end
