@@ -45,6 +45,12 @@ local function seed1(sk, i)
   if s == 0 then s = 1 end
   return s
 end
+-- independent keystream seed for constant i (different domain from seed1)
+local function seedK(sk, i)
+  local s = (gmul(sk, 40503) + i * 2654435761 + 7) % 4294967296
+  if s == 0 then s = 1 end
+  return s
+end
 local function nextByte(st)
   st = (gmul(st, 3218467781) + 2596069031) % 4294967296
   return st, st % 256
@@ -70,6 +76,39 @@ function M.seal(proto, sk)
   end
   proto.sealed = { slices = slices, n = n, sk = sk }
   proto.code = nil
+
+  -- Constant encryption: string constants (the dump target — URLs, remote names,
+  -- keys, messages) are encrypted and stored behind a proxy that decrypts on
+  -- access, so they are never resident in plaintext even after a devirtualizer
+  -- recovers the bytecode. Non-strings pass through. Strings intern in Lua, so
+  -- decrypting the same constant twice yields the same object (identity safe).
+  local K = proto.consts
+  local realK, hasStr, nk = {}, false, #K
+  for i = 1, nk do
+    local v = K[i]
+    if type(v) == 'string' then
+      hasStr = true
+      local st, kb = seedK(sk, i), nil
+      local out = {}
+      for j = 1, #v do st, kb = nextByte(st); out[j] = string.char((v:byte(j) + kb) % 256) end
+      realK[i] = { s = table.concat(out) }
+    else
+      realK[i] = v
+    end
+  end
+  if hasStr then
+    proto.consts = setmetatable({}, { __index = function(_, i)
+      local e = realK[i]
+      if type(e) == 'table' then
+        local st, kb = seedK(sk, i), nil
+        local enc, o = e.s, {}
+        for j = 1, #enc do st, kb = nextByte(st); o[j] = string.char((enc:byte(j) - kb) % 256) end
+        return table.concat(o)
+      end
+      return e
+    end })
+  end
+
   for _, child in ipairs(proto.protos) do M.seal(child, sk) end
 end
 
