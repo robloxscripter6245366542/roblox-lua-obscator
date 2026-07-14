@@ -16,6 +16,7 @@
 
 local Opcodes = require('opcodes')
 local Bit = require('bitops')
+local Seal = require('seal')
 local Op = Opcodes.Op
 
 local pack = table.pack or function(...) return { n = select('#', ...), ... } end
@@ -43,6 +44,7 @@ end
 -- The interpreter. Returns a packed results table {..., n=}.
 execute = function(proto, upvals, env, args, argN)
   local code = proto.code
+  local sealed = proto.sealed -- when set, instructions are decoded on demand (seal.lua)
   local K = proto.consts
   local protos = proto.protos
   local R = {}
@@ -63,7 +65,8 @@ execute = function(proto, upvals, env, args, argN)
   local pc = 1
 
   while true do
-    local ins = code[pc]
+    -- JIT/streamed: decode exactly this instruction now, then let it be reclaimed
+    local ins = sealed and Seal.decode(sealed, pc) or code[pc]
     pc = pc + 1
     local op = ins.op
     local a = ins.a

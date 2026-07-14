@@ -43,6 +43,9 @@ jobs:
       - name: Custom bytecode cipher (permute/S-box/mask/checksum round-trip)
         run: lua5.4 test/cipher.lua
 
+      - name: Sealed/streamed execution + instruction mutation
+        run: lua5.4 test/seal_test.lua
+
       - name: Serializer constant round-trip (subtype, -0.0, large int, inf/nan)
         run: lua5.4 test/serialize.lua
 

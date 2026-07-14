@@ -216,10 +216,27 @@ with the primitives in [`src/harden.lua`](src/harden.lua):
   probe aborts under an active hook (weak by nature — the decoder runs client-side).
 - **Comment-stripped runtime** — the bundled interpreter ships without its
   documentation comments (guarded by a re-parse; falls back if stripping fails).
+- **Instruction mutation** — each opcode gets several interchangeable byte
+  encodings (`harden.opMutationMap`; the serializer picks one per instruction),
+  so one opcode appears as different bytes — no byte→opcode frequency map.
+
+### Sealed / streamed execution (`src/seal.lua`)
+
+After the GraniteCipher payload is decoded to proto tables, the *in-memory*
+bytecode is sealed: each proto's instruction array becomes per-instruction
+encrypted slices and the plaintext `code` table is dropped; the dispatch loop
+decodes **one instruction at a time, immediately before it runs**. This gives
+**JIT/on-demand decoding + streamed execution** (the whole plaintext stream is
+never resident — only the current instruction, a short-lived local the GC
+reclaims: best-effort memory scrubbing), an **ephemeral session key** derived at
+runtime per execution (so the in-memory encrypted form differs every run), and a
+**compact representation** (opaque bytes, not a `{op=,a=,b=}` mirror). Trade-off:
+sealed execution re-decodes each instruction every time it runs, so it is slower
+than the plain interpreter — the security/speed exchange of streaming.
 
 Same seed → identical output (reproducible); different seed → different opcodes,
-keys, names, and junk. This raises the cost of a *generic* devirtualizer and
-defeats casual copy-paste. It is **not** cryptography and **not** unbreakable:
+aliases, keys, names, and junk. This raises the cost of a *generic* devirtualizer
+and a static memory dump, and defeats casual copy-paste. It is **not** cryptography and **not** unbreakable:
 any self-contained client-side scheme must carry its decryptor and keys, and the
 interpreter is present (it holds none of the user's logic — that lives only in
 the encrypted bytecode). Deeper resistance (polymorphic handlers, VM-in-VM) is

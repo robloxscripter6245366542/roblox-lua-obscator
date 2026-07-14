@@ -83,6 +83,35 @@ function H.opPermutation(count, rng)
   return fwd, inv
 end
 
+-- Instruction mutation: like opPermutation, but each opcode gets 1..aliasMax
+-- interchangeable byte encodings. The serializer picks among them per
+-- instruction, so one opcode shows up as several different bytes — defeating a
+-- byte-frequency 1:1 opcode map. Returns fwd (op -> { bytes }) and inv (any
+-- alias byte -> canonical op). Requires count*aliasMax <= 255.
+function H.opMutationMap(count, rng, aliasMax)
+  aliasMax = aliasMax or 3
+  local pool = {}
+  for b = 1, 255 do pool[b] = b end
+  for i = 255, 2, -1 do
+    local j = rng.int(i) + 1
+    pool[i], pool[j] = pool[j], pool[i]
+  end
+  local fwd, inv, idx = {}, {}, 0
+  for op = 1, count do
+    local k = 1 + rng.int(aliasMax)
+    local list = {}
+    for _ = 1, k do
+      if idx >= 255 then break end
+      idx = idx + 1
+      local b = pool[idx]
+      list[#list + 1] = b
+      inv[b] = op
+    end
+    fwd[op] = list
+  end
+  return fwd, inv
+end
+
 -- XOR `data` with a GraniteRNG keystream seeded by `seed`. Symmetric: the
 -- emitted bootstrap runs the identical routine to decrypt.
 function H.encrypt(data, seed)

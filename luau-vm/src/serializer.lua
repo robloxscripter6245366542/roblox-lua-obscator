@@ -149,11 +149,17 @@ local function readValue(r)
 end
 
 -- ── proto encoding ───────────────────────────────────────────────────────────
--- opMap (optional): canonical opcode -> the byte written for it. Lets a build
--- ship a per-build opcode numbering so the bytecode can't be read by a
--- devirtualizer keyed to the canonical set. ins.op stays canonical internally,
--- so operand-layout lookup and the VM's dispatch are unaffected.
-local function writeProto(w, p, opMap)
+-- opMap (optional): canonical opcode -> the byte(s) written for it. A number
+-- gives a per-build opcode numbering; a { list } of bytes enables instruction
+-- mutation (one opcode has several interchangeable encodings, chosen per
+-- instruction via `pick`). ins.op stays canonical internally, so operand-layout
+-- lookup and the VM's dispatch are unaffected.
+local function opByte(opMap, op, pick)
+  local m = opMap and opMap[op]
+  if type(m) == 'table' then return m[(pick and pick() or 0) % #m + 1] end
+  return m or op
+end
+local function writeProto(w, p, opMap, pick)
   writeUVarint(w, p.numparams)
   writeByte(w, p.isVararg and 1 or 0)
   writeUVarint(w, p.maxstack)
@@ -169,14 +175,14 @@ local function writeProto(w, p, opMap)
   -- code
   writeUVarint(w, #p.code)
   for _, ins in ipairs(p.code) do
-    writeByte(w, opMap and opMap[ins.op] or ins.op)
+    writeByte(w, opByte(opMap, ins.op, pick))
     for _, field in ipairs(Opcodes.operands[ins.op]) do
       writeSVarint(w, ins[field] or 0)
     end
   end
   -- nested protos
   writeUVarint(w, #p.protos)
-  for _, child in ipairs(p.protos) do writeProto(w, child, opMap) end
+  for _, child in ipairs(p.protos) do writeProto(w, child, opMap, pick) end
 end
 
 -- invMap (optional): the inverse of opMap (written byte -> canonical opcode).
@@ -219,9 +225,9 @@ local function ghash(s)
 end
 
 -- ── public API ───────────────────────────────────────────────────────────────
-function Serializer.serialize(proto, opMap)
+function Serializer.serialize(proto, opMap, pick)
   local w = Writer()
-  writeProto(w, proto, opMap)
+  writeProto(w, proto, opMap, pick)
   local body = table.concat(w.buf)
   local head = Writer()
   head:put(MAGIC)
