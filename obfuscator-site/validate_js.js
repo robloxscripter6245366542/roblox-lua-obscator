@@ -40,7 +40,10 @@ const failures = [];
 
 for (const f of files) {
   total++;
-  const src = fs.readFileSync(f, "latin1");
+  // Read as UTF-8 text (JS string): the engine's contract is text in, and it
+  // encodes to raw UTF-8 bytes internally — matching how a browser textarea
+  // hands source to the obfuscator. `lua5.4 file` reads the same UTF-8 bytes.
+  const src = fs.readFileSync(f, "utf8");
   const o1 = normalize(runLua(f));
   const o2 = normalize(runLua(f));
   if (o1 !== o2) { skip++; continue; }

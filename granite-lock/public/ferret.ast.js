@@ -397,7 +397,7 @@
   function stringLit(s) {
     var out = ['"'];
     for (var i = 0; i < s.length; i++) {
-      var b = s.charCodeAt(i);
+      var b = s.charCodeAt(i) & 0xFF; // byte string: never emit an escape > 255
       if (b === 34) out.push('\\"');
       else if (b === 92) out.push("\\\\");
       else if (b >= 32 && b <= 126) out.push(String.fromCharCode(b));

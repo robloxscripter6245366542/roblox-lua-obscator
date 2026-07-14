@@ -67,6 +67,104 @@ function H.encrypt(data, seed)
   return table.concat(out)
 end
 
+-- ── custom multi-stage bytecode cipher ("GraniteCipher") ─────────────────────
+-- A per-build, fully custom cipher over the serialized bytecode blob. Chain:
+--
+--   plaintext bytes
+--     │  (1) per-build random seed  -> (2) key schedule: derive sub-seeds
+--     ▼
+--   (3) byte permutation     keyed Fisher-Yates over byte POSITIONS
+--     ▼
+--   (4) byte substitution    per-build bijective S-box over byte VALUES
+--     ▼
+--   (5) stream masking        Park-Miller keystream XOR with cipher-feedback
+--                             chaining (CBC-like), so one flipped byte
+--                             avalanches through the rest
+--     ▼
+--   (6) integrity checksum    custom 32-bit rolling sum prepended
+--     ▼
+--   (7) base64                (done by the bundler)
+--
+-- Every stage is regenerable from the sub-seeds alone, so the emitted decoder
+-- ships only three small factored seeds + an IV — never the S-box, permutation
+-- table, or keystream — and inverts the chain in pure Luau (no loadstring).
+
+-- Deterministic bijective S-box: Fisher-Yates over 0..255 driven by `seed`.
+-- Returns the forward map s[v] (0-indexed values held at 0-indexed keys).
+function H.sbox(seed)
+  local rng = H.prng(seed)
+  local s = {}
+  for i = 0, 255 do s[i] = i end
+  for i = 255, 1, -1 do
+    local j = rng.int(i + 1) -- 0..i
+    s[i], s[j] = s[j], s[i]
+  end
+  return s
+end
+
+-- Swap partners for a keyed position permutation of `n` bytes. js[i] (i=2..n)
+-- is the 1-based partner used at step i. Applying the swaps for i=n..2 permutes;
+-- applying them for i=2..n inverts (each swap is its own inverse).
+function H.permSwaps(seed, n)
+  local rng = H.prng(seed)
+  local js = {}
+  for i = n, 2, -1 do js[i] = rng.int(i) + 1 end -- 1..i
+  return js
+end
+
+-- Custom 32-bit rolling checksum (djb2-style). Products stay < 2^53 so it is
+-- exact in Lua 5.1-5.4 doubles and Luau. Independent of the serializer's own
+-- FNV container sum — this authenticates the *ciphertext* before any decode.
+function H.checksum(s)
+  local h = 5381
+  for i = 1, #s do h = (h * 33 + s:byte(i)) % 4294967296 end
+  return h
+end
+
+-- Seal `plain` with the full chain using per-build sub-seeds drawn from `rng`.
+-- Returns the sealed byte string (checksum-prefixed ciphertext) and the params
+-- the emitted decoder needs to invert it.
+function H.seal(plain, rng)
+  local permSeed = rng.next()
+  local sboxSeed = rng.next()
+  local maskSeed = rng.next()
+  local iv = rng.byte()
+  local n = #plain
+
+  -- (3) byte permutation
+  local a = {}
+  for i = 1, n do a[i] = plain:byte(i) end
+  local js = H.permSwaps(permSeed, n)
+  for i = n, 2, -1 do a[i], a[js[i]] = a[js[i]], a[i] end
+
+  -- (4) byte substitution
+  local sbox = H.sbox(sboxSeed)
+  for i = 1, n do a[i] = sbox[a[i]] end
+
+  -- (5) stream masking with cipher-feedback chaining
+  local mrng = H.prng(maskSeed)
+  local prev = iv
+  for i = 1, n do
+    local c = Bit.bxor(Bit.bxor(a[i], mrng.byte()), prev)
+    a[i] = c
+    prev = c
+  end
+
+  local body = {}
+  for i = 1, n do body[i] = string.char(a[i]) end
+  local cipher = table.concat(body)
+
+  -- (6) integrity checksum, 4 bytes big-endian, prepended
+  local sum = H.checksum(cipher)
+  local head = string.char(
+    math.floor(sum / 16777216) % 256,
+    math.floor(sum / 65536) % 256,
+    math.floor(sum / 256) % 256,
+    sum % 256)
+
+  return head .. cipher, { permSeed = permSeed, sboxSeed = sboxSeed, maskSeed = maskSeed, iv = iv }
+end
+
 -- Emit `seed` as an arithmetic expression `(m*q+r)` rather than a bare literal,
 -- so the keystream seed is not directly grep-able in the output. Factors are
 -- kept < 2^31 so the product is exact in every target runtime.
