@@ -13,6 +13,7 @@ return {
   { 'repeat', 'local i=0 repeat i=i+1 until i>=3 print(i)' },
   { 'numfor', 'local s=0 for i=1,10 do s=s+i end print(s)' },
   { 'numfor-step', 'local t={} for i=10,1,-2 do t[#t+1]=i end print(table.concat(t,","))' },
+  { 'numfor-zero-step', 'local ok = pcall(function() for i=1,10,0 do end end) print(ok)' },
   { 'genfor-ipairs', 'local t={"a","b","c"} for i,v in ipairs(t) do print(i,v) end' },
   { 'genfor-pairs', 'local t={x=1} local k,v for kk,vv in pairs(t) do k,v=kk,vv end print(k,v)' },
   { 'func', 'local function add(a,b) return a+b end print(add(3,4))' },

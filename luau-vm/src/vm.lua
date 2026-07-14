@@ -122,6 +122,7 @@ execute = function(proto, upvals, env, args, argN)
         pc = pc + ins.sbx
       end
     elseif op == Op.FORPREP then
+      if R[a + 2] == 0 then error("'for' step is zero") end
       R[a] = R[a] - R[a + 2]
       pc = pc + ins.sbx
 
