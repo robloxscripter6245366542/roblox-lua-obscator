@@ -90,6 +90,13 @@ do
   ok(allok, 'encrypted constants decrypt to the original strings on access')
 end
 
+-- 4b. numeric constants: value AND int/float subtype preserved through sealing
+do
+  local src = 'return 42, -7, 1000000, 987654321, 2^53, 0.5, 3.14159, -0.0, ' ..
+    '(math.type and math.type(1000000) or "n"), (math.type and math.type(2.0) or "n")'
+  ok(runSealed(src, 31337) == runNative(src), 'numeric constants: value + subtype preserved')
+end
+
 -- 5. mutation map: valid many-to-one aliasing within the byte budget
 do
   local rng = Harden.prng(7)
