@@ -3,27 +3,28 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>ferret — Lua / Luau Obfuscator</title>
-<meta name="description" content="Free client-side Lua & Roblox Luau obfuscator. Runs entirely in your browser — your code never leaves the page."/>
-<link rel="icon" href="data:,"/>
+<title>Granite Lock — Lua / Luau Obfuscator</title>
+<meta name="description" content="Granite Lock — premium client-side Lua & Roblox Luau obfuscator with a custom bytecode VM. Runs entirely in your browser; your code never leaves the page."/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='11' width='18' height='11' rx='3' fill='%2310b981'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4' fill='none' stroke='%2334d399' stroke-width='2'/%3E%3C/svg%3E"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#08090d;
-  --panel:#0f1118;
-  --panel2:#141722;
-  --line:#20242f;
-  --line2:#2b303d;
-  --text:#eef1f7;
-  --muted:#9aa3b2;
-  --dim:#5b6472;
-  --v1:#8b5cf6;      /* violet */
-  --v2:#6366f1;      /* indigo */
-  --v-soft:#a78bfa;
+  --bg:#080a09;               /* granite black, faint green undertone */
+  --panel:rgba(20,25,22,.55);  /* frosted glass */
+  --panel2:rgba(30,38,33,.5);
+  --line:rgba(255,255,255,.07);
+  --line2:rgba(120,220,180,.16);
+  --text:#e9f3ee;
+  --muted:#9cb2a8;
+  --dim:#5f7369;
+  --v1:#34d399;      /* emerald */
+  --v2:#059669;      /* deep emerald */
+  --v-soft:#6ee7b7;  /* mint */
   --ok:#34d399;
   --err:#fb7185;
-  --grad:linear-gradient(135deg,#8b5cf6,#6366f1);
-  --radius:14px;
+  --grad:linear-gradient(135deg,#34d399,#059669);
+  --radius:16px;
+  --glass:saturate(140%) blur(16px);
   --mono:ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,monospace;
   --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
 }
@@ -38,23 +39,24 @@ body::before,body::after{
   content:"";position:fixed;z-index:0;pointer-events:none;border-radius:50%;
   filter:blur(120px);opacity:.5;
 }
-body::before{width:640px;height:640px;top:-260px;left:-160px;background:#4c2fb0}
-body::after{width:560px;height:560px;bottom:-300px;right:-160px;background:#1e3a8a;opacity:.4}
+body::before{width:640px;height:640px;top:-260px;left:-160px;background:#0f7a53}
+body::after{width:560px;height:560px;bottom:-300px;right:-160px;background:#0b5a48;opacity:.42}
 a{color:var(--v-soft);text-decoration:none}
-a:hover{color:#c4b5fd}
+a:hover{color:#a7f3d0}
 
 /* ---------- top nav ---------- */
 .nav{
   position:relative;z-index:2;display:flex;align-items:center;gap:14px;
   padding:14px 22px;border-bottom:1px solid var(--line);
-  background:rgba(12,14,20,.72);backdrop-filter:blur(12px);
+  background:rgba(10,14,12,.6);backdrop-filter:var(--glass);-webkit-backdrop-filter:var(--glass);
 }
-.brand{display:flex;align-items:center;gap:11px}
+.brand{display:flex;align-items:center;gap:12px}
 .brand .mark{
-  width:34px;height:34px;border-radius:10px;background:var(--grad);
-  display:grid;place-items:center;font-family:var(--mono);font-weight:800;
-  font-size:1.15rem;color:#fff;box-shadow:0 6px 20px -6px rgba(124,92,255,.7);
+  width:36px;height:36px;border-radius:11px;background:linear-gradient(160deg,#065f46,#0b1210);
+  display:grid;place-items:center;color:#6ee7b7;
+  box-shadow:0 6px 20px -6px rgba(16,185,129,.55),inset 0 1px 0 rgba(255,255,255,.12),inset 0 0 0 1px rgba(110,231,183,.22);
 }
+.brand .mark svg{width:19px;height:19px}
 .brand .name{font-size:1.12rem;font-weight:750;letter-spacing:-.01em}
 .brand .name b{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .tag{
@@ -84,12 +86,12 @@ a:hover{color:#c4b5fd}
 .pill .swatch{width:9px;height:9px;border-radius:50%;background:var(--dim);transition:.15s}
 .pill:hover{border-color:var(--line2);color:var(--text)}
 .pill:has(input:checked){
-  color:var(--text);border-color:rgba(139,92,246,.55);
-  background:linear-gradient(180deg,rgba(139,92,246,.16),rgba(99,102,241,.06));
-  box-shadow:0 0 0 1px rgba(139,92,246,.15),0 6px 18px -10px rgba(124,92,255,.6);
+  color:var(--text);border-color:rgba(52,211,153,.55);
+  background:linear-gradient(180deg,rgba(52,211,153,.16),rgba(5,150,105,.06));
+  box-shadow:0 0 0 1px rgba(52,211,153,.15),0 6px 18px -10px rgba(16,185,129,.6);
 }
 .pill:has(input:checked) .swatch{background:var(--v-soft);box-shadow:0 0 8px var(--v-soft)}
-.pill:focus-within{outline:2px solid rgba(139,92,246,.5);outline-offset:2px}
+.pill:focus-within{outline:2px solid rgba(52,211,153,.5);outline-offset:2px}
 .controls.vmmode .tx-only{opacity:.3;pointer-events:none;filter:grayscale(1)}
 .pill.eng:has(input:checked){border-color:rgba(52,211,153,.6);background:linear-gradient(180deg,rgba(52,211,153,.16),rgba(52,211,153,.05))}
 .pill.eng:has(input:checked) .swatch{background:var(--ok);box-shadow:0 0 8px var(--ok)}
@@ -104,7 +106,7 @@ a:hover{color:#c4b5fd}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line2)}
 .btn.ghost:hover{background:#1b1f2b;border-color:#333a49}
-.btn.primary{background:var(--grad);color:#fff;box-shadow:0 8px 22px -8px rgba(124,92,255,.75)}
+.btn.primary{background:var(--grad);color:#04120c;box-shadow:0 8px 22px -8px rgba(16,185,129,.75)}
 .btn.primary:hover{filter:brightness(1.08);transform:translateY(-1px)}
 .btn.primary:active{transform:translateY(0)}
 .kbd{font-family:var(--mono);font-size:.68rem;opacity:.7;border:1px solid rgba(255,255,255,.25);border-radius:5px;padding:1px 5px;margin-left:2px}
@@ -113,8 +115,9 @@ a:hover{color:#c4b5fd}
 .editor{position:relative;z-index:1;flex:1;display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px 22px;min-height:0}
 .panel{
   display:flex;flex-direction:column;min-width:0;background:var(--panel);
+  backdrop-filter:var(--glass);-webkit-backdrop-filter:var(--glass);
   border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
-  box-shadow:0 20px 50px -30px rgba(0,0,0,.9);
+  box-shadow:0 24px 60px -34px rgba(0,0,0,.92),inset 0 1px 0 rgba(255,255,255,.05);
 }
 .panel .phead{
   display:flex;align-items:center;gap:10px;padding:11px 15px;
@@ -128,15 +131,15 @@ a:hover{color:#c4b5fd}
   border:1px solid var(--line2);border-radius:7px;padding:5px 10px;cursor:pointer;transition:.15s
 }
 .chip:hover{color:var(--text);background:#1b1f2b;border-color:#333a49}
-.chip.accent{color:#c4b5fd;border-color:rgba(139,92,246,.4)}
-.chip.accent:hover{background:rgba(139,92,246,.12)}
+.chip.accent{color:#6ee7b7;border-color:rgba(52,211,153,.4)}
+.chip.accent:hover{background:rgba(52,211,153,.12)}
 textarea{
   flex:1;width:100%;background:transparent;color:var(--text);border:none;outline:none;resize:none;
   padding:16px 18px;font-family:var(--mono);font-size:.82rem;line-height:1.65;tab-size:2;
 }
 textarea::placeholder{color:var(--dim)}
 #output{white-space:pre;overflow:auto;color:#d7dce7}
-textarea::selection{background:rgba(139,92,246,.35)}
+textarea::selection{background:rgba(52,211,153,.32)}
 /* custom scrollbars */
 textarea::-webkit-scrollbar{width:11px;height:11px}
 textarea::-webkit-scrollbar-thumb{background:#262b38;border-radius:8px;border:3px solid var(--panel)}
@@ -145,7 +148,7 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
 /* ---------- status ---------- */
 .status{
   position:relative;z-index:2;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
-  padding:9px 22px;border-top:1px solid var(--line);background:rgba(12,14,20,.72);backdrop-filter:blur(12px);
+  padding:9px 22px;border-top:1px solid var(--line);background:rgba(10,14,12,.6);backdrop-filter:var(--glass);-webkit-backdrop-filter:var(--glass);
   font-size:.78rem;color:var(--muted)
 }
 .status .grow{flex:1}
@@ -167,10 +170,12 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
 
 <header class="nav">
   <div class="brand">
-    <div class="mark">f</div>
-    <div class="name"><b>ferret</b> obfuscator</div>
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="11" width="17" height="10.5" rx="3"/><path d="M7.5 11V7.2a4.5 4.5 0 0 1 9 0V11"/><circle cx="12" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>
+    </div>
+    <div class="name"><b>Granite</b> Lock</div>
   </div>
-  <span class="tag"><span class="dot"></span>Lua 5.1–5.4 · Roblox Luau</span>
+  <span class="tag"><span class="dot"></span>Custom bytecode VM · Roblox Luau</span>
   <div class="grow"></div>
   <nav>
     <a href="/deobfuscator.html">Deobfuscator</a>
@@ -256,7 +261,7 @@ textarea::-webkit-scrollbar-thumb:hover{background:#333a49}
   var SAMPLE =
 '-- sample Roblox-style script\n' +
 'local Players = game and game:GetService("Players")\n' +
-'local Config = { name = "ferret demo", speed = 16, keys = {"a","b","c"} }\n\n' +
+'local Config = { name = "granite lock demo", speed = 16, keys = {"a","b","c"} }\n\n' +
 'local function greet(who)\n' +
 '  return "hello, " .. tostring(who) .. "!"\n' +
 'end\n\n' +
