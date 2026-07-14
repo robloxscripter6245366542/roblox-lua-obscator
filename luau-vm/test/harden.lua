@@ -67,7 +67,7 @@ end
 --    and leaks no cleartext bytecode magic or executable loadstring.
 do
   local RT = {}
-  for _, name in ipairs({ 'opcodes', 'bitops', 'serializer', 'vm' }) do
+  for _, name in ipairs({ 'opcodes', 'bitops', 'serializer', 'seal', 'vm' }) do
     local f = assert(io.open('src/' .. name .. '.lua', 'r'))
     RT[name] = f:read('*a'); f:close()
   end

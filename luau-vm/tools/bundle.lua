@@ -28,6 +28,6 @@ local f = assert(io.open(input, 'r'))
 local src = f:read('*a'); f:close()
 
 local RT = {}
-for _, name in ipairs({ 'opcodes', 'bitops', 'serializer', 'vm' }) do RT[name] = readModule(name) end
+for _, name in ipairs({ 'opcodes', 'bitops', 'serializer', 'seal', 'vm' }) do RT[name] = readModule(name) end
 
 io.write(WebBundle.bundle(src, RT, input, seed and { seed = seed } or nil))

@@ -13,9 +13,9 @@ const OUT = path.join(__dirname, 'modules.js');
 
 // modules needed to COMPILE in the browser
 const COMPILE = ['opcodes', 'bitops', 'lexer', 'parser', 'scope', 'optimizer',
-  'compiler', 'serializer', 'vm', 'api', 'harden', 'webbundle'];
+  'compiler', 'serializer', 'seal', 'vm', 'api', 'harden', 'webbundle'];
 // modules bundled into the emitted output (the runtime that executes bytecode)
-const RUNTIME = ['opcodes', 'bitops', 'serializer', 'vm'];
+const RUNTIME = ['opcodes', 'bitops', 'serializer', 'seal', 'vm'];
 
 const toAscii = (s) => s.replace(/[^\x00-\x7F]/g, ''); // drop non-ASCII (comments only)
 const read = (m) => toAscii(fs.readFileSync(path.join(SRC, m + '.lua'), 'utf8'));

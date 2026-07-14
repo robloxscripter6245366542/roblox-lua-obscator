@@ -115,8 +115,10 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
   -- 4. compress + wrap in a versioned, fingerprinted envelope,
   -- 5. seal with the multi-round GraniteCipher, 6. encode (permuted alphabet).
   local proto = Compiler.compile(src, chunkName or 'input')
-  local fwd, inv = Harden.opPermutation(Opcodes.count, rng)
-  local bc = Serializer.serialize(proto, fwd)
+  -- opcode MUTATION: each opcode has several interchangeable byte encodings,
+  -- picked per instruction, so one opcode appears as different bytes.
+  local fwd, inv = Harden.opMutationMap(Opcodes.count, rng, 3)
+  local bc = Serializer.serialize(proto, fwd, function() return rng.int(1000003) end)
   local env = Harden.envelope(Harden.compress(bc))
   local rounds = (opts and opts.rounds) or 2
   local sealed, cp = Harden.seal(env, rng, rounds)
@@ -147,14 +149,14 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
     'csum', 'want', 'n', 't', 'mr', 'prev', 'k', 'cur', 'sr', 'sb', 'is',
     'ps', 'rg', 'bb', 'plain', 'inv', 'ser', 'vm', 'proto', 'env', 'bit',
     'msk', 'sbs', 'prm', 'ivs', 'rr', 'envb', 'ver', 'fpw', 'fpg', 'pay',
-    'dz', 'fa', 'fb', 'ei', 'ec', 'dc',
+    'dz', 'fa', 'fb', 'ei', 'ec', 'dc', 'seal', 'sk',
   }) do N[k] = g() end
 
-  local order = { 'opcodes', 'bitops', 'serializer', 'vm' }
+  local order = { 'opcodes', 'bitops', 'serializer', 'seal', 'vm' }
   local parts = {}
   -- banner (ASCII only — the browser build ASCII-sanitizes this source)
   parts[#parts + 1] = '-- ================================================================'
-  parts[#parts + 1] = '--  Obfuscated by Granite Lock  |  https://granitelock.vercel.app'
+  parts[#parts + 1] = '--  Obfuscated by Granite Lock  |  https://granitelockvm.vercel.app'
   parts[#parts + 1] = '--  Custom bytecode VM  |  encrypted  |  no loadstring'
   parts[#parts + 1] = '-- ================================================================'
   -- module registry: `require` keeps its name (module sources call it by name).
@@ -275,6 +277,15 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
     'local ' .. N.ser .. '=require("serializer")',
     'local ' .. N.vm .. '=require("vm")',
     'local ' .. N.proto .. '=' .. N.ser .. '.deserialize(' .. N.plain .. ',' .. N.inv .. ')',
+    -- Runtime SEAL: derive an ephemeral per-execution session key (clock +
+    -- randomness), then seal the proto tree so instructions are decoded one at a
+    -- time, on demand (streamed execution). The full plaintext bytecode is never
+    -- resident and the in-memory encrypted form differs every run.
+    'local ' .. N.seal .. '=require("seal")',
+    'if math.randomseed then math.randomseed((tick and math.floor(tick()*1e6)) or (os and os.time and os.time()) or 0) end',
+    'local ' .. N.sk .. '=(((tick and math.floor(tick()*1e6)) or (os and os.time and os.time()) or 1)*131+math.random(1,2147483646))%4294967296',
+    'if ' .. N.sk .. '==0 then ' .. N.sk .. '=1 end',
+    N.seal .. '.seal(' .. N.proto .. ',' .. N.sk .. ')',
     -- Resolve the global environment for the VM (Roblox Luau has no _ENV).
     'local ' .. N.env,
     'if type(_ENV)=="table" then ' .. N.env .. '=_ENV',
