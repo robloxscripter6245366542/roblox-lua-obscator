@@ -87,25 +87,55 @@ local function idGen(rng)
   end
 end
 
+-- A single inert junk statement: a fresh, never-referenced local whose value is
+-- deterministic dead code (arithmetic, a dummy function, or a small table). Adds
+-- per-build noise between the real decoder statements without any side effect,
+-- so a reader can't tell signal from filler by shape alone.
+local function junkStmt(g, rng)
+  local kind = rng.int(3)
+  local name = g()
+  if kind == 0 then
+    return 'local ' .. name .. '=' .. (rng.int(90000) + 10000) .. '*'
+      .. (rng.int(9000) + 1000) .. '+' .. rng.int(1000)
+  elseif kind == 1 then
+    return 'local function ' .. name .. '(' .. g() .. ') return '
+      .. rng.int(100000) .. ' end'
+  else
+    return 'local ' .. name .. '={' .. rng.int(1000) .. ',' .. rng.int(1000)
+      .. ',' .. rng.int(1000) .. '}'
+  end
+end
+
 -- runtimeSrc: table of Lua source strings for { opcodes, bitops, serializer, vm }.
 function M.bundle(src, runtimeSrc, chunkName, opts)
   local seed = pickSeed(opts)
   local rng = Harden.prng(seed)
 
   -- 1. compile, 2. permute opcodes, 3. serialize with the permutation,
-  -- 4. seal the whole blob with the custom multi-stage GraniteCipher,
-  -- 5. encode with a per-build permuted alphabet.
+  -- 4. compress + wrap in a versioned, fingerprinted envelope,
+  -- 5. seal with the multi-round GraniteCipher, 6. encode (permuted alphabet).
   local proto = Compiler.compile(src, chunkName or 'input')
   local fwd, inv = Harden.opPermutation(Opcodes.count, rng)
-  local plain = Serializer.serialize(proto, fwd)
-  local sealed, cp = Harden.seal(plain, rng)
+  local bc = Serializer.serialize(proto, fwd)
+  local env = Harden.envelope(Harden.compress(bc))
+  local rounds = (opts and opts.rounds) or 2
+  local sealed, cp = Harden.seal(env, rng, rounds)
   local alpha = permuteAlphabet(rng)
   local payload = encodeWith(alpha, sealed)
 
-  -- sub-seeds emitted as arithmetic expressions, not grep-able literals
-  local permExpr = Harden.factorKey(cp.permSeed, rng)
-  local sboxExpr = Harden.factorKey(cp.sboxSeed, rng)
-  local maskExpr = Harden.factorKey(cp.maskSeed, rng)
+  -- per-layer sub-seeds emitted as arithmetic expressions (not grep-able
+  -- literals), as Lua table constructors the decoder peels in reverse.
+  local function exprList(field)
+    local t = {}
+    for i = 1, #cp.layers do t[i] = Harden.factorKey(cp.layers[i][field], rng) end
+    return '{' .. table.concat(t, ',') .. '}'
+  end
+  local permList = exprList('permSeed')
+  local sboxList = exprList('sboxSeed')
+  local maskList = exprList('maskSeed')
+  local ivParts = {}
+  for i = 1, #cp.layers do ivParts[i] = tostring(cp.layers[i].iv) end
+  local ivList = '{' .. table.concat(ivParts, ',') .. '}'
   local invLit = Harden.invMapLiteral(inv)
 
   -- per-build randomized names for every decoder local (keeps `require` and
@@ -116,6 +146,8 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
     'mreg', 'mcache', 'b64', 'gm', 'pr', 'alpha', 'sealed', 'ct', 'csa', 'csb',
     'csum', 'want', 'n', 't', 'mr', 'prev', 'k', 'cur', 'sr', 'sb', 'is',
     'ps', 'rg', 'bb', 'plain', 'inv', 'ser', 'vm', 'proto', 'env', 'bit',
+    'msk', 'sbs', 'prm', 'ivs', 'rr', 'envb', 'ver', 'fpw', 'fpg', 'pay',
+    'dz', 'fa', 'fb', 'ei', 'ec', 'dc',
   }) do N[k] = g() end
 
   local order = { 'opcodes', 'bitops', 'serializer', 'vm' }
@@ -129,17 +161,23 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
   parts[#parts + 1] = 'local ' .. N.mreg .. ',' .. N.mcache .. '={},{}'
   parts[#parts + 1] = 'local function require(n) if ' .. N.mcache .. '[n]==nil then '
     .. N.mcache .. '[n]=' .. N.mreg .. '[n]() end return ' .. N.mcache .. '[n] end'
+  parts[#parts + 1] = junkStmt(g, rng)
   for _, name in ipairs(order) do
     local s = runtimeSrc[name]
     if not s then error('webbundle: missing runtime source for ' .. name) end
     parts[#parts + 1] = N.mreg .. "['" .. name .. "']=function()\n" .. safeStrip(s) .. '\nend'
+    if rng.int(2) == 0 then parts[#parts + 1] = junkStmt(g, rng) end
   end
+  for _ = 1, rng.int(3) + 2 do parts[#parts + 1] = junkStmt(g, rng) end
 
-  -- custom decoder + GraniteCipher unseal + bootstrap. Inverts the build-time
-  -- chain in reverse (checksum -> stream unmask -> inverse S-box -> inverse
-  -- permutation), regenerating the S-box / permutation / keystream from the
-  -- emitted sub-seeds alone via our own PRNG. No loadstring; bytes -> proto.
+  -- custom decoder + GraniteCipher unseal + bootstrap. Verifies the ciphertext
+  -- checksum, peels every cipher round in reverse (stream unmask -> inverse
+  -- S-box -> inverse permutation), checks the VM version + build fingerprint,
+  -- decompresses, then deserializes. All tables (S-box / permutation /
+  -- keystream) are regenerated from the emitted sub-seeds via our own PRNG.
+  -- No loadstring; bytes -> proto. An active debug hook aborts (best-effort).
   parts[#parts + 1] = table.concat({
+    'if type(debug)=="table" and debug.gethook and debug.gethook()~=nil then error("granite: debugger detected") end',
     -- per-build permuted alphabet + decoder (reverse lookup by find)
     'local ' .. N.alpha .. "='" .. alpha .. "'",
     'local function ' .. N.b64 .. '(s)',
@@ -182,25 +220,57 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
     'local ' .. N.n .. '=#' .. N.ct,
     'local ' .. N.t .. '={}',
     '  for i=1,' .. N.n .. ' do ' .. N.t .. '[i]=' .. N.ct .. ':byte(i) end',
+    -- per-layer sub-seeds (factored expressions) + IVs, peeled in reverse
+    'local ' .. N.msk .. '=' .. maskList,
+    'local ' .. N.sbs .. '=' .. sboxList,
+    'local ' .. N.prm .. '=' .. permList,
+    'local ' .. N.ivs .. '=' .. ivList,
+    'for ' .. N.rr .. '=#' .. N.msk .. ',1,-1 do',
     -- (5) inverse stream masking (cipher-feedback chaining)
-    'local ' .. N.mr .. '=' .. N.pr .. '(' .. maskExpr .. ')',
-    'local ' .. N.prev .. '=' .. cp.iv,
+    '  local ' .. N.mr .. '=' .. N.pr .. '(' .. N.msk .. '[' .. N.rr .. '])',
+    '  local ' .. N.prev .. '=' .. N.ivs .. '[' .. N.rr .. ']',
     '  for i=1,' .. N.n .. ' do local ' .. N.k .. '=' .. N.mr .. '(256) local ' .. N.cur .. '=' .. N.t .. '[i] '
       .. N.t .. '[i]=' .. N.bit .. '.bxor(' .. N.bit .. '.bxor(' .. N.cur .. ',' .. N.k .. '),' .. N.prev .. ') '
       .. N.prev .. '=' .. N.cur .. ' end',
     -- (4) inverse byte substitution: rebuild the S-box, invert it, apply
-    'local ' .. N.sr .. '=' .. N.pr .. '(' .. sboxExpr .. ')',
-    'local ' .. N.sb .. '={} for i=0,255 do ' .. N.sb .. '[i]=i end',
+    '  local ' .. N.sr .. '=' .. N.pr .. '(' .. N.sbs .. '[' .. N.rr .. '])',
+    '  local ' .. N.sb .. '={} for i=0,255 do ' .. N.sb .. '[i]=i end',
     '  for i=255,1,-1 do local j=' .. N.sr .. '(i+1) ' .. N.sb .. '[i],' .. N.sb .. '[j]=' .. N.sb .. '[j],' .. N.sb .. '[i] end',
-    'local ' .. N.is .. '={} for i=0,255 do ' .. N.is .. '[' .. N.sb .. '[i]]=i end',
+    '  local ' .. N.is .. '={} for i=0,255 do ' .. N.is .. '[' .. N.sb .. '[i]]=i end',
     '  for i=1,' .. N.n .. ' do ' .. N.t .. '[i]=' .. N.is .. '[' .. N.t .. '[i]] end',
     -- (3) inverse byte permutation: regenerate swap partners, undo in order
-    'local ' .. N.ps .. '={} do local ' .. N.rg .. '=' .. N.pr .. '(' .. permExpr .. ') for i=' .. N.n .. ',2,-1 do '
+    '  local ' .. N.ps .. '={} do local ' .. N.rg .. '=' .. N.pr .. '(' .. N.prm .. '[' .. N.rr .. ']) for i=' .. N.n .. ',2,-1 do '
       .. N.ps .. '[i]=' .. N.rg .. '(i)+1 end end',
     '  for i=2,' .. N.n .. ' do ' .. N.t .. '[i],' .. N.t .. '[' .. N.ps .. '[i]]=' .. N.t .. '[' .. N.ps .. '[i]],' .. N.t .. '[i] end',
+    'end',
     'local ' .. N.bb .. '={}',
     '  for i=1,' .. N.n .. ' do ' .. N.bb .. '[i]=string.char(' .. N.t .. '[i]) end',
-    'local ' .. N.plain .. '=table.concat(' .. N.bb .. ')',
+    'local ' .. N.envb .. '=table.concat(' .. N.bb .. ')',
+    -- VM versioning gate
+    'local ' .. N.ver .. '=' .. N.envb .. ':byte(1)',
+    'if ' .. N.ver .. '~=' .. Harden.VM_VERSION .. ' then error("granite: VM version mismatch") end',
+    -- build fingerprint (GraniteSum over version+payload): anti-tamper
+    'local ' .. N.pay .. '=' .. N.envb .. ':sub(6)',
+    'local ' .. N.fpw .. '=' .. N.envb .. ':byte(2)*16777216+' .. N.envb .. ':byte(3)*65536+'
+      .. N.envb .. ':byte(4)*256+' .. N.envb .. ':byte(5)',
+    'local ' .. N.fa .. ',' .. N.fb .. '=19088743,1985229328',
+    'do local ' .. N.dz .. '=string.char(' .. N.ver .. ')..' .. N.pay,
+    '  for i=1,#' .. N.dz .. ' do ' .. N.fa .. '=(' .. N.fa .. '*178711+' .. N.dz .. ':byte(i)+1)%4294967296 '
+      .. N.fb .. '=(' .. N.fb .. '+' .. N.fa .. ')%4294967296 end end',
+    'local ' .. N.fpg .. '=(' .. N.fa .. '+' .. N.gm .. '(' .. N.fb .. ',40503))%4294967296',
+    'if ' .. N.fpg .. '~=' .. N.fpw .. ' then error("granite: tamper check failed") end',
+    -- GraniteRLE decompress -> serialized bytecode
+    'local function ' .. N.dc .. '(s)',
+    '  local fl=s:byte(1) local rest=s:sub(2)',
+    '  if fl==0 then return rest end',
+    '  local ec=rest:byte(1) local o={} local i=2 local m=#rest',
+    '  while i<=m do local c=rest:byte(i)',
+    '    if c==ec then o[#o+1]=string.rep(string.char(rest:byte(i+1)),rest:byte(i+2)) i=i+3',
+    '    else o[#o+1]=string.char(c) i=i+1 end',
+    '  end',
+    '  return table.concat(o)',
+    'end',
+    'local ' .. N.plain .. '=' .. N.dc .. '(' .. N.pay .. ')',
     'local ' .. N.inv .. '=' .. invLit,
     'local ' .. N.ser .. '=require("serializer")',
     'local ' .. N.vm .. '=require("vm")',

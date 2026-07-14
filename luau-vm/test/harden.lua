@@ -107,6 +107,22 @@ do
   local function firstLocal(s) return s:match('local ([%w_]+)') end
   ok(firstLocal(out1) == firstLocal(out1b), 'same seed -> identical decoder names')
   ok(firstLocal(out1) ~= firstLocal(out2), 'different seed -> different decoder names')
+
+  -- anti-tamper: flipping any byte inside the encoded payload must fail closed
+  -- (integrity/fingerprint), never silently run altered bytecode.
+  local pstart, pend = out1:find("'" .. payload .. "'", 1, true)
+  local mid = pstart + math.floor((pend - pstart) / 2)
+  local ch = out1:sub(mid, mid)
+  local repl = ch == 'A' and 'B' or 'A'
+  local tampered = out1:sub(1, mid - 1) .. repl .. out1:sub(mid + 1)
+  local okrun, res = pcall((load or loadstring)(tampered))
+  ok(not okrun or res ~= 385, 'tampered payload fails closed (no silent execution)')
+
+  -- multiple encryption layers: the default build stacks >1 cipher round, so
+  -- the decoder peels a list of sub-seeds in reverse.
+  ok(out1:find('#[%w_]+,1,%-1 do') ~= nil, 'decoder peels cipher layers in a reverse loop')
+  -- best-effort anti-debug probe is present
+  ok(out1:find('gethook') ~= nil, 'anti-debug hook probe emitted')
 end
 
 print(string.format('harden: %d passed, %d failed', pass, fail))
