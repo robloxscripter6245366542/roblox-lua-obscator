@@ -94,6 +94,44 @@ do
     'no opaque opt => unchanged bytecode')
 end
 
+-- 4c. bytecode junk: unreachable dead opcodes preserve results + validate, both
+-- directly and through serialize -> deserialize.
+do
+  local Obf = require('obfuscate')
+  local Ser = require('serializer')
+  local Val = require('validate')
+  local allok = true
+  for _, src in ipairs(progs) do
+    local nat = runNative(src)
+    for _, sk in ipairs({ 2, 13, 500, 123457 }) do
+      local proto = Compiler.compile(src)
+      Obf.junk(proto, Harden.prng(sk), { density = 900, maxRun = 4 })
+      if not Val.proto(proto) then allok = false end
+      local p1 = table.pack(pcall(VM.load(proto, _G)))
+      local o1 = {}; for i = 2, p1.n do o1[i - 1] = tostring(p1[i]) end
+      local r1 = p1[1] and table.concat(o1, '|') or 'ERR'
+      local proto2 = Ser.deserialize(Ser.serialize(proto))
+      if not Val.proto(proto2) then allok = false end
+      local p2 = table.pack(pcall(VM.load(proto2, _G)))
+      local o2 = {}; for i = 2, p2.n do o2[i - 1] = tostring(p2[i]) end
+      local r2 = p2[1] and table.concat(o2, '|') or 'ERR'
+      if r1 ~= nat or r2 ~= nat then allok = false end
+    end
+  end
+  ok(allok, 'bytecode junk: results unchanged + valid (direct + serialized)')
+end
+
+-- 4d. junk inserts only UNREACHABLE code (adds instructions, never fewer)
+do
+  local Obf = require('obfuscate')
+  local function total(p, n) n = n or 0; n = n + #p.code
+    for _, c in ipairs(p.protos) do n = total(c, n) end; return n end
+  local src = progs[1]
+  local plain = total(Compiler.compile(src))
+  local proto = Compiler.compile(src); Obf.junk(proto, Harden.prng(3), { density = 1000, maxRun = 3 })
+  ok(total(proto) > plain, 'junk adds instructions (' .. plain .. ' -> ' .. total(proto) .. ')')
+end
+
 -- 5. end-to-end through the bundler (opaque flow ON) still runs identically
 do
   local WebBundle = require('webbundle')

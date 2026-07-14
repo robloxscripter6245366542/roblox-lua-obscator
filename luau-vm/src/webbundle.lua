@@ -124,6 +124,13 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
     copts.opaqueDensity = (opts and opts.opaqueDensity) or 350
   end
   local proto = Compiler.compile(src, chunkName or 'input', copts)
+  -- Bytecode JUNK: splice provably-unreachable dead opcodes after unconditional
+  -- transfers, so a linear-sweep disassembler decodes filler that never runs.
+  -- Independent prng again; disable with opts.junk == false.
+  if not (opts and opts.junk == false) then
+    require('obfuscate').junk(proto, Harden.prng((seed + 40503) % 4294967296),
+      { density = (opts and opts.junkDensity) or 600, maxRun = 3 })
+  end
   -- opcode MUTATION: each opcode has several interchangeable byte encodings,
   -- picked per instruction, so one opcode appears as different bytes.
   local fwd, inv = Harden.opMutationMap(Opcodes.count, rng, 3)

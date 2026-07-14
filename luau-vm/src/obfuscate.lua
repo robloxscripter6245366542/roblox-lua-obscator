@@ -186,6 +186,79 @@ injectFunc = function(fn, g, rng, density)
   injectBlock(fn.body, nil, g, rng, density, true)
 end
 
+-- ── bytecode junk: provably-unreachable dead opcodes ─────────────────────────
+-- Inserts well-formed but UNREACHABLE instructions into a compiled proto's code,
+-- so a linear-sweep disassembler decodes filler that never runs. Junk is only
+-- placed immediately after an UNCONDITIONAL transfer (RETURN / TAILCALL / JMP),
+-- which never falls through, so the inserted run can only be reached by a jump —
+-- and every jump is relocated to land on its real (shifted) target, never on
+-- junk. Because it never executes, its operands are irrelevant to behaviour; we
+-- still keep them in range so the structural validator accepts the stream.
+local Opcodes = require('opcodes')
+local Op = Opcodes.Op
+
+-- relative-jump opcodes whose sbx must be relocated after insertion
+local JUMP = {
+  [Op.JMP] = true, [Op.JMPIF] = true, [Op.JMPIFNOT] = true,
+  [Op.FORPREP] = true, [Op.FORLOOP] = true, [Op.TFORLOOP] = true,
+}
+-- opcodes that never fall through => safe to append unreachable junk after
+local TRANSFER = { [Op.RETURN] = true, [Op.TAILCALL] = true, [Op.JMP] = true }
+
+-- Build one junk instruction using only register/immediate operands within the
+-- proto's maxstack (the validator allows register indices in [0, maxstack]).
+local function junkIns(maxstack, rng)
+  local rmax = maxstack -- validator permits up to maxstack inclusive
+  local function reg() return rng.int(rmax + 1) end
+  local pick = rng.int(7)
+  if pick == 0 then return { op = Op.MOVE, a = reg(), b = reg() }
+  elseif pick == 1 then return { op = Op.LOADINT, a = reg(), sbx = rng.int(4096) }
+  elseif pick == 2 then return { op = Op.ADD, a = reg(), b = reg(), c = reg() }
+  elseif pick == 3 then return { op = Op.SUB, a = reg(), b = reg(), c = reg() }
+  elseif pick == 4 then return { op = Op.MUL, a = reg(), b = reg(), c = reg() }
+  elseif pick == 5 then return { op = Op.LOADBOOL, a = reg(), b = rng.int(2) }
+  else return { op = Op.NEWTABLE, a = reg() }
+  end
+end
+
+local function junkProto(proto, rng, density, maxRun)
+  local code = proto.code
+  local ncode = #code
+  -- absolute jump targets in OLD indexing
+  local absTarget = {}
+  for i, ins in ipairs(code) do
+    if JUMP[ins.op] then absTarget[i] = i + 1 + ins.sbx end
+  end
+  local newCode, newOf = {}, {}
+  for i = 1, ncode do
+    local ins = code[i]
+    newCode[#newCode + 1] = ins
+    newOf[i] = #newCode
+    if TRANSFER[ins.op] and rng.int(1000) < density then
+      local run = rng.int(maxRun) + 1
+      for _ = 1, run do newCode[#newCode + 1] = junkIns(proto.maxstack, rng) end
+    end
+  end
+  newOf[ncode + 1] = #newCode + 1
+  -- relocate every real jump to its shifted target (never a junk slot). The
+  -- jump instruction tables are the same refs in newCode, so patch via old idx.
+  for oldI, ins in ipairs(code) do
+    if JUMP[ins.op] then
+      local tgt = absTarget[oldI]
+      local newTarget = newOf[tgt] or (#newCode + 1)
+      ins.sbx = newTarget - (newOf[oldI] + 1)
+    end
+  end
+  proto.code = newCode
+  for _, child in ipairs(proto.protos) do junkProto(child, rng, density, maxRun) end
+end
+
+function M.junk(proto, rng, opts)
+  opts = opts or {}
+  junkProto(proto, rng, opts.density or 700, opts.maxRun or 3)
+  return proto
+end
+
 -- Public: inject opaque predicates into a parsed chunk. `rng` is a Harden.prng
 -- (has :int(n)); `opts.density` is the per-statement injection chance in
 -- thousandths (default 350 = ~35%).
