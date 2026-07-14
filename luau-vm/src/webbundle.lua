@@ -124,6 +124,12 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
     copts.opaqueDensity = (opts and opts.opaqueDensity) or 350
   end
   local proto = Compiler.compile(src, chunkName or 'input', copts)
+  -- Basic-block REORDERING (semantics-exact relative of control-flow
+  -- flattening): scramble the physical block layout so byte order no longer
+  -- matches control flow. Applied first so junk fills the reordered layout.
+  if not (opts and opts.flatten == false) then
+    require('obfuscate').flatten(proto, Harden.prng((seed + 2654435761) % 4294967296))
+  end
   -- Bytecode JUNK: splice provably-unreachable dead opcodes after unconditional
   -- transfers, so a linear-sweep disassembler decodes filler that never runs.
   -- Independent prng again; disable with opts.junk == false.

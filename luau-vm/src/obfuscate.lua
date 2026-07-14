@@ -259,6 +259,110 @@ function M.junk(proto, rng, opts)
   return proto
 end
 
+-- ── basic-block reordering (a safe, semantics-EXACT relative of control-flow
+-- flattening) ────────────────────────────────────────────────────────────────
+-- Splits a proto's code into basic blocks, shuffles their physical order
+-- (pinning the entry block first so execution still starts correctly), and
+-- threads the original fall-through edges with explicit jumps. Every instruction
+-- still executes in the exact same runtime order — only the LAYOUT changes — so
+-- there is no register/`top` liveness hazard at all. The payoff is the same as a
+-- dispatcher: the linear byte order no longer matches control flow, so a reader
+-- must reconstruct the CFG instead of reading top-to-bottom.
+--
+-- Opcodes that DO NOT fall through to the next instruction (so a reordered block
+-- ending in one needs no threading jump).
+local NOFALL = { [Op.JMP] = true, [Op.RETURN] = true, [Op.TAILCALL] = true, [Op.FORPREP] = true }
+
+local function flattenProto(proto, rng)
+  local code = proto.code
+  local ncode = #code
+  if ncode < 4 then
+    for _, child in ipairs(proto.protos) do flattenProto(child, rng) end
+    return
+  end
+
+  -- 1. leaders: instruction 1, every jump target, and the instruction after any
+  --    control-transfer (so blocks break at all CFG edges).
+  local absTarget = {}
+  local leader = { [1] = true }
+  for i, ins in ipairs(code) do
+    if JUMP[ins.op] then
+      local t = i + 1 + ins.sbx
+      absTarget[i] = t
+      leader[t] = true
+      if i + 1 <= ncode then leader[i + 1] = true end
+    elseif ins.op == Op.RETURN or ins.op == Op.TAILCALL then
+      if i + 1 <= ncode then leader[i + 1] = true end
+    end
+  end
+
+  -- 2. slice into blocks [start..end]; map each instruction index to its block.
+  local starts = {}
+  for i = 1, ncode do if leader[i] then starts[#starts + 1] = i end end
+  local blocks, blockOf = {}, {}
+  for bi, s in ipairs(starts) do
+    local e = (starts[bi + 1] or (ncode + 1)) - 1
+    blocks[bi] = { first = s, last = e }
+    for j = s, e do blockOf[j] = bi end
+  end
+
+  -- fall-through successor block (nil when the block's last instr can't fall
+  -- through, or there is no following instruction).
+  for _, b in ipairs(blocks) do
+    local lastOp = code[b.last].op
+    if not NOFALL[lastOp] and b.last + 1 <= ncode then
+      b.fall = blockOf[b.last + 1]
+    end
+  end
+
+  -- 3. new order: entry block pinned first, the rest shuffled (Fisher-Yates).
+  local order = {}
+  for bi = 2, #blocks do order[#order + 1] = bi end
+  for i = #order, 2, -1 do
+    local j = rng.int(i) + 1
+    order[i], order[j] = order[j], order[i]
+  end
+  table.insert(order, 1, 1)
+
+  -- 4. emit instructions in the new block order; after any block with a
+  --    fall-through successor, append a threading JMP (target = successor.first).
+  --    Track each emitted slot so we can recompute offsets against new indices.
+  local newCode, slotOldIdx, slotJmpTo = {}, {}, {}
+  local newIndexOf = {} -- old instruction index -> new position
+  for _, bi in ipairs(order) do
+    local b = blocks[bi]
+    for j = b.first, b.last do
+      newCode[#newCode + 1] = code[j]
+      newIndexOf[j] = #newCode
+      slotOldIdx[#newCode] = j
+    end
+    if b.fall then
+      newCode[#newCode + 1] = { op = Op.JMP, sbx = 0 }
+      slotJmpTo[#newCode] = blocks[b.fall].first -- target as an OLD index
+    end
+  end
+  newIndexOf[ncode + 1] = #newCode + 1
+
+  -- 5. recompute sbx: original jumps against their mapped target, threading jumps
+  --    against their successor's mapped first instruction.
+  for pos, ins in ipairs(newCode) do
+    local oldI = slotOldIdx[pos]
+    if oldI and JUMP[ins.op] then
+      ins.sbx = newIndexOf[absTarget[oldI]] - (pos + 1)
+    elseif slotJmpTo[pos] then
+      ins.sbx = newIndexOf[slotJmpTo[pos]] - (pos + 1)
+    end
+  end
+
+  proto.code = newCode
+  for _, child in ipairs(proto.protos) do flattenProto(child, rng) end
+end
+
+function M.flatten(proto, rng)
+  flattenProto(proto, rng)
+  return proto
+end
+
 -- Public: inject opaque predicates into a parsed chunk. `rng` is a Harden.prng
 -- (has :int(n)); `opts.density` is the per-statement injection chance in
 -- thousandths (default 350 = ~35%).

@@ -132,6 +132,66 @@ do
   ok(total(proto) > plain, 'junk adds instructions (' .. plain .. ' -> ' .. total(proto) .. ')')
 end
 
+-- 4e. basic-block reordering: results unchanged + validator-clean, direct and
+-- through serialize -> deserialize; layout actually changes.
+do
+  local Obf = require('obfuscate')
+  local Ser = require('serializer')
+  local Val = require('validate')
+  local allok = true
+  for _, src in ipairs(progs) do
+    local nat = runNative(src)
+    for _, sk in ipairs({ 5, 21, 777, 424243 }) do
+      local proto = Compiler.compile(src)
+      Obf.flatten(proto, Harden.prng(sk))
+      if not Val.proto(proto) then allok = false end
+      local p1 = table.pack(pcall(VM.load(proto, _G)))
+      local o1 = {}; for i = 2, p1.n do o1[i - 1] = tostring(p1[i]) end
+      local r1 = p1[1] and table.concat(o1, '|') or 'ERR'
+      local proto2 = Ser.deserialize(Ser.serialize(proto))
+      if not Val.proto(proto2) then allok = false end
+      local p2 = table.pack(pcall(VM.load(proto2, _G)))
+      local o2 = {}; for i = 2, p2.n do o2[i - 1] = tostring(p2[i]) end
+      local r2 = p2[1] and table.concat(o2, '|') or 'ERR'
+      if r1 ~= nat or r2 ~= nat then allok = false end
+    end
+  end
+  ok(allok, 'block reordering: results unchanged + valid (direct + serialized)')
+end
+
+-- 4f. reordering changes the physical op layout (same multiset, new order)
+do
+  local Obf = require('obfuscate')
+  local src = 'local s=0 for i=1,10 do if i%2==0 then s=s+i else s=s-i end end return s'
+  local function seq(p) local t = {}; for i, ins in ipairs(p.code) do t[i] = ins.op end; return table.concat(t, ',') end
+  local plain = seq(Compiler.compile(src))
+  local proto = Compiler.compile(src); Obf.flatten(proto, Harden.prng(9))
+  ok(seq(proto) ~= plain, 'block reordering changes the instruction layout')
+end
+
+-- 4g. full composition (opaque + flatten + junk) is still correct
+do
+  local Obf = require('obfuscate')
+  local Ser = require('serializer')
+  local Val = require('validate')
+  local allok = true
+  for _, src in ipairs(progs) do
+    local nat = runNative(src)
+    for _, sk in ipairs({ 8, 88, 8888 }) do
+      local proto = Compiler.compile(src, 'x', { opaque = Harden.prng(sk), opaqueDensity = 400 })
+      Obf.flatten(proto, Harden.prng(sk + 1))
+      Obf.junk(proto, Harden.prng(sk + 2), { density = 600, maxRun = 3 })
+      if not Val.proto(proto) then allok = false end
+      local proto2 = Ser.deserialize(Ser.serialize(proto))
+      if not Val.proto(proto2) then allok = false end
+      local p = table.pack(pcall(VM.load(proto2, _G)))
+      local o = {}; for i = 2, p.n do o[i - 1] = tostring(p[i]) end
+      if (p[1] and table.concat(o, '|') or 'ERR') ~= nat then allok = false end
+    end
+  end
+  ok(allok, 'opaque + flatten + junk composed == native (serialized)')
+end
+
 -- 5. end-to-end through the bundler (opaque flow ON) still runs identically
 do
   local WebBundle = require('webbundle')
