@@ -40,6 +40,9 @@ jobs:
       - name: Hardening (opcode permutation, encryption, key factoring, bundle)
         run: lua5.4 test/harden.lua
 
+      - name: Custom bytecode cipher (permute/S-box/mask/checksum round-trip)
+        run: lua5.4 test/cipher.lua
+
       - name: Per-opcode coverage (every emittable opcode, validated + diffed)
         run: lua5.4 test/opcode_coverage.lua
 

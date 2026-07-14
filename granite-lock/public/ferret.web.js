@@ -63,8 +63,67 @@
   function isAlpha(c) { return (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c === "_"; }
   function isAlphaNum(c) { return isAlpha(c) || isDigit(c); }
 
+  // Lua strings are byte strings. A JS string is UTF-16 code units, so a source
+  // character like "×" (U+00D7) or an emoji is one JS char whose charCodeAt is a
+  // code *point* (possibly > 255), not a byte. Encoding/escaping code points
+  // directly corrupts multibyte text and can emit invalid escapes like "\312".
+  // Re-encode the whole source to its raw UTF-8 bytes up front (each element a
+  // byte 0-255, as a Latin1 string) so every downstream pass — lexing, XOR,
+  // base64, decimal-escape emission — is byte-accurate, exactly like the Lua
+  // reference implementation.
+  function toUtf8Bytes(str) {
+    var out = [];
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      if (c < 0x80) {
+        out.push(c);
+      } else if (c < 0x800) {
+        out.push(0xC0 | (c >> 6), 0x80 | (c & 0x3F));
+      } else if (c >= 0xD800 && c <= 0xDBFF) {
+        var c2 = str.charCodeAt(i + 1);
+        if (c2 >= 0xDC00 && c2 <= 0xDFFF) {
+          var cp = 0x10000 + ((c - 0xD800) << 10) + (c2 - 0xDC00);
+          i++;
+          out.push(0xF0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3F),
+                   0x80 | ((cp >> 6) & 0x3F), 0x80 | (cp & 0x3F));
+        } else {
+          out.push(0xEF, 0xBF, 0xBD); // lone high surrogate -> U+FFFD
+        }
+      } else if (c >= 0xDC00 && c <= 0xDFFF) {
+        out.push(0xEF, 0xBF, 0xBD); // lone low surrogate -> U+FFFD
+      } else {
+        out.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 0x3F), 0x80 | (c & 0x3F));
+      }
+    }
+    // Assemble in chunks so a huge byte array never overflows the call stack via
+    // String.fromCharCode.apply.
+    var parts = [];
+    for (var k = 0; k < out.length; k += 8192) {
+      parts.push(String.fromCharCode.apply(null, out.slice(k, k + 8192)));
+    }
+    return parts.join("");
+  }
+
+  // Encode a Unicode code point as UTF-8 bytes (mirrors Lua's \u{...}), returned
+  // as a byte string so it slots straight into the byte-oriented buffer.
+  function utf8esc(cp) {
+    if (cp < 0x80) return String.fromCharCode(cp);
+    var bytes = [];
+    var mfb = 0x3f, x = cp;
+    do {
+      bytes.push(0x80 + (x % 0x40));
+      x = Math.floor(x / 0x40);
+      mfb = Math.floor(mfb / 2);
+    } while (x > mfb);
+    var first = ((255 - mfb) * 2) % 256 + x;
+    var res = [first];
+    for (var i = bytes.length - 1; i >= 0; i--) res.push(bytes[i]);
+    return res.map(function (b) { return String.fromCharCode(b); }).join("");
+  }
+
   function tokenize(src, chunkname) {
     chunkname = chunkname || "input";
+    src = toUtf8Bytes(src);
     var tokens = [];
     var pos = 0, line = 1;
     var n = src.length;
@@ -128,6 +187,19 @@
             for (var k = 0; k < 2; k++) { if (isHex(peek())) { h += peek(); pos++; } }
             if (h.length === 0) err("hexadecimal digit expected");
             buf.push(String.fromCharCode(parseInt(h, 16)));
+          } else if (e === "u") {
+            // \u{XXXX}: Unicode code point, UTF-8 encoded (Lua 5.3+/Luau).
+            pos++;
+            if (peek() !== "{") err("missing '{' in \\u{XXXX}");
+            pos++;
+            var uh = "";
+            while (isHex(peek())) { uh += peek(); pos++; }
+            if (uh.length === 0) err("hexadecimal digit expected");
+            if (peek() !== "}") err("missing '}' in \\u{XXXX}");
+            pos++;
+            var ucp = parseInt(uh, 16);
+            if (ucp > 0x7FFFFFFF) err("UTF-8 value too large");
+            buf.push(utf8esc(ucp));
           } else if (e === "z") {
             pos++;
             while (pos < n) {
@@ -230,7 +302,7 @@
   function stringLiteral(s) {
     var out = ['"'];
     for (var i = 0; i < s.length; i++) {
-      var b = s.charCodeAt(i);
+      var b = s.charCodeAt(i) & 0xFF; // byte string: never emit an escape > 255
       if (b === 34) out.push('\\"');
       else if (b === 92) out.push("\\\\");
       else if (b >= 32 && b <= 126) out.push(String.fromCharCode(b));

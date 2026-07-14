@@ -57,16 +57,19 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
   local rng = Harden.prng(seed)
 
   -- 1. compile, 2. permute opcodes, 3. serialize with the permutation,
-  -- 4. encrypt the whole blob with a keystream seeded off the same build seed.
+  -- 4. seal the whole blob with the custom multi-stage GraniteCipher (byte
+  --    permutation -> S-box substitution -> chained stream mask -> checksum),
+  --    all keyed off the same build seed.
   local proto = Compiler.compile(src, chunkName or 'input')
   local fwd, inv = Harden.opPermutation(Opcodes.count, rng)
   local plain = Serializer.serialize(proto, fwd)
-  local cipherSeed = rng.next() % 2147483647
-  if cipherSeed <= 0 then cipherSeed = cipherSeed + 2147483646 end
-  local cipher = Harden.encrypt(plain, cipherSeed)
-  local payload = b64encode(cipher)
+  local sealed, cp = Harden.seal(plain, rng)
+  local payload = b64encode(sealed)
 
-  local keyExpr = Harden.factorKey(cipherSeed, rng)
+  -- sub-seeds emitted as arithmetic expressions, not grep-able literals
+  local permExpr = Harden.factorKey(cp.permSeed, rng)
+  local sboxExpr = Harden.factorKey(cp.sboxSeed, rng)
+  local maskExpr = Harden.factorKey(cp.maskSeed, rng)
   local invLit = Harden.invMapLiteral(inv)
 
   local order = { 'opcodes', 'bitops', 'serializer', 'vm' }
@@ -83,7 +86,10 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
     if not s then error('webbundle: missing runtime source for ' .. name) end
     parts[#parts + 1] = "__m['" .. name .. "']=function()\n" .. safeStrip(s) .. '\nend'
   end
-  -- base64 decoder + keystream decryptor + bootstrap
+  -- base64 decoder + GraniteCipher unseal + bootstrap. The unseal inverts the
+  -- build-time chain in reverse (checksum -> stream unmask -> inverse S-box ->
+  -- inverse permutation), regenerating the S-box / permutation / keystream from
+  -- the emitted sub-seeds alone. No loadstring; bytes -> proto tables directly.
   parts[#parts + 1] = table.concat({
     "local __A='" .. B64 .. "'",
     'local function __b64(s)',
@@ -100,16 +106,41 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
     '  return table.concat(r)',
     'end',
     'local __Bit=require("bitops")',
-    'local function __dec(s)',
-    '  local st=' .. keyExpr,
-    '  local o={}',
-    '  for i=1,#s do st=(st*16807)%2147483647 o[i]=string.char(__Bit.bxor(s:byte(i),st%256)) end',
-    '  return table.concat(o)',
+    -- Park-Miller PRNG closure, identical stream to build-time Harden.prng.
+    'local function __pr(sd)',
+    '  local st=sd%2147483647 if st<=0 then st=st+2147483646 end',
+    '  return function(n) st=(st*16807)%2147483647 if n then return st%n else return st end end',
     'end',
+    'local __sealed=__b64(__PAYLOAD__)',
+    -- (6) verify the custom integrity checksum over the ciphertext
+    'local __c=__sealed:sub(5)',
+    'local __h=5381',
+    '  for i=1,#__c do __h=(__h*33+__c:byte(i))%4294967296 end',
+    'local __want=__sealed:byte(1)*16777216+__sealed:byte(2)*65536+__sealed:byte(3)*256+__sealed:byte(4)',
+    'if __h~=__want then error("granite: integrity check failed") end',
+    'local __n=#__c',
+    'local __t={}',
+    '  for i=1,__n do __t[i]=__c:byte(i) end',
+    -- (5) inverse stream masking (cipher-feedback chaining)
+    'local __mr=__pr(' .. maskExpr .. ')',
+    'local __prev=' .. cp.iv,
+    '  for i=1,__n do local __k=__mr(256) local __cur=__t[i] __t[i]=__Bit.bxor(__Bit.bxor(__cur,__k),__prev) __prev=__cur end',
+    -- (4) inverse byte substitution: rebuild the S-box, invert it, apply
+    'local __sr=__pr(' .. sboxExpr .. ')',
+    'local __sb={} for i=0,255 do __sb[i]=i end',
+    '  for i=255,1,-1 do local j=__sr(i+1) __sb[i],__sb[j]=__sb[j],__sb[i] end',
+    'local __is={} for i=0,255 do __is[__sb[i]]=i end',
+    '  for i=1,__n do __t[i]=__is[__t[i]] end',
+    -- (3) inverse byte permutation: regenerate swap partners, undo in order
+    'local __ps={} do local __r=__pr(' .. permExpr .. ') for i=__n,2,-1 do __ps[i]=__r(i)+1 end end',
+    '  for i=2,__n do __t[i],__t[__ps[i]]=__t[__ps[i]],__t[i] end',
+    'local __bb={}',
+    '  for i=1,__n do __bb[i]=string.char(__t[i]) end',
+    'local __plain=table.concat(__bb)',
     'local __INV=' .. invLit,
     'local __Ser=require("serializer")',
     'local __VM=require("vm")',
-    'local __proto=__Ser.deserialize(__dec(__b64(__PAYLOAD__)),__INV)',
+    'local __proto=__Ser.deserialize(__plain,__INV)',
     -- Resolve the global environment for the VM. Roblox Luau has no _ENV, so we
     -- prefer an explicit _ENV where a runtime provides one (Lua 5.2+), else the
     -- Roblox/5.1 getfenv (pcall-guarded so a sandbox that errors on it can't
