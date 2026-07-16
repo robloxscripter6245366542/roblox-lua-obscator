@@ -181,9 +181,32 @@ function Parser:funcBody(line, isMethod)
   return { k = 'Function', params = params, isVararg = isVararg, body = body, line = line }
 end
 
+-- Luau compound assignments desugar to a plain assignment: `t OP= e` becomes
+-- `t = t OP (e)`. Single target only (Luau forbids `a, b += 1`).
+local COMPOUND = {
+  ['+='] = '+', ['-='] = '-', ['*='] = '*', ['/='] = '/',
+  ['//='] = '//', ['%='] = '%', ['^='] = '^', ['..='] = '..',
+}
+
+-- Shallow-clone an lvalue node so the desugared RHS references a distinct node
+-- from the assignment target (they share child subtrees, which is fine).
+local function cloneLValue(n)
+  local c = {}
+  for k, v in pairs(n) do c[k] = v end
+  return c
+end
+
 function Parser:exprStat()
   local line = self:peek().line
   local first = self:suffixed()
+  local ct = self:peek()
+  if ct.type == 'symbol' and COMPOUND[ct.value] then
+    if first.k ~= 'Name' and first.k ~= 'Index' and first.k ~= 'Field' then self:err('cannot assign') end
+    local op = COMPOUND[self:next().value]
+    local rhs = self:expr()
+    local sum = { k = 'Binop', op = op, left = cloneLValue(first), right = rhs, line = line }
+    return { k = 'Assign', targets = { first }, exprs = { sum }, line = line }
+  end
   if self:isSym('=') or self:isSym(',') then
     local targets = { first }
     while self:accept('symbol', ',') do targets[#targets + 1] = self:suffixed() end

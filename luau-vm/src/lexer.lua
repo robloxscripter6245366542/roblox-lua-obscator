@@ -12,8 +12,12 @@ for _, k in ipairs({
   'true', 'until', 'while',
 }) do KEYWORDS[k] = true end
 
+-- Longest match wins, so multi-char operators are listed before their prefixes.
+-- Luau compound assignments (`+=`, `..=`, `//=`, …) are included.
 local SYMBOLS = {
-  '...', '..', '::', '==', '~=', '<=', '>=', '//', '<<', '>>',
+  '...', '//=', '..=',
+  '..', '::', '==', '~=', '<=', '>=', '//', '<<', '>>',
+  '+=', '-=', '*=', '/=', '%=', '^=',
   '+', '-', '*', '/', '%', '^', '#', '&', '~', '|', '<', '>', '=',
   '(', ')', '{', '}', '[', ']', ';', ':', ',', '.',
 }
