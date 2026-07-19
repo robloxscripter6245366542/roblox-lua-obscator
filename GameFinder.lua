@@ -21,7 +21,8 @@ local CONFIG = {
     IncludeNil    = true,   -- also scan nil-parented instances
     CopyClipboard = true,   -- setclipboard(report)
     SaveToFile    = true,   -- writefile("GameFinder_<PlaceId>.txt", report)
-    BytecodeAsHex = false,  -- true = hex-encode bytecode (safe to paste), false = raw
+    BytecodeAsHex = true,   -- hex-encode bytecode so the clipboard stays text-safe
+                            -- (raw bytecode has NUL bytes that break setclipboard)
 }
 -- ──────────────────────────────────────────────────────────
 
@@ -32,7 +33,11 @@ local getscripts_fn     = rawget(ENV, "getscripts") or getscripts
 local getnil_fn         = rawget(ENV, "getnilinstances") or getnilinstances
 local getbytecode_fn    = rawget(ENV, "getscriptbytecode") or getscriptbytecode
                           or dumpstring
-local setclipboard_fn   = rawget(ENV, "setclipboard") or setclipboard or toclipboard
+-- Clipboard function names differ across executors; try all known ones.
+local setclipboard_fn   = rawget(ENV, "setclipboard") or setclipboard
+                          or rawget(ENV, "toclipboard") or toclipboard
+                          or rawget(ENV, "set_clipboard") or set_clipboard
+                          or (Clipboard and Clipboard.set)
 local writefile_fn      = rawget(ENV, "writefile") or writefile
 
 local function notify(title, text)
@@ -188,9 +193,20 @@ local function run()
 
     local text = table.concat(report, "\n")
 
-    if CONFIG.CopyClipboard and setclipboard_fn then
-        local ok = pcall(setclipboard_fn, text)
-        if ok then notify("GameFinder", "Copied everything to clipboard!") end
+    if CONFIG.CopyClipboard then
+        if not setclipboard_fn then
+            notify("GameFinder", "No clipboard function on this executor - use the saved file")
+            warn("[GameFinder] setclipboard not available; report saved to file instead.")
+        else
+            -- Strip any stray NUL bytes so the clipboard never truncates mid-copy.
+            local safe = text:gsub("%z", "?")
+            local ok = pcall(setclipboard_fn, safe)
+            if ok then
+                notify("GameFinder", "Copied everything to clipboard!")
+            else
+                notify("GameFinder", "Clipboard copy failed - use the saved file")
+            end
+        end
     end
 
     if CONFIG.SaveToFile and writefile_fn then
