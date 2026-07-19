@@ -663,6 +663,9 @@ function compileGenFor(fs, s)
   fs:reserve(nvars)
   if fs.freereg > fs.proto.maxstack then fs.proto.maxstack = fs.freereg end
   for i, decl in ipairs(s.decls) do decl.owner = fs; decl.reg = base + 3 + (i - 1) end
+  -- normalize the iterator triple once for Luau generalized iteration (a bare
+  -- table / __iter object becomes a proper (iterfn, state, control) triple)
+  fs:emit({ op = Op.TFORPREP, a = base }, s.line)
   local jto = fs:emit({ op = Op.JMP, sbx = 0 }, s.line) -- jump to TFORCALL
   fs.loops[#fs.loops + 1] = { breaks = {} }
   local bodyStart = fs:here()

@@ -51,6 +51,7 @@ local kinds = {
   [Op.VARARG] = { a = 'reg', b = 'imm' },
   [Op.FORPREP] = { a = 'reg', sbx = 'jump' },
   [Op.FORLOOP] = { a = 'reg', sbx = 'jump' },
+  [Op.TFORPREP] = R,
   [Op.TFORCALL] = { a = 'reg', c = 'imm' },
   [Op.TFORLOOP] = { a = 'reg', sbx = 'jump' },
   [Op.NOP] = {},

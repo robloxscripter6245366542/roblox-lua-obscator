@@ -183,6 +183,23 @@ execute = function(proto, upvals, env, args, argN)
       local callArgs = {}
       for i = 1, nargs do callArgs[i] = R[a + i] end
       return pack(fn(unpack(callArgs, 1, nargs)))
+    elseif op == Op.TFORPREP then
+      -- Luau generalized iteration: `for vars in exp do`. If the iterator value
+      -- is already a function, keep the classic protocol (pairs/ipairs/custom).
+      -- Otherwise resolve an __iter metamethod, or fall back to iterating a plain
+      -- table via `next` — matching Luau, where a bare table is iterable.
+      local it = R[a]
+      if type(it) ~= 'function' then
+        local mt = getmetatable(it)
+        local iterMM = mt and mt.__iter
+        if iterMM then
+          local f, s, c = iterMM(it)
+          R[a], R[a + 1], R[a + 2] = f, s, c
+        elseif type(it) == 'table' then
+          R[a], R[a + 1], R[a + 2] = next, it, nil
+        end
+        -- else: leave as-is; TFORCALL will raise, as Luau does for a non-iterable
+      end
     elseif op == Op.TFORCALL then
       local fn = R[a]
       local res = pack(fn(R[a + 1], R[a + 2]))

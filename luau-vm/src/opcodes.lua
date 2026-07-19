@@ -79,6 +79,8 @@ def('VARARG')    -- A B      R[A..A+B-2] = varargs     (B=0 -> to top)
 -- ── loops ────────────────────────────────────────────────────────────────────
 def('FORPREP')   -- A sBx    numeric-for init; jump to loop test
 def('FORLOOP')   -- A sBx    numeric-for step + test; jump back if continuing
+def('TFORPREP')  -- A        generic-for setup: normalize R[A..A+2] for Luau
+                 --          generalized iteration (table/__iter -> next-triple)
 def('TFORCALL')  -- A C      generic-for: call iterator, C results into R[A+3..]
 def('TFORLOOP')  -- A sBx    generic-for: if R[A+1] ~= nil then R[A]=R[A+1]; pc += sBx
 
@@ -105,7 +107,7 @@ local operands = {
   [Op.CALL] = ABC, [Op.TAILCALL] = AB, [Op.RETURN] = AB,
   [Op.CLOSURE] = { 'a', 'bx' }, [Op.VARARG] = AB,
   [Op.FORPREP] = { 'a', 'sbx' }, [Op.FORLOOP] = { 'a', 'sbx' },
-  [Op.TFORCALL] = { 'a', 'c' }, [Op.TFORLOOP] = { 'a', 'sbx' },
+  [Op.TFORPREP] = A, [Op.TFORCALL] = { 'a', 'c' }, [Op.TFORLOOP] = { 'a', 'sbx' },
   [Op.NOP] = {},
 }
 
