@@ -32,6 +32,15 @@ local CONFIG = {
     },
     ScanWholeGame  = true,   -- false = Workspace only; true = every service
     IncludeNil     = true,   -- also scan nil-parented instances
+
+    -- Skip Roblox's own internal UI/packages — these are NOT the game's code
+    -- (CoreGui/CorePackages/RobloxGui are full of "username"/"displayname"
+    -- modules that are protected and can't be decompiled anyway). Matched
+    -- against the start of each instance's full path, case-insensitive.
+    IgnoreRoots    = {
+        "CoreGui", "CorePackages", "RobloxGui",
+        "RobloxReplicatedStorage", "CoreScripts",
+    },
     DumpRemotes    = true,   -- list matching remotes + bindables
     DecompileCode  = true,   -- decompile / dump every matching script
     CopyClipboard  = true,   -- setclipboard(report)
@@ -108,18 +117,43 @@ local function matchesKeyword(text)
     return false
 end
 
+-- Is this full path under a Roblox-internal root we want to skip?
+local function isIgnoredPath(path)
+    local p = lower(path)
+    for _, root in ipairs(CONFIG.IgnoreRoots) do
+        local r = root:lower()
+        if p == r or p:sub(1, #r + 1) == r .. "." then
+            return true
+        end
+    end
+    return false
+end
+
+-- Decompilers return an *error comment* (not a Lua error) when they can't
+-- read a protected script, e.g. "-- failed to get script bytecode". Detect
+-- those so we don't present the failure message as if it were real source.
+local function looksFailed(src)
+    if not src then return true end
+    local head = lower(src:sub(1, 300))
+    return head:find("failed to get script bytecode", 1, true) ~= nil
+        or head:find("failed to decompile", 1, true) ~= nil
+        or head:find("decompilation failed", 1, true) ~= nil
+        or head:find("could not decompile", 1, true) ~= nil
+        or head:find("script is protected", 1, true) ~= nil
+end
+
 -- ── Decompile a single script (with graceful fallbacks) ───
 -- Returns: sourceText, methodUsed
 local function getScriptCode(scr)
     if CONFIG.DecompileCode and decompile_fn then
         local ok, src = pcall(decompile_fn, scr)
-        if ok and type(src) == "string" and #src > 0 then
+        if ok and type(src) == "string" and #src > 0 and not looksFailed(src) then
             return src, "decompile"
         end
     end
     if getsource_fn then
         local ok, src = pcall(getsource_fn, scr)
-        if ok and type(src) == "string" and #src > 0 then
+        if ok and type(src) == "string" and #src > 0 and not looksFailed(src) then
             return src, "source"
         end
     end
@@ -211,11 +245,19 @@ local function run()
         end
     end
 
+    local skipped = 0
     for _, obj in ipairs(instances) do
         local okc, cn = pcall(function() return obj.ClassName end)
         if not okc then cn = "" end
 
-        local nameHit = select(1, matchesKeyword(fullPath(obj)))
+        local path = fullPath(obj)
+
+        -- Skip Roblox-internal roots entirely (not the game's code).
+        if isIgnoredPath(path) then
+            skipped = skipped + 1
+        else
+
+        local nameHit = select(1, matchesKeyword(path))
                         or select(1, matchesKeyword(obj.Name))
 
         local isScript = false
@@ -255,12 +297,14 @@ local function run()
             end
         elseif remoteClasses[cn] then
             if nameHit then
-                matchedRemotes[#matchedRemotes + 1] = { path = fullPath(obj), cn = cn }
+                matchedRemotes[#matchedRemotes + 1] = { path = path, cn = cn }
             end
         elseif nameHit and (cn == "BillboardGui" or cn == "TextLabel"
                or cn == "SurfaceGui" or cn:find("Gui")) then
-            matchedOther[#matchedOther + 1] = { path = fullPath(obj), cn = cn }
+            matchedOther[#matchedOther + 1] = { path = path, cn = cn }
         end
+
+        end -- not isIgnoredPath
     end
 
     table.sort(matchedRemotes, function(a, b) return a.path < b.path end)
@@ -274,6 +318,7 @@ local function run()
     report[#report + 1] = "  " .. placeName
     report[#report + 1] = "  Scope: " .. (CONFIG.ScanWholeGame and "Whole game" or "Workspace only")
     report[#report + 1] = "  Instances scanned: " .. #instances
+    report[#report + 1] = "  Roblox-internal skipped: " .. skipped
     report[#report + 1] = ("  Scripts decompiled: %d%s"):format(
         decompiles, capHit and (" (cap " .. CONFIG.MaxDecompiles .. " hit)") or "")
     report[#report + 1] = "  Deep source match: " .. (CONFIG.MatchOnSource and "on" or "off")
