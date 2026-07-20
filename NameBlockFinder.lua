@@ -32,12 +32,20 @@ local CONFIG = {
     },
     ScanWholeGame  = true,   -- false = Workspace only; true = every service
     IncludeNil     = true,   -- also scan nil-parented instances
-    MatchOnSource  = true,   -- also match on decompiled/source text, not just names
     DumpRemotes    = true,   -- list matching remotes + bindables
     DecompileCode  = true,   -- decompile / dump every matching script
     CopyClipboard  = true,   -- setclipboard(report)
     SaveToFile     = true,   -- writefile("NameBlockFinder_<PlaceId>.txt", report)
     BytecodeAsHex  = true,   -- hex-encode bytecode fallback (NUL-safe clipboard)
+
+    -- ── Performance / safety (these prevent game crashes) ──
+    -- Deep source matching decompiles EVERY script to search its code.
+    -- Decompilation is very heavy, so this is OFF by default. Turning it
+    -- on can freeze/crash big games even with the safeguards below.
+    MatchOnSource  = false,  -- also match on decompiled/source text, not just names
+    MaxDecompiles  = 150,    -- hard cap on how many scripts we ever decompile
+    YieldEvery     = 40,     -- task.wait() after this many heavy ops (keeps the
+                             -- client responsive so Roblox never kills it)
 }
 -- ──────────────────────────────────────────────────────────
 
@@ -137,6 +145,8 @@ local function collectInstances()
         if inst and not seen[inst] then
             seen[inst] = true
             out[#out + 1] = inst
+            -- Yield occasionally on huge trees so collecting never stalls the client.
+            if #out % 2000 == 0 then task.wait() end
         end
     end
 
@@ -190,6 +200,16 @@ local function run()
     }
 
     local matchedRemotes, matchedScripts, matchedOther = {}, {}, {}
+    local decompiles, ops, capHit = 0, 0, false
+
+    -- Yield to the engine periodically so a long scan never freezes / crashes
+    -- the client (the #1 cause of the "it crashed my whole game" behaviour).
+    local function breathe()
+        ops = ops + 1
+        if CONFIG.YieldEvery > 0 and ops % CONFIG.YieldEvery == 0 then
+            task.wait()
+        end
+    end
 
     for _, obj in ipairs(instances) do
         local okc, cn = pcall(function() return obj.ClassName end)
@@ -202,16 +222,36 @@ local function run()
         pcall(function() isScript = obj:IsA("LuaSourceContainer") end)
 
         if isScript then
-            local code, method = getScriptCode(obj)
-            local hit = nameHit
-            if not hit and CONFIG.MatchOnSource and code and method ~= "unavailable"
-               and not method:find("bytecode") then
-                hit = select(1, matchesKeyword(code))
-            end
-            if hit then
-                matchedScripts[#matchedScripts + 1] = {
-                    obj = obj, cn = cn, code = code, method = method,
-                }
+            -- Only decompile when we actually need to: a name match (we want its
+            -- code for the report) OR deep source matching that still has budget.
+            local wantSource = not nameHit and CONFIG.MatchOnSource
+                               and not capHit
+            if nameHit or wantSource then
+                if decompiles < CONFIG.MaxDecompiles then
+                    decompiles = decompiles + 1
+                    local code, method = getScriptCode(obj)
+                    breathe()  -- decompile is the heavy op; yield right after
+                    local hit = nameHit
+                    if not hit and wantSource and code
+                       and method ~= "unavailable" and not method:find("bytecode") then
+                        hit = select(1, matchesKeyword(code))
+                    end
+                    if hit then
+                        matchedScripts[#matchedScripts + 1] = {
+                            obj = obj, cn = cn, code = code, method = method,
+                        }
+                    end
+                elseif nameHit then
+                    -- Past the decompile budget but the name matched: record it
+                    -- without code rather than silently dropping it.
+                    capHit = true
+                    matchedScripts[#matchedScripts + 1] = {
+                        obj = obj, cn = cn, code = nil,
+                        method = "skipped (decompile cap reached)",
+                    }
+                else
+                    capHit = true
+                end
             end
         elseif remoteClasses[cn] then
             if nameHit then
@@ -234,6 +274,9 @@ local function run()
     report[#report + 1] = "  " .. placeName
     report[#report + 1] = "  Scope: " .. (CONFIG.ScanWholeGame and "Whole game" or "Workspace only")
     report[#report + 1] = "  Instances scanned: " .. #instances
+    report[#report + 1] = ("  Scripts decompiled: %d%s"):format(
+        decompiles, capHit and (" (cap " .. CONFIG.MaxDecompiles .. " hit)") or "")
+    report[#report + 1] = "  Deep source match: " .. (CONFIG.MatchOnSource and "on" or "off")
     report[#report + 1] = "  Generated: " .. os.date("!%Y-%m-%d %H:%M:%S UTC")
     report[#report + 1] = "============================================================\n"
 
