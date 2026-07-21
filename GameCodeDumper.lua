@@ -50,7 +50,15 @@ local CONFIG = {
     YieldEvery     = 25,     -- task.wait() after this many heavy ops so
                              -- the client stays responsive (Roblox kills
                              -- clients that block the main thread too long)
-    ClipboardLimit = 3000000,-- don't try to copy dumps bigger than this
+
+    -- ── Clipboard (no size cap — big dumps are chunked) ──
+    -- When the dump is bigger than ChunkSize, it's split into parts and
+    -- copied ONE AT A TIME. Paste part 1, then press NextChunkKey to load
+    -- the next part onto your clipboard, paste, repeat. The saved files
+    -- always hold the complete dump regardless.
+    ChunkSize      = 180000, -- chars per clipboard chunk (safe for most editors)
+    NextChunkKey   = Enum.KeyCode.RightBracket, -- press ] to copy the next chunk
+    PrevChunkKey   = Enum.KeyCode.LeftBracket,  -- press [ to copy the previous chunk
 }
 -- ──────────────────────────────────────────────────────────
 
@@ -319,14 +327,74 @@ local function run()
     if CONFIG.CopyClipboard then
         if not setclipboard_fn then
             notify("GameCodeDumper", "No clipboard fn on this executor - use the saved files")
-        elseif #text > CONFIG.ClipboardLimit then
-            notify("GameCodeDumper", ("Dump too big for clipboard (%d chars) - use the saved files"):format(#text))
         else
             local safe = text:gsub("%z", "?")  -- strip NULs so clipboard won't truncate
-            local ok = pcall(setclipboard_fn, safe)
-            notify("GameCodeDumper", ok
-                and "Copied full game code to clipboard!"
-                or  "Clipboard copy failed - use the saved files")
+
+            -- Fits in one go: copy the whole thing.
+            if #safe <= CONFIG.ChunkSize then
+                local ok = pcall(setclipboard_fn, safe)
+                notify("GameCodeDumper", ok
+                    and "Copied full game code to clipboard!"
+                    or  "Clipboard copy failed - use the saved files")
+            else
+                -- Too big for one clipboard write: split into chunks and copy
+                -- them one at a time. This BYPASSES the "too big" limit — you
+                -- just paste each part in turn.
+                local chunks = {}
+                for i = 1, #safe, CONFIG.ChunkSize do
+                    chunks[#chunks + 1] = safe:sub(i, i + CONFIG.ChunkSize - 1)
+                end
+                local total = #chunks
+
+                local function copyChunk(idx)
+                    local header = ("-- ===== GameCodeDumper chunk %d/%d ====="):format(idx, total)
+                    pcall(setclipboard_fn, header .. "\n" .. chunks[idx])
+                    notify("GameCodeDumper",
+                        ("Copied chunk %d/%d. Paste it, then press ] for next%s")
+                        :format(idx, total, idx > 1 and " / [ for previous" or ""))
+                    print(("[GameCodeDumper] Clipboard = chunk %d/%d (press ] next, [ prev)")
+                        :format(idx, total))
+                end
+
+                local current = 1
+                copyChunk(current)
+
+                -- Hotkeys to walk through the chunks.
+                local okUIS, UIS = pcall(function()
+                    return game:GetService("UserInputService")
+                end)
+                if okUIS and UIS then
+                    local conn
+                    conn = UIS.InputBegan:Connect(function(input, gpe)
+                        if gpe then return end
+                        if input.KeyCode == CONFIG.NextChunkKey and current < total then
+                            current = current + 1
+                            copyChunk(current)
+                        elseif input.KeyCode == CONFIG.PrevChunkKey and current > 1 then
+                            current = current - 1
+                            copyChunk(current)
+                        end
+                    end)
+                    -- Also expose a manual grabber in case keys are captured by the game.
+                    getgenv_fn().GameCodeDumper_NextChunk = function()
+                        if current < total then current = current + 1 end
+                        copyChunk(current)
+                    end
+                    getgenv_fn().GameCodeDumper_Chunks = chunks
+                    print("[GameCodeDumper] " .. total .. " chunks ready. Keys: ] next, [ prev. "
+                        .. "Or run: getgenv().GameCodeDumper_NextChunk()")
+                    -- (conn is left connected so the hotkeys keep working.)
+                    local _ = conn
+                else
+                    notify("GameCodeDumper",
+                        ("Split into %d chunks. Run getgenv().GameCodeDumper_NextChunk() for each"):format(total))
+                    getgenv_fn().GameCodeDumper_Chunks = chunks
+                    getgenv_fn().GameCodeDumper_NextChunk = function()
+                        if current < total then current = current + 1 end
+                        copyChunk(current)
+                    end
+                end
+            end
         end
     end
 
