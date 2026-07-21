@@ -39,7 +39,10 @@
   #drop .big{font-size:16px;font-weight:600;margin-bottom:4px}
   #drop .hint{color:var(--dim);font-size:13px}
   #drop.has{border-style:solid;border-color:var(--a)}
-  input[type=file]{display:none}
+  #drop{display:block}
+  /* visually hidden but still clickable/focusable (mobile-safe) */
+  .vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+    clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
   /* options grid */
   .opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:18px}
@@ -99,11 +102,11 @@
     locally in your browser; your video is never uploaded anywhere.</p>
 
   <div class="card">
-    <div id="drop">
-      <div class="big">Drop a video here, or click to choose</div>
+    <label id="drop" for="file">
+      <div class="big">Tap to choose a video, or drop one here</div>
       <div class="hint">mp4 · webm · mov — whatever your browser can play</div>
-    </div>
-    <input type="file" id="file" accept="video/*" />
+    </label>
+    <input type="file" id="file" accept="video/*" class="vh" />
 
     <div class="opts">
       <div class="field">
@@ -194,7 +197,9 @@ const drop = $("drop"), fileIn = $("file");
 let videoFile = null;
 
 // ---------- file selection ----------
-drop.addEventListener("click", () => fileIn.click());
+// The drop zone is a <label for="file">, so a tap/click opens the picker
+// natively — no JS .click() needed (that path is blocked in some mobile and
+// sandboxed browsers). We only handle drag-and-drop and the change event here.
 ["dragover","dragenter"].forEach(e => drop.addEventListener(e, ev => {
   ev.preventDefault(); drop.classList.add("drag");
 }));
