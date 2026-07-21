@@ -227,17 +227,57 @@ function loadVideo(file){
   return new Promise((res, rej) => {
     const v = document.createElement("video");
     v.preload = "auto"; v.muted = true; v.playsInline = true;
+    v.setAttribute("muted", ""); v.setAttribute("playsinline", "");
+    // Attach off-screen but IN the document — a detached <video> often never
+    // fires `seeked` / frame callbacks, which is the classic "nothing happens".
+    v.style.cssText = "position:fixed;left:-9999px;top:0;width:2px;height:2px;" +
+                      "opacity:0;pointer-events:none";
+    document.body.appendChild(v);
     v.src = URL.createObjectURL(file);
-    v.onloadedmetadata = () => res(v);
-    v.onerror = () => rej(new Error("This browser could not decode that video."));
+    let settled = false;
+    v.onloadedmetadata = () => { if (!settled){ settled = true; res(v); } };
+    v.onerror = () => { if (!settled){ settled = true;
+      rej(new Error("This browser could not decode that video. Try an .mp4 (H.264).")); } };
+    // Don't hang forever if metadata never arrives.
+    setTimeout(() => { if (!settled){ settled = true;
+      (v.videoWidth ? res(v)
+       : rej(new Error("Timed out reading the video. Try a different file or an .mp4."))); } }, 15000);
   });
+}
+
+function destroyVideo(v){
+  try { v.pause(); } catch(e){}
+  try { URL.revokeObjectURL(v.src); } catch(e){}
+  try { v.remove(); } catch(e){}
+}
+
+// Some containers (many .webm) report duration = Infinity/NaN until forced.
+async function ensureDuration(v){
+  if (isFinite(v.duration) && v.duration > 0) return;
+  await new Promise((res) => {
+    let done = false;
+    const finish = () => { if (done) return; done = true;
+      v.removeEventListener("durationchange", onDur);
+      v.removeEventListener("seeked", onDur); res(); };
+    const onDur = () => { if (isFinite(v.duration) && v.duration > 0) finish(); };
+    v.addEventListener("durationchange", onDur);
+    v.addEventListener("seeked", onDur);
+    try { v.currentTime = 1e7; } catch(e){}      // seek far past the end
+    setTimeout(finish, 2500);
+  });
+  try { v.currentTime = 0; } catch(e){}
 }
 
 function seekTo(v, t){
   return new Promise((res) => {
-    const done = () => { v.removeEventListener("seeked", done); res(); };
-    v.addEventListener("seeked", done);
-    v.currentTime = Math.min(t, Math.max(0, v.duration - 1e-3));
+    let done = false;
+    const finish = () => { if (done) return; done = true;
+      v.removeEventListener("seeked", finish); res(); };
+    v.addEventListener("seeked", finish);
+    try {
+      v.currentTime = Math.min(t, Math.max(0, (isFinite(v.duration) ? v.duration : t + 1) - 1e-3));
+    } catch(e){ finish(); }
+    setTimeout(finish, 4000);                    // never hang on a stuck seek
   });
 }
 
@@ -246,22 +286,26 @@ function detectFps(v){
   return new Promise((res) => {
     if (!("requestVideoFrameCallback" in HTMLVideoElement.prototype)) return res(30);
     const ts = [];
+    let settled = false;
+    const finish = (val) => { if (settled) return; settled = true;
+      try { v.pause(); } catch(e){} res(val); };
+    const fromSamples = () => {
+      const d = [];
+      for (let i=1;i<ts.length;i++) if (ts[i] > ts[i-1]) d.push(ts[i]-ts[i-1]);
+      d.sort((a,b)=>a-b);
+      const med = d.length ? d[d.length>>1] : 0;
+      return med > 0 ? Math.min(60, Math.max(1, Math.round(1/med))) : 30;
+    };
     v.currentTime = 0;
     const cb = (now, meta) => {
       ts.push(meta.mediaTime);
-      if (ts.length >= 10){
-        v.pause();
-        const d = [];
-        for (let i=1;i<ts.length;i++) if (ts[i] > ts[i-1]) d.push(ts[i]-ts[i-1]);
-        d.sort((a,b)=>a-b);
-        const med = d.length ? d[d.length>>1] : 0;
-        res(med > 0 ? Math.min(60, Math.max(1, Math.round(1/med))) : 30);
-      } else {
-        v.requestVideoFrameCallback(cb);
-      }
+      if (ts.length >= 10) finish(fromSamples());
+      else v.requestVideoFrameCallback(cb);
     };
     v.requestVideoFrameCallback(cb);
-    v.play().catch(()=>res(30));
+    v.play().catch(() => finish(30));
+    // Fallback: if frames never flow, decide from whatever we have.
+    setTimeout(() => finish(ts.length >= 2 ? fromSamples() : 30), 2500);
   });
 }
 
@@ -326,9 +370,16 @@ async function convert(){
 
     progress(0, "Loading video…");
     const v = await loadVideo(videoFile);
+    if (!v.videoWidth || !v.videoHeight)
+      throw new Error("The video has no visible track this browser can read.");
 
     let fps = opts.fps;
     if (fps <= 0){ progress(0, "Detecting frame rate…"); fps = await detectFps(v); }
+    if (!(fps > 0)) fps = 30;
+
+    progress(0, "Reading duration…");
+    await ensureDuration(v);
+    const dur = isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
 
     // output dimensions
     let ow = opts.width>0 ? opts.width : v.videoWidth;
@@ -342,15 +393,20 @@ async function convert(){
     $("preview").style.display = "block";
 
     const lut = makeQuant(opts.colors);
-    let total = Math.max(1, Math.floor(v.duration * fps));
+    let total = dur > 0 ? Math.floor(dur * fps) : (opts.maxFrames || 0);
     if (opts.maxFrames>0) total = Math.min(total, opts.maxFrames);
+    total = Math.max(1, total);
 
     const frames = [];
-    let rawBytes = 0;
+    let rawBytes = 0, blank = 0;
     for (let i=0;i<total;i++){
       await seekTo(v, i/fps);
       ctx.drawImage(v, 0, 0, ow, oh);
       const data = ctx.getImageData(0, 0, ow, oh).data;
+      // Detect an all-black/blank frame (decoder not ready) so we can warn.
+      let nz = false;
+      for (let p=3; p<data.length; p+=4*97){ if (data[p-3]||data[p-2]||data[p-1]){ nz = true; break; } }
+      if (!nz) blank++;
       const enc = encodeFrame(data, ow*oh, lut);
       rawBytes += enc.length;
       frames.push(b64(enc));
@@ -358,7 +414,13 @@ async function convert(){
         progress(i/total, `Encoding frame ${i+1} / ${total}  (${ow}×${oh} @ ${fps}fps)`);
       if (i % 4 === 0) await new Promise(r=>setTimeout(r)); // keep UI responsive
     }
-    URL.revokeObjectURL(v.src);
+    destroyVideo(v);
+
+    if (frames.length === 0)
+      throw new Error("No frames were captured. Try an .mp4 (H.264) or a shorter clip.");
+    if (blank === frames.length)
+      throw new Error("Every captured frame was blank — this browser likely can't "
+        + "decode this video for canvas capture. Try converting it to .mp4 (H.264) first.");
 
     progress(1, "Building Lua…");
     const duration = frames.length / fps;
