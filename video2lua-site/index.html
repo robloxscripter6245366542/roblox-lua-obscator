@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>video2lua — Video to Roblox Lua</title>
+<style>
+  :root{
+    --bg:#0d0d12; --panel:#16161f; --panel2:#1e1e2b; --line:#2a2a3a;
+    --txt:#eaeaf2; --dim:#9a9ab0; --a:#7c5cff; --b:#40c4ff;
+    --ok:#39d98a; --warn:#ffb454; --err:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:radial-gradient(1200px 700px at 80% -10%, #201a3a 0%, var(--bg) 55%),
+               var(--bg);
+    color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
+    min-height:100vh; line-height:1.5;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:32px 20px 80px}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+  .logo{width:40px;height:40px;border-radius:11px;
+    background:linear-gradient(135deg,var(--a),var(--b));
+    box-shadow:0 6px 24px -6px var(--a);flex:none;
+    display:grid;place-items:center;font-size:20px}
+  h1{font-size:24px;margin:0;letter-spacing:-.02em}
+  .sub{color:var(--dim);font-size:14px;margin:2px 0 26px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:22px;margin-bottom:20px}
+  .grad{background:linear-gradient(90deg,var(--a),var(--b));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+
+  /* drop zone */
+  #drop{border:2px dashed var(--line);border-radius:14px;padding:34px 20px;
+    text-align:center;cursor:pointer;transition:.15s;background:var(--panel2)}
+  #drop:hover,#drop.drag{border-color:var(--a);background:#20203040}
+  #drop .big{font-size:16px;font-weight:600;margin-bottom:4px}
+  #drop .hint{color:var(--dim);font-size:13px}
+  #drop.has{border-style:solid;border-color:var(--a)}
+  input[type=file]{display:none}
+
+  /* options grid */
+  .opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:18px}
+  .field label{display:block;font-size:12px;color:var(--dim);margin-bottom:5px;
+    text-transform:uppercase;letter-spacing:.04em}
+  .field input{width:100%;background:var(--panel2);border:1px solid var(--line);
+    color:var(--txt);border-radius:9px;padding:9px 11px;font-size:14px;outline:none}
+  .field input:focus{border-color:var(--a)}
+  .field small{color:var(--dim);font-size:11px;display:block;margin-top:4px}
+
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:18px}
+  button{font:inherit;border:none;border-radius:11px;padding:12px 22px;cursor:pointer;
+    font-weight:600;transition:.15s;color:#fff}
+  .primary{background:linear-gradient(135deg,var(--a),var(--b));
+    box-shadow:0 8px 26px -8px var(--a)}
+  .primary:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+  .primary:not(:disabled):hover{transform:translateY(-1px)}
+  .ghost{background:var(--panel2);border:1px solid var(--line)}
+  .ghost:hover{border-color:var(--a)}
+
+  /* progress */
+  #prog{display:none;margin-top:20px}
+  .bar{height:8px;background:var(--panel2);border-radius:5px;overflow:hidden}
+  .bar>i{display:block;height:100%;width:0;border-radius:5px;
+    background:linear-gradient(90deg,var(--a),var(--b));transition:width .1s}
+  #progtxt{font-size:13px;color:var(--dim);margin-top:8px}
+
+  /* preview */
+  #preview{display:none;margin-top:18px;text-align:center}
+  #cv{max-width:100%;border-radius:12px;border:1px solid var(--line);background:#000}
+
+  #result{display:none}
+  .stat{display:flex;gap:22px;flex-wrap:wrap;margin:6px 0 16px;color:var(--dim);font-size:13px}
+  .stat b{color:var(--txt)}
+  .note{background:#1a1712;border:1px solid #3a3018;color:#e8d9b0;
+    border-radius:11px;padding:12px 14px;font-size:13px;margin-top:14px}
+  .note b{color:var(--warn)}
+  a.dl{display:inline-block}
+  ol{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:13px}
+  ol code{background:var(--panel2);padding:1px 6px;border-radius:5px;color:var(--txt)}
+  footer{color:var(--dim);font-size:12px;text-align:center;margin-top:30px}
+  footer a{color:var(--b);text-decoration:none}
+  .pill{font-size:11px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:20px;padding:3px 10px;color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">▶</div>
+    <div>
+      <h1>video2lua <span class="pill">in your browser</span></h1>
+    </div>
+  </header>
+  <p class="sub">Turn a <b>video</b> into a single self-contained <span class="grad">Roblox Lua</span>
+    script — full frames, full quality, synced sound, and a draggable player. Everything runs
+    locally in your browser; your video is never uploaded anywhere.</p>
+
+  <div class="card">
+    <div id="drop">
+      <div class="big">Drop a video here, or click to choose</div>
+      <div class="hint">mp4 · webm · mov — whatever your browser can play</div>
+    </div>
+    <input type="file" id="file" accept="video/*" />
+
+    <div class="opts">
+      <div class="field">
+        <label>Width (px)</label>
+        <input id="o_width" type="number" min="0" value="0" />
+        <small>0 = source, capped to max</small>
+      </div>
+      <div class="field">
+        <label>FPS</label>
+        <input id="o_fps" type="number" min="0" step="1" value="0" />
+        <small>0 = source, every frame</small>
+      </div>
+      <div class="field">
+        <label>Colors / channel</label>
+        <input id="o_colors" type="number" min="2" max="256" value="256" />
+        <small>256 = perfect frames</small>
+      </div>
+      <div class="field">
+        <label>Max dimension</label>
+        <input id="o_maxdim" type="number" min="16" max="1024" value="1024" />
+        <small>EditableImage limit</small>
+      </div>
+      <div class="field">
+        <label>Max frames</label>
+        <input id="o_maxframes" type="number" min="0" value="0" />
+        <small>0 = no cap</small>
+      </div>
+      <div class="field">
+        <label>Audio asset id</label>
+        <input id="o_audio" type="text" placeholder="optional rbxassetid" />
+        <small>see note below</small>
+      </div>
+      <div class="field">
+        <label>Title</label>
+        <input id="o_title" type="text" placeholder="window title" />
+        <small>defaults to file name</small>
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="primary" id="go" disabled>Convert to Lua</button>
+      <button class="ghost" id="tryAudio" title="Extract the soundtrack as a WAV to upload to Roblox">Extract audio (.wav)</button>
+    </div>
+
+    <div id="prog">
+      <div class="bar"><i></i></div>
+      <div id="progtxt"></div>
+    </div>
+
+    <div id="preview">
+      <canvas id="cv"></canvas>
+    </div>
+  </div>
+
+  <div class="card" id="result">
+    <h2 style="margin:0 0 4px">Done <span class="grad">✓</span></h2>
+    <div class="stat" id="stat"></div>
+    <div class="row" style="margin-top:0">
+      <a class="dl" id="dllua"><button class="primary">Download .lua</button></a>
+      <a class="dl" id="dlwav" style="display:none"><button class="ghost">Download audio .wav</button></a>
+    </div>
+    <div class="note">
+      <b>Sound is a two-step flow.</b> Roblox can only play audio from an
+      uploaded asset, so:
+      <ol>
+        <li>Use <b>Extract audio (.wav)</b> to save the soundtrack.</li>
+        <li>Upload it to Roblox (Creator Dashboard → Audio) and copy its id.</li>
+        <li>Put the id in <code>Audio asset id</code> above and convert again.</li>
+      </ol>
+      Without an id the video plays silently — the picture is always full quality.
+    </div>
+  </div>
+
+  <footer>
+    Runs entirely client-side · needs an executor / Studio with
+    <code>AssetService:CreateEditableImage</code> to play ·
+    part of the <a href="https://github.com/robloxscripter6245366542/roblox-lua-obscator">roblox-lua-obscator</a> tools
+  </footer>
+</div>
+
+<script>
+const PLAYER_TEMPLATE = "--[[\n    ============================================================================\n      video2lua  |  Premium in-game video player for Roblox\n    ============================================================================\n    This file is GENERATED. Do not edit the __VIDEO2LUA_*__ markers by hand -\n    they are replaced by video2lua.py with the encoded video data.\n\n    Rendering : full-resolution frames drawn with AssetService EditableImage\n    Decoding  : base64 -> per-frame RLE -> RGBA pixel buffer (pre-decoded at load)\n    Audio     : optional Roblox Sound asset, kept in sync with the timeline\n    UI        : draggable premium window with play/pause, scrubber, volume,\n                loop and fullscreen controls\n    ============================================================================\n]]\n\n--// ====================== GENERATED METADATA ============================ //--\nlocal META = {\n    title      = \"__VIDEO2LUA_TITLE__\",\n    width      = __VIDEO2LUA_WIDTH__,\n    height     = __VIDEO2LUA_HEIGHT__,\n    fps        = __VIDEO2LUA_FPS__,\n    frameCount = __VIDEO2LUA_FRAMECOUNT__,\n    audioId    = \"__VIDEO2LUA_AUDIOID__\",   -- rbxassetid string or \"\" if none\n    duration   = __VIDEO2LUA_DURATION__,\n}\n\n--  FRAMES is a flat array of base64 strings, one per frame, each holding an\n--  RLE-compressed RGB stream (tokens of [count][r][g][b]).\nlocal FRAMES = __VIDEO2LUA_FRAMES__\n--// ====================================================================== //--\n\n\n--============================ SERVICES ==================================--\nlocal Players            = game:GetService(\"Players\")\nlocal RunService         = game:GetService(\"RunService\")\nlocal UserInputService   = game:GetService(\"UserInputService\")\nlocal AssetService       = game:GetService(\"AssetService\")\nlocal TweenService       = game:GetService(\"TweenService\")\n\nlocal LocalPlayer = Players.LocalPlayer\n\n--======================== SMALL UTILITIES ===============================--\nlocal WIDTH, HEIGHT   = META.width, META.height\nlocal SIZE            = Vector2.new(WIDTH, HEIGHT)\nlocal FRAME_TIME      = 1 / math.max(META.fps, 1)\nlocal PIXELS          = WIDTH * HEIGHT\n\nlocal ACCENT_A = Color3.fromRGB(124, 92, 255)   -- violet\nlocal ACCENT_B = Color3.fromRGB(64, 196, 255)   -- cyan\nlocal BG_DARK  = Color3.fromRGB(16, 16, 22)\nlocal BG_PANEL = Color3.fromRGB(24, 24, 33)\n\nlocal function fmtTime(t)\n    t = math.max(0, math.floor(t))\n    local m = math.floor(t / 60)\n    local s = t % 60\n    return string.format(\"%d:%02d\", m, s)\nend\n\n--============================ BASE64 ====================================--\nlocal B64 = \"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/\"\nlocal B64LUT = {}\nfor i = 1, #B64 do\n    B64LUT[string.byte(B64, i)] = i - 1\nend\n\n-- Decode a base64 string into a Roblox `buffer` of raw bytes.\nlocal function b64decode(s)\n    local slen = #s\n    local pad = 0\n    if slen >= 1 and string.byte(s, slen) == 61 then pad += 1 end       -- '='\n    if slen >= 2 and string.byte(s, slen - 1) == 61 then pad += 1 end\n    local outlen = (slen // 4) * 3 - pad\n    local out = buffer.create(outlen)\n    local oi, i = 0, 1\n    while i <= slen do\n        local c1 = B64LUT[string.byte(s, i)]     or 0\n        local c2 = B64LUT[string.byte(s, i + 1)] or 0\n        local c3 = B64LUT[string.byte(s, i + 2)] or 0\n        local c4 = B64LUT[string.byte(s, i + 3)] or 0\n        local n = c1 * 262144 + c2 * 4096 + c3 * 64 + c4\n        if oi < outlen then buffer.writeu8(out, oi, (n // 65536) % 256); oi += 1 end\n        if oi < outlen then buffer.writeu8(out, oi, (n // 256) % 256);   oi += 1 end\n        if oi < outlen then buffer.writeu8(out, oi, n % 256);            oi += 1 end\n        i += 4\n    end\n    return out\nend\n\n-- Expand one RLE frame buffer ([count][r][g][b] tokens) into an RGBA buffer.\nlocal function expandFrame(rle)\n    local n = buffer.len(rle)\n    local px = buffer.create(PIXELS * 4)\n    local o, p = 0, 0\n    while p < n do\n        local count = buffer.readu8(rle, p)\n        local r = buffer.readu8(rle, p + 1)\n        local g = buffer.readu8(rle, p + 2)\n        local b = buffer.readu8(rle, p + 3)\n        p += 4\n        for _ = 1, count do\n            buffer.writeu8(px, o,     r)\n            buffer.writeu8(px, o + 1, g)\n            buffer.writeu8(px, o + 2, b)\n            buffer.writeu8(px, o + 3, 255)\n            o += 4\n        end\n    end\n    return px\nend\n\n--======================= EDITABLE IMAGE SET-UP ==========================--\n-- Roblox has shipped a few variants of this API. Try them all defensively.\nlocal editableImage\ndo\n    local attempts = {\n        function() return AssetService:CreateEditableImage({ Size = SIZE }) end,\n        function() return AssetService:CreateEditableImage(SIZE) end,\n        function() return AssetService:CreateEditableImage() end,\n    }\n    for _, make in ipairs(attempts) do\n        local ok, img = pcall(make)\n        if ok and img then\n            editableImage = img\n            break\n        end\n    end\nend\n\nif not editableImage then\n    warn(\"[video2lua] This executor / Studio build does not expose \"\n        .. \"AssetService:CreateEditableImage. Full-quality playback is \"\n        .. \"unavailable here.\")\n    return\nend\n\nlocal function writeFrame(px)\n    if editableImage.WritePixelsBuffer then\n        editableImage:WritePixelsBuffer(Vector2.zero, SIZE, px)\n    else\n        -- Legacy float-array signature.\n        local floats = table.create(PIXELS * 4)\n        for k = 0, PIXELS * 4 - 1 do\n            floats[k + 1] = buffer.readu8(px, k) / 255\n        end\n        editableImage:WritePixels(Vector2.zero, SIZE, floats)\n    end\nend\n\n--============================ GUI PARENT ================================--\nlocal function guiParent()\n    local ok, hui = pcall(function() return gethui() end)\n    if ok and hui then return hui end\n    local ok2, cg = pcall(function() return game:GetService(\"CoreGui\") end)\n    if ok2 and cg then return cg end\n    return LocalPlayer:WaitForChild(\"PlayerGui\")\nend\n\n-- Tear down a previous instance if the script is re-run.\ndo\n    local parent = guiParent()\n    local old = parent:FindFirstChild(\"Video2Lua\")\n    if old then old:Destroy() end\nend\n\n--=============================== UI =====================================--\nlocal function corner(inst, r)\n    local c = Instance.new(\"UICorner\")\n    c.CornerRadius = UDim.new(0, r or 8)\n    c.Parent = inst\n    return c\nend\n\nlocal function gradient(inst, rot)\n    local g = Instance.new(\"UIGradient\")\n    g.Color = ColorSequence.new(ACCENT_A, ACCENT_B)\n    g.Rotation = rot or 0\n    g.Parent = inst\n    return g\nend\n\nlocal screenGui = Instance.new(\"ScreenGui\")\nscreenGui.Name = \"Video2Lua\"\nscreenGui.ResetOnSpawn = false\nscreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling\nscreenGui.IgnoreGuiInset = true\nscreenGui.DisplayOrder = 9999\nscreenGui.Parent = guiParent()\n\n-- Window sizing keeps the source aspect ratio for the video surface.\nlocal aspect = WIDTH / HEIGHT\nlocal baseW = 560\nlocal videoH = math.floor(baseW / aspect)\n\nlocal window = Instance.new(\"Frame\")\nwindow.Name = \"Window\"\nwindow.Size = UDim2.fromOffset(baseW, videoH + 96)\nwindow.Position = UDim2.new(0.5, -baseW / 2, 0.5, -(videoH + 96) / 2)\nwindow.BackgroundColor3 = BG_DARK\nwindow.BorderSizePixel = 0\nwindow.Parent = screenGui\ncorner(window, 14)\n\nlocal stroke = Instance.new(\"UIStroke\")\nstroke.Thickness = 1.5\nstroke.Transparency = 0.35\nstroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border\nstroke.Color = ACCENT_A\nstroke.Parent = window\n\n-- Soft drop shadow.\nlocal shadow = Instance.new(\"ImageLabel\")\nshadow.Name = \"Shadow\"\nshadow.BackgroundTransparency = 1\nshadow.Image = \"rbxassetid://6014261993\"\nshadow.ImageColor3 = Color3.new(0, 0, 0)\nshadow.ImageTransparency = 0.4\nshadow.ScaleType = Enum.ScaleType.Slice\nshadow.SliceCenter = Rect.new(49, 49, 450, 450)\nshadow.Size = UDim2.new(1, 60, 1, 60)\nshadow.Position = UDim2.new(0, -30, 0, -30)\nshadow.ZIndex = 0\nshadow.Parent = window\n\n--------------------------------------------------------------------- title bar\nlocal titleBar = Instance.new(\"Frame\")\ntitleBar.Name = \"TitleBar\"\ntitleBar.Size = UDim2.new(1, 0, 0, 38)\ntitleBar.BackgroundColor3 = BG_PANEL\ntitleBar.BorderSizePixel = 0\ntitleBar.Parent = window\ncorner(titleBar, 14)\n\n-- mask the lower corners of the title bar so only the top is rounded\nlocal titleMask = Instance.new(\"Frame\")\ntitleMask.Size = UDim2.new(1, 0, 0, 14)\ntitleMask.Position = UDim2.new(0, 0, 1, -14)\ntitleMask.BackgroundColor3 = BG_PANEL\ntitleMask.BorderSizePixel = 0\ntitleMask.Parent = titleBar\n\nlocal accentDot = Instance.new(\"Frame\")\naccentDot.Size = UDim2.fromOffset(10, 10)\naccentDot.Position = UDim2.new(0, 14, 0.5, -5)\naccentDot.BackgroundColor3 = ACCENT_B\naccentDot.BorderSizePixel = 0\naccentDot.Parent = titleBar\ncorner(accentDot, 5)\ngradient(accentDot, 45)\n\nlocal titleText = Instance.new(\"TextLabel\")\ntitleText.BackgroundTransparency = 1\ntitleText.Position = UDim2.new(0, 34, 0, 0)\ntitleText.Size = UDim2.new(1, -110, 1, 0)\ntitleText.Font = Enum.Font.GothamBold\ntitleText.TextSize = 14\ntitleText.TextColor3 = Color3.fromRGB(235, 235, 245)\ntitleText.TextXAlignment = Enum.TextXAlignment.Left\ntitleText.Text = META.title\ntitleText.Parent = titleBar\n\nlocal function titleButton(txt, xoff, col)\n    local b = Instance.new(\"TextButton\")\n    b.Size = UDim2.fromOffset(26, 26)\n    b.Position = UDim2.new(1, xoff, 0.5, -13)\n    b.BackgroundColor3 = BG_DARK\n    b.AutoButtonColor = true\n    b.Text = txt\n    b.Font = Enum.Font.GothamBold\n    b.TextSize = 14\n    b.TextColor3 = col or Color3.fromRGB(220, 220, 230)\n    b.Parent = titleBar\n    corner(b, 6)\n    return b\nend\n\nlocal minimizeBtn = titleButton(\"\u2013\", -64)\nlocal closeBtn    = titleButton(\"\u2715\", -32, Color3.fromRGB(255, 120, 120))\n\n------------------------------------------------------------------- video stage\nlocal stage = Instance.new(\"Frame\")\nstage.Name = \"Stage\"\nstage.Position = UDim2.new(0, 0, 0, 38)\nstage.Size = UDim2.new(1, 0, 1, -38 - 58)\nstage.BackgroundColor3 = Color3.new(0, 0, 0)\nstage.BorderSizePixel = 0\nstage.ClipsDescendants = true\nstage.Parent = window\n\nlocal display = Instance.new(\"ImageLabel\")\ndisplay.Name = \"Display\"\ndisplay.BackgroundTransparency = 1\ndisplay.AnchorPoint = Vector2.new(0.5, 0.5)\ndisplay.Position = UDim2.new(0.5, 0, 0.5, 0)\ndisplay.Size = UDim2.new(1, 0, 1, 0)\ndisplay.ScaleType = Enum.ScaleType.Fit\ndisplay.ResampleMode = Enum.ResamplerMode.Default\ndisplay.Parent = stage\n\n-- Bind the EditableImage to the ImageLabel across API variants.\ndo\n    local bound = false\n    if Content ~= nil then\n        bound = pcall(function()\n            display.ImageContent = Content.fromObject(editableImage)\n        end)\n    end\n    if not bound then\n        pcall(function() editableImage.Parent = display end)\n    end\nend\n\n------------------------------------------------------------- loading overlay\nlocal loader = Instance.new(\"Frame\")\nloader.Name = \"Loader\"\nloader.Size = UDim2.new(1, 0, 1, 0)\nloader.BackgroundColor3 = BG_DARK\nloader.BackgroundTransparency = 0.05\nloader.BorderSizePixel = 0\nloader.ZIndex = 5\nloader.Parent = stage\n\nlocal loadLabel = Instance.new(\"TextLabel\")\nloadLabel.BackgroundTransparency = 1\nloadLabel.Size = UDim2.new(1, 0, 0, 20)\nloadLabel.Position = UDim2.new(0, 0, 0.5, -28)\nloadLabel.Font = Enum.Font.GothamMedium\nloadLabel.TextSize = 13\nloadLabel.TextColor3 = Color3.fromRGB(210, 210, 225)\nloadLabel.Text = \"Decoding frames\u2026\"\nloadLabel.ZIndex = 6\nloadLabel.Parent = loader\n\nlocal barBg = Instance.new(\"Frame\")\nbarBg.Size = UDim2.new(0, 260, 0, 6)\nbarBg.Position = UDim2.new(0.5, -130, 0.5, 0)\nbarBg.BackgroundColor3 = BG_PANEL\nbarBg.BorderSizePixel = 0\nbarBg.ZIndex = 6\nbarBg.Parent = loader\ncorner(barBg, 3)\n\nlocal barFill = Instance.new(\"Frame\")\nbarFill.Size = UDim2.new(0, 0, 1, 0)\nbarFill.BackgroundColor3 = ACCENT_A\nbarFill.BorderSizePixel = 0\nbarFill.ZIndex = 7\nbarFill.Parent = barBg\ncorner(barFill, 3)\ngradient(barFill, 0)\n\n----------------------------------------------------------------- control bar\nlocal controls = Instance.new(\"Frame\")\ncontrols.Name = \"Controls\"\ncontrols.Position = UDim2.new(0, 0, 1, -58)\ncontrols.Size = UDim2.new(1, 0, 0, 58)\ncontrols.BackgroundColor3 = BG_PANEL\ncontrols.BorderSizePixel = 0\ncontrols.Parent = window\ncorner(controls, 14)\n\nlocal ctrlMask = Instance.new(\"Frame\")\nctrlMask.Size = UDim2.new(1, 0, 0, 14)\nctrlMask.BackgroundColor3 = BG_PANEL\nctrlMask.BorderSizePixel = 0\nctrlMask.Parent = controls\n\n-- scrubber / progress bar\nlocal scrubBg = Instance.new(\"Frame\")\nscrubBg.Size = UDim2.new(1, -28, 0, 6)\nscrubBg.Position = UDim2.new(0, 14, 0, 10)\nscrubBg.BackgroundColor3 = Color3.fromRGB(48, 48, 62)\nscrubBg.BorderSizePixel = 0\nscrubBg.Parent = controls\ncorner(scrubBg, 3)\n\nlocal scrubFill = Instance.new(\"Frame\")\nscrubFill.Size = UDim2.new(0, 0, 1, 0)\nscrubFill.BackgroundColor3 = ACCENT_A\nscrubFill.BorderSizePixel = 0\nscrubFill.Parent = scrubBg\ncorner(scrubFill, 3)\ngradient(scrubFill, 0)\n\nlocal scrubKnob = Instance.new(\"Frame\")\nscrubKnob.Size = UDim2.fromOffset(12, 12)\nscrubKnob.AnchorPoint = Vector2.new(0.5, 0.5)\nscrubKnob.Position = UDim2.new(0, 0, 0.5, 0)\nscrubKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)\nscrubKnob.BorderSizePixel = 0\nscrubKnob.ZIndex = 3\nscrubKnob.Parent = scrubBg\ncorner(scrubKnob, 6)\n\n-- lower row: play, time, spacer, loop, volume, fullscreen\nlocal function ctrlButton(txt, x)\n    local b = Instance.new(\"TextButton\")\n    b.Size = UDim2.fromOffset(30, 26)\n    b.Position = UDim2.new(0, x, 0, 26)\n    b.BackgroundColor3 = BG_DARK\n    b.AutoButtonColor = true\n    b.Font = Enum.Font.GothamBold\n    b.TextSize = 13\n    b.TextColor3 = Color3.fromRGB(230, 230, 240)\n    b.Text = txt\n    b.Parent = controls\n    corner(b, 6)\n    return b\nend\n\nlocal playBtn = ctrlButton(\"\u25b6\", 14)\n\nlocal timeLabel = Instance.new(\"TextLabel\")\ntimeLabel.BackgroundTransparency = 1\ntimeLabel.Position = UDim2.new(0, 52, 0, 26)\ntimeLabel.Size = UDim2.fromOffset(120, 26)\ntimeLabel.Font = Enum.Font.GothamMedium\ntimeLabel.TextSize = 12\ntimeLabel.TextXAlignment = Enum.TextXAlignment.Left\ntimeLabel.TextColor3 = Color3.fromRGB(190, 190, 205)\ntimeLabel.Text = \"0:00 / \" .. fmtTime(META.duration)\ntimeLabel.Parent = controls\n\nlocal fullscreenBtn = ctrlButton(\"\u26f6\", 0)\nfullscreenBtn.Position = UDim2.new(1, -44, 0, 26)\n\nlocal loopBtn = ctrlButton(\"\u21bb\", 0)\nloopBtn.Position = UDim2.new(1, -80, 0, 26)\n\nlocal hasAudio = META.audioId ~= \"\" and META.audioId ~= nil\nlocal volBtn = ctrlButton(hasAudio and \"\ud83d\udd0a\" or \"\ud83d\udd07\", 0)\nvolBtn.Position = UDim2.new(1, -116, 0, 26)\n\n--=============================== AUDIO ==================================--\nlocal sound\nif hasAudio then\n    sound = Instance.new(\"Sound\")\n    sound.Name = \"Video2LuaAudio\"\n    sound.SoundId = META.audioId\n    sound.Volume = 0.75\n    sound.Looped = false\n    sound.Parent = screenGui\nend\n\n--=========================== DRAG SUPPORT ===============================--\ndo\n    local dragging, dragStart, startPos\n    local function begin(input)\n        dragging = true\n        dragStart = input.Position\n        startPos = window.Position\n    end\n    titleBar.InputBegan:Connect(function(input)\n        if input.UserInputType == Enum.UserInputType.MouseButton1\n        or input.UserInputType == Enum.UserInputType.Touch then\n            begin(input)\n        end\n    end)\n    UserInputService.InputChanged:Connect(function(input)\n        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement\n        or input.UserInputType == Enum.UserInputType.Touch) then\n            local delta = input.Position - dragStart\n            window.Position = UDim2.new(\n                startPos.X.Scale, startPos.X.Offset + delta.X,\n                startPos.Y.Scale, startPos.Y.Offset + delta.Y)\n        end\n    end)\n    UserInputService.InputEnded:Connect(function(input)\n        if input.UserInputType == Enum.UserInputType.MouseButton1\n        or input.UserInputType == Enum.UserInputType.Touch then\n            dragging = false\n        end\n    end)\nend\n\n--======================= LAZY FRAME CACHE ===============================--\n-- Frames are decoded on demand and kept in a small look-ahead cache. Even long\n-- or high-resolution videos play without pre-loading every frame into memory,\n-- so the player stays within an executor's RAM budget regardless of length.\nlocal PREFETCH = 48\nlocal cache = {}   -- frame index -> RGBA pixel buffer\n\nlocal function getFrame(i)\n    local px = cache[i]\n    if not px then\n        px = expandFrame(b64decode(FRAMES[i]))\n        cache[i] = px\n    end\n    return px\nend\n\n-- Warm the first window of frames while the loading bar fills.\ndo\n    local warm = math.min(PREFETCH, META.frameCount)\n    for i = 1, warm do\n        getFrame(i)\n        if i % 2 == 0 or i == warm then\n            local frac = i / warm\n            barFill.Size = UDim2.new(frac, 0, 1, 0)\n            loadLabel.Text = string.format(\"Buffering\u2026  %d%%\", math.floor(frac * 100))\n            RunService.Heartbeat:Wait()\n        end\n    end\nend\n\n-- Reveal the first frame, then fade the loader out.\nwriteFrame(getFrame(1))\nTweenService:Create(loader, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()\nfor _, d in ipairs(loader:GetDescendants()) do\n    if d:IsA(\"TextLabel\") then\n        TweenService:Create(d, TweenInfo.new(0.35), { TextTransparency = 1 }):Play()\n    elseif d:IsA(\"Frame\") then\n        TweenService:Create(d, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()\n    end\nend\ntask.delay(0.4, function() loader.Visible = false end)\n\n--========================= PLAYBACK ENGINE ==============================--\nlocal state = {\n    playing   = true,\n    looping   = true,\n    muted     = not hasAudio,\n    time      = 0,          -- seconds into the video\n    scrubbing = false,\n    lastFrame = 0,\n}\n\nlocal function currentFrameIndex()\n    return math.clamp(math.floor(state.time / FRAME_TIME) + 1, 1, META.frameCount)\nend\n\nlocal function syncAudio()\n    if not sound then return end\n    if state.playing and not state.muted then\n        sound.Volume = 0.75\n        if not sound.IsPlaying then sound:Play() end\n        -- Nudge audio back into sync if it drifts more than a frame.\n        if math.abs(sound.TimePosition - state.time) > FRAME_TIME * 1.5 then\n            sound.TimePosition = state.time\n        end\n    else\n        if sound.IsPlaying then sound:Pause() end\n    end\nend\n\nlocal function renderCurrent()\n    local idx = currentFrameIndex()\n    if idx ~= state.lastFrame then\n        state.lastFrame = idx\n        writeFrame(getFrame(idx))\n    end\nend\n\nlocal function setScrubUI()\n    local frac = META.duration > 0 and math.clamp(state.time / META.duration, 0, 1) or 0\n    scrubFill.Size = UDim2.new(frac, 0, 1, 0)\n    scrubKnob.Position = UDim2.new(frac, 0, 0.5, 0)\n    timeLabel.Text = fmtTime(state.time) .. \" / \" .. fmtTime(META.duration)\nend\n\n--------------------------------------------------------------- control wiring\nlocal function setPlaying(v)\n    state.playing = v\n    playBtn.Text = v and \"\u275a\u275a\" or \"\u25b6\"\n    syncAudio()\nend\n\nplayBtn.MouseButton1Click:Connect(function() setPlaying(not state.playing) end)\n\nloopBtn.MouseButton1Click:Connect(function()\n    state.looping = not state.looping\n    loopBtn.TextColor3 = state.looping and ACCENT_B or Color3.fromRGB(120, 120, 135)\nend)\nloopBtn.TextColor3 = ACCENT_B\n\nvolBtn.MouseButton1Click:Connect(function()\n    if not hasAudio then return end\n    state.muted = not state.muted\n    volBtn.Text = state.muted and \"\ud83d\udd07\" or \"\ud83d\udd0a\"\n    syncAudio()\nend)\n\ncloseBtn.MouseButton1Click:Connect(function()\n    if sound then sound:Stop() end\n    screenGui:Destroy()\nend)\n\nlocal minimized = false\nminimizeBtn.MouseButton1Click:Connect(function()\n    minimized = not minimized\n    local goal = minimized\n        and UDim2.fromOffset(baseW, 38)\n        or  UDim2.fromOffset(baseW, videoH + 96)\n    TweenService:Create(window, TweenInfo.new(0.25, Enum.EasingStyle.Quad),\n        { Size = goal }):Play()\nend)\n\nlocal expanded = false\nfullscreenBtn.MouseButton1Click:Connect(function()\n    expanded = not expanded\n    local cam = workspace.CurrentCamera\n    if expanded then\n        local vp = cam.ViewportSize\n        local w = math.min(vp.X * 0.9, 1280)\n        local h = w / aspect + 96\n        window.Size = UDim2.fromOffset(w, h)\n        window.Position = UDim2.new(0.5, -w / 2, 0.5, -h / 2)\n    else\n        window.Size = UDim2.fromOffset(baseW, videoH + 96)\n        window.Position = UDim2.new(0.5, -baseW / 2, 0.5, -(videoH + 96) / 2)\n    end\nend)\n\n------------------------------------------------------------------- scrubbing\nlocal function seekFromX(px)\n    local rel = math.clamp((px - scrubBg.AbsolutePosition.X) / scrubBg.AbsoluteSize.X, 0, 1)\n    state.time = rel * META.duration\n    if sound then sound.TimePosition = math.min(state.time, math.max(0, sound.TimeLength - 0.05)) end\n    setScrubUI()\n    renderCurrent()\nend\n\nscrubBg.InputBegan:Connect(function(input)\n    if input.UserInputType == Enum.UserInputType.MouseButton1\n    or input.UserInputType == Enum.UserInputType.Touch then\n        state.scrubbing = true\n        seekFromX(input.Position.X)\n    end\nend)\nUserInputService.InputChanged:Connect(function(input)\n    if state.scrubbing and (input.UserInputType == Enum.UserInputType.MouseMovement\n    or input.UserInputType == Enum.UserInputType.Touch) then\n        seekFromX(input.Position.X)\n    end\nend)\nUserInputService.InputEnded:Connect(function(input)\n    if input.UserInputType == Enum.UserInputType.MouseButton1\n    or input.UserInputType == Enum.UserInputType.Touch then\n        state.scrubbing = false\n    end\nend)\n\n--============================ MAIN LOOP =================================--\nsetPlaying(true)\nsetScrubUI()\n\nRunService.Heartbeat:Connect(function(dt)\n    if state.playing and not state.scrubbing then\n        state.time += dt\n        if state.time >= META.duration then\n            if state.looping then\n                state.time = 0\n                if sound then sound.TimePosition = 0 end\n            else\n                state.time = META.duration\n                setPlaying(false)\n            end\n        end\n        renderCurrent()\n        setScrubUI()\n        syncAudio()\n    end\nend)\n\n--======================= BACKGROUND PREFETCH ============================--\n-- Decode frames just ahead of the playhead and drop ones left behind, keeping\n-- memory bounded to roughly PREFETCH frames no matter how long the video is.\ntask.spawn(function()\n    while screenGui.Parent do\n        local cur = currentFrameIndex()\n        local target = math.min(cur + PREFETCH, META.frameCount)\n        for i = cur, target do\n            if not cache[i] then\n                getFrame(i)\n                RunService.Heartbeat:Wait()\n            end\n        end\n        for k in pairs(cache) do\n            if k < cur - 6 then\n                cache[k] = nil\n            end\n        end\n        RunService.Heartbeat:Wait()\n    end\nend)\n";
+</script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const drop = $("drop"), fileIn = $("file");
+let videoFile = null;
+
+// ---------- file selection ----------
+drop.addEventListener("click", () => fileIn.click());
+["dragover","dragenter"].forEach(e => drop.addEventListener(e, ev => {
+  ev.preventDefault(); drop.classList.add("drag");
+}));
+["dragleave","drop"].forEach(e => drop.addEventListener(e, ev => {
+  ev.preventDefault(); drop.classList.remove("drag");
+}));
+drop.addEventListener("drop", ev => {
+  const f = ev.dataTransfer.files[0];
+  if (f) setFile(f);
+});
+fileIn.addEventListener("change", () => { if (fileIn.files[0]) setFile(fileIn.files[0]); });
+
+function setFile(f){
+  videoFile = f;
+  drop.classList.add("has");
+  drop.querySelector(".big").textContent = f.name;
+  drop.querySelector(".hint").textContent =
+    (f.size/1048576).toFixed(1) + " MB — ready to convert";
+  $("go").disabled = false;
+  if (!$("o_title").value) $("o_title").value = f.name.replace(/\.[^.]+$/, "");
+}
+
+// ---------- helpers ----------
+function loadVideo(file){
+  return new Promise((res, rej) => {
+    const v = document.createElement("video");
+    v.preload = "auto"; v.muted = true; v.playsInline = true;
+    v.src = URL.createObjectURL(file);
+    v.onloadedmetadata = () => res(v);
+    v.onerror = () => rej(new Error("This browser could not decode that video."));
+  });
+}
+
+function seekTo(v, t){
+  return new Promise((res) => {
+    const done = () => { v.removeEventListener("seeked", done); res(); };
+    v.addEventListener("seeked", done);
+    v.currentTime = Math.min(t, Math.max(0, v.duration - 1e-3));
+  });
+}
+
+// Estimate the source frame rate using requestVideoFrameCallback, else 30.
+function detectFps(v){
+  return new Promise((res) => {
+    if (!("requestVideoFrameCallback" in HTMLVideoElement.prototype)) return res(30);
+    const ts = [];
+    v.currentTime = 0;
+    const cb = (now, meta) => {
+      ts.push(meta.mediaTime);
+      if (ts.length >= 10){
+        v.pause();
+        const d = [];
+        for (let i=1;i<ts.length;i++) if (ts[i] > ts[i-1]) d.push(ts[i]-ts[i-1]);
+        d.sort((a,b)=>a-b);
+        const med = d.length ? d[d.length>>1] : 0;
+        res(med > 0 ? Math.min(60, Math.max(1, Math.round(1/med))) : 30);
+      } else {
+        v.requestVideoFrameCallback(cb);
+      }
+    };
+    v.requestVideoFrameCallback(cb);
+    v.play().catch(()=>res(30));
+  });
+}
+
+// quantize a single channel value to `levels` steps
+function makeQuant(levels){
+  if (levels >= 256) return null;
+  const step = 255/(levels-1);
+  const lut = new Uint8Array(256);
+  for (let i=0;i<256;i++) lut[i] = Math.min(255, Math.round(Math.round(i/step)*step));
+  return lut;
+}
+
+// RLE encode RGBA pixels -> Uint8Array of [count][r][g][b] tokens
+function encodeFrame(rgba, npix, lut){
+  const out = new Uint8Array(npix*4); // worst case
+  let o = 0, i = 0;
+  while (i < npix){
+    let r = rgba[i*4], g = rgba[i*4+1], b = rgba[i*4+2];
+    if (lut){ r = lut[r]; g = lut[g]; b = lut[b]; }
+    let run = 1;
+    while (run < 255 && i+run < npix){
+      let r2 = rgba[(i+run)*4], g2 = rgba[(i+run)*4+1], b2 = rgba[(i+run)*4+2];
+      if (lut){ r2 = lut[r2]; g2 = lut[g2]; b2 = lut[b2]; }
+      if (r2!==r || g2!==g || b2!==b) break;
+      run++;
+    }
+    out[o++]=run; out[o++]=r; out[o++]=g; out[o++]=b;
+    i += run;
+  }
+  return out.subarray(0, o);
+}
+
+function b64(bytes){
+  let s = "";
+  const CH = 0x8000;
+  for (let i=0;i<bytes.length;i+=CH){
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i+CH));
+  }
+  return btoa(s);
+}
+
+function progress(frac, msg){
+  $("prog").style.display = "block";
+  $("prog").querySelector("i").style.width = Math.round(frac*100)+"%";
+  $("progtxt").textContent = msg;
+}
+
+// ---------- main convert ----------
+async function convert(){
+  if (!videoFile) return;
+  $("go").disabled = true; $("result").style.display = "none";
+  try {
+    const opts = {
+      width: Math.max(0, parseInt($("o_width").value)||0),
+      fps: Math.max(0, parseFloat($("o_fps").value)||0),
+      colors: Math.min(256, Math.max(2, parseInt($("o_colors").value)||256)),
+      maxDim: Math.min(1024, Math.max(16, parseInt($("o_maxdim").value)||1024)),
+      maxFrames: Math.max(0, parseInt($("o_maxframes").value)||0),
+      audio: $("o_audio").value.trim(),
+      title: ($("o_title").value.trim() || videoFile.name.replace(/\.[^.]+$/, "")),
+    };
+
+    progress(0, "Loading video…");
+    const v = await loadVideo(videoFile);
+
+    let fps = opts.fps;
+    if (fps <= 0){ progress(0, "Detecting frame rate…"); fps = await detectFps(v); }
+
+    // output dimensions
+    let ow = opts.width>0 ? opts.width : v.videoWidth;
+    let oh = Math.round(v.videoHeight * ow / v.videoWidth);
+    const scale = Math.min(opts.maxDim/ow, opts.maxDim/oh, 1);
+    ow = Math.max(1, Math.round(ow*scale));
+    oh = Math.max(1, Math.round(oh*scale));
+
+    const cv = $("cv"); cv.width = ow; cv.height = oh;
+    const ctx = cv.getContext("2d", { willReadFrequently: true });
+    $("preview").style.display = "block";
+
+    const lut = makeQuant(opts.colors);
+    let total = Math.max(1, Math.floor(v.duration * fps));
+    if (opts.maxFrames>0) total = Math.min(total, opts.maxFrames);
+
+    const frames = [];
+    let rawBytes = 0;
+    for (let i=0;i<total;i++){
+      await seekTo(v, i/fps);
+      ctx.drawImage(v, 0, 0, ow, oh);
+      const data = ctx.getImageData(0, 0, ow, oh).data;
+      const enc = encodeFrame(data, ow*oh, lut);
+      rawBytes += enc.length;
+      frames.push(b64(enc));
+      if (i % 2 === 0 || i === total-1)
+        progress(i/total, `Encoding frame ${i+1} / ${total}  (${ow}×${oh} @ ${fps}fps)`);
+      if (i % 4 === 0) await new Promise(r=>setTimeout(r)); // keep UI responsive
+    }
+    URL.revokeObjectURL(v.src);
+
+    progress(1, "Building Lua…");
+    const duration = frames.length / fps;
+    const lua = buildLua(frames, ow, oh, fps, duration, opts.title, opts.audio);
+
+    // download link
+    const blob = new Blob([lua], {type:"text/plain"});
+    const url = URL.createObjectURL(blob);
+    const safe = opts.title.replace(/[^\w.\-]+/g,"_") || "video";
+    $("dllua").href = url; $("dllua").download = safe + ".lua";
+
+    $("stat").innerHTML =
+      `<span><b>${frames.length}</b> frames</span>` +
+      `<span><b>${ow}×${oh}</b></span>` +
+      `<span><b>${fps}</b> fps</span>` +
+      `<span><b>${duration.toFixed(1)}s</b></span>` +
+      `<span><b>${(lua.length/1048576).toFixed(2)} MB</b> lua</span>` +
+      (opts.audio ? `<span>audio <b>synced</b></span>` : `<span>no audio</span>`);
+    $("result").style.display = "block";
+    progress(1, "Done.");
+  } catch (e){
+    progress(0, "");
+    alert("Conversion failed: " + e.message);
+    console.error(e);
+  } finally {
+    $("go").disabled = false;
+  }
+}
+
+// Fill the generated player template markers.
+function buildLua(frames, w, h, fps, duration, title, audio){
+  let audioField = "";
+  if (audio){
+    audioField = /^\d+$/.test(audio) ? ("rbxassetid://" + audio) : audio;
+  }
+  const framesLit = "{\n\t" + frames.map(s => '"'+s+'"').join(",\n\t") + "\n}";
+  const fpsStr = Number.isInteger(fps) ? String(fps) : fps.toFixed(3).replace(/0+$/,"").replace(/\.$/,"");
+  return PLAYER_TEMPLATE
+    .split("__VIDEO2LUA_TITLE__").join(title.replace(/"/g,"'"))
+    .split("__VIDEO2LUA_WIDTH__").join(String(w))
+    .split("__VIDEO2LUA_HEIGHT__").join(String(h))
+    .split("__VIDEO2LUA_FPS__").join(fpsStr)
+    .split("__VIDEO2LUA_FRAMECOUNT__").join(String(frames.length))
+    .split("__VIDEO2LUA_AUDIOID__").join(audioField)
+    .split("__VIDEO2LUA_DURATION__").join(duration.toFixed(3))
+    .split("__VIDEO2LUA_FRAMES__").join(framesLit);
+}
+
+// ---------- audio extraction to WAV (best effort) ----------
+async function extractAudio(){
+  if (!videoFile){ alert("Choose a video first."); return; }
+  try {
+    progress(0, "Decoding audio…");
+    const buf = await videoFile.arrayBuffer();
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const ac = new AC();
+    const audio = await ac.decodeAudioData(buf.slice(0));
+    const wav = audioBufferToWav(audio);
+    const url = URL.createObjectURL(new Blob([wav], {type:"audio/wav"}));
+    const safe = (($("o_title").value.trim()) || videoFile.name.replace(/\.[^.]+$/,"")).replace(/[^\w.\-]+/g,"_");
+    const a = $("dlwav");
+    a.href = url; a.download = safe + ".wav"; a.style.display = "inline-block";
+    $("result").style.display = "block";
+    progress(1, "Audio ready — click Download audio .wav.");
+  } catch(e){
+    progress(0, "");
+    alert("Could not extract audio from this file in the browser "
+        + "(the audio codec may be unsupported). You can still add sound by "
+        + "uploading the original video's audio to Roblox and pasting its id.\n\n"
+        + e.message);
+  }
+}
+
+function audioBufferToWav(ab){
+  const numCh = ab.numberOfChannels, sr = ab.sampleRate, len = ab.length;
+  const bytesPerSample = 2, blockAlign = numCh*bytesPerSample;
+  const dataLen = len*blockAlign;
+  const buf = new ArrayBuffer(44 + dataLen);
+  const dv = new DataView(buf);
+  const wr = (o,s)=>{ for(let i=0;i<s.length;i++) dv.setUint8(o+i, s.charCodeAt(i)); };
+  wr(0,"RIFF"); dv.setUint32(4, 36+dataLen, true); wr(8,"WAVE");
+  wr(12,"fmt "); dv.setUint32(16,16,true); dv.setUint16(20,1,true);
+  dv.setUint16(22,numCh,true); dv.setUint32(24,sr,true);
+  dv.setUint32(28, sr*blockAlign, true); dv.setUint16(32, blockAlign, true);
+  dv.setUint16(34, 16, true); wr(36,"data"); dv.setUint32(40, dataLen, true);
+  const chans = [];
+  for (let c=0;c<numCh;c++) chans.push(ab.getChannelData(c));
+  let off = 44;
+  for (let i=0;i<len;i++){
+    for (let c=0;c<numCh;c++){
+      let s = Math.max(-1, Math.min(1, chans[c][i]));
+      dv.setInt16(off, s<0 ? s*0x8000 : s*0x7fff, true); off += 2;
+    }
+  }
+  return buf;
+}
+
+$("go").addEventListener("click", convert);
+$("tryAudio").addEventListener("click", extractAudio);
+</script>
+</body>
+</html>
