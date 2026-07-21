@@ -57,11 +57,21 @@ local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local HttpService      = game:GetService("HttpService")
+local ReplicatedStorage= game:GetService("ReplicatedStorage")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 local Camera      = workspace.CurrentCamera
-local LiveFolder  = workspace:WaitForChild("Live")   -- TSB character container
+
+-- TSB is said to store characters in workspace.Live, but that name is a guess
+-- from the reconstruction. Derive the container dynamically from where our own
+-- character actually lives, and NEVER hard-yield on WaitForChild (a wrong name
+-- there would hang the whole script and nothing would load).
+local function characterFolder()
+    local c = LocalPlayer.Character
+    if c and c.Parent then return c.Parent end
+    return workspace:FindFirstChild("Live") or workspace
+end
 
 --============================================================================
 -- 2. Configuration (defaults + persistence)
@@ -81,6 +91,9 @@ local flags = {
     MovementEnabled=false, WalkSpeed=16, JumpPower=50,
     -- misc
     TeamCheck=false, CamlockKey=Enum.KeyCode.C,
+    -- combat remote: name is a GUESS from the reconstruction; make it editable
+    -- so the real one (found via Diagnostics > Dump Remotes) can be plugged in.
+    RemoteName="Communicate",
 }
 
 -- KeyCode <-> string helpers so the bound key survives save/load.
@@ -170,7 +183,14 @@ function Combat:remote()
     if not char then return nil end
     if char ~= self._char or not (self._remote and self._remote.Parent) then
         self._char   = char
-        self._remote = char:FindFirstChild("Communicate")
+        -- Prefer the configured name; fall back to the first RemoteEvent on the
+        -- character so combat has a chance even if the exact name differs.
+        self._remote = char:FindFirstChild(flags.RemoteName)
+        if not self._remote then
+            for _,d in ipairs(char:GetDescendants()) do
+                if d:IsA("RemoteEvent") then self._remote = d; break end
+            end
+        end
     end
     return self._remote
 end
@@ -402,6 +422,12 @@ local function applyMovement(hum)
     hum.JumpPower    = flags.JumpPower
 end
 
+-- Apply immediately to the current character (used by the sliders so dragging
+-- them has an instant effect instead of silently doing nothing).
+local function applyMovementNow()
+    applyMovement(getHumanoid(LocalPlayer.Character))
+end
+
 --============================================================================
 -- 11. Combat automation  (throttled Heartbeat; humanized CPS)
 --============================================================================
@@ -421,7 +447,7 @@ Maid:give(RunService.Heartbeat:Connect(function()
     if not (flags.AutoBlock or flags.AutoCounter or flags.AutoCombat) then return end
     origin = origin.Position
 
-    for _,enemy in ipairs(LiveFolder:GetChildren()) do
+    for _,enemy in ipairs(characterFolder():GetChildren()) do
         if enemy ~= char then
             local hrp = getHRP(enemy)
             if hrp and isAlive(enemy) then
@@ -511,6 +537,7 @@ local CombatTab = Window:Tab({ Title="Combat",   Icon="swords"  })
 local AimTab    = Window:Tab({ Title="Aimbot",   Icon="crosshair" })
 local VisualTab = Window:Tab({ Title="Visuals",  Icon="eye"     })
 local MoveTab   = Window:Tab({ Title="Movement", Icon="footprints" })
+local DiagTab   = Window:Tab({ Title="Diagnostics", Icon="stethoscope" })
 local ConfigTab = Window:Tab({ Title="Config",   Icon="settings" })
 
 -- ── Combat ──────────────────────────────────────────────────────────────
@@ -556,18 +583,66 @@ end})
 -- ── Movement ────────────────────────────────────────────────────────────
 MoveTab:Toggle({Title="Enable Movement Mods", Value=flags.MovementEnabled, Callback=function(v)
     flags.MovementEnabled=v
-    if not v then
+    if v then
+        applyMovementNow()
+    else
         local hum = getHumanoid(LocalPlayer.Character)
         if hum then hum.WalkSpeed=16; hum.JumpPower=50 end
     end
 end})
-MoveTab:Slider({Title="Walk Speed", Value={Min=16,Max=200,Default=flags.WalkSpeed}, Callback=function(v) flags.WalkSpeed=v end})
-MoveTab:Slider({Title="Jump Power", Value={Min=50,Max=350,Default=flags.JumpPower}, Callback=function(v) flags.JumpPower=v end})
+-- Dragging a slider auto-enables the mods and applies instantly, so the change
+-- is never a silent no-op (the v3 master-gate regression that felt "so slow").
+MoveTab:Slider({Title="Walk Speed", Value={Min=16,Max=200,Default=flags.WalkSpeed}, Callback=function(v)
+    flags.WalkSpeed=v; flags.MovementEnabled=true; applyMovementNow()
+end})
+MoveTab:Slider({Title="Jump Power", Value={Min=50,Max=350,Default=flags.JumpPower}, Callback=function(v)
+    flags.JumpPower=v; flags.MovementEnabled=true; applyMovementNow()
+end})
 MoveTab:Button({Title="Refresh Character", Description="Respawn your character", Callback=function()
     local c = LocalPlayer.Character
     if c then pcall(function() c:BreakJoints() end) end
     task.wait()
     pcall(function() LocalPlayer:LoadCharacter() end)
+end})
+
+-- ── Diagnostics ─────────────────────────────────────────────────────────
+-- The combat constants (remote name + arguments) were GUESSED during the
+-- reconstruction. These tools discover the game's real API so combat can be
+-- pointed at the correct remote instead of a made-up one.
+local function dumpRemotes()
+    local lines, count = {}, 0
+    local function scan(root, label)
+        local okDesc, descendants = pcall(function() return root:GetDescendants() end)
+        if not okDesc then return end
+        for _,d in ipairs(descendants) do
+            if d:IsA("RemoteEvent") or d:IsA("RemoteFunction") then
+                count = count + 1
+                lines[#lines+1] = string.format("[%s] %s  %s", label, d.ClassName, d:GetFullName())
+            end
+        end
+    end
+    local char = LocalPlayer.Character
+    if char then scan(char, "Character") end
+    scan(ReplicatedStorage, "ReplicatedStorage")
+    local text = ("=== CPS Hub remote dump ===\n"
+        .. "Character folder: " .. characterFolder():GetFullName() .. "\n"
+        .. "Configured remote: " .. flags.RemoteName
+        .. (char and char:FindFirstChild(flags.RemoteName) and " (FOUND on character)" or " (NOT found on character)") .. "\n\n"
+        .. table.concat(lines, "\n"))
+    print(text)
+    pcall(function() clipboard(text) end)
+    notify("CPS Hub", string.format("Dumped %d remotes → console + clipboard.", count))
+end
+
+pcall(function() DiagTab:Paragraph({Title="Why combat may do nothing",
+    Desc="The remote name and its KeyPress/KeyRelease arguments were reconstructed (guessed). Use 'Dump Remotes' to list the game's real remotes, then set the correct name below. If the arguments differ too, the remote will still need the real call format." }) end)
+DiagTab:Button({Title="Dump Remotes", Description="List all RemoteEvents/Functions to console + clipboard", Callback=dumpRemotes})
+pcall(function() DiagTab:Input({Title="Combat Remote Name", Value=flags.RemoteName, Placeholder="Communicate",
+    Callback=function(v) if type(v)=="string" and v ~= "" then flags.RemoteName=v; Combat._char=nil end end}) end)
+DiagTab:Button({Title="Test Fire M1", Description="Fire one M1 through the current remote", Callback=function()
+    local r = Combat:remote()
+    if not r then notify("CPS Hub","No combat remote found on your character."); return end
+    Combat:m1(); notify("CPS Hub", "Fired M1 via '"..r.Name.."'.")
 end})
 
 -- ── Config ──────────────────────────────────────────────────────────────
