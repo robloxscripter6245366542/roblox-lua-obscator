@@ -52,6 +52,15 @@ local showSpeedLabel = true
 local totalParries = 0
 local highSpeedParries = 0
 
+-- The parry DECISION runs every Heartbeat frame (never throttled), but the
+-- on-screen status text does not need to. Formatting these big status strings
+-- and writing UI text every frame - up to 240Hz on a high-refresh client - is
+-- pure overhead with no gameplay effect: a human can't perceive a status
+-- refreshing faster than ~15Hz. Refresh the display at a fixed cadence so the
+-- hot loop spends its time on detection, not on string.format.
+local HUD_REFRESH_INTERVAL = 1 / 15
+local lastHudRefresh = 0
+
 -- ============================================
 -- PING COMPENSATION / FUTURE PREDICTION CONFIGURATION
 -- ============================================
@@ -275,6 +284,14 @@ local ballsCache = {}         -- [ballInstance] = true
 local playerHRPCache = {}     -- [player] = HumanoidRootPart
 local hasHighlightCache = false
 local ballMotionCache = {}    -- [ballInstance] = {vel, accel, time} - tracks curvature
+-- Resolving a ball model's BasePart is a deep, recursive descendant search
+-- (FindFirstChildWhichIsA with the recursive flag). The hot loop needs the
+-- part several times per ball per frame - findClosestBall, the closest-ball
+-- re-read, checkBallDistance, isBallInPlayerRange - so re-searching it every
+-- time is the single largest per-frame cost when many balls are in play. Cache
+-- the resolved part per ball and reuse it while it's still in the tree; only
+-- re-search when it has been destroyed/reparented.
+local ballPartCache = {}      -- [ballInstance] = resolved BasePart
 -- Server-authoritative target capture. The game's BallController.Server.ChangeBallColor
 -- is invoked by the SERVER with the ball's real target the instant it retargets -
 -- and for INVISIBLE balls it bails out BEFORE writing the Target attribute, so this
@@ -840,7 +857,14 @@ end
 
 local function getBallPart(ball)
     if ball:IsA("BasePart") then return ball end
-    return ball:FindFirstChildWhichIsA("BasePart", true)
+    -- Reuse the previously resolved part while it's still in the tree; a
+    -- destroyed/reparented part reports Parent == nil, which forces a fresh
+    -- (deep) search. This turns the common case into an O(1) table lookup.
+    local cached = ballPartCache[ball]
+    if cached and cached.Parent ~= nil then return cached end
+    local part = ball:FindFirstChildWhichIsA("BasePart", true)
+    ballPartCache[ball] = part
+    return part
 end
 
 local function getBallPosition(ball)
@@ -1105,6 +1129,7 @@ local function trackBallsFolder(folder)
         ballsCache[child] = nil
         ballMotionCache[child] = nil
         serverTargetCache[child] = nil
+        ballPartCache[child] = nil
         -- Also drop (and destroy) the speed-label billboard for this ball,
         -- otherwise billboardCache grows without bound as balls spawn and
         -- despawn over a long session.
@@ -1122,6 +1147,7 @@ local function purgeDeadBall(ball)
     ballsCache[ball] = nil
     ballMotionCache[ball] = nil
     serverTargetCache[ball] = nil
+    ballPartCache[ball] = nil
     billboardCache[ball] = nil
 end
 
@@ -1606,6 +1632,11 @@ RunService.Heartbeat:Connect(function()
     if currentTime - lastUpdateTime < UPDATE_INTERVAL then return end
     lastUpdateTime = currentTime
 
+    -- Display-only status text refreshes at HUD_REFRESH_INTERVAL, never the
+    -- parry logic - gate every SetDesc in this loop on hudTick, nothing else.
+    local hudTick = (currentTime - lastHudRefresh) >= HUD_REFRESH_INTERVAL
+    if hudTick then lastHudRefresh = currentTime end
+
     local humanoidRootPart = getPlayerHRP(LocalPlayer)
     if not humanoidRootPart then return end
 
@@ -1925,17 +1956,19 @@ RunService.Heartbeat:Connect(function()
             end
         end
 
-        HUD.ParryStatus:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
-        HUD.ParryDistance:SetDesc(string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Curve: %.1f studs/s^2 | Turn: %.0f deg/s (%s)\n- Camera: %.0f deg/s%s\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Panic Burst: %s\n- Mode: %s\n- Frozen: %s",
-            currentParryDistance, pingComp, currentPing, currentRequiredLead, effectiveParryDistance, velocity, closingSpeed,
-            currentCurveAccel, math.deg(currentTurnRate), antiCurveEnabled and "ON" or "OFF",
-            math.deg(Camera.angVel), Camera.angVel >= Camera.WHIP_RATE and " (WHIP)" or "", closestDistance,
-            currentTimeToImpact < math.huge and string.format("%.2fs", currentTimeToImpact) or "n/a",
-            panicNow and "FIRING" or (panicBurstEnabled and "armed" or "off"),
-            isHighSpeedMode and "MAX SPEED" or "Normal",
-            isAutoParryFrozen and "Yes" or "No"))
+        if hudTick then
+            HUD.ParryStatus:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
+            HUD.ParryDistance:SetDesc(string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Curve: %.1f studs/s^2 | Turn: %.0f deg/s (%s)\n- Camera: %.0f deg/s%s\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Panic Burst: %s\n- Mode: %s\n- Frozen: %s",
+                currentParryDistance, pingComp, currentPing, currentRequiredLead, effectiveParryDistance, velocity, closingSpeed,
+                currentCurveAccel, math.deg(currentTurnRate), antiCurveEnabled and "ON" or "OFF",
+                math.deg(Camera.angVel), Camera.angVel >= Camera.WHIP_RATE and " (WHIP)" or "", closestDistance,
+                currentTimeToImpact < math.huge and string.format("%.2fs", currentTimeToImpact) or "n/a",
+                panicNow and "FIRING" or (panicBurstEnabled and "armed" or "off"),
+                isHighSpeedMode and "MAX SPEED" or "Normal",
+                isAutoParryFrozen and "Yes" or "No"))
+        end
 
-        if showSpeedLabel then
+        if hudTick and showSpeedLabel then
             local speedLabel = createSpeedLabel(closestBall)
             if speedLabel.Label then
                 speedLabel.Label.Text = string.format("%.1f%s", velocity, isHighSpeedMode and " [FAST]" or "")
@@ -2017,27 +2050,31 @@ RunService.Heartbeat:Connect(function()
             spamDuration = spamDuration + (tick() - lastSpamStartTime)
             spamStarted = false
         end
-        HUD.SpamStatus:SetDesc("AUTO SPAM: DISABLED")
-        HUD.SpamConditions:SetDesc("Auto Spam is turned off")
+        if hudTick then
+            HUD.SpamStatus:SetDesc("AUTO SPAM: DISABLED")
+            HUD.SpamConditions:SetDesc("Auto Spam is turned off")
+        end
         return
     end
 
     local playerInRange, closestPlayer, playerDistance = checkPlayerDistance()
     local ballInRange, ballDistance = checkBallDistance()
 
-    if playerInRange and closestPlayer then
-        HUD.PlayerDetection:SetDesc(string.format("Player: %s\nDistance: %.1f studs", closestPlayer.Name, playerDistance))
-    else
-        HUD.PlayerDetection:SetDesc("No players in range")
-    end
+    if hudTick then
+        if playerInRange and closestPlayer then
+            HUD.PlayerDetection:SetDesc(string.format("Player: %s\nDistance: %.1f studs", closestPlayer.Name, playerDistance))
+        else
+            HUD.PlayerDetection:SetDesc("No players in range")
+        end
 
-    if ballInRange then
-        HUD.BallDetection:SetDesc(string.format("Ball Found\nDistance: %.1f studs", ballDistance))
-    else
-        HUD.BallDetection:SetDesc(string.format("No ball in range\nClosest: %.1f studs", ballDistance))
-    end
+        if ballInRange then
+            HUD.BallDetection:SetDesc(string.format("Ball Found\nDistance: %.1f studs", ballDistance))
+        else
+            HUD.BallDetection:SetDesc(string.format("No ball in range\nClosest: %.1f studs", ballDistance))
+        end
 
-    HUD.HighlightDetection:SetDesc(amTargeted and "Targeted (you)" or "Not targeted")
+        HUD.HighlightDetection:SetDesc(amTargeted and "Targeted (you)" or "Not targeted")
+    end
 
     -- Start vs. stay conditions differ on purpose:
     --  * START needs proof this clash is YOURS, not one you're standing next
@@ -2064,15 +2101,17 @@ RunService.Heartbeat:Connect(function()
     end
 
     if spamStarted then
-        HUD.SpamStatus:SetDesc("AUTO SPAM: ACTIVE\nSpamming block!")
-        HUD.SpamConditions:SetDesc(string.format("Clash: %s | Ball | Highlight\nClashing - all in!",
-            Clash.enabled and (clashDetected and (realClash and "LIVE (game)" or "LIVE (detected)") or "holding") or "off"))
-        HUD.LiveStats:SetDesc(string.format("- Parry Status: %s\n- Spam Status: SPAMMING\n- Clash: %s (%d flips/%.1fs)\n- Player: %s (%.1f studs)\n- Ball Distance: %.1f studs\n- Total Spams: %d",
-            autoParryEnabled and "Active" or "Disabled",
-            realClash and "GAME" or (clashDetected and "detected" or "cooling"), #Clash.flipTimes, Clash.WINDOW,
-            closestPlayer and closestPlayer.Name or "Unknown", playerDistance, ballDistance, totalSpams))
+        if hudTick then
+            HUD.SpamStatus:SetDesc("AUTO SPAM: ACTIVE\nSpamming block!")
+            HUD.SpamConditions:SetDesc(string.format("Clash: %s | Ball | Highlight\nClashing - all in!",
+                Clash.enabled and (clashDetected and (realClash and "LIVE (game)" or "LIVE (detected)") or "holding") or "off"))
+            HUD.LiveStats:SetDesc(string.format("- Parry Status: %s\n- Spam Status: SPAMMING\n- Clash: %s (%d flips/%.1fs)\n- Player: %s (%.1f studs)\n- Ball Distance: %.1f studs\n- Total Spams: %d",
+                autoParryEnabled and "Active" or "Disabled",
+                realClash and "GAME" or (clashDetected and "detected" or "cooling"), #Clash.flipTimes, Clash.WINDOW,
+                closestPlayer and closestPlayer.Name or "Unknown", playerDistance, ballDistance, totalSpams))
+        end
         executeSpam()
-    else
+    elseif hudTick then
         HUD.SpamStatus:SetDesc("AUTO SPAM: INACTIVE\nWaiting for a clash...")
         local clashText = Clash.enabled and (clashDetected and "[OK] Clash" or "[--] Clash") or "[off] Clash"
         local conditionText = clashText .. " | " .. (ballInRange and "[OK] Ball" or "[--] Ball") .. " | " .. (amTargeted and "[OK] Targeted" or "[--] Targeted") .. "\nWaiting for a real clash..."
