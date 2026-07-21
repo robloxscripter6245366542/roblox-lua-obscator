@@ -201,6 +201,19 @@ local blockLanded = 0      -- returned truthy (accepted)
 local blockRejected = 0    -- returned falsy (cooldown/denied)
 local lastBlockResult = "-" -- "landed" / "rejected" / "error"
 
+-- Stuck-block self-heal. A block can get "stuck" - we keep firing at a ball
+-- that's targeting us and in range, yet nothing lands: the service proxy went
+-- stale, an internal latch (isAutoParryFrozen / the parry cooldown) jammed, or a
+-- block left the character rooted. Since the game's block is time-bounded (0.6s
+-- protection, 1s cooldown), a sustained "on you but no block landing" window is
+-- the signature of a stuck client state, not normal play. A light watchdog
+-- watches for exactly that and unsticks it (re-fetch the proxy, clear the
+-- latches, restore WalkSpeed) so parrying resumes. All recovery actions are
+-- harmless resets, so a rare false trigger costs nothing.
+local autoUnstick = true
+local totalUnsticks = 0
+local UNSTICK_TIMEOUT = 1.0 -- s of "ball on you, firing, nothing landing" before we heal
+
 -- ============================================
 -- AUTO SPAM CONFIGURATION
 -- ============================================
@@ -488,6 +501,21 @@ FeatureSection:Toggle({
     end
 })
 
+FeatureSection:Toggle({
+    Flag = "AutoUnstick",
+    Title = "Auto-Unstick Blocking",
+    Desc = "If a block ever gets stuck (nothing landing while a ball is on you), auto-recover so parrying keeps working",
+    Value = true,
+    Callback = function(Value)
+        autoUnstick = Value
+        WindUI:Notify({
+            Title = "Auto-Unstick",
+            Content = Value and "Enabled" or "Disabled",
+            Duration = 3
+        })
+    end
+})
+
 local QuickStatsSection = Tabs.Main:Section({ Title = "Quick Stats" })
 HUD.QuickStats = QuickStatsSection:Paragraph({
     Title = "Performance",
@@ -772,6 +800,7 @@ PerfStatsSection:Button({
         blockLanded = 0
         blockRejected = 0
         lastBlockResult = "-"
+        totalUnsticks = 0
         WindUI:Notify({
             Title = "Stats Reset",
             Content = "All statistics have been reset",
@@ -1569,12 +1598,13 @@ task.spawn(function()
             autoParryEnabled and "ON" or "OFF",
             autoSpamEnabled and "ON" or "OFF"))
 
-        HUD.ParryStats:SetDesc(string.format("- Total Parries: %d\n- High Speed Parries: %d\n- Burst Blocks: %d\n- High Speed Rate: %.1f%%\n- Current Mode: %s\n- Blocks Sent: %d | Landed: %d | Rejected(cooldown): %d\n- Land Rate: %.0f%% | Last: %s",
+        HUD.ParryStats:SetDesc(string.format("- Total Parries: %d\n- High Speed Parries: %d\n- Burst Blocks: %d\n- High Speed Rate: %.1f%%\n- Current Mode: %s\n- Blocks Sent: %d | Landed: %d | Rejected(cooldown): %d\n- Land Rate: %.0f%% | Last: %s\n- Auto-Unstick: %s (%d recoveries)",
             totalParries, highSpeedParries, totalBurstBlocks,
             totalParries > 0 and (highSpeedParries / totalParries * 100) or 0,
             isHighSpeedMode and "MAX SPEED" or "Normal",
             blockSent, blockLanded, blockRejected,
-            blockSent > 0 and (blockLanded / blockSent * 100) or 0, lastBlockResult))
+            blockSent > 0 and (blockLanded / blockSent * 100) or 0, lastBlockResult,
+            autoUnstick and "ON" or "OFF", totalUnsticks))
 
         local spamsPerSecond = 0
         if spamStarted and lastSpamStartTime > 0 then
@@ -2233,6 +2263,64 @@ moveGuardConn = RunService.Heartbeat:Connect(function()
         humanoid.WalkSpeed = Move.cachedSpeed
     end
 end)
+
+-- Stuck-block watchdog. Own connection (throttled to ~5Hz) so it adds no
+-- upvalues to the main Heartbeat closure. It watches for the one state that
+-- means blocking is genuinely stuck - a ball is targeting us and sitting in
+-- range, yet NO block has landed for a full UNSTICK_TIMEOUT window - and clears
+-- whatever wedged: a stale SwordService proxy, a jammed freeze/parry-cooldown
+-- latch, or a WalkSpeed a block left at zero. In healthy play a landing block
+-- (each successful parry returns truthy) keeps refreshing the timer, so this
+-- only fires when parrying has actually stopped working. Every recovery action
+-- is a harmless reset, so a rare false trigger costs nothing.
+local unstickLastCheck = 0
+local unstickLandedMark = 0
+local unstickHealthyTime = tick()
+track(RunService.Heartbeat:Connect(function()
+    if destroyed or not autoUnstick then return end
+    local now = tick()
+    if now - unstickLastCheck < 0.2 then return end
+    unstickLastCheck = now
+
+    -- A block landed since last check => things work; keep the timer fresh.
+    if blockLanded > unstickLandedMark then
+        unstickLandedMark = blockLanded
+        unstickHealthyTime = now
+    end
+
+    -- Is a ball that's targeting us actually on us right now?
+    local hrp = autoParryEnabled and getPlayerHRP(LocalPlayer) or nil
+    local onMe = false
+    if hrp then
+        local cb, cd, _, targeted = findClosestBall(hrp)
+        onMe = cb ~= nil and (targeted or hasPlayerHighlight())
+            and cd <= (currentParryDistance + EFFECTIVE_HIT_RADIUS)
+    end
+    if not onMe then
+        unstickHealthyTime = now  -- no threat => not stuck
+        return
+    end
+
+    -- Ball on us + nothing landing for the whole window => stuck. Unstick it.
+    if now - unstickHealthyTime >= UNSTICK_TIMEOUT then
+        swordServiceProxy = nil    -- drop a possibly-dead proxy; re-fetched next fire
+        isAutoParryFrozen = false  -- release a jammed detection-range freeze
+        lastParryTime = 0          -- clear the parry cooldown latch (fire immediately)
+        -- Restore WalkSpeed if a block left us rooted (even with Keep Moving off).
+        pcall(function()
+            local character = hrp.Parent
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.WalkSpeed <= 0.5 and Move.cachedSpeed > 0.5 then
+                humanoid.WalkSpeed = Move.cachedSpeed
+            end
+        end)
+        totalUnsticks = totalUnsticks + 1
+        unstickHealthyTime = now   -- give the recovery a fresh window before re-arming
+        pcall(function()
+            WindUI:Notify({ Title = "Auto-Unstick", Content = "Recovered a stuck block", Duration = 2 })
+        end)
+    end
+end))
 
 -- ============================================
 -- UNLOAD IMPLEMENTATION
