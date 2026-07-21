@@ -121,8 +121,10 @@ do
   -- multiple encryption layers: the default build stacks >1 cipher round, so
   -- the decoder peels a list of sub-seeds in reverse.
   ok(out1:find('#[%w_]+,1,%-1 do') ~= nil, 'decoder peels cipher layers in a reverse loop')
-  -- best-effort anti-debug probe is present
-  ok(out1:find('gethook') ~= nil, 'anti-debug hook probe emitted')
+  -- No anti-debug / debug-hook abort: it false-positives in any environment
+  -- that has a hook installed (executors, Roblox Studio's debugger), aborting
+  -- legitimate execution for negligible protection. Correctness comes first.
+  ok(out1:find('gethook') == nil, 'no debug-hook abort emitted (avoids false positives)')
 end
 
 print(string.format('harden: %d passed, %d failed', pass, fail))

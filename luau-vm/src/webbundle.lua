@@ -199,9 +199,14 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
   -- S-box -> inverse permutation), checks the VM version + build fingerprint,
   -- decompresses, then deserializes. All tables (S-box / permutation /
   -- keystream) are regenerated from the emitted sub-seeds via our own PRNG.
-  -- No loadstring; bytes -> proto. An active debug hook aborts (best-effort).
+  -- No loadstring; bytes -> proto.
+  --
+  -- NOTE: no anti-debug / debug-hook abort. A `debug.gethook()` check aborts in
+  -- any environment that has a hook installed (executors, Roblox Studio's own
+  -- debugger), so it false-positives on legitimate use and stops the script
+  -- before it runs -- while providing negligible protection against a real
+  -- attacker. Correct execution is the priority; it is intentionally omitted.
   parts[#parts + 1] = table.concat({
-    'if type(debug)=="table" and debug.gethook and debug.gethook()~=nil then error("granite: debugger detected") end',
     -- per-build permuted alphabet + decoder (reverse lookup by find)
     'local ' .. N.alpha .. "='" .. alpha .. "'",
     'local function ' .. N.b64 .. '(s)',
