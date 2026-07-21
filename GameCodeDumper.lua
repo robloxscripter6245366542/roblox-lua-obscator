@@ -330,16 +330,16 @@ local function run()
         else
             local safe = text:gsub("%z", "?")  -- strip NULs so clipboard won't truncate
 
-            -- Fits in one go: copy the whole thing.
-            if #safe <= CONFIG.ChunkSize then
-                local ok = pcall(setclipboard_fn, safe)
-                notify("GameCodeDumper", ok
-                    and "Copied full game code to clipboard!"
-                    or  "Clipboard copy failed - use the saved files")
+            -- Always try to copy the ENTIRE dump in one go first. No size cap.
+            local okAll = pcall(setclipboard_fn, safe)
+            if okAll then
+                notify("GameCodeDumper",
+                    ("Copied ALL game code to clipboard! (%d chars)"):format(#safe))
+                print(("[GameCodeDumper] Copied entire dump to clipboard (%d chars)."):format(#safe))
             else
-                -- Too big for one clipboard write: split into chunks and copy
-                -- them one at a time. This BYPASSES the "too big" limit — you
-                -- just paste each part in turn.
+                -- The one-shot copy failed (some executors reject very large
+                -- strings): fall back to copying it in parts, one at a time.
+                notify("GameCodeDumper", "Full copy failed - falling back to chunks")
                 local chunks = {}
                 for i = 1, #safe, CONFIG.ChunkSize do
                     chunks[#chunks + 1] = safe:sub(i, i + CONFIG.ChunkSize - 1)
