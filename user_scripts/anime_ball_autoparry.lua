@@ -1397,7 +1397,12 @@ end
 local function fireBlockRemote()
     task.spawn(function()
         local cam = workspace.CurrentCamera
-        local lookY = cam and cam.CFrame.LookVector.Y or -0.759547233581543
+        -- NB: a plain `cam and cam...Y or default` would wrongly fall back to the
+        -- default when the camera is exactly level (LookVector.Y == 0, which is a
+        -- valid pitch, not a missing value). Keep the real 0 so the block
+        -- direction we send matches a legit client instead of a frozen angle.
+        local lookY = -0.759547233581543
+        if cam then lookY = cam.CFrame.LookVector.Y end
         -- Preferred: the game's exact call path. Capture the RETURN (server's
         -- accept/reject verdict), not just whether the call errored.
         local svc = getSwordService()
@@ -1926,7 +1931,13 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
                 local camDir, camSpeed = nil, 0
                 if Camera.aware then
                     camDir = Camera.flatDir
-                    local walkSpeed = humanoid and humanoid.WalkSpeed or 16
+                    -- Use 16 only as the no-humanoid fallback, NOT when WalkSpeed
+                    -- is a real 0: `humanoid and WalkSpeed or 16` would read a
+                    -- rooted (WalkSpeed==0) player as able to sprint at 16 and
+                    -- over-predict the camera-dodge path. When rooted, the
+                    -- camera-move speed is just your current velocity.
+                    local walkSpeed = humanoid and humanoid.WalkSpeed
+                    if walkSpeed == nil then walkSpeed = 16 end
                     camSpeed = math.max(playerVel.Magnitude, walkSpeed)
                 end
                 local arrives, arriveTime = predictCurvedImpact(
