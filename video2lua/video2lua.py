@@ -50,27 +50,36 @@ def rle_encode(frame: np.ndarray) -> bytes:
     """Run-length encode an (H, W, 3) uint8 frame.
 
     Token layout: [count(1-255)][r][g][b] over the row-major pixel stream.
-    Fast to expand in Luau and compresses flat / cartoon-style regions well.
+    Fast to expand in Luau and lossless. Fully vectorized so it keeps up with
+    full-resolution frames (a per-pixel Python loop cannot).
     """
     flat = frame.reshape(-1, 3)
-    out = bytearray()
     n = len(flat)
-    i = 0
-    while i < n:
-        r, g, b = int(flat[i, 0]), int(flat[i, 1]), int(flat[i, 2])
-        run = 1
-        # Extend the run while the colour matches and the count fits in a byte.
-        while (
-            run < 255
-            and i + run < n
-            and flat[i + run, 0] == r
-            and flat[i + run, 1] == g
-            and flat[i + run, 2] == b
-        ):
-            run += 1
-        out += bytes((run, r, g, b))
-        i += run
-    return bytes(out)
+    if n == 0:
+        return b""
+
+    # Run boundaries: a new run starts wherever the colour changes.
+    changed = np.any(flat[1:] != flat[:-1], axis=1)
+    starts = np.concatenate(([0], np.nonzero(changed)[0] + 1))
+    ends = np.concatenate((starts[1:], [n]))
+    lengths = (ends - starts).astype(np.int64)
+    colors = flat[starts]                       # (R, 3) run colours
+
+    # A run longer than 255 is split into multiple 255-capped tokens.
+    ntok = (lengths + 254) // 255               # tokens per run
+    total = int(ntok.sum())
+    tok_run = np.repeat(np.arange(len(lengths)), ntok)      # run index per token
+    run_start_tok = np.zeros(len(lengths), dtype=np.int64)
+    if len(lengths) > 1:
+        np.cumsum(ntok[:-1], out=run_start_tok[1:])
+    within = np.arange(total) - run_start_tok[tok_run]      # token pos within run
+    remaining = lengths[tok_run] - within * 255
+    counts = np.minimum(remaining, 255).astype(np.uint8)
+
+    out = np.empty((total, 4), dtype=np.uint8)
+    out[:, 0] = counts
+    out[:, 1:] = colors[tok_run]
+    return out.tobytes()
 
 
 def quantize(frame: np.ndarray, levels: int) -> np.ndarray:
@@ -95,8 +104,13 @@ def probe_meta(path: str) -> dict:
         return {}
 
 
-def read_frames(path: str, target_w: int, fps: float, quant: int):
-    """Yield resized, quantized uint8 RGB frames at the requested fps.
+def read_frames(path: str, target_w: int, fps: float, quant: int, max_dim: int):
+    """Yield resized, quantized uint8 RGB frames from the video.
+
+    target_w == 0  -> keep the source width (capped to max_dim).
+    fps == 0       -> keep the source frame rate (every frame, nothing dropped).
+    quant == 256   -> full colour, no quantization (perfect frames).
+    max_dim        -> hard cap on width/height (EditableImage tops out at 1024).
 
     Returns (frames, out_w, out_h, actual_fps, duration).
     """
@@ -104,8 +118,9 @@ def read_frames(path: str, target_w: int, fps: float, quant: int):
     src_meta = probe_meta(path)
     src_fps = float(src_meta.get("fps", 30.0) or 30.0)
 
+    out_fps = fps if fps and fps > 0 else src_fps
     # Ratio between source fps and desired fps -> frame sampling stride.
-    stride = max(src_fps / fps, 1.0)
+    stride = max(src_fps / out_fps, 1.0)
 
     frames = []
     out_w = out_h = None
@@ -115,17 +130,23 @@ def read_frames(path: str, target_w: int, fps: float, quant: int):
         if idx + 1e-9 >= next_take:
             img = Image.fromarray(frame).convert("RGB")
             if out_w is None:
-                out_w = target_w
-                out_h = max(1, round(target_w * img.height / img.width))
-                # keep dimensions even-ish; Roblox handles any size but small is safer
-            img = img.resize((out_w, out_h), Image.LANCZOS)
+                nw, nh = img.width, img.height
+                if target_w and target_w > 0:
+                    nh = max(1, round(nh * target_w / nw))
+                    nw = target_w
+                # Scale down to fit the EditableImage limit, keeping aspect.
+                scale = min(max_dim / nw, max_dim / nh, 1.0)
+                out_w = max(1, round(nw * scale))
+                out_h = max(1, round(nh * scale))
+            if (img.width, img.height) != (out_w, out_h):
+                img = img.resize((out_w, out_h), Image.LANCZOS)
             arr = quantize(np.asarray(img, dtype=np.uint8), quant)
             frames.append(arr)
             next_take += stride
         idx += 1
 
-    duration = len(frames) / fps if frames else 0.0
-    return frames, out_w, out_h, fps, duration
+    duration = len(frames) / out_fps if frames else 0.0
+    return frames, out_w, out_h, out_fps, duration
 
 
 def extract_audio(path: str, out_path: str) -> bool:
@@ -192,13 +213,18 @@ def main() -> None:
     )
     p.add_argument("input", help="path to the source video (mp4, mov, webm, ...)")
     p.add_argument("-o", "--output", help="output .lua path (default: <input>.lua)")
-    p.add_argument("--width", type=int, default=160,
-                   help="output frame width in pixels (height keeps aspect)")
-    p.add_argument("--fps", type=float, default=12.0,
-                   help="playback frames per second")
-    p.add_argument("--colors", type=int, default=64,
-                   help="colour levels per channel (256 = full quality, "
-                        "lower = smaller file)")
+    p.add_argument("--width", type=int, default=0,
+                   help="output frame width in px, height keeps aspect "
+                        "(0 = source width, capped to --max-dim)")
+    p.add_argument("--fps", type=float, default=0.0,
+                   help="playback frames per second (0 = source fps, "
+                        "every frame kept)")
+    p.add_argument("--colors", type=int, default=256,
+                   help="colour levels per channel (256 = full quality / "
+                        "perfect frames, lower = smaller file)")
+    p.add_argument("--max-dim", type=int, default=1024,
+                   help="hard cap on width/height in px "
+                        "(EditableImage supports up to 1024)")
     p.add_argument("--max-frames", type=int, default=0,
                    help="cap total frames (0 = no cap)")
     p.add_argument("--audio-id", default="",
@@ -217,10 +243,12 @@ def main() -> None:
     out_path = args.output or (os.path.splitext(src)[0] + ".lua")
     title = args.title or os.path.splitext(os.path.basename(src))[0]
 
-    print(f"[video2lua] reading '{src}' @ width={args.width} fps={args.fps} "
-          f"colors={args.colors}")
+    wtxt = "source" if args.width == 0 else args.width
+    ftxt = "source" if args.fps == 0 else args.fps
+    print(f"[video2lua] reading '{src}' @ width={wtxt} fps={ftxt} "
+          f"colors={args.colors} max-dim={args.max_dim}")
     frames, w, h, fps, duration = read_frames(
-        src, args.width, args.fps, args.colors
+        src, args.width, args.fps, args.colors, args.max_dim
     )
     if not frames:
         sys.exit("No frames could be read from the input video.")
@@ -251,8 +279,9 @@ def main() -> None:
     print(f"[video2lua] wrote {out_path}  "
           f"({size_kb:.0f} KB, ~{total_bytes/1024:.0f} KB pixels pre-base64)")
     if size_kb > 4096:
-        print("[video2lua] NOTE: large output. Lower --width / --fps / --colors "
-              "or set --max-frames for a lighter script.")
+        print("[video2lua] large output (full quality). It still plays - frames "
+              "are streamed, not loaded all at once. For a lighter file, lower "
+              "--width / --fps / --colors or set --max-frames.")
     if audio_id:
         print(f"[video2lua] audio synced to asset {audio_id}")
 

@@ -23,14 +23,25 @@ file you can paste into an executor or drop into a Script.
 
 ## Features
 
+- **Maximum quality by default** — full source resolution (capped only at
+  EditableImage's 1024 px limit), the source frame rate with **every frame kept**,
+  and full colour. No quantization, no dropped frames. It's lossless per frame,
+  so the output can be large — and that's fine, the file can be as long as it
+  needs to be.
 - **Full-quality frames** — every pixel drawn via EditableImage, no decal uploads.
-- **Premium GUI** — draggable window, gradient accents, drop shadow, animated
-  loading bar, play/pause, click-and-drag scrubber, loop, fullscreen, minimize.
+- **Premium GUI, draggable on PC and mobile** — the window drags with both mouse
+  and touch; gradient accents, drop shadow, buffering bar, play/pause,
+  click/drag scrubber, loop, volume, fullscreen, minimize.
 - **Synced audio** — plays a Roblox `Sound` asset locked to the timeline
   (seek, pause and loop all keep audio in sync).
+- **Bounded memory** — frames are decoded on demand with a look-ahead buffer and
+  old frames are evicted, so even long, high-resolution videos play without
+  loading everything into RAM at once.
+- **Broad executor support** — probes the several EditableImage API shapes
+  Roblox has shipped (`WritePixelsBuffer`/`WritePixels`, `Content.fromObject` /
+  direct parenting) so it works across modern executors and Studio; exits
+  cleanly with a warning where the API is genuinely absent.
 - **Self-contained** — one `.lua` file, no external dependencies at runtime.
-- **Tunable size** — width, fps and colour depth are all adjustable so you can
-  trade file size against fidelity.
 
 ## Install (converter side)
 
@@ -43,18 +54,21 @@ installed system-wide.
 
 ## Usage
 
+Defaults are already maximum quality — just point it at a video:
+
 ```bash
 python3 video2lua.py input.mp4 -o MyVideo.lua
 ```
 
-Common options:
+If you *want* a lighter file, dial it down:
 
 ```bash
 python3 video2lua.py clip.mov \
-    --width 200 \      # frame width in px (height keeps aspect)   default 160
-    --fps 15 \         # playback frames per second                default 12
-    --colors 128 \     # colour levels/channel, 256 = full quality default 64
-    --max-frames 300 \ # hard cap on frame count (0 = unlimited)
+    --width 480 \      # frame width in px, height keeps aspect  (0 = source)
+    --fps 24 \         # playback fps                            (0 = source)
+    --colors 128 \     # colour levels/channel, 256 = full quality (default 256)
+    --max-dim 1024 \   # hard cap on w/h; EditableImage max is 1024
+    --max-frames 600 \ # hard cap on frame count (0 = unlimited)
     --title "My Clip"
 ```
 
@@ -98,17 +112,20 @@ see the decode progress bar, then playback starts automatically.
    (`[count][r][g][b]` tokens) and base64'd into one string per frame.
 4. **Emit** — the strings are baked into `player_template.lua` alongside the
    metadata (size, fps, duration, audio id).
-5. **Decode (in game)** — on load the player base64-decodes and expands every
-   frame into an RGBA pixel `buffer`, showing a progress bar, then streams them
-   to the EditableImage on a `Heartbeat` clock synced to the audio.
+5. **Decode (in game)** — on load the player buffers the first window of frames
+   (progress bar), then decodes the rest on demand just ahead of the playhead,
+   evicting frames left behind. Each frame is base64-decoded and expanded into
+   an RGBA pixel `buffer` and streamed to the EditableImage on a `Heartbeat`
+   clock synced to the audio.
 
 ### Sizing guidance
 
-Raw pixels add up fast: `width × height × fps × seconds` bytes before
-compression. RLE helps a lot on flat / cartoon-style footage and less on noisy
-live action. If the output is too large, lower `--width`, `--fps`, or
-`--colors`, or cap length with `--max-frames`. The converter prints the final
-size and warns past ~4 MB.
+At the default (maximum) settings the file is lossless per frame, so it can get
+large: raw pixels are `width × height × fps × seconds` bytes before RLE. RLE
+compresses flat / cartoon footage a lot and noisy live action less. If you'd
+rather a smaller file, lower `--width`, `--fps`, or `--colors`, or cap length
+with `--max-frames`. The converter prints the final size; large is expected and
+still plays — decoding is streamed, not loaded all at once.
 
 ## Files
 

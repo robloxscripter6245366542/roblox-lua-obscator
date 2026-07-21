@@ -473,25 +473,38 @@ do
     end)
 end
 
---======================= DECODE ALL FRAMES ==============================--
--- Pre-decode every frame into an RGBA buffer so playback never hitches.
-local decoded = table.create(META.frameCount)
+--======================= LAZY FRAME CACHE ===============================--
+-- Frames are decoded on demand and kept in a small look-ahead cache. Even long
+-- or high-resolution videos play without pre-loading every frame into memory,
+-- so the player stays within an executor's RAM budget regardless of length.
+local PREFETCH = 48
+local cache = {}   -- frame index -> RGBA pixel buffer
+
+local function getFrame(i)
+    local px = cache[i]
+    if not px then
+        px = expandFrame(b64decode(FRAMES[i]))
+        cache[i] = px
+    end
+    return px
+end
+
+-- Warm the first window of frames while the loading bar fills.
 do
-    for i = 1, META.frameCount do
-        decoded[i] = expandFrame(b64decode(FRAMES[i]))
-        if i % 3 == 0 or i == META.frameCount then
-            local frac = i / META.frameCount
+    local warm = math.min(PREFETCH, META.frameCount)
+    for i = 1, warm do
+        getFrame(i)
+        if i % 2 == 0 or i == warm then
+            local frac = i / warm
             barFill.Size = UDim2.new(frac, 0, 1, 0)
-            loadLabel.Text = string.format("Decoding frames…  %d%%", math.floor(frac * 100))
+            loadLabel.Text = string.format("Buffering…  %d%%", math.floor(frac * 100))
             RunService.Heartbeat:Wait()
         end
     end
 end
--- Free the encoded source once decoded.
-FRAMES = nil
 
 -- Reveal the first frame, then fade the loader out.
-writeFrame(decoded[1])
+writeFrame(getFrame(1))
 TweenService:Create(loader, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()
 for _, d in ipairs(loader:GetDescendants()) do
     if d:IsA("TextLabel") then
@@ -534,7 +547,7 @@ local function renderCurrent()
     local idx = currentFrameIndex()
     if idx ~= state.lastFrame then
         state.lastFrame = idx
-        writeFrame(decoded[idx])
+        writeFrame(getFrame(idx))
     end
 end
 
@@ -646,5 +659,27 @@ RunService.Heartbeat:Connect(function(dt)
         renderCurrent()
         setScrubUI()
         syncAudio()
+    end
+end)
+
+--======================= BACKGROUND PREFETCH ============================--
+-- Decode frames just ahead of the playhead and drop ones left behind, keeping
+-- memory bounded to roughly PREFETCH frames no matter how long the video is.
+task.spawn(function()
+    while screenGui.Parent do
+        local cur = currentFrameIndex()
+        local target = math.min(cur + PREFETCH, META.frameCount)
+        for i = cur, target do
+            if not cache[i] then
+                getFrame(i)
+                RunService.Heartbeat:Wait()
+            end
+        end
+        for k in pairs(cache) do
+            if k < cur - 6 then
+                cache[k] = nil
+            end
+        end
+        RunService.Heartbeat:Wait()
     end
 end)
