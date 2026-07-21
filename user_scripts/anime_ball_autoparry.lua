@@ -8,6 +8,36 @@ local RunService = game:GetService("RunService")
 local Stats = game:GetService("Stats")
 local LocalPlayer = Players.LocalPlayer
 
+-- ============================================
+-- UNLOAD / KILL-SWITCH INFRASTRUCTURE
+-- ============================================
+-- Every event connection and background loop this script starts is registered
+-- so a single Unload() tears the whole thing down cleanly: it disconnects both
+-- Heartbeat loops and the cache hooks, stops the background threads, restores
+-- the one game function we monkey-patch, removes every Instance we spawn
+-- (detection spheres, speed labels) and closes the UI. Without it the only way
+-- to stop the script was to rejoin, and re-executing it stacked a second copy.
+local activeConnections = {}   -- RBXScriptConnections to drop on unload
+local destroyed = false        -- background loops/hooks check this to go inert
+local mainLoopConn = nil       -- the per-frame parry Heartbeat (disconnected on unload)
+local moveGuardConn = nil      -- the walk-speed guard Heartbeat
+local unloadScript             -- forward decl; body defined once everything exists
+local ballColorController = nil -- BallController we patch (kept so we can restore it)
+local ballColorOriginal = nil   -- its original ChangeBallColor
+local function track(conn)
+    if conn then table.insert(activeConnections, conn) end
+    return conn
+end
+
+-- Re-exec guard: if a previous copy is still loaded, unload it first so we never
+-- stack two UIs / two sets of Heartbeat loops. No-op on executors without getgenv.
+if getgenv then
+    local okEnv, genv = pcall(getgenv)
+    if okEnv and type(genv) == "table" and type(genv.AnimeBallUnload) == "function" then
+        pcall(genv.AnimeBallUnload)
+    end
+end
+
 -- Load WindUI from OUR OWN repo, pinned to a specific commit (not a live
 -- third-party branch). This closes the only real exposure vector: the script
 -- itself sends nothing out, but it does run whatever UI library it downloads,
@@ -464,6 +494,20 @@ HUD.QuickStats = QuickStatsSection:Paragraph({
     Desc = "Loading..."
 })
 
+-- Full kill switch. Tears the script down completely: stops both Heartbeat
+-- loops, disconnects every hook, restores the game function we patched, removes
+-- all visuals and closes this window. Also reachable from the console via
+-- getgenv().AnimeBallUnload(). (unloadScript is assigned near the end of the
+-- file; the callback captures it, so it's populated by the time you can click.)
+local UnloadSection = Tabs.Main:Section({ Title = "Script Control" })
+UnloadSection:Button({
+    Title = "Unload / Destroy Script",
+    Desc = "Stop everything and remove the menu (re-run the loadstring to load again)",
+    Callback = function()
+        if unloadScript then unloadScript() end
+    end
+})
+
 local ParryStatusSection = Tabs.Parry:Section({ Title = "Auto Parry Status" })
 
 HUD.ParryStatus = ParryStatusSection:Paragraph({
@@ -770,6 +814,7 @@ ConfigSection:Button({
 task.spawn(function()
     pcall(function() Window.ConfigManager:CreateConfig(CONFIG_NAME):Load() end)
     while task.wait(3) do
+        if destroyed then break end
         pcall(function() Window.ConfigManager:Config(CONFIG_NAME):Save() end)
     end
 end)
@@ -1121,10 +1166,10 @@ local function trackBallsFolder(folder)
     for _, ball in pairs(folder:GetChildren()) do
         if isRealBall(ball) then ballsCache[ball] = true end
     end
-    folder.ChildAdded:Connect(function(child)
+    track(folder.ChildAdded:Connect(function(child)
         if isRealBall(child) then ballsCache[child] = true end
-    end)
-    folder.ChildRemoved:Connect(function(child)
+    end))
+    track(folder.ChildRemoved:Connect(function(child)
         ballsCache[child] = nil
         ballMotionCache[child] = nil
         serverTargetCache[child] = nil
@@ -1135,7 +1180,7 @@ local function trackBallsFolder(folder)
         local cached = billboardCache[child]
         if cached and cached.Billboard then cached.Billboard:Destroy() end
         billboardCache[child] = nil
-    end)
+    end))
 end
 
 -- Lazily drop balls whose instance has left the game tree without the
@@ -1152,12 +1197,12 @@ end
 
 local function bindHighlightFolder(folder)
     hasHighlightCache = folder:FindFirstChild("Highlight") ~= nil
-    folder.ChildAdded:Connect(function(child)
+    track(folder.ChildAdded:Connect(function(child)
         if child.Name == "Highlight" then hasHighlightCache = true end
-    end)
-    folder.ChildRemoved:Connect(function(child)
+    end))
+    track(folder.ChildRemoved:Connect(function(child)
         if child.Name == "Highlight" then hasHighlightCache = false end
-    end)
+    end))
 end
 
 getPlayerHRP = function(player)
@@ -1185,8 +1230,8 @@ end
 
 local function bindPlayer(player)
     if player.Character then bindCharacter(player, player.Character) end
-    player.CharacterAdded:Connect(function(character) bindCharacter(player, character) end)
-    player.CharacterRemoving:Connect(function() playerHRPCache[player] = nil end)
+    track(player.CharacterAdded:Connect(function(character) bindCharacter(player, character) end))
+    track(player.CharacterRemoving:Connect(function() playerHRPCache[player] = nil end))
 end
 
 -- Calls onFound immediately if `name` already exists under workspace,
@@ -1194,9 +1239,9 @@ end
 local function watchForNamedChild(name, onFound)
     local existing = workspace:FindFirstChild(name)
     if existing then onFound(existing) end
-    workspace.ChildAdded:Connect(function(child)
+    track(workspace.ChildAdded:Connect(function(child)
         if child.Name == name then onFound(child) end
-    end)
+    end))
 end
 
 -- ============================================
@@ -1518,6 +1563,7 @@ end
 
 task.spawn(function()
     while task.wait(0.5) do
+        if destroyed then break end
         HUD.QuickStats:SetDesc(string.format("- Total Parries: %d (High Speed: %d)\n- Total Spams: %d\n- Auto Parry: %s\n- Auto Spam: %s",
             totalParries, highSpeedParries, totalSpams,
             autoParryEnabled and "ON" or "OFF",
@@ -1558,8 +1604,8 @@ end)
 
 -- Wire up the live-state hooks before anything reads from their caches.
 for _, player in pairs(Players:GetPlayers()) do bindPlayer(player) end
-Players.PlayerAdded:Connect(bindPlayer)
-Players.PlayerRemoving:Connect(function(player) playerHRPCache[player] = nil end)
+track(Players.PlayerAdded:Connect(bindPlayer))
+track(Players.PlayerRemoving:Connect(function(player) playerHRPCache[player] = nil end))
 watchForNamedChild("Balls", trackBallsFolder)
 watchForNamedChild(LocalPlayer.Name, bindHighlightFolder)
 
@@ -1568,6 +1614,7 @@ watchForNamedChild(LocalPlayer.Name, bindHighlightFolder)
 -- simply stays inert (controller nil) and nothing breaks.
 task.spawn(function()
     for _ = 1, 15 do
+        if destroyed then return end
         local ok, controller = pcall(function()
             return require(ReplicatedStorage:WaitForChild("Framework")):Get("MovementController")
         end)
@@ -1591,6 +1638,7 @@ end)
 task.spawn(function()
     local BC
     for _ = 1, 15 do
+        if destroyed then return end
         local ok, controller = pcall(function()
             return require(ReplicatedStorage:WaitForChild("Framework")):Get("BallController")
         end)
@@ -1601,9 +1649,14 @@ task.spawn(function()
         end
         task.wait(1)
     end
-    if not BC then return end
+    if not BC or destroyed then return end
     local orig = BC.Server.ChangeBallColor
+    -- Remember what we patched so Unload() can put the game's own function back.
+    ballColorController = BC
+    ballColorOriginal = orig
     BC.Server.ChangeBallColor = function(...)
+        -- Once unloaded, behave as the untouched game function.
+        if destroyed then return orig(...) end
         local args = table.pack(...)
         pcall(function()
             -- Robust arg-scan (signature-agnostic): first Instance is the ball,
@@ -1629,7 +1682,7 @@ createVisualSphere()
 createPlayerDetectorSpheres()
 
 local lastUpdateTime = 0
-RunService.Heartbeat:Connect(function()
+mainLoopConn = RunService.Heartbeat:Connect(function()
     local currentTime = tick()
     if currentTime - lastUpdateTime < UPDATE_INTERVAL then return end
     lastUpdateTime = currentTime
@@ -2150,7 +2203,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-LocalPlayer.CharacterRemoving:Connect(function()
+track(LocalPlayer.CharacterRemoving:Connect(function()
     if visualSphere then visualSphere:Destroy() visualSphere = nil end
     clearPlayerDetectorSpheres()
     isHighSpeedMode = false
@@ -2159,14 +2212,14 @@ LocalPlayer.CharacterRemoving:Connect(function()
     -- respawned character rebinds, letting a phantom highlight gate parries
     -- while dead.
     hasHighlightCache = false
-end)
+end))
 
 -- Movement guard, in its own connection so it doesn't add to the main
 -- Heartbeat closure's upvalue count (Lua 5.1's 60-per-function limit). Learns
 -- the game's real walk speed from the last non-zero value seen, and restores
 -- it whenever a block roots the character - so blocking never interrupts
 -- movement. Toggle: Main tab > Keep Moving While Blocking.
-RunService.Heartbeat:Connect(function()
+moveGuardConn = RunService.Heartbeat:Connect(function()
     if not Move.keep then return end
     local hrp = getPlayerHRP(LocalPlayer)
     if not hrp then return end
@@ -2180,6 +2233,73 @@ RunService.Heartbeat:Connect(function()
         humanoid.WalkSpeed = Move.cachedSpeed
     end
 end)
+
+-- ============================================
+-- UNLOAD IMPLEMENTATION
+-- ============================================
+-- Defined here (not up top) because it touches everything created above:
+-- connections, the hooked controller, the spawned Instances and the Window.
+-- Idempotent - safe to call twice, and safe to call from the button, the
+-- getgenv handle, or the re-exec guard.
+unloadScript = function()
+    if destroyed then return end
+    destroyed = true  -- background loops + the ChangeBallColor hook go inert
+
+    -- Notify BEFORE we tear the UI down (the toast survives the window closing).
+    pcall(function()
+        WindUI:Notify({
+            Title = "Anime Ball Unloaded",
+            Content = "All loops, hooks and visuals removed",
+            Duration = 4,
+        })
+    end)
+
+    -- Stop both Heartbeat loops - no more per-frame parry/block firing or HUD work.
+    if mainLoopConn then pcall(function() mainLoopConn:Disconnect() end) mainLoopConn = nil end
+    if moveGuardConn then pcall(function() moveGuardConn:Disconnect() end) moveGuardConn = nil end
+
+    -- Drop every registered event connection (ball/highlight/player/workspace hooks).
+    for _, conn in ipairs(activeConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    activeConnections = {}
+
+    -- Restore the game's own ChangeBallColor if we patched it.
+    if ballColorController and ballColorOriginal then
+        pcall(function() ballColorController.Server.ChangeBallColor = ballColorOriginal end)
+    end
+    ballColorController, ballColorOriginal = nil, nil
+
+    -- Remove every Instance we spawned: detection sphere, player detectors, labels.
+    if visualSphere then pcall(function() visualSphere:Destroy() end) visualSphere = nil end
+    pcall(clearPlayerDetectorSpheres)
+    for _, cache in pairs(billboardCache) do
+        if cache and cache.Billboard then pcall(function() cache.Billboard:Destroy() end) end
+    end
+    billboardCache = {}
+
+    -- Close the UI window.
+    pcall(function() Window:Destroy() end)
+
+    -- Release the global handle so a fresh load starts clean.
+    if getgenv then
+        local okEnv, genv = pcall(getgenv)
+        if okEnv and type(genv) == "table" then
+            genv.AnimeBallLoaded = nil
+            genv.AnimeBallUnload = nil
+        end
+    end
+end
+
+-- Expose the unloader globally so it also works from the console
+-- (getgenv().AnimeBallUnload()) and so the re-exec guard at the top can find it.
+if getgenv then
+    local okEnv, genv = pcall(getgenv)
+    if okEnv and type(genv) == "table" then
+        genv.AnimeBallLoaded = true
+        genv.AnimeBallUnload = function() if unloadScript then unloadScript() end end
+    end
+end
 
 WindUI:Notify({
     Title = "Anime Ball Loaded!",
