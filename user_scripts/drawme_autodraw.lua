@@ -501,26 +501,29 @@ local function run()
 end
 
 -- ============================================================================
---  UI — a small draggable control panel
+--  UI — mobile-first, touch control panel
 -- ============================================================================
-local function buildUI()
-    -- Mount to CoreGui when the executor allows it (survives PlayerGui resets),
+-- Built for phones/tablets: large touch targets, a collapsible floating button
+-- so it never hogs a small screen, and touch dragging. Only shown on touch
+-- devices (PC users have the keybind).
+local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+local function buildMobileUI()
+    -- Mount to CoreGui/gethui when the executor allows it (survives respawns),
     -- otherwise fall back to PlayerGui.
     local parent = LocalPlayer:WaitForChild("PlayerGui")
     pcall(function()
-        if gethui then parent = gethui()
-        elseif syn and syn.protect_gui then parent = game:GetService("CoreGui")
-        else parent = game:GetService("CoreGui") end
+        if gethui then parent = gethui() else parent = game:GetService("CoreGui") end
     end)
 
     local PINK  = Color3.fromRGB(255, 0, 81)
-    local DARK  = Color3.fromRGB(28, 28, 34)
-    local PANEL = Color3.fromRGB(38, 38, 46)
-    local TEXT  = Color3.fromRGB(235, 235, 240)
-    local MUTED = Color3.fromRGB(150, 150, 160)
+    local DARK  = Color3.fromRGB(24, 24, 30)
+    local PANEL = Color3.fromRGB(40, 40, 50)
+    local TEXT  = Color3.fromRGB(238, 238, 244)
+    local MUTED = Color3.fromRGB(155, 155, 168)
 
     local function corner(inst, r)
-        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 8); c.Parent = inst
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 10); c.Parent = inst
     end
     local function make(class, props, par)
         local o = Instance.new(class)
@@ -531,62 +534,83 @@ local function buildUI()
 
     local gui = make("ScreenGui", {
         Name = "DrawMeAutoDraw", ResetOnSpawn = false, IgnoreGuiInset = true,
-        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 9999,
     }, parent)
 
-    local win = make("Frame", {
-        Name = "Window", Size = UDim2.fromOffset(260, 0), Position = UDim2.new(0, 24, 0.5, -150),
-        BackgroundColor3 = DARK, BorderSizePixel = 0, AutomaticSize = Enum.AutomaticSize.Y,
+    -- Floating open/close button (round, thumb-reachable, draggable).
+    local fab = make("TextButton", {
+        Name = "Fab", Size = UDim2.fromOffset(64, 64), Position = UDim2.new(0, 18, 0.35, 0),
+        BackgroundColor3 = PINK, BorderSizePixel = 0, AutoButtonColor = true,
+        Text = "✏️", Font = Enum.Font.GothamBold, TextSize = 30, TextColor3 = Color3.new(1, 1, 1),
     }, gui)
-    corner(win, 12)
-    make("UIStroke", { Color = PINK, Thickness = 1.5, Transparency = 0.3 }, win)
+    corner(fab, 32)
+    make("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Transparency = 0.6 }, fab)
+
+    -- The panel window (hidden until the FAB is tapped).
+    local win = make("Frame", {
+        Name = "Window", Size = UDim2.fromOffset(300, 0), Position = UDim2.new(0, 18, 0.35, 74),
+        BackgroundColor3 = DARK, BorderSizePixel = 0, AutomaticSize = Enum.AutomaticSize.Y,
+        Visible = false,
+    }, gui)
+    corner(win, 16)
+    make("UIStroke", { Color = PINK, Thickness = 2, Transparency = 0.25 }, win)
     make("UIPadding", {
-        PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
-        PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10),
+        PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 12),
+        PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
     }, win)
-    local layout = make("UIListLayout", {
-        Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder,
+    make("UIListLayout", {
+        Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder,
         HorizontalAlignment = Enum.HorizontalAlignment.Center,
     }, win)
 
-    -- title bar (drag handle)
-    local title = make("TextLabel", {
-        Name = "Title", LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1,
-        Text = "✏️  Draw Me! Auto-Draw", Font = Enum.Font.GothamBold, TextSize = 15,
-        TextColor3 = TEXT, TextXAlignment = Enum.TextXAlignment.Left,
+    -- Title bar (drag handle) with a close "×".
+    local titleBar = make("Frame", {
+        Name = "TitleBar", LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 34),
+        BackgroundTransparency = 1,
     }, win)
+    make("TextLabel", {
+        Size = UDim2.new(1, -40, 1, 0), BackgroundTransparency = 1, Text = "✏️  Draw Me!",
+        Font = Enum.Font.GothamBold, TextSize = 20, TextColor3 = TEXT,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, titleBar)
+    local closeBtn = make("TextButton", {
+        Size = UDim2.fromOffset(34, 34), Position = UDim2.new(1, -34, 0, 0),
+        BackgroundColor3 = PANEL, BorderSizePixel = 0, AutoButtonColor = true,
+        Text = "×", Font = Enum.Font.GothamBold, TextSize = 22, TextColor3 = TEXT,
+    }, titleBar)
+    corner(closeBtn, 10)
 
     local function label(text, order)
         return make("TextLabel", {
-            LayoutOrder = order, Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
-            Text = text, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = MUTED,
+            LayoutOrder = order, Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1,
+            Text = text, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = MUTED,
             TextXAlignment = Enum.TextXAlignment.Left,
         }, win)
     end
 
-    -- Target input
+    -- Target input (large, touch-friendly).
     label("TARGET  (auto / username / userid)", 2)
     local box = make("TextBox", {
-        LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = PANEL, BorderSizePixel = 0,
+        LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = PANEL, BorderSizePixel = 0,
         Text = tostring(CONFIG.Target), PlaceholderText = "auto", ClearTextOnFocus = false,
-        Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = TEXT,
+        Font = Enum.Font.Gotham, TextSize = 16, TextColor3 = TEXT,
     }, win)
-    corner(box, 6)
-    make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, box)
+    corner(box, 10)
+    make("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, box)
     box.FocusLost:Connect(function()
         local t = box.Text:gsub("^%s+", ""):gsub("%s+$", "")
         CONFIG.Target = (t == "") and "auto" or t
         box.Text = CONFIG.Target
     end)
 
-    -- A pill toggle button that cycles/flips a value.
+    -- A big pill toggle button that cycles/flips a value.
     local function toggleButton(order, getLabel, onClick)
         local b = make("TextButton", {
-            LayoutOrder = order, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = PANEL,
+            LayoutOrder = order, Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = PANEL,
             BorderSizePixel = 0, AutoButtonColor = true, Text = getLabel(),
-            Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = TEXT,
+            Font = Enum.Font.GothamMedium, TextSize = 15, TextColor3 = TEXT,
         }, win)
-        corner(b, 6)
+        corner(b, 10)
         b.Activated:Connect(function()
             onClick()
             b.Text = getLabel()
@@ -599,54 +623,64 @@ local function buildUI()
         local i = (table.find(thumbCycle, CONFIG.ThumbnailType) or 1) % #thumbCycle + 1
         CONFIG.ThumbnailType = thumbCycle[i]
     end)
-
     toggleButton(5, function() return "Auto-crop:  " .. (CONFIG.AutoCrop and "ON" or "OFF") end, function()
         CONFIG.AutoCrop = not CONFIG.AutoCrop
     end)
-
     toggleButton(6, function() return "Auto-submit:  " .. (CONFIG.AutoSubmit and "ON" or "OFF") end, function()
         CONFIG.AutoSubmit = not CONFIG.AutoSubmit
     end)
 
-    -- Draw button
+    -- Big DRAW button.
     local draw = make("TextButton", {
-        LayoutOrder = 7, Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = PINK, BorderSizePixel = 0,
-        AutoButtonColor = true, Text = "DRAW  (" .. CONFIG.Keybind.Name .. ")",
-        Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = Color3.new(1, 1, 1),
+        LayoutOrder = 7, Size = UDim2.new(1, 0, 0, 58), BackgroundColor3 = PINK, BorderSizePixel = 0,
+        AutoButtonColor = true, Text = "✎  DRAW", Font = Enum.Font.GothamBold, TextSize = 20,
+        TextColor3 = Color3.new(1, 1, 1),
     }, win)
-    corner(draw, 8)
+    corner(draw, 12)
     draw.Activated:Connect(function() task.spawn(run) end)
 
-    -- Status line
+    -- Status line.
     local status = make("TextLabel", {
-        Name = "Status", LayoutOrder = 8, Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1,
-        Text = "Ready. Join a drawing round.", Font = Enum.Font.Gotham, TextSize = 11,
+        Name = "Status", LayoutOrder = 8, Size = UDim2.new(1, 0, 0, 34), BackgroundTransparency = 1,
+        Text = "Ready. Join a drawing round.", Font = Enum.Font.Gotham, TextSize = 13,
         TextColor3 = MUTED, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
         TextXAlignment = Enum.TextXAlignment.Left,
     }, win)
     statusSink = function(msg) status.Text = msg end
 
-    -- Dragging (mouse + touch) via the title bar.
+    -- Open/close.
+    local function setOpen(open)
+        win.Visible = open
+        fab.Text = open and "▾" or "✏️"
+    end
+    closeBtn.Activated:Connect(function() setOpen(false) end)
+
+    -- Touch drag for the FAB; a tap (no real movement) toggles the panel.
     do
-        local dragging, dragStart, startPos
-        local function update(input)
-            local d = input.Position - dragStart
-            win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
-                                     startPos.Y.Scale, startPos.Y.Offset + d.Y)
-        end
-        title.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-                dragging, dragStart, startPos = true, input.Position, win.Position
-                input.Changed:Connect(function()
-                    if input.UserInputState == Enum.UserInputState.End then dragging = false end
-                end)
+        local dragging, moved, startPos, fabStart
+        fab.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging, moved = true, false
+                startPos, fabStart = input.Position, fab.Position
             end
         end)
         UserInputService.InputChanged:Connect(function(input)
-            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch) then
-                update(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseMovement) then
+                local d = input.Position - startPos
+                if d.Magnitude > 6 then moved = true end
+                fab.Position = UDim2.new(fabStart.X.Scale, fabStart.X.Offset + d.X,
+                                         fabStart.Y.Scale, fabStart.Y.Offset + d.Y)
+                win.Position = UDim2.new(fab.Position.X.Scale, fab.Position.X.Offset,
+                                         fab.Position.Y.Scale, fab.Position.Y.Offset + 74)
+            end
+        end)
+        UserInputService.InputEnded:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseButton1) then
+                dragging = false
+                if not moved then setOpen(not win.Visible) end -- tap = toggle
             end
         end)
     end
@@ -654,12 +688,19 @@ local function buildUI()
     return gui
 end
 
-pcall(buildUI)
+if IS_MOBILE then
+    pcall(buildMobileUI)
+end
 
+-- Keyboard shortcut (PC / devices with a keyboard).
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if input.KeyCode == CONFIG.Keybind then run() end
 end)
 
-notify(("Loaded. Use the panel or press %s during a drawing round to draw the stage player.")
-    :format(CONFIG.Keybind.Name))
+if IS_MOBILE then
+    notify("Loaded. Tap the ✏️ button to open the panel and draw the stage player.")
+else
+    notify(("Loaded (PC). Press %s during a drawing round to draw the stage player.")
+        :format(CONFIG.Keybind.Name))
+end
