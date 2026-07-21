@@ -170,7 +170,6 @@ local blockSent = 0        -- total Block:Invoke calls that completed
 local blockLanded = 0      -- returned truthy (accepted)
 local blockRejected = 0    -- returned falsy (cooldown/denied)
 local lastBlockResult = "-" -- "landed" / "rejected" / "error"
-local knownCooldownUntil = 0 -- tick() until which the server block is on cooldown (from a landed result)
 
 -- ============================================
 -- AUTO SPAM CONFIGURATION
@@ -1310,9 +1309,12 @@ local function recordBlockResult(ok, result)
     elseif result then
         blockLanded = blockLanded + 1
         lastBlockResult = "landed"
-        -- A landed block puts the server on its ~1s cooldown; remember that so
-        -- we don't waste frames re-firing into a guaranteed rejection.
-        knownCooldownUntil = tick() + DefaultCooldown
+        -- NOTE (verified against the decompiled SwordController.Block): a truthy
+        -- return means the block PARRIED a ball, which RESETS the block cooldown
+        -- (the game clears LastBlock, letting you re-block immediately) - it does
+        -- NOT start a 1s lockout. So there is no post-landed cooldown to model
+        -- here; we deliberately keep firing every frame during a threat/clash and
+        -- let the server arbitrate, which is what holds a clash indefinitely.
     else
         blockRejected = blockRejected + 1
         lastBlockResult = "rejected"
@@ -1800,6 +1802,18 @@ RunService.Heartbeat:Connect(function()
         -- burn the cooldown too early. Pre-declared here so the fire block below
         -- (outside the ballPos scope) can read it.
         local coverable = false
+        -- nativeBlockNow: the GAME'S OWN block-timing rule, taken verbatim from
+        -- the decompiled BallController tutorial: it flags "BLOCK!" the instant
+        --     math.max(dist - 8, 0) / ball.AssemblyLinearVelocity.Magnitude <= BlockDuration
+        -- i.e. when the ball's SURFACE (8-stud radius) is within one block's worth
+        -- of protection from you. This is ground truth - not a heuristic - so we
+        -- honour it unconditionally: whenever ANY ball TARGETING us is inside that
+        -- window (latency-adjusted to coverWindow = ping + BlockDuration + frameLag),
+        -- fire every frame regardless of which optional features are toggled on.
+        -- It can only ADD blocks (the server cooldown-gates the rest) and it
+        -- guarantees we never block LATER than the game itself would prompt a human.
+        -- Pre-declared here so the fire block below (outside ballPos scope) sees it.
+        local nativeBlockNow = false
         currentTimeToImpact = math.huge
         if ballPos then
             -- The block fired now protects for BLOCK_DURATION, starting after a
@@ -1882,6 +1896,13 @@ RunService.Heartbeat:Connect(function()
             coverable = currentTimeToImpact <= coverWindow
                 or worstCaseTTI <= coverWindow
                 or (minThreatTTI or math.huge) <= coverWindow
+            -- Game-native trigger (see declaration above). minThreatTTI is the
+            -- surface-arrival time of the SOONEST ball actually TARGETING us
+            -- (target == you / unassigned / invisible-closing / server-confirmed),
+            -- computed from raw speed exactly like the game's own formula - so this
+            -- is true precisely when the game would be flashing "BLOCK!" at a human,
+            -- widened by ping+frameLag so a high-latency/laggy client still lands it.
+            nativeBlockNow = (minThreatTTI or math.huge) <= coverWindow
             -- withinRange is included explicitly: a ball already inside the
             -- parry radius is always an imminent threat, even when its
             -- time-to-impact estimate is unusable (hovering pre-serve at
@@ -2014,9 +2035,15 @@ RunService.Heartbeat:Connect(function()
         -- point-blank fire EVERY frame regardless: there each successful parry
         -- resets the cooldown, so continuous fire stays protected and holds the
         -- exchange indefinitely.
-        local alwaysFire = clashActive or fastClashHold or pointBlank
-        if amTargeted or clashActive or imminentThreat or fastClashHold or pointBlank then
-            if (withinRange or willArriveInTime) and (alwaysFire or coverable) then executeParry() end
+        -- nativeBlockNow joins the unconditional-fire set: when the game's own
+        -- timing rule says a targeting ball is one block-window away, spam block
+        -- every frame - even with Panic Burst / Anti-Curve toggled OFF, and even
+        -- if the amTargeted highlight is mid-flicker. This is the "no-miss" floor:
+        -- the script now fires no later than the game's own BLOCK! prompt in every
+        -- configuration. Harmless when redundant (server cooldown-gates the spam).
+        local alwaysFire = clashActive or fastClashHold or pointBlank or nativeBlockNow
+        if amTargeted or clashActive or imminentThreat or fastClashHold or pointBlank or nativeBlockNow then
+            if (withinRange or willArriveInTime or nativeBlockNow) and (alwaysFire or coverable) then executeParry() end
             -- Impact imminent (or mid-clash / point-blank): keep firing block
             -- every frame (no cooldown) until the ball is deflected, so a single
             -- early/whiffed parry can never leave a super-fast or hard-curving
