@@ -60,8 +60,10 @@ local AssetService     = game:GetService("AssetService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer      = Players.LocalPlayer
 
+local statusSink -- set by the UI; receives every status message.
 local function notify(msg)
     print("[DrawMe] " .. tostring(msg))
+    if statusSink then pcall(statusSink, tostring(msg)) end
     pcall(function()
         game:GetService("StarterGui"):SetCore("SendNotification", {
             Title = "Draw Me! Auto-Draw", Text = tostring(msg), Duration = 4,
@@ -498,10 +500,166 @@ local function run()
     busy = false
 end
 
+-- ============================================================================
+--  UI — a small draggable control panel
+-- ============================================================================
+local function buildUI()
+    -- Mount to CoreGui when the executor allows it (survives PlayerGui resets),
+    -- otherwise fall back to PlayerGui.
+    local parent = LocalPlayer:WaitForChild("PlayerGui")
+    pcall(function()
+        if gethui then parent = gethui()
+        elseif syn and syn.protect_gui then parent = game:GetService("CoreGui")
+        else parent = game:GetService("CoreGui") end
+    end)
+
+    local PINK  = Color3.fromRGB(255, 0, 81)
+    local DARK  = Color3.fromRGB(28, 28, 34)
+    local PANEL = Color3.fromRGB(38, 38, 46)
+    local TEXT  = Color3.fromRGB(235, 235, 240)
+    local MUTED = Color3.fromRGB(150, 150, 160)
+
+    local function corner(inst, r)
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 8); c.Parent = inst
+    end
+    local function make(class, props, par)
+        local o = Instance.new(class)
+        for k, v in pairs(props) do o[k] = v end
+        o.Parent = par
+        return o
+    end
+
+    local gui = make("ScreenGui", {
+        Name = "DrawMeAutoDraw", ResetOnSpawn = false, IgnoreGuiInset = true,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    }, parent)
+
+    local win = make("Frame", {
+        Name = "Window", Size = UDim2.fromOffset(260, 0), Position = UDim2.new(0, 24, 0.5, -150),
+        BackgroundColor3 = DARK, BorderSizePixel = 0, AutomaticSize = Enum.AutomaticSize.Y,
+    }, gui)
+    corner(win, 12)
+    make("UIStroke", { Color = PINK, Thickness = 1.5, Transparency = 0.3 }, win)
+    make("UIPadding", {
+        PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
+        PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10),
+    }, win)
+    local layout = make("UIListLayout", {
+        Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder,
+        HorizontalAlignment = Enum.HorizontalAlignment.Center,
+    }, win)
+
+    -- title bar (drag handle)
+    local title = make("TextLabel", {
+        Name = "Title", LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1,
+        Text = "✏️  Draw Me! Auto-Draw", Font = Enum.Font.GothamBold, TextSize = 15,
+        TextColor3 = TEXT, TextXAlignment = Enum.TextXAlignment.Left,
+    }, win)
+
+    local function label(text, order)
+        return make("TextLabel", {
+            LayoutOrder = order, Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
+            Text = text, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = MUTED,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, win)
+    end
+
+    -- Target input
+    label("TARGET  (auto / username / userid)", 2)
+    local box = make("TextBox", {
+        LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = PANEL, BorderSizePixel = 0,
+        Text = tostring(CONFIG.Target), PlaceholderText = "auto", ClearTextOnFocus = false,
+        Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = TEXT,
+    }, win)
+    corner(box, 6)
+    make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, box)
+    box.FocusLost:Connect(function()
+        local t = box.Text:gsub("^%s+", ""):gsub("%s+$", "")
+        CONFIG.Target = (t == "") and "auto" or t
+        box.Text = CONFIG.Target
+    end)
+
+    -- A pill toggle button that cycles/flips a value.
+    local function toggleButton(order, getLabel, onClick)
+        local b = make("TextButton", {
+            LayoutOrder = order, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = PANEL,
+            BorderSizePixel = 0, AutoButtonColor = true, Text = getLabel(),
+            Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = TEXT,
+        }, win)
+        corner(b, 6)
+        b.Activated:Connect(function()
+            onClick()
+            b.Text = getLabel()
+        end)
+        return b
+    end
+
+    local thumbCycle = { "bust", "headshot", "fullbody" }
+    toggleButton(4, function() return "Reference:  " .. CONFIG.ThumbnailType end, function()
+        local i = (table.find(thumbCycle, CONFIG.ThumbnailType) or 1) % #thumbCycle + 1
+        CONFIG.ThumbnailType = thumbCycle[i]
+    end)
+
+    toggleButton(5, function() return "Auto-crop:  " .. (CONFIG.AutoCrop and "ON" or "OFF") end, function()
+        CONFIG.AutoCrop = not CONFIG.AutoCrop
+    end)
+
+    toggleButton(6, function() return "Auto-submit:  " .. (CONFIG.AutoSubmit and "ON" or "OFF") end, function()
+        CONFIG.AutoSubmit = not CONFIG.AutoSubmit
+    end)
+
+    -- Draw button
+    local draw = make("TextButton", {
+        LayoutOrder = 7, Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = PINK, BorderSizePixel = 0,
+        AutoButtonColor = true, Text = "DRAW  (" .. CONFIG.Keybind.Name .. ")",
+        Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = Color3.new(1, 1, 1),
+    }, win)
+    corner(draw, 8)
+    draw.Activated:Connect(function() task.spawn(run) end)
+
+    -- Status line
+    local status = make("TextLabel", {
+        Name = "Status", LayoutOrder = 8, Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1,
+        Text = "Ready. Join a drawing round.", Font = Enum.Font.Gotham, TextSize = 11,
+        TextColor3 = MUTED, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, win)
+    statusSink = function(msg) status.Text = msg end
+
+    -- Dragging (mouse + touch) via the title bar.
+    do
+        local dragging, dragStart, startPos
+        local function update(input)
+            local d = input.Position - dragStart
+            win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
+                                     startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        end
+        title.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                dragging, dragStart, startPos = true, input.Position, win.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then dragging = false end
+                end)
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+                update(input)
+            end
+        end)
+    end
+
+    return gui
+end
+
+pcall(buildUI)
+
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if input.KeyCode == CONFIG.Keybind then run() end
 end)
 
-notify(("Loaded. Press %s during a drawing round to reference the stage player and draw them.")
+notify(("Loaded. Use the panel or press %s during a drawing round to draw the stage player.")
     :format(CONFIG.Keybind.Name))
