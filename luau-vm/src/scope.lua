@@ -60,6 +60,9 @@ function rExpr(e, scope)
   elseif k == 'CallE' then rExpr(e.func, scope); for _, a in ipairs(e.args) do rExpr(a, scope) end
   elseif k == 'Method' then rExpr(e.obj, scope); for _, a in ipairs(e.args) do rExpr(a, scope) end
   elseif k == 'Binop' then rExpr(e.left, scope); rExpr(e.right, scope)
+  elseif k == 'IfExpr' then
+    for _, c in ipairs(e.clauses) do rExpr(c.cond, scope); rExpr(c.value, scope) end
+    rExpr(e.elseValue, scope)
   elseif k == 'Unop' then rExpr(e.operand, scope)
   elseif k == 'Function' then rFunc(e, scope)
   elseif k == 'Table' then

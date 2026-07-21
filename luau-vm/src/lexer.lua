@@ -16,10 +16,10 @@ for _, k in ipairs({
 -- Luau compound assignments (`+=`, `..=`, `//=`, …) are included.
 local SYMBOLS = {
   '...', '//=', '..=',
-  '..', '::', '==', '~=', '<=', '>=', '//', '<<', '>>',
+  '..', '::', '==', '~=', '<=', '>=', '//', '<<', '>>', '->',
   '+=', '-=', '*=', '/=', '%=', '^=',
   '+', '-', '*', '/', '%', '^', '#', '&', '~', '|', '<', '>', '=',
-  '(', ')', '{', '}', '[', ']', ';', ':', ',', '.',
+  '(', ')', '{', '}', '[', ']', ';', ':', ',', '.', '?',
 }
 
 local function isDigit(c) return c >= '0' and c <= '9' end
@@ -141,6 +141,48 @@ function Lexer.tokenize(src, chunk)
     return table.concat(buf)
   end
 
+  -- Luau string interpolation: `text {expr} more`. Produces an 'interp' token
+  -- carrying the literal chunks and the raw source of each embedded expression;
+  -- the parser turns it into a `..`/tostring concatenation. `\{` is a literal
+  -- brace; `{` opens an interpolation whose braces/strings are balanced so a `}`
+  -- inside a nested table or string does not close it early.
+  local function readInterp()
+    pos = pos + 1 -- past the opening backtick
+    local literals, exprs = {}, {}
+    local buf = {}
+    while true do
+      if pos > n then err('unfinished interpolated string') end
+      local c = peek()
+      if c == '`' then pos = pos + 1; literals[#literals + 1] = table.concat(buf); break
+      elseif c == '\n' or c == '\r' then err('unfinished interpolated string')
+      elseif c == '\\' then
+        pos = pos + 1; local e = peek()
+        if e == 'n' then buf[#buf + 1] = '\n'; pos = pos + 1
+        elseif e == 't' then buf[#buf + 1] = '\t'; pos = pos + 1
+        elseif e == 'r' then buf[#buf + 1] = '\r'; pos = pos + 1
+        elseif e == '`' then buf[#buf + 1] = '`'; pos = pos + 1
+        elseif e == '{' then buf[#buf + 1] = '{'; pos = pos + 1
+        elseif e == '}' then buf[#buf + 1] = '}'; pos = pos + 1
+        elseif e == '\\' then buf[#buf + 1] = '\\'; pos = pos + 1
+        else buf[#buf + 1] = '\\' .. e; pos = pos + 1 end
+      elseif c == '{' then
+        literals[#literals + 1] = table.concat(buf); buf = {}
+        pos = pos + 1
+        local estart, depth = pos, 1
+        while depth > 0 do
+          if pos > n then err('unfinished interpolation expression') end
+          local d = peek()
+          if d == '{' then depth = depth + 1; pos = pos + 1
+          elseif d == '}' then depth = depth - 1; pos = pos + 1
+          elseif d == '"' or d == "'" then readString(d) -- skip a nested string literal
+          else pos = pos + 1 end
+        end
+        exprs[#exprs + 1] = src:sub(estart, pos - 2) -- inner source, sans braces
+      else buf[#buf + 1] = c; pos = pos + 1 end
+    end
+    return { literals = literals, exprs = exprs }
+  end
+
   local function readNumber()
     local start = pos
     if peek() == '0' and (peek(1) == 'x' or peek(1) == 'X') then
@@ -188,6 +230,10 @@ function Lexer.tokenize(src, chunk)
     elseif c == '"' or c == "'" then
       local ln = line
       tokens[#tokens + 1] = { type = 'string', value = readString(c), line = ln }
+    elseif c == '`' then
+      local ln = line
+      local it = readInterp()
+      tokens[#tokens + 1] = { type = 'interp', literals = it.literals, exprs = it.exprs, line = ln }
     elseif c == '[' and (peek(1) == '[' or peek(1) == '=') then
       local ln = line
       local s = readLong()

@@ -270,6 +270,20 @@ compileExprInto = function(fs, node, target)
     fs.freereg = save
   elseif k == 'Binop' then
     compileBinop(fs, node, target)
+  elseif k == 'IfExpr' then
+    -- Luau if-then-else expression: each branch stores its value into `target`.
+    local endJumps = {}
+    for _, clause in ipairs(node.clauses) do
+      local save = fs.freereg
+      local rc = exprNext(fs, clause.cond)
+      fs.freereg = save
+      local jnext = fs:emit({ op = Op.JMPIFNOT, a = rc, sbx = 0 }, clause.cond.line)
+      compileExprInto(fs, clause.value, target)
+      endJumps[#endJumps + 1] = fs:emit({ op = Op.JMP, sbx = 0 }, line)
+      fs:patch(jnext, fs:here())
+    end
+    compileExprInto(fs, node.elseValue, target)
+    for _, j in ipairs(endJumps) do fs:patch(j, fs:here()) end
   else
     error('compiler: cannot compile expr ' .. tostring(k))
   end
@@ -469,6 +483,11 @@ compileStmt = function(fs, s)
     if not loop then error('compiler: break outside loop') end
     local j = fs:emit({ op = Op.JMP, sbx = 0 }, line)
     loop.breaks[#loop.breaks + 1] = j
+  elseif k == 'Continue' then
+    local loop = fs.loops[#fs.loops]
+    if not loop then error('compiler: continue outside loop') end
+    local j = fs:emit({ op = Op.JMP, sbx = 0 }, line)
+    loop.continues[#loop.continues + 1] = j
   elseif k == 'Goto' or k == 'Label' then
     error('ferret-vm: goto/label is not supported (Luau has no goto)')
   else
@@ -604,26 +623,30 @@ function compileWhile(fs, s)
   local rc = exprNext(fs, s.cond)
   fs.freereg = save
   local jexit = fs:emit({ op = Op.JMPIFNOT, a = rc, sbx = 0 }, s.line)
-  fs.loops[#fs.loops + 1] = { breaks = {} }
+  fs.loops[#fs.loops + 1] = { breaks = {}, continues = {} }
   compileBlock(fs, s.body)
+  local loop = fs.loops[#fs.loops]
+  for _, j in ipairs(loop.continues) do fs:patch(j, top) end -- continue -> re-test
   local jback = fs:emit({ op = Op.JMP, sbx = 0 }, s.line)
   fs:patch(jback, top)
   fs:patch(jexit, fs:here())
-  local loop = table.remove(fs.loops)
+  table.remove(fs.loops)
   for _, j in ipairs(loop.breaks) do fs:patch(j, fs:here()) end
 end
 
 function compileRepeat(fs, s)
   local top = fs:here()
-  fs.loops[#fs.loops + 1] = { breaks = {} }
+  fs.loops[#fs.loops + 1] = { breaks = {}, continues = {} }
   -- body and until share scope; compile inline (no freereg reset before cond)
   local save = fs.freereg
   for _, st in ipairs(s.body) do compileStmt(fs, st) end
+  local loop = fs.loops[#fs.loops]
+  for _, j in ipairs(loop.continues) do fs:patch(j, fs:here()) end -- continue -> until test
   local rc = exprNext(fs, s.cond)
   local jback = fs:emit({ op = Op.JMPIFNOT, a = rc, sbx = 0 }, s.line)
   fs:patch(jback, top)
   fs.freereg = save
-  local loop = table.remove(fs.loops)
+  table.remove(fs.loops)
   for _, j in ipairs(loop.breaks) do fs:patch(j, fs:here()) end
 end
 
@@ -639,15 +662,17 @@ function compileNumFor(fs, s)
   s.varDecl.owner = fs
   s.varDecl.reg = base + 3
   local jprep = fs:emit({ op = Op.FORPREP, a = base, sbx = 0 }, s.line)
-  fs.loops[#fs.loops + 1] = { breaks = {} }
+  fs.loops[#fs.loops + 1] = { breaks = {}, continues = {} }
   local bodyStart = fs:here()
   if s.varDecl.captured then fs:emit({ op = Op.NEWCELL, a = base + 3 }, s.line) end
   compileBlock(fs, s.body)
+  local loop = fs.loops[#fs.loops]
+  for _, j in ipairs(loop.continues) do fs:patch(j, fs:here()) end -- continue -> step/test
   local loopIns = fs:emit({ op = Op.FORLOOP, a = base, sbx = 0 }, s.line)
   fs:patch(jprep, loopIns)     -- FORPREP jumps forward to the FORLOOP instruction
   fs:patch(loopIns, bodyStart) -- FORLOOP jumps back to the body start
   fs.freereg = base
-  local loop = table.remove(fs.loops)
+  table.remove(fs.loops)
   for _, j in ipairs(loop.breaks) do fs:patch(j, fs:here()) end
 end
 
@@ -667,18 +692,21 @@ function compileGenFor(fs, s)
   -- table / __iter object becomes a proper (iterfn, state, control) triple)
   fs:emit({ op = Op.TFORPREP, a = base }, s.line)
   local jto = fs:emit({ op = Op.JMP, sbx = 0 }, s.line) -- jump to TFORCALL
-  fs.loops[#fs.loops + 1] = { breaks = {} }
+  fs.loops[#fs.loops + 1] = { breaks = {}, continues = {} }
   local bodyStart = fs:here()
   for _, decl in ipairs(s.decls) do
     if decl.captured then fs:emit({ op = Op.NEWCELL, a = decl.reg }, s.line) end
   end
   compileBlock(fs, s.body)
-  fs:patch(jto, fs:here())
+  local loop = fs.loops[#fs.loops]
+  local contTarget = fs:here()
+  for _, j in ipairs(loop.continues) do fs:patch(j, contTarget) end -- continue -> next iter
+  fs:patch(jto, contTarget)
   fs:emit({ op = Op.TFORCALL, a = base, c = nvars }, s.line)
   local jloop = fs:emit({ op = Op.TFORLOOP, a = base, sbx = 0 }, s.line)
   fs:patch(jloop, bodyStart)
   fs.freereg = base
-  local loop = table.remove(fs.loops)
+  table.remove(fs.loops)
   for _, j in ipairs(loop.breaks) do fs:patch(j, fs:here()) end
 end
 
