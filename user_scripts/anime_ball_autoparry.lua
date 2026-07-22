@@ -2115,16 +2115,28 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- super-close, super-fast clash held. Scoped to withinRange so a lone
         -- ball bouncing near other players can't trip it.
         local fastClashHold = clashDetected and withinRange
+        -- Surface-arrival time (raw distance / raw speed) and the shield-coverage
+        -- lead, computed here because BOTH pointBlank and the lone-ball window
+        -- below need them. shieldLead is the window in which a block fired now
+        -- still has its 0.6s shield covering impact (centred with ping so a stale
+        -- ball / late-registering block still lands). See the lone-ball note below.
+        local shieldLead = math.clamp(0.3 + (currentPing / 1000), 0.25, 0.7)
+        local surfaceTTI = velocity > 0
+            and (math.max(closestDistance - EFFECTIVE_HIT_RADIUS, 0) / velocity) or math.huge
         -- Point-blank guarantee: a ball essentially ON TOP of you (you're inside
-        -- each other) MUST be blocked continuously, with zero gating - no target,
-        -- no clash signal, no TTI, no direction. At thousands of studs/s inside
+        -- each other) MUST be blocked continuously. At thousands of studs/s inside
         -- each other the ball reverses many times per frame, the reversal detector
         -- can alias, and Target/ClashEffect never settle - but a 0.6s block covers
         -- ALL of those reversals, and firing it every frame keeps one always up.
-        -- This is the extreme "clash inside someone at max speed" case, made
-        -- unmissable. Radius is the ball's own 8-stud hit distance + a small
-        -- margin, so it only trips when the ball is genuinely on you.
+        -- TIME-gated as well as distance-gated: the 22-stud radius alone fires
+        -- continuously the instant a SLOW ball enters it (~0.7s out at 20 studs/s),
+        -- which whiffs the first block and burns the 1s cooldown before impact (a
+        -- real miss the sandbox caught). So require the ball to be genuinely
+        -- imminent (inside the shield window) OR stationary-on-you (a hovering
+        -- pre-serve ball at zero speed) - a real point-blank clash ball is fast
+        -- and close, so surfaceTTI is tiny and this still holds.
         local pointBlank = closestBall ~= nil and closestDistance <= (EFFECTIVE_HIT_RADIUS + 11)
+            and (surfaceTTI <= shieldLead or velocity == 0)
         -- coverable (computed above) holds fire for a normal incoming ball until
         -- its impact is within the window a block fired now would actually cover
         -- (ping + BLOCK_DURATION + frameLag). This stops the block being sprayed
@@ -2144,16 +2156,31 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- ball is handled by the panic burst, which only opens inside the tight
         -- window where the shield actually covers impact.
         local alwaysFire = clashActive or fastClashHold or pointBlank
+        -- Shield-window gate for a LONE incoming ball. `coverable` uses
+        -- coverWindow = ping + BLOCK_DURATION, which is actually TOO EARLY: a
+        -- block is only a 0.6s shield that activates ~half-a-ping after we fire,
+        -- so a block fired a whole ping+0.6 out has its shield EXPIRE before the
+        -- ball arrives, and the 1s server cooldown then locks out the re-block -
+        -- the "dead-zone miss" (first block 0.6-1.0s before impact), which the
+        -- sandbox reproduced for fast lone balls. So the lone-ball fire is gated
+        -- to the window where the 0.6s shield actually still covers impact:
+        -- ~BLOCK_DURATION minus a small margin, widened by ping (the ball we see
+        -- is stale and the block registers a ping late, so fire that much
+        -- earlier). Clash / point-blank bypass this and fire every frame - there
+        -- each successful parry resets the cooldown, so continuous fire stays
+        -- protected. Uses surfaceTTI (closest ball, raw distance/speed) and
+        -- minThreatTTI (soonest TARGETING ball) - NOT currentTimeToImpact, which
+        -- measures time to enter the parry RADIUS (up to 100 studs in high-speed
+        -- mode) and so opens far too early for a fast ball.
+        local inShieldWindow = surfaceTTI <= shieldLead
+            or (minThreatTTI or math.huge) <= shieldLead
         if amTargeted or clashActive or imminentThreat or fastClashHold or pointBlank then
-            if (withinRange or willArriveInTime) and (alwaysFire or coverable) then executeParry() end
-            -- Impact imminent (or mid-clash / point-blank): keep firing block
-            -- every frame (no cooldown) until the ball is deflected, so a single
-            -- early/whiffed parry can never leave a super-fast or hard-curving
-            -- ball - a clash return, a super-close first exchange, or a
-            -- thousand-speed point-blank clash - unblocked. For the plain
-            -- incoming-ball path the coverable gate keeps this from starting too
-            -- early and burning the cooldown into a gap.
-            if alwaysFire or ((panicNow or imminentThreat) and coverable) then
+            if (withinRange or willArriveInTime) and (alwaysFire or (coverable and inShieldWindow)) then executeParry() end
+            -- Fire block every frame while the shield window is open (or mid-clash
+            -- / point-blank), so jitter in the estimate can't leave a gap - the
+            -- FIRST block sets a shield that covers impact, later ones are
+            -- cooldown-gated by the server and harmless.
+            if alwaysFire or ((panicNow or imminentThreat) and coverable and inShieldWindow) then
                 fireBlockRemote()
                 totalBurstBlocks = totalBurstBlocks + 1
             end
