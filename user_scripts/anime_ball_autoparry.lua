@@ -1913,6 +1913,12 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- burn the cooldown too early. Pre-declared here so the fire block below
         -- (outside the ballPos scope) can read it.
         local coverable = false
+        -- surfaceArriveTime: predicted seconds until the ball's actual (curved)
+        -- path brings it within a body-radius (EFFECTIVE_HIT_RADIUS) of you - the
+        -- direction/curve-aware trigger for the shield window below. huge = the
+        -- ball's path does not reach your body soon (e.g. it's glancing past),
+        -- so we must NOT fire (that whiffs and burns the cooldown).
+        local surfaceArriveTime = math.huge
         currentTimeToImpact = math.huge
         if ballPos then
             -- The block fired now protects for BLOCK_DURATION, starting after a
@@ -1960,10 +1966,21 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
                     currentTimeToImpact = math.max(closestDistance - EFFECTIVE_HIT_RADIUS, 0) / closingSpeed
                 end
                 willArriveInTime = pingCompEnabled and arrives and arriveTime <= currentRequiredLead
+                -- Same curved-arc sim but tested against a BODY-radius sphere, to
+                -- decide when the ball's real path actually reaches YOU (the shield
+                -- window trigger). Short horizon - we only care about arrivals
+                -- inside the shield-coverage window, never the far future.
+                local sArr, sT = predictCurvedImpact(
+                    ballPos, ballVel, ballAccel, humanoidRootPart.Position, playerVel, playerGravity,
+                    EFFECTIVE_HIT_RADIUS, math.min(lookahead, 1.0), nil, ballOmega, ballAxis, camDir, camSpeed)
+                if sArr then surfaceArriveTime = sT end
             elseif closingSpeed > 0 then
                 currentTimeToImpact = math.max(closestDistance - EFFECTIVE_HIT_RADIUS, 0) / closingSpeed
                 willArriveInTime = pingCompEnabled and currentRequiredLead > 0
                     and ((closestDistance - currentParryDistance) / closingSpeed) <= currentRequiredLead
+                -- Anti-Curve off: no arc, so fall back to the straight-line closing
+                -- estimate for the shield-window trigger.
+                surfaceArriveTime = currentTimeToImpact
             end
             -- Worst-case bound: a fast-curving ball can turn fully onto you
             -- at any moment, so the estimated time-to-impact (which trusts
@@ -2168,12 +2185,17 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- is stale and the block registers a ping late, so fire that much
         -- earlier). Clash / point-blank bypass this and fire every frame - there
         -- each successful parry resets the cooldown, so continuous fire stays
-        -- protected. Uses surfaceTTI (closest ball, raw distance/speed) and
-        -- minThreatTTI (soonest TARGETING ball) - NOT currentTimeToImpact, which
-        -- measures time to enter the parry RADIUS (up to 100 studs in high-speed
-        -- mode) and so opens far too early for a fast ball.
-        local inShieldWindow = surfaceTTI <= shieldLead
-            or (minThreatTTI or math.huge) <= shieldLead
+        -- protected. The window opens on the ball's CLOSING-based surface arrival
+        -- (distance / closing speed) - direction-aware on purpose: a ball flying
+        -- SIDEWAYS or past you (closing speed <= 0) must NOT open it, or its block
+        -- whiffs and burns the 1s cooldown before the ball actually curves in (the
+        -- sandbox caught this on a Wind-Shuriken "side then snap" ball). A curving
+        -- ball opens the window the instant it turns toward you and starts
+        -- closing, which still leaves the 0.6s shield covering impact. The
+        -- anti-curve arrival (willArriveInTime) and the panic paths below add the
+        -- extra coverage for hard/late curves; pointBlank covers a ball already
+        -- on top of you regardless of direction.
+        local inShieldWindow = surfaceArriveTime <= shieldLead
         if amTargeted or clashActive or imminentThreat or fastClashHold or pointBlank then
             if (withinRange or willArriveInTime) and (alwaysFire or (coverable and inShieldWindow)) then executeParry() end
             -- Fire block every frame while the shield window is open (or mid-clash
