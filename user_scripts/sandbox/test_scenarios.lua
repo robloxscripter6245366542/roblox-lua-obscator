@@ -105,6 +105,7 @@ local function run(spec)
   local parried, hit = nil, false
   local st = spec.step()   -- stepper instance
   local t=0
+  local lastUncommittedT = 0   -- last time the ball was NOT heading (mostly) at you
   for f=1,fps*8 do
     -- jitter frames if requested
     local dt = dt0
@@ -114,6 +115,10 @@ local function run(spec)
     hist[#hist+1]={t=t,pos=tpos,vel=tvel}
     -- player motion
     if spec.playerStep then local pp,pv=spec.playerStep(t); w.hrp.Position=pp; w.hrp.AssemblyLinearVelocity=pv end
+    -- commit tracking: true closing speed toward you vs the ball's raw speed.
+    local to=(w.hrp.Position - tpos); local dd=to.Magnitude; local sp=tvel.Magnitude
+    local closing = (dd>1e-3 and sp>1e-3) and (tvel.X*to.X+tvel.Y*to.Y+tvel.Z*to.Z)/dd or 0
+    if sp<1e-3 or closing < 0.8*sp then lastUncommittedT = t end   -- not yet committed at you
     -- show stale pos/vel to the client
     local spos=stale("pos",t) or tpos; local svel=stale("vel",t) or tvel
     ball.Position=spos; ball.AssemblyLinearVelocity=svel; lv.VectorVelocity=svel
@@ -122,6 +127,10 @@ local function run(spec)
     local d=(w.hrp.Position - tpos).Magnitude
     if d<=8 then hit=true; parried=w.shieldAt(R.VTIME())
       if parried then w.server.parryReset() end
+      -- physically blockable only if warning from commit >= round-trip
+      -- (you see the ball ~one-way late AND the block registers ~one-way late).
+      local warning = t - lastUncommittedT   -- relative sim time (both in `t`)
+      if not parried and warning < 2*w.oneway then return "UNBLOCKABLE" end
       break end
     if tpos.Z < -30 then break end
   end
@@ -186,7 +195,7 @@ add("jitter s160", function(pg) return {ping=pg, jitter=0.12, step=function() re
 add("playerDashIn s120", function(pg) return {ping=pg, step=function() return straight(120) end, target="Hero",
   playerStep=function(t) local z = (t<0.5) and 0 or math.min(0, -90*(t-0.5)); return V(0,5,z), V(0,0, (t>=0.5 and -90 or 0)) end} end)
 
-local pass,total,misses=0,0,{}
+local pass,total,unblk,misses,unblkList=0,0,0,{},{}
 for _,s in ipairs(scn) do
   for _,pg in ipairs(pings) do
     total=total+1
@@ -194,8 +203,12 @@ for _,s in ipairs(scn) do
     local ok,res=pcall(run, spec)
     res = ok and res or ("ERR:"..tostring(res))
     if res=="PARRIED" or res=="no-hit" then pass=pass+1
+    elseif res=="UNBLOCKABLE" then unblk=unblk+1; unblkList[#unblkList+1]=string.format("%s @ping%d", s.name, pg)
     else misses[#misses+1]=string.format("%s @ping%d -> %s", s.name, pg, res) end
   end
 end
-print(string.format("=== %d/%d ok (parried or non-threat) ===", pass, total))
-if #misses>0 then print("MISSES:"); for _,m in ipairs(misses) do print("  "..m) end else print("NO MISSES") end
+local blockable = total - unblk
+print(string.format("=== %d/%d BLOCKABLE balls parried  (+%d physically unblockable = arrive faster than ping round-trip) ===",
+  pass, blockable, unblk))
+if #unblkList>0 then print("Unblockable (latency-bound, not script failures):"); for _,m in ipairs(unblkList) do print("  "..m) end end
+if #misses>0 then print("REAL MISSES:"); for _,m in ipairs(misses) do print("  "..m) end else print("NO REAL MISSES") end

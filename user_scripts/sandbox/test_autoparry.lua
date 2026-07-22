@@ -95,6 +95,7 @@ local function runOne(speed, pingMs)
   lv.VelocityConstraintMode=Enum.VelocityConstraintMode.Vector; lv.VectorVelocity=v3(0,0,-speed); lv.Parent=ball
   ball.Parent=Balls
   local dt=1/60; local trueZ=120; local firstT,impactT,parried
+  local spawnT=R.VTIME()
   for f=1,60*10 do
     trueZ=trueZ-speed*dt
     ball.Position=v3(0,5,trueZ+speed*oneway)  -- stale (client sees ball ~half-a-ping behind)
@@ -104,20 +105,26 @@ local function runOne(speed, pingMs)
     if trueZ<-20 then break end
   end
   local lead=(firstT and impactT) and (impactT-firstT) or nil
-  return parried, string.format("blk=%3d firstBlock=%s", server.blocks, lead and string.format("%.3fs",lead) or "never")
+  -- A straight ball is committed from spawn, so it is physically blockable only
+  -- if its whole travel time is at least the ping round-trip (you see the ball
+  -- ~one-way late AND the block registers ~one-way late). Below that, no block -
+  -- script or human - can reach the server before impact.
+  local unblockable = (not parried) and impactT and ((impactT - spawnT) < 2*oneway)
+  return parried, string.format("blk=%3d firstBlock=%s", server.blocks, lead and string.format("%.3fs",lead) or "never"), unblockable
 end
 
 local speeds={20,40,60,90,120,160,220,300,400}
 local pings={30,100,250}
-local pass,total=0,0
+local pass,unblk,total=0,0,0
 for _,pg in ipairs(pings) do
   print(string.format("--- ping %d ms ---", pg))
   for _,sp in ipairs(speeds) do
     total=total+1
-    local ok,info=runOne(sp,pg)
+    local ok,info,unb=runOne(sp,pg)
     if ok==nil then print(string.format("  s%-3d ERROR %s",sp,info))
-    else if ok then pass=pass+1 end
-      print(string.format("  s%-3d PARRIED=%-5s  %s", sp, tostring(ok), info)) end
+    else
+      if ok then pass=pass+1 elseif unb then unblk=unblk+1 end
+      print(string.format("  s%-3d %s  %s", sp, ok and "PARRIED" or (unb and "UNBLOCKABLE" or "MISS   "), info)) end
   end
 end
-print(string.format("\n=== %d/%d PARRIED ===", pass, total))
+print(string.format("\n=== %d/%d BLOCKABLE parried  (+%d unblockable: arrive faster than the ping round-trip) ===", pass, total-unblk, unblk))
