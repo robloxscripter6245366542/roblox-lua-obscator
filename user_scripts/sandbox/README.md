@@ -22,6 +22,14 @@ block timing that static analysis can't see.
   ~half-a-ping after firing, on a **1 s cooldown** (only a successful parry
   resets it). Ball **staleness** (you see the ball ~half-a-ping behind) and the
   block **register delay** are both modelled, so the timing is faithful.
+- **`test_scenarios.lua`** — a broader suite that stresses realistic cases:
+  straight balls, **homing** balls, **Wind-Shuriken "side-then-curve-in"** balls,
+  **accelerating** balls, **close spawns**, **invisible** and **unassigned**
+  (no-Target) balls, **you moving/dashing into the ball**, **30 / 144 fps**, and
+  **frame-jitter** — each across several pings. Run:
+  `lua-5.1.5/src/lua test_scenarios.lua`. Expected: **83/84**, the one miss being
+  a curve that commits toward you in less time than a 300 ms ping round-trip
+  (physically unblockable, like the fast-ball / high-ping case above).
 
 ## Running it
 
