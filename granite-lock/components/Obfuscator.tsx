@@ -98,9 +98,14 @@ export default function Obfuscator() {
         setStatus({ kind: 'ok', msg: `✓ Obfuscated · ${fmtBytes(src.length)} → ${fmtBytes(out.length)} · ${sel.join(' + ')} · seed ${seed} · ${ms} ms` });
       }
     } catch (e: any) {
-      setOutput('');
-      setOutStat('—');
-      setStatus({ kind: 'err', msg: `✗ ${e?.message ?? e}` });
+      // Keep any previous output visible instead of blanking the box, and give
+      // a size-aware hint: very large scripts can exhaust the in-browser (Fengari)
+      // interpreter's memory, especially on phones.
+      const big = src.length > 120000;
+      const hint = big
+        ? ' — this script is large; in-browser obfuscation can run out of memory. Try a smaller script, split it, or use the CLI (tools/bundle.lua).'
+        : '';
+      setStatus({ kind: 'err', msg: `✗ ${e?.message ?? e}${hint}` });
     }
   }, [source, isVM, ensureVM, layers, seed]);
 

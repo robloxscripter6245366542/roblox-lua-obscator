@@ -107,9 +107,22 @@ local function junkStmt(g, rng)
 end
 
 -- runtimeSrc: table of Lua source strings for { opcodes, bitops, serializer, vm }.
+-- Automatically scale the heaviest passes down as the source grows. The
+-- control-flow passes roughly multiply the instruction count, which cascades
+-- into serialize/compress/cipher time and (in Fengari) memory. Without this a
+-- large script can take a minute or run the browser out of memory and fail. The
+-- VM, opcode mutation, constant encryption and cipher stay on at every size;
+-- only the *density* of the bogus-flow passes and the cipher round count taper.
+local function autoScale(srcLen)
+  if srcLen <= 50000 then return { opaque = 350, junk = 600, rounds = 2 } end -- full
+  if srcLen <= 150000 then return { opaque = 120, junk = 250, rounds = 1 } end -- medium
+  return { opaque = 0, junk = 120, rounds = 1 }                                -- large: minimal
+end
+
 function M.bundle(src, runtimeSrc, chunkName, opts)
   local seed = pickSeed(opts)
   local rng = Harden.prng(seed)
+  local auto = autoScale(#src)
 
   -- 1. compile, 2. permute opcodes, 3. serialize with the permutation,
   -- 4. compress + wrap in a versioned, fingerprinted envelope,
@@ -117,11 +130,12 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
   -- Opaque-predicate injection (bogus, always-taken/never-taken control flow)
   -- uses an INDEPENDENT prng derived from the build seed, so it does not disturb
   -- the main rng stream used for opcode mutation / cipher below. Deterministic
-  -- per build; disable with opts.opaque == false.
+  -- per build; disable with opts.opaque == false (or auto-disabled when huge).
+  local opaqueDensity = (opts and opts.opaqueDensity) or auto.opaque
   local copts = { chunkName = chunkName }
-  if not (opts and opts.opaque == false) then
+  if not (opts and opts.opaque == false) and opaqueDensity > 0 then
     copts.opaque = Harden.prng((seed + 2166136261) % 4294967296)
-    copts.opaqueDensity = (opts and opts.opaqueDensity) or 350
+    copts.opaqueDensity = opaqueDensity
   end
   local proto = Compiler.compile(src, chunkName or 'input', copts)
   -- Basic-block REORDERING (semantics-exact relative of control-flow
@@ -135,14 +149,14 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
   -- Independent prng again; disable with opts.junk == false.
   if not (opts and opts.junk == false) then
     require('obfuscate').junk(proto, Harden.prng((seed + 40503) % 4294967296),
-      { density = (opts and opts.junkDensity) or 600, maxRun = 3 })
+      { density = (opts and opts.junkDensity) or auto.junk, maxRun = 3 })
   end
   -- opcode MUTATION: each opcode has several interchangeable byte encodings,
   -- picked per instruction, so one opcode appears as different bytes.
   local fwd, inv = Harden.opMutationMap(Opcodes.count, rng, 3)
   local bc = Serializer.serialize(proto, fwd, function() return rng.int(1000003) end)
   local env = Harden.envelope(Harden.compress(bc))
-  local rounds = (opts and opts.rounds) or 2
+  local rounds = (opts and opts.rounds) or auto.rounds
   local sealed, cp = Harden.seal(env, rng, rounds)
   local alpha = permuteAlphabet(rng)
   local payload = encodeWith(alpha, sealed)
