@@ -1370,7 +1370,15 @@ local swordServiceProxy = nil
 local function getSwordService()
     if swordServiceProxy then return swordServiceProxy end
     pcall(function()
-        swordServiceProxy = require(ReplicatedStorage:WaitForChild("Framework")):Fetch("SwordService")
+        -- Bounded WaitForChild: this runs inside fireBlockRemote's spawned
+        -- thread, so a plain (infinite) WaitForChild would hang - and leak - a
+        -- fresh thread on every block attempt if Framework were ever missing.
+        -- On timeout we return nil and fireBlockRemote falls back to the generic
+        -- RemoteFunction router.
+        local framework = ReplicatedStorage:WaitForChild("Framework", 5)
+        if framework then
+            swordServiceProxy = require(framework):Fetch("SwordService")
+        end
     end)
     return swordServiceProxy
 end
@@ -1431,12 +1439,18 @@ end
 local function createSpeedLabel(ball)
     if not showSpeedLabel then return {Billboard = nil, Label = nil} end
     if billboardCache[ball] then return billboardCache[ball] end
+    -- A BillboardGui needs a BasePart to position against. When the ball is a
+    -- Model (not a BasePart), parenting straight to it gives the GUI nothing to
+    -- anchor to and it renders at the world origin / not at all. Adorn it to the
+    -- resolved BasePart so the label sits on the ball for model-balls too.
+    local anchorPart = getBallPart(ball) or ball
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "SpeedLabel"
     billboard.AlwaysOnTop = true
     billboard.Size = UDim2.new(0, 100, 0, 40)
     billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.Parent = ball
+    billboard.Adornee = anchorPart
+    billboard.Parent = anchorPart
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, 0, 1, 0)
     label.BackgroundTransparency = 1
@@ -1640,7 +1654,16 @@ end)
 -- Wire up the live-state hooks before anything reads from their caches.
 for _, player in pairs(Players:GetPlayers()) do bindPlayer(player) end
 track(Players.PlayerAdded:Connect(bindPlayer))
-track(Players.PlayerRemoving:Connect(function(player) playerHRPCache[player] = nil end))
+track(Players.PlayerRemoving:Connect(function(player)
+    playerHRPCache[player] = nil
+    -- Also destroy this player's detector sphere. updatePlayerDetectorSpheres
+    -- only iterates CURRENT players, so a departed player's sphere would
+    -- otherwise linger in workspace forever, frozen at its last position, and
+    -- leak in the playerDetectorSpheres table.
+    local sphere = playerDetectorSpheres[player.Name]
+    if sphere then sphere:Destroy() end
+    playerDetectorSpheres[player.Name] = nil
+end))
 watchForNamedChild("Balls", trackBallsFolder)
 watchForNamedChild(LocalPlayer.Name, bindHighlightFolder)
 
