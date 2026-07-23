@@ -2154,6 +2154,33 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- and close, so surfaceTTI is tiny and this still holds.
         local pointBlank = closestBall ~= nil and closestDistance <= (EFFECTIVE_HIT_RADIUS + 11)
             and (surfaceTTI <= shieldLead or velocity == 0)
+        -- Clash-incoming PRE-SHIELD. The way you die to "they dash into me and
+        -- clash inside me": once the ball is hit from INSIDE you it lands in a few
+        -- ms - far under one ping - so reacting to the ball is hopeless. But the
+        -- opponent's DASH is a ~0.3s telegraph. So the instant an opposing player
+        -- is dashing INTO you (closing fast) at close range with a ball in play, we
+        -- start firing NOW - a 0.6s shield goes up during their approach and is
+        -- already covering you when the point-blank clash begins. Gated tight
+        -- (opponent within CLASH_NEAR and closing >= CLASH_DASH_SPEED, or already
+        -- overlapping you) so ordinary nearby movement doesn't trip it; a wasted
+        -- pre-shield is harmless (server cooldown-gates it). Off with Clash toggle.
+        local clashIncoming = false
+        if Clash.enabled and closestBall and closestDistance <= 34 then
+            for _, pl in ipairs(Players:GetPlayers()) do
+                if pl ~= LocalPlayer then
+                    local ohrp = getPlayerHRP(pl)
+                    if ohrp then
+                        local off = humanoidRootPart.Position - ohrp.Position
+                        local od = off.Magnitude
+                        if od <= 18 then
+                            local ov = ohrp.AssemblyLinearVelocity
+                            local oClose = od > 1e-3 and ov:Dot(off) / od or 0
+                            if od <= 9 or oClose >= 45 then clashIncoming = true break end
+                        end
+                    end
+                end
+            end
+        end
         -- coverable (computed above) holds fire for a normal incoming ball until
         -- its impact is within the window a block fired now would actually cover
         -- (ping + BLOCK_DURATION + frameLag). This stops the block being sprayed
@@ -2172,7 +2199,7 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- (where each parry resets the cooldown, so it stays protected). A lone
         -- ball is handled by the panic burst, which only opens inside the tight
         -- window where the shield actually covers impact.
-        local alwaysFire = clashActive or fastClashHold or pointBlank
+        local alwaysFire = clashActive or fastClashHold or pointBlank or clashIncoming
         -- Shield-window gate for a LONE incoming ball. `coverable` uses
         -- coverWindow = ping + BLOCK_DURATION, which is actually TOO EARLY: a
         -- block is only a 0.6s shield that activates ~half-a-ping after we fire,
@@ -2196,8 +2223,8 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- extra coverage for hard/late curves; pointBlank covers a ball already
         -- on top of you regardless of direction.
         local inShieldWindow = surfaceArriveTime <= shieldLead
-        if amTargeted or clashActive or imminentThreat or fastClashHold or pointBlank then
-            if (withinRange or willArriveInTime) and (alwaysFire or (coverable and inShieldWindow)) then executeParry() end
+        if amTargeted or clashActive or imminentThreat or fastClashHold or pointBlank or clashIncoming then
+            if (withinRange or willArriveInTime or clashIncoming) and (alwaysFire or (coverable and inShieldWindow)) then executeParry() end
             -- Fire block every frame while the shield window is open (or mid-clash
             -- / point-blank), so jitter in the estimate can't leave a gap - the
             -- FIRST block sets a shield that covers impact, later ones are

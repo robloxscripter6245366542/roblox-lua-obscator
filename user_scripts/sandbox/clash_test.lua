@@ -10,7 +10,7 @@ local MOCK=HERE.."mock_roblox.lua"
 local SCRIPT=arg[1] or (HERE.."../anime_ball_autoparry.lua")
 local SRC=assert(io.open(SCRIPT,"r")):read("*a")
 
-local function run(S, Dstart, Dend, dashT, ping, fps)
+local function run(S, Dstart, Dend, dashT, ping, fps, seed)
   local R=dofile(MOCK); local v3,CFrame,Enum,Instance,task=R.v3,R.CFrame,R.Enum,R.Instance,R.task
   local oneway=ping/1000/2
   -- server: our block -> 0.6s shield (registers ~half-ping late), 1s cooldown,
@@ -79,8 +79,7 @@ local function run(S, Dstart, Dend, dashT, ping, fps)
   -- ball ping-ponging between us (z=0) and Foe (z=D)
   local ball=Instance.new("Part"); ball.Name="Ball"
   local lv=Instance.new("LinearVelocity"); lv.Enabled=true; lv.RelativeTo=Enum.ActuatorRelativeTo.World; lv.VelocityConstraintMode=Enum.VelocityConstraintMode.Vector; lv.Parent=ball
-  ball.Parent=Balls
-  Eff:SetAttribute("ClashEffect", true); ball:SetAttribute("ClashEffect", true)
+  ball.Parent=Balls   -- ClashEffect is set only once the point-blank clash starts
   local dt=1/fps
   local warmup=0.8
   local z=Dstart; local dir=-1   -- start on the opponent side, heading toward us
@@ -88,53 +87,68 @@ local function run(S, Dstart, Dend, dashT, ping, fps)
   local function pushStale(p,vv,t) histP[#histP+1]={t=t,v=p}; histV[#histV+1]={t=t,v=vv} end
   local function stalev(h,t) local tt=t-oneway; for i=#h,1,-1 do if h[i].t<=tt then return h[i].v end end return h[1] and h[1].v end
   local parries, dropped, t = 0, false, 0
+  local contactT = warmup + dashT
+  local clashing = false
+  local truePos, trueVel
   for f=1,fps*5 do
     t=t+dt
-    -- opponent holds at Dstart during warm-up, THEN dashes inside to Dend
+    local dashing = (t>=warmup and t<contactT)
     local D = (t<warmup) and Dstart or (Dstart + (Dend-Dstart)*math.min(1,(t-warmup)/dashT))
     fhrp.Position=v3(0,5,D)
-    z = z + dir*S*dt
-    if dir>0 and z>=D then z=D; dir=-1; ball:SetAttribute("Target","Hero") end
-    if dir<0 and z<=0 then
-      -- ball reached US. Seed the FIRST exchange as established (you started the
-      -- clash by parrying), then require a live shield on every RETURN - that is
-      -- the "can you sustain it as they dash inside" test the user is asking about.
-      if parries==0 then
-        -- being mid-clash means you JUST parried, so a 0.6s shield is live now
-        parries=1; server.shields[#server.shields+1]={R.VTIME(), R.VTIME()+0.6}; server.parryReset()
-        z=0; dir=1; ball:SetAttribute("Target","Foe")
-      elseif shieldAt(R.VTIME()) then parries=parries+1; server.parryReset(); z=0; dir=1; ball:SetAttribute("Target","Foe")
-      else dropped=true; break end
+    local dashVz = (Dend-Dstart)/dashT  -- toward you (negative)
+    fhrp.AssemblyLinearVelocity = dashing and v3(0,0,dashVz) or v3(0,0,0)
+
+    if t < contactT then
+      -- PHASE 1: the ball rides IN with the opponent (it's THEIRS - Target=Foe),
+      -- approaching at dash speed. The only way to be safe when they hit it
+      -- point-blank is to already have a shield up from reading their dash.
+      -- The ball is the OPPONENT'S until they hit it - held out of point-blank
+      -- range (28 studs) during the dash, so nothing but the opponent's DASH
+      -- itself warns of the clash. This is the "they dash into me and clash
+      -- inside me" case: without the dash-read pre-shield you have no shield up
+      -- when it snaps point-blank, and you lose.
+      truePos=v3(0,5,28); trueVel=v3(0,0,0)
+      ball:SetAttribute("Target","Foe")
+      z=Dend
+    else
+      -- PHASE 2: point-blank clash - ball ping-pongs 0..Dend at clash speed S.
+      if not clashing then clashing=true; z=Dend; dir=-1 end
+      z = z + dir*S*dt
+      if dir>0 and z>=Dend then z=Dend; dir=-1; ball:SetAttribute("Target","Hero") end
+      if dir<0 and z<=0 then
+        if shieldAt(R.VTIME()) then parries=parries+1; server.parryReset(); z=0; dir=1; ball:SetAttribute("Target","Foe")
+        else dropped=true; break end
+      end
+      truePos=v3(0,5,z); trueVel=v3(0,0,dir*S)
+      Eff:SetAttribute("ClashEffect", true)
     end
-    -- present the (stale) ball to the client, keep clash attributes live
-    local truePos=v3(0,5,z); local trueVel=v3(0,0,dir*S)
     pushStale(truePos, trueVel, t)
     local sp=stalev(histP,t) or truePos; local sv=stalev(histV,t) or trueVel
     ball.Position=sp; ball.AssemblyLinearVelocity=sv; lv.VectorVelocity=sv
-    Eff:SetAttribute("ClashEffect", true)   -- game holds ClashEffect during a clash
     RunService.Heartbeat:Fire(); R.advance(dt)
   end
   return (not dropped), parries
 end
 
+-- Realistic dash-in: opponent starts ~35 studs out (dash range) and closes to a
+-- point-blank Dend, so the ball has a real APPROACH the script can pre-block.
 local cases = {
-  {name="normal clash            S150 D30->10", S=150, Ds=30, De=10, dash=1.5},
-  {name="fast clash              S250 D20->6",  S=250, Ds=20, De=6,  dash=1.2},
-  {name="dash INSIDE point-blank  S250 D25->3", S=250, Ds=25, De=3,  dash=0.8},
-  {name="super-fast inside        S400 D15->2", S=400, Ds=15, De=2,  dash=0.6},
-  {name="instant inside           S600 D8->2",  S=600, Ds=8,  De=2,  dash=0.4},
+  {name="normal clash    S150 ->8 ", S=150, Ds=35, De=8, dash=0.35},
+  {name="fast clash      S250 ->5 ", S=250, Ds=35, De=5, dash=0.35},
+  {name="pointblank in   S250 ->3 ", S=250, Ds=35, De=3, dash=0.30},
+  {name="super-fast in   S400 ->2 ", S=400, Ds=35, De=2, dash=0.30},
+  {name="insane in       S600 ->2 ", S=600, Ds=35, De=2, dash=0.30},
 }
-local pings={30,120,250}
-print("Clash HOLD test - opponent dashes INSIDE you, ball ping-pongs point-blank.")
-print("HELD = shield stayed up on every return (clash sustained); (n) = parries.\n")
-local allHeld=true
+local pings={50,100,150,200}
+print("=== DASH-IN clash: opponent dashes into you, ball snaps point-blank ===")
+print("The ball rides in with them (out of point-blank range) so ONLY their dash")
+print("warns of the clash - the real 'they dash inside me and I lose' case.")
+print("HELD = a shield was up when it snapped point-blank; LOST = you died.\n")
 for _,c in ipairs(cases) do
   local line=c.name
   for _,pg in ipairs(pings) do
-    local held,parries = run(c.S,c.Ds,c.De,c.dash,pg,60)
-    if not held then allHeld=false end
-    line=line..string.format("  | p%d: %s(%d)", pg, held and "HELD" or "DROPPED", parries or 0)
+    local held,parries = run(c.S,c.Ds,c.De,c.dash,pg,60,false)  -- NO seed
+    line=line..string.format("  | p%d:%s", pg, held and "HELD " or "LOST ")
   end
   print(line)
 end
-print("\n"..(allHeld and "=== ALL CLASHES HELD (no drop) ===" or "=== SOME CLASHES DROPPED ==="))
