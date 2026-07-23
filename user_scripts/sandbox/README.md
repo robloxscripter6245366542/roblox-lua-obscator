@@ -37,6 +37,16 @@ block timing that static analysis can't see.
   `lua-5.1.5/src/lua test_scenarios.lua`. Expected: **all blockable balls
   parried, NO REAL MISSES**; the unblockables are all high-ping + extreme cases.
 
+- **`clash_test.lua`** — a dedicated **clash** simulator: a ball ping-pongs
+  between you and an opponent who **dashes inside you** (down to 2-3 studs) while
+  the exchange speeds up (to 600 studs/s = ~150 reversals/s). It models the real
+  clash rule from the dump - a **successful parry resets the block cooldown**, so
+  continuous point-blank fire holds a live 0.6 s shield across every return. It
+  scores whether you **sustain** the clash (never eat an unshielded return).
+  Expected: **ALL CLASHES HELD** at every ping. (The only clash vulnerability is
+  the *cold start* at very high ping - the first return arriving faster than the
+  round-trip - which is the same latency wall as any first ball.)
+
 ## Running it
 
 You need a Lua **5.1** interpreter (Roblox's Luau is 5.1-based). Build one:
