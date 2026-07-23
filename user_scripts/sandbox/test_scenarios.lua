@@ -157,6 +157,16 @@ local function straight(speed, startZ, startX)
   local x=startX or 0; local z=startZ or 120
   return function(dt) z=z-speed*dt; return V(x,5,z), V(0,0,-speed) end
 end
+-- straight approach from any azimuth (deg, around the player) and elevation
+-- (deg, +up / -down). dir points FROM player TO spawn; velocity is -dir*speed.
+local function approachFrom(speed, azDeg, elevDeg, dist)
+  local az=math.rad(azDeg or 0); local el=math.rad(elevDeg or 0); local d=dist or 120
+  local dir=V(math.sin(az)*math.cos(el), math.sin(el), math.cos(az)*math.cos(el))
+  local hero=V(0,5,0)
+  local pos=hero+V(dir.X*d,dir.Y*d,dir.Z*d)
+  local vel=V(-dir.X*speed,-dir.Y*speed,-dir.Z*speed)
+  return function(dt) pos=pos+V(vel.X*dt,vel.Y*dt,vel.Z*dt); return pos, vel end
+end
 local function homing(speed, turnRate, startZ, startX)
   local pos=V(startX or 30,5,startZ or 120)
   local vel=V(-(startX or 30),0,-(startZ or 120)); local m=vel.Magnitude; vel=V(vel.X/m*speed,0,vel.Z/m*speed)
@@ -316,6 +326,23 @@ add("playerDashIn s120", function(pg) return {ping=pg, step=function() return st
   playerStep=function(t) local z = (t<0.5) and 0 or math.min(0, -90*(t-0.5)); return V(0,5,z), V(0,0, (t>=0.5 and -90 or 0)) end} end)
 add("playerStrafe s160", function(pg) return {ping=pg, step=function() return straight(160) end, target="Hero",
   playerStep=function(t) return V(math.sin(t*6)*10,5,0), V(math.cos(t*6)*60,0,0) end} end)
+
+-- FULL 360 azimuth sweep (every 30 degrees) at two speeds
+for az=0,330,30 do for _,sp in ipairs({90,240}) do
+  add(string.format("az%d s%d",az,sp), function(pg) return {ping=pg, step=function() return approachFrom(sp,az,0) end, target="Hero"} end)
+end end
+-- elevation angles (from above / below) all around
+for _,el in ipairs({-60,-30,30,60}) do for _,az in ipairs({0,90,180,270}) do
+  add(string.format("el%d az%d",el,az), function(pg) return {ping=pg, step=function() return approachFrom(160,az,el) end, target="Hero"} end)
+end end
+-- FINE speed sweep straight-on (fills gaps between the coarse speeds above)
+for _,sp in ipairs({10,30,50,80,110,150,190,240,300,380,480,560}) do
+  add("fineSpeed s"..sp, function(pg) return {ping=pg, step=function() return straight(sp) end, target="Hero"} end)
+end
+-- fine speed at an off-axis angle too (135 deg), to combine speed + angle
+for _,sp in ipairs({40,120,220,340}) do
+  add("angledSpeed a135 s"..sp, function(pg) return {ping=pg, step=function() return approachFrom(sp,135,0) end, target="Hero"} end)
+end
 
 local pass,total,unblk,misses,unblkList=0,0,0,{},{}
 for _,s in ipairs(scn) do
