@@ -129,13 +129,23 @@ local function run(spec)
     -- a teleport (position discontinuity) is a fresh threat onset: it wipes out
     -- the warning you had, so re-commit from here for the blockable classification.
     if prevTruePos and (tpos - prevTruePos).Magnitude > sp*dt*4 + 5 then lastUncommittedT = t end
-    prevTruePos = tpos
     -- show stale pos/vel to the client
     local spos=stale("pos",t) or tpos; local svel=stale("vel",t) or tvel
     ball.Position=spos; ball.AssemblyLinearVelocity=svel; if lv then lv.VectorVelocity=svel end
     w.RunService.Heartbeat:Fire(); R.advance(dt)
-    -- true impact
-    local d=(w.hrp.Position - tpos).Magnitude
+    -- true impact - segment-based so a very fast ball can't TUNNEL past the
+    -- 8-stud contact zone between frames (closest approach of the segment
+    -- prevTruePos->tpos to the player). Skip the segment test on a teleport frame.
+    local d
+    if prevTruePos and (tpos-prevTruePos).Magnitude <= sp*dt*4 + 5 then
+      local A=prevTruePos; local B=tpos; local P=w.hrp.Position
+      local AB=B-A; local abLen2=AB.X*AB.X+AB.Y*AB.Y+AB.Z*AB.Z
+      local u = abLen2>1e-9 and math.max(0,math.min(1,((P.X-A.X)*AB.X+(P.Y-A.Y)*AB.Y+(P.Z-A.Z)*AB.Z)/abLen2)) or 0
+      local C=A+v3(AB.X*u,AB.Y*u,AB.Z*u)
+      d=(P-C).Magnitude
+    else
+      d=(w.hrp.Position - tpos).Magnitude
+    end
     if d<=8 then hit=true; parried=w.shieldAt(R.VTIME())
       if parried then w.server.parryReset() end
       -- physically blockable only if warning from commit >= round-trip
@@ -146,6 +156,7 @@ local function run(spec)
       if not parried and warning < 2*w.oneway + dt0 then return "UNBLOCKABLE" end
       break end
     if tpos.Z < -30 then break end
+    prevTruePos = tpos   -- previous-frame position for next iteration's tunneling/teleport tests
   end
   if not hit then return "no-hit" end
   return parried and "PARRIED" or "MISS"
@@ -343,6 +354,25 @@ end
 for _,sp in ipairs({40,120,220,340}) do
   add("angledSpeed a135 s"..sp, function(pg) return {ping=pg, step=function() return approachFrom(sp,135,0) end, target="Hero"} end)
 end
+-- EXTREME straight speeds
+for _,sp in ipairs({500,650,800,1000,1300,1600,2000}) do
+  add("hyperStraight s"..sp, function(pg) return {ping=pg, step=function() return straight(sp,150) end, target="Hero"} end)
+end
+-- FAST CURVES (500+): homing at high speed across turn rates
+for _,sp in ipairs({500,700,900,1200}) do for _,tr in ipairs({4,8,12}) do
+  add(string.format("fastHoming s%d t%d",sp,tr), function(pg) return {ping=pg, step=function() return homing(sp,tr,150,60) end, target="Hero"} end)
+end end
+-- fast side-then-in and orbit-snap
+for _,sp in ipairs({500,800,1200}) do add("fastSideIn s"..sp, function(pg) return {ping=pg, step=function() return sideThenIn(sp) end, target="Hero"} end) end
+for _,sp in ipairs({500,800}) do add("fastOrbitSnap s"..sp, function(pg) return {ping=pg, step=function() return orbitSnap(sp,45,0.5) end, target="Hero"} end) end
+-- fast sharp turn + fast s-curve + fast spiral
+for _,sp in ipairs({500,800}) do
+  add("fastSharpTurn s"..sp, function(pg) return {ping=pg, step=function() return sharpTurn(sp) end, target="Hero"} end)
+  add("fastSCurve s"..sp,   function(pg) return {ping=pg, step=function() return sCurve(sp,150) end, target="Hero"} end)
+  add("fastSpiral s"..sp,   function(pg) return {ping=pg, step=function() return spiralIn(sp) end, target="Hero"} end)
+end
+-- fast from all angles
+for az=0,315,45 do add("fastAz"..az.." s700", function(pg) return {ping=pg, step=function() return approachFrom(700,az,0,150) end, target="Hero"} end) end
 
 local pass,total,unblk,misses,unblkList=0,0,0,{},{}
 for _,s in ipairs(scn) do
