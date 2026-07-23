@@ -22,14 +22,20 @@ block timing that static analysis can't see.
   ~half-a-ping after firing, on a **1 s cooldown** (only a successful parry
   resets it). Ball **staleness** (you see the ball ~half-a-ping behind) and the
   block **register delay** are both modelled, so the timing is faithful.
-- **`test_scenarios.lua`** — a broader suite that stresses realistic cases:
-  straight balls, **homing** balls, **Wind-Shuriken "side-then-curve-in"** balls,
-  **accelerating** balls, **close spawns**, **invisible** and **unassigned**
-  (no-Target) balls, **you moving/dashing into the ball**, **30 / 144 fps**, and
-  **frame-jitter** — each across several pings. Run:
-  `lua-5.1.5/src/lua test_scenarios.lua`. Expected: **83/84**, the one miss being
-  a curve that commits toward you in less time than a 300 ms ping round-trip
-  (physically unblockable, like the fast-ball / high-ping case above).
+- **`test_scenarios.lua`** — a broad suite (~230 cases across several pings) that
+  stresses **every curve, turn and glitch**: straight; **homing** at 4 turn rates
+  (up to `MAX_TURN_RATE`); **side-then-curve-in** and **orbit-then-snap**
+  Wind-Shuriken; **spiral-in**; **sharp 90° last-instant turn**; **S-curve weave**;
+  **diagonal** and **from-behind** approaches; **accelerating / decelerating**;
+  **hover-then-launch**; **close spawns**; **invisible** and **unassigned**
+  (no-Target) balls; and glitches — **teleporting** ball, **velocity spike**
+  (parry-bounce), **no LinearVelocity**, **flickering / re-assigning Target**,
+  **you dashing / strafing**, **15 / 30 / 144 fps**, **frame-jitter**, and a
+  **freeze hitch**. Each result is classified **blockable** vs **physically
+  unblockable** (a ball whose warning is shorter than the ping round-trip -
+  `warning < 2·½ping + 1 frame` - can't be blocked by anything). Run:
+  `lua-5.1.5/src/lua test_scenarios.lua`. Expected: **all blockable balls
+  parried, NO REAL MISSES**; the unblockables are all high-ping + extreme cases.
 
 ## Running it
 
