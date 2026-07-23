@@ -88,8 +88,11 @@ local function run(spec)
   local hl=Instance.new("Highlight"); hl.Name="Highlight"
   if spec.target ~= false then hl.Parent=w.heroF end   -- targeted highlight unless invisible/unassigned
   local ball=Instance.new("Part"); ball.Name="Ball"
-  local lv=Instance.new("LinearVelocity"); lv.Enabled=true; lv.RelativeTo=Enum.ActuatorRelativeTo.World
-  lv.VelocityConstraintMode=Enum.VelocityConstraintMode.Vector; lv.Parent=ball
+  local lv=nil
+  if not spec.noLV then
+    lv=Instance.new("LinearVelocity"); lv.Enabled=true; lv.RelativeTo=Enum.ActuatorRelativeTo.World
+    lv.VelocityConstraintMode=Enum.VelocityConstraintMode.Vector; lv.Parent=ball
+  end
   if spec.target ~= false and spec.target ~= nil then ball:SetAttribute("Target", spec.target) end
   if spec.invisible then ball:SetAttribute("Invisible", true) end
   ball.Parent=w.Balls
@@ -106,22 +109,30 @@ local function run(spec)
   local st = spec.step()   -- stepper instance
   local t=0
   local lastUncommittedT = 0   -- last time the ball was NOT heading (mostly) at you
+  local prevTruePos = nil
   for f=1,fps*8 do
     -- jitter frames if requested
     local dt = dt0
     if spec.jitter and (f%20==0) then dt = dt0 + spec.jitter end
+    if spec.freezeAt and f==spec.freezeAt then dt = dt0 + 0.4 end  -- big frame spike / hitch
     t = t + dt
     local tpos,tvel = st(dt, w.hrp.Position)
     hist[#hist+1]={t=t,pos=tpos,vel=tvel}
+    -- per-frame attribute glitches (Target flicker / retarget / Invisible toggle)
+    if spec.attrStep then spec.attrStep(t, ball) end
     -- player motion
     if spec.playerStep then local pp,pv=spec.playerStep(t); w.hrp.Position=pp; w.hrp.AssemblyLinearVelocity=pv end
     -- commit tracking: true closing speed toward you vs the ball's raw speed.
     local to=(w.hrp.Position - tpos); local dd=to.Magnitude; local sp=tvel.Magnitude
     local closing = (dd>1e-3 and sp>1e-3) and (tvel.X*to.X+tvel.Y*to.Y+tvel.Z*to.Z)/dd or 0
     if sp<1e-3 or closing < 0.8*sp then lastUncommittedT = t end   -- not yet committed at you
+    -- a teleport (position discontinuity) is a fresh threat onset: it wipes out
+    -- the warning you had, so re-commit from here for the blockable classification.
+    if prevTruePos and (tpos - prevTruePos).Magnitude > sp*dt*4 + 5 then lastUncommittedT = t end
+    prevTruePos = tpos
     -- show stale pos/vel to the client
     local spos=stale("pos",t) or tpos; local svel=stale("vel",t) or tvel
-    ball.Position=spos; ball.AssemblyLinearVelocity=svel; lv.VectorVelocity=svel
+    ball.Position=spos; ball.AssemblyLinearVelocity=svel; if lv then lv.VectorVelocity=svel end
     w.RunService.Heartbeat:Fire(); R.advance(dt)
     -- true impact
     local d=(w.hrp.Position - tpos).Magnitude
@@ -130,7 +141,9 @@ local function run(spec)
       -- physically blockable only if warning from commit >= round-trip
       -- (you see the ball ~one-way late AND the block registers ~one-way late).
       local warning = t - lastUncommittedT   -- relative sim time (both in `t`)
-      if not parried and warning < 2*w.oneway then return "UNBLOCKABLE" end
+      -- physically blockable needs warning >= round-trip PLUS one frame of slack
+      -- (a client can only fire on a frame boundary, not sub-frame).
+      if not parried and warning < 2*w.oneway + dt0 then return "UNBLOCKABLE" end
       break end
     if tpos.Z < -30 then break end
   end
@@ -177,23 +190,132 @@ local function accel(startSpeed, a, startZ)
   local z=startZ or 130; local sp=startSpeed
   return function(dt) sp=sp+a*dt; z=z-sp*dt; return V(0,5,z), V(0,0,-sp) end
 end
+local function decel(startSpeed, a, startZ)   -- fast then slows (a<0)
+  local z=startZ or 120; local sp=startSpeed
+  return function(dt) sp=math.max(10, sp+a*dt); z=z-sp*dt; return V(0,5,z), V(0,0,-sp) end
+end
+local function diagonal(speed, angDeg, startDist)   -- approaches at an angle
+  local a=math.rad(angDeg); local d=startDist or 120
+  local pos=V(math.sin(a)*d, 5, math.cos(a)*d)
+  local vel=V(-math.sin(a)*speed, 0, -math.cos(a)*speed)
+  return function(dt) pos=pos+V(vel.X*dt,0,vel.Z*dt); return pos,vel end
+end
+local function fromBehind(speed)   -- comes from -Z (behind a -Z-facing player)
+  local z=-120; return function(dt) z=z+speed*dt; return V(0,5,z), V(0,0,speed) end
+end
+local function sCurve(speed, amp)   -- weaves left-right while approaching
+  local z=120; local ph=0
+  return function(dt) ph=ph+dt; z=z-speed*dt
+    local vx=amp*math.cos(ph*4); local x=(amp/4)*math.sin(ph*4)
+    return V(x,5,z), V(vx,0,-speed) end
+end
+local function orbitSnap(speed, radius, orbitTime)   -- Wind Shuriken: orbit then snap in
+  local pos=V(radius,5,0); local th=0; local snapping=false; local snapVel
+  return function(dt, hero)
+    if th*radius/speed < orbitTime and not snapping then
+      th=th + (speed/radius)*dt
+      pos=hero + V(math.cos(th)*radius, 0, math.sin(th)*radius)
+      local vx=-math.sin(th)*speed; local vz=math.cos(th)*speed
+      return pos, V(vx,0,vz)
+    else
+      snapping=true
+      if not snapVel then local d=(hero-pos); local m=d.Magnitude; snapVel=V(d.X/m*speed,0,d.Z/m*speed) end
+      pos=pos+V(snapVel.X*dt,0,snapVel.Z*dt); return pos, snapVel
+    end
+  end
+end
+local function spiralIn(speed, r0)   -- shrinking spiral into the player
+  local r=r0 or 80; local th=0
+  return function(dt, hero)
+    r=math.max(2, r-speed*0.35*dt); th=th+(speed/math.max(r,6))*dt
+    local pos=hero+V(math.cos(th)*r,0,math.sin(th)*r)
+    local vx=-math.sin(th)*speed; local vz=math.cos(th)*speed
+    return pos, V(vx,0,vz)
+  end
+end
+local function sharpTurn(speed, turnDist)   -- straight in, hard 90-degree turn near you
+  local pos=V(turnDist or 45,5,60); local turned=false; local vel=V(0,0,-speed)
+  return function(dt,hero)
+    if not turned and pos.Z<=15 then turned=true; local d=(hero-pos); local m=d.Magnitude; vel=V(d.X/m*speed,0,d.Z/m*speed) end
+    pos=pos+V(vel.X*dt,0,vel.Z*dt); return pos,vel
+  end
+end
+local function hoverLaunch(speed, hoverT)   -- sits still, then launches at you
+  local pos=V(0,5,90); local t=0
+  return function(dt,hero) t=t+dt
+    if t<hoverT then return pos, V(0,0,0) end
+    pos=pos+V(0,0,-speed*dt); return pos, V(0,0,-speed) end
+end
+local function teleportIn(speed)   -- straight, then jumps 40 studs closer once
+  local z=120; local jumped=false
+  return function(dt) z=z-speed*dt; if not jumped and z<80 then jumped=true; z=z-40 end
+    return V(0,5,z), V(0,0,-speed) end
+end
+local function velSpike(speed)   -- reports a huge 1-frame velocity spike (parry-bounce glitch)
+  local z=120; local n=0
+  return function(dt) n=n+1; z=z-speed*dt
+    local v = (n%37==0) and V(0,0,4000) or V(0,0,-speed)   -- momentary reversed mega-velocity
+    return V(0,5,z), v end
+end
+local function reverseBounce(speed)   -- approaches, bounces away, comes back (clash-ish)
+  local z=120; local ph=0
+  return function(dt) ph=ph+dt; local dir = (ph%0.5<0.25) and -1 or 1; z=z-speed*dt*((dir<0) and 1 or -0.2)
+    return V(0,5,z), V(0,0,dir*speed) end
+end
 
 -- ---- build scenario list ----
 local scn = {}
 local pings={20,90,180,300}
 local function add(name, mk) scn[#scn+1]={name=name, mk=mk} end
 
-for _,sp in ipairs({20,60,120,200,320}) do add("straight s"..sp, function(pg) return {ping=pg, step=function() return straight(sp) end, target="Hero"} end) end
-for _,sp in ipairs({40,120,220}) do add("homing s"..sp, function(pg) return {ping=pg, step=function() return homing(sp,6) end, target="Hero"} end) end
-for _,sp in ipairs({120,220}) do add("sideThenIn s"..sp, function(pg) return {ping=pg, step=function() return sideThenIn(sp) end, target="Hero"} end) end
+-- straights
+for _,sp in ipairs({20,60,120,200,320,450}) do add("straight s"..sp, function(pg) return {ping=pg, step=function() return straight(sp) end, target="Hero"} end) end
+-- homing at many turn rates (12 = MAX_TURN_RATE)
+for _,sp in ipairs({40,120,220}) do for _,tr in ipairs({2,4,8,12}) do
+  add(string.format("homing s%d t%d",sp,tr), function(pg) return {ping=pg, step=function() return homing(sp,tr) end, target="Hero"} end) end end
+-- side-then-in (Wind Shuriken snap)
+for _,sp in ipairs({120,220,320}) do add("sideThenIn s"..sp, function(pg) return {ping=pg, step=function() return sideThenIn(sp) end, target="Hero"} end) end
+-- orbit-then-snap (true Wind Shuriken)
+for _,sp in ipairs({120,220}) do for _,r in ipairs({25,45}) do
+  add(string.format("orbitSnap s%d r%d",sp,r), function(pg) return {ping=pg, step=function() return orbitSnap(sp,r,0.7) end, target="Hero"} end) end end
+-- spiral in
+for _,sp in ipairs({120,220}) do add("spiralIn s"..sp, function(pg) return {ping=pg, step=function() return spiralIn(sp) end, target="Hero"} end) end
+-- sharp last-instant 90-degree turn
+for _,sp in ipairs({90,180}) do add("sharpTurn s"..sp, function(pg) return {ping=pg, step=function() return sharpTurn(sp) end, target="Hero"} end) end
+-- s-curve weave
+for _,sp in ipairs({120,220}) do add("sCurve s"..sp, function(pg) return {ping=pg, step=function() return sCurve(sp,120) end, target="Hero"} end) end
+-- diagonal approaches
+for _,ang in ipairs({30,45,60}) do add("diagonal a"..ang, function(pg) return {ping=pg, step=function() return diagonal(160,ang) end, target="Hero"} end) end
+-- from behind
+add("fromBehind s160", function(pg) return {ping=pg, step=function() return fromBehind(160) end, target="Hero"} end)
+-- accel / decel
 add("accel 30->300", function(pg) return {ping=pg, step=function() return accel(30,120) end, target="Hero"} end)
-for _,sp in ipairs({60,160}) do add("closeSpawn40 s"..sp, function(pg) return {ping=pg, step=function() return straight(sp,40) end, target="Hero"} end) end
+add("decel 300->", function(pg) return {ping=pg, step=function() return decel(300,-260) end, target="Hero"} end)
+-- hover then launch
+add("hoverLaunch s150", function(pg) return {ping=pg, step=function() return hoverLaunch(150,0.6) end, target="Hero"} end)
+-- close spawn
+for _,sp in ipairs({60,160,300}) do add("closeSpawn40 s"..sp, function(pg) return {ping=pg, step=function() return straight(sp,40) end, target="Hero"} end) end
+-- invisible / unassigned / no-Target
 for _,sp in ipairs({80,180}) do add("invisible s"..sp, function(pg) return {ping=pg, step=function() return straight(sp) end, target=false, invisible=true} end) end
 for _,sp in ipairs({80,180}) do add("unassigned s"..sp, function(pg) return {ping=pg, step=function() return straight(sp) end, target=false} end) end
-for _,fps in ipairs({30,144}) do add("straight s160 @"..fps.."fps", function(pg) return {ping=pg, fps=fps, step=function() return straight(160) end, target="Hero"} end) end
+-- GLITCHES
+add("teleportIn s120", function(pg) return {ping=pg, step=function() return teleportIn(120) end, target="Hero"} end)
+add("velSpike s120", function(pg) return {ping=pg, step=function() return velSpike(120) end, target="Hero"} end)
+add("reverseBounce s160", function(pg) return {ping=pg, step=function() return reverseBounce(160) end, target="Hero"} end)
+add("noLinearVel s140", function(pg) return {ping=pg, noLV=true, step=function() return straight(140) end, target="Hero"} end)
+add("flickerTarget s140", function(pg) return {ping=pg, step=function() return straight(140) end, target=false,
+  attrStep=function(t,ball) if math.floor(t*20)%2==0 then ball:SetAttribute("Target","Hero") else ball:SetAttribute("Target","Other") end end} end)
+add("retarget->Hero s160", function(pg) return {ping=pg, step=function() return straight(160) end, target=false,
+  attrStep=function(t,ball) ball:SetAttribute("Target", t<0.4 and "Other" or "Hero") end} end)
+-- frame-rate + hitches
+for _,fps in ipairs({15,30,144}) do add("straight s160 @"..fps.."fps", function(pg) return {ping=pg, fps=fps, step=function() return straight(160) end, target="Hero"} end) end
 add("jitter s160", function(pg) return {ping=pg, jitter=0.12, step=function() return straight(160) end, target="Hero"} end)
+add("freezeSpike s120", function(pg) return {ping=pg, freezeAt=40, step=function() return straight(120) end, target="Hero"} end)
+-- player motion glitches
 add("playerDashIn s120", function(pg) return {ping=pg, step=function() return straight(120) end, target="Hero",
   playerStep=function(t) local z = (t<0.5) and 0 or math.min(0, -90*(t-0.5)); return V(0,5,z), V(0,0, (t>=0.5 and -90 or 0)) end} end)
+add("playerStrafe s160", function(pg) return {ping=pg, step=function() return straight(160) end, target="Hero",
+  playerStep=function(t) return V(math.sin(t*6)*10,5,0), V(math.cos(t*6)*60,0,0) end} end)
 
 local pass,total,unblk,misses,unblkList=0,0,0,{},{}
 for _,s in ipairs(scn) do
