@@ -1402,7 +1402,35 @@ local function recordBlockResult(ok, result)
         lastBlockResult = "rejected"
     end
 end
+-- In-flight guard. The block goes through a RemoteFunction, and InvokeServer
+-- YIELDS until the server replies (a full round-trip). The fire paths call this
+-- every frame during a clash / point-blank - up to ~180 times a second - so
+-- without a guard each frame spawns a fresh yielding thread and they PILE UP:
+-- the server processes InvokeServer serially per player, the backlog grows the
+-- worse your ping, and the shield lands later and later behind the exchange -
+-- exactly the "clashing is so slow" lag. A block is a 0.6s shield and a landed
+-- block resets the cooldown, so one request per round-trip already keeps the
+-- shield continuously up; more is pure flood. So we keep AT MOST ONE block
+-- request in flight: while one is waiting on the server, every extra call this
+-- window is a no-op. The next block fires the instant the previous reply lands,
+-- which is the fastest rate the network actually allows - snappy, never backed
+-- up. The flag is always cleared (pcall-wrapped), so a dropped reply can't wedge
+-- it off permanently.
+-- Per-frame dedup. Three fire paths (executeParry, the burst, and Auto Spam)
+-- each call this EVERY frame during a clash, so the same frame sends the block
+-- 3 times over - ~180 remote calls a second, triple what one frame needs. A
+-- block is a 0.6s shield; one send per frame already keeps it up. Collapse all
+-- of a frame's calls into a single send (tick() is constant across one frame's
+-- handlers; the tiny 4 ms floor absorbs sub-ms drift and still lets the next
+-- frame through at up to ~250 fps).
+local blockInFlight = false
+local lastBlockSendTime = -1
 local function fireBlockRemote()
+    if blockInFlight then return end
+    local nowT = tick()
+    if nowT - lastBlockSendTime < 0.004 then return end  -- already sent this frame
+    lastBlockSendTime = nowT
+    blockInFlight = true
     task.spawn(function()
         local cam = workspace.CurrentCamera
         -- NB: a plain `cam and cam...Y or default` would wrongly fall back to the
@@ -1416,7 +1444,7 @@ local function fireBlockRemote()
         local svc = getSwordService()
         if svc then
             local ok, result = pcall(function() return svc.Block:Invoke(lookY) end)
-            if ok then recordBlockResult(true, result) return end
+            if ok then recordBlockResult(true, result); blockInFlight = false; return end
             swordServiceProxy = nil -- proxy went stale; re-fetch next time
         end
         -- Fallback: generic framework RemoteFunction router.
@@ -1424,12 +1452,20 @@ local function fireBlockRemote()
             return ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {lookY})
         end)
         recordBlockResult(ok, result)
+        blockInFlight = false
     end)
 end
 
-local function executeParry()
+-- force=true bypasses the client-side PARRY_COOLDOWN. During a clash / point-
+-- blank exchange the ball reverses every few frames, so throttling fires to one
+-- per 0.3s leaves most returns unshielded ("the clashing is so slow") - and it
+-- contradicts fireBlockRemote's own rule that a landed block resets the server
+-- cooldown, so continuous fire stays protected. Clashes therefore fire EVERY
+-- frame (Heartbeat is the natural rate limit; the server rejects any extra).
+-- A lone ball keeps the 0.3s throttle so a single too-early block can't spam.
+local function executeParry(force)
     local currentTime = tick()
-    if currentTime - lastParryTime < PARRY_COOLDOWN then return end
+    if not force and currentTime - lastParryTime < PARRY_COOLDOWN then return end
     lastParryTime = currentTime
     totalParries = totalParries + 1
     if isHighSpeedMode then highSpeedParries = highSpeedParries + 1 end
@@ -2224,7 +2260,7 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- on top of you regardless of direction.
         local inShieldWindow = surfaceArriveTime <= shieldLead
         if amTargeted or clashActive or imminentThreat or fastClashHold or pointBlank or clashIncoming then
-            if (withinRange or willArriveInTime or clashIncoming) and (alwaysFire or (coverable and inShieldWindow)) then executeParry() end
+            if (withinRange or willArriveInTime or clashIncoming) and (alwaysFire or (coverable and inShieldWindow)) then executeParry(alwaysFire) end
             -- Fire block every frame while the shield window is open (or mid-clash
             -- / point-blank), so jitter in the estimate can't leave a gap - the
             -- FIRST block sets a shield that covers impact, later ones are
