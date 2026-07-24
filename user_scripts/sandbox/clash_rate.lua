@@ -1,11 +1,11 @@
--- Confirms the CLASH CLICK-STORM: during a point-blank clash the script sends
--- the block as fast as it can (up to 3 fire paths x every frame) to match a fast
--- clicker click-for-click. This synchronous transport can't show the safety net
--- - the MAX_CLASH_INFLIGHT concurrency cap that stops those sends piling into a
--- backlog - because a synchronous Invoke returns before the next fire, so nothing
--- is ever "in flight". That bound is proven in yield_clash.lua (peakInflight
--- stays <= MAX_CLASH_INFLIGHT with 100% coverage). Here we just confirm the storm
--- is firing hard (many sends/sec) during a clash, and NOT during a lone ball.
+-- Confirms the block send rate during a clash stays SAFE under the game's own
+-- rate limiter. The dump's NetRay budget is 120 requests/sec global and 20 per
+-- 0.1s burst, shared across ALL remotes; blow it and the block is dropped and a
+-- circuit breaker locks it out ~15s - which loses the clash. Spamming can't help
+-- anyway (a block is a 0.6s shield on a 1s cooldown; a parry resets it). So the
+-- script caps block sends at ~10/s - plenty to keep the shield fresh (proven in
+-- yield_clash.lua: 100% coverage) and a tiny slice of the 120/s budget. Here we
+-- assert the clash send rate is comfortably under the limit, never a flood.
 local HERE = (arg[0] or ""):match("^(.*[/\\])") or "./"
 local SCRIPT = arg[1] or (HERE.."../anime_ball_autoparry.lua")
 local SRC = assert(io.open(SCRIPT,"r")):read("*a")
@@ -30,14 +30,16 @@ local function measure(ping)
   return (w.server.blocks-startBlocks)/3.0
 end
 
-print("=== CLASH CLICK-STORM: block sends/sec during a 3s point-blank clash ===")
-print("    The storm fires hard on purpose (match a fast clicker); the concurrency")
-print("    cap that keeps it from backlogging is proven in yield_clash.lua.")
-local least=math.huge
+print("=== CLASH block send rate vs the game's rate limit (120/s, 20 per 0.1s) ===")
+print("    The rate must stay well under the limit so the block is never dropped;")
+print("    ~10/s is plenty to hold the 0.6s shield (coverage proven in yield_clash).")
+local worst=0
 for _,pg in ipairs({30,90,150,200}) do
   local r=measure(pg) or -1
-  least=math.min(least,r)
+  worst=math.max(worst,r)
   print(string.format("  ping %3d ms : %6.1f sends/sec", pg, r))
 end
-if least>=60 then print("\nOK: clash click-storm is firing hard at every ping.")
-else print(string.format("\nWEAK: clash only sent %.0f/s - not storming.", least)); os.exit(1) end
+-- must be under the 20-per-0.1s burst (i.e. < 200/s) with wide margin, and never
+-- near the 120/s global budget it shares with every other remote.
+if worst<=30 then print("\nOK: clash send rate is safely under the game's rate limit.")
+else print(string.format("\nUNSAFE: clash sent %.0f/s - risks the rate limiter dropping blocks.", worst)); os.exit(1) end

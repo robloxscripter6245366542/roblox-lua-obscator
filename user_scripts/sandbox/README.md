@@ -68,11 +68,11 @@ block timing that static analysis can't see.
   call `task.wait`s the round-trip). It then contrasts a **no-guard control**
   (fire a yielding block every frame → pending calls pile into a backlog that
   grows with ping — the "clashing is so slow" lag, reproduced) against the **real
-  script**. The script CLICK-STORMS the block (as fast as it can, to match a fast
-  clicker) but bounds concurrent requests at `MAX_CLASH_INFLIGHT` (4), so the send
-  rate is high — ~120 blocks/s at 30 ms ping — while the backlog stays capped
-  (peak ≤4, not the unbounded ~180/s flood) and a fresh block still covers **every**
-  return. Scored under **both** shield models — persistent 0.6 s shield
+  script**. The script paces block sends at a safe ~30/s (`BLOCK_SEND_INTERVAL`),
+  which keeps the 0.6 s shield continuously fresh and covers **every** return
+  while staying far under the game's own rate limiter (120/s global, 20 per 0.1 s
+  burst — flooding it gets the block dropped / circuit-broken and loses the
+  clash). Scored under **both** shield models — persistent 0.6 s shield
   *and* shield-consumed-per-parry. Run: `lua-5.1.5/src/lua yield_clash.lua`.
   Expected: **no-guard backlog grows with ping; the script stays at a small
   backlog with 100% coverage on every return (clash HELD).**
