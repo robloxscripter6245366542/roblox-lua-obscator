@@ -49,6 +49,19 @@ block timing that static analysis can't see.
   Expected: **ALL EDGE CASES OK**. (`world.lua` holds the shared mocked-world
   builder these suites load the script into.)
 
+- **`clash_rate.lua`** — measures how many block calls the script **sends per
+  second** during a sustained point-blank clash. Three fire paths each fired the
+  block remote every frame, so a clash used to send it ~3× per frame (~180/s).
+  In real Roblox the block is a yielding `RemoteFunction`, so that triple-send
+  piles into a serial server backlog and the shield lands later and later behind
+  the exchange — *"the clashing is so slow."* A block is a 0.6 s shield, so one
+  send per frame already holds it; the per-frame dedup (plus the in-flight guard)
+  collapses each frame to a single send. Run: `lua-5.1.5/src/lua clash_rate.lua`.
+  Expected: **~60/s (one per frame), no flood** — down from ~180/s. (Stock Lua
+  5.1 can't yield across the script's `pcall`, so the sandbox can't model the
+  round-trip itself; it measures the send rate, which is the flood the dedup
+  removes.)
+
 - **`clash_test.lua`** — a dedicated **clash** simulator: a ball ping-pongs
   between you and an opponent who **dashes inside you** (down to 2-3 studs) while
   the exchange speeds up (to 600 studs/s = ~150 reversals/s). It models the real
