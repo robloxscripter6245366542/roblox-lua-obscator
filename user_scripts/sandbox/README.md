@@ -62,6 +62,21 @@ block timing that static analysis can't see.
   round-trip itself; it measures the send rate, which is the flood the dedup
   removes.)
 
+- **`yield_clash.lua`** — the **faithful yielding-server** clash test. A real
+  Roblox block goes through a `RemoteFunction` whose `InvokeServer` **yields for
+  a full round-trip** before returning the verdict. Stock Lua 5.1 can't let a
+  `coroutine.yield` cross a `pcall` (and the script fires its block inside one),
+  so `world.lua` hands the script a **yieldable `pcall`** (a Luau semantic,
+  reimplemented in pure Lua via a child coroutine that pumps yields through) and
+  a **yielding transport** (`build(SRC, ping, {yieldTransport=true})`, a Block
+  call `task.wait`s the round-trip). It then contrasts a **no-guard control**
+  (fire a yielding block every frame → pending calls pile into a backlog that
+  grows with ping — the "clashing is so slow" lag, reproduced) against the **real
+  script**, whose in-flight guard must hold `peakInflight` at **1** while a
+  shield still covers the point-blank ball on every return. Run:
+  `lua-5.1.5/src/lua yield_clash.lua`. Expected: **no-guard backlog grows with
+  ping; the script stays at 1 in flight, 100% shield coverage (clash HELD)**.
+
 - **`clash_test.lua`** — a dedicated **clash** simulator: a ball ping-pongs
   between you and an opponent who **dashes inside you** (down to 2-3 studs) while
   the exchange speeds up (to 600 studs/s = ~150 reversals/s). It models the real
