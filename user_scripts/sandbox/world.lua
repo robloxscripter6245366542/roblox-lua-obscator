@@ -5,14 +5,27 @@
 local HERE = (arg[0] or ""):match("^(.*[/\\])") or "./"
 local MOCK = HERE.."mock_roblox.lua"
 
-local function build(SRC, pingMs)
+-- opts.yieldTransport: when true, a Block call behaves like a REAL Roblox
+-- RemoteFunction - it YIELDS for a full round-trip (task.wait(ping)) before it
+-- returns the server's verdict. That is only possible offline because we hand
+-- the script a yieldable pcall below (Luau allows a yield to cross pcall; stock
+-- Lua 5.1's C pcall does not, so we replace it). server.inflight /
+-- server.peakInflight count how many Block calls are waiting on the server at
+-- once, so a test can prove the client's in-flight guard holds it at 1 (no
+-- backlog). Default (no opts) keeps the fast synchronous transport.
+local function build(SRC, pingMs, opts)
+  opts = opts or {}
   local R = dofile(MOCK)
   local v3,CFrame,Enum,Instance,task = R.v3,R.CFrame,R.Enum,R.Instance,R.task
   local oneway = pingMs/1000/2
   -- server block model: 0.6s shield registering ~half-a-ping after fire, 1s
   -- cooldown, and a successful parry resets the cooldown (the clash rule).
-  local server = { cooldownUntil=0, shields={}, blocks=0 }
+  local server = { cooldownUntil=0, shields={}, blocks=0, inflight=0, peakInflight=0 }
   function server.block() server.blocks=server.blocks+1
+    server.inflight=server.inflight+1
+    if server.inflight>server.peakInflight then server.peakInflight=server.inflight end
+    if opts.yieldTransport then task.wait(oneway*2) end   -- real round-trip yield
+    server.inflight=server.inflight-1
     local reg=R.VTIME()+oneway
     if reg<server.cooldownUntil then return false end
     server.shields[#server.shields+1]={reg,reg+0.6}; server.cooldownUntil=reg+1.0; return true end
@@ -49,6 +62,26 @@ local function build(SRC, pingMs)
   local envtable=setmetatable({pack=function(...) local t={...}; t.n=select("#",...); return t end, unpack=unpack,
     find=function(t,val) for i,x in ipairs(t) do if x==val then return i end end end, clear=function(t) for k in pairs(t) do t[k]=nil end end},{__index=realtable})
   local env={}
+  -- Yieldable pcall / xpcall (Luau semantics on stock Lua 5.1). Luau lets a
+  -- coroutine.yield cross a pcall; stock 5.1's C pcall does not ("attempt to
+  -- yield across a C-call boundary"). The autoparry fires its block through a
+  -- pcall around a *yielding* RemoteFunction, so to model that faithfully we run
+  -- the protected call in a child coroutine and pump any yields (a task.wait
+  -- inside the RemoteFunction) up to our own caller - suspending the whole chain
+  -- exactly like a real Invoke - while still catching errors as (false, err).
+  local function ypcall(f, ...)
+    local co = coroutine.create(f)
+    local r = {coroutine.resume(co, ...)}
+    while coroutine.status(co) ~= "dead" do
+      r = {coroutine.resume(co, coroutine.yield(unpack(r, 2)))}
+    end
+    return unpack(r)
+  end
+  local function yxpcall(f, handler, ...)
+    local ok, a, b, c, d = ypcall(f, ...)
+    if ok then return ok, a, b, c, d end
+    return false, handler(a)
+  end
   local function typeof(x) if type(x)~="table" then return type(x) end if rawget(x,"_children")~=nil then return "Instance" end
     local mt=getmetatable(x) if mt==R.Vector3 then return "Vector3" end if mt==R.CFrame then return "CFrame" end return "table" end
   local WINDUI=[[local W={} local function chain() local t={} setmetatable(t,{__index=function() return function() return chain() end end}) t.SetDesc=function() end return t end
@@ -65,7 +98,7 @@ local function build(SRC, pingMs)
   env.Color3=R.Color3; env.ColorSequence=R.ColorSequence; env.UDim2=R.UDim2; env.UDim=R.UDim; env.Enum=Enum; env.task=task
   env.tick=function() return R.VTIME() end; env.time=env.tick; env.wait=function(t) return task.wait(t) end
   env.spawn=function(f) return task.spawn(f) end; env.delay=function(t,f) return task.delay(t,f) end
-  env.typeof=typeof; env.warn=function() end; env.print=print; env.error=error; env.assert=assert; env.pcall=pcall; env.xpcall=xpcall
+  env.typeof=typeof; env.warn=function() end; env.print=print; env.error=error; env.assert=assert; env.pcall=ypcall; env.xpcall=yxpcall
   env.select=select; env.pairs=pairs; env.ipairs=ipairs; env.next=next; env.type=type; env.tostring=tostring; env.tonumber=tonumber
   env.setmetatable=setmetatable; env.getmetatable=getmetatable; env.rawget=rawget; env.rawset=rawset; env.rawequal=rawequal
   env.unpack=unpack; env.math=envmath; env.table=envtable; env.string=string; env.coroutine=coroutine
