@@ -92,5 +92,27 @@ runCase("kinematic ball (Position-driven, 0 physics vel)", 100, function(w)
   end
 end)
 
+-- 4. FALSE-POSITIVE guard: a PLAYER whose username contains "ball" has a
+--    character Model in workspace. It must NOT be treated as a ball container
+--    (that would add their body parts to the ball cache and parry a person).
+--    With no real ball present, the script must send ~0 blocks.
+do
+  local w = build(SRC, 100)
+  local v3 = w.v3
+  -- a second player's character named with "ball" in it, standing point-blank
+  local ch = w.Instance.new("Model"); ch.Name = "Ballzy99"
+  local hum = w.Instance.new("Humanoid"); hum.Parent = ch
+  local hrp = w.Instance.new("Part"); hrp.Name="HumanoidRootPart"; hrp.Position=v3(0,5,4)
+  hrp.AssemblyLinearVelocity=v3(0,0,0); hrp.Parent=ch
+  ch.Parent = w.Balls.Parent   -- workspace
+  local hl=w.Instance.new("Highlight"); hl.Name="Highlight"; hl.Parent=w.heroF
+  local start = w.server.blocks
+  local dt=1/60
+  for f=1,120 do w.RunService.Heartbeat:Fire(); w.R.advance(dt) end
+  local fired = w.server.blocks - start
+  if fired <= 1 then ok(string.format("player named 'Ballzy99' not parried as a ball (%d blocks)", fired))
+  else bad("player-as-ball false positive", string.format("%d blocks fired at a person", fired)) end
+end
+
 print(string.format("\n=== %d passed, %d failed ===", pass, fail))
 if fail>0 then os.exit(1) else print("ALL DETECTION CASES OK") end
