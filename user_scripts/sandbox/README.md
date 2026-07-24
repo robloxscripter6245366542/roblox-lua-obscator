@@ -81,6 +81,16 @@ block timing that static analysis can't see.
   Expected: **no-guard backlog grows with ping; the script stays at a small
   backlog with 100% coverage on every return (clash HELD).**
 
+- **`decision_test.lua`** — **which ball drives the parry** when several are in
+  play. Two cases that were real misses: a **decoy** (a ball aimed at another
+  player sitting nearer than the one aimed at you) must not shadow your real
+  threat; and **two threats** (a nearer SLOW ball and a farther FAST one, both
+  aimed at you) must fire on the one that arrives first. Both were fixed by
+  preferring the threatening ball for the arc/shield-window and opening the
+  window for the most-imminent *closing* threat (while still falling back to the
+  nearest ball of any target when nothing is aimed at you — the dash-in clash).
+  Run: `lua-5.1.5/src/lua decision_test.lua`. Expected: **ALL DECISION CASES OK**.
+
 - **`clash_test.lua`** — a dedicated **clash** simulator: a ball ping-pongs
   between you and an opponent who **dashes inside you** (down to 2-3 studs) while
   the exchange speeds up (to 600 studs/s = ~150 reversals/s). It models the real

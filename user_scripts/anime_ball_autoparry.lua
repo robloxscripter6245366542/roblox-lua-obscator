@@ -1512,9 +1512,29 @@ end
 -- you can't be ignored just because a slow one is sitting nearer. With a
 -- single ball it equals that ball's own TTI, so behavior is unchanged.
 local function findClosestBall(humanoidRootPart)
-    local closestBall = nil
-    local closestDistance = math.huge
+    -- Closest THREATENING ball (aimed at me / unassigned / invisible-closing)
+    -- and, separately, the closest ball of ANY target. We PREFER the threatening
+    -- one to drive the arc prediction and shield-window: a ball aimed at someone
+    -- ELSE that is merely nearer must not shadow the ball actually coming for me
+    -- (the "decoy" bug - my real threat fired on too late = a miss at higher
+    -- ping, reproduced in the sandbox). But when NOTHING is aimed at me we fall
+    -- back to the nearest ball of any target, because a dash-in clash rides the
+    -- opponent's OWN ball (Target = them) into you - its nearness is the whole
+    -- telegraph, and the parry logic still has to run to pre-shield it.
+    local threatBall, threatDist = nil, math.huge
+    local closestAnyBall, closestAnyDist = nil, math.huge
     local minThreatTTI = math.huge
+    -- Most-imminent CLOSING surface arrival among threatening balls, tracked as
+    -- the two smallest (arrival + owning ball) so the caller can EXCLUDE whichever
+    -- ball ends up as the closest/threat ball. Why: the closest ball's shield
+    -- window is computed by the accurate CURVED arc (surfaceArriveTime); this
+    -- straight-line estimate is only a fallback for OTHER threatening balls - a
+    -- faster one farther out that the nearest-ball arc can't see (the "two-threat"
+    -- miss). Applying the straight-line estimate to the closest ball too would
+    -- fire early on a curving side-then-in ball (its partial closing looks like an
+    -- arrival that never comes), whiffing and burning the cooldown - so we never
+    -- let it override the curve arc for the ball the arc is already handling.
+    local minArr1, minArr1Ball, minArr2 = math.huge, nil, math.huge
     local targetedByAny = false
     local myName = LocalPlayer.Name
     for ball in pairs(ballsCache) do
@@ -1524,10 +1544,7 @@ local function findClosestBall(humanoidRootPart)
             local ballPos = getBallPosition(ball)
             if ballPos then
                 local distance = (humanoidRootPart.Position - ballPos).Magnitude
-                if distance < closestDistance then
-                    closestDistance = distance
-                    closestBall = ball
-                end
+                if distance < closestAnyDist then closestAnyDist = distance; closestAnyBall = ball end
                 -- Targeting must consider EVERY ball, not just the closest:
                 -- the ball assigned to me may not be the nearest one.
                 local target = ball:GetAttribute("Target")
@@ -1554,6 +1571,10 @@ local function findClosestBall(humanoidRootPart)
                 -- aimed at us regardless of its (possibly stale) Target attr.
                 local invisible = ball:GetAttribute("Invisible") == true
                 if target == myName or target == nil or invisible or serverSaysMe then
+                    if distance < threatDist then
+                        threatDist = distance
+                        threatBall = ball
+                    end
                     local vel = getBallVelocityVector(ball)
                     local speed = vel.Magnitude
                     if invisible and speed > 0
@@ -1568,12 +1589,39 @@ local function findClosestBall(humanoidRootPart)
                         -- closest-ball path would - never a few ms later.
                         local tti = math.max(distance - EFFECTIVE_HIT_RADIUS, 0) / speed
                         if tti < minThreatTTI then minThreatTTI = tti end
+                        -- Direction-aware surface arrival for the shield window
+                        -- (only if this ball is actually closing on us). Keep the
+                        -- two smallest so the closest/threat ball can be excluded.
+                        if distance > 1e-3 then
+                            local toPlayer = humanoidRootPart.Position - ballPos
+                            local closing = vel:Dot(toPlayer) / distance
+                            if closing > 0 then
+                                local arrive = math.max(distance - EFFECTIVE_HIT_RADIUS, 0) / closing
+                                if arrive < minArr1 then
+                                    minArr2 = minArr1; minArr1 = arrive; minArr1Ball = ball
+                                elseif arrive < minArr2 then
+                                    minArr2 = arrive
+                                end
+                            end
+                        end
                     end
                 end
             end
         end
     end
-    return closestBall, closestDistance, minThreatTTI, targetedByAny
+    -- Prefer the threatening ball; fall back to the nearest ball of any target
+    -- when nothing is aimed at me (dash-in clash). Callers get the closest-any
+    -- distance separately for pure-proximity checks (clashIncoming).
+    -- The arc ball (threatBall, else the any-ball fallback) is handled by the
+    -- curve-aware surfaceArriveTime, so exclude it from the straight-line
+    -- most-imminent estimate: if it owns the smallest arrival, hand back the
+    -- second smallest (the next threatening ball the arc can't see).
+    local arcBall = threatBall or closestAnyBall
+    local otherArrive = (minArr1Ball ~= nil and minArr1Ball == arcBall) and minArr2 or minArr1
+    if threatBall then
+        return threatBall, threatDist, minThreatTTI, targetedByAny, closestAnyDist, otherArrive
+    end
+    return closestAnyBall, closestAnyDist, minThreatTTI, targetedByAny, closestAnyDist, otherArrive
 end
 
 -- The event cache can go stale-FALSE: it's reset on death, but some games
@@ -1805,7 +1853,7 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
     updatePlayerDetectorSpheres()
 
     local hasHighlight = hasPlayerHighlight()
-    local closestBall, closestDistance, minThreatTTI, targetedByAny = findClosestBall(humanoidRootPart)
+    local closestBall, closestDistance, minThreatTTI, targetedByAny, closestAnyDist, minThreatArrive = findClosestBall(humanoidRootPart)
 
     -- The ball controller stores its assigned target as an attribute
     -- (ball:SetAttribute("Target", playerName)); that is the game's own
@@ -2204,7 +2252,11 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- overlapping you) so ordinary nearby movement doesn't trip it; a wasted
         -- pre-shield is harmless (server cooldown-gates it). Off with Clash toggle.
         local clashIncoming = false
-        if Clash.enabled and closestBall and closestDistance <= 34 then
+        -- Uses closestAnyDist (nearest ball of ANY target), not closestDistance:
+        -- in a dash-in clash the opponent rides their OWN ball (Target = them)
+        -- into you, so it isn't a "threatening" ball by attribute, but its
+        -- nearness is exactly the telegraph we pre-shield on.
+        if Clash.enabled and closestAnyDist <= 34 then
             for _, pl in ipairs(Players:GetPlayers()) do
                 if pl ~= LocalPlayer then
                     local ohrp = getPlayerHRP(pl)
@@ -2261,7 +2313,14 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- anti-curve arrival (willArriveInTime) and the panic paths below add the
         -- extra coverage for hard/late curves; pointBlank covers a ball already
         -- on top of you regardless of direction.
-        local inShieldWindow = surfaceArriveTime <= shieldLead
+        --
+        -- surfaceArriveTime is the CLOSEST ball's curved-arc arrival; minThreatArrive
+        -- is the soonest CLOSING arrival across ALL threatening balls. Opening the
+        -- window on either means a fast threatening ball farther out isn't shadowed
+        -- by a nearer slow one (the "two-threat" miss the sandbox reproduced) - and
+        -- because minThreatArrive is closing-gated too, a sideways/passing ball
+        -- still can't open it.
+        local inShieldWindow = surfaceArriveTime <= shieldLead or minThreatArrive <= shieldLead
         if amTargeted or clashActive or imminentThreat or fastClashHold or pointBlank or clashIncoming then
             if (withinRange or willArriveInTime or clashIncoming) and (alwaysFire or (coverable and inShieldWindow)) then executeParry(alwaysFire) end
             -- Fire block every frame while the shield window is open (or mid-clash
