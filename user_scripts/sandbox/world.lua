@@ -20,15 +20,19 @@ local function build(SRC, pingMs, opts)
   local oneway = pingMs/1000/2
   -- server block model: 0.6s shield registering ~half-a-ping after fire, 1s
   -- cooldown, and a successful parry resets the cooldown (the clash rule).
-  local server = { cooldownUntil=0, shields={}, blocks=0, inflight=0, peakInflight=0 }
+  -- blocks = SENT (every Invoke that reached the server), landed = accepted (a
+  -- fresh shield), rejected = refused on cooldown. Mirrors the script's HUD
+  -- Blocks Sent / Landed / Rejected counters.
+  local server = { cooldownUntil=0, shields={}, blocks=0, landed=0, rejected=0, inflight=0, peakInflight=0 }
   function server.block() server.blocks=server.blocks+1
     server.inflight=server.inflight+1
     if server.inflight>server.peakInflight then server.peakInflight=server.inflight end
     if opts.yieldTransport then task.wait(oneway*2) end   -- real round-trip yield
     server.inflight=server.inflight-1
     local reg=R.VTIME()+oneway
-    if reg<server.cooldownUntil then return false end
-    server.shields[#server.shields+1]={reg,reg+0.6}; server.cooldownUntil=reg+1.0; return true end
+    if reg<server.cooldownUntil then server.rejected=server.rejected+1; return false end
+    server.shields[#server.shields+1]={reg,reg+0.6}; server.cooldownUntil=reg+1.0
+    server.landed=server.landed+1; return true end
   local function shieldAt(t) for _,s in ipairs(server.shields) do if t>=s[1] and t<=s[2] then return true end end return false end
   function server.parryReset() server.cooldownUntil = R.VTIME() end
 
