@@ -61,8 +61,8 @@ local Amber = Color3.fromHex("#FFD84D")
 -- AUTO PARRY CONFIGURATION
 -- ============================================
 
-local MIN_DISTANCE = 1.5
-local MAX_DISTANCE = 100
+local MIN_DISTANCE = 8      -- even a slow ball gets a real engagement bubble (was 1.5)
+local MAX_DISTANCE = 130    -- lock onto fast balls further out so it reacts sooner (was 100)
 local UPDATE_INTERVAL = 0 -- run every Heartbeat frame
 local PARRY_COOLDOWN = 0.3
 local HIGH_SPEED_THRESHOLD = 50   -- studs/s; from live telemetry: real ball speed runs ~29 median / 50 p90 / 57-143 peak (ability balls). The old 300 never triggered, so high-speed mode (max detection range) was effectively dead. 50 = the p90, where a ball is genuinely "fast".
@@ -1460,7 +1460,7 @@ end
 
 local function calculateDistance(velocity)
     if velocity >= HIGH_SPEED_THRESHOLD then return MAX_DISTANCE end
-    local normalizedVelocity = math.clamp(velocity / 100, 0, 1)
+    local normalizedVelocity = math.clamp(velocity / 75, 0, 1)  -- ramp to full range sooner
     local distance = MIN_DISTANCE + (MAX_DISTANCE - MIN_DISTANCE) * normalizedVelocity
     distance = math.floor(distance * 2 + 0.5) / 2
     return math.clamp(distance, MIN_DISTANCE, MAX_DISTANCE)
