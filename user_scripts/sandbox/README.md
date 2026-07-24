@@ -87,6 +87,16 @@ block timing that static analysis can't see.
   Expected: **ALL DETECTION CASES OK** — and the same suite run against the
   pre-change script fails all three ("NO BLOCK"), confirming the fix.
 
+- **`dashout_test.lua`** — the **auto-dash-out** counter to stacking. When an
+  opponent walks *inside* you (overlapping) with a ball in play, an
+  inside-each-other clash is a zero-distance coin-flip no client can win — so the
+  script triggers the game's own `MovementController.ForceDash` to burst out
+  (a dash carries you well past the stack), turning it into a **ranged** ball the
+  autoparry blocks every time. The test checks it fires when stacked+ball,
+  **doesn't** fire for a merely-nearby player or a stack with no ball, and is
+  throttled to the dash cooldown. Run: `lua-5.1.5/src/lua dashout_test.lua`.
+  Expected: **ALL DASH-OUT CASES OK**.
+
 - **`decision_test.lua`** — **which ball drives the parry** when several are in
   play. Two cases that were real misses: a **decoy** (a ball aimed at another
   player sitting nearer than the one aimed at you) must not shadow your real

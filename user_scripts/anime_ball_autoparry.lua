@@ -285,7 +285,16 @@ local Move = { keep = true, cachedSpeed = 16 }
 -- during the grace window (SPEED * GRACE = 90 * 0.35 = 31.5), so a ball that's
 -- that far out can still reach you the instant the dash stops - which is
 -- exactly the case the old hand-guessed 25 under-covered.
-local Dash = { aware = true, controller = nil, endTime = 0, GRACE = 0.35, SPEED = 90, MARGIN = 32 }
+local Dash = { aware = true, controller = nil, endTime = 0, GRACE = 0.35, SPEED = 90, MARGIN = 32,
+    -- Auto-dash-out: when an opponent STACKS inside you (overlapping) with a ball
+    -- in play, an inside-each-other clash is a coin-flip you can't win from the
+    -- client (the ball crosses ~0 studs, faster than any ping). So we trigger the
+    -- game's OWN dash to burst out - a dash carries ~SPEED*duration studs, well
+    -- past the stack - turning it into a RANGED ball the autoparry blocks every
+    -- time. Uses MovementController.ForceDash (properly replicated, respects the
+    -- game cooldown). STACK_DIST = overlap threshold, OUT_COOLDOWN throttles it to
+    -- the dash cooldown so we don't spam it.
+    autoOut = true, lastAutoDash = 0, STACK_DIST = 6, OUT_COOLDOWN = 1.2 }
 
 -- Camera tracking. Roblox character movement is CAMERA-RELATIVE (WASD moves you
 -- where the camera faces), so the camera's flat facing is the direction you're
@@ -663,6 +672,16 @@ PingSection:Toggle({
     Value = true,
     Callback = function(Value)
         Dash.aware = Value
+    end
+})
+
+PingSection:Toggle({
+    Flag = "AutoDashOut",
+    Title = "Auto Dash Out of Stacks",
+    Desc = "When someone stacks inside you during a clash, auto-dash out to break it - an inside-each-other clash is a coin-flip you can't win, so this makes it a ranged block you do win",
+    Value = true,
+    Callback = function(Value)
+        Dash.autoOut = Value
     end
 })
 
@@ -2353,6 +2372,7 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- in a dash-in clash the opponent rides their OWN ball (Target = them)
         -- into you, so it isn't a "threatening" ball by attribute, but its
         -- nearness is exactly the telegraph we pre-shield on.
+        local stackedInside = false   -- an opponent is OVERLAPPING you (a stack clash)
         if Clash.enabled and closestAnyDist <= 34 then
             for _, pl in ipairs(Players:GetPlayers()) do
                 if pl ~= LocalPlayer then
@@ -2360,13 +2380,28 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
                     if ohrp then
                         local off = humanoidRootPart.Position - ohrp.Position
                         local od = off.Magnitude
+                        if od <= Dash.STACK_DIST then stackedInside = true end
                         if od <= 18 then
                             local ov = ohrp.AssemblyLinearVelocity
                             local oClose = od > 1e-3 and ov:Dot(off) / od or 0
-                            if od <= 9 or oClose >= 45 then clashIncoming = true break end
+                            if od <= 9 or oClose >= 45 then clashIncoming = true end
+                            if stackedInside then break end
                         end
                     end
                 end
+            end
+        end
+        -- Auto-dash-out of a stack: an opponent is inside you with a ball in play -
+        -- unwinnable at zero range - so burst out with the game's own dash to make
+        -- it a ranged block we win. Throttled to the dash cooldown, gated on
+        -- CanDash so we never fire it on cooldown, pcall'd so a controller quirk
+        -- can't break the parry loop.
+        if Dash.autoOut and stackedInside and Dash.controller
+            and (currentTime - Dash.lastAutoDash) >= Dash.OUT_COOLDOWN then
+            local cd = Dash.controller
+            if cd.CanDash ~= false and type(cd.ForceDash) == "function" then
+                Dash.lastAutoDash = currentTime
+                pcall(function() cd.ForceDash() end)
             end
         end
         -- coverable (computed above) holds fire for a normal incoming ball until

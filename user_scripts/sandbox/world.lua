@@ -57,9 +57,15 @@ local function build(SRC, pingMs, opts)
   RF.InvokeServer=function(_,svc,m,a) if svc=="SwordService" and m=="Block" then return server.block() end end
   local Storage=Instance.new("Folder"); Storage.Name="Storage"; Storage.Parent=RS
   local swordProxy={Block={Invoke=function() return server.block() end}}
+  -- MovementController mock with a counting ForceDash (mirrors the game's dash:
+  -- respects CanDash + cooldown). dashCount lets a test see the auto-dash-out fire.
+  local movement={ Dashing=false, CanDash=true, dashCount=0 }
+  function movement.ForceDash() if movement.CanDash==false then return end
+    movement.dashCount=movement.dashCount+1; movement.CanDash=false
+    task.delay(1.1, function() movement.CanDash=true end) end
   FW._moduleValue={ Fetch=function(_,n) if n=="SwordService" then return swordProxy end return {} end,
                     Get=function(_,n) if n=="BallController" then return {Server={ChangeBallColor=function() end}} end
-                                        if n=="MovementController" then return {Dashing=false} end return nil end }
+                                        if n=="MovementController" then return movement end return nil end }
   local realmath,realtable=math,table
   local envmath=setmetatable({clamp=function(x,l,h) return realmath.max(l,realmath.min(h,x)) end,
     round=function(x) return realmath.floor(x+0.5) end, sign=function(x) return x>0 and 1 or (x<0 and -1 or 0) end},{__index=realmath})
@@ -116,7 +122,7 @@ local function build(SRC, pingMs, opts)
   for i=1,6 do R.advance(0.1) end
   return { R=R,v3=v3,Instance=Instance,Enum=Enum,RunService=RunService,Balls=Balls,heroF=heroF,Eff=Eff,
            Players=Players,players=players,LP=LP,char=char,
-           hrp=hrp,char_ref=char,server=server,shieldAt=shieldAt,oneway=oneway }
+           hrp=hrp,char_ref=char,server=server,shieldAt=shieldAt,oneway=oneway,movement=movement }
 end
 
 return { build=build }
