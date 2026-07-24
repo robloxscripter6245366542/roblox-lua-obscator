@@ -294,7 +294,12 @@ local Dash = { aware = true, controller = nil, endTime = 0, GRACE = 0.35, SPEED 
     -- time. Uses MovementController.ForceDash (properly replicated, respects the
     -- game cooldown). STACK_DIST = overlap threshold, OUT_COOLDOWN throttles it to
     -- the dash cooldown so we don't spam it.
-    autoOut = true, lastAutoDash = 0, STACK_DIST = 6, OUT_COOLDOWN = 1.2 }
+    autoOut = true, lastAutoDash = 0, STACK_DIST = 6, OUT_COOLDOWN = 1.1,
+    -- Preemptive break: don't wait until they're fully on top of you (that reacts
+    -- LATE / feels slow) - dash the instant an opponent is RUSHING in to stack
+    -- (within RUSH_DIST and closing >= RUSH_SPEED), so the break happens as they
+    -- arrive, not after.
+    RUSH_DIST = 13, RUSH_SPEED = 40 }
 
 -- Camera tracking. Roblox character movement is CAMERA-RELATIVE (WASD moves you
 -- where the camera faces), so the camera's flat facing is the direction you're
@@ -2372,7 +2377,7 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- in a dash-in clash the opponent rides their OWN ball (Target = them)
         -- into you, so it isn't a "threatening" ball by attribute, but its
         -- nearness is exactly the telegraph we pre-shield on.
-        local stackedInside = false   -- an opponent is OVERLAPPING you (a stack clash)
+        local stackedInside = false   -- overlapping you, OR rushing in to stack (break it NOW)
         if Clash.enabled and closestAnyDist <= 34 then
             for _, pl in ipairs(Players:GetPlayers()) do
                 if pl ~= LocalPlayer then
@@ -2380,12 +2385,14 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
                     if ohrp then
                         local off = humanoidRootPart.Position - ohrp.Position
                         local od = off.Magnitude
-                        if od <= Dash.STACK_DIST then stackedInside = true end
                         if od <= 18 then
                             local ov = ohrp.AssemblyLinearVelocity
                             local oClose = od > 1e-3 and ov:Dot(off) / od or 0
                             if od <= 9 or oClose >= 45 then clashIncoming = true end
-                            if stackedInside then break end
+                            -- fully overlapping OR rushing in fast at close range
+                            if od <= Dash.STACK_DIST or (od <= Dash.RUSH_DIST and oClose >= Dash.RUSH_SPEED) then
+                                stackedInside = true; break
+                            end
                         end
                     end
                 end
