@@ -11,9 +11,9 @@ local pass, fail = 0, 0
 local function ok(n) pass=pass+1; print("  ok   "..n) end
 local function bad(n,w) fail=fail+1; print("  FAIL "..n.."  ("..w..")") end
 
--- place a second player's HRP at distance `foeDist`, optionally a ball nearby,
--- run `secs`, and report how many times the script called ForceDash.
-local function run(foeDist, ballNear, secs)
+-- place a second player's HRP at distance `foeDist` (with velocity `foeVel`
+-- toward you), optionally a ball nearby, run `secs`; report ForceDash calls.
+local function run(foeDist, ballNear, secs, foeVel)
   local w = build(SRC, 60)
   local v3,Instance,Enum = w.v3,w.Instance,w.Enum
   local hl=Instance.new("Highlight"); hl.Name="Highlight"; hl.Parent=w.heroF
@@ -34,6 +34,7 @@ local function run(foeDist, ballNear, secs)
   for f=1,60*secs do
     if ball then ball.Position=v3(0,5,10) end   -- ball hovering point-blank-ish
     fhrp.Position=v3(0,5,foeDist)               -- opponent holds position
+    fhrp.AssemblyLinearVelocity=v3(0,0, foeVel or 0)  -- toward you = negative Z
     w.RunService.Heartbeat:Fire(); w.R.advance(dt)
   end
   return w.movement.dashCount
@@ -47,11 +48,18 @@ do
   if n >= 1 and n <= 4 then ok(string.format("stacked+ball: dashed out %d time(s) (throttled)", n))
   else bad("stacked+ball", string.format("dashed %d times (want 1-4, cooldown-throttled)", n)) end
 end
--- opponent NEARBY but not overlapping (14 studs) + ball: must NOT auto-dash.
+-- PREEMPTIVE: opponent at 11 studs RUSHING in (closing ~60/s) + ball: should
+-- dash out NOW, before they fully overlap (this is the "it's slow" fix).
 do
-  local n = run(14, true, 3)
-  if n == 0 then ok("near but not stacked: no dash")
-  else bad("near not stacked", string.format("dashed %d times (should be 0)", n)) end
+  local n = run(11, true, 3, -60)
+  if n >= 1 then ok(string.format("rushing in (not yet overlapping): preemptive dash (%d)", n))
+  else bad("preemptive rush", "did not dash while opponent rushed in") end
+end
+-- opponent NEARBY, standing still, not overlapping (14 studs) + ball: must NOT dash.
+do
+  local n = run(14, true, 3, 0)
+  if n == 0 then ok("near, standing still: no dash")
+  else bad("near standing still", string.format("dashed %d times (should be 0)", n)) end
 end
 -- overlapping but NO ball in play: not a clash, must NOT auto-dash.
 do
