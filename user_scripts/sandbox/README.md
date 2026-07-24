@@ -37,6 +37,18 @@ block timing that static analysis can't see.
   `lua-5.1.5/src/lua test_scenarios.lua`. Expected: **all blockable balls
   parried, NO REAL MISSES**; the unblockables are all high-ping + extreme cases.
 
+- **`edge_test.lua`** — the cases the other suites never touched: **multiple
+  balls at once** (2 / 3 / 5 converging — opposite sides, a fan, mixed speeds,
+  same-instant and staggered — each one scored), and **glitch / crash physics**
+  the script must survive without erroring — **NaN** and **infinite**
+  position/velocity, a ball that **spawns already inside you**, a ball **sitting
+  on you at zero speed**, **garbage `Target` attributes** (numbers/`nil`),
+  **zero ping**, and **you dying mid-flight** (the HumanoidRootPart disappears
+  then respawns). Multi-ball cases assert every incoming ball is parried; crash
+  cases assert no error escapes. Run: `lua-5.1.5/src/lua edge_test.lua`.
+  Expected: **ALL EDGE CASES OK**. (`world.lua` holds the shared mocked-world
+  builder these suites load the script into.)
+
 - **`clash_test.lua`** — a dedicated **clash** simulator: a ball ping-pongs
   between you and an opponent who **dashes inside you** (down to 2-3 studs) while
   the exchange speeds up (to 600 studs/s = ~150 reversals/s). It models the real
