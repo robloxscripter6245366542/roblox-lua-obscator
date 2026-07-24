@@ -334,6 +334,7 @@ local ballMotionCache = {}    -- [ballInstance] = {vel, accel, time} - tracks cu
 -- the resolved part per ball and reuse it while it's still in the tree; only
 -- re-search when it has been destroyed/reparented.
 local ballPartCache = {}      -- [ballInstance] = resolved BasePart
+local ballPosSample = {}      -- [ballInstance] = {pos, time, vel} - motion-derived velocity
 -- Server-authoritative target capture. The game's BallController.Server.ChangeBallColor
 -- is invoked by the SERVER with the ball's real target the instant it retargets -
 -- and for INVISIBLE balls it bails out BEFORE writing the Target attribute, so this
@@ -957,6 +958,29 @@ end
 -- produce garbage. So only trust it when world-relative and in Vector mode;
 -- otherwise fall back to AssemblyLinearVelocity, which is always world-space
 -- (and was the proven source before this optimization).
+-- Motion-derived velocity: how far the ball's position actually moved since the
+-- last frame we sampled it, per second. This is the last-resort truth for a ball
+-- driven KINEMATICALLY - moved by CFrame/Position each frame instead of physics
+-- (some abilities and custom maps do this). Such a ball reports ~0 on both its
+-- LinearVelocity constraint AND AssemblyLinearVelocity, so without this it looks
+-- stationary, the arrival math never fires, and it sails in unblocked ("it just
+-- doesn't block that ball"). Frame-guarded: the sample only advances when the
+-- clock moves on, so calling this several times within one frame (findClosestBall
+-- + the main read) returns the same derived velocity instead of dividing by ~0.
+local function kinematicVelocity(ball, part, now)
+    local s = ballPosSample[ball]
+    local pos = part.Position
+    if not s then
+        ballPosSample[ball] = { pos = pos, time = now, vel = Vector3.new() }
+        return Vector3.new()
+    end
+    if now > s.time + 1e-4 then
+        s.vel = (pos - s.pos) / (now - s.time)
+        s.pos, s.time = pos, now
+    end
+    return s.vel
+end
+
 local function getBallVelocityVector(ball)
     local part = getBallPart(ball)
     if not part then return Vector3.new() end
@@ -968,7 +992,13 @@ local function getBallVelocityVector(ball)
         local vv = lv.VectorVelocity
         if vv.Magnitude > 0.1 then return vv end
     end
-    return part.AssemblyLinearVelocity
+    local measured = part.AssemblyLinearVelocity
+    if measured.Magnitude > 0.1 then return measured end
+    -- Physics reports the ball as still - if it's actually being moved
+    -- kinematically, recover its real velocity from the change in position.
+    local kv = kinematicVelocity(ball, part, tick())
+    if kv.Magnitude > 0.1 then return kv end
+    return measured
 end
 
 -- Component of the ball's velocity that is actually closing the distance to
@@ -1203,6 +1233,7 @@ local function trackBallsFolder(folder)
         ballMotionCache[child] = nil
         serverTargetCache[child] = nil
         ballPartCache[child] = nil
+        ballPosSample[child] = nil
         -- Also drop (and destroy) the speed-label billboard for this ball,
         -- otherwise billboardCache grows without bound as balls spawn and
         -- despawn over a long session.
@@ -1210,6 +1241,60 @@ local function trackBallsFolder(folder)
         if cached and cached.Billboard then cached.Billboard:Destroy() end
         billboardCache[child] = nil
     end))
+end
+
+-- ===================== Advanced ball detection =====================
+-- The event hooks on workspace.Balls are the fast path, but in the real game
+-- they can silently miss balls - and a ball the cache never learns about is a
+-- guaranteed "it just doesn't block". Three ways they miss:
+--   * the folder isn't named exactly "Balls" (GameBalls, BallsFolder, a Model),
+--   * the folder is replaced/reparented wholesale (the old hooks die with it),
+--   * a ball spawns the same frame the hook binds and ChildAdded is lost.
+-- So we ALSO discover EVERY ball-like container (workspace-level Folder/Model
+-- whose name contains "ball"), bind the same tracking to each, and run a cheap
+-- periodic RECONCILE that sweeps them and adds anything the events missed. This
+-- makes detection self-healing: whatever slips past the fast path, the sweep
+-- catches within a fraction of a second.
+local boundContainers = setmetatable({}, { __mode = "k" })  -- weak: don't pin dead folders
+local function bindBallContainer(folder)
+    if not folder or boundContainers[folder] then return end
+    boundContainers[folder] = true
+    trackBallsFolder(folder)  -- caches existing balls + hooks ChildAdded/ChildRemoved
+end
+
+-- Find and bind any not-yet-known ball container directly under workspace.
+local function discoverBallContainers()
+    local ok, children = pcall(function() return workspace:GetChildren() end)
+    if not ok then return end
+    for _, child in ipairs(children) do
+        if not boundContainers[child]
+            and (child:IsA("Folder") or child:IsA("Model"))
+            and child.Name:lower():find("ball", 1, true) then
+            bindBallContainer(child)
+        end
+    end
+end
+
+-- Safety-net sweep: discover containers, then add any real ball an event missed.
+-- Cheap (a handful of containers, each with a handful of children) and idempotent.
+-- Self-throttled (~5x/sec) so the main loop can call it every frame for one
+-- upvalue and no extra bookkeeping - a ball the fast path drops is recovered
+-- within ~0.2s, long before it could reach you.
+local RECONCILE_INTERVAL = 0.2
+local lastReconcile = 0
+local function reconcileBalls(now)
+    if now - lastReconcile < RECONCILE_INTERVAL then return end
+    lastReconcile = now
+    discoverBallContainers()
+    for folder in pairs(boundContainers) do
+        if folder.Parent then
+            for _, child in ipairs(folder:GetChildren()) do
+                if not ballsCache[child] and isRealBall(child) and getBallPart(child) then
+                    ballsCache[child] = true
+                end
+            end
+        end
+    end
 end
 
 -- Lazily drop balls whose instance has left the game tree without the
@@ -1221,6 +1306,7 @@ local function purgeDeadBall(ball)
     ballMotionCache[ball] = nil
     serverTargetCache[ball] = nil
     ballPartCache[ball] = nil
+    ballPosSample[ball] = nil
     billboardCache[ball] = nil
 end
 
@@ -1751,7 +1837,11 @@ track(Players.PlayerRemoving:Connect(function(player)
     if sphere then sphere:Destroy() end
     playerDetectorSpheres[player.Name] = nil
 end))
-watchForNamedChild("Balls", trackBallsFolder)
+-- Bind the primary Balls folder through bindBallContainer so it registers as a
+-- known container (the reconcile sweep won't double-bind it), then discover any
+-- other ball-like containers already present.
+watchForNamedChild("Balls", bindBallContainer)
+discoverBallContainers()
 watchForNamedChild(LocalPlayer.Name, bindHighlightFolder)
 
 -- Grab the game's MovementController so we can read its .Dashing flag. It may
@@ -1839,6 +1929,11 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
 
     local humanoidRootPart = getPlayerHRP(LocalPlayer)
     if not humanoidRootPart then return end
+
+    -- Self-healing detection: sweep every ball-like container for anything the
+    -- event hooks missed (differently-named/replaced folder, lost ChildAdded).
+    -- Self-throttled, so calling it every frame is cheap.
+    reconcileBalls(currentTime)
 
     -- Sample the camera (facing + turn rate) and measure client frame lag for
     -- this frame. Kept as a single call returning a closure-LOCAL frameLag so

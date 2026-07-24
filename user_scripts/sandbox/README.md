@@ -81,6 +81,16 @@ block timing that static analysis can't see.
   Expected: **no-guard backlog grows with ping; the script stays at a small
   backlog with 100% coverage on every return (clash HELD).**
 
+- **`detect_test.lua`** — the **advanced ball-detection** layer: cases the old
+  event-only path went "no block" on and the new discovery + reconcile +
+  motion-velocity layer must catch. Balls in a **differently-named** container
+  (`GameBalls`, not `Balls`); a ball whose **ChildAdded event was missed** (the
+  periodic reconcile sweep recovers it); and a **kinematic ball** moved by
+  Position each frame with zero physics velocity (velocity recovered from
+  motion, so its arrival is predicted). Run: `lua-5.1.5/src/lua detect_test.lua`.
+  Expected: **ALL DETECTION CASES OK** — and the same suite run against the
+  pre-change script fails all three ("NO BLOCK"), confirming the fix.
+
 - **`decision_test.lua`** — **which ball drives the parry** when several are in
   play. Two cases that were real misses: a **decoy** (a ball aimed at another
   player sitting nearer than the one aimed at you) must not shadow your real
