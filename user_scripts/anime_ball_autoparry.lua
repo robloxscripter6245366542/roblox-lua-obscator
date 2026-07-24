@@ -1263,12 +1263,20 @@ local function bindBallContainer(folder)
 end
 
 -- Find and bind any not-yet-known ball container directly under workspace.
+-- A container is a ball-named FOLDER (balls live in folders - "Balls",
+-- "GameBalls", "BallsFolder"). We deliberately do NOT auto-bind ball-named
+-- Models: a player whose USERNAME contains "ball" has a character Model in
+-- workspace, and binding it would add their body parts to the ball cache and
+-- make the script parry (or lock onto) a person. A Model with a Humanoid is a
+-- character and is always skipped; the primary game folder is bound explicitly
+-- by name via watchForNamedChild regardless of type, so nothing real is missed.
 local function discoverBallContainers()
     local ok, children = pcall(function() return workspace:GetChildren() end)
     if not ok then return end
     for _, child in ipairs(children) do
         if not boundContainers[child]
-            and (child:IsA("Folder") or child:IsA("Model"))
+            and child:IsA("Folder")
+            and not child:FindFirstChildOfClass("Humanoid")
             and child.Name:lower():find("ball", 1, true) then
             bindBallContainer(child)
         end
