@@ -1489,37 +1489,37 @@ local function recordBlockResult(ok, result)
     end
 end
 -- Block-send pacing. The block goes through a RemoteFunction, and InvokeServer
--- YIELDS until the server replies (a full round-trip). Three fire paths
--- (executeParry, the burst, and Auto Spam) each call this EVERY frame during a
--- clash, so unpaced it sends the block ~180 times a second and the yielding
--- calls PILE UP: the server processes them serially per player, the backlog
--- grows with ping, and the shield lands later and later behind the exchange -
--- the "clashing is so slow" lag. Two gates keep it snappy without flooding:
+-- YIELDS until the server replies (a full round-trip). We bound how many block
+-- requests can be in flight at once (MAX_CLASH_INFLIGHT) so the rapid clash fire
+-- can never pile into an unbounded backlog - the old ~180/s "clashing is so slow"
+-- flood - while still letting a clash send blocks as fast as the game will take
+-- them. Two modes:
 --
---   * same-frame dedup (4 ms): collapse a frame's 3 duplicate calls into one.
---   * refresh cadence (CLASH_REFRESH): fire when the previous reply came back
---     OR when it's been CLASH_REFRESH since the last send - whichever is first.
+--   * force (CLASH / point-blank): a CLICK-STORM. Send a fresh block every frame
+--     the caller asks, capped only by MAX_CLASH_INFLIGHT concurrent requests.
+--     This matches a fast clicker click-for-click - at low ping each request
+--     returns in a few ms so throughput is ~hundreds/sec; at high ping the cap
+--     holds concurrency down so it stays snappy instead of backing up. This is
+--     the answer to "they click so fast and I lose the clash": now the script
+--     clicks the block as fast as the round-trip physically allows.
+--   * lone ball: CALM. One request in flight, one per frame - a single too-early
+--     block can't spam, and there's nothing to out-click.
 --
--- The cadence is the key to feeling responsive. A pure "one in flight, wait for
--- each reply" guard ties the block rate to your PING: at 200 ms you'd fire only
--- ~5 blocks a second, so if the game consumes the shield per parry you eat every
--- other point-blank return and the clash feels sluggish / lost. Instead we
--- guarantee a fresh block every CLASH_REFRESH seconds (~16/s) regardless of
--- ping, so there's always a live block for each return, while the send rate
--- stays capped (~16/s, backlog peaks at ~ping/CLASH_REFRESH ≈ 2-3 at 200 ms,
--- not the ~180/s flood). At low ping the reply returns first, so it still fires
--- at the faster round-trip rate. blockInFlight is always cleared (pcall-wrapped)
--- so a dropped reply can't wedge it off.
-local CLASH_REFRESH = 0.06
-local blockInFlight = false
+-- blocksInFlight is always decremented (pcall-wrapped) so a dropped reply can't
+-- wedge the counter and choke off future blocks.
+local MAX_CLASH_INFLIGHT = 4
+local blocksInFlight = 0
 local lastBlockSendTime = -1
-local function fireBlockRemote()
-    local nowT = tick()
-    if nowT - lastBlockSendTime < 0.004 then return end  -- same-frame dedup
-    -- wait for the pending reply, but never longer than CLASH_REFRESH
-    if blockInFlight and (nowT - lastBlockSendTime) < CLASH_REFRESH then return end
-    lastBlockSendTime = nowT
-    blockInFlight = true
+local function fireBlockRemote(force)
+    if force then
+        if blocksInFlight >= MAX_CLASH_INFLIGHT then return end  -- bound backlog only
+    else
+        if blocksInFlight > 0 then return end                   -- lone ball: one at a time
+        local nowT = tick()
+        if nowT - lastBlockSendTime < 0.004 then return end     -- one per frame
+        lastBlockSendTime = nowT
+    end
+    blocksInFlight = blocksInFlight + 1
     task.spawn(function()
         local cam = workspace.CurrentCamera
         -- NB: a plain `cam and cam...Y or default` would wrongly fall back to the
@@ -1533,7 +1533,7 @@ local function fireBlockRemote()
         local svc = getSwordService()
         if svc then
             local ok, result = pcall(function() return svc.Block:Invoke(lookY) end)
-            if ok then recordBlockResult(true, result); blockInFlight = false; return end
+            if ok then recordBlockResult(true, result); blocksInFlight = blocksInFlight - 1; return end
             swordServiceProxy = nil -- proxy went stale; re-fetch next time
         end
         -- Fallback: generic framework RemoteFunction router.
@@ -1541,7 +1541,7 @@ local function fireBlockRemote()
             return ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {lookY})
         end)
         recordBlockResult(ok, result)
-        blockInFlight = false
+        blocksInFlight = blocksInFlight - 1
     end)
 end
 
@@ -1558,7 +1558,7 @@ local function executeParry(force)
     lastParryTime = currentTime
     totalParries = totalParries + 1
     if isHighSpeedMode then highSpeedParries = highSpeedParries + 1 end
-    fireBlockRemote()
+    fireBlockRemote(force)
 end
 
 local function createSpeedLabel(ball)
@@ -2423,7 +2423,7 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
             -- FIRST block sets a shield that covers impact, later ones are
             -- cooldown-gated by the server and harmless.
             if alwaysFire or ((panicNow or imminentThreat) and coverable and inShieldWindow) then
-                fireBlockRemote()
+                fireBlockRemote(alwaysFire)
                 totalBurstBlocks = totalBurstBlocks + 1
             end
         end
