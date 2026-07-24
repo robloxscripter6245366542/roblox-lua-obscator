@@ -49,18 +49,14 @@ block timing that static analysis can't see.
   Expected: **ALL EDGE CASES OK**. (`world.lua` holds the shared mocked-world
   builder these suites load the script into.)
 
-- **`clash_rate.lua`** — measures how many block calls the script **sends per
-  second** during a sustained point-blank clash. Three fire paths each fired the
-  block remote every frame, so a clash used to send it ~3× per frame (~180/s).
-  In real Roblox the block is a yielding `RemoteFunction`, so that triple-send
-  piles into a serial server backlog and the shield lands later and later behind
-  the exchange — *"the clashing is so slow."* A block is a 0.6 s shield, so one
-  send per frame already holds it; the per-frame dedup (plus the in-flight guard)
-  collapses each frame to a single send. Run: `lua-5.1.5/src/lua clash_rate.lua`.
-  Expected: **~60/s (one per frame), no flood** — down from ~180/s. (Stock Lua
-  5.1 can't yield across the script's `pcall`, so the sandbox can't model the
-  round-trip itself; it measures the send rate, which is the flood the dedup
-  removes.)
+- **`clash_rate.lua`** — confirms the **clash click-storm**: during a point-blank
+  clash the script sends the block as fast as it can (to match a fast clicker
+  click-for-click), capped only by `MAX_CLASH_INFLIGHT` concurrent requests so it
+  can't pile into a backlog. This synchronous transport can't show the cap (a
+  synchronous Invoke returns before the next fire, so nothing is ever "in
+  flight") — it just confirms the storm is firing hard during a clash. The cap
+  itself is proven in `yield_clash.lua`. Run: `lua-5.1.5/src/lua clash_rate.lua`.
+  Expected: **clash click-storm firing hard at every ping.**
 
 - **`yield_clash.lua`** — the **faithful yielding-server** clash test. A real
   Roblox block goes through a `RemoteFunction` whose `InvokeServer` **yields for
@@ -72,11 +68,11 @@ block timing that static analysis can't see.
   call `task.wait`s the round-trip). It then contrasts a **no-guard control**
   (fire a yielding block every frame → pending calls pile into a backlog that
   grows with ping — the "clashing is so slow" lag, reproduced) against the **real
-  script**. The script paces the block on a fixed refresh cadence (`CLASH_REFRESH`
-  ~16/s) rather than waiting a full round-trip per block, so it keeps a **fresh
-  block for every return at any ping** (~18–30 blocks/s even at 200 ms, vs ~5/s
-  for a wait-per-reply guard) while the backlog stays small (peak ≤4, not the
-  ~180/s flood). Scored under **both** shield models — persistent 0.6 s shield
+  script**. The script CLICK-STORMS the block (as fast as it can, to match a fast
+  clicker) but bounds concurrent requests at `MAX_CLASH_INFLIGHT` (4), so the send
+  rate is high — ~120 blocks/s at 30 ms ping — while the backlog stays capped
+  (peak ≤4, not the unbounded ~180/s flood) and a fresh block still covers **every**
+  return. Scored under **both** shield models — persistent 0.6 s shield
   *and* shield-consumed-per-parry. Run: `lua-5.1.5/src/lua yield_clash.lua`.
   Expected: **no-guard backlog grows with ping; the script stays at a small
   backlog with 100% coverage on every return (clash HELD).**

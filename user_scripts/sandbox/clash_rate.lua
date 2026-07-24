@@ -1,15 +1,11 @@
--- Measure how many block calls the script SENDS per second during a sustained
--- point-blank clash. During a clash three fire paths (executeParry, the burst,
--- and Auto Spam) each fire the block remote every frame, so the same frame used
--- to send it ~3 times over - ~180 remote calls a second. In real Roblox the
--- block goes through a RemoteFunction whose InvokeServer YIELDS a full round-
--- trip, so those triple-per-frame sends pile into a serial server backlog and
--- the shield lands later and later behind the exchange ("the clashing is so
--- slow"). A block is a 0.6s shield, so one send per frame already holds it. The
--- per-frame dedup (plus the in-flight guard) collapses each frame to a single
--- send. At 60 fps that is ~60/s, not ~180/s. (Stock Lua 5.1 can't yield across
--- the script's pcall, so the sandbox can't model the round-trip itself - it
--- measures the send RATE, which is the flood the dedup removes.)
+-- Confirms the CLASH CLICK-STORM: during a point-blank clash the script sends
+-- the block as fast as it can (up to 3 fire paths x every frame) to match a fast
+-- clicker click-for-click. This synchronous transport can't show the safety net
+-- - the MAX_CLASH_INFLIGHT concurrency cap that stops those sends piling into a
+-- backlog - because a synchronous Invoke returns before the next fire, so nothing
+-- is ever "in flight". That bound is proven in yield_clash.lua (peakInflight
+-- stays <= MAX_CLASH_INFLIGHT with 100% coverage). Here we just confirm the storm
+-- is firing hard (many sends/sec) during a clash, and NOT during a lone ball.
 local HERE = (arg[0] or ""):match("^(.*[/\\])") or "./"
 local SCRIPT = arg[1] or (HERE.."../anime_ball_autoparry.lua")
 local SRC = assert(io.open(SCRIPT,"r")):read("*a")
@@ -34,13 +30,14 @@ local function measure(ping)
   return (w.server.blocks-startBlocks)/3.0
 end
 
-print("=== block-send RATE during a 3s point-blank clash at 60 fps (fires/sec) ===")
-print("    one send per frame ~= 60/s is healthy; ~180/s is the triple-per-frame flood.")
-local worst=0
+print("=== CLASH CLICK-STORM: block sends/sec during a 3s point-blank clash ===")
+print("    The storm fires hard on purpose (match a fast clicker); the concurrency")
+print("    cap that keeps it from backlogging is proven in yield_clash.lua.")
+local least=math.huge
 for _,pg in ipairs({30,90,150,200}) do
   local r=measure(pg) or -1
-  worst=math.max(worst,r)
-  print(string.format("  ping %3d ms : %5.1f fires/sec", pg, r))
+  least=math.min(least,r)
+  print(string.format("  ping %3d ms : %6.1f sends/sec", pg, r))
 end
-if worst<=75 then print("\nOK: ~one send per frame - no flood.")
-else print(string.format("\nFLOOD: %.0f/s (>1 per frame) - the block remote is over-sent.", worst)); os.exit(1) end
+if least>=60 then print("\nOK: clash click-storm is firing hard at every ping.")
+else print(string.format("\nWEAK: clash only sent %.0f/s - not storming.", least)); os.exit(1) end
