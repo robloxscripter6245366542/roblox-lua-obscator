@@ -1402,33 +1402,36 @@ local function recordBlockResult(ok, result)
         lastBlockResult = "rejected"
     end
 end
--- In-flight guard. The block goes through a RemoteFunction, and InvokeServer
--- YIELDS until the server replies (a full round-trip). The fire paths call this
--- every frame during a clash / point-blank - up to ~180 times a second - so
--- without a guard each frame spawns a fresh yielding thread and they PILE UP:
--- the server processes InvokeServer serially per player, the backlog grows the
--- worse your ping, and the shield lands later and later behind the exchange -
--- exactly the "clashing is so slow" lag. A block is a 0.6s shield and a landed
--- block resets the cooldown, so one request per round-trip already keeps the
--- shield continuously up; more is pure flood. So we keep AT MOST ONE block
--- request in flight: while one is waiting on the server, every extra call this
--- window is a no-op. The next block fires the instant the previous reply lands,
--- which is the fastest rate the network actually allows - snappy, never backed
--- up. The flag is always cleared (pcall-wrapped), so a dropped reply can't wedge
--- it off permanently.
--- Per-frame dedup. Three fire paths (executeParry, the burst, and Auto Spam)
--- each call this EVERY frame during a clash, so the same frame sends the block
--- 3 times over - ~180 remote calls a second, triple what one frame needs. A
--- block is a 0.6s shield; one send per frame already keeps it up. Collapse all
--- of a frame's calls into a single send (tick() is constant across one frame's
--- handlers; the tiny 4 ms floor absorbs sub-ms drift and still lets the next
--- frame through at up to ~250 fps).
+-- Block-send pacing. The block goes through a RemoteFunction, and InvokeServer
+-- YIELDS until the server replies (a full round-trip). Three fire paths
+-- (executeParry, the burst, and Auto Spam) each call this EVERY frame during a
+-- clash, so unpaced it sends the block ~180 times a second and the yielding
+-- calls PILE UP: the server processes them serially per player, the backlog
+-- grows with ping, and the shield lands later and later behind the exchange -
+-- the "clashing is so slow" lag. Two gates keep it snappy without flooding:
+--
+--   * same-frame dedup (4 ms): collapse a frame's 3 duplicate calls into one.
+--   * refresh cadence (CLASH_REFRESH): fire when the previous reply came back
+--     OR when it's been CLASH_REFRESH since the last send - whichever is first.
+--
+-- The cadence is the key to feeling responsive. A pure "one in flight, wait for
+-- each reply" guard ties the block rate to your PING: at 200 ms you'd fire only
+-- ~5 blocks a second, so if the game consumes the shield per parry you eat every
+-- other point-blank return and the clash feels sluggish / lost. Instead we
+-- guarantee a fresh block every CLASH_REFRESH seconds (~16/s) regardless of
+-- ping, so there's always a live block for each return, while the send rate
+-- stays capped (~16/s, backlog peaks at ~ping/CLASH_REFRESH ≈ 2-3 at 200 ms,
+-- not the ~180/s flood). At low ping the reply returns first, so it still fires
+-- at the faster round-trip rate. blockInFlight is always cleared (pcall-wrapped)
+-- so a dropped reply can't wedge it off.
+local CLASH_REFRESH = 0.06
 local blockInFlight = false
 local lastBlockSendTime = -1
 local function fireBlockRemote()
-    if blockInFlight then return end
     local nowT = tick()
-    if nowT - lastBlockSendTime < 0.004 then return end  -- already sent this frame
+    if nowT - lastBlockSendTime < 0.004 then return end  -- same-frame dedup
+    -- wait for the pending reply, but never longer than CLASH_REFRESH
+    if blockInFlight and (nowT - lastBlockSendTime) < CLASH_REFRESH then return end
     lastBlockSendTime = nowT
     blockInFlight = true
     task.spawn(function()
