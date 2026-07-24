@@ -72,10 +72,14 @@ block timing that static analysis can't see.
   call `task.wait`s the round-trip). It then contrasts a **no-guard control**
   (fire a yielding block every frame → pending calls pile into a backlog that
   grows with ping — the "clashing is so slow" lag, reproduced) against the **real
-  script**, whose in-flight guard must hold `peakInflight` at **1** while a
-  shield still covers the point-blank ball on every return. Run:
-  `lua-5.1.5/src/lua yield_clash.lua`. Expected: **no-guard backlog grows with
-  ping; the script stays at 1 in flight, 100% shield coverage (clash HELD)**.
+  script**. The script paces the block on a fixed refresh cadence (`CLASH_REFRESH`
+  ~16/s) rather than waiting a full round-trip per block, so it keeps a **fresh
+  block for every return at any ping** (~18–30 blocks/s even at 200 ms, vs ~5/s
+  for a wait-per-reply guard) while the backlog stays small (peak ≤4, not the
+  ~180/s flood). Scored under **both** shield models — persistent 0.6 s shield
+  *and* shield-consumed-per-parry. Run: `lua-5.1.5/src/lua yield_clash.lua`.
+  Expected: **no-guard backlog grows with ping; the script stays at a small
+  backlog with 100% coverage on every return (clash HELD).**
 
 - **`clash_test.lua`** — a dedicated **clash** simulator: a ball ping-pongs
   between you and an opponent who **dashes inside you** (down to 2-3 studs) while

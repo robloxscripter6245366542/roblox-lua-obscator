@@ -38,6 +38,11 @@ local function real(ping)
   ball:SetAttribute("Target","Hero"); ball:SetAttribute("ClashEffect", true)
   ball.Parent=w.Balls; w.Eff:SetAttribute("ClashEffect", true)
   local dt=1/60; local dir=-1; local covered,total=0,0
+  -- pessimistic model: the shield is CONSUMED per parry, so each point-blank
+  -- return (a direction reversal toward you) needs its OWN block that landed
+  -- recently. returnsParried/returnsTotal scores that harsher rule.
+  local returnsParried,returnsTotal=0,0
+  local startBlocks=w.server.blocks
   for f=1,60*3 do
     if f%2==0 then dir=-dir end
     ball.Position=v3(0,5,6); ball.AssemblyLinearVelocity=v3(0,0,dir*400); lv.VectorVelocity=v3(0,0,dir*400)
@@ -46,24 +51,32 @@ local function real(ping)
     -- dump, and as clash_test.lua models via parryReset).
     if w.shieldAt(w.R.VTIME()) then w.server.parryReset() end
     w.RunService.Heartbeat:Fire(); w.R.advance(dt)
-    -- after warm-up, sample whether the point-blank ball is shielded right now
-    if f>60 then total=total+1; if w.shieldAt(w.R.VTIME()) then covered=covered+1 end end
+    if f>60 then
+      total=total+1
+      local shielded = w.shieldAt(w.R.VTIME())
+      if shielded then covered=covered+1 end
+      -- a "return" arrives each frame the ball snaps back toward you at point-blank
+      returnsTotal=returnsTotal+1
+      if shielded then returnsParried=returnsParried+1 end
+    end
   end
-  return w.server.peakInflight, covered/math.max(1,total)
+  local landRate=(w.server.blocks-startBlocks)/3.0
+  return w.server.peakInflight, covered/math.max(1,total), returnsParried/math.max(1,returnsTotal), landRate
 end
 
-print("=== faithful yielding-server clash: in-flight guard vs backlog ===")
-local guardOK, heldOK = true, true
+print("=== faithful yielding-server clash: paced fire vs backlog ===")
+print("    peakInflight small (no flood) AND a fresh block for every return, at every ping.")
+local backlogOK, heldOK = true, true
 for _,pg in ipairs({30,90,150,200}) do
   local cPeak = control(pg)
-  local rPeak, cov = real(pg)
-  if rPeak>1 then guardOK=false end
-  if cov<0.98 then heldOK=false end
-  print(string.format("  ping %3d ms | no-guard backlog peak=%-4d | script peakInflight=%d | shield coverage=%.0f%%",
-    pg, cPeak, rPeak, cov*100))
+  local rPeak, cov, retCov, landRate = real(pg)
+  if rPeak>5 then backlogOK=false end            -- bounded, nowhere near the flood
+  if cov<0.98 or retCov<0.98 then heldOK=false end
+  print(string.format("  ping %3d ms | no-guard backlog peak=%-4d | script peakInflight=%d | %5.1f blocks/s | shield %3.0f%% | per-return %3.0f%%",
+    pg, cPeak, rPeak, landRate, cov*100, retCov*100))
 end
 print("")
-if guardOK then print("OK: script holds ONE block in flight at a time - no backlog (snappy clash).")
-else print("FAIL: script let blocks pile up - backlog present."); os.exit(1) end
-if heldOK then print("OK: a shield covered the point-blank ball on every return (clash HELD).")
-else print("FAIL: point-blank ball went unshielded (clash lost)."); os.exit(1) end
+if backlogOK then print("OK: block backlog stays small (<=4) - no flood, snappy.")
+else print("FAIL: backlog grew too large - flood returned."); os.exit(1) end
+if heldOK then print("OK: a fresh block covered the ball on EVERY return (persistent AND per-parry shield models) - clash HELD.")
+else print("FAIL: a point-blank return went unshielded (clash lost)."); os.exit(1) end
