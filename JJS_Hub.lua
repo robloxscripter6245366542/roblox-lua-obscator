@@ -747,6 +747,9 @@ local SERVICE_LIST = {
 --============================================================================
 local State = {}
 
+-- Shared across tabs: the ability service currently picked in the Remotes tab.
+local selectedService = "ItadoriService"
+
 -- Resolve a Knit service remote signal instance (nil, reason on failure).
 local function resolveServiceRemote(serviceName, signalName)
 	local knit = ReplicatedStorage:FindFirstChild("Knit")
@@ -901,6 +904,28 @@ do
 	env:Slider("Field of View", "fov", 30, 120, 70, function(v)
 		local cam = getCamera(); if cam then cam.FieldOfView = v end
 	end)
+
+	local fx = tab:AddSection("Move Effects (visual)")
+	fx:Label("Plays the 'Effects' visual remote of the service selected in the "
+		.. "Remotes tab. Off by default; many Effects remotes need args, so "
+		.. "results vary by move.")
+	fx:Button("Play Effects (selected service)", function()
+		local ok, err = fireSignal(selectedService, "Effects")
+		notify("Effects", ok and (selectedService .. ".Effects played")
+			or ("Fail: " .. tostring(err)), ok and 1.5 or 3)
+	end)
+	fx:Toggle("Auto Effects Loop", "vfx_auto", false, function() end)
+	fx:Slider("Auto Effects Rate (per sec)", "vfx_rate", 1, 20, 4, function() end)
+	task.spawn(function()
+		while true do
+			if Flags.vfx_auto then
+				fireSignal(selectedService, "Effects")
+				task.wait(1 / math.max(1, Flags.vfx_rate or 4))
+			else
+				task.wait(0.2)
+			end
+		end
+	end)
 end
 
 --------------------------------------------------------------------
@@ -1049,6 +1074,7 @@ do
 				new("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = b })
 				b.MouseButton1Click:Connect(function()
 					selected = svc
+					selectedService = svc
 					selLabel.Text = "Selected: " .. svc
 				end)
 			end
