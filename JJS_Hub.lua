@@ -1105,6 +1105,28 @@ do
 	quickBtn("Fire Ultimate", "Ultimate")
 	quickBtn("Fire Deactivated", "Deactivated")
 
+	-- Effects (visual) — opt-in
+	local fx = tab:AddSection("Effects (visual) — optional")
+	fx:Label("Fires the selected service's 'Effects' visual remote. Off by "
+		.. "default; most Effects remotes need args, so results vary.")
+	fx:Button("Fire Effects (selected service)", function()
+		local ok, err = fireSignal(selected, "Effects")
+		notify("Effects", ok and (selected .. ".Effects fired")
+			or ("Fail: " .. tostring(err)), ok and 1.5 or 3)
+	end)
+	fx:Toggle("Auto Effects Loop", "fx_auto", false, function() end)
+	fx:Slider("Auto Effects Rate (per sec)", "fx_rate", 1, 20, 4, function() end)
+	task.spawn(function()
+		while true do
+			if Flags.fx_auto then
+				fireSignal(selected, "Effects")
+				task.wait(1 / math.max(1, Flags.fx_rate or 4))
+			else
+				task.wait(0.2)
+			end
+		end
+	end)
+
 	-- Movement (MovementService)
 	local mv = tab:AddSection("Movement")
 	mv:Button("Dash", function() fireSignal("MovementService", "Dash") end)
