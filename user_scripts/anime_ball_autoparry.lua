@@ -1534,27 +1534,33 @@ local function fireBlockRemote(clash)
     lastBlockSendTime = nowT
     blocksInFlight = blocksInFlight + 1
     task.spawn(function()
-        local cam = workspace.CurrentCamera
-        -- NB: a plain `cam and cam...Y or default` would wrongly fall back to the
-        -- default when the camera is exactly level (LookVector.Y == 0, which is a
-        -- valid pitch, not a missing value). Keep the real 0 so the block
-        -- direction we send matches a legit client instead of a frozen angle.
-        local lookY = -0.759547233581543
-        if cam then lookY = cam.CFrame.LookVector.Y end
-        -- Preferred: the game's exact call path. Capture the RETURN (server's
-        -- accept/reject verdict), not just whether the call errored.
-        local svc = getSwordService()
-        if svc then
-            local ok, result = pcall(function() return svc.Block:Invoke(lookY) end)
-            if ok then recordBlockResult(true, result); blocksInFlight = blocksInFlight - 1; return end
-            swordServiceProxy = nil -- proxy went stale; re-fetch next time
-        end
-        -- Fallback: generic framework RemoteFunction router.
-        local ok, result = pcall(function()
-            return ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {lookY})
+        -- The whole body is pcall-wrapped so the in-flight counter is ALWAYS
+        -- decremented afterward - even if something in here errors. Otherwise a
+        -- single throwing send would leak the counter, and after CLASH_INFLIGHT
+        -- leaks the guard would wedge and block firing would stop for good.
+        pcall(function()
+            local cam = workspace.CurrentCamera
+            -- NB: a plain `cam and cam...Y or default` would wrongly fall back to
+            -- the default when the camera is exactly level (LookVector.Y == 0, a
+            -- valid pitch, not a missing value). Keep the real 0 so the block
+            -- direction we send matches a legit client instead of a frozen angle.
+            local lookY = -0.759547233581543
+            if cam then lookY = cam.CFrame.LookVector.Y end
+            -- Preferred: the game's exact call path. Capture the RETURN (server's
+            -- accept/reject verdict), not just whether the call errored.
+            local svc = getSwordService()
+            if svc then
+                local ok, result = pcall(function() return svc.Block:Invoke(lookY) end)
+                if ok then recordBlockResult(true, result); return end
+                swordServiceProxy = nil -- proxy went stale; re-fetch next time
+            end
+            -- Fallback: generic framework RemoteFunction router.
+            local ok, result = pcall(function()
+                return ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {lookY})
+            end)
+            recordBlockResult(ok, result)
         end)
-        recordBlockResult(ok, result)
-        blocksInFlight = blocksInFlight - 1
+        blocksInFlight = blocksInFlight - 1   -- always runs, even on error
     end)
 end
 
