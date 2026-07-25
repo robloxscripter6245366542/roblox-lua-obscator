@@ -102,9 +102,10 @@ end
 -- Descends through category tables until it reaches a packet (a table owning a Fire method).
 local function fire(...)
 	if not Net then return end
-	local args = { ... }
+	local argc = select("#", ...)
+	local args = table.pack(...)
 	local node, depth = Net, 0
-	for i = 1, #args do
+	for i = 1, argc do
 		if type(args[i]) == "string" and type(node) == "table" and node[args[i]] ~= nil then
 			node = node[args[i]]
 			depth = i
@@ -117,10 +118,8 @@ local function fire(...)
 		end
 	end
 	if type(node) == "table" and type(node.Fire) == "function" then
-		local payload = {}
-		for j = depth + 1, #args do payload[#payload + 1] = args[j] end
 		return select(2, pcall(function()
-			return node:Fire(table.unpack(payload))
+			return node:Fire(table.unpack(args, depth + 1, argc))
 		end))
 	end
 end
@@ -130,8 +129,9 @@ local function invoke(path, ...)
 	local n
 	if type(path) == "table" then n = remote(table.unpack(path)) else n = remote(path) end
 	if n and type(n.Fire) == "function" then
-		local extra = { ... }
-		local ok, res = pcall(function() return n:Fire(table.unpack(extra)) end)
+		local argc = select("#", ...)
+		local extra = table.pack(...)
+		local ok, res = pcall(function() return n:Fire(table.unpack(extra, 1, argc)) end)
 		if ok then return res end
 	end
 	return nil
@@ -158,16 +158,18 @@ local function allRemotePaths()
 end
 
 -- Parse a comma-separated arg string into typed values (number / bool / nil / string).
+-- Returns a packed table with `.n` so positions survive a "nil" argument.
 local function parseArgs(str)
-	local out = {}
+	local out = { n = 0 }
 	if not str or str == "" then return out end
 	for token in string.gmatch(str, "([^,]+)") do
 		local t = token:match("^%s*(.-)%s*$")
-		if t == "true" then out[#out + 1] = true
-		elseif t == "false" then out[#out + 1] = false
-		elseif t == "nil" then out[#out + 1] = nil
-		elseif tonumber(t) ~= nil then out[#out + 1] = tonumber(t)
-		else out[#out + 1] = t end
+		out.n += 1
+		if t == "true" then out[out.n] = true
+		elseif t == "false" then out[out.n] = false
+		elseif t == "nil" then out[out.n] = nil
+		elseif tonumber(t) ~= nil then out[out.n] = tonumber(t)
+		else out[out.n] = t end
 	end
 	return out
 end
@@ -972,7 +974,15 @@ task.spawn(function()
 								rec = { hl = makeHighlight(char, Color3.fromRGB(255, 80, 80), Color3.new(1, 1, 1)), bb = makeLabel(h, p.Name, Color3.fromRGB(255, 120, 120)) }
 								ESP.players[p] = rec
 							else
-								if rec.hl.Adornee ~= char then rec.hl.Adornee = char; rec.hl.Parent = char end
+								-- recreate adornments that died when the player respawned
+								if not rec.hl or rec.hl.Parent == nil then
+									rec.hl = makeHighlight(char, Color3.fromRGB(255, 80, 80), Color3.new(1, 1, 1))
+								elseif rec.hl.Adornee ~= char then
+									rec.hl.Adornee = char
+								end
+								if not rec.bb or rec.bb.Parent == nil then
+									rec.bb = makeLabel(h, p.Name, Color3.fromRGB(255, 120, 120))
+								end
 								local dist = hrp and math.floor((h.Position - hrp.Position).Magnitude) or 0
 								local lbl = rec.bb:FindFirstChildOfClass("TextLabel")
 								if lbl then lbl.Text = string.format("%s  [%dm]", p.Name, dist) end
@@ -1055,19 +1065,29 @@ PlayerTab:Toggle({ Title = "Fly", Desc = "WASD + Space/Shift. Toggle off to stop
 PlayerTab:Slider({ Title = "Fly speed", Step = 5, Value = { Min = 10, Max = 300, Default = 60 },
 	Callback = function(v) State.flySpeed = v end })
 RunService.RenderStepped:Connect(function()
-	if State.fly and flyBV and flyBG then
-		local _, hrp = getCharacter()
-		if not hrp then return end
-		flyBG.CFrame = Camera.CFrame
-		local dir = Vector3.zero
-		if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += Camera.CFrame.LookVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= Camera.CFrame.LookVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= Camera.CFrame.RightVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += Camera.CFrame.RightVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0, 1, 0) end
-		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then dir -= Vector3.new(0, 1, 0) end
-		flyBV.Velocity = (dir.Magnitude > 0 and dir.Unit or Vector3.zero) * State.flySpeed
+	if not State.fly then return end
+	local _, hrp = getCharacter()
+	if not hrp then return end
+	local cam = Workspace.CurrentCamera
+	if not cam then return end
+	-- self-heal movers destroyed on respawn
+	if not flyBV or flyBV.Parent == nil then
+		if flyBV then pcall(function() flyBV:Destroy() end) end
+		flyBV = Instance.new("BodyVelocity"); flyBV.MaxForce = Vector3.new(1e9, 1e9, 1e9); flyBV.Velocity = Vector3.zero; flyBV.Parent = hrp
 	end
+	if not flyBG or flyBG.Parent == nil then
+		if flyBG then pcall(function() flyBG:Destroy() end) end
+		flyBG = Instance.new("BodyGyro"); flyBG.MaxTorque = Vector3.new(1e9, 1e9, 1e9); flyBG.P = 1e4; flyBG.Parent = hrp
+	end
+	flyBG.CFrame = cam.CFrame
+	local dir = Vector3.zero
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0, 1, 0) end
+	if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then dir -= Vector3.new(0, 1, 0) end
+	flyBV.Velocity = (dir.Magnitude > 0 and dir.Unit or Vector3.zero) * State.flySpeed
 end)
 
 LocalPlayer.CharacterAdded:Connect(function(char)
@@ -1242,17 +1262,22 @@ local remotePaths = allRemotePaths()
 RemoteTab:Paragraph({ Title = "Coverage", Desc = ("%d remotes discovered in the game's Networking module. Pick one, supply comma-separated args, and Fire (or Invoke for a response)."):format(#remotePaths) })
 local selectedRemote = remotePaths[1]
 local remoteArgs = ""
-RemoteTab:Dropdown({
-	Title = "Remote", Values = remotePaths, Value = remotePaths[1], AllowNone = false,
-	Callback = function(v) if type(v) == "table" then selectedRemote = v[1] else selectedRemote = v end end,
-})
+if #remotePaths > 0 then
+	RemoteTab:Dropdown({
+		Title = "Remote", Values = remotePaths, Value = remotePaths[1], AllowNone = false,
+		Callback = function(v) if type(v) == "table" then selectedRemote = v[1] else selectedRemote = v end end,
+	})
+else
+	RemoteTab:Paragraph({ Title = "No remotes", Desc = "Networking module unavailable — remote features are disabled." })
+end
 RemoteTab:Input({ Title = "Arguments (comma-separated)", Placeholder = "e.g. Carrot, 5, true", Callback = function(t) remoteArgs = t or "" end })
 RemoteTab:Button({ Title = "Fire", Callback = function()
 	if not selectedRemote then return end
-	local path = {}
-	for seg in string.gmatch(selectedRemote, "([^.]+)") do path[#path + 1] = seg end
+	local combined, base = {}, 0
+	for seg in string.gmatch(selectedRemote, "([^.]+)") do base += 1; combined[base] = seg end
 	local args = parseArgs(remoteArgs)
-	fire(table.unpack((function() local a = {} for _, p in ipairs(path) do a[#a + 1] = p end for _, v in ipairs(args) do a[#a + 1] = v end return a end)()))
+	for i = 1, args.n do combined[base + i] = args[i] end
+	fire(table.unpack(combined, 1, base + args.n))
 	WindUI:Notify({ Title = "Remote fired", Content = selectedRemote, Icon = "terminal", Duration = 3 })
 end })
 RemoteTab:Button({ Title = "Invoke (show response)", Callback = function()
@@ -1260,7 +1285,7 @@ RemoteTab:Button({ Title = "Invoke (show response)", Callback = function()
 	local path = {}
 	for seg in string.gmatch(selectedRemote, "([^.]+)") do path[#path + 1] = seg end
 	local args = parseArgs(remoteArgs)
-	local res = invoke(path, table.unpack(args))
+	local res = invoke(path, table.unpack(args, 1, args.n))
 	WindUI:Notify({ Title = selectedRemote, Content = "Response: " .. tostring(res), Icon = "terminal", Duration = 5 })
 end })
 
@@ -1291,10 +1316,10 @@ if #rawNames > 0 then
 		if not inst then return end
 		local a = parseArgs(rawArgs)
 		if inst:IsA("RemoteFunction") then
-			local ok, res = pcall(function() return inst:InvokeServer(table.unpack(a)) end)
+			local ok, res = pcall(function() return inst:InvokeServer(table.unpack(a, 1, a.n)) end)
 			WindUI:Notify({ Title = inst.Name, Content = ok and ("Response: " .. tostring(res)) or "Invoke failed", Icon = "terminal", Duration = 5 })
 		else
-			pcall(function() inst:FireServer(table.unpack(a)) end)
+			pcall(function() inst:FireServer(table.unpack(a, 1, a.n)) end)
 			WindUI:Notify({ Title = "Fired", Content = inst.Name, Icon = "terminal", Duration = 3 })
 		end
 	end })
