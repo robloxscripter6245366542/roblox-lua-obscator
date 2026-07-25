@@ -761,6 +761,14 @@ local function resolveServiceRemote(serviceName, signalName)
 	return sig
 end
 
+-- Fire a service signal (arg-less). Returns ok, errorOrReason.
+local function fireSignal(serviceName, signalName)
+	local sig, reason = resolveServiceRemote(serviceName, signalName)
+	if not sig then return false, reason end
+	local ok, err = pcall(function() sig:FireServer() end)
+	return ok, err
+end
+
 --============================================================================
 -- Build the hub
 --============================================================================
@@ -1081,6 +1089,68 @@ do
 			end
 		end
 	end)
+
+	-- Quick one-click signals on the currently selected service
+	local quick = tab:AddSection("Quick Signals (selected service)")
+	quick:Label("Fires the chosen signal on whatever service is selected above.")
+	local function quickBtn(label, sigName)
+		quick:Button(label, function()
+			local ok, err = fireSignal(selected, sigName)
+			notify("Remote", ok and (selected .. "." .. sigName .. " fired")
+				or ("Fail: " .. tostring(err)), ok and 1.5 or 3)
+		end)
+	end
+	quickBtn("Fire Activated", "Activated")
+	quickBtn("Fire RightActivated", "RightActivated")
+	quickBtn("Fire Ultimate", "Ultimate")
+	quickBtn("Fire Deactivated", "Deactivated")
+
+	-- Movement (MovementService)
+	local mv = tab:AddSection("Movement")
+	mv:Button("Dash", function() fireSignal("MovementService", "Dash") end)
+	mv:Button("Reset Dash (cooldown)", function() fireSignal("MovementService", "ResetDash") end)
+	mv:Button("Parkour", function() fireSignal("MovementService", "Parkour") end)
+	mv:Toggle("Auto Dash", "mv_autodash", false, function() end)
+	mv:Slider("Auto Dash Rate (per sec)", "mv_dashrate", 1, 15, 3, function() end)
+	task.spawn(function()
+		while true do
+			if Flags.mv_autodash then
+				fireSignal("MovementService", "Dash")
+				task.wait(1 / math.max(1, Flags.mv_dashrate or 3))
+			else
+				task.wait(0.2)
+			end
+		end
+	end)
+
+	-- Items (ItemService)
+	local it = tab:AddSection("Items")
+	it:Button("Item M1", function() fireSignal("ItemService", "M1") end)
+	it:Button("Item M2", function() fireSignal("ItemService", "M2") end)
+	it:Button("Item Dash", function() fireSignal("ItemService", "Dash") end)
+	it:Toggle("Auto Item M1", "it_autom1", false, function() end)
+	it:Slider("Auto M1 Rate (per sec)", "it_m1rate", 1, 15, 5, function() end)
+	task.spawn(function()
+		while true do
+			if Flags.it_autom1 then
+				fireSignal("ItemService", "M1")
+				task.wait(1 / math.max(1, Flags.it_m1rate or 5))
+			else
+				task.wait(0.2)
+			end
+		end
+	end)
+
+	-- Rewards / misc
+	local rw = tab:AddSection("Rewards / Misc")
+	rw:Button("Claim Daily", function()
+		local ok = fireSignal("AchievementService", "Daily")
+		notify("Rewards", ok and "Daily requested" or "Failed", 2)
+	end)
+	rw:Button("Claim Weekly", function() fireSignal("AchievementService", "Weekly") end)
+	rw:Button("Request Achievements", function() fireSignal("AchievementService", "Request") end)
+	rw:Label("Reward/emote remotes often need arguments; if nothing happens the "
+		.. "server rejected the arg-less call.")
 end
 
 --------------------------------------------------------------------
