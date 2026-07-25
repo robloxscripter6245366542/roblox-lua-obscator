@@ -312,6 +312,26 @@ function Library.CreateWindow(titleText)
 	stroke(root, Theme.stroke, 1)
 	mainWindow = root
 
+	-- Responsive scaling: shrink the 660x460 window so it fits phone screens.
+	local uiScale = new("UIScale", { Parent = root })
+	local function updateScale()
+		local cam = getCamera()
+		local vp = (cam and cam.ViewportSize) or Vector2.new(800, 600)
+		local s = math.min(1, (vp.X * 0.96) / 660, (vp.Y * 0.94) / 460)
+		uiScale.Scale = math.clamp(s, 0.45, 1)
+	end
+	updateScale()
+	do
+		local cam = getCamera()
+		if cam then cam:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale) end
+		-- Re-hook the camera on respawn (CurrentCamera gets replaced).
+		workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+			local c = getCamera()
+			if c then c:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale) end
+			updateScale()
+		end)
+	end
+
 	-- Top bar
 	local top = new("Frame", {
 		Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = Theme.bg2,
@@ -1825,4 +1845,5 @@ if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
 
 --============================================================================
-notify("JJS Hub", "Loaded. Press RightControl to toggle the UI.", 5)
+notify("JJS Hub", "Loaded. PC: RightControl toggles the UI. "
+	.. "Mobile: tap the '–' button to minimise, then the 'JJS' bubble to reopen.", 6)
