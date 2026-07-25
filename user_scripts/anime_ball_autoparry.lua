@@ -1543,7 +1543,10 @@ end
 --     still reaches that rate; the interval still caps the actual send rate, so
 --     concurrency can't push us over the limit.
 local BLOCK_SEND_INTERVAL = 0.033  -- lone ball: ~30/s
-local CLASH_SEND_INTERVAL = 0.014  -- clash: ~70/s (safely under 120/s)
+local CLASH_SEND_INTERVAL = 0.009  -- clash: fire every frame, up to ~110/s on a
+                                   -- high-refresh device - as close to the 120/s
+                                   -- limit as is safe (leaves ~10/s so a dash /
+                                   -- ability can't tip you over and get dropped)
 local CLASH_INFLIGHT = 2
 local blocksInFlight = 0
 local lastBlockSendTime = -1
