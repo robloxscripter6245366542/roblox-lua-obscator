@@ -444,7 +444,7 @@ HomeTab:Button({
 local FarmTab = Window:Tab({ Title = "Auto Farm", Icon = "leaf" })
 
 FarmTab:Section({ Title = "Harvest" })
-State.autoCollect, State.collectDelay = false, 0.4
+State.autoCollect, State.collectDelay = false, 0.15
 FarmTab:Toggle({
 	Title = "Auto-Collect Fruit",
 	Desc  = "Harvests every ripe fruit on your plot.",
@@ -456,7 +456,7 @@ FarmTab:Toggle({
 		end) end
 	end,
 })
-FarmTab:Slider({ Title = "Collect interval", Step = 0.1, Value = { Min = 0.1, Max = 5, Default = 0.4 },
+FarmTab:Slider({ Title = "Collect interval", Step = 0.05, Value = { Min = 0.05, Max = 5, Default = 0.15 },
 	Callback = function(v) State.collectDelay = v end })
 
 FarmTab:Section({ Title = "Plant" })
@@ -557,20 +557,23 @@ SellTab:Slider({ Title = "Auto-Sell interval", Step = 5, Value = { Min = 5, Max 
 local StealTab = Window:Tab({ Title = "Steal", Icon = "swords" })
 StealTab:Section({ Title = "Fruit Steal" })
 StealTab:Paragraph({ Title = "How it works", Desc = "Scans other players' gardens for fruit near you and steals it via the game's Steal remote (BeginSteal → CompleteSteal)." })
-State.stealRange = 120
-StealTab:Slider({ Title = "Steal range (studs)", Step = 5, Value = { Min = 20, Max = 400, Default = 120 },
+State.stealRange = 2000
+State.stealFast = true
+StealTab:Slider({ Title = "Steal range (studs)", Step = 25, Value = { Min = 50, Max = 2000, Default = 2000 },
 	Callback = function(v) State.stealRange = v end })
+StealTab:Toggle({ Title = "Fast mode (no per-fruit delay)", Desc = "Fires all steals back-to-back each sweep.", Value = true,
+	Callback = function(on) State.stealFast = on end })
 StealTab:Button({ Title = "Steal Nearby Once",
 	Callback = function()
 		local list = scanStealable(State.stealRange)
 		for _, e in ipairs(list) do
 			fire("Steal", "BeginSteal", e.owner, e.plantId, e.fruitId)
 			fire("Steal", "CompleteSteal")
-			task.wait(0.1)
+			if not State.stealFast then task.wait(0.05) end
 		end
 		WindUI:Notify({ Title = "Steal", Content = ("Attempted %d"):format(#list), Icon = "swords", Duration = 3 })
 	end })
-State.autoSteal, State.stealDelay = false, 1
+State.autoSteal, State.stealDelay = false, 0.3
 StealTab:Toggle({ Title = "Auto-Steal", Value = false,
 	Callback = function(on)
 		State.autoSteal = on
@@ -578,11 +581,11 @@ StealTab:Toggle({ Title = "Auto-Steal", Value = false,
 			for _, e in ipairs(scanStealable(State.stealRange)) do
 				fire("Steal", "BeginSteal", e.owner, e.plantId, e.fruitId)
 				fire("Steal", "CompleteSteal")
-				task.wait(0.08)
+				if not State.stealFast then task.wait(0.03) end
 			end
 		end) end
 	end })
-StealTab:Slider({ Title = "Auto-Steal interval", Step = 0.5, Value = { Min = 0.5, Max = 10, Default = 1 },
+StealTab:Slider({ Title = "Auto-Steal interval", Step = 0.1, Value = { Min = 0.1, Max = 10, Default = 0.3 },
 	Callback = function(v) State.stealDelay = v end })
 
 --============================================================--
@@ -590,24 +593,40 @@ StealTab:Slider({ Title = "Auto-Steal interval", Step = 0.5, Value = { Min = 0.5
 --============================================================--
 local ShopTab = Window:Tab({ Title = "Shop", Icon = "shopping-cart" })
 ShopTab:Section({ Title = "Seed Shop" })
-State.buySeedList, State.autoBuySeeds, State.buySeedDelay = {}, false, 5
+State.buySeedList, State.autoBuySeeds, State.buySeedDelay = {}, false, 1
+State.buyAllSeeds, State.buyFast = false, true
+local function seedsToBuy()
+	if State.buyAllSeeds or next(State.buySeedList) == nil then return SeedNames end
+	return State.buySeedList
+end
 ShopTab:Dropdown({ Title = "Seeds to auto-buy", Values = SeedNames, Value = {}, Multi = true, AllowNone = true,
 	Callback = function(sel)
 		local list = {}
 		if type(sel) == "table" then for _, s in ipairs(sel) do list[#list + 1] = s end elseif sel then list[1] = sel end
 		State.buySeedList = list
 	end })
+ShopTab:Toggle({ Title = "Buy ALL seeds", Desc = "Ignores the dropdown and buys every seed each sweep.", Value = false,
+	Callback = function(on) State.buyAllSeeds = on end })
+ShopTab:Toggle({ Title = "Fast mode (no per-seed delay)", Value = true,
+	Callback = function(on) State.buyFast = on end })
 ShopTab:Toggle({ Title = "Auto-Buy Seeds", Value = false,
 	Callback = function(on)
 		State.autoBuySeeds = on
 		if on then startLoop("buyseeds", "autoBuySeeds", "buySeedDelay", function()
-			for _, seed in ipairs(State.buySeedList) do fire("SeedShop", "PurchaseSeed", seed); task.wait(0.15) end
+			for _, seed in ipairs(seedsToBuy()) do
+				fire("SeedShop", "PurchaseSeed", seed)
+				if not State.buyFast then task.wait(0.05) end
+			end
 		end) end
 	end })
-ShopTab:Slider({ Title = "Buy interval", Step = 1, Value = { Min = 1, Max = 60, Default = 5 },
+ShopTab:Slider({ Title = "Buy interval", Step = 0.1, Value = { Min = 0.1, Max = 30, Default = 1 },
 	Callback = function(v) State.buySeedDelay = v end })
-ShopTab:Button({ Title = "Buy Selected Once",
-	Callback = function() for _, seed in ipairs(State.buySeedList) do fire("SeedShop", "PurchaseSeed", seed); task.wait(0.15) end end })
+ShopTab:Button({ Title = "Buy All / Selected Once",
+	Callback = function()
+		local n = 0
+		for _, seed in ipairs(seedsToBuy()) do fire("SeedShop", "PurchaseSeed", seed); n += 1; if not State.buyFast then task.wait(0.05) end end
+		WindUI:Notify({ Title = "Shop", Content = ("Bought %d seed types"):format(n), Icon = "shopping-cart", Duration = 3 })
+	end })
 
 ShopTab:Section({ Title = "Gear Shop" })
 ShopTab:Input({ Title = "Buy gear (exact name)", Placeholder = "e.g. Watering Can",
