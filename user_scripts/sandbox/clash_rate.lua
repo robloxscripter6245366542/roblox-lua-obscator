@@ -31,15 +31,16 @@ local function measure(ping)
 end
 
 print("=== CLASH block send rate vs the game's rate limit (120/s, 20 per 0.1s) ===")
-print("    The rate must stay well under the limit so the block is never dropped;")
-print("    ~10/s is plenty to hold the 0.6s shield (coverage proven in yield_clash).")
+print("    Fast enough to out-click a clash, but with headroom under the 120/s")
+print("    global budget so blocks are never dropped (that's what lost clashes).")
 local worst=0
 for _,pg in ipairs({30,90,150,200}) do
   local r=measure(pg) or -1
   worst=math.max(worst,r)
   print(string.format("  ping %3d ms : %6.1f sends/sec", pg, r))
 end
--- must be under the 20-per-0.1s burst (i.e. < 200/s) with wide margin, and never
--- near the 120/s global budget it shares with every other remote.
-if worst<=30 then print("\nOK: clash send rate is safely under the game's rate limit.")
+-- Target ~70/s in a clash: well under the 120/s global (leaves ~50/s for
+-- movement/dash/abilities) and only ~7 per 0.1s vs the 20 burst limit. Assert it
+-- stays under 90/s so there's always headroom and it can never trip the limiter.
+if worst<=90 then print("\nOK: clash send rate is fast but safely under the game's rate limit.")
 else print(string.format("\nUNSAFE: clash sent %.0f/s - risks the rate limiter dropping blocks.", worst)); os.exit(1) end

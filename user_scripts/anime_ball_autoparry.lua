@@ -1531,21 +1531,29 @@ end
 --     DROPPED and a circuit breaker locks the remote out for ~15s. Flooding the
 --     block therefore makes the game silently EAT the block that would've saved
 --     you, and you lose the clash. (This is why the old click-storm lost clashes.)
--- So we cap sends at ~10/s: enough to keep the 0.6s shield continuously fresh and
--- cover every return, only a small slice of the 120/s budget, and nowhere near
--- the 20-per-0.1s burst - it can never trip the limiter. One request in flight at
--- a time. blockInFlight is always cleared (pcall-wrapped) so a dropped reply
--- can't wedge it off.
-local BLOCK_SEND_INTERVAL = 0.033 -- ~30 block sends/sec: fine enough timing for fast balls,
-                                  -- still only ~3 per 0.1s (burst limit 20) and well under 120/s
-local blockInFlight = false
+-- Two send rates, both kept UNDER the game's limit so nothing is ever dropped:
+--   * lone ball: ~30/s - one well-timed block per return is all a single ball
+--     needs, and it barely touches the budget.
+--   * CLASH: ~70/s - the clash WINNER is decided server-side (code we can't see),
+--     and in practice a faster clicker overruns a slower one, so in a clash we
+--     click as fast as we safely can. 70/s is ~7 per 0.1s (burst limit 20) and
+--     leaves ~50/s of the 120/s global budget for movement/dash/abilities - so it
+--     out-clicks a human/most autoclickers WITHOUT the flood that got dropped and
+--     lost clashes before. Up to CLASH_INFLIGHT concurrent requests so high ping
+--     still reaches that rate; the interval still caps the actual send rate, so
+--     concurrency can't push us over the limit.
+local BLOCK_SEND_INTERVAL = 0.033  -- lone ball: ~30/s
+local CLASH_SEND_INTERVAL = 0.014  -- clash: ~70/s (safely under 120/s)
+local CLASH_INFLIGHT = 2
+local blocksInFlight = 0
 local lastBlockSendTime = -1
-local function fireBlockRemote()
+local function fireBlockRemote(clash)
     local nowT = tick()
-    if nowT - lastBlockSendTime < BLOCK_SEND_INTERVAL then return end
-    if blockInFlight then return end
+    local interval = clash and CLASH_SEND_INTERVAL or BLOCK_SEND_INTERVAL
+    if nowT - lastBlockSendTime < interval then return end
+    if blocksInFlight >= (clash and CLASH_INFLIGHT or 1) then return end
     lastBlockSendTime = nowT
-    blockInFlight = true
+    blocksInFlight = blocksInFlight + 1
     task.spawn(function()
         local cam = workspace.CurrentCamera
         -- NB: a plain `cam and cam...Y or default` would wrongly fall back to the
@@ -1559,7 +1567,7 @@ local function fireBlockRemote()
         local svc = getSwordService()
         if svc then
             local ok, result = pcall(function() return svc.Block:Invoke(lookY) end)
-            if ok then recordBlockResult(true, result); blockInFlight = false; return end
+            if ok then recordBlockResult(true, result); blocksInFlight = blocksInFlight - 1; return end
             swordServiceProxy = nil -- proxy went stale; re-fetch next time
         end
         -- Fallback: generic framework RemoteFunction router.
@@ -1567,7 +1575,7 @@ local function fireBlockRemote()
             return ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {lookY})
         end)
         recordBlockResult(ok, result)
-        blockInFlight = false
+        blocksInFlight = blocksInFlight - 1
     end)
 end
 
@@ -1584,7 +1592,7 @@ local function executeParry(force)
     lastParryTime = currentTime
     totalParries = totalParries + 1
     if isHighSpeedMode then highSpeedParries = highSpeedParries + 1 end
-    fireBlockRemote()
+    fireBlockRemote(force)   -- force = clash/point-blank -> faster clash send rate
 end
 
 local function createSpeedLabel(ball)
@@ -2467,7 +2475,7 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
             -- FIRST block sets a shield that covers impact, later ones are
             -- cooldown-gated by the server and harmless.
             if alwaysFire or ((panicNow or imminentThreat) and coverable and inShieldWindow) then
-                fireBlockRemote()
+                fireBlockRemote(alwaysFire)   -- clash/point-blank -> faster clash send rate
                 totalBurstBlocks = totalBurstBlocks + 1
             end
         end
