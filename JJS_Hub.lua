@@ -77,6 +77,8 @@ local combat = {    -- combat settings (verified-remote features)
 	feintEnabled          = false,
 	feintDelay            = 0.32,
 	maxTargetDistance     = 0,
+	autoComboDash         = false,   -- dash toward target after a hit (combo extend)
+	comboDashDelay        = 0.1,
 }
 
 local savedFlags = {}
@@ -797,6 +799,10 @@ do
 		combat.feintEnabled = v; saveConfig() end)
 	main:Slider("Feint Delay", "cmb_feintdelay", 0, 2, combat.feintDelay,
 		function(v) combat.feintDelay = v; saveConfig() end, 2)
+	main:Toggle("Auto Dash on Hit (combo extend)", "cmb_combodash", combat.autoComboDash,
+		function(v) combat.autoComboDash = v; saveConfig() end)
+	main:Slider("Combo Dash Delay", "cmb_combodashdelay", 0, 1, combat.comboDashDelay,
+		function(v) combat.comboDashDelay = v; saveConfig() end, 2)
 
 	local jump = tab:AddSection("Jump")
 	jump:Toggle("Auto Jump", "cmb_jump", combat.autoJump, function(v)
@@ -841,6 +847,67 @@ do
 		function(v) combat.offsetStuds = v; saveConfig() end)
 	semi:Slider("Tween Time", "cmb_tween", 0, 2, combat.tweenTime,
 		function(v) combat.tweenTime = v; saveConfig() end, 2)
+
+	----------------------------------------------------------------------
+	-- Combo tech sequencer (real Jjs remotes, user-tuned timing)
+	----------------------------------------------------------------------
+	local combo = tab:AddSection("Combo Tech (sequencer)")
+	combo:Label("Runs a sequence of REAL remotes with your timing. Dash/Reset "
+		.. "Dash = MovementService, M1/M2 = ItemService, and Activated/"
+		.. "RightActivated/Deactivated/Ultimate fire the service picked in the "
+		.. "Remotes tab. Exact hitstun frames vary per move — tune each delay.")
+
+	local COMBO_ACTIONS = { "None", "Dash", "Reset Dash", "Item M1", "Item M2",
+		"Activated", "RightActivated", "Deactivated", "Ultimate" }
+
+	local function doComboAction(action)
+		if action == "Dash" then fireSignal("MovementService", "Dash")
+		elseif action == "Reset Dash" then fireSignal("MovementService", "ResetDash")
+		elseif action == "Item M1" then fireSignal("ItemService", "M1")
+		elseif action == "Item M2" then fireSignal("ItemService", "M2")
+		elseif action == "Activated" then fireSignal(selectedService, "Activated")
+		elseif action == "RightActivated" then fireSignal(selectedService, "RightActivated")
+		elseif action == "Deactivated" then fireSignal(selectedService, "Deactivated")
+		elseif action == "Ultimate" then fireSignal(selectedService, "Ultimate")
+		end
+	end
+
+	local comboRunning = false
+	local function runCombo()
+		if comboRunning then return end
+		comboRunning = true
+		for i = 1, 5 do
+			local action = Flags["combo_a" .. i]
+			if action and action ~= "None" then
+				doComboAction(action)
+				task.wait(Flags["combo_d" .. i] or 0.1)
+			end
+		end
+		comboRunning = false
+	end
+
+	for i = 1, 5 do
+		combo:Dropdown("Step " .. i .. " action", "combo_a" .. i, COMBO_ACTIONS, "None",
+			function() end)
+		combo:Slider("Step " .. i .. " delay (s)", "combo_d" .. i, 0, 1.5, 0.1,
+			function() end, 2)
+	end
+
+	combo:Button("Run Combo Once", function() task.spawn(runCombo) end)
+	combo:Keybind("Run Combo Key", "combo_key", Enum.KeyCode.G, function()
+		task.spawn(runCombo)
+	end)
+	combo:Toggle("Loop Combo", "combo_loop", false, function() end)
+	task.spawn(function()
+		while true do
+			if Flags.combo_loop then
+				runCombo()
+				task.wait(0.05)
+			else
+				task.wait(0.2)
+			end
+		end
+	end)
 end
 
 --------------------------------------------------------------------
@@ -1510,6 +1577,14 @@ local function onAnimationPlayed(track)
 					end
 				end
 			end)
+		end)
+	end
+
+	-- Combo extend: dash toward target shortly after the hit
+	if combat.autoComboDash then
+		task.spawn(function()
+			task.wait(combat.comboDashDelay)
+			fireSignal("MovementService", "Dash")
 		end)
 	end
 
