@@ -312,6 +312,26 @@ function Library.CreateWindow(titleText)
 	stroke(root, Theme.stroke, 1)
 	mainWindow = root
 
+	-- Responsive scaling: shrink the 660x460 window so it fits phone screens.
+	local uiScale = new("UIScale", { Parent = root })
+	local function updateScale()
+		local cam = getCamera()
+		local vp = (cam and cam.ViewportSize) or Vector2.new(800, 600)
+		local s = math.min(1, (vp.X * 0.96) / 660, (vp.Y * 0.94) / 460)
+		uiScale.Scale = math.clamp(s, 0.45, 1)
+	end
+	updateScale()
+	do
+		local cam = getCamera()
+		if cam then cam:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale) end
+		-- Re-hook the camera on respawn (CurrentCamera gets replaced).
+		workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+			local c = getCamera()
+			if c then c:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale) end
+			updateScale()
+		end)
+	end
+
 	-- Top bar
 	local top = new("Frame", {
 		Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = Theme.bg2,
@@ -320,8 +340,45 @@ function Library.CreateWindow(titleText)
 	corner(top, 10)
 	new("Frame", { Size = UDim2.new(1, 0, 0, 12), Position = UDim2.new(0, 0, 1, -12),
 		BackgroundColor3 = Theme.bg2, BorderSizePixel = 0, Parent = top })
+
+	-- Gojo logo button (top-left). Add your own decal IDs to GOJO_IMAGES for a
+	-- real picture; otherwise it shows a random Gojo-themed glyph. Click = re-roll.
+	local GOJO_IMAGES = {
+		-- "rbxassetid://<your gojo decal id>",
+	}
+	local GOJO_GLYPHS = { "🕶️", "👁️", "🌀", "💙", "六", "∞" }
+	local GOJO_QUOTES = {
+		"Nah, I'd win.", "Throughout heaven and earth, I alone am the honored one.",
+		"You're weak. Wanna know why?", "Are you the strongest because…",
+		"…you're Gojo Satoru, or are you Gojo Satoru because you're the strongest?",
+		"Domain Expansion: Unlimited Void.", "With this treasure, I summon…",
+	}
+	local logo = new("ImageButton", {
+		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0),
+		Size = UDim2.fromOffset(28, 28), BackgroundColor3 = Theme.accent,
+		Text = "", AutoButtonColor = false, Image = "", Parent = top,
+	})
+	corner(logo, 14); stroke(logo, Color3.fromRGB(120, 200, 255), 1)
+	local logoGlyph = new("TextLabel", { Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1, Text = "🕶️", TextColor3 = Theme.text,
+		Font = Enum.Font.GothamBold, TextSize = 15, Parent = logo })
+	local function rollGojo()
+		if #GOJO_IMAGES > 0 then
+			logo.Image = GOJO_IMAGES[math.random(1, #GOJO_IMAGES)]
+			logoGlyph.Text = ""
+		else
+			logo.Image = ""
+			logoGlyph.Text = GOJO_GLYPHS[math.random(1, #GOJO_GLYPHS)]
+		end
+	end
+	rollGojo()
+	logo.MouseButton1Click:Connect(function()
+		rollGojo()
+		notify("Gojo", GOJO_QUOTES[math.random(1, #GOJO_QUOTES)], 3)
+	end)
+
 	new("TextLabel", {
-		Position = UDim2.new(0, 16, 0, 0), Size = UDim2.new(1, -120, 1, 0),
+		Position = UDim2.new(0, 48, 0, 0), Size = UDim2.new(1, -150, 1, 0),
 		BackgroundTransparency = 1, Text = titleText, TextColor3 = Theme.text,
 		TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamBold,
 		TextSize = 16, Parent = top,
@@ -1825,4 +1882,5 @@ if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
 
 --============================================================================
-notify("JJS Hub", "Loaded. Press RightControl to toggle the UI.", 5)
+notify("JJS Hub", "Loaded. PC: RightControl toggles the UI. "
+	.. "Mobile: tap the '–' button to minimise, then the 'JJS' bubble to reopen.", 6)
