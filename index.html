@@ -44,6 +44,12 @@ textarea::placeholder{color:var(--faint)}
 .stat b{color:var(--acc)}
 .item .n{color:var(--amber);flex:0 0 auto;min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
 .item .n::after{content:"×";color:var(--faint)}
+.btn.mini{padding:6px 12px;font-size:.76rem}
+.codewrap{margin-top:16px}
+.codehead{display:flex;align-items:center;justify-content:space-between;margin:0 0 8px}
+.codehead span{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+#codeOut{width:100%;min-height:150px;max-height:340px;resize:vertical;background:#050506;color:var(--acc);border:1px solid var(--hair);border-radius:12px;padding:14px;font-family:var(--mono);font-size:.78rem;line-height:1.5;white-space:pre;overflow:auto}
+#codeOut:focus{outline:none;border-color:var(--hair2)}
 .out{margin-top:18px;border:1px solid var(--hair);border-radius:12px;background:#050506;max-height:460px;overflow:auto}
 .item{display:flex;gap:12px;padding:9px 15px;border-top:1px solid var(--hair);font-family:var(--mono);font-size:.82rem;color:var(--fg);align-items:baseline;animation:fin .4s var(--e) both}
 .item:first-child{border-top:none}
@@ -89,6 +95,10 @@ footer{border-top:1px solid var(--hair);margin-top:40px;padding:34px 0 70px;colo
     <span class="stat" id="stat"></span>
   </div>
   <div class="out" id="outWrap" hidden><div id="outList"></div></div>
+  <div class="codewrap" id="codeWrap" hidden>
+    <div class="codehead"><span id="codeLabel">Deobfuscated output</span><button class="btn mini" id="copyBtn">Copy</button></div>
+    <textarea id="codeOut" readonly spellcheck="false"></textarea>
+  </div>
   <div class="priv"><span class="d">●</span> 100% client-side · no network · no eval</div>
 </div>
 
@@ -118,7 +128,9 @@ var MV_RE=/end\)\(\s*(['"])((?:\\[\s\S]|(?!\1)[\s\S])*)\1\s*,\s*(['"])((?:\\[\s\
 function decodeMoonVeil(src){var res=[],m;MV_RE.lastIndex=0;
   while((m=MV_RE.exec(src))!==null){var p=xorDec(mvUnescape(m[2]),mvUnescape(m[4]));if(p.length>=1&&printable(p)>=.85)res.push(p);}
   var seen={},u=[];for(var k=0;k<res.length;k++){if(!seen[res[k]]){seen[res[k]]=1;u.push(res[k]);}}
-  return {matched:res.length,uniq:u,unit:"pairs"};}
+  return {matched:res.length,uniq:u,unit:"pairs",code:u.join("\n"),label:"Recovered strings"};}
+function luaEsc(s){var o="";for(var i=0;i<s.length;i++){var c=s[i],x=s.charCodeAt(i);
+  if(c==='"')o+='\\"';else if(c==="\\")o+="\\\\";else if(x>=32&&x<127)o+=c;else o+="\\"+x;}return o;}
 
 /* ================= WeAreDevs engine ================= */
 function parseArith(expr){var s=expr.replace(/\s+/g,""),pos=0;
@@ -144,7 +156,7 @@ function decodeWeAreDevs(src){var ab=parseAlphabet(src);
   var res=[],total=0,re=/"((?:\\\d{3})+)"/g,m;
   while((m=re.exec(src))!==null){total++;var t=customB64(wdUndec(m[1]),ab);if(t===null)continue;if(t.length>=3&&printable(t)>=.85)res.push(t);}
   var seen={},u=[];for(var k=0;k<res.length;k++){if(!seen[res[k]]){seen[res[k]]=1;u.push(res[k]);}}
-  return {matched:total,uniq:u,unit:"entries"};}
+  return {matched:total,uniq:u,unit:"entries",code:u.join("\n"),label:"Decoded string table"};}
 
 /* WeAreDevs DEEP: undo permutation + accessor offset, resolve every D(bignum) call */
 function deepWeAreDevs(src){
@@ -167,7 +179,12 @@ function deepWeAreDevs(src){
   while((cm=cre.exec(src))!==null){total++;var idx;try{idx=parseArith(cm[1]);}catch(_){continue;}
     var j=idx+off;if(j<1||j>n)continue;var s=W[j];if(printable(s)>=.85&&s.length>=2)counts[s]=(counts[s]||0)+1;}
   var arr=Object.keys(counts).map(function(k){return {v:k,c:counts[k]};}).sort(function(x,y){return y.c-x.c;});
-  return {deep:true,ranges:ranges.length,offset:off,matched:total,resolved:arr,unit:"D() calls"};}
+  // rewrite: replace every D(bignum) with its resolved string (or a normalized W[index])
+  var code=src.replace(/\bD\(([-+()\d ]+)\)/g,function(mm,g){var idx;try{idx=parseArith(g);}catch(_){return mm;}
+    var j=idx+off;if(j<1||j>n)return mm;var s=W[j];
+    if(printable(s)>=.85&&s.length>=1)return '"'+luaEsc(s)+'"';return "W["+j+"]";});
+  return {deep:true,ranges:ranges.length,offset:off,matched:total,resolved:arr,unit:"D() calls",
+          code:code,label:"Rewritten source · D() → strings"};}
 
 /* ================= UI ================= */
 var ENGINES={
@@ -183,13 +200,15 @@ var ENGINES={
 var engine="moonveil";
 var srcEl=document.getElementById("src"),wrap=document.getElementById("outWrap"),list=document.getElementById("outList"),
     stat=document.getElementById("stat"),note=document.getElementById("note"),goBtn=document.getElementById("go"),
-    deepWrap=document.getElementById("deepWrap"),deepBox=document.getElementById("deep");
+    deepWrap=document.getElementById("deepWrap"),deepBox=document.getElementById("deep"),
+    codeWrap=document.getElementById("codeWrap"),codeOut=document.getElementById("codeOut"),
+    codeLabel=document.getElementById("codeLabel"),copyBtn=document.getElementById("copyBtn");
 function esc(s){return s.replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
 function setEngine(name){engine=name;var e=ENGINES[name];
   document.querySelectorAll(".tab").forEach(function(t){t.setAttribute("aria-selected",t.dataset.engine===name?"true":"false");});
   note.innerHTML=e.note;srcEl.placeholder=e.placeholder;goBtn.textContent=e.decode;
   deepWrap.hidden=(name!=="weredevs");
-  srcEl.value="";wrap.hidden=true;stat.textContent="";}
+  srcEl.value="";wrap.hidden=true;stat.textContent="";codeWrap.hidden=true;codeOut.value="";}
 function render(res){
   if(res.error){list.innerHTML='<div class="empty">'+res.error+'</div>';wrap.hidden=false;stat.textContent="";return;}
   var rows=res.deep?res.resolved:res.uniq;
@@ -205,15 +224,26 @@ function run(){var src=srcEl.value;if(!src.trim()){wrap.hidden=true;stat.innerHT
   var t0=performance.now(),res;
   try{res=deep?deepWeAreDevs(src):ENGINES[engine].fn(src);}catch(e){stat.textContent="parse error";return;}
   var ms=Math.max(1,Math.round(performance.now()-t0));render(res);
-  if(res.error){stat.textContent="";}
-  else if(res.deep)stat.innerHTML="<b>"+res.matched+"</b> D() calls · <b>"+res.resolved.length+"</b> resolved · off "+res.offset+" · "+ms+" ms";
-  else stat.innerHTML="<b>"+res.matched+"</b> "+res.unit+" · <b>"+res.uniq.length+"</b> strings · "+ms+" ms";}
+  if(res.error){stat.textContent="";codeWrap.hidden=true;codeOut.value="";}
+  else{
+    if(res.deep)stat.innerHTML="<b>"+res.matched+"</b> D() calls · <b>"+res.resolved.length+"</b> resolved · off "+res.offset+" · "+ms+" ms";
+    else stat.innerHTML="<b>"+res.matched+"</b> "+res.unit+" · <b>"+res.uniq.length+"</b> strings · "+ms+" ms";
+    codeLabel.textContent=res.label||"Deobfuscated output";
+    codeOut.value=res.code||"";
+    codeWrap.hidden=!(res.code&&res.code.length);
+  }}
 document.querySelectorAll(".tab").forEach(function(t){t.addEventListener("click",function(){setEngine(t.dataset.engine);});});
 deepBox.addEventListener("change",function(){if(srcEl.value.trim())run();});
 goBtn.addEventListener("click",run);
 document.getElementById("ex").addEventListener("click",function(){srcEl.value=atob(ENGINES[engine].ex);run();});
 document.getElementById("cl").addEventListener("click",function(){srcEl.value="";wrap.hidden=true;stat.textContent="";srcEl.focus();});
 srcEl.addEventListener("keydown",function(e){if((e.ctrlKey||e.metaKey)&&e.key==="Enter")run();});
+copyBtn.addEventListener("click",function(){
+  codeOut.select();codeOut.setSelectionRange(0,codeOut.value.length);
+  var done=function(){var o=copyBtn.textContent;copyBtn.textContent="Copied";setTimeout(function(){copyBtn.textContent=o;},1200);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(codeOut.value).then(done,function(){try{document.execCommand("copy");done();}catch(_){}});}
+  else{try{document.execCommand("copy");done();}catch(_){}}
+});
 setEngine("moonveil");
 </script>
 </body>
