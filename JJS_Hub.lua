@@ -469,6 +469,11 @@ function Library.CreateWindow(titleText)
 				return section
 			end
 
+			-- Blank auto-laid-out row the caller can populate directly.
+			function section:Row(height)
+				return rowBase(height)
+			end
+
 			function section:Button(text, cb)
 				local r = rowBase(32)
 				local b = new("TextButton", { Size = UDim2.new(1, 0, 1, 0),
@@ -671,9 +676,90 @@ function Library.CreateWindow(titleText)
 end
 
 --============================================================================
+-- Ability-service remote list (mined from the game's remote dump: 237 services,
+-- each exposing ReplicatedStorage.Knit.Knit.Services.<Service>.RE.<Signal>).
+--============================================================================
+local SERVICE_LIST = {
+		"AbsoluteDestructionService", "AbsoluteService", "AchievementService", "AdaptationService",
+		"AggravateService", "AmbushService", "AnkleCutterService", "AntiCheatService",
+		"AppetizerService", "BackstabService", "BeamService", "BirdControlService",
+		"BlackMucusService", "BleedoutService", "BlockService", "BloodEdgeService",
+		"BloodRainService", "BluntCutService", "BluntTraumaService", "BodyDisfigureService",
+		"BodyRepelService", "BoostOn2Service", "BoostOnService", "BrothersService",
+		"BruteForceService", "BudShotService", "BuildService", "ChaosService",
+		"CharlesService", "CheapShotService", "ChokeholdService", "ChosoService",
+		"CirclingService", "CleaveRushService", "CleavingWhirlService", "CleverService",
+		"ClimaxJumpService", "CollapseService", "CopyService", "CopyWheelService",
+		"CouponService", "CrushJawService", "CrushingBlowService", "CrushingRushdownService",
+		"CursedBudsService", "CursedStrikesService", "CursoryImpactService", "CustomService",
+		"DebreeService", "DebugService", "DecisiveStrike2Service", "DecisiveStrikeService",
+		"DefenseResponseService", "DespairService", "DetachService", "DirtyPlayService",
+		"DismantleService", "DismantleV2Service", "DivergentFistService", "DivineDogService",
+		"DivinePummelService", "DomainService", "DreamsService", "DuelService",
+		"EarthquakeService", "ElbowDropService", "ElbowRushService", "EmoteService",
+		"EnergyRippleService", "EnergySurgeService", "ExecutionService", "ExtendSwingService",
+		"EyeCatchService", "FaceBlitzService", "FesteringStrikesService", "FeverBreakerService",
+		"FinalJudgementService", "FinalShowdownService", "FlameArrowService", "FlashFreezingService",
+		"FlowerBeamService", "FocusStrikeService", "FurnaceArrowService", "GarageSaleService",
+		"GarudaReboundService", "GarudaStabService", "GojoService", "GokuService",
+		"GraniteBlastService", "GrappleService", "GreatSerpentService", "GroundPitchService",
+		"GushingWoundService", "HadNoIdeaService", "HakariService", "HanamiService",
+		"HandicapService", "HarutaService", "HeadSplitterService", "HeatEmissionService",
+		"HeianService", "HighTimeService", "HiromiService", "HitboxService",
+		"HollowPurpleService", "HomerunService", "IdleTransfigurationService", "IdolDebutService",
+		"ImpetusUpdraftService", "InfiniteVoidService", "InterrogateService", "ItadoriService",
+		"ItemService", "JoinService", "JudgeReachService", "JusticeServedService",
+		"KamehamehaService", "KamutokeService", "KiSpamService", "KurourushiService",
+		"LapseBlueMaxService", "LapseBlueService", "LitteringService", "LocustService",
+		"LoveBeamService", "LuckyRushdownService", "LuckyVolleyService", "MahitoService",
+		"MahoragaService", "MahoragaUseService", "MalevolantShrineService", "ManjiKickService",
+		"MassBreakerService", "MaxElephantService", "MechamaruService", "MegumiService",
+		"MeiMeiService", "MiracleCannonService", "Mokou1Service", "Mokou2Service",
+		"Mokou3Service", "Mokou4Service", "MokouService", "MovementService",
+		"MurmurateService", "MutualLoveService", "NanamiService", "NaoyaService",
+		"NepService", "NightParadeService", "NueService", "OutburstService",
+		"OverLuckService", "PebbleThrowService", "PianoDropService", "PiercingBloodService",
+		"PigeonViolaService", "PlasmaWaveService", "PressingChargesService", "ProjectionBreakerService",
+		"PuppetBarrageService", "RabbitEscapeService", "RankedService", "RapidPunchesService",
+		"RatioBreakerService", "RedScaleService", "ReggieService", "ReserveBallService",
+		"ResoluteSlashService", "ResoluteSwingService", "ReversalRedMaxService", "ReversalRedService",
+		"RevolveService", "RikaDownslamService", "RikaGrabService", "RikaHaymakerService",
+		"RikaLaunchService", "RikaLoveBeamService", "RikaService", "RikaSlamService",
+		"RikaSmashService", "RikaThrowService", "RisingRageService", "RoachSwarmService",
+		"RootRampageService", "RootSwarmService", "RoughEnergyService", "RouletteService",
+		"RushService", "RyuService", "SacrilegiousService", "SeaOfBranchesService",
+		"SecondHelpingService", "SecondWindService", "SelfPerfectionService", "SeveranceKickService",
+		"SeveringPathService", "ShadowSwarmService", "SharpenService", "ShopService",
+		"ShutUpService", "ShutterDoorService", "SlicingExorcismService", "SoulfireService",
+		"SpeedCrashService", "SpikeWrathService", "StabilizeService", "StaffExtendService",
+		"StaffUppercutService", "StockpileService", "SupernovaService", "SurgingThornsService",
+		"SwiftKickService", "TechniqueChargeService", "TendrilGrabService", "ThisDessertService",
+		"TimeCellMoonPalaceService", "ToadService", "TodoService", "TopSpeedService",
+		"TripService", "TripleSentenceService", "TwofoldKickService", "UltraCannon2Service",
+		"UltraCannonService", "UltraSpinService", "UnsatisfiedService", "VeilstepService",
+		"VerdictService", "WerentInvitedService", "WhatAreYouAfterService", "WideSPStrikesService",
+		"WingKingService", "WingThrowService", "WorkshopService", "YukiService",
+		"YutaService",
+}
+
+--============================================================================
 -- Feature runtime state
 --============================================================================
 local State = {}
+
+-- Resolve a Knit service remote signal instance (nil, reason on failure).
+local function resolveServiceRemote(serviceName, signalName)
+	local knit = ReplicatedStorage:FindFirstChild("Knit")
+	local inner = knit and knit:FindFirstChild("Knit")
+	local services = inner and inner:FindFirstChild("Services")
+	if not services then return nil, "Knit.Services not found" end
+	local svc = services:FindFirstChild(serviceName)
+	if not svc then return nil, "service not found" end
+	local re = svc:FindFirstChild("RE")
+	local sig = re and re:FindFirstChild(signalName)
+	if not sig then return nil, "signal '" .. tostring(signalName) .. "' not found" end
+	return sig
+end
 
 --============================================================================
 -- Build the hub
@@ -895,6 +981,105 @@ do
 	s:Button("Copy Job ID", function()
 		if setclipboard then setclipboard(game.JobId); notify("Copied", game.JobId, 2)
 		else notify("Clipboard", "setclipboard unavailable", 2.5) end
+	end)
+end
+
+--------------------------------------------------------------------
+-- REMOTES  (fire any of the 237 ability-service move remotes)
+--------------------------------------------------------------------
+do
+	local tab = Window:AddTab("Remotes", "📡")
+	local rs  = tab:AddSection("Move / Ability Firer")
+	rs:Label("Fire any of the game's 237 ability-service remotes "
+		.. "(Knit.Services.<Service>.RE.<Signal>). Most moves use 'Activated'. "
+		.. "Server-side checks may require the move equipped; no args are sent.")
+
+	local selected = "ItadoriService"
+	local signal   = "Activated"
+
+	-- Search box
+	local searchRow = rs:Row(28)
+	local searchBox = new("TextBox", { Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Theme.bg3,
+		PlaceholderText = "Search service…", Text = "", TextColor3 = Theme.text,
+		ClearTextOnFocus = false, Font = Enum.Font.Gotham, TextSize = 13, Parent = searchRow })
+	corner(searchBox, 6); stroke(searchBox, Theme.stroke, 1)
+	new("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = searchBox })
+
+	-- Selected label
+	local selRow = rs:Row(20)
+	local selLabel = new("TextLabel", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+		Text = "Selected: " .. selected, TextColor3 = Theme.accent,
+		TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamBold,
+		TextSize = 13, Parent = selRow })
+
+	-- Result list
+	local listRow = rs:Row(150)
+	local listScroll = new("ScrollingFrame", { Size = UDim2.new(1, 0, 1, 0),
+		BackgroundColor3 = Theme.bg, BorderSizePixel = 0, ScrollBarThickness = 4,
+		ScrollBarImageColor3 = Theme.bg4, AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(), Parent = listRow })
+	corner(listScroll, 6)
+	listLayout(listScroll, 2)
+	new("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4),
+		PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4), Parent = listScroll })
+
+	local function rebuildList(query)
+		for _, c in ipairs(listScroll:GetChildren()) do
+			if c:IsA("TextButton") then c:Destroy() end
+		end
+		query = string.lower(query or "")
+		local count = 0
+		for _, svc in ipairs(SERVICE_LIST) do
+			if query == "" or string.find(string.lower(svc), query, 1, true) then
+				count += 1
+				if count > 80 then break end
+				local b = new("TextButton", { Size = UDim2.new(1, 0, 0, 24),
+					BackgroundColor3 = Theme.bg3, Text = svc, TextColor3 = Theme.text,
+					TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.Gotham,
+					TextSize = 12, Parent = listScroll })
+				corner(b, 4)
+				new("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = b })
+				b.MouseButton1Click:Connect(function()
+					selected = svc
+					selLabel.Text = "Selected: " .. svc
+				end)
+			end
+		end
+	end
+	searchBox:GetPropertyChangedSignal("Text"):Connect(function() rebuildList(searchBox.Text) end)
+	rebuildList("")
+
+	rs:Dropdown("Signal", "rmt_signal",
+		{ "Activated", "RightActivated", "Ultimate", "Dash", "Deactivated", "Effects", "Hitbox" },
+		"Activated", function(v) signal = v end)
+
+	rs:Button("Fire Once", function()
+		local sig, reason = resolveServiceRemote(selected, signal)
+		if sig then
+			local ok, err = pcall(function() sig:FireServer() end)
+			if ok then notify("Remote", "Fired " .. selected .. "." .. signal, 1.5)
+			else notify("Remote", "Error: " .. tostring(err), 3) end
+		else
+			notify("Remote", tostring(reason), 3)
+		end
+	end)
+
+	local auto = tab:AddSection("Auto-Fire")
+	auto:Toggle("Auto-Fire Selected Remote", "rmt_auto", false, function() end)
+	auto:Slider("Rate (per second)", "rmt_rate", 1, 30, 5, function() end)
+	auto:Label("⚠ Spamming move remotes is very detectable by AntiCheat.")
+
+	-- Auto-fire loop
+	task.spawn(function()
+		while true do
+			if Flags.rmt_auto then
+				local sig = resolveServiceRemote(selected, signal)
+				if sig then pcall(function() sig:FireServer() end) end
+				task.wait(1 / math.max(1, Flags.rmt_rate or 5))
+			else
+				task.wait(0.2)
+			end
+		end
 	end)
 end
 
