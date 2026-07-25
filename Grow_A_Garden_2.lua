@@ -1245,6 +1245,78 @@ RemoteTab:Button({ Title = "Invoke (show response)", Callback = function()
 	WindUI:Notify({ Title = selectedRemote, Content = "Response: " .. tostring(res), Icon = "terminal", Duration = 5 })
 end })
 
+-- ---- Raw instance remotes (RemoteEvent / RemoteFunction not in the Packet table) ----
+RemoteTab:Section({ Title = "Raw instance remotes" })
+local rawMap, rawNames = {}, {}
+do
+	local skip = ReplicatedStorage:FindFirstChild("SharedModules")
+	skip = skip and skip:FindFirstChild("Packet")
+	skip = skip and skip:FindFirstChild("RemoteEvent") -- don't fire the Packet tunnel directly
+	for _, d in ipairs(ReplicatedStorage:GetDescendants()) do
+		if (d:IsA("RemoteEvent") or d:IsA("RemoteFunction") or d:IsA("UnreliableRemoteEvent")) and d ~= skip then
+			local nm = d:GetFullName()
+			if not rawMap[nm] then rawMap[nm] = d; rawNames[#rawNames + 1] = nm end
+		end
+	end
+	table.sort(rawNames)
+end
+local rawSel = rawNames[1]
+local rawArgs = ""
+RemoteTab:Paragraph({ Title = "Raw remotes", Desc = ("%d raw RemoteEvent/RemoteFunction instances found (Charm, Replica, FireFernLit, StarFruitBeam, Cmdr, …)."):format(#rawNames) })
+if #rawNames > 0 then
+	RemoteTab:Dropdown({ Title = "Raw remote", Values = rawNames, Value = rawNames[1], AllowNone = false,
+		Callback = function(v) if type(v) == "table" then rawSel = v[1] else rawSel = v end end })
+	RemoteTab:Input({ Title = "Raw args (comma-separated)", Placeholder = "e.g. 5, true, hello", Callback = function(t) rawArgs = t or "" end })
+	RemoteTab:Button({ Title = "Fire / Invoke raw", Callback = function()
+		local inst = rawMap[rawSel]
+		if not inst then return end
+		local a = parseArgs(rawArgs)
+		if inst:IsA("RemoteFunction") then
+			local ok, res = pcall(function() return inst:InvokeServer(table.unpack(a)) end)
+			WindUI:Notify({ Title = inst.Name, Content = ok and ("Response: " .. tostring(res)) or "Invoke failed", Icon = "terminal", Duration = 5 })
+		else
+			pcall(function() inst:FireServer(table.unpack(a)) end)
+			WindUI:Notify({ Title = "Fired", Content = inst.Name, Icon = "terminal", Duration = 3 })
+		end
+	end })
+end
+
+-- ---- Quick buttons for known standalone remotes ----
+RemoteTab:Section({ Title = "Standalone shortcuts" })
+RemoteTab:Button({ Title = "Fire Fern — Lit", Callback = function()
+	local r = ReplicatedStorage:FindFirstChild("FireFernLit")
+	if r and r:IsA("RemoteEvent") then pcall(function() r:FireServer() end) end
+end })
+RemoteTab:Button({ Title = "Star Fruit Beam", Callback = function()
+	local r = ReplicatedStorage:FindFirstChild("StarFruitBeam")
+	if r and r:IsA("RemoteEvent") then pcall(function() r:FireServer() end) end
+end })
+RemoteTab:Button({ Title = "Request Data (Replica refresh)", Callback = function()
+	local re = ReplicatedStorage:FindFirstChild("RemoteEvents")
+	local r = re and re:FindFirstChild("ReplicaRequestData")
+	if r then pcall(function() r:FireServer() end); WindUI:Notify({ Title = "Replica", Content = "Requested data", Icon = "refresh-cw", Duration = 3 }) end
+end })
+RemoteTab:Button({ Title = "Charm — Request State Sync", Callback = function()
+	local n = ReplicatedStorage:FindFirstChild("SharedModules")
+	n = n and n:FindFirstChild("Networking"); n = n and n:FindFirstChild("Charm"); n = n and n:FindFirstChild("RequestState")
+	if n then pcall(function() n:FireServer() end) end
+end })
+
+-- ---- Cmdr admin command runner (works only if you have Cmdr access) ----
+RemoteTab:Section({ Title = "Cmdr command (admin only)" })
+RemoteTab:Input({ Title = "Run Cmdr command", Placeholder = "e.g. help",
+	Callback = function(text)
+		if not text or text == "" then return end
+		local cc = ReplicatedStorage:FindFirstChild("CmdrClient")
+		if not cc then WindUI:Notify({ Title = "Cmdr", Content = "CmdrClient not found", Icon = "triangle-alert", Duration = 3 }); return end
+		local ok = pcall(function()
+			local Cmdr = require(cc)
+			if Cmdr.Dispatcher and Cmdr.Dispatcher.Run then Cmdr.Dispatcher:Run(text)
+			elseif Cmdr.Run then Cmdr:Run(text) end
+		end)
+		WindUI:Notify({ Title = "Cmdr", Content = ok and ("Ran: " .. text) or "Command blocked / no access", Icon = "terminal", Duration = 4 })
+	end })
+
 --============================================================--
 --  TAB: Settings
 --============================================================--
