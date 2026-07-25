@@ -908,6 +908,57 @@ do
 			end
 		end
 	end)
+
+	----------------------------------------------------------------------
+	-- Combo presets (one-click routes; scale timing with the speed slider)
+	----------------------------------------------------------------------
+	local presetSec = tab:AddSection("Combo Presets")
+	presetSec:Label("One-click routes built from real remotes. Default delays "
+		.. "are starting points — scale them all with Timing Scale, then fine-"
+		.. "tune the sequencer above for your character/ping.")
+	presetSec:Slider("Timing Scale (x)", "combo_speed", 0.5, 2, 1, function() end, 2)
+
+	-- Reusable runner: steps = { {action, delay}, ... }
+	local function runSequence(steps)
+		if comboRunning then return end
+		comboRunning = true
+		for _, step in ipairs(steps) do
+			doComboAction(step[1])
+			task.wait(step[2] * (Flags.combo_speed or 1))
+		end
+		comboRunning = false
+	end
+
+	-- Common Jjs / battlegrounds tech patterns.
+	local COMBO_PRESETS = {
+		{ "Dash Cancel x4", {
+			{ "Item M1", 0.12 }, { "Dash", 0.12 }, { "Item M1", 0.12 }, { "Dash", 0.12 },
+			{ "Item M1", 0.12 }, { "Dash", 0.12 }, { "Item M1", 0.12 }, { "Dash", 0.20 } } },
+		{ "Reset Dash Chain", {
+			{ "Dash", 0.10 }, { "Reset Dash", 0.05 }, { "Dash", 0.10 },
+			{ "Reset Dash", 0.05 }, { "Dash", 0.20 } } },
+		{ "Ground Combo (M1s → Move)", {
+			{ "Item M1", 0.12 }, { "Item M1", 0.12 }, { "Item M1", 0.15 },
+			{ "Activated", 0.25 }, { "Dash", 0.20 } } },
+		{ "Move Cancel (Activate → Deact → Dash)", {
+			{ "Activated", 0.18 }, { "Deactivated", 0.08 }, { "Dash", 0.20 } } },
+		{ "Ult Confirm (Move → Dash → Ult)", {
+			{ "Activated", 0.20 }, { "Dash", 0.12 }, { "Ultimate", 0.30 } } },
+		{ "Drag Loop (M1 → Dash x2)", {
+			{ "Item M1", 0.12 }, { "Dash", 0.12 }, { "Item M1", 0.12 },
+			{ "Dash", 0.12 }, { "Item M1", 0.20 } } },
+		{ "Full Chain (Right → Dash → Move → Dash → Ult)", {
+			{ "RightActivated", 0.20 }, { "Dash", 0.12 }, { "Activated", 0.20 },
+			{ "Dash", 0.12 }, { "Ultimate", 0.30 } } },
+		{ "Stall / Reset (Deact → Reset Dash → Dash)", {
+			{ "Deactivated", 0.10 }, { "Reset Dash", 0.05 }, { "Dash", 0.15 } } },
+	}
+	for _, preset in ipairs(COMBO_PRESETS) do
+		local name, steps = preset[1], preset[2]
+		presetSec:Button(name, function()
+			task.spawn(function() runSequence(steps) end)
+		end)
+	end
 end
 
 --------------------------------------------------------------------
