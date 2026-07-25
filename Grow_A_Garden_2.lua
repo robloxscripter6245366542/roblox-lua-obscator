@@ -127,13 +127,49 @@ end
 
 -- invoke: fire a :Response remote and return the response value.
 local function invoke(path, ...)
-	local n = remote(table.unpack(path))
+	local n
+	if type(path) == "table" then n = remote(table.unpack(path)) else n = remote(path) end
 	if n and type(n.Fire) == "function" then
 		local extra = { ... }
 		local ok, res = pcall(function() return n:Fire(table.unpack(extra)) end)
 		if ok then return res end
 	end
 	return nil
+end
+
+-- Enumerate every remote path in Net that owns a Fire method -> {"Garden.CollectFruit", ...}
+local function allRemotePaths()
+	local paths = {}
+	local function walk(node, prefix)
+		if type(node) ~= "table" then return end
+		if type(node.Fire) == "function" and prefix ~= "" then
+			paths[#paths + 1] = prefix
+			return
+		end
+		for k, v in pairs(node) do
+			if type(k) == "string" and type(v) == "table" then
+				walk(v, prefix == "" and k or (prefix .. "." .. k))
+			end
+		end
+	end
+	if Net then walk(Net, "") end
+	table.sort(paths)
+	return paths
+end
+
+-- Parse a comma-separated arg string into typed values (number / bool / nil / string).
+local function parseArgs(str)
+	local out = {}
+	if not str or str == "" then return out end
+	for token in string.gmatch(str, "([^,]+)") do
+		local t = token:match("^%s*(.-)%s*$")
+		if t == "true" then out[#out + 1] = true
+		elseif t == "false" then out[#out + 1] = false
+		elseif t == "nil" then out[#out + 1] = nil
+		elseif tonumber(t) ~= nil then out[#out + 1] = tonumber(t)
+		else out[#out + 1] = t end
+	end
+	return out
 end
 
 --============================================================--
@@ -1056,6 +1092,158 @@ do
 		end)
 	end
 end
+
+--============================================================--
+--  TAB: Placement (best-effort: uses held tool + plot position)
+--============================================================--
+local PlaceTab = Window:Tab({ Title = "Placement", Icon = "hammer" })
+PlaceTab:Paragraph({ Title = "Note", Desc = "Equip the matching item first; it's placed at a point on your plot." })
+local function placeHeld(category, method, extra)
+	local tool = getEquippedTool()
+	local pos = getPlantPosition()
+	if not tool or not pos then
+		WindUI:Notify({ Title = "Placement", Content = "Hold a placeable item on your plot first", Icon = "triangle-alert", Duration = 3 })
+		return
+	end
+	local args = { category, method, pos, tool.Name, tool }
+	if extra then for _, e in ipairs(extra) do args[#args + 1] = e end end
+	fire(table.unpack(args))
+end
+PlaceTab:Section({ Title = "Place held item" })
+PlaceTab:Button({ Title = "Place Sprinkler", Callback = function() placeHeld("Place", "PlaceSprinkler", { 0 }) end })
+PlaceTab:Button({ Title = "Place Gnome",     Callback = function() placeHeld("Place", "PlaceGnome") end })
+PlaceTab:Button({ Title = "Place Raccoon",   Callback = function() placeHeld("Place", "PlaceRaccoon") end })
+PlaceTab:Button({ Title = "Place Ladder",    Callback = function() placeHeld("Place", "PlaceLadder") end })
+PlaceTab:Button({ Title = "Place Rake",      Callback = function() placeHeld("Place", "PlaceRake", { 0, 0 }) end })
+PlaceTab:Button({ Title = "Place Bird",      Callback = function() placeHeld("Place", "PlaceBird") end })
+PlaceTab:Button({ Title = "Place Prop",      Callback = function() placeHeld("Prop", "PlaceProp", { 0 }) end })
+PlaceTab:Button({ Title = "Use Teleporter (here)", Callback = function()
+	local _, hrp = getCharacter(); if hrp then fire("Place", "UseTeleporter", hrp.Position) end end })
+
+--============================================================--
+--  TAB: Inventory
+--============================================================--
+local InvTab = Window:Tab({ Title = "Inventory", Icon = "backpack" })
+InvTab:Section({ Title = "Sell specific" })
+InvTab:Input({ Title = "Sell fruit by id", Placeholder = "fruit id",
+	Callback = function(t) if t and t ~= "" then local r = invoke({ "NPCS", "SellFruit" }, t); WindUI:Notify({ Title = "Sell Fruit", Content = tostring(r), Icon = "coins", Duration = 3 }) end end })
+InvTab:Input({ Title = "Sell pet by id", Placeholder = "pet id",
+	Callback = function(t) if t and t ~= "" then local r = invoke({ "NPCS", "SellPet" }, t); WindUI:Notify({ Title = "Sell Pet", Content = tostring(r), Icon = "coins", Duration = 3 }) end end })
+InvTab:Section({ Title = "Daily deal" })
+InvTab:Button({ Title = "Check Daily Deal", Callback = function() local r = invoke({ "NPCS", "CheckDailyDeal" }); WindUI:Notify({ Title = "Daily Deal", Content = r and "Available" or "None", Icon = "calendar", Duration = 4 }) end })
+InvTab:Button({ Title = "Use Daily Deal (All)", Callback = function() invoke({ "NPCS", "UseDailyDealAll" }) end })
+InvTab:Section({ Title = "Double or Nothing" })
+InvTab:Button({ Title = "Double or Nothing", Callback = function() local r = invoke({ "NPCS", "DoubleOrNothing" }); WindUI:Notify({ Title = "DoN", Content = tostring(r), Icon = "dice-5", Duration = 4 }) end })
+InvTab:Button({ Title = "Cash Out", Callback = function() invoke({ "NPCS", "CashOutDoubleOrNothing" }) end })
+InvTab:Section({ Title = "Favorites & layout" })
+InvTab:Input({ Title = "Favorite fruit by id", Placeholder = "fruit id",
+	Callback = function(t) if t and t ~= "" then invoke({ "Backpack", "SetFruitFavorite" }, t, true) end end })
+InvTab:Input({ Title = "Favorite pet by id", Placeholder = "pet id",
+	Callback = function(t) if t and t ~= "" then invoke({ "Backpack", "SetPetFavorite" }, t, true) end end })
+InvTab:Input({ Title = "Promote fruit by id", Placeholder = "fruit id",
+	Callback = function(t) if t and t ~= "" then invoke({ "Backpack", "PromoteFruit" }, t) end end })
+InvTab:Section({ Title = "Plant management" })
+InvTab:Input({ Title = "Pot plant by id", Placeholder = "plant id",
+	Callback = function(t) if t and t ~= "" then fire("Garden", "PotPlant", t) end end })
+InvTab:Button({ Title = "Sell All Pets (loop inventory)", Desc = "Best-effort: sells pets found in Backpack by name.",
+	Callback = function()
+		local bp = LocalPlayer:FindFirstChild("Backpack")
+		if bp then for _, tool in ipairs(bp:GetChildren()) do
+			local id = tool:GetAttribute("PetId") or tool:GetAttribute("Id")
+			if id then invoke({ "NPCS", "SellPet" }, id); task.wait(0.1) end
+		end end
+	end })
+
+--============================================================--
+--  TAB: Skills
+--============================================================--
+local SkillTab = Window:Tab({ Title = "Skills", Icon = "star" })
+SkillTab:Button({ Title = "Request Skill Data", Callback = function()
+	local r = invoke({ "SkillPoints", "RequestSkillData" })
+	WindUI:Notify({ Title = "Skills", Content = r and "Data received" or "No data", Icon = "star", Duration = 4 })
+end })
+SkillTab:Input({ Title = "Spend skill point on", Placeholder = "skill name",
+	Callback = function(t) if t and t ~= "" then fire("SkillPoints", "SpendSkillPoint", t) end end })
+
+--============================================================--
+--  TAB: Travel
+--============================================================--
+local TravelTab = Window:Tab({ Title = "Travel", Icon = "plane" })
+TravelTab:Button({ Title = "Get Travel Targets", Callback = function()
+	local r = invoke({ "Worlds", "GetTravelTargets" })
+	WindUI:Notify({ Title = "Worlds", Content = r and "Targets received" or "None", Icon = "globe", Duration = 4 })
+end })
+TravelTab:Input({ Title = "Request travel to world", Placeholder = "world name/id",
+	Callback = function(t) if t and t ~= "" then fire("Worlds", "RequestTravel", t) end end })
+TravelTab:Input({ Title = "Teleport button request", Placeholder = "destination id",
+	Callback = function(t) if t and t ~= "" then fire("TeleportButton", "Request", t) end end })
+TravelTab:Button({ Title = "Anti-AFK Server Hop", Desc = "Requests the game's own server hop.",
+	Callback = function() fire("AntiAfk", "RequestHop") end })
+
+--============================================================--
+--  TAB: Fun
+--============================================================--
+local FunTab = Window:Tab({ Title = "Fun", Icon = "sparkles" })
+FunTab:Section({ Title = "Toys" })
+FunTab:Button({ Title = "Roll Magic Dice (held)", Callback = function() local t = getEquippedTool(); if t then fire("MagicDice", "PlayRoll", t) end end })
+FunTab:Button({ Title = "Wheelbarrow Charge", Callback = function() fire("Wheelbarrow", "Charge") end })
+FunTab:Button({ Title = "Carpet Equip", Callback = function() fire("Carpet", "Equip") end })
+FunTab:Button({ Title = "Carpet Unequip", Callback = function() fire("Carpet", "Unequip") end })
+FunTab:Section({ Title = "Sign / Megaphone / Boombox" })
+FunTab:Input({ Title = "Set sign text", Placeholder = "text", Callback = function(t) if t then fire("SignTool", "SetSignText", t) end end })
+FunTab:Input({ Title = "Set sign image id", Placeholder = "rbxassetid", Callback = function(t) if t then fire("SignTool", "SetSignImage", t) end end })
+FunTab:Input({ Title = "Megaphone sound id", Placeholder = "sound id", Callback = function(t) if t then fire("Megaphone", "SetSoundId", t) end end })
+FunTab:Button({ Title = "Megaphone Play", Callback = function() fire("Megaphone", "Play", 1, false) end })
+FunTab:Section({ Title = "Chat" })
+FunTab:Input({ Title = "Chat announcement", Placeholder = "message", Callback = function(t) if t and t ~= "" then fire("ChatAnnouncement", t) end end })
+
+--============================================================--
+--  TAB: Events
+--============================================================--
+local EventTab = Window:Tab({ Title = "Events", Icon = "calendar" })
+EventTab:Section({ Title = "Stock & releases" })
+EventTab:Button({ Title = "Request Fruit Stock", Callback = function()
+	local r = invoke({ "FruitStock", "Request" }); WindUI:Notify({ Title = "Fruit Stock", Content = r and "Received" or "None", Icon = "package", Duration = 4 }) end })
+EventTab:Button({ Title = "Request Changelog", Callback = function()
+	local r = invoke({ "Release", "ChangelogRequest" }); WindUI:Notify({ Title = "Changelog", Content = r and "Received" or "None", Icon = "scroll", Duration = 4 }) end })
+EventTab:Section({ Title = "Pet Hunt" })
+EventTab:Input({ Title = "Join pet hunt queue", Placeholder = "queue id", Callback = function(t) if t and t ~= "" then invoke({ "PetHunt", "JoinQueue" }, t) end end })
+EventTab:Button({ Title = "Leave pet hunt queue", Callback = function() invoke({ "PetHunt", "LeaveQueue" }) end })
+EventTab:Section({ Title = "Crate & tutorial" })
+EventTab:Input({ Title = "Open crate by id", Placeholder = "crate id", Callback = function(t) if t and t ~= "" then invoke({ "Crate", "OpenCrate" }, t) end end })
+EventTab:Button({ Title = "Complete Tutorial", Callback = function() fire("Tutorial", "Complete") end })
+EventTab:Input({ Title = "Play cutscene", Placeholder = "cutscene id", Callback = function(t) if t and t ~= "" then fire("PlayCutscene", t) end end })
+
+--============================================================--
+--  TAB: Remotes (generic runner — reaches EVERY remote)
+--============================================================--
+local RemoteTab = Window:Tab({ Title = "Remotes", Icon = "terminal" })
+RemoteTab:Section({ Title = "Fire any remote" })
+local remotePaths = allRemotePaths()
+RemoteTab:Paragraph({ Title = "Coverage", Desc = ("%d remotes discovered in the game's Networking module. Pick one, supply comma-separated args, and Fire (or Invoke for a response)."):format(#remotePaths) })
+local selectedRemote = remotePaths[1]
+local remoteArgs = ""
+RemoteTab:Dropdown({
+	Title = "Remote", Values = remotePaths, Value = remotePaths[1], AllowNone = false,
+	Callback = function(v) if type(v) == "table" then selectedRemote = v[1] else selectedRemote = v end end,
+})
+RemoteTab:Input({ Title = "Arguments (comma-separated)", Placeholder = "e.g. Carrot, 5, true", Callback = function(t) remoteArgs = t or "" end })
+RemoteTab:Button({ Title = "Fire", Callback = function()
+	if not selectedRemote then return end
+	local path = {}
+	for seg in string.gmatch(selectedRemote, "([^.]+)") do path[#path + 1] = seg end
+	local args = parseArgs(remoteArgs)
+	fire(table.unpack((function() local a = {} for _, p in ipairs(path) do a[#a + 1] = p end for _, v in ipairs(args) do a[#a + 1] = v end return a end)()))
+	WindUI:Notify({ Title = "Remote fired", Content = selectedRemote, Icon = "terminal", Duration = 3 })
+end })
+RemoteTab:Button({ Title = "Invoke (show response)", Callback = function()
+	if not selectedRemote then return end
+	local path = {}
+	for seg in string.gmatch(selectedRemote, "([^.]+)") do path[#path + 1] = seg end
+	local args = parseArgs(remoteArgs)
+	local res = invoke(path, table.unpack(args))
+	WindUI:Notify({ Title = selectedRemote, Content = "Response: " .. tostring(res), Icon = "terminal", Duration = 5 })
+end })
 
 --============================================================--
 --  TAB: Settings
