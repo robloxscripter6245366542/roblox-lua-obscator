@@ -1,12 +1,1197 @@
 --[[
- .____                  ________ ___.    _____                           __                
- |    |    __ _______   \_____  \\_ |___/ ____\_ __  ______ ____ _____ _/  |_  ___________ 
+ .____                  ________ ___.    _____                           __
+ |    |    __ _______   \_____  \\_ |___/ ____\_ __  ______ ____ _____ _/  |_  ___________
  |    |   |  |  \__  \   /   |   \| __ \   __\  |  \/  ___// ___\\__  \\   __\/  _ \_  __ \
  |    |___|  |  // __ \_/    |    \ \_\ \  | |  |  /\___ \\  \___ / __ \|  | (  <_> )  | \/
- |_______ \____/(____  /\_______  /___  /__| |____//____  >\___  >____  /__|  \____/|__|   
-         \/          \/         \/    \/                \/     \/     \/                   
-]]--
+ |_______ \____/(____  /\_______  /___  /__| |____//____  >\___  >____  /__|  \____/|__|
+         \/          \/         \/    \/                \/     \/     \/
 
--- if yo tryna steal my script go do it since this obfuscator sucks
+ Auto Blackflash Chain / Auto Aim
+ --------------------------------------------------------------------------
+ Deobfuscated, bug-fixed and cleaned up. All in-game remote paths, animation
+ IDs and the aim/arc math are unchanged from the original so behaviour is
+ identical; only readability, robustness and the UI were improved.
 
-local v0=game:GetService("Players");local v1=game:GetService("RunService");local v2=game:GetService("UserInputService");local v3=game:GetService("ReplicatedStorage");local v4=game:GetService("TweenService");local v5=game:GetService("HttpService");local v6=workspace.CurrentCamera;local v7=v0.LocalPlayer;local v8={["100962226150441"]=true,["74145636023952"]=true,["123171106092050"]=true,["95852624447551"]=true};local v9={autoBFChain=true,bfChainMode="legit",offsetStuds=5,tweenTime=0.23,lookTime=0.5,autoFireFist=true,divergentFistDelay=0.27,autoAim=true,aimMode="Camera",cameraSlowness=0,autoJump=true,jumpDuration=0.01,jumpPower=45,legitInfrontCheck=10,legitSpeed=0.2,legitArcWidth=5.4,legitSlowdownInterval=0.017,legitSlowdownAmount=0.011,legitBehindCheck=true,legitBehindCheckDist=10,legitSideCheck=true,feintEnabled=false,feintDelay=0.32};local v10="bfchainSettings.json";local function v11() if writefile then pcall(function() writefile(v10,v5:JSONEncode(v9));end);end end local function v12() if (isfile and readfile and isfile(v10)) then local v580,v581=pcall(function() return v5:JSONDecode(readfile(v10));end);if (v580 and (type(v581)=="table")) then for v666,v667 in pairs(v581) do if (v9[v666]~=nil) then v9[v666]=v667;end end end end end v12();local v13,v14,v15,v16;local v17;local v18=0;local v19=nil;local v20=nil;v1:BindToRenderStep("ShiftlockAimFix",Enum.RenderPriority.Camera.Value + 1 ,function() if  not v19 then v20=nil;return;end local v497=v6.CFrame.Position;local v498=CFrame.new(v497,v19);if (v9.cameraSlowness<=0) then v6.CFrame=v498;v20=v498.Rotation;else local v584=(v20 and (CFrame.new(v497) * v20)) or v6.CFrame ;local v585=1/((v9.cameraSlowness * 3) + 1) ;local v586=v584:Lerp(v498,math.clamp(v585,0,1));v6.CFrame=v586;v20=v586.Rotation;end end);local function v21() if v19 then local v589=v19;v19=nil;v20=nil;local v590=CFrame.new(v6.CFrame.Position,v589);v6.CameraType=Enum.CameraType.Scriptable;v6.CFrame=v590;task.defer(function() v6.CameraType=Enum.CameraType.Custom;end);end end local function v22(v499) if  not v499 then return "";end return tostring(v499):match("%d+") or tostring(v499) ;end local function v23() if ( not v13 or  not v15) then return nil;end local v500=nil;local v501=math.huge;local v502=v15.Position;for v571,v572 in ipairs(workspace:GetDescendants()) do if (v572:IsA("Model") and (v572~=v13)) then local v650=v572:FindFirstChildOfClass("Humanoid");local v651=v572:FindFirstChild("HumanoidRootPart");if (v650 and v651 and (v650.Health>0)) then local v668=(v651.Position-v502).Magnitude;if (v668<v501) then v501=v668;v500=v651;end end end end return v500;end local function v24(v503) v13=v503;v14=v503:WaitForChild("Humanoid");v15=v503:WaitForChild("HumanoidRootPart");v16=v14:WaitForChild("Animator");if v17 then v17:Disconnect();v17=nil;end v17=v16.AnimationPlayed:Connect(function(v573) local v574=v22(v573.Animation and v573.Animation.AnimationId );if  not v8[v574] then return;end v18+=1 local v575=v18;if v9.feintEnabled then task.spawn(function() task.wait(v9.feintDelay);if (v13 and v15) then local v674=v23();if v674 then local v685=v15.Position-v674.Position ;local v686=v674.CFrame.LookVector;if (v686:Dot(v685.Unit)>=0) then pcall(function() game:GetService("ReplicatedStorage"):WaitForChild("Knit"):WaitForChild("Knit"):WaitForChild("Services"):WaitForChild("ItadoriService"):WaitForChild("RE"):WaitForChild("RightActivated"):FireServer();end);end end end end);end if (v9.autoJump and v15) then task.spawn(function() local v655=os.clock() + v9.jumpDuration ;while (os.clock()<v655) and v9.autoJump and v15 and v15.Parent  do pcall(function() v15.AssemblyLinearVelocity=Vector3.new(v15.AssemblyLinearVelocity.X,v9.jumpPower,v15.AssemblyLinearVelocity.Z);end);v1.Heartbeat:Wait();end end);end if v9.autoFireFist then task.spawn(function() task.wait(v9.divergentFistDelay);pcall(function() local v669=v7.Character:FindFirstChild("Moveset");if v669 then local v681=v669:FindFirstChild("Divergent Fist");if v681 then local v688={v681};v3:WaitForChild("Knit"):WaitForChild("Knit"):WaitForChild("Services"):WaitForChild("DivergentFistService"):WaitForChild("RE"):WaitForChild("Activated"):FireServer(unpack(v688));end end end);end);end if (v9.autoBFChain or v9.autoAim) then task.spawn(function() local v656=os.clock();local v657=v15.Position;local v658="normal";local v659=v23();if (v9.autoBFChain and (v9.bfChainMode=="legit") and v9.legitSideCheck and v659) then local v676=v657-v659.Position ;local v677=v659.CFrame.LookVector;if (math.abs(v677:Dot(v676.Unit))<0.8) then local v687=v15.CFrame:VectorToObjectSpace(v659.CFrame.LookVector);if (v687.X>0) then v658="270_right";else v658="270_left";end end end if ((v658=="normal") and v9.autoBFChain and (v9.bfChainMode=="legit") and v9.legitBehindCheck and v659) then local v678=v657-v659.Position ;local v679=v659.CFrame.LookVector;if ((v678.Magnitude<=v9.legitBehindCheckDist) and (v679:Dot(v678.Unit)<0)) then if (math.random(1,2)==1) then local v691=v659.CFrame:PointToObjectSpace(v657);if (v691.X<0) then v658="360_left";else v658="360_right";end else v658="nothing";end end end if (v658=="nothing") then v21();return;end local v660=0;local v661=false;local v662=0;local v663=0;while true do local v670=((v9.bfChainMode=="legit") and v9.autoBFChain and (v9.legitSpeed + v660)) or v9.tweenTime ;local v671=v670 + v9.lookTime ;local v672=os.clock() -v656 ;if (v672>=v671) then break;end if ((v575~=v18) or  not v13.Parent or  not v15.Parent) then v21();return;end local v673=v23();if v673 then local v682=v673.Position;local v683=v9.autoBFChain;local v684=v682;if (v683 and (v9.bfChainMode=="legit") and (v658~="360_left") and (v658~="360_right") and (v658~="270_left") and (v658~="270_right")) then local v689=v682-v657 ;local v690=v689.Magnitude;if (v690>0.1) then local v692=v15.CFrame.LookVector:Dot(v689.Unit);if ((v690>v9.legitInfrontCheck) or (v692<0.4)) then v683=false;end else v683=false;end end if (v683 and (v9.bfChainMode=="legit")) then if ((v658=="360_left") or (v658=="360_right") or (v658=="270_left") or (v658=="270_right")) then v684=v682;else local v693=v9.legitArcWidth;local v694=v657-v682 ;local v695=math.atan2(v694.Z,v694.X);local v696=v695 + (math.pi * 0.5) ;v684=Vector3.new(v682.X + (math.cos(v696) * v693) ,v657.Y,v682.Z + (math.sin(v696) * v693) );end end if v683 then if (v672<v670) then local v697;local v698=math.clamp(v672/v670 ,0,1);local v699;if v9.autoJump then v699=v15.Position.Y;end if (v9.bfChainMode=="semi legit") then local v701=v682-(v673.CFrame.LookVector * v9.offsetStuds) ;local v702=math.max(v9.offsetStuds,2);local v703=v657-v682 ;local v704=v701-v682 ;local v705=math.atan2(v703.Z,v703.X);local v706=math.atan2(v704.Z,v704.X);local v707=v706-v705 ;if (v707>math.pi) then v707-=(2 * math.pi) elseif (v707< -math.pi) then v707+=(2 * math.pi) end local v708=v705 + (v707 * v698) ;if  not v699 then v699=v657.Y + ((v701.Y-v657.Y) * v698) ;end v697=Vector3.new(v682.X + (math.cos(v708) * v702) ,v699,v682.Z + (math.sin(v708) * v702) );elseif (v9.bfChainMode=="legit") then local v711=(v658=="360_left") or (v658=="360_right") or (v658=="270_left") or (v658=="270_right") ;local v712=(v711 and 0.25) or 0.5 ;if ( not v661 and (v698>=v712)) then v661=true;v662=v672;end if v661 then local v720=v672-v662 ;if ((v720>=v9.legitSlowdownInterval) and (v9.legitSlowdownInterval>0)) then local v723=math.floor(v720/v9.legitSlowdownInterval );v660=v660 + (v723 * v9.legitSlowdownAmount) ;v662=v662 + (v723 * v9.legitSlowdownInterval) ;v670=v9.legitSpeed + v660 ;v698=math.clamp(v672/v670 ,0,1);end if (v698>=1) then break;elseif (v698<=v663) then break;end end v663=v698;local v713=v9.legitArcWidth;local v714=v657-v682 ;local v715=math.atan2(v714.Z,v714.X);local v716=math.pi;if (v658=="360_left") then v716=math.pi * 2 ;elseif (v658=="360_right") then v716= -math.pi * 2 ;elseif (v658=="270_left") then v716=math.pi * 1.5 ;elseif (v658=="270_right") then v716= -math.pi * 1.5 ;end local v717=v715 + (v716 * v698) ;if  not v699 then v699=v657.Y;end v697=Vector3.new(v682.X + (math.cos(v717) * v713) ,v699,v682.Z + (math.sin(v717) * v713) );end if (v9.autoAim and (v658~="360_left") and (v658~="360_right")) then if (v9.aimMode=="Character") then v15.CFrame=CFrame.new(v697,v684);v21();elseif (v9.aimMode=="Camera") then v15.CFrame=CFrame.new(v697) * v15.CFrame.Rotation ;v19=v684;end else v15.CFrame=CFrame.new(v697) * v15.CFrame.Rotation ;v21();end elseif (v9.autoAim and (v658~="360_left") and (v658~="360_right")) then if (v9.aimMode=="Character") then v15.CFrame=CFrame.new(v15.Position,v684);v21();elseif (v9.aimMode=="Camera") then v19=v684;end else v21();end elseif (v9.autoAim and (v658~="360_left") and (v658~="360_right")) then if (v9.aimMode=="Character") then v15.CFrame=CFrame.new(v15.Position,v684);v21();elseif (v9.aimMode=="Camera") then v19=v684;end else v21();end else v21();end v1.RenderStepped:Wait();end v21();end);end end);end local v25=Instance.new("ScreenGui");v25.Name="AnimationReactionGui";v25.ResetOnSpawn=false;local v28,v29=pcall(function() v25.Parent=game:GetService("CoreGui");end);if  not v28 then v25.Parent=v7:WaitForChild("PlayerGui");end local v30=Instance.new("TextButton");v30.Size=UDim2.fromOffset(45,45);v30.Position=UDim2.new(0,20,0.5, -22);v30.BackgroundColor3=Color3.fromRGB(30,30,35);v30.TextColor3=Color3.fromRGB(255,255,255);v30.Text="UI";v30.Font=Enum.Font.GothamBold;v30.TextSize=14;v30.Visible=false;v30.Parent=v25;local v41=Instance.new("UICorner");v41.CornerRadius=UDim.new(1,0);v41.Parent=v30;local v44,v45,v46,v47;v30.InputBegan:Connect(function(v505) if ((v505.UserInputType==Enum.UserInputType.MouseButton1) or (v505.UserInputType==Enum.UserInputType.Touch)) then v44=true;v46=v505.Position;v47=v30.Position;v505.Changed:Connect(function() if (v505.UserInputState==Enum.UserInputState.End) then v44=false;end end);end end);v30.InputChanged:Connect(function(v506) if ((v506.UserInputType==Enum.UserInputType.MouseMovement) or (v506.UserInputType==Enum.UserInputType.Touch)) then v45=v506;end end);v2.InputChanged:Connect(function(v507) if ((v507==v45) and v44) then local v596=v507.Position-v46 ;v30.Position=UDim2.new(v47.X.Scale,v47.X.Offset + v596.X ,v47.Y.Scale,v47.Y.Offset + v596.Y );end end);local v48=Instance.new("Frame");v48.Size=UDim2.fromOffset(250,400);v48.Position=UDim2.fromOffset(50,200);v48.BackgroundColor3=Color3.fromRGB(30,30,35);v48.BorderSizePixel=0;v48.Parent=v25;local v54=Instance.new("UICorner");v54.CornerRadius=UDim.new(0,8);v54.Parent=v48;local v57=Instance.new("Frame");v57.Size=UDim2.new(1,0,0,30);v57.BackgroundColor3=Color3.fromRGB(20,20,25);v57.BorderSizePixel=0;v57.Parent=v48;local v62=Instance.new("UICorner");v62.CornerRadius=UDim.new(0,8);v62.Parent=v57;local v65=Instance.new("Frame");v65.Size=UDim2.new(1,0,0,5);v65.Position=UDim2.new(0,0,1, -5);v65.BackgroundColor3=Color3.fromRGB(20,20,25);v65.BorderSizePixel=0;v65.Parent=v57;local v71=Instance.new("TextLabel");v71.Size=UDim2.new(1, -30,1,0);v71.BackgroundTransparency=1;v71.Text="Auto blackflash chain";v71.TextColor3=Color3.fromRGB(255,255,255);v71.TextXAlignment=Enum.TextXAlignment.Left;v71.Font=Enum.Font.GothamBold;v71.TextSize=14;v71.Parent=v57;local v81=Instance.new("TextButton");v81.Size=UDim2.new(0,30,1,0);v81.Position=UDim2.new(1, -30,0,0);v81.BackgroundTransparency=1;v81.Text="-";v81.TextColor3=Color3.fromRGB(200,200,200);v81.Font=Enum.Font.GothamBold;v81.TextSize=20;v81.Parent=v57;local v90=Instance.new("Frame");v90.Size=UDim2.fromOffset(0,280);v90.Position=UDim2.new(v48.Position.X.Scale,v48.Position.X.Offset + 260 ,v48.Position.Y.Scale,v48.Position.Y.Offset);v90.BackgroundColor3=Color3.fromRGB(30,30,35);v90.BorderSizePixel=0;v90.ClipsDescendants=true;v90.Visible=false;v90.Parent=v25;local v98=Instance.new("UICorner");v98.CornerRadius=UDim.new(0,8);v98.Parent=v90;local v101=Instance.new("Frame");v101.Size=UDim2.new(1,0,0,30);v101.BackgroundColor3=Color3.fromRGB(20,20,25);v101.BorderSizePixel=0;v101.Parent=v90;local v106=Instance.new("UICorner");v106.CornerRadius=UDim.new(0,8);v106.Parent=v101;local v109=Instance.new("Frame");v109.Size=UDim2.new(1,0,0,5);v109.Position=UDim2.new(0,0,1, -5);v109.BackgroundColor3=Color3.fromRGB(20,20,25);v109.BorderSizePixel=0;v109.Parent=v101;local v115=Instance.new("TextLabel");v115.Size=UDim2.new(1, -30,1,0);v115.BackgroundTransparency=1;v115.Text=" Semi Legit Settings";v115.TextColor3=Color3.fromRGB(255,255,255);v115.TextXAlignment=Enum.TextXAlignment.Left;v115.Font=Enum.Font.GothamBold;v115.TextSize=13;v115.Parent=v101;local v124=Instance.new("TextButton");v124.Size=UDim2.new(0,30,1,0);v124.Position=UDim2.new(1, -30,0,0);v124.BackgroundTransparency=1;v124.Text="X";v124.TextColor3=Color3.fromRGB(200,50,50);v124.Font=Enum.Font.GothamBold;v124.TextSize=14;v124.Parent=v101;v124.MouseButton1Click:Connect(function() local v508=v4:Create(v90,TweenInfo.new(0.3,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Size=UDim2.fromOffset(0,280)});v508:Play();v508.Completed:Once(function() v90.Visible=false;end);end);local v133=Instance.new("Frame");v133.Size=UDim2.fromOffset(0,280);v133.Position=UDim2.new(v48.Position.X.Scale,v48.Position.X.Offset + 260 ,v48.Position.Y.Scale,v48.Position.Y.Offset);v133.BackgroundColor3=Color3.fromRGB(30,30,35);v133.BorderSizePixel=0;v133.ClipsDescendants=true;v133.Visible=false;v133.Parent=v25;local v141=Instance.new("UICorner");v141.CornerRadius=UDim.new(0,8);v141.Parent=v133;local v144=Instance.new("Frame");v144.Size=UDim2.new(1,0,0,30);v144.BackgroundColor3=Color3.fromRGB(20,20,25);v144.BorderSizePixel=0;v144.Parent=v133;local v149=Instance.new("UICorner");v149.CornerRadius=UDim.new(0,8);v149.Parent=v144;local v152=Instance.new("Frame");v152.Size=UDim2.new(1,0,0,5);v152.Position=UDim2.new(0,0,1, -5);v152.BackgroundColor3=Color3.fromRGB(20,20,25);v152.BorderSizePixel=0;v152.Parent=v144;local v158=Instance.new("TextLabel");v158.Size=UDim2.new(1, -30,1,0);v158.BackgroundTransparency=1;v158.Text=" Legit Settings";v158.TextColor3=Color3.fromRGB(255,255,255);v158.TextXAlignment=Enum.TextXAlignment.Left;v158.Font=Enum.Font.GothamBold;v158.TextSize=13;v158.Parent=v144;local v167=Instance.new("TextButton");v167.Size=UDim2.new(0,30,1,0);v167.Position=UDim2.new(1, -30,0,0);v167.BackgroundTransparency=1;v167.Text="X";v167.TextColor3=Color3.fromRGB(200,50,50);v167.Font=Enum.Font.GothamBold;v167.TextSize=14;v167.Parent=v144;v167.MouseButton1Click:Connect(function() local v509=v4:Create(v133,TweenInfo.new(0.3,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Size=UDim2.fromOffset(0,280)});v509:Play();v509.Completed:Once(function() v133.Visible=false;end);end);v81.MouseButton1Click:Connect(function() v48.Visible=false;v90.Visible=false;v133.Visible=false;v30.Visible=true;end);v30.MouseButton1Click:Connect(function() v48.Visible=true;v30.Visible=false;end);local v176,v177,v178,v179;v57.InputBegan:Connect(function(v516) if ((v516.UserInputType==Enum.UserInputType.MouseButton1) or (v516.UserInputType==Enum.UserInputType.Touch)) then v176=true;v178=v516.Position;v179=v48.Position;v516.Changed:Connect(function() if (v516.UserInputState==Enum.UserInputState.End) then v176=false;end end);end end);v57.InputChanged:Connect(function(v517) if ((v517.UserInputType==Enum.UserInputType.MouseMovement) or (v517.UserInputType==Enum.UserInputType.Touch)) then v177=v517;end end);v2.InputChanged:Connect(function(v518) if ((v518==v177) and v176) then local v600=v518.Position-v178 ;v48.Position=UDim2.new(v179.X.Scale,v179.X.Offset + v600.X ,v179.Y.Scale,v179.Y.Offset + v600.Y );if v90.Visible then v90.Position=UDim2.new(v48.Position.X.Scale,v48.Position.X.Offset + 260 ,v48.Position.Y.Scale,v48.Position.Y.Offset);end if v133.Visible then v133.Position=UDim2.new(v48.Position.X.Scale,v48.Position.X.Offset + 260 ,v48.Position.Y.Scale,v48.Position.Y.Offset);end end end);local v180=Instance.new("ScrollingFrame");v180.Size=UDim2.new(1,0,1, -30);v180.Position=UDim2.fromOffset(0,30);v180.BackgroundTransparency=1;v180.BorderSizePixel=0;v180.ScrollBarThickness=5;v180.ScrollBarImageColor3=Color3.fromRGB(70,70,80);v180.AutomaticCanvasSize=Enum.AutomaticSize.Y;v180.CanvasSize=UDim2.new(0,0,0,0);v180.Parent=v48;local v191=Instance.new("ScrollingFrame");v191.Size=UDim2.new(1,0,1, -30);v191.Position=UDim2.fromOffset(0,30);v191.BackgroundTransparency=1;v191.BorderSizePixel=0;v191.ScrollBarThickness=5;v191.ScrollBarImageColor3=Color3.fromRGB(70,70,80);v191.AutomaticCanvasSize=Enum.AutomaticSize.Y;v191.CanvasSize=UDim2.new(0,0,0,0);v191.Parent=v90;local v201=Instance.new("ScrollingFrame");v201.Size=UDim2.new(1,0,1, -30);v201.Position=UDim2.fromOffset(0,30);v201.BackgroundTransparency=1;v201.BorderSizePixel=0;v201.ScrollBarThickness=5;v201.ScrollBarImageColor3=Color3.fromRGB(70,70,80);v201.AutomaticCanvasSize=Enum.AutomaticSize.Y;v201.CanvasSize=UDim2.new(0,0,0,0);v201.Parent=v133;local function v211(v519,v520,v521,v522,v523) local v524=Instance.new("TextLabel");v524.Size=UDim2.new(1, -20,0,20);v524.Position=UDim2.fromOffset(10,v523);v524.BackgroundTransparency=1;v524.TextXAlignment=Enum.TextXAlignment.Left;v524.Text=v519;v524.TextColor3=Color3.fromRGB(200,200,200);v524.Font=Enum.Font.Gotham;v524.TextSize=13;v524.Parent=v522;local v536=Instance.new("TextBox");v536.Size=UDim2.new(1, -20,0,25);v536.Position=UDim2.fromOffset(10,v523 + 20 );v536.Text=tostring(v9[v521]);v536.BackgroundColor3=Color3.fromRGB(45,45,50);v536.TextColor3=Color3.fromRGB(255,255,255);v536.Font=Enum.Font.Gotham;v536.TextSize=13;v536.ClearTextOnFocus=false;v536.Parent=v522;local v546=Instance.new("UICorner");v546.CornerRadius=UDim.new(0,4);v546.Parent=v536;v536.FocusLost:Connect(function() local v579=tonumber(v536.Text);if v579 then v9[v521]=v579;v536.Text=tostring(v579);v11();else v536.Text=tostring(v9[v521]);end end);return v523 + 50 ;end local v212=10;local v213=Instance.new("TextLabel");v213.Size=UDim2.new(1, -20,0,20);v213.Position=UDim2.fromOffset(10,v212);v213.BackgroundTransparency=1;v213.TextXAlignment=Enum.TextXAlignment.Left;v213.Text="--- Main ---";v213.TextColor3=Color3.fromRGB(150,150,160);v213.Font=Enum.Font.GothamBold;v213.TextSize=13;v213.Parent=v180;v212+=25 local v223=Instance.new("TextLabel");v223.Size=UDim2.new(1, -70,0,30);v223.Position=UDim2.fromOffset(10,v212);v223.BackgroundTransparency=1;v223.TextXAlignment=Enum.TextXAlignment.Left;v223.Text="Auto BF chain";v223.TextColor3=Color3.fromRGB(255,255,255);v223.Font=Enum.Font.GothamBold;v223.TextSize=13;v223.Parent=v180;local v233=Instance.new("TextButton");v233.Size=UDim2.new(0,50,0,25);v233.Position=UDim2.new(1, -60,0,v212 + 2 );v233.Text=(v9.autoBFChain and "ON") or "OFF" ;v233.BackgroundColor3=(v9.autoBFChain and Color3.fromRGB(50,200,50)) or Color3.fromRGB(200,50,50) ;v233.TextColor3=Color3.fromRGB(255,255,255);v233.Font=Enum.Font.GothamBold;v233.TextSize=12;v233.Parent=v180;local v242=Instance.new("UICorner");v242.CornerRadius=UDim.new(0,6);v242.Parent=v233;v233.MouseButton1Click:Connect(function() v9.autoBFChain= not v9.autoBFChain;if v9.autoBFChain then v233.Text="ON";v233.BackgroundColor3=Color3.fromRGB(50,200,50);else v233.Text="OFF";v233.BackgroundColor3=Color3.fromRGB(200,50,50);end v11();end);v212+=35 local v245=Instance.new("TextLabel");v245.Size=UDim2.new(1, -20,0,20);v245.Position=UDim2.fromOffset(10,v212);v245.BackgroundTransparency=1;v245.TextXAlignment=Enum.TextXAlignment.Left;v245.Text="BF chain Mode";v245.TextColor3=Color3.fromRGB(200,200,200);v245.Font=Enum.Font.Gotham;v245.TextSize=13;v245.Parent=v180;v212+=20 local v256=Instance.new("TextButton");v256.Size=UDim2.new(1, -20,0,25);v256.Position=UDim2.fromOffset(10,v212);v256.Text=v9.bfChainMode;v256.BackgroundColor3=Color3.fromRGB(45,45,50);v256.TextColor3=Color3.fromRGB(255,255,255);v256.Font=Enum.Font.GothamBold;v256.TextSize=13;v256.Parent=v180;local v266=Instance.new("UICorner");v266.CornerRadius=UDim.new(0,4);v266.Parent=v256;v212+=35 local v269=Instance.new("TextButton");v269.Size=UDim2.new(1, -20,0,25);v269.Position=UDim2.fromOffset(10,v212);v269.Text="Open "   .. v9.bfChainMode   .. " Settings" ;v269.BackgroundColor3=Color3.fromRGB(60,100,200);v269.TextColor3=Color3.fromRGB(255,255,255);v269.Font=Enum.Font.GothamBold;v269.TextSize=12;v269.Parent=v180;local v278=Instance.new("UICorner");v278.CornerRadius=UDim.new(0,4);v278.Parent=v269;v256.MouseButton1Click:Connect(function() if (v9.bfChainMode=="semi legit") then v9.bfChainMode="legit";else v9.bfChainMode="semi legit";end v256.Text=v9.bfChainMode;v269.Text="Open "   .. v9.bfChainMode   .. " Settings" ;v90.Visible=false;v133.Visible=false;v11();end);v269.MouseButton1Click:Connect(function() local v555=((v9.bfChainMode=="legit") and v133) or v90 ;local v556=((v9.bfChainMode=="legit") and v90) or v133 ;v556.Visible=false;v555.Position=UDim2.new(v48.Position.X.Scale,v48.Position.X.Offset + 260 ,v48.Position.Y.Scale,v48.Position.Y.Offset);v555.Visible=true;v4:Create(v555,TweenInfo.new(0.3,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Size=UDim2.fromOffset(250,280)}):Play();end);v212+=35 local v281=Instance.new("TextLabel");v281.Size=UDim2.new(1, -70,0,30);v281.Position=UDim2.fromOffset(10,v212);v281.BackgroundTransparency=1;v281.TextXAlignment=Enum.TextXAlignment.Left;v281.Text="Auto blackflash";v281.TextColor3=Color3.fromRGB(255,255,255);v281.Font=Enum.Font.GothamBold;v281.TextSize=13;v281.Parent=v180;local v291=Instance.new("TextButton");v291.Size=UDim2.new(0,50,0,25);v291.Position=UDim2.new(1, -60,0,v212 + 2 );v291.Text=(v9.autoFireFist and "ON") or "OFF" ;v291.BackgroundColor3=(v9.autoFireFist and Color3.fromRGB(50,200,50)) or Color3.fromRGB(200,50,50) ;v291.TextColor3=Color3.fromRGB(255,255,255);v291.Font=Enum.Font.GothamBold;v291.TextSize=12;v291.Parent=v180;local v300=Instance.new("UICorner");v300.CornerRadius=UDim.new(0,6);v300.Parent=v291;v291.MouseButton1Click:Connect(function() v9.autoFireFist= not v9.autoFireFist;if v9.autoFireFist then v291.Text="ON";v291.BackgroundColor3=Color3.fromRGB(50,200,50);else v291.Text="OFF";v291.BackgroundColor3=Color3.fromRGB(200,50,50);end v11();end);v212+=35 v212=v211("autobf Delay",v9.divergentFistDelay,"divergentFistDelay",v180,v212);v212+=10 local v303=Instance.new("TextLabel");v303.Size=UDim2.new(1, -70,0,30);v303.Position=UDim2.fromOffset(10,v212);v303.BackgroundTransparency=1;v303.TextXAlignment=Enum.TextXAlignment.Left;v303.Text="Jump";v303.TextColor3=Color3.fromRGB(255,255,255);v303.Font=Enum.Font.GothamBold;v303.TextSize=13;v303.Parent=v180;local v313=Instance.new("TextButton");v313.Size=UDim2.new(0,50,0,25);v313.Position=UDim2.new(1, -60,0,v212 + 2 );v313.Text=(v9.autoJump and "ON") or "OFF" ;v313.BackgroundColor3=(v9.autoJump and Color3.fromRGB(50,200,50)) or Color3.fromRGB(200,50,50) ;v313.TextColor3=Color3.fromRGB(255,255,255);v313.Font=Enum.Font.GothamBold;v313.TextSize=12;v313.Parent=v180;local v322=Instance.new("UICorner");v322.CornerRadius=UDim.new(0,6);v322.Parent=v313;v313.MouseButton1Click:Connect(function() v9.autoJump= not v9.autoJump;if v9.autoJump then v313.Text="ON";v313.BackgroundColor3=Color3.fromRGB(50,200,50);else v313.Text="OFF";v313.BackgroundColor3=Color3.fromRGB(200,50,50);end v11();end);v212+=35 v212=v211("Jump Duration",v9.jumpDuration,"jumpDuration",v180,v212);v212=v211("Jump Power",v9.jumpPower,"jumpPower",v180,v212);v212+=10 local v325=Instance.new("TextLabel");v325.Size=UDim2.new(1, -70,0,30);v325.Position=UDim2.fromOffset(10,v212);v325.BackgroundTransparency=1;v325.TextXAlignment=Enum.TextXAlignment.Left;v325.Text="Feint";v325.TextColor3=Color3.fromRGB(255,255,255);v325.Font=Enum.Font.GothamBold;v325.TextSize=13;v325.Parent=v180;local v335=Instance.new("TextButton");v335.Size=UDim2.new(0,50,0,25);v335.Position=UDim2.new(1, -60,0,v212 + 2 );v335.Text=(v9.feintEnabled and "ON") or "OFF" ;v335.BackgroundColor3=(v9.feintEnabled and Color3.fromRGB(50,200,50)) or Color3.fromRGB(200,50,50) ;v335.TextColor3=Color3.fromRGB(255,255,255);v335.Font=Enum.Font.GothamBold;v335.TextSize=12;v335.Parent=v180;local v344=Instance.new("UICorner");v344.CornerRadius=UDim.new(0,6);v344.Parent=v335;v335.MouseButton1Click:Connect(function() v9.feintEnabled= not v9.feintEnabled;if v9.feintEnabled then v335.Text="ON";v335.BackgroundColor3=Color3.fromRGB(50,200,50);else v335.Text="OFF";v335.BackgroundColor3=Color3.fromRGB(200,50,50);end v11();end);v212+=35 v212=v211("Feint Delay",v9.feintDelay,"feintDelay",v180,v212);local v347=Instance.new("TextLabel");v347.Size=UDim2.new(1, -20,0,20);v347.Position=UDim2.fromOffset(10,v212);v347.BackgroundTransparency=1;v347.TextXAlignment=Enum.TextXAlignment.Left;v347.Text="--- Aiming ---";v347.TextColor3=Color3.fromRGB(150,150,160);v347.Font=Enum.Font.GothamBold;v347.TextSize=13;v347.Parent=v180;v212+=25 v212=v211("Look Time",v9.lookTime,"lookTime",v180,v212);local v357=Instance.new("TextLabel");v357.Size=UDim2.new(1, -70,0,30);v357.Position=UDim2.fromOffset(10,v212);v357.BackgroundTransparency=1;v357.TextXAlignment=Enum.TextXAlignment.Left;v357.Text="Auto aim";v357.TextColor3=Color3.fromRGB(255,255,255);v357.Font=Enum.Font.GothamBold;v357.TextSize=13;v357.Parent=v180;local v367=Instance.new("TextButton");v367.Size=UDim2.new(0,50,0,25);v367.Position=UDim2.new(1, -60,0,v212 + 2 );v367.Text=(v9.autoAim and "ON") or "OFF" ;v367.BackgroundColor3=(v9.autoAim and Color3.fromRGB(50,200,50)) or Color3.fromRGB(200,50,50) ;v367.TextColor3=Color3.fromRGB(255,255,255);v367.Font=Enum.Font.GothamBold;v367.TextSize=12;v367.Parent=v180;local v376=Instance.new("UICorner");v376.CornerRadius=UDim.new(0,6);v376.Parent=v367;v367.MouseButton1Click:Connect(function() v9.autoAim= not v9.autoAim;if v9.autoAim then v367.Text="ON";v367.BackgroundColor3=Color3.fromRGB(50,200,50);else v367.Text="OFF";v367.BackgroundColor3=Color3.fromRGB(200,50,50);end v11();end);v212+=35 local v379=Instance.new("TextLabel");v379.Size=UDim2.new(1, -20,0,20);v379.Position=UDim2.fromOffset(10,v212);v379.BackgroundTransparency=1;v379.TextXAlignment=Enum.TextXAlignment.Left;v379.Text="Aim Mode";v379.TextColor3=Color3.fromRGB(200,200,200);v379.Font=Enum.Font.Gotham;v379.TextSize=13;v379.Parent=v180;v212+=20 local v389=Instance.new("TextButton");v389.Size=UDim2.new(1, -20,0,25);v389.Position=UDim2.fromOffset(10,v212);v389.Text=v9.aimMode;v389.BackgroundColor3=Color3.fromRGB(45,45,50);v389.TextColor3=Color3.fromRGB(255,255,255);v389.Font=Enum.Font.GothamBold;v389.TextSize=13;v389.Parent=v180;local v399=Instance.new("UICorner");v399.CornerRadius=UDim.new(0,4);v399.Parent=v389;local v402=Instance.new("TextLabel");v402.Size=UDim2.new(1, -20,0,20);v402.Position=UDim2.fromOffset(10,v212 + 35 );v402.BackgroundTransparency=1;v402.TextXAlignment=Enum.TextXAlignment.Left;v402.Text="Camera Slowness (0 = Instant)";v402.TextColor3=Color3.fromRGB(200,200,200);v402.Font=Enum.Font.Gotham;v402.TextSize=13;v402.Parent=v180;local v412=Instance.new("TextBox");v412.Size=UDim2.new(1, -20,0,25);v412.Position=UDim2.fromOffset(10,v212 + 55 );v412.Text=tostring(v9.cameraSlowness);v412.BackgroundColor3=Color3.fromRGB(45,45,50);v412.TextColor3=Color3.fromRGB(255,255,255);v412.Font=Enum.Font.Gotham;v412.TextSize=13;v412.ClearTextOnFocus=false;v412.Parent=v180;local v422=Instance.new("UICorner");v422.CornerRadius=UDim.new(0,4);v422.Parent=v412;v412.FocusLost:Connect(function() local v564=tonumber(v412.Text);if v564 then v564=math.max(0,v564);v9.cameraSlowness=v564;v412.Text=tostring(v564);v11();else v412.Text=tostring(v9.cameraSlowness);end end);local function v425() if (v9.aimMode=="Camera") then v402.Visible=true;v412.Visible=true;else v402.Visible=false;v412.Visible=false;end end v389.MouseButton1Click:Connect(function() if (v9.aimMode=="Character") then v9.aimMode="Camera";else v9.aimMode="Character";end v389.Text=v9.aimMode;v425();v11();end);v425();local v426=10;v426=v211("Offset Studs",v9.offsetStuds,"offsetStuds",v191,v426);v426=v211("Tween Time",v9.tweenTime,"tweenTime",v191,v426);local v427=10;v427=v211("Infront Check",v9.legitInfrontCheck,"legitInfrontCheck",v201,v427);v427=v211("Speed",v9.legitSpeed,"legitSpeed",v201,v427);v427=v211("Arc Width",v9.legitArcWidth,"legitArcWidth",v201,v427);v427=v211("Slowdown Interval",v9.legitSlowdownInterval,"legitSlowdownInterval",v201,v427);v427=v211("Slowdown Amount",v9.legitSlowdownAmount,"legitSlowdownAmount",v201,v427);local v428=Instance.new("TextLabel");v428.Size=UDim2.new(1, -70,0,30);v428.Position=UDim2.fromOffset(10,v427);v428.BackgroundTransparency=1;v428.TextXAlignment=Enum.TextXAlignment.Left;v428.Text="Behind Check";v428.TextColor3=Color3.fromRGB(255,255,255);v428.Font=Enum.Font.GothamBold;v428.TextSize=13;v428.Parent=v201;local v438=Instance.new("TextButton");v438.Size=UDim2.new(0,50,0,25);v438.Position=UDim2.new(1, -60,0,v427 + 2 );v438.Text=(v9.legitBehindCheck and "ON") or "OFF" ;v438.BackgroundColor3=(v9.legitBehindCheck and Color3.fromRGB(50,200,50)) or Color3.fromRGB(200,50,50) ;v438.TextColor3=Color3.fromRGB(255,255,255);v438.Font=Enum.Font.GothamBold;v438.TextSize=12;v438.Parent=v201;local v447=Instance.new("UICorner");v447.CornerRadius=UDim.new(0,6);v447.Parent=v438;v427+=35 local v450=Instance.new("TextLabel");v450.Size=UDim2.new(1, -20,0,20);v450.Position=UDim2.fromOffset(10,v427);v450.BackgroundTransparency=1;v450.TextXAlignment=Enum.TextXAlignment.Left;v450.Text="Behind Check Distance";v450.TextColor3=Color3.fromRGB(200,200,200);v450.Font=Enum.Font.Gotham;v450.TextSize=13;v450.Parent=v201;local v460=Instance.new("TextBox");v460.Size=UDim2.new(1, -20,0,25);v460.Position=UDim2.fromOffset(10,v427 + 20 );v460.Text=tostring(v9.legitBehindCheckDist);v460.BackgroundColor3=Color3.fromRGB(45,45,50);v460.TextColor3=Color3.fromRGB(255,255,255);v460.Font=Enum.Font.Gotham;v460.TextSize=13;v460.ClearTextOnFocus=false;v460.Parent=v201;local v470=Instance.new("UICorner");v470.CornerRadius=UDim.new(0,4);v470.Parent=v460;v460.FocusLost:Connect(function() local v567=tonumber(v460.Text);if v567 then v9.legitBehindCheckDist=v567;v460.Text=tostring(v567);v11();else v460.Text=tostring(v9.legitBehindCheckDist);end end);local function v473() if v9.legitBehindCheck then v450.Visible=true;v460.Visible=true;else v450.Visible=false;v460.Visible=false;end end v438.MouseButton1Click:Connect(function() v9.legitBehindCheck= not v9.legitBehindCheck;if v9.legitBehindCheck then v438.Text="ON";v438.BackgroundColor3=Color3.fromRGB(50,200,50);else v438.Text="OFF";v438.BackgroundColor3=Color3.fromRGB(200,50,50);end v473();v11();end);v473();v427+=50 local v474=Instance.new("TextLabel");v474.Size=UDim2.new(1, -70,0,30);v474.Position=UDim2.fromOffset(10,v427);v474.BackgroundTransparency=1;v474.TextXAlignment=Enum.TextXAlignment.Left;v474.Text="Side Check";v474.TextColor3=Color3.fromRGB(255,255,255);v474.Font=Enum.Font.GothamBold;v474.TextSize=13;v474.Parent=v201;local v484=Instance.new("TextButton");v484.Size=UDim2.new(0,50,0,25);v484.Position=UDim2.new(1, -60,0,v427 + 2 );v484.Text=(v9.legitSideCheck and "ON") or "OFF" ;v484.BackgroundColor3=(v9.legitSideCheck and Color3.fromRGB(50,200,50)) or Color3.fromRGB(200,50,50) ;v484.TextColor3=Color3.fromRGB(255,255,255);v484.Font=Enum.Font.GothamBold;v484.TextSize=12;v484.Parent=v201;local v493=Instance.new("UICorner");v493.CornerRadius=UDim.new(0,6);v493.Parent=v484;v484.MouseButton1Click:Connect(function() v9.legitSideCheck= not v9.legitSideCheck;if v9.legitSideCheck then v484.Text="ON";v484.BackgroundColor3=Color3.fromRGB(50,200,50);else v484.Text="OFF";v484.BackgroundColor3=Color3.fromRGB(200,50,50);end v11();end);v427+=35 local function v496(v570) task.wait(0.1);v24(v570);end if v7.Character then v496(v7.Character);end v7.CharacterAdded:Connect(v496);
+ New / improved:
+   * Master enable toggle (turn everything off without unloading).
+   * "Reset to Defaults" button that also refreshes every field live.
+   * Target Distance limit for the nearest-enemy search (0 = unlimited).
+   * RightShift keybind to show/hide the whole UI.
+   * Live camera reference (survives respawns / camera swaps).
+   * Numeric fields are clamped so you can't type nonsense values.
+--]]
+
+--============================================================================
+-- Services & player references
+--============================================================================
+local Players            = game:GetService("Players")
+local RunService         = game:GetService("RunService")
+local UserInputService   = game:GetService("UserInputService")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local TweenService       = game:GetService("TweenService")
+local HttpService        = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- Always read the *current* camera instead of caching it, so aim keeps working
+-- after a respawn (which replaces workspace.CurrentCamera).
+local function getCamera()
+	return workspace.CurrentCamera
+end
+
+--============================================================================
+-- Animation IDs that trigger a reaction (blackflash windows)
+--============================================================================
+local REACT_ANIMATION_IDS = {
+	["100962226150441"] = true,
+	["74145636023952"]  = true,
+	["123171106092050"] = true,
+	["95852624447551"]  = true,
+}
+
+--============================================================================
+-- Settings (with defaults) + persistence
+--============================================================================
+local DEFAULTS = {
+	masterEnabled          = true,      -- new: global on/off switch
+
+	autoBFChain            = true,
+	bfChainMode            = "legit",   -- "legit" | "semi legit"
+	offsetStuds            = 5,
+	tweenTime              = 0.23,
+	lookTime               = 0.5,
+
+	autoFireFist           = true,
+	divergentFistDelay     = 0.27,
+
+	autoAim                = true,
+	aimMode                = "Camera",  -- "Camera" | "Character"
+	cameraSlowness         = 0,         -- 0 = instant
+
+	autoJump               = true,
+	jumpDuration           = 0.01,
+	jumpPower              = 45,
+
+	legitInfrontCheck      = 10,
+	legitSpeed             = 0.2,
+	legitArcWidth          = 5.4,
+	legitSlowdownInterval  = 0.017,
+	legitSlowdownAmount    = 0.011,
+	legitBehindCheck       = true,
+	legitBehindCheckDist   = 10,
+	legitSideCheck         = true,
+
+	feintEnabled           = false,
+	feintDelay             = 0.32,
+
+	maxTargetDistance      = 0,         -- new: 0 = unlimited
+}
+
+-- Live settings start as a copy of the defaults.
+local settings = {}
+for key, value in pairs(DEFAULTS) do
+	settings[key] = value
+end
+
+local SETTINGS_FILE = "bfchainSettings.json"
+
+local function saveSettings()
+	if writefile then
+		pcall(function()
+			writefile(SETTINGS_FILE, HttpService:JSONEncode(settings))
+		end)
+	end
+end
+
+local function loadSettings()
+	if isfile and readfile and isfile(SETTINGS_FILE) then
+		local ok, decoded = pcall(function()
+			return HttpService:JSONDecode(readfile(SETTINGS_FILE))
+		end)
+		if ok and type(decoded) == "table" then
+			for key, value in pairs(decoded) do
+				if settings[key] ~= nil then
+					settings[key] = value
+				end
+			end
+		end
+	end
+end
+
+loadSettings()
+
+--============================================================================
+-- Character state
+--============================================================================
+local character   -- Model
+local humanoid    -- Humanoid
+local rootPart    -- HumanoidRootPart
+local animator    -- Animator
+local animConnection
+
+local reactionCounter = 0   -- bumped on every reaction; used to cancel stale loops
+
+--============================================================================
+-- Camera aim (shiftlock-style "look at target" fixup)
+--============================================================================
+local aimTarget        -- Vector3 the camera should look at, or nil
+local lastCamRotation  -- cached rotation used when cameraSlowness > 0
+
+RunService:BindToRenderStep("ShiftlockAimFix", Enum.RenderPriority.Camera.Value + 1, function()
+	if not aimTarget then
+		lastCamRotation = nil
+		return
+	end
+	local camera = getCamera()
+	if not camera then
+		return
+	end
+
+	local camPos  = camera.CFrame.Position
+	local desired = CFrame.new(camPos, aimTarget)
+
+	if settings.cameraSlowness <= 0 then
+		camera.CFrame  = desired
+		lastCamRotation = desired.Rotation
+	else
+		local current = (lastCamRotation and (CFrame.new(camPos) * lastCamRotation)) or camera.CFrame
+		local alpha   = 1 / ((settings.cameraSlowness * 3) + 1)
+		local result  = current:Lerp(desired, math.clamp(alpha, 0, 1))
+		camera.CFrame  = result
+		lastCamRotation = result.Rotation
+	end
+end)
+
+-- Snap the camera onto the last aim target, then hand control back to the game.
+local function releaseCamera()
+	if not aimTarget then
+		return
+	end
+	local target = aimTarget
+	aimTarget       = nil
+	lastCamRotation = nil
+
+	local camera = getCamera()
+	if camera then
+		local final = CFrame.new(camera.CFrame.Position, target)
+		camera.CameraType = Enum.CameraType.Scriptable
+		camera.CFrame     = final
+		task.defer(function()
+			camera.CameraType = Enum.CameraType.Custom
+		end)
+	end
+end
+
+--============================================================================
+-- Helpers
+--============================================================================
+-- Pull the numeric asset id out of an AnimationId string ("rbxassetid://123" -> "123").
+local function extractAnimationId(animation)
+	if not animation then
+		return ""
+	end
+	local text = tostring(animation)
+	return text:match("%d+") or text
+end
+
+-- Nearest living enemy's HumanoidRootPart (respects maxTargetDistance; 0 = no limit).
+local function getNearestEnemy()
+	if not character or not rootPart then
+		return nil
+	end
+	local nearest, nearestDist = nil, math.huge
+	local origin  = rootPart.Position
+	local maxDist = settings.maxTargetDistance or 0
+
+	for _, model in ipairs(workspace:GetDescendants()) do
+		if model:IsA("Model") and model ~= character then
+			local hum = model:FindFirstChildOfClass("Humanoid")
+			local hrp = model:FindFirstChild("HumanoidRootPart")
+			if hum and hrp and hum.Health > 0 then
+				local dist = (hrp.Position - origin).Magnitude
+				if dist < nearestDist and (maxDist <= 0 or dist <= maxDist) then
+					nearestDist = dist
+					nearest     = hrp
+				end
+			end
+		end
+	end
+	return nearest
+end
+
+--============================================================================
+-- Core: react to a blackflash animation
+--============================================================================
+local function onAnimationPlayed(track)
+	if not settings.masterEnabled then
+		return
+	end
+
+	local animId = extractAnimationId(track.Animation and track.Animation.AnimationId)
+	if not REACT_ANIMATION_IDS[animId] then
+		return
+	end
+
+	reactionCounter += 1
+	local myReaction = reactionCounter
+
+	----------------------------------------------------------------------
+	-- Feint (only if the enemy is facing us)
+	----------------------------------------------------------------------
+	if settings.feintEnabled then
+		task.spawn(function()
+			task.wait(settings.feintDelay)
+			if character and rootPart then
+				local enemy = getNearestEnemy()
+				if enemy then
+					local toMe      = rootPart.Position - enemy.Position
+					local enemyLook = enemy.CFrame.LookVector
+					if enemyLook:Dot(toMe.Unit) >= 0 then
+						pcall(function()
+							ReplicatedStorage:WaitForChild("Knit"):WaitForChild("Knit")
+								:WaitForChild("Services"):WaitForChild("ItadoriService")
+								:WaitForChild("RE"):WaitForChild("RightActivated"):FireServer()
+						end)
+					end
+				end
+			end
+		end)
+	end
+
+	----------------------------------------------------------------------
+	-- Auto jump (hold upward velocity briefly)
+	----------------------------------------------------------------------
+	if settings.autoJump and rootPart then
+		task.spawn(function()
+			local deadline = os.clock() + settings.jumpDuration
+			while os.clock() < deadline and settings.autoJump and rootPart and rootPart.Parent do
+				pcall(function()
+					local v = rootPart.AssemblyLinearVelocity
+					rootPart.AssemblyLinearVelocity = Vector3.new(v.X, settings.jumpPower, v.Z)
+				end)
+				RunService.Heartbeat:Wait()
+			end
+		end)
+	end
+
+	----------------------------------------------------------------------
+	-- Auto fire "Divergent Fist"
+	----------------------------------------------------------------------
+	if settings.autoFireFist then
+		task.spawn(function()
+			task.wait(settings.divergentFistDelay)
+			pcall(function()
+				local char    = LocalPlayer.Character
+				local moveset = char and char:FindFirstChild("Moveset")
+				if moveset then
+					local fist = moveset:FindFirstChild("Divergent Fist")
+					if fist then
+						ReplicatedStorage:WaitForChild("Knit"):WaitForChild("Knit")
+							:WaitForChild("Services"):WaitForChild("DivergentFistService")
+							:WaitForChild("RE"):WaitForChild("Activated"):FireServer(fist)
+					end
+				end
+			end)
+		end)
+	end
+
+	----------------------------------------------------------------------
+	-- Auto blackflash chain + auto aim
+	----------------------------------------------------------------------
+	if settings.autoBFChain or settings.autoAim then
+		task.spawn(function()
+			local startTime = os.clock()
+			local startPos  = rootPart.Position
+			local mode      = "normal"   -- normal | nothing | 360_left/right | 270_left/right
+			local enemy     = getNearestEnemy()
+
+			-- Side check -> 270 spin (enemy roughly perpendicular to us)
+			if settings.autoBFChain and settings.bfChainMode == "legit"
+				and settings.legitSideCheck and enemy then
+				local toMe      = startPos - enemy.Position
+				local enemyLook = enemy.CFrame.LookVector
+				if math.abs(enemyLook:Dot(toMe.Unit)) < 0.8 then
+					local objSpace = rootPart.CFrame:VectorToObjectSpace(enemy.CFrame.LookVector)
+					mode = (objSpace.X > 0) and "270_right" or "270_left"
+				end
+			end
+
+			-- Behind check -> 360 spin (we are behind the enemy)
+			if mode == "normal" and settings.autoBFChain and settings.bfChainMode == "legit"
+				and settings.legitBehindCheck and enemy then
+				local toMe      = startPos - enemy.Position
+				local enemyLook = enemy.CFrame.LookVector
+				if toMe.Magnitude <= settings.legitBehindCheckDist and enemyLook:Dot(toMe.Unit) < 0 then
+					if math.random(1, 2) == 1 then
+						local objSpace = enemy.CFrame:PointToObjectSpace(startPos)
+						mode = (objSpace.X < 0) and "360_left" or "360_right"
+					else
+						mode = "nothing"
+					end
+				end
+			end
+
+			if mode == "nothing" then
+				releaseCamera()
+				return
+			end
+
+			local isSpin = (mode == "360_left") or (mode == "360_right")
+				or (mode == "270_left") or (mode == "270_right")
+
+			local extraSpeed      = 0
+			local slowdownStarted = false
+			local slowdownAnchor  = 0
+			local lastProgress    = 0
+
+			while true do
+				local duration = (settings.bfChainMode == "legit" and settings.autoBFChain
+					and (settings.legitSpeed + extraSpeed)) or settings.tweenTime
+				local totalTime = duration + settings.lookTime
+				local elapsed   = os.clock() - startTime
+
+				if elapsed >= totalTime then
+					break
+				end
+				if myReaction ~= reactionCounter or not character.Parent or not rootPart.Parent then
+					releaseCamera()
+					return
+				end
+
+				local enemyNow = getNearestEnemy()
+				if enemyNow then
+					local enemyPos = enemyNow.Position
+					local doChain  = settings.autoBFChain
+					local lookAt   = enemyPos
+
+					-- In-front check: skip chaining if enemy is too far or not in front.
+					if doChain and settings.bfChainMode == "legit" and not isSpin then
+						local delta = enemyPos - startPos
+						local dist  = delta.Magnitude
+						if dist > 0.1 then
+							local dot = rootPart.CFrame.LookVector:Dot(delta.Unit)
+							if dist > settings.legitInfrontCheck or dot < 0.4 then
+								doChain = false
+							end
+						else
+							doChain = false
+						end
+					end
+
+					-- Compute where to *look* (arc offset for the non-spin legit case).
+					if doChain and settings.bfChainMode == "legit" then
+						if isSpin then
+							lookAt = enemyPos
+						else
+							local arc  = settings.legitArcWidth
+							local d    = startPos - enemyPos
+							local ang  = math.atan2(d.Z, d.X)
+							local perp = ang + (math.pi * 0.5)
+							lookAt = Vector3.new(
+								enemyPos.X + math.cos(perp) * arc,
+								startPos.Y,
+								enemyPos.Z + math.sin(perp) * arc
+							)
+						end
+					end
+
+					if doChain then
+						if elapsed < duration then
+							local progress = math.clamp(elapsed / duration, 0, 1)
+							local newPos
+							local yLock
+							if settings.autoJump then
+								yLock = rootPart.Position.Y
+							end
+
+							if settings.bfChainMode == "semi legit" then
+								-- Sweep from our start angle round to a spot behind the enemy.
+								local behind = enemyPos - (enemyNow.CFrame.LookVector * settings.offsetStuds)
+								local radius = math.max(settings.offsetStuds, 2)
+								local dStart = startPos - enemyPos
+								local dEnd   = behind - enemyPos
+								local a0     = math.atan2(dStart.Z, dStart.X)
+								local a1     = math.atan2(dEnd.Z, dEnd.X)
+								local da     = a1 - a0
+								if da > math.pi then
+									da -= (2 * math.pi)
+								elseif da < -math.pi then
+									da += (2 * math.pi)
+								end
+								local ang = a0 + (da * progress)
+								if not yLock then
+									yLock = startPos.Y + ((behind.Y - startPos.Y) * progress)
+								end
+								newPos = Vector3.new(
+									enemyPos.X + math.cos(ang) * radius,
+									yLock,
+									enemyPos.Z + math.sin(ang) * radius
+								)
+
+							elseif settings.bfChainMode == "legit" then
+								-- Progressive slowdown so the chain eases out.
+								local threshold = isSpin and 0.25 or 0.5
+								if not slowdownStarted and progress >= threshold then
+									slowdownStarted = true
+									slowdownAnchor  = elapsed
+								end
+								if slowdownStarted then
+									local sinceAnchor = elapsed - slowdownAnchor
+									if sinceAnchor >= settings.legitSlowdownInterval
+										and settings.legitSlowdownInterval > 0 then
+										local steps = math.floor(sinceAnchor / settings.legitSlowdownInterval)
+										extraSpeed     += steps * settings.legitSlowdownAmount
+										slowdownAnchor += steps * settings.legitSlowdownInterval
+										duration = settings.legitSpeed + extraSpeed
+										progress = math.clamp(elapsed / duration, 0, 1)
+									end
+									if progress >= 1 then
+										break
+									elseif progress <= lastProgress then
+										break
+									end
+								end
+								lastProgress = progress
+
+								local arc     = settings.legitArcWidth
+								local d       = startPos - enemyPos
+								local baseAng = math.atan2(d.Z, d.X)
+								local sweep   = math.pi
+								if mode == "360_left" then
+									sweep = math.pi * 2
+								elseif mode == "360_right" then
+									sweep = -math.pi * 2
+								elseif mode == "270_left" then
+									sweep = math.pi * 1.5
+								elseif mode == "270_right" then
+									sweep = -math.pi * 1.5
+								end
+								local ang = baseAng + (sweep * progress)
+								if not yLock then
+									yLock = startPos.Y
+								end
+								newPos = Vector3.new(
+									enemyPos.X + math.cos(ang) * arc,
+									yLock,
+									enemyPos.Z + math.sin(ang) * arc
+								)
+							end
+
+							-- Apply movement / aim.
+							local canAim = settings.autoAim and mode ~= "360_left" and mode ~= "360_right"
+							if canAim then
+								if settings.aimMode == "Character" then
+									rootPart.CFrame = CFrame.new(newPos, lookAt)
+									releaseCamera()
+								elseif settings.aimMode == "Camera" then
+									rootPart.CFrame = CFrame.new(newPos) * rootPart.CFrame.Rotation
+									aimTarget = lookAt
+								end
+							else
+								rootPart.CFrame = CFrame.new(newPos) * rootPart.CFrame.Rotation
+								releaseCamera()
+							end
+
+						elseif settings.autoAim and mode ~= "360_left" and mode ~= "360_right" then
+							-- Past the movement window: keep aiming only.
+							if settings.aimMode == "Character" then
+								rootPart.CFrame = CFrame.new(rootPart.Position, lookAt)
+								releaseCamera()
+							elseif settings.aimMode == "Camera" then
+								aimTarget = lookAt
+							end
+						else
+							releaseCamera()
+						end
+
+					elseif settings.autoAim and mode ~= "360_left" and mode ~= "360_right" then
+						-- Not chaining, aim only.
+						if settings.aimMode == "Character" then
+							rootPart.CFrame = CFrame.new(rootPart.Position, lookAt)
+							releaseCamera()
+						elseif settings.aimMode == "Camera" then
+							aimTarget = lookAt
+						end
+					else
+						releaseCamera()
+					end
+				else
+					releaseCamera()
+				end
+
+				RunService.RenderStepped:Wait()
+			end
+
+			releaseCamera()
+		end)
+	end
+end
+
+-- Bind (re)character setup.
+local function setupCharacter(char)
+	character = char
+	humanoid  = char:WaitForChild("Humanoid")
+	rootPart  = char:WaitForChild("HumanoidRootPart")
+	animator  = humanoid:WaitForChild("Animator")
+
+	if animConnection then
+		animConnection:Disconnect()
+		animConnection = nil
+	end
+	animConnection = animator.AnimationPlayed:Connect(onAnimationPlayed)
+end
+
+--============================================================================
+-- UI
+--============================================================================
+-- Fields registered here are refreshed whenever settings change externally
+-- (e.g. Reset to Defaults).
+local refreshers = {}
+
+local gui = Instance.new("ScreenGui")
+gui.Name          = "AnimationReactionGui"
+gui.ResetOnSpawn  = false
+do
+	local ok = pcall(function()
+		gui.Parent = game:GetService("CoreGui")
+	end)
+	if not ok then
+		gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	end
+end
+
+--------------------------------------------------------------------
+-- Floating "UI" reopen button (draggable)
+--------------------------------------------------------------------
+local reopenButton = Instance.new("TextButton")
+reopenButton.Size             = UDim2.fromOffset(45, 45)
+reopenButton.Position         = UDim2.new(0, 20, 0.5, -22)
+reopenButton.BackgroundColor3  = Color3.fromRGB(30, 30, 35)
+reopenButton.TextColor3        = Color3.fromRGB(255, 255, 255)
+reopenButton.Text              = "UI"
+reopenButton.Font              = Enum.Font.GothamBold
+reopenButton.TextSize          = 14
+reopenButton.Visible           = false
+reopenButton.Parent            = gui
+do
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(1, 0)
+	corner.Parent       = reopenButton
+end
+
+--------------------------------------------------------------------
+-- Main window
+--------------------------------------------------------------------
+local mainFrame = Instance.new("Frame")
+mainFrame.Size            = UDim2.fromOffset(250, 400)
+mainFrame.Position        = UDim2.fromOffset(50, 200)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+mainFrame.BorderSizePixel  = 0
+mainFrame.Parent           = gui
+do
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent       = mainFrame
+end
+
+-- Reusable title-bar builder. Returns the title bar frame + the "action" button
+-- on the right (minimise "-" for the main window, close "X" for side panels).
+local function buildTitleBar(parent, titleText, actionText, actionColor)
+	local bar = Instance.new("Frame")
+	bar.Size             = UDim2.new(1, 0, 0, 30)
+	bar.BackgroundColor3  = Color3.fromRGB(20, 20, 25)
+	bar.BorderSizePixel   = 0
+	bar.Parent            = parent
+	do
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 8)
+		corner.Parent       = bar
+		-- Square off the bottom corners so only the top is rounded.
+		local filler = Instance.new("Frame")
+		filler.Size            = UDim2.new(1, 0, 0, 5)
+		filler.Position        = UDim2.new(0, 0, 1, -5)
+		filler.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+		filler.BorderSizePixel  = 0
+		filler.Parent           = bar
+	end
+
+	local title = Instance.new("TextLabel")
+	title.Size                = UDim2.new(1, -30, 1, 0)
+	title.BackgroundTransparency = 1
+	title.Text                = titleText
+	title.TextColor3           = Color3.fromRGB(255, 255, 255)
+	title.TextXAlignment       = Enum.TextXAlignment.Left
+	title.Font                 = Enum.Font.GothamBold
+	title.TextSize             = 14
+	title.Parent               = bar
+
+	local action = Instance.new("TextButton")
+	action.Size                = UDim2.new(0, 30, 1, 0)
+	action.Position            = UDim2.new(1, -30, 0, 0)
+	action.BackgroundTransparency = 1
+	action.Text                = actionText
+	action.TextColor3           = actionColor
+	action.Font                 = Enum.Font.GothamBold
+	action.TextSize             = 16
+	action.Parent               = bar
+
+	return bar, action
+end
+
+local mainTitleBar, minimiseButton =
+	buildTitleBar(mainFrame, "Auto blackflash chain", "-", Color3.fromRGB(200, 200, 200))
+
+--------------------------------------------------------------------
+-- Side panels (semi-legit & legit settings)
+--------------------------------------------------------------------
+local function buildSidePanel(titleText)
+	local panel = Instance.new("Frame")
+	panel.Size             = UDim2.fromOffset(0, 280)
+	panel.Position         = UDim2.new(mainFrame.Position.X.Scale, mainFrame.Position.X.Offset + 260,
+		mainFrame.Position.Y.Scale, mainFrame.Position.Y.Offset)
+	panel.BackgroundColor3  = Color3.fromRGB(30, 30, 35)
+	panel.BorderSizePixel   = 0
+	panel.ClipsDescendants  = true
+	panel.Visible           = false
+	panel.Parent            = gui
+	do
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 8)
+		corner.Parent       = panel
+	end
+
+	local _, closeButton = buildTitleBar(panel, titleText, "X", Color3.fromRGB(200, 50, 50))
+	closeButton.TextSize = 14
+	closeButton.MouseButton1Click:Connect(function()
+		local tween = TweenService:Create(panel,
+			TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+			{ Size = UDim2.fromOffset(0, 280) })
+		tween:Play()
+		tween.Completed:Once(function()
+			panel.Visible = false
+		end)
+	end)
+
+	return panel
+end
+
+local semiPanel  = buildSidePanel(" Semi Legit Settings")
+local legitPanel = buildSidePanel(" Legit Settings")
+
+--------------------------------------------------------------------
+-- Minimise / reopen
+--------------------------------------------------------------------
+minimiseButton.MouseButton1Click:Connect(function()
+	mainFrame.Visible   = false
+	semiPanel.Visible   = false
+	legitPanel.Visible  = false
+	reopenButton.Visible = true
+end)
+reopenButton.MouseButton1Click:Connect(function()
+	mainFrame.Visible   = true
+	reopenButton.Visible = false
+end)
+
+--------------------------------------------------------------------
+-- Dragging (main window + floating button)
+--------------------------------------------------------------------
+local function makeDraggable(handle, target, onMove)
+	local dragging   = false
+	local dragInput  -- the movement InputObject we're tracking
+	local dragStart
+	local startPos
+
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			dragging  = true
+			dragStart = input.Position
+			startPos  = target.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+	handle.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			local delta = input.Position - dragStart
+			target.Position = UDim2.new(
+				startPos.X.Scale, startPos.X.Offset + delta.X,
+				startPos.Y.Scale, startPos.Y.Offset + delta.Y
+			)
+			if onMove then
+				onMove()
+			end
+		end
+	end)
+end
+
+makeDraggable(reopenButton, reopenButton)
+makeDraggable(mainTitleBar, mainFrame, function()
+	-- Keep any open side panel attached to the window's right edge.
+	local anchored = UDim2.new(mainFrame.Position.X.Scale, mainFrame.Position.X.Offset + 260,
+		mainFrame.Position.Y.Scale, mainFrame.Position.Y.Offset)
+	if semiPanel.Visible then
+		semiPanel.Position = anchored
+	end
+	if legitPanel.Visible then
+		legitPanel.Position = anchored
+	end
+end)
+
+--------------------------------------------------------------------
+-- Scrolling containers
+--------------------------------------------------------------------
+local function buildScroll(parent)
+	local scroll = Instance.new("ScrollingFrame")
+	scroll.Size                = UDim2.new(1, 0, 1, -30)
+	scroll.Position            = UDim2.fromOffset(0, 30)
+	scroll.BackgroundTransparency = 1
+	scroll.BorderSizePixel     = 0
+	scroll.ScrollBarThickness   = 5
+	scroll.ScrollBarImageColor3 = Color3.fromRGB(70, 70, 80)
+	scroll.AutomaticCanvasSize  = Enum.AutomaticSize.Y
+	scroll.CanvasSize           = UDim2.new(0, 0, 0, 0)
+	scroll.Parent               = parent
+	return scroll
+end
+
+local mainScroll  = buildScroll(mainFrame)
+local semiScroll  = buildScroll(semiPanel)
+local legitScroll = buildScroll(legitPanel)
+
+--------------------------------------------------------------------
+-- Widget builders
+--------------------------------------------------------------------
+local function makeSectionHeader(parent, text, y)
+	local label = Instance.new("TextLabel")
+	label.Size                = UDim2.new(1, -20, 0, 20)
+	label.Position            = UDim2.fromOffset(10, y)
+	label.BackgroundTransparency = 1
+	label.TextXAlignment       = Enum.TextXAlignment.Left
+	label.Text                 = text
+	label.TextColor3            = Color3.fromRGB(150, 150, 160)
+	label.Font                  = Enum.Font.GothamBold
+	label.TextSize              = 13
+	label.Parent                = parent
+	return y + 25
+end
+
+-- Number field bound to settings[key]. minValue (optional) clamps input.
+local function makeNumberField(parent, labelText, key, y, minValue)
+	local label = Instance.new("TextLabel")
+	label.Size                = UDim2.new(1, -20, 0, 20)
+	label.Position            = UDim2.fromOffset(10, y)
+	label.BackgroundTransparency = 1
+	label.TextXAlignment       = Enum.TextXAlignment.Left
+	label.Text                 = labelText
+	label.TextColor3            = Color3.fromRGB(200, 200, 200)
+	label.Font                  = Enum.Font.Gotham
+	label.TextSize              = 13
+	label.Parent                = parent
+
+	local box = Instance.new("TextBox")
+	box.Size                = UDim2.new(1, -20, 0, 25)
+	box.Position            = UDim2.fromOffset(10, y + 20)
+	box.Text                = tostring(settings[key])
+	box.BackgroundColor3     = Color3.fromRGB(45, 45, 50)
+	box.TextColor3           = Color3.fromRGB(255, 255, 255)
+	box.Font                 = Enum.Font.Gotham
+	box.TextSize             = 13
+	box.ClearTextOnFocus     = false
+	box.Parent               = parent
+	do
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 4)
+		corner.Parent       = box
+	end
+
+	box.FocusLost:Connect(function()
+		local n = tonumber(box.Text)
+		if n then
+			if minValue then
+				n = math.max(minValue, n)
+			end
+			settings[key] = n
+			box.Text = tostring(n)
+			saveSettings()
+		else
+			box.Text = tostring(settings[key])
+		end
+	end)
+
+	table.insert(refreshers, function()
+		box.Text = tostring(settings[key])
+	end)
+
+	return y + 50
+end
+
+-- ON/OFF toggle bound to settings[key]. onChanged (optional) runs after a toggle.
+local function makeToggle(parent, labelText, key, y, onChanged)
+	local label = Instance.new("TextLabel")
+	label.Size                = UDim2.new(1, -70, 0, 30)
+	label.Position            = UDim2.fromOffset(10, y)
+	label.BackgroundTransparency = 1
+	label.TextXAlignment       = Enum.TextXAlignment.Left
+	label.Text                 = labelText
+	label.TextColor3            = Color3.fromRGB(255, 255, 255)
+	label.Font                  = Enum.Font.GothamBold
+	label.TextSize              = 13
+	label.Parent                = parent
+
+	local button = Instance.new("TextButton")
+	button.Size            = UDim2.new(0, 50, 0, 25)
+	button.Position        = UDim2.new(1, -60, 0, y + 2)
+	button.TextColor3       = Color3.fromRGB(255, 255, 255)
+	button.Font             = Enum.Font.GothamBold
+	button.TextSize         = 12
+	button.Parent           = parent
+	do
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 6)
+		corner.Parent       = button
+	end
+
+	local function refresh()
+		button.Text = settings[key] and "ON" or "OFF"
+		button.BackgroundColor3 = settings[key]
+			and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+	end
+	button.MouseButton1Click:Connect(function()
+		settings[key] = not settings[key]
+		refresh()
+		saveSettings()
+		if onChanged then
+			onChanged()
+		end
+	end)
+	refresh()
+	table.insert(refreshers, function()
+		refresh()
+		if onChanged then
+			onChanged()
+		end
+	end)
+
+	return y + 35
+end
+
+--------------------------------------------------------------------
+-- Main panel contents
+--------------------------------------------------------------------
+local mainY = 10
+mainY = makeSectionHeader(mainScroll, "--- Main ---", mainY)
+mainY = makeToggle(mainScroll, "Enabled (master)", "masterEnabled", mainY)
+mainY = makeToggle(mainScroll, "Auto BF chain", "autoBFChain", mainY)
+
+-- BF chain mode dropdown ("legit" <-> "semi legit")
+local modeLabel = Instance.new("TextLabel")
+modeLabel.Size                = UDim2.new(1, -20, 0, 20)
+modeLabel.Position            = UDim2.fromOffset(10, mainY)
+modeLabel.BackgroundTransparency = 1
+modeLabel.TextXAlignment       = Enum.TextXAlignment.Left
+modeLabel.Text                 = "BF chain Mode"
+modeLabel.TextColor3            = Color3.fromRGB(200, 200, 200)
+modeLabel.Font                  = Enum.Font.Gotham
+modeLabel.TextSize              = 13
+modeLabel.Parent                = mainScroll
+mainY += 20
+
+local modeButton = Instance.new("TextButton")
+modeButton.Size            = UDim2.new(1, -20, 0, 25)
+modeButton.Position        = UDim2.fromOffset(10, mainY)
+modeButton.Text            = settings.bfChainMode
+modeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+modeButton.TextColor3       = Color3.fromRGB(255, 255, 255)
+modeButton.Font             = Enum.Font.GothamBold
+modeButton.TextSize         = 13
+modeButton.Parent           = mainScroll
+do
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent       = modeButton
+end
+mainY += 35
+
+local openSettingsButton = Instance.new("TextButton")
+openSettingsButton.Size            = UDim2.new(1, -20, 0, 25)
+openSettingsButton.Position        = UDim2.fromOffset(10, mainY)
+openSettingsButton.Text            = "Open " .. settings.bfChainMode .. " Settings"
+openSettingsButton.BackgroundColor3 = Color3.fromRGB(60, 100, 200)
+openSettingsButton.TextColor3       = Color3.fromRGB(255, 255, 255)
+openSettingsButton.Font             = Enum.Font.GothamBold
+openSettingsButton.TextSize         = 12
+openSettingsButton.Parent           = mainScroll
+do
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent       = openSettingsButton
+end
+mainY += 35
+
+modeButton.MouseButton1Click:Connect(function()
+	settings.bfChainMode = (settings.bfChainMode == "semi legit") and "legit" or "semi legit"
+	modeButton.Text          = settings.bfChainMode
+	openSettingsButton.Text  = "Open " .. settings.bfChainMode .. " Settings"
+	semiPanel.Visible  = false
+	legitPanel.Visible = false
+	saveSettings()
+end)
+table.insert(refreshers, function()
+	modeButton.Text         = settings.bfChainMode
+	openSettingsButton.Text = "Open " .. settings.bfChainMode .. " Settings"
+end)
+
+openSettingsButton.MouseButton1Click:Connect(function()
+	local target = (settings.bfChainMode == "legit") and legitPanel or semiPanel
+	local other  = (settings.bfChainMode == "legit") and semiPanel or legitPanel
+	other.Visible    = false
+	target.Position  = UDim2.new(mainFrame.Position.X.Scale, mainFrame.Position.X.Offset + 260,
+		mainFrame.Position.Y.Scale, mainFrame.Position.Y.Offset)
+	target.Visible   = true
+	TweenService:Create(target,
+		TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+		{ Size = UDim2.fromOffset(250, 280) }):Play()
+end)
+
+mainY = makeToggle(mainScroll, "Auto blackflash", "autoFireFist", mainY)
+mainY = makeNumberField(mainScroll, "autobf Delay", "divergentFistDelay", mainY, 0)
+mainY += 10
+
+mainY = makeToggle(mainScroll, "Jump", "autoJump", mainY)
+mainY = makeNumberField(mainScroll, "Jump Duration", "jumpDuration", mainY, 0)
+mainY = makeNumberField(mainScroll, "Jump Power", "jumpPower", mainY, 0)
+mainY += 10
+
+mainY = makeToggle(mainScroll, "Feint", "feintEnabled", mainY)
+mainY = makeNumberField(mainScroll, "Feint Delay", "feintDelay", mainY, 0)
+
+mainY = makeSectionHeader(mainScroll, "--- Aiming ---", mainY)
+mainY = makeNumberField(mainScroll, "Look Time", "lookTime", mainY, 0)
+mainY = makeToggle(mainScroll, "Auto aim", "autoAim", mainY)
+
+-- Aim mode dropdown ("Camera" <-> "Character") controls camera-slowness visibility.
+local aimModeLabel = Instance.new("TextLabel")
+aimModeLabel.Size                = UDim2.new(1, -20, 0, 20)
+aimModeLabel.Position            = UDim2.fromOffset(10, mainY)
+aimModeLabel.BackgroundTransparency = 1
+aimModeLabel.TextXAlignment       = Enum.TextXAlignment.Left
+aimModeLabel.Text                 = "Aim Mode"
+aimModeLabel.TextColor3            = Color3.fromRGB(200, 200, 200)
+aimModeLabel.Font                  = Enum.Font.Gotham
+aimModeLabel.TextSize              = 13
+aimModeLabel.Parent                = mainScroll
+mainY += 20
+
+local aimModeButton = Instance.new("TextButton")
+aimModeButton.Size            = UDim2.new(1, -20, 0, 25)
+aimModeButton.Position        = UDim2.fromOffset(10, mainY)
+aimModeButton.Text            = settings.aimMode
+aimModeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+aimModeButton.TextColor3       = Color3.fromRGB(255, 255, 255)
+aimModeButton.Font             = Enum.Font.GothamBold
+aimModeButton.TextSize         = 13
+aimModeButton.Parent           = mainScroll
+do
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent       = aimModeButton
+end
+
+local camSlownessLabel = Instance.new("TextLabel")
+camSlownessLabel.Size                = UDim2.new(1, -20, 0, 20)
+camSlownessLabel.Position            = UDim2.fromOffset(10, mainY + 35)
+camSlownessLabel.BackgroundTransparency = 1
+camSlownessLabel.TextXAlignment       = Enum.TextXAlignment.Left
+camSlownessLabel.Text                 = "Camera Slowness (0 = Instant)"
+camSlownessLabel.TextColor3            = Color3.fromRGB(200, 200, 200)
+camSlownessLabel.Font                  = Enum.Font.Gotham
+camSlownessLabel.TextSize              = 13
+camSlownessLabel.Parent                = mainScroll
+
+local camSlownessBox = Instance.new("TextBox")
+camSlownessBox.Size            = UDim2.new(1, -20, 0, 25)
+camSlownessBox.Position        = UDim2.fromOffset(10, mainY + 55)
+camSlownessBox.Text            = tostring(settings.cameraSlowness)
+camSlownessBox.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+camSlownessBox.TextColor3       = Color3.fromRGB(255, 255, 255)
+camSlownessBox.Font             = Enum.Font.Gotham
+camSlownessBox.TextSize         = 13
+camSlownessBox.ClearTextOnFocus  = false
+camSlownessBox.Parent            = mainScroll
+do
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent       = camSlownessBox
+end
+camSlownessBox.FocusLost:Connect(function()
+	local n = tonumber(camSlownessBox.Text)
+	if n then
+		n = math.max(0, n)
+		settings.cameraSlowness = n
+		camSlownessBox.Text = tostring(n)
+		saveSettings()
+	else
+		camSlownessBox.Text = tostring(settings.cameraSlowness)
+	end
+end)
+
+local function updateCamSlownessVisible()
+	local show = settings.aimMode == "Camera"
+	camSlownessLabel.Visible = show
+	camSlownessBox.Visible   = show
+end
+aimModeButton.MouseButton1Click:Connect(function()
+	settings.aimMode = (settings.aimMode == "Character") and "Camera" or "Character"
+	aimModeButton.Text = settings.aimMode
+	updateCamSlownessVisible()
+	saveSettings()
+end)
+table.insert(refreshers, function()
+	aimModeButton.Text        = settings.aimMode
+	camSlownessBox.Text       = tostring(settings.cameraSlowness)
+	updateCamSlownessVisible()
+end)
+updateCamSlownessVisible()
+mainY += 90
+
+mainY = makeNumberField(mainScroll, "Target Distance (0 = any)", "maxTargetDistance", mainY, 0)
+
+-- Reset to defaults
+local resetButton = Instance.new("TextButton")
+resetButton.Size            = UDim2.new(1, -20, 0, 28)
+resetButton.Position        = UDim2.fromOffset(10, mainY)
+resetButton.Text            = "Reset to Defaults"
+resetButton.BackgroundColor3 = Color3.fromRGB(90, 60, 60)
+resetButton.TextColor3       = Color3.fromRGB(255, 255, 255)
+resetButton.Font             = Enum.Font.GothamBold
+resetButton.TextSize         = 13
+resetButton.Parent           = mainScroll
+do
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent       = resetButton
+end
+resetButton.MouseButton1Click:Connect(function()
+	for key, value in pairs(DEFAULTS) do
+		settings[key] = value
+	end
+	saveSettings()
+	for _, refresh in ipairs(refreshers) do
+		refresh()
+	end
+end)
+mainY += 38
+
+--------------------------------------------------------------------
+-- Semi-legit panel contents
+--------------------------------------------------------------------
+local semiY = 10
+semiY = makeNumberField(semiScroll, "Offset Studs", "offsetStuds", semiY, 0)
+semiY = makeNumberField(semiScroll, "Tween Time", "tweenTime", semiY, 0)
+
+--------------------------------------------------------------------
+-- Legit panel contents
+--------------------------------------------------------------------
+local legitY = 10
+legitY = makeNumberField(legitScroll, "Infront Check", "legitInfrontCheck", legitY, 0)
+legitY = makeNumberField(legitScroll, "Speed", "legitSpeed", legitY, 0)
+legitY = makeNumberField(legitScroll, "Arc Width", "legitArcWidth", legitY)
+legitY = makeNumberField(legitScroll, "Slowdown Interval", "legitSlowdownInterval", legitY, 0)
+legitY = makeNumberField(legitScroll, "Slowdown Amount", "legitSlowdownAmount", legitY, 0)
+
+-- Behind check toggle (shows/hides its distance field)
+local behindDistLabel, behindDistBox
+local function updateBehindVisible()
+	if behindDistLabel then behindDistLabel.Visible = settings.legitBehindCheck end
+	if behindDistBox then behindDistBox.Visible   = settings.legitBehindCheck end
+end
+legitY = makeToggle(legitScroll, "Behind Check", "legitBehindCheck", legitY, updateBehindVisible)
+
+behindDistLabel = Instance.new("TextLabel")
+behindDistLabel.Size                = UDim2.new(1, -20, 0, 20)
+behindDistLabel.Position            = UDim2.fromOffset(10, legitY)
+behindDistLabel.BackgroundTransparency = 1
+behindDistLabel.TextXAlignment       = Enum.TextXAlignment.Left
+behindDistLabel.Text                 = "Behind Check Distance"
+behindDistLabel.TextColor3            = Color3.fromRGB(200, 200, 200)
+behindDistLabel.Font                  = Enum.Font.Gotham
+behindDistLabel.TextSize              = 13
+behindDistLabel.Parent                = legitScroll
+
+behindDistBox = Instance.new("TextBox")
+behindDistBox.Size            = UDim2.new(1, -20, 0, 25)
+behindDistBox.Position        = UDim2.fromOffset(10, legitY + 20)
+behindDistBox.Text            = tostring(settings.legitBehindCheckDist)
+behindDistBox.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+behindDistBox.TextColor3       = Color3.fromRGB(255, 255, 255)
+behindDistBox.Font             = Enum.Font.Gotham
+behindDistBox.TextSize         = 13
+behindDistBox.ClearTextOnFocus  = false
+behindDistBox.Parent            = legitScroll
+do
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent       = behindDistBox
+end
+behindDistBox.FocusLost:Connect(function()
+	local n = tonumber(behindDistBox.Text)
+	if n then
+		n = math.max(0, n)
+		settings.legitBehindCheckDist = n
+		behindDistBox.Text = tostring(n)
+		saveSettings()
+	else
+		behindDistBox.Text = tostring(settings.legitBehindCheckDist)
+	end
+end)
+table.insert(refreshers, function()
+	behindDistBox.Text = tostring(settings.legitBehindCheckDist)
+	updateBehindVisible()
+end)
+updateBehindVisible()
+legitY += 50
+
+legitY = makeToggle(legitScroll, "Side Check", "legitSideCheck", legitY)
+
+--------------------------------------------------------------------
+-- RightShift keybind: show/hide the whole UI
+--------------------------------------------------------------------
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.RightShift then
+		if mainFrame.Visible then
+			mainFrame.Visible   = false
+			semiPanel.Visible   = false
+			legitPanel.Visible  = false
+			reopenButton.Visible = true
+		else
+			mainFrame.Visible   = true
+			reopenButton.Visible = false
+		end
+	end
+end)
+
+--============================================================================
+-- Boot
+--============================================================================
+local function onCharacterAdded(char)
+	task.wait(0.1)
+	setupCharacter(char)
+end
+
+if LocalPlayer.Character then
+	onCharacterAdded(LocalPlayer.Character)
+end
+LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
