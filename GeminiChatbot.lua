@@ -21,12 +21,19 @@
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local TextChatService = game:GetService("TextChatService")
+local StarterGui = game:GetService("StarterGui")
 
 local LocalPlayer = Players.LocalPlayer
 
 -- Gemini API Configuration
 local API_KEY = "AQ.Ab8RN6LhqzbrfbDy5UWbBu-BvB0glwyEDbvg1FnOAiAGsAuSpw"
-local API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" .. API_KEY
+
+-- AI Studio keys look like "AIzaSy..." and go in the ?key= URL param.
+-- Anything else (e.g. an "AQ."/"ya29." OAuth or ephemeral token) must be
+-- sent as an Authorization: Bearer header instead, or the API returns 401.
+local USE_BEARER = not API_KEY:match("^AIza")
+local BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+local API_URL = USE_BEARER and BASE_URL or (BASE_URL .. "?key=" .. API_KEY)
 
 local TALK_DISTANCE = 15   -- Distance in studs to trigger response
 local COOLDOWN_TIME = 3    -- Seconds between responses to prevent spam
@@ -34,6 +41,17 @@ local MAX_CHAT_LENGTH = 200 -- Roblox chat hard limit
 local lastResponseTime = 0
 
 local generalChannel -- cached RBXGeneral TextChannel
+
+-- On-screen notification helper (so failures aren't hidden in the console).
+local function notify(title, text, duration)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = title,
+			Text = text,
+			Duration = duration or 5,
+		})
+	end)
+end
 
 -- Resolve an executor HTTP request function (falls back to HttpService).
 -- Vanilla HttpService HTTP calls are blocked in LocalScripts, so an
@@ -85,18 +103,24 @@ local function getGeminiResponse(userMessage, senderDisplayName)
 
 	local jsonPayload = HttpService:JSONEncode(payload)
 
+	local headers = {
+		["Content-Type"] = "application/json"
+	}
+	if USE_BEARER then
+		headers["Authorization"] = "Bearer " .. API_KEY
+	end
+
 	local success, response = pcall(httpRequest, {
 		Url = API_URL,
 		Method = "POST",
-		Headers = {
-			["Content-Type"] = "application/json"
-		},
+		Headers = headers,
 		Body = jsonPayload
 	})
 
 	-- 1. Handle Network / Transport Errors (e.g., no internet, blocked requests)
 	if not success then
 		warn("[Gemini API Network Error]: Failed to issue HTTP request. Details:", tostring(response))
+		notify("Gemini Chatbot", "Network error - request could not be sent.")
 		return nil
 	end
 
@@ -113,14 +137,17 @@ local function getGeminiResponse(userMessage, senderDisplayName)
 		warn(string.format("[Gemini API HTTP Error %d]: %s", response.StatusCode, tostring(response.StatusMessage)))
 
 		-- 3. Parse and log explicit Gemini API error response structure
+		local apiMessage
 		if decodeSuccess and decoded and decoded.error then
 			local err = decoded.error
 			warn(string.format("  -> API Error Code: %s", tostring(err.code or "N/A")))
 			warn(string.format("  -> API Status: %s", err.status or "N/A"))
 			warn(string.format("  -> API Message: %s", err.message or "No message provided"))
+			apiMessage = err.message
 		else
 			warn("  -> Raw Response Body:", tostring(response.Body))
 		end
+		notify("Gemini Chatbot", string.format("API error %d: %s", response.StatusCode, apiMessage or "see console"), 8)
 		return nil
 	end
 
@@ -169,6 +196,7 @@ end
 local function setupTextChatListener()
 	if TextChatService.ChatVersion ~= Enum.ChatVersion.TextChatService then
 		warn("[TextChatService Error]: Game is using the legacy chat system; this script requires TextChatService.")
+		notify("Gemini Chatbot", "This game uses legacy chat - chatbot cannot run here.", 8)
 		return
 	end
 
@@ -222,6 +250,10 @@ local function setupTextChatListener()
 			end)
 		end
 	end)
+
+	-- Listener is live: tell the user the script loaded successfully.
+	notify("Gemini Chatbot", string.format("Loaded! Replying to players within %d studs.", TALK_DISTANCE), 6)
+	print("[Gemini Chatbot]: Loaded and listening on RBXGeneral.")
 end
 
 setupTextChatListener()
