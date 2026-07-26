@@ -26,6 +26,23 @@ output — nothing is uploaded; everything runs in the browser.
 | Strong   | + control-flow VM wrap + anti-tamper |
 | Maximum  | + anti-hook/anti-debug + minify |
 
+## Luraph macros (`LPH_*`)
+
+Luraph lets you annotate your **source** with compile-time macros that steer the
+obfuscator. They are transparent at runtime (identity — each returns what it wraps).
+This site recognises the standard set — `LPH_JIT`, `LPH_JIT_MAX`, `LPH_NO_VIRTUALIZE`,
+`LPH_SKIP`, `LPH_ENCFUNC`, `LPH_ENCSTR`, `LPH_ENCNUM`, `LPH_NO_UPVALUES`, `LPH_CFUNC`,
+`LPH_LITERAL`, `LPH_STR`, `LPH_CRASH` — and prepends a local identity shim for each one
+your script uses, so a **Luraph-annotated script runs through this tool** instead of
+erroring on a `nil` global. The literals/functions those macros wrap are still encrypted
+by the layers below.
+
+```lua
+local greeting = LPH_ENCSTR("Hello!")
+local greet    = LPH_NO_VIRTUALIZE(function(n) return "hi "..n end)
+LPH_JIT(function() print(greet("bob")) end)()
+```
+
 ## Layers ("all the Luraph-format things")
 
 - **Rename identifiers** — a real parser resolves scope, then renames locals, params and
@@ -47,8 +64,9 @@ output — nothing is uploaded; everything runs in the browser.
 ## Correctness
 
 The pipeline was mirrored in Node and every output run through `lua5.4`:
-**6 test scripts × 4 presets = 24/24 pass**, each producing output identical to the
-original — including vararg and top-level-return cases through the VM wrapper.
+**10 test scripts × 4 presets = 40/40 pass**, each producing output identical to the
+original — including vararg, top-level-return, and `LPH_*` macro cases through the VM
+wrapper.
 
 ## Running locally
 

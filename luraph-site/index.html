@@ -170,6 +170,8 @@ a.link{color:var(--v3);text-decoration:none}
       </div>
 
       <h3>Layers</h3>
+      <label class="opt"><input type="checkbox" id="oMacros" checked><span class="sw"></span>
+        <span class="txt"><strong>Luraph macros (LPH_*)</strong><small>Recognises <code>LPH_JIT</code>, <code>LPH_NO_VIRTUALIZE</code>, <code>LPH_ENCFUNC</code>, <code>LPH_ENCSTR</code>, <code>LPH_SKIP</code>… so annotated scripts run.</small></span></label>
       <label class="opt"><input type="checkbox" id="oRename" checked><span class="sw"></span>
         <span class="txt"><strong>Rename identifiers</strong><small>Scope-aware minify of locals, params &amp; loop vars. Never touches globals.</small></span></label>
       <label class="opt"><input type="checkbox" id="oStrings" checked><span class="sw"></span>
@@ -256,19 +258,45 @@ a.link{color:var(--v3);text-decoration:none}
   var $=function(id){return document.getElementById(id);};
 
   var SAMPLE =
-'-- Simple Roblox Luau example\n'+
+'-- Roblox Luau example with Luraph macros\n'+
 'local Players = game:GetService("Players")\n'+
-'local greeting = "Hello from Luraph-format!"\n'+
+'local greeting = LPH_ENCSTR("Hello from Luraph-format!")\n'+
 'local MAGIC = 0xC0FFEE\n\n'+
-'local function greet(player)\n'+
+'-- LPH_NO_VIRTUALIZE keeps a hot function out of the VM\n'+
+'local greet = LPH_NO_VIRTUALIZE(function(player)\n'+
 '\tlocal name = player and player.Name or "guest"\n'+
 '\treturn string.format("%s -> %s (%d)", greeting, name, MAGIC)\n'+
-'end\n\n'+
-'for i = 1, 3 do\n'+
-'\tprint(i, greet(Players.LocalPlayer))\n'+
-'end\n';
+'end)\n\n'+
+'LPH_JIT(function()\n'+
+'\tfor i = 1, 3 do\n'+
+'\t\tprint(i, greet(Players.LocalPlayer))\n'+
+'\tend\n'+
+'end)()\n';
 
   /* ---------- Luraph-format helpers (all emit valid Luau) ---------- */
+
+  // Luraph input macros. In real Luraph these are compile-time directives that
+  // are transparent at runtime (identity — they return what they wrap) and only
+  // guide the obfuscator. We honour that exactly: for every macro the script
+  // uses we prepend a local identity shim, so a Luraph-annotated script RUNS
+  // through this tool instead of erroring on a nil global. The layers below
+  // still encrypt the literals/functions those macros wrap.
+  var LPH_MACRO_NAMES = ["LPH_NO_VIRTUALIZE","LPH_JIT_MAX","LPH_JIT","LPH_SKIP",
+    "LPH_ENCFUNC","LPH_ENCSTR","LPH_ENCNUM","LPH_NO_UPVALUES","LPH_CFUNC",
+    "LPH_LITERAL","LPH_STR","LPH_CRASH"];
+  function lphMacroShim(src){
+    var used=[];
+    LPH_MACRO_NAMES.forEach(function(nm){
+      // used as a call, not a field access (.LPH / :LPH) — false positives are harmless
+      var re=new RegExp("(^|[^A-Za-z0-9_.:])"+nm+"\\s*\\(");
+      if(re.test(src)) used.push(nm);
+    });
+    if(!used.length) return {src:src, used:[]};
+    var defs="-- Luraph macro shims (LPH_*): transparent identity, guide obfuscation only\n"+
+      used.map(function(n){ return "local "+n+"=function(...) return ... end;"; }).join("\n")+"\n";
+    return {src:defs+src, used:used};
+  }
+
 
   function rng(seed){ var s=(seed>>>0)||1; return function(){ s=(s*1103515245+12345)&0x7fffffff; return s; }; }
   function pick(r,arr){ return arr[r()%arr.length]; }
@@ -393,6 +421,8 @@ a.link{color:var(--v3);text-decoration:none}
     setMsg("Obfuscating…","");
     var t0=performance.now();
     try{
+      var macrosUsed=[];
+      if($("oMacros").checked){ var m=lphMacroShim(src); src=m.src; macrosUsed=m.used; }
       var code=src;
       if(lay.engine.length){
         code=FerretAST.obfuscate(src,{seed:seed,layers:lay.engine,chunkname:"luraph.lua"});
@@ -403,7 +433,9 @@ a.link{color:var(--v3);text-decoration:none}
       if($("oCFlow").checked) code=vmWrap(code,r);
       if($("oMinify").checked) code=minify(code);
 
-      var layerNames=lay.names.concat(extraNames);
+      var layerNames=[];
+      if(macrosUsed.length) layerNames.push("macros("+macrosUsed.length+")");
+      layerNames=layerNames.concat(lay.names).concat(extraNames);
       if(layerNames.length===0) layerNames=["passthrough"];
       if($("oBanner").checked){
         code=banner({wm:wm,seed:seed,preset:activePreset(),layerNames:layerNames},rng(seed^0x5bd1e995))+code;
@@ -429,10 +461,10 @@ a.link{color:var(--v3);text-decoration:none}
 
   /* ---------- presets ---------- */
   var PRESETS={
-    weak:  {oRename:1,oStrings:0,oNumbers:0,oCFlow:0,oAntiTamper:0,oAntiDebug:0,oMinify:1,oBanner:1},
-    medium:{oRename:1,oStrings:1,oNumbers:1,oCFlow:0,oAntiTamper:0,oAntiDebug:0,oMinify:0,oBanner:1},
-    strong:{oRename:1,oStrings:1,oNumbers:1,oCFlow:1,oAntiTamper:1,oAntiDebug:0,oMinify:0,oBanner:1},
-    max:   {oRename:1,oStrings:1,oNumbers:1,oCFlow:1,oAntiTamper:1,oAntiDebug:1,oMinify:1,oBanner:1}
+    weak:  {oMacros:1,oRename:1,oStrings:0,oNumbers:0,oCFlow:0,oAntiTamper:0,oAntiDebug:0,oMinify:1,oBanner:1},
+    medium:{oMacros:1,oRename:1,oStrings:1,oNumbers:1,oCFlow:0,oAntiTamper:0,oAntiDebug:0,oMinify:0,oBanner:1},
+    strong:{oMacros:1,oRename:1,oStrings:1,oNumbers:1,oCFlow:1,oAntiTamper:1,oAntiDebug:0,oMinify:0,oBanner:1},
+    max:   {oMacros:1,oRename:1,oStrings:1,oNumbers:1,oCFlow:1,oAntiTamper:1,oAntiDebug:1,oMinify:1,oBanner:1}
   };
   function applyPreset(name){
     var p=PRESETS[name]; if(!p) return;
