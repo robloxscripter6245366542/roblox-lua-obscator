@@ -17,13 +17,18 @@
 		tab:Keybind("Fly", Enum.KeyCode.F, function(key) print(key) end)
 		win:Notify("Loaded", "Welcome to EzUI", 4)
 
-	Built for both mobile and PC:
+	Built for all devices (PC, mobile, console) and all executors:
 	  * A floating ☰ button (draggable; tap to toggle) shows/hides the UI —
 	    the primary control on touch devices that have no keyboard.
 	  * Window size adapts to the screen and re-fits on rotation/resize.
-	  * All controls accept touch as well as mouse; sliders have an enlarged
-	    finger-friendly hit area; whole rows are tappable.
-	  * PC keyboard shortcut still toggles the window (default Right-Shift).
+	  * All controls accept mouse, touch AND gamepad; sliders have an enlarged
+	    finger-friendly hit area; whole rows are tappable; controls are
+	    controller-selectable so a console D-pad can navigate between them.
+	  * Toggle the window with the keyboard (default Right-Shift) or a gamepad
+	    button (default ButtonSelect / the Xbox "View" button).
+	  * Executor-agnostic mounting: tries gethui / get_hidden_gui / CoreGui /
+	    syn.protect_gui and falls back to PlayerGui, so it loads on the weakest
+	    executors and even in Studio. task.* and wait are both supported.
 
 	Improvements over the original EzLib:
 	  * Depth: soft drop shadow, layered surfaces, subtle strokes.
@@ -48,13 +53,38 @@ local Players          = game:GetService("Players")
 local taskWait  = (task and task.wait) or wait
 local taskSpawn = (task and task.spawn) or function(fn, ...) return coroutine.wrap(fn)(...) end
 
--- Prefer a hidden/protected parent when the executor exposes one.
+-- Executor-agnostic hidden-GUI parent: try every known API in turn, then
+-- fall back to PlayerGui so it still runs on the weakest executors and in
+-- Studio (where none of the exploit globals exist).
 local function getGuiParent()
-	local ok, hui = pcall(function() return gethui and gethui() end)
-	if ok and hui then return hui end
-	local okc, cg = pcall(function() return game:GetService("CoreGui") end)
-	if okc and cg then return cg end
+	local candidates = {
+		function() return gethui and gethui() end,
+		function() return get_hidden_gui and get_hidden_gui() end,
+		function() return game:GetService("CoreGui") end,
+	}
+	for _, get in ipairs(candidates) do
+		local ok, res = pcall(get)
+		if ok and res then return res end
+	end
 	return Players.LocalPlayer:WaitForChild("PlayerGui")
+end
+
+-- Ask the executor to shield the GUI from detection, where supported.
+local function protectGui(gui)
+	pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+	pcall(function() if protectgui then protectgui(gui) end end)
+end
+
+-- Parent the GUI as safely as possible. If CoreGui parenting is blocked by
+-- the executor, fall back to PlayerGui so nothing errors out.
+local function mountGui(gui)
+	protectGui(gui)
+	local parent = getGuiParent()
+	local ok = pcall(function() gui.Parent = parent end)
+	if not ok or not gui.Parent then
+		pcall(function() gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end)
+	end
+	return gui.Parent
 end
 
 --==============================================================================
@@ -84,6 +114,12 @@ local FAST     = TweenInfo.new(0.14, Enum.EasingStyle.Quart, Enum.EasingDirectio
 
 local function new(className, props, children)
 	local inst = Instance.new(className)
+	-- Interactive classes are made controller-navigable by default (props can
+	-- still override). This is what lets a gamepad/console move between rows.
+	if className == "TextButton" or className == "ImageButton" or className == "TextBox" then
+		inst.Selectable = true
+		inst.Active = true
+	end
 	if props then
 		for k, v in pairs(props) do
 			if k ~= "Parent" then inst[k] = v end
@@ -206,13 +242,20 @@ function EzUI.new(config)
 	if config.Accent then Theme.Accent = config.Accent end
 	self.title   = config.Title or "EzUI"
 	self.keybind = config.Keybind or Enum.KeyCode.RightShift
+	self.gamepadKeybind = config.GamepadKeybind or Enum.KeyCode.ButtonSelect  -- console/gamepad toggle
 	self.tabs    = {}
 	self.activeTab = nil
 
-	-- Clean up any previous instance.
-	local parent = getGuiParent()
-	for _, v in ipairs(parent:GetChildren()) do
-		if v.Name == "EzUI" then v:Destroy() end
+	-- Clean up any previous instance across every parent it might live under.
+	local cleanupTargets = {}
+	pcall(function() table.insert(cleanupTargets, getGuiParent()) end)
+	pcall(function() table.insert(cleanupTargets, Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")) end)
+	for _, p in ipairs(cleanupTargets) do
+		if p then
+			for _, v in ipairs(p:GetChildren()) do
+				if v.Name == "EzUI" then v:Destroy() end
+			end
+		end
 	end
 
 	local gui = new("ScreenGui", {
@@ -220,8 +263,9 @@ function EzUI.new(config)
 		ResetOnSpawn = false,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		IgnoreGuiInset = true,
-		Parent = parent,
+		DisplayOrder = 999,  -- sit above in-game GUIs
 	})
+	mountGui(gui)
 	self.gui = gui
 
 	-- Responsive sizing so the window fits both large monitors and phones.
@@ -452,11 +496,20 @@ function EzUI.new(config)
 		end
 	end)
 
-	-- Keyboard shortcut (PC): toggle the window (FAB stays visible for mobile).
+	-- Toggle shortcut: keyboard (PC) or gamepad button (console). The FAB stays
+	-- visible for mobile/touch. Covers all three input families at once.
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
-		if input.KeyCode == self.keybind then
+		if input.KeyCode == self.keybind or input.KeyCode == self.gamepadKeybind then
 			setVisible(not self.window.Visible)
+			-- Seed controller selection so a gamepad can navigate immediately.
+			if self.window.Visible and self.activeTab and UserInputService.GamepadEnabled then
+				pcall(function()
+					game:GetService("GuiService").SelectedObject = self.activeTab.button
+				end)
+			elseif not self.window.Visible then
+				pcall(function() game:GetService("GuiService").SelectedObject = nil end)
+			end
 		end
 	end)
 
