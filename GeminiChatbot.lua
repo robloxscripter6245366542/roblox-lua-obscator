@@ -29,9 +29,11 @@ local LocalPlayer = Players.LocalPlayer
 -- (GPT-OSS 20B), reachable via its alias "openai". "gpt-5.6-sol" does not
 -- exist, which is why it returned "model not found".
 local MODEL = "openai"
--- A referrer is what grants free anonymous access; without it requests are
--- billed against a (nonexistent) API key and fail with 402 Payment Required.
-local REFERRER = "roblox"
+-- Use a UNIQUE, unregistered referrer so requests are treated as anonymous
+-- (free). A shared/registered referrer like "roblox" maps to a drained
+-- account and makes every request fail with 402 Payment Required. A random
+-- per-session value keeps us in the free anonymous tier.
+local REFERRER = "rbx_" .. tostring(math.random(100000, 999999))
 local API_BASE = "https://text.pollinations.ai/"
 
 local TALK_DISTANCE = 15    -- Distance in studs to trigger response
