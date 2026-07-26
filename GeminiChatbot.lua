@@ -1,21 +1,20 @@
 --[[
-    Gemini Proximity Chatbot (client / executor LocalScript)
-    ---------------------------------------------------------
+    Proximity AI Chatbot (client / executor LocalScript)
+    ----------------------------------------------------
     Listens to nearby players' chat messages and replies in the RBXGeneral
-    channel using Google's Gemini API.
+    channel using the Pollinations AI text API (keyless / free).
 
-    Bug fixes / hardening in this version:
-      * HTTP now works inside executors: uses the exploit `request` global
-        (request / http_request / syn.request / fluxus) and only falls back
-        to HttpService:RequestAsync. Vanilla HttpService HTTP calls do NOT
-        work from a LocalScript, which is why the original never responded.
-      * Response fields from every request backend are normalised, so status
-        code / body handling works regardless of which executor is used.
-      * response.Body is validated before JSONDecode (no crash on empty body).
-      * Replies are sanitised: trimmed, newlines stripped, and truncated to
-        Roblox's 200-character chat limit (SendAsync silently fails on longer).
-      * Empty / whitespace-only incoming messages are ignored.
-      * The channel reference is cached from setup instead of re-searching.
+    Notes:
+      * No API key required - Pollinations is used anonymously.
+      * Any promotional/ad text Pollinations may append to a response is
+        stripped before the reply is sent to chat.
+      * HTTP goes through the executor `request` global (request /
+        http_request / syn.request / fluxus) and only falls back to
+        HttpService:RequestAsync (which is blocked in vanilla LocalScripts).
+      * Replies are sanitised: trimmed, newlines stripped, truncated to
+        Roblox's 200-character chat limit.
+      * An on-screen notification confirms the script loaded, and errors are
+        surfaced as notifications instead of console-only warnings.
 ]]
 
 local Players = game:GetService("Players")
@@ -25,18 +24,12 @@ local StarterGui = game:GetService("StarterGui")
 
 local LocalPlayer = Players.LocalPlayer
 
--- Gemini API Configuration
-local API_KEY = "AQ.Ab8RN6K9r0jgl1QI4pPxEsb56FCu62b_urI0JZvLLNFRBykm0w"
+-- Pollinations AI Configuration (no API key needed)
+local MODEL = "gpt-5.6-sol"                          -- model name
+local API_URL = "https://text.pollinations.ai/openai" -- OpenAI-compatible endpoint
 
--- AI Studio keys look like "AIzaSy..." and go in the ?key= URL param.
--- Anything else (e.g. an "AQ."/"ya29." OAuth or ephemeral token) must be
--- sent as an Authorization: Bearer header instead, or the API returns 401.
-local USE_BEARER = not API_KEY:match("^AIza")
-local BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-local API_URL = USE_BEARER and BASE_URL or (BASE_URL .. "?key=" .. API_KEY)
-
-local TALK_DISTANCE = 15   -- Distance in studs to trigger response
-local COOLDOWN_TIME = 3    -- Seconds between responses to prevent spam
+local TALK_DISTANCE = 15    -- Distance in studs to trigger response
+local COOLDOWN_TIME = 3     -- Seconds between responses to prevent spam
 local MAX_CHAT_LENGTH = 200 -- Roblox chat hard limit
 local lastResponseTime = 0
 
@@ -82,45 +75,71 @@ local function httpRequest(options)
 	}
 end
 
--- Function to send query to Gemini API with HTTP status & error handling
-local function getGeminiResponse(userMessage, senderDisplayName)
+-- Remove any Pollinations ad / promotional text from a raw model reply.
+-- Ads are typically appended as a trailing paragraph and/or contain a
+-- markdown link or a mention of the service, so drop offending lines.
+local function stripAds(text)
+	if type(text) ~= "string" then
+		return nil
+	end
+
+	local kept = {}
+	-- Iterate line-by-line (append a newline so the last line is captured).
+	for line in (text .. "\n"):gmatch("(.-)\n") do
+		local lower = line:lower()
+		local isAd = lower:find("pollinations", 1, true)
+			or lower:find("sponsor", 1, true)
+			or lower:find("advertis", 1, true)
+			or lower:find("powered by", 1, true)
+			or lower:find("support us", 1, true)
+			or lower:find("%[.-%]%(https?://") -- markdown link line
+		if not isAd then
+			table.insert(kept, line)
+		end
+	end
+
+	text = table.concat(kept, " ")
+	-- Strip any remaining inline markdown links and bare URLs.
+	text = text:gsub("%[[^%]]*%]%([^%)]*%)", "")
+	text = text:gsub("https?://%S+", "")
+	return text
+end
+
+-- Query Pollinations for a reply, with HTTP status & error handling.
+local function getAIResponse(userMessage, senderDisplayName)
 	local payload = {
-		systemInstruction = {
-			parts = {
-				{
-					text = "You are playing a Roblox game. A player named " .. senderDisplayName .. " standing next to you said something. " ..
-					       "Respond in a natural, casual, and brief gamer style (1 short sentence max)."
-				}
-			}
-		},
-		contents = {
+		model = MODEL,
+		messages = {
+			{
+				role = "system",
+				content = "You are playing a Roblox game. A player named " .. senderDisplayName .. " standing next to you said something. " ..
+				          "Respond in a natural, casual, and brief gamer style (1 short sentence max). " ..
+				          "Do not include any links, ads, or promotional text.",
+			},
 			{
 				role = "user",
-				parts = { { text = userMessage } }
-			}
-		}
+				content = userMessage,
+			},
+		},
+		private = true, -- keep the exchange out of the public feed
+		referrer = "roblox",
 	}
 
 	local jsonPayload = HttpService:JSONEncode(payload)
 
-	local headers = {
-		["Content-Type"] = "application/json"
-	}
-	if USE_BEARER then
-		headers["Authorization"] = "Bearer " .. API_KEY
-	end
-
 	local success, response = pcall(httpRequest, {
 		Url = API_URL,
 		Method = "POST",
-		Headers = headers,
+		Headers = {
+			["Content-Type"] = "application/json"
+		},
 		Body = jsonPayload
 	})
 
 	-- 1. Handle Network / Transport Errors (e.g., no internet, blocked requests)
 	if not success then
-		warn("[Gemini API Network Error]: Failed to issue HTTP request. Details:", tostring(response))
-		notify("Gemini Chatbot", "Network error - request could not be sent.")
+		warn("[Pollinations Network Error]: Failed to issue HTTP request. Details:", tostring(response))
+		notify("AI Chatbot", "Network error - request could not be sent.")
 		return nil
 	end
 
@@ -134,34 +153,34 @@ local function getGeminiResponse(userMessage, senderDisplayName)
 
 	-- 2. Check HTTP Status Code
 	if response.StatusCode ~= 200 then
-		warn(string.format("[Gemini API HTTP Error %d]: %s", response.StatusCode, tostring(response.StatusMessage)))
+		warn(string.format("[Pollinations HTTP Error %d]: %s", response.StatusCode, tostring(response.StatusMessage)))
 
-		-- 3. Parse and log explicit Gemini API error response structure
 		local apiMessage
 		if decodeSuccess and decoded and decoded.error then
-			local err = decoded.error
-			warn(string.format("  -> API Error Code: %s", tostring(err.code or "N/A")))
-			warn(string.format("  -> API Status: %s", err.status or "N/A"))
-			warn(string.format("  -> API Message: %s", err.message or "No message provided"))
-			apiMessage = err.message
+			apiMessage = (type(decoded.error) == "table" and decoded.error.message) or tostring(decoded.error)
+			warn("  -> API Message:", apiMessage)
 		else
 			warn("  -> Raw Response Body:", tostring(response.Body))
 		end
-		notify("Gemini Chatbot", string.format("API error %d: %s", response.StatusCode, apiMessage or "see console"), 8)
+		notify("AI Chatbot", string.format("API error %d: %s", response.StatusCode, apiMessage or "see console"), 8)
 		return nil
 	end
 
-	-- 4. Process Successful (200 OK) Payload
+	-- 3. Process Successful (200 OK) Payload (OpenAI-compatible shape).
 	if decodeSuccess and decoded then
-		if decoded.candidates and #decoded.candidates > 0 then
-			local candidate = decoded.candidates[1]
-			if candidate.content and candidate.content.parts and #candidate.content.parts > 0 then
-				return candidate.content.parts[1].text
+		if decoded.choices and #decoded.choices > 0 then
+			local choice = decoded.choices[1]
+			if choice.message and type(choice.message.content) == "string" then
+				return choice.message.content
 			end
 		end
-		warn("[Gemini API Warning]: HTTP 200 returned, but payload missing expected text parts.")
+		warn("[Pollinations Warning]: HTTP 200 returned, but payload missing expected message content.")
 	else
-		warn("[Gemini API Error]: Failed to parse JSON body on successful HTTP response.")
+		-- Some Pollinations endpoints return plain text rather than JSON.
+		if type(response.Body) == "string" and response.Body ~= "" then
+			return response.Body
+		end
+		warn("[Pollinations Error]: Failed to parse response body.")
 	end
 
 	return nil
@@ -174,6 +193,8 @@ local function sanitizeReply(text)
 	end
 	-- Collapse newlines to spaces and trim surrounding whitespace.
 	text = text:gsub("[\r\n]+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+	-- Collapse runs of spaces left behind by ad stripping.
+	text = text:gsub("%s%s+", " ")
 	if text == "" then
 		return nil
 	end
@@ -196,7 +217,7 @@ end
 local function setupTextChatListener()
 	if TextChatService.ChatVersion ~= Enum.ChatVersion.TextChatService then
 		warn("[TextChatService Error]: Game is using the legacy chat system; this script requires TextChatService.")
-		notify("Gemini Chatbot", "This game uses legacy chat - chatbot cannot run here.", 8)
+		notify("AI Chatbot", "This game uses legacy chat - chatbot cannot run here.", 8)
 		return
 	end
 
@@ -243,7 +264,7 @@ local function setupTextChatListener()
 			lastResponseTime = currentTime
 
 			task.spawn(function()
-				local reply = sanitizeReply(getGeminiResponse(incoming, senderPlayer.DisplayName))
+				local reply = sanitizeReply(stripAds(getAIResponse(incoming, senderPlayer.DisplayName)))
 				if reply then
 					sendChatMessage(reply)
 				end
@@ -252,8 +273,8 @@ local function setupTextChatListener()
 	end)
 
 	-- Listener is live: tell the user the script loaded successfully.
-	notify("Gemini Chatbot", string.format("Loaded! Replying to players within %d studs.", TALK_DISTANCE), 6)
-	print("[Gemini Chatbot]: Loaded and listening on RBXGeneral.")
+	notify("AI Chatbot", string.format("Loaded! Replying to players within %d studs.", TALK_DISTANCE), 6)
+	print("[AI Chatbot]: Loaded and listening on RBXGeneral (Pollinations / " .. MODEL .. ").")
 end
 
 setupTextChatListener()
