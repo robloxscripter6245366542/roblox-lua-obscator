@@ -26,7 +26,7 @@ local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
 -- Gemini API Configuration
-local API_KEY = "AQ.Ab8RN6LhqzbrfbDy5UWbBu-BvB0glwyEDbvg1FnOAiAGsAuSpw"
+local API_KEY = "AQ.Ab8RN6K9r0jgl1QI4pPxEsb56FCu62b_urI0JZvLLNFRBykm0w"
 
 -- AI Studio keys look like "AIzaSy..." and go in the ?key= URL param.
 -- Anything else (e.g. an "AQ."/"ya29." OAuth or ephemeral token) must be
