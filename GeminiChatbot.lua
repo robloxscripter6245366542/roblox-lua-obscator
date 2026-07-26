@@ -25,8 +25,14 @@ local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
 -- Pollinations AI Configuration (no API key needed)
-local MODEL = "gpt-5.6-sol"                          -- model name
-local API_URL = "https://text.pollinations.ai/openai" -- OpenAI-compatible endpoint
+-- Only one model is available on the free/anonymous tier: "openai-fast"
+-- (GPT-OSS 20B), reachable via its alias "openai". "gpt-5.6-sol" does not
+-- exist, which is why it returned "model not found".
+local MODEL = "openai"
+-- A referrer is what grants free anonymous access; without it requests are
+-- billed against a (nonexistent) API key and fail with 402 Payment Required.
+local REFERRER = "roblox"
+local API_BASE = "https://text.pollinations.ai/"
 
 local TALK_DISTANCE = 15    -- Distance in studs to trigger response
 local COOLDOWN_TIME = 3     -- Seconds between responses to prevent spam
@@ -106,34 +112,22 @@ local function stripAds(text)
 end
 
 -- Query Pollinations for a reply, with HTTP status & error handling.
+-- Uses the anonymous GET text endpoint, which returns the reply as plain
+-- text. The whole prompt (system instruction + the player's message) is
+-- encoded into the URL path; model + referrer go in the query string.
 local function getAIResponse(userMessage, senderDisplayName)
-	local payload = {
-		model = MODEL,
-		messages = {
-			{
-				role = "system",
-				content = "You are playing a Roblox game. A player named " .. senderDisplayName .. " standing next to you said something. " ..
-				          "Respond in a natural, casual, and brief gamer style (1 short sentence max). " ..
-				          "Do not include any links, ads, or promotional text.",
-			},
-			{
-				role = "user",
-				content = userMessage,
-			},
-		},
-		private = true, -- keep the exchange out of the public feed
-		referrer = "roblox",
-	}
+	local prompt = "You are playing a Roblox game. A player named " .. senderDisplayName ..
+		" standing next to you said something. Respond in a natural, casual, and brief gamer " ..
+		"style (1 short sentence max). Do not include any links, ads, or promotional text. " ..
+		"The player said: " .. userMessage
 
-	local jsonPayload = HttpService:JSONEncode(payload)
+	local url = API_BASE .. HttpService:UrlEncode(prompt)
+		.. "?model=" .. HttpService:UrlEncode(MODEL)
+		.. "&referrer=" .. HttpService:UrlEncode(REFERRER)
 
 	local success, response = pcall(httpRequest, {
-		Url = API_URL,
-		Method = "POST",
-		Headers = {
-			["Content-Type"] = "application/json"
-		},
-		Body = jsonPayload
+		Url = url,
+		Method = "GET",
 	})
 
 	-- 1. Handle Network / Transport Errors (e.g., no internet, blocked requests)
@@ -143,46 +137,37 @@ local function getAIResponse(userMessage, senderDisplayName)
 		return nil
 	end
 
-	-- Guard against an empty/nil body before attempting to decode.
-	local decodeSuccess, decoded = false, nil
-	if type(response.Body) == "string" and response.Body ~= "" then
-		decodeSuccess, decoded = pcall(function()
-			return HttpService:JSONDecode(response.Body)
+	local body = response.Body
+
+	-- The error path returns a JSON object with an "error" field; the success
+	-- path returns plain reply text. Only try to decode when it looks like JSON.
+	local decoded
+	if type(body) == "string" and body:match("^%s*{") then
+		local ok, result = pcall(function()
+			return HttpService:JSONDecode(body)
 		end)
+		if ok then
+			decoded = result
+		end
 	end
 
-	-- 2. Check HTTP Status Code
-	if response.StatusCode ~= 200 then
-		warn(string.format("[Pollinations HTTP Error %d]: %s", response.StatusCode, tostring(response.StatusMessage)))
-
+	-- 2. Check HTTP Status Code / API error
+	if response.StatusCode ~= 200 or (decoded and decoded.error) then
 		local apiMessage
-		if decodeSuccess and decoded and decoded.error then
+		if decoded and decoded.error then
 			apiMessage = (type(decoded.error) == "table" and decoded.error.message) or tostring(decoded.error)
-			warn("  -> API Message:", apiMessage)
-		else
-			warn("  -> Raw Response Body:", tostring(response.Body))
 		end
+		warn(string.format("[Pollinations HTTP Error %d]: %s", response.StatusCode, apiMessage or tostring(body)))
 		notify("AI Chatbot", string.format("API error %d: %s", response.StatusCode, apiMessage or "see console"), 8)
 		return nil
 	end
 
-	-- 3. Process Successful (200 OK) Payload (OpenAI-compatible shape).
-	if decodeSuccess and decoded then
-		if decoded.choices and #decoded.choices > 0 then
-			local choice = decoded.choices[1]
-			if choice.message and type(choice.message.content) == "string" then
-				return choice.message.content
-			end
-		end
-		warn("[Pollinations Warning]: HTTP 200 returned, but payload missing expected message content.")
-	else
-		-- Some Pollinations endpoints return plain text rather than JSON.
-		if type(response.Body) == "string" and response.Body ~= "" then
-			return response.Body
-		end
-		warn("[Pollinations Error]: Failed to parse response body.")
+	-- 3. Success: the body is the reply text.
+	if type(body) == "string" and body ~= "" then
+		return body
 	end
 
+	warn("[Pollinations Error]: HTTP 200 but empty response body.")
 	return nil
 end
 
