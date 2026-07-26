@@ -1,3 +1,23 @@
+--[==[
+	NOVA HUB — a ready-to-fill Roblox script hub whose entire UI is NovaUI
+	(the Fusion-style reactive library embedded directly below). One file, no
+	external require/HttpGet for the UI, works on all devices and all executors.
+
+	HOW TO ADD YOUR SCRIPTS
+	-----------------------
+	Scroll to the ">>> ADD / EDIT YOUR SCRIPTS HERE <<<" block near the bottom.
+	`Scripts` is an ordered list of tabs; each tab has an `items` list of
+	buttons. For every button, set `run` to EITHER:
+	    a function   ->  run = function() ... your working script ... end
+	    a URL string ->  run = "https://raw.githubusercontent.com/.../source"
+	Buttons execute `run` inside pcall and pop a success/error notification.
+
+	Prefer NovaUI toggles/sliders for options — they are reactive State objects.
+	See the Settings tab at the bottom for a live example.
+]==]
+
+_G.__NOVAUI_LIB_ONLY = true  -- keep the embedded library from running its demo
+
 --[[
 	NovaUI — a single-file, reactive, futuristic Roblox hub UI.
 
@@ -905,41 +925,95 @@ function NovaUI:Destroy()
 end
 
 --==============================================================================
--- Demo (delete this block to use NovaUI purely as a library)
+-- NOVA HUB — application layer (built entirely on the NovaUI library above)
 --==============================================================================
 
-if not _G.__NOVAUI_LIB_ONLY then
-	local win = NovaUI.new({ Title = "NOVA HUB", Accent = Color3.fromRGB(0, 210, 255), Accent2 = Color3.fromRGB(140, 90, 255) })
+local Hub = NovaUI.new({
+	Title  = "NOVA HUB",
+	Accent  = Color3.fromRGB(0, 210, 255),
+	Accent2 = Color3.fromRGB(140, 90, 255),
+	-- Keybind = Enum.KeyCode.RightShift,           -- PC toggle (default)
+	-- GamepadKeybind = Enum.KeyCode.ButtonSelect,  -- console toggle (default)
+})
 
-	local home = win:Tab("Dashboard", "⚡")
-	home:Section("System")
-	home:Label("Reactive, glassmorphic, futuristic — one file. Right-Shift / ☰ / gamepad to toggle.")
+-- ===========================================================================
+-- >>> ADD / EDIT YOUR SCRIPTS HERE <<<
+-- Each { name = ..., run = ... } becomes a button in its tab.
+--   run = function() ... end       -> runs your inline script
+--   run = "https://.../source"     -> loadstring(game:HttpGet(url))()
+-- ===========================================================================
+local Scripts = {
 
-	local power = NovaUI.State(false)
-	home:Toggle("Master power", power)
-	home:Label(NovaUI.Computed(function()
-		return "Status: " .. (power:get() and "◉ ONLINE" or "○ standby")
-	end))
-	home:Button("Send test notification", function()
-		win:Notify("Signal", "Reactive core is live.", 4)
-	end)
+	{ tab = "Universal", icon = "🌐", items = {
+		-- Working public example so the hub does something out of the box:
+		{ name = "Infinite Yield", run = "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source" },
+		-- TODO: replace the placeholders below with your own working scripts.
+		{ name = "Fly",            run = function() --[[ paste working Fly script here ]] end },
+		{ name = "Noclip",         run = function() --[[ paste working Noclip script here ]] end },
+		{ name = "Infinite Jump",  run = function() --[[ paste working Infinite Jump here ]] end },
+	}},
 
-	local combat = win:Tab("Combat", "⌖")
-	combat:Section("Aimbot")
-	combat:Toggle("Enabled", false)
-	combat:Slider("FOV", 30, 400, 150)
-	combat:Slider("Smoothness", 1, 20, 6)
-	combat:Dropdown("Target part", { "Head", "Torso", "HumanoidRootPart" }, "Head")
-	combat:Keybind("Aim key", Enum.KeyCode.E)
+	{ tab = "Combat", icon = "⌖", items = {
+		{ name = "Aimbot",     run = function() --[[ paste working Aimbot here ]] end },
+		{ name = "Silent Aim", run = function() --[[ paste working Silent Aim here ]] end },
+		{ name = "Kill Aura",  run = function() --[[ paste working Kill Aura here ]] end },
+	}},
 
-	local visuals = win:Tab("Visuals", "◈")
-	visuals:Section("ESP")
-	visuals:Toggle("Boxes", true)
-	visuals:Toggle("Tracers", false)
-	visuals:Slider("Render range", 100, 5000, 2000)
-	visuals:Textbox("Watermark", "Type text…")
+	{ tab = "Visuals", icon = "◈", items = {
+		{ name = "ESP",        run = function() --[[ paste working ESP here ]] end },
+		{ name = "Fullbright", run = function() --[[ paste working Fullbright here ]] end },
+		{ name = "Tracers",    run = function() --[[ paste working Tracers here ]] end },
+	}},
 
-	win:Notify("NovaUI", "Futuristic hub online.", 5)
+	{ tab = "Movement", icon = "➤", items = {
+		{ name = "Speed",      run = function() --[[ paste working Speed here ]] end },
+		{ name = "Teleport",   run = function() --[[ paste working Teleport here ]] end },
+	}},
+
+}
+-- ===========================================================================
+-- >>> END OF SCRIPTS — you normally do not need to edit below this line <<<
+-- ===========================================================================
+
+local function runEntry(entry)
+	local run = entry.run
+	if type(run) == "function" then
+		local ok, err = pcall(run)
+		if ok then Hub:Notify("Executed", entry.name, 3)
+		else Hub:Notify("Error", entry.name .. ": " .. tostring(err), 6) end
+	elseif type(run) == "string" and #run > 0 then
+		local ok, err = pcall(function() loadstring(game:HttpGet(run))() end)
+		if ok then Hub:Notify("Executed", entry.name, 3)
+		else Hub:Notify("Error", entry.name .. ": " .. tostring(err), 6) end
+	else
+		Hub:Notify("Not set yet", entry.name .. " has no script attached.", 4)
+	end
 end
 
-return NovaUI
+-- Auto-build every tab and button from the Scripts table.
+for _, section in ipairs(Scripts) do
+	local tab = Hub:Tab(section.tab, section.icon)
+	tab:Section(section.tab .. " scripts")
+	if #section.items == 0 then
+		tab:Label("No scripts here yet. Add them in the Scripts table.")
+	end
+	for _, entry in ipairs(section.items) do
+		tab:Button(entry.name, function() runEntry(entry) end)
+	end
+end
+
+-- Settings tab — demonstrates NovaUI's reactive controls on the Fusion UI.
+local settings = Hub:Tab("Settings", "⚙")
+settings:Section("Interface")
+settings:Label("Toggle the hub: Right-Shift (PC), the floating button (mobile), or View/Select (console).")
+
+local demoState = NovaUI.State(true)
+settings:Toggle("Reactive demo toggle", demoState)
+settings:Label(NovaUI.Computed(function()
+	return "That toggle is currently " .. (demoState:get() and "ON" or "OFF")
+end))
+
+settings:Section("Session")
+settings:Button("Unload hub", function() Hub:Destroy() end)
+
+Hub:Notify("Nova Hub", "Loaded. Fill the Scripts table with your working scripts.", 6)
