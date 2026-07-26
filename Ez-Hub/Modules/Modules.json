@@ -1,0 +1,15 @@
+{
+    "ezlib": "https://raw.githubusercontent.com/debug420/Ez-Hub/master/Modules/EzLib.lua",
+    "launcherdata": "https://raw.githubusercontent.com/debug420/Ez-Industries-Launcher-Data/master/LauncherData.json",
+    "lexermodule": "https://raw.githubusercontent.com/debug420/Ez-Hub/master/Modules/LexerModule.lua",
+    "aimbotmodule": "https://raw.githubusercontent.com/debug420/Ez-Hub/master/Exclusives-V2/Modules/AimbotModule.lua",
+    "createaimbotmodule": "https://raw.githubusercontent.com/debug420/Ez-Hub/master/Exclusives-V2/Modules/CreateAimbotModule.lua",
+    "espmodule": "https://raw.githubusercontent.com/debug420/Ez-Hub/master/Exclusives-V2/Modules/ESPModule.lua",
+    "createespmodule": "https://raw.githubusercontent.com/debug420/Ez-Hub/master/Exclusives-V2/Modules/CreateESPModule.lua",
+    "createuniversalmodule": "https://raw.githubusercontent.com/debug420/Ez-Hub/master/Exclusives-V2/Modules/CreateUniversalModule.lua",
+    "exclusivesmodule": "https://raw.githubusercontent.com/debug420/Ez-Hub/master/Modules/ExclusivesV1.json",
+    "exclusivesv2module": "https://raw.githubusercontent.com/debug420/Ez-Hub/master/Modules/ExclusivesV2.json",
+    "repostedmodule": "https://raw.githubusercontent.com/debug420/Ez-Hub/master/Modules/RepostedModule.json",
+    "logger": "https://raw.githubusercontent.com/debug420/Ez-Hub/master/Modules/Logger.lua",
+    "pluginLinks": "https://raw.githubusercontent.com/debug420/Ez-Hub/master/Plugins/pluginLinks.json"
+}
