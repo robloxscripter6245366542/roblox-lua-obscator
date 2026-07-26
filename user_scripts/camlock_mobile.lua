@@ -242,12 +242,20 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
--- ---- Per-frame camera lock --------------------------------------
+-- ---- Camera lock -------------------------------------------------
+--
+-- Split into two rates to keep it light on mobile:
+--   * Target *selection* (scanning every player, viewport-projecting each, and
+--     validating) is the expensive part, so it runs on a throttle (SCAN_INTERVAL,
+--     ~15x/sec) instead of every rendered frame.
+--   * The camera rotation itself runs every frame off the cached target part, so
+--     the aim stays perfectly smooth even though selection is throttled.
 
-RunService.RenderStepped:Connect(function()
-	if not enabled then
-		return
-	end
+local SCAN_INTERVAL = 1 / 15 -- seconds between target (re)scans
+local scanAccum = 0
+local lockedPart = nil -- cached part we're currently aiming at
+
+local function rescan()
 	local part = shouldKeepTarget()
 	if not part then
 		currentTarget = nil
@@ -257,10 +265,32 @@ RunService.RenderStepped:Connect(function()
 			part = getTargetPart(acquired)
 		end
 	end
-	if not part then
+	lockedPart = part
+end
+
+RunService.RenderStepped:Connect(function(dt)
+	if not enabled then
+		lockedPart = nil -- forget the target while off; re-acquire fresh when re-enabled
 		return
 	end
-	local goal = CFrame.new(Camera.CFrame.Position, part.Position)
+
+	scanAccum += dt
+	if scanAccum >= SCAN_INTERVAL or lockedPart == nil then
+		scanAccum = 0
+		rescan()
+	end
+
+	-- Drop a cached part that has since been destroyed (e.g. target despawned
+	-- between scans) so we don't index a stale instance.
+	if lockedPart and not lockedPart.Parent then
+		lockedPart = nil
+		return
+	end
+	if not lockedPart then
+		return
+	end
+
+	local goal = CFrame.new(Camera.CFrame.Position, lockedPart.Position)
 	Camera.CFrame = Camera.CFrame:Lerp(goal, math.clamp(CONFIG.SMOOTHNESS, 0, 1))
 end)
 

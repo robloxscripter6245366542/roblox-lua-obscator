@@ -199,21 +199,14 @@ local function setTarget(player)
 	end
 end
 
--- Per-frame: maintain/acquire target and ease the camera toward it.
-local function onRenderStep()
-	if not CONFIG.ENABLED then
-		if currentTarget then
-			setTarget(nil)
-		end
-		return
-	end
+-- Target selection (scanning every player and viewport-projecting them) is the
+-- expensive part, so it runs on a throttle instead of every rendered frame. The
+-- camera rotation still runs every frame off the cached part, so aim stays smooth.
+local SCAN_INTERVAL = 1 / 15 -- seconds between target (re)scans
+local scanAccum = 0
+local lockedPart = nil -- cached part we're currently aiming at
 
-	-- Hold-to-disable lets you freely look around without dropping in and out.
-	if CONFIG.HOLD_DISABLE_KEY and UserInputService:IsKeyDown(CONFIG.HOLD_DISABLE_KEY) then
-		return
-	end
-
-	-- Keep the existing lock if it's still valid; otherwise try to acquire a new one.
+local function rescan()
 	local part = shouldKeepTarget()
 	if not part then
 		if currentTarget then
@@ -225,15 +218,42 @@ local function onRenderStep()
 			part = getTargetPart(acquired)
 		end
 	end
+	lockedPart = part
+end
 
-	if not part then
+-- Per-frame: maintain/acquire target and ease the camera toward it.
+local function onRenderStep(dt)
+	if not CONFIG.ENABLED then
+		if currentTarget then
+			setTarget(nil)
+		end
+		lockedPart = nil
+		return
+	end
+
+	-- Hold-to-disable lets you freely look around without dropping in and out.
+	if CONFIG.HOLD_DISABLE_KEY and UserInputService:IsKeyDown(CONFIG.HOLD_DISABLE_KEY) then
+		return
+	end
+
+	scanAccum = scanAccum + (dt or 0)
+	if scanAccum >= SCAN_INTERVAL or lockedPart == nil then
+		scanAccum = 0
+		rescan()
+	end
+
+	-- Drop a cached part that was destroyed between scans.
+	if lockedPart and not lockedPart.Parent then
+		lockedPart = nil
+	end
+	if not lockedPart then
 		return
 	end
 
 	-- Rotate the camera to look at the target part, keeping the camera's own
 	-- position. SMOOTHNESS eases the rotation so it doesn't teleport violently.
 	local camPos = Camera.CFrame.Position
-	local goal = CFrame.new(camPos, part.Position)
+	local goal = CFrame.new(camPos, lockedPart.Position)
 	local alpha = math.clamp(CONFIG.SMOOTHNESS, 0, 1)
 	Camera.CFrame = Camera.CFrame:Lerp(goal, alpha)
 end
