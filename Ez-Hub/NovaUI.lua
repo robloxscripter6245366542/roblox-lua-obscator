@@ -372,7 +372,7 @@ function NovaUI.new(config)
 	--------------------------------------------------------------------------
 	-- Responsive sizing
 	--------------------------------------------------------------------------
-	local WIN_W, WIN_H = 560, 400
+	local WIN_W, WIN_H = config.Width or 720, config.Height or 500
 	local function viewport()
 		local v = gui.AbsoluteSize
 		if v.X < 2 or v.Y < 2 then v = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 600) end
@@ -475,7 +475,7 @@ function NovaUI.new(config)
 	})
 
 	local sidebar = new("Frame", {
-		Name = "Sidebar", Size = UDim2.new(0, 156, 1, 0),
+		Name = "Sidebar", Size = UDim2.new(0, 176, 1, 0),
 		BackgroundColor3 = Theme.Surface, BackgroundTransparency = 0.35, BorderSizePixel = 0, Parent = body,
 	})
 	new("Frame", { Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(1, 0, 0, 0), AnchorPoint = Vector2.new(1, 0),
@@ -490,7 +490,7 @@ function NovaUI.new(config)
 	self.tabList = tabList
 
 	local content = new("Frame", {
-		Name = "Content", Position = UDim2.new(0, 156, 0, 0), Size = UDim2.new(1, -156, 1, 0),
+		Name = "Content", Position = UDim2.new(0, 176, 0, 0), Size = UDim2.new(1, -176, 1, 0),
 		BackgroundTransparency = 1, Parent = body,
 	})
 	self.content = content
@@ -617,6 +617,7 @@ function NovaUI:Tab(name, icon)
 	button.MouseButton1Click:Connect(select)
 	button.MouseEnter:Connect(function() if self.activeTab ~= tab then tween(button, FAST, { BackgroundTransparency = 0.55 }) end end)
 	button.MouseLeave:Connect(function() if self.activeTab ~= tab then tween(button, FAST, { BackgroundTransparency = 1 }) end end)
+	tab.focus = select  -- public: programmatically open this tab (used for game auto-detect)
 	if not self.activeTab then select() end
 
 	--------------------------------------------------------------------------

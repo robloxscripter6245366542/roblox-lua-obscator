@@ -1,19 +1,26 @@
 --[==[
 	NOVA HUB — a ready-to-fill Roblox script hub whose entire UI is NovaUI
 	(the Fusion-style reactive library embedded directly below). One file, no
-	external require/HttpGet for the UI, works on all devices and all executors.
+	external require/HttpGet for the UI; works on all devices and all executors.
+
+	This build has ONE TAB PER GAME and detects the current game by PlaceId:
+	on load it checks game.PlaceId against each game's placeIds, then auto-opens
+	the matching tab and notifies you. A Universal tab is always available.
 
 	HOW TO ADD YOUR SCRIPTS
 	-----------------------
-	Scroll to the ">>> ADD / EDIT YOUR SCRIPTS HERE <<<" block near the bottom.
-	`Scripts` is an ordered list of tabs; each tab has an `items` list of
-	buttons. For every button, set `run` to EITHER:
+	Edit the `Games` list near the bottom. Each game has:
+	    name     = tab label
+	    icon     = small emoji shown on the tab
+	    placeIds = { list of PlaceIds for that game }   (for auto-detection)
+	    items    = { { name = ..., run = ... }, ... }   (the buttons)
+	For each button set `run` to EITHER:
 	    a function   ->  run = function() ... your working script ... end
 	    a URL string ->  run = "https://raw.githubusercontent.com/.../source"
-	Buttons execute `run` inside pcall and pop a success/error notification.
 
-	Prefer NovaUI toggles/sliders for options — they are reactive State objects.
-	See the Settings tab at the bottom for a live example.
+	Find a game's PlaceId from its Roblox URL (roblox.com/games/<PlaceId>/...)
+	or by running `print(game.PlaceId)` while in the game. Verify/adjust the
+	example IDs below for your target games.
 ]==]
 
 _G.__NOVAUI_LIB_ONLY = true  -- keep the embedded library from running its demo
@@ -392,7 +399,7 @@ function NovaUI.new(config)
 	--------------------------------------------------------------------------
 	-- Responsive sizing
 	--------------------------------------------------------------------------
-	local WIN_W, WIN_H = 560, 400
+	local WIN_W, WIN_H = config.Width or 720, config.Height or 500
 	local function viewport()
 		local v = gui.AbsoluteSize
 		if v.X < 2 or v.Y < 2 then v = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 600) end
@@ -495,7 +502,7 @@ function NovaUI.new(config)
 	})
 
 	local sidebar = new("Frame", {
-		Name = "Sidebar", Size = UDim2.new(0, 156, 1, 0),
+		Name = "Sidebar", Size = UDim2.new(0, 176, 1, 0),
 		BackgroundColor3 = Theme.Surface, BackgroundTransparency = 0.35, BorderSizePixel = 0, Parent = body,
 	})
 	new("Frame", { Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(1, 0, 0, 0), AnchorPoint = Vector2.new(1, 0),
@@ -510,7 +517,7 @@ function NovaUI.new(config)
 	self.tabList = tabList
 
 	local content = new("Frame", {
-		Name = "Content", Position = UDim2.new(0, 156, 0, 0), Size = UDim2.new(1, -156, 1, 0),
+		Name = "Content", Position = UDim2.new(0, 176, 0, 0), Size = UDim2.new(1, -176, 1, 0),
 		BackgroundTransparency = 1, Parent = body,
 	})
 	self.content = content
@@ -637,6 +644,7 @@ function NovaUI:Tab(name, icon)
 	button.MouseButton1Click:Connect(select)
 	button.MouseEnter:Connect(function() if self.activeTab ~= tab then tween(button, FAST, { BackgroundTransparency = 0.55 }) end end)
 	button.MouseLeave:Connect(function() if self.activeTab ~= tab then tween(button, FAST, { BackgroundTransparency = 1 }) end end)
+	tab.focus = select  -- public: programmatically open this tab (used for game auto-detect)
 	if not self.activeTab then select() end
 
 	--------------------------------------------------------------------------
@@ -932,48 +940,68 @@ local Hub = NovaUI.new({
 	Title  = "NOVA HUB",
 	Accent  = Color3.fromRGB(0, 210, 255),
 	Accent2 = Color3.fromRGB(140, 90, 255),
-	-- Keybind = Enum.KeyCode.RightShift,           -- PC toggle (default)
-	-- GamepadKeybind = Enum.KeyCode.ButtonSelect,  -- console toggle (default)
+	Width   = 760,   -- bigger window (auto-shrinks to fit small screens)
+	Height  = 520,
 })
 
 -- ===========================================================================
--- >>> ADD / EDIT YOUR SCRIPTS HERE <<<
--- Each { name = ..., run = ... } becomes a button in its tab.
---   run = function() ... end       -> runs your inline script
---   run = "https://.../source"     -> loadstring(game:HttpGet(url))()
+-- >>> ADD / EDIT YOUR GAMES + SCRIPTS HERE <<<
+--   name / icon    -> the tab
+--   placeIds       -> PlaceIds used to auto-detect + auto-open this tab
+--   items          -> buttons; run = function() ... end  OR  a HttpGet URL
+-- Verify the example PlaceIds for your own games before relying on detection.
 -- ===========================================================================
-local Scripts = {
+local Games = {
 
-	{ tab = "Universal", icon = "🌐", items = {
-		-- Working public example so the hub does something out of the box:
+	-- Always-available, works in every game. Keep this first.
+	{ name = "Universal", icon = "🌐", placeIds = {}, items = {
 		{ name = "Infinite Yield", run = "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source" },
-		-- TODO: replace the placeholders below with your own working scripts.
 		{ name = "Fly",            run = function() --[[ paste working Fly script here ]] end },
 		{ name = "Noclip",         run = function() --[[ paste working Noclip script here ]] end },
 		{ name = "Infinite Jump",  run = function() --[[ paste working Infinite Jump here ]] end },
 	}},
 
-	{ tab = "Combat", icon = "⌖", items = {
-		{ name = "Aimbot",     run = function() --[[ paste working Aimbot here ]] end },
-		{ name = "Silent Aim", run = function() --[[ paste working Silent Aim here ]] end },
-		{ name = "Kill Aura",  run = function() --[[ paste working Kill Aura here ]] end },
+	{ name = "Blox Fruits", icon = "🍊", placeIds = { 2753915549, 4442272183, 7449423635 }, items = {
+		{ name = "Auto Farm",  run = function() --[[ paste working Auto Farm here ]] end },
+		{ name = "Devil Fruit ESP", run = function() --[[ ... ]] end },
 	}},
 
-	{ tab = "Visuals", icon = "◈", items = {
-		{ name = "ESP",        run = function() --[[ paste working ESP here ]] end },
-		{ name = "Fullbright", run = function() --[[ paste working Fullbright here ]] end },
-		{ name = "Tracers",    run = function() --[[ paste working Tracers here ]] end },
+	{ name = "Arsenal", icon = "🔫", placeIds = { 286090429 }, items = {
+		{ name = "Aimbot", run = function() --[[ paste working Arsenal Aimbot here ]] end },
+		{ name = "ESP",    run = function() --[[ ... ]] end },
 	}},
 
-	{ tab = "Movement", icon = "➤", items = {
-		{ name = "Speed",      run = function() --[[ paste working Speed here ]] end },
-		{ name = "Teleport",   run = function() --[[ paste working Teleport here ]] end },
+	{ name = "Murder Mystery 2", icon = "🔪", placeIds = { 142823291 }, items = {
+		{ name = "Murderer/Sheriff ESP", run = function() --[[ ... ]] end },
+		{ name = "Coin Collector",       run = function() --[[ ... ]] end },
+	}},
+
+	{ name = "Phantom Forces", icon = "🎯", placeIds = { 292439477 }, items = {
+		{ name = "Aimbot", run = function() --[[ ... ]] end },
+		{ name = "ESP",    run = function() --[[ ... ]] end },
+	}},
+
+	{ name = "Pet Simulator X", icon = "🐾", placeIds = { 6284583030 }, items = {
+		{ name = "Auto Farm", run = function() --[[ ... ]] end },
+	}},
+
+	{ name = "Doors", icon = "🚪", placeIds = { 6839171747, 6516141723 }, items = {
+		{ name = "Entity Alert", run = function() --[[ ... ]] end },
 	}},
 
 }
 -- ===========================================================================
--- >>> END OF SCRIPTS — you normally do not need to edit below this line <<<
+-- >>> END OF GAMES — you normally do not need to edit below this line <<<
 -- ===========================================================================
+
+local currentPlaceId = game.PlaceId
+
+local function isCurrentGame(entry)
+	for _, id in ipairs(entry.placeIds or {}) do
+		if id == currentPlaceId then return true end
+	end
+	return false
+end
 
 local function runEntry(entry)
 	local run = entry.run
@@ -990,30 +1018,36 @@ local function runEntry(entry)
 	end
 end
 
--- Auto-build every tab and button from the Scripts table.
-for _, section in ipairs(Scripts) do
-	local tab = Hub:Tab(section.tab, section.icon)
-	tab:Section(section.tab .. " scripts")
-	if #section.items == 0 then
-		tab:Label("No scripts here yet. Add them in the Scripts table.")
+-- Build one tab per game; remember which one matches the current PlaceId.
+local detectedTab, detectedName
+for _, gm in ipairs(Games) do
+	local tab = Hub:Tab(gm.name, gm.icon)
+	tab:Section(gm.name)
+	if isCurrentGame(gm) then
+		detectedTab, detectedName = tab, gm.name
+		tab:Label("✓ Detected: you are in this game (PlaceId " .. currentPlaceId .. ").")
 	end
-	for _, entry in ipairs(section.items) do
+	if #gm.items == 0 then
+		tab:Label("No scripts here yet. Add them in the Games table.")
+	end
+	for _, entry in ipairs(gm.items) do
 		tab:Button(entry.name, function() runEntry(entry) end)
 	end
 end
 
--- Settings tab — demonstrates NovaUI's reactive controls on the Fusion UI.
+-- Settings tab — reactive controls on the Fusion UI.
 local settings = Hub:Tab("Settings", "⚙")
+settings:Section("Game")
+settings:Label("Current PlaceId: " .. tostring(currentPlaceId))
+settings:Label(detectedName and ("Detected game: " .. detectedName) or "Game not recognised — using Universal.")
 settings:Section("Interface")
 settings:Label("Toggle the hub: Right-Shift (PC), the floating button (mobile), or View/Select (console).")
-
-local demoState = NovaUI.State(true)
-settings:Toggle("Reactive demo toggle", demoState)
-settings:Label(NovaUI.Computed(function()
-	return "That toggle is currently " .. (demoState:get() and "ON" or "OFF")
-end))
-
-settings:Section("Session")
 settings:Button("Unload hub", function() Hub:Destroy() end)
 
-Hub:Notify("Nova Hub", "Loaded. Fill the Scripts table with your working scripts.", 6)
+-- Auto-open the detected game's tab and announce it.
+if detectedTab then
+	detectedTab.focus()
+	Hub:Notify("Game detected", detectedName .. "  (PlaceId " .. currentPlaceId .. ")", 6)
+else
+	Hub:Notify("Unknown game", "PlaceId " .. currentPlaceId .. " — using the Universal tab.", 6)
+end
