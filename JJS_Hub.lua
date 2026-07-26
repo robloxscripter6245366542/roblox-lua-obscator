@@ -356,7 +356,7 @@ function Library.CreateWindow(titleText)
 	local logo = new("ImageButton", {
 		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0),
 		Size = UDim2.fromOffset(28, 28), BackgroundColor3 = Theme.accent,
-		Text = "", AutoButtonColor = false, Image = "", Parent = top,
+		AutoButtonColor = false, Image = "", Parent = top,
 	})
 	corner(logo, 14); stroke(logo, Color3.fromRGB(120, 200, 255), 1)
 	local logoGlyph = new("TextLabel", { Size = UDim2.new(1, 0, 1, 0),
