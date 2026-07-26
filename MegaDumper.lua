@@ -35,12 +35,19 @@ local CONFIG = {
     IndentStr      = "    ",
     MaxBlankRun    = 1,
     BytecodeAsHex  = true,
-    MaxDecompiles  = 6000,
-    SavePerScript  = true,
-    SaveCombined   = true,
-    CopyClipboard  = true,     -- copy the whole thing (chunk fallback)
+    MaxDecompiles  = 4000,     -- hard cap on scripts decompiled per run
+    SavePerScript  = true,     -- the COMPLETE output (streamed to disk)
+    CopyClipboard  = true,     -- copy the combined report (capped, see below)
     ChunkSize      = 180000,
-    YieldEvery     = 20,
+
+    -- ── Anti-crash (these keep big games from OOM-killing the client) ──
+    -- The combined in-memory report is CAPPED. Per-script files always hold
+    -- everything; the combined blob is only for clipboard convenience and
+    -- stops growing past this many bytes so we never balloon memory.
+    CombinedCap    = 6000000,  -- ~6 MB clipboard/combined cap
+    YieldEvery     = 3,        -- task.wait() after this many decompiles
+    TimeBudget     = 0.008,    -- ...and yield if a step ran longer than this (s)
+    MaxBeautify    = 150000,   -- skip re-indent on bodies bigger than this
     IgnoreRoots    = { "CoreGui", "CorePackages", "RobloxGui", "RobloxReplicatedStorage", "CoreScripts" },
 }
 -- ──────────────────────────────────────────────────────────
@@ -276,68 +283,106 @@ local function run()
     table.sort(kR, function(a, b) return a.path < b.path end)
     table.sort(kS, function(a, b) return a.path < b.path end)
 
-    local out = {}
-    out[#out + 1] = "============================================================"
-    out[#out + 1] = "  MegaDumper  –  remotes + decompiled + cleaned code"
-    out[#out + 1] = ("  %s (PlaceId %s)"):format(game.Name ~= "" and game.Name or "Game", tostring(game.PlaceId))
-    out[#out + 1] = ("  Remotes: %d  |  Scripts: %d"):format(#kR, #kS)
-    out[#out + 1] = "  Generated: " .. os.date("!%Y-%m-%d %H:%M:%S UTC")
-    out[#out + 1] = "============================================================\n"
+    -- The combined blob is CAPPED so memory never balloons on huge games.
+    -- Per-script files (below) always hold the complete output.
+    local out, outBytes, capped = {}, 0, false
+    local function add(line)
+        if capped then return end
+        out[#out + 1] = line
+        outBytes = outBytes + #line + 1
+        if outBytes >= CONFIG.CombinedCap then
+            out[#out + 1] = "\n-- [combined report capped here to protect memory; "
+                            .. "the full output is in the per-script files under /"
+                            .. CONFIG.OutputFolder .. "] --"
+            capped = true
+        end
+    end
+
+    add("============================================================")
+    add("  MegaDumper  –  remotes + decompiled + cleaned code")
+    add(("  %s (PlaceId %s)"):format(game.Name ~= "" and game.Name or "Game", tostring(game.PlaceId)))
+    add(("  Remotes: %d  |  Scripts: %d"):format(#kR, #kS))
+    add("  Generated: " .. os.date("!%Y-%m-%d %H:%M:%S UTC"))
+    add("============================================================\n")
 
     -- Remotes
-    out[#out + 1] = ("##### REMOTES (%d) #####"):format(#kR)
-    for i, r in ipairs(kR) do
-        out[#out + 1] = ("[%d] (%s)  %s"):format(i, r.cn, r.path)
-        out[#out + 1] = ("    %s:%s()"):format(pathExpr(r.obj), r.info.call)
+    add(("##### REMOTES (%d) #####"):format(#kR))
+    for _, r in ipairs(kR) do
+        add(("[%d] (%s)  %s"):format(_, r.cn, r.path))
+        add(("    %s:%s()"):format(pathExpr(r.obj), r.info.call))
     end
-    out[#out + 1] = ""
+    add("")
 
-    -- Code
-    notify(("Decompiling %d scripts..."):format(#kS))
-    out[#out + 1] = ("##### CODE (%d scripts) #####\n"):format(#kS)
+    -- Code — decompile, clean, and STREAM each script straight to disk so
+    -- we never hold thousands of sources in memory at once.
+    notify(("Decompiling %d scripts (this can take a while - don't panic)..."):format(#kS))
+    add(("##### CODE (%d scripts) #####\n"):format(#kS))
     local counts = { clean = 0, vm = 0, unavailable = 0 }
-    local done, ops = 0, 0
+    local done = 0
+    local lastClock = os.clock()
+    local function breathe()
+        -- Yield on a time budget so a heavy decompile can never block the
+        -- main thread long enough for Roblox to kill the client.
+        if os.clock() - lastClock >= CONFIG.TimeBudget then
+            task.wait()
+            lastClock = os.clock()
+        end
+    end
+
     for i, s in ipairs(kS) do
         local cn = "Script"; pcall(function() cn = s.obj.ClassName end)
         local code, method
         if done < CONFIG.MaxDecompiles then
-            code, method = getScriptCode(s.obj); done = done + 1
-            ops = ops + 1; if ops % CONFIG.YieldEvery == 0 then task.wait() end
+            local ok, c, m = pcall(getScriptCode, s.obj)
+            if ok then code, method = c, m else method = "error" end
+            done = done + 1
+            if done % CONFIG.YieldEvery == 0 then task.wait(); lastClock = os.clock() end
         else method = "skipped (cap)" end
+        breathe()
 
         local cls = classify(code, method)
         counts[cls] = (counts[cls] or 0) + 1
 
         local body = code or "-- unavailable (protected/empty)"
-        if cls == "clean" and CONFIG.Reindent then
+        -- Only beautify readable, reasonably-sized bodies; skip giant/VM ones.
+        if cls == "clean" and CONFIG.Reindent and #body <= CONFIG.MaxBeautify then
             local okB, res = pcall(reindent, body); if okB then body = res end
-            body = collapseBlanks(body)
+            local okC, res2 = pcall(collapseBlanks, body); if okC then body = res2 end
+            breathe()
         end
 
-        out[#out + 1] = "------------------------------------------------------------"
-        out[#out + 1] = ("[%d] %s  (%s)  [%s | via %s]"):format(i, s.path, cn, cls, tostring(method))
-        out[#out + 1] = "------------------------------------------------------------"
-        out[#out + 1] = body
-        out[#out + 1] = ""
+        local header = ("[%d] %s  (%s)  [%s | via %s]"):format(i, s.path, cn, cls, tostring(method))
 
+        -- Stream to its own file (complete output, unaffected by the cap).
         if CONFIG.SavePerScript and writefile_fn then
             local ext = (cls == "vm") and ".vm.lua" or (cls == "unavailable") and ".missing.lua" or ".lua"
-            pcall(writefile_fn, safePath(s.path, cls, ext), body)
+            pcall(writefile_fn, safePath(s.path, cls, ext), "-- " .. header .. "\n\n" .. body)
         end
+
+        -- Add to the capped combined blob for the clipboard.
+        add("------------------------------------------------------------")
+        add(header)
+        add("------------------------------------------------------------")
+        add(body)
+        add("")
+
+        body = nil  -- let it GC before the next iteration
     end
 
     local text = table.concat(out, "\n")
+    out = nil
 
-    if CONFIG.SaveCombined and writefile_fn then
+    if writefile_fn then
         pcall(writefile_fn, ("%s/_ALL_%s.txt"):format(CONFIG.OutputFolder, tostring(game.PlaceId)), text)
     end
     if CONFIG.CopyClipboard then copyAll(text) end
 
-    print(text)
-    print(("[MegaDumper] Done. Remotes: %d | Scripts: %d | clean=%d vm=%d unavailable=%d | %d chars.")
-        :format(#kR, #kS, counts.clean, counts.vm, counts.unavailable, #text))
-    notify(("Done. %d remotes, %d scripts (clean=%d vm=%d). Copied + saved to /%s.")
-        :format(#kR, #kS, counts.clean, counts.vm, CONFIG.OutputFolder))
+    print(("[MegaDumper] Done. Remotes: %d | Scripts: %d | clean=%d vm=%d unavailable=%d | %d chars%s.")
+        :format(#kR, #kS, counts.clean, counts.vm, counts.unavailable, #text,
+                capped and " (combined capped; files complete)" or ""))
+    notify(("Done. %d remotes, %d scripts (clean=%d vm=%d). Saved to /%s%s.")
+        :format(#kR, #kS, counts.clean, counts.vm, CONFIG.OutputFolder,
+                capped and " (clipboard capped - use files)" or " + clipboard"))
 end
 
 local okRun, err = pcall(run)
