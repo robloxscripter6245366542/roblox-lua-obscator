@@ -25,7 +25,7 @@ local TextChatService = game:GetService("TextChatService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Gemini API Configuration
-local API_KEY = "YOUR_GEMINI_API_KEY_HERE"
+local API_KEY = "AQ.Ab8RN6LhqzbrfbDy5UWbBu-BvB0glwyEDbvg1FnOAiAGsAuSpw"
 local API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" .. API_KEY
 
 local TALK_DISTANCE = 15   -- Distance in studs to trigger response
