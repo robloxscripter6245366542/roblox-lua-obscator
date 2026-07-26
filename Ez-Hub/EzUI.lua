@@ -17,6 +17,14 @@
 		tab:Keybind("Fly", Enum.KeyCode.F, function(key) print(key) end)
 		win:Notify("Loaded", "Welcome to EzUI", 4)
 
+	Built for both mobile and PC:
+	  * A floating ☰ button (draggable; tap to toggle) shows/hides the UI —
+	    the primary control on touch devices that have no keyboard.
+	  * Window size adapts to the screen and re-fits on rotation/resize.
+	  * All controls accept touch as well as mouse; sliders have an enlarged
+	    finger-friendly hit area; whole rows are tappable.
+	  * PC keyboard shortcut still toggles the window (default Right-Shift).
+
 	Improvements over the original EzLib:
 	  * Depth: soft drop shadow, layered surfaces, subtle strokes.
 	  * Real toggle switches (sliding knob) instead of red/green blocks.
@@ -216,12 +224,30 @@ function EzUI.new(config)
 	})
 	self.gui = gui
 
+	-- Responsive sizing so the window fits both large monitors and phones.
+	local WIN_W, WIN_H = 540, 380
+	local function viewport()
+		local v = gui.AbsoluteSize
+		if v.X < 2 or v.Y < 2 then
+			v = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 600)
+		end
+		return v
+	end
+	local function computeSize()
+		local v = viewport()
+		return math.floor(math.min(WIN_W, v.X - 24)), math.floor(math.min(WIN_H, v.Y - 48))
+	end
+	self.computeSize = computeSize
+	local function expandedSize() local w, h = computeSize(); return UDim2.fromOffset(w, h) end
+	local function collapsedSize() local w = computeSize(); return UDim2.fromOffset(w, 42) end
+	self.expandedSize, self.collapsedSize = expandedSize, collapsedSize
+
 	-- Root window
 	local window = new("Frame", {
 		Name = "Window",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = config.Position or UDim2.new(0.5, 0, 0.5, 0),
-		Size = UDim2.new(0, 540, 0, 380),
+		Size = expandedSize(),
 		BackgroundColor3 = Theme.Background,
 		BorderSizePixel = 0,
 		Parent = gui,
@@ -230,6 +256,11 @@ function EzUI.new(config)
 	corner(window, 12)
 	stroke(window, Theme.Stroke, 1, 0.2)
 	self.window = window
+
+	-- Re-fit when the screen rotates or resizes (mobile orientation changes).
+	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		window.Size = self.minimized and collapsedSize() or expandedSize()
+	end)
 
 	-- Title bar
 	local topbar = new("Frame", {
@@ -293,12 +324,11 @@ function EzUI.new(config)
 	local content -- forward declaration
 	iconButton(-46, "–", Theme.Text, function()
 		self.minimized = not self.minimized
-		tween(window, SPRING, {
-			Size = self.minimized and UDim2.new(0, 540, 0, 42) or UDim2.new(0, 540, 0, 380)
-		})
+		tween(window, SPRING, { Size = self.minimized and collapsedSize() or expandedSize() })
 	end)
 	iconButton(-14, "✕", Color3.fromRGB(255, 90, 90), function()
-		tween(window, FAST, { Size = UDim2.new(0, 540, 0, 0), BackgroundTransparency = 1 })
+		local w = computeSize()
+		tween(window, FAST, { Size = UDim2.fromOffset(w, 0), BackgroundTransparency = 1 })
 		taskWait(0.16)
 		gui:Destroy()
 	end)
@@ -368,11 +398,65 @@ function EzUI.new(config)
 		Parent = self.notifHolder,
 	})
 
-	-- Toggle visibility with the keybind (ignores game-processed input).
+	local function setVisible(v)
+		self.window.Visible = v
+	end
+	self.setVisible = setVisible
+
+	-- Floating action button — the primary way to show/hide on mobile (no
+	-- keyboard), and a convenience on PC. Draggable; a tap (no drag) toggles.
+	local fab = new("TextButton", {
+		Name = "Toggle",
+		Text = "☰",
+		Font = Theme.FontBold,
+		TextSize = 24,
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundColor3 = Theme.Accent,
+		Size = UDim2.new(0, 48, 0, 48),
+		Position = UDim2.new(0, 18, 0, 90),
+		AnchorPoint = Vector2.new(0, 0),
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		ZIndex = 60,
+		Parent = gui,
+	})
+	corner(fab, 24)
+	shadow(fab)
+	self.floatBtn = fab
+
+	local fabDragging, fabMoved, fabStart, fabStartPos
+	fab.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			fabDragging = true
+			fabMoved = false
+			fabStart = input.Position
+			fabStartPos = fab.Position
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if fabDragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - fabStart
+			if delta.Magnitude > 5 then fabMoved = true end
+			fab.Position = UDim2.new(
+				fabStartPos.X.Scale, fabStartPos.X.Offset + delta.X,
+				fabStartPos.Y.Scale, fabStartPos.Y.Offset + delta.Y)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if fabDragging and (input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch) then
+			fabDragging = false
+			if not fabMoved then setVisible(not self.window.Visible) end
+		end
+	end)
+
+	-- Keyboard shortcut (PC): toggle the window (FAB stays visible for mobile).
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
 		if input.KeyCode == self.keybind then
-			gui.Enabled = not gui.Enabled
+			setVisible(not self.window.Visible)
 		end
 	end)
 
@@ -626,6 +710,17 @@ function EzUI:Tab(name)
 		})
 		corner(knob, 6)
 
+		-- Invisible, finger-friendly hit area covering the thin track.
+		local hitArea = new("TextButton", {
+			Text = "",
+			AutoButtonColor = false,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -24, 0, 30),
+			Position = UDim2.new(0, 12, 1, -11),
+			AnchorPoint = Vector2.new(0, 0.5),
+			Parent = frame,
+		})
+
 		local handle = {}
 		local function setFromScale(scale, fire)
 			scale = math.clamp(scale, 0, 1)
@@ -640,7 +735,7 @@ function EzUI:Tab(name)
 			local scale = (input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X
 			setFromScale(scale, true)
 		end
-		track.InputBegan:Connect(function(input)
+		hitArea.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1
 			or input.UserInputType == Enum.UserInputType.Touch then
 				dragging = true; draggingSlider = true; update(input)
@@ -850,7 +945,7 @@ do
 
 	local main = win:Tab("Home")
 	main:Section("Welcome")
-	main:Label("This is the redesigned single-file EzUI. Press Right-Shift to toggle.")
+	main:Label("Redesigned single-file EzUI. Press Right-Shift (PC) or tap the ☰ button (mobile) to toggle.")
 	main:Button("Show notification", function()
 		win:Notify("Hello", "EzUI notifications stack and fade automatically.", 4)
 	end)
