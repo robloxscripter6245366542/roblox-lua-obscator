@@ -1078,10 +1078,24 @@ local function startFly()
 	end)
 end
 
+-- Re-attach fly to a freshly spawned character (the old body movers die with it).
+LP.CharacterAdded:Connect(function()
+	if flags.fly then
+		task.wait(0.6)
+		if flyConn then flyConn:Disconnect(); flyConn = nil end
+		flyBV, flyBG = nil, nil
+		startFly()
+	end
+end)
+
 -- ------------------------------------------------------------------ Automation
+local warnedNoPrompt = false
 local function firePrompts(includeDoors)
 	if not fireproximityprompt then
-		Window:Notify({ Title = "Unsupported", Description = "Your executor lacks fireproximityprompt.", Duration = 5 })
+		if not warnedNoPrompt then
+			warnedNoPrompt = true
+			Window:Notify({ Title = "Unsupported", Description = "Your executor lacks fireproximityprompt.", Duration = 5 })
+		end
 		return 0
 	end
 	local cr = workspace:FindFirstChild("CurrentRooms")
@@ -1169,7 +1183,18 @@ player:CreateToggle({ Name = "Speed",   Default = false, Flag = "speed",    Call
 player:CreateSlider({ Name = "WalkSpeed", Min = 16, Max = 120, Default = flags.walkspeed, Step = 1, Suffix = " sps", Flag = "walkspeed", Callback = function(v) flags.walkspeed = v end })
 player:CreateToggle({ Name = "High Jump", Default = false, Flag = "highjump", Callback = function(v) flags.highjump = v end })
 player:CreateSlider({ Name = "JumpPower", Min = 50, Max = 250, Default = flags.jumppower, Step = 1, Flag = "jumppower", Callback = function(v) flags.jumppower = v end })
-player:CreateToggle({ Name = "Noclip",  Default = false, Flag = "noclip",   Callback = function(v) flags.noclip = v end })
+player:CreateToggle({ Name = "Noclip",  Default = false, Flag = "noclip",   Callback = function(v)
+	flags.noclip = v
+	if not v then
+		-- Restore collisions so the player stops falling through the world.
+		local c = getChar()
+		if c then
+			for _, p in ipairs(c:GetDescendants()) do
+				if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then p.CanCollide = true end
+			end
+		end
+	end
+end })
 player:CreateToggle({ Name = "Fly (WASD + Space/Ctrl)", Default = false, Flag = "fly", Callback = function(v) if v then startFly() else stopFly() end end })
 player:CreateSlider({ Name = "Fly Speed", Min = 20, Max = 250, Default = flags.flyspeed, Step = 5, Flag = "flyspeed", Callback = function(v) flags.flyspeed = v end })
 
