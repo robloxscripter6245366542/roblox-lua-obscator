@@ -1,14 +1,14 @@
 --[==[
 	EZ HUB — RIVALS  (PlaceId 18126510175)
 	One self-contained script. UI = the embedded (bug-fixed) Acrylic UI v3.5.
-	Reliable client-side FPS kit: camera Aimbot, ESP, Triggerbot, movement.
+	Full client-side FPS kit: Aimbot, Triggerbot, ESP, World, Movement, Misc.
 
 	loadstring(game:HttpGet(".../Ez-Hub/Scripts/Rivals.lua"))()
 
-	Notes: Rivals validates hits server-side, so "silent aim" / hitbox
-	expansion is not included (it would just be patched). Camera aimbot, ESP,
-	triggerbot and movement are client-side and reliable. ESP needs an executor
-	with Drawing; triggerbot needs mouse1click.
+	Rivals validates hits server-side, so silent-aim / hitbox expansion / no-recoil
+	(server-side) are intentionally omitted. Everything here is client-side.
+	ESP/crosshair need a Drawing-capable executor; triggerbot needs mouse1click;
+	FPS cap needs setfpscap; server hop needs HttpGet + TeleportService.
 ]==]
 
 -- ╔══════════════════════════════════════════════════════════════════════╗
@@ -917,36 +917,41 @@ local Players    = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS        = game:GetService("UserInputService")
 local TPS        = game:GetService("TeleportService")
+local Lighting   = game:GetService("Lighting")
+local RS         = game:GetService("ReplicatedStorage")
+local HttpSvc    = game:GetService("HttpService")
 local LP         = Players.LocalPlayer
 local Camera     = workspace.CurrentCamera
 
 local flags = {
-	aimPart = "Head", fov = 120, smooth = 6, teamCheck = true, visCheck = false,
-	trigDelay = 60, walkspeed = 16, jumppower = 50, flyspeed = 60, fovChanger = 0,
-	espColor = Color3.fromRGB(255, 80, 90),
+	aimPart = "Head", fov = 120, smooth = 6, prediction = 0.15, teamCheck = true, visCheck = false, sticky = false,
+	trigDelay = 60, walkspeed = 16, jumppower = 50, flyspeed = 60, spinspeed = 20, fovChanger = 0, fpsCap = 0,
+	espColor = Color3.fromRGB(255, 80, 90), fovColor = Color3.fromRGB(255,255,255),
+	crossColor = Color3.fromRGB(0,255,120), crossSize = 6, chamsColor = Color3.fromRGB(255,80,90),
 }
+
+local function rivalsRemote(...)
+	local node = RS:FindFirstChild("Remotes")
+	for _, n in ipairs({...}) do if not node then return nil end; node = node:FindFirstChild(n) end
+	return node
+end
 
 local function alive(p)
 	local ch = p.Character
 	local hum = ch and ch:FindFirstChildOfClass("Humanoid")
 	return (ch and hum and hum.Health > 0 and ch:FindFirstChild("Head")) and true or false
 end
-local function isEnemy(p)
-	if not flags.teamCheck then return true end
-	return p.Team ~= LP.Team
-end
+local function isEnemy(p) if not flags.teamCheck then return true end; return p.Team ~= LP.Team end
 local function validAim(p) return p ~= LP and alive(p) and isEnemy(p) end
 
 local function getChar() return LP.Character end
 local function getHum()  local c=getChar(); return c and c:FindFirstChildOfClass("Humanoid") end
 local function getRoot() local c=getChar(); return c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart) end
-
 local function screenCenter() return Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2) end
 
 local function visible(part)
 	local origin = Camera.CFrame.Position
-	local rp = RaycastParams.new()
-	rp.FilterType = Enum.RaycastFilterType.Exclude
+	local rp = RaycastParams.new(); rp.FilterType = Enum.RaycastFilterType.Exclude
 	rp.FilterDescendantsInstances = { getChar(), Camera }
 	local res = workspace:Raycast(origin, part.Position - origin, rp)
 	return (not res) or (part.Parent and res.Instance:IsDescendantOf(part.Parent)) or false
@@ -959,137 +964,158 @@ if game.PlaceId ~= 18126510175 then
 	Window:Notify({ Title = "Heads up", Description = "This script is built for RIVALS. Some features may not work here.", Duration = 5 })
 end
 
--- ------------------------------------------------------------------ Target selection
+-- ------------------------------------------------------------------ Target selection (with sticky + prediction)
+local stickyTarget
+local function partOf(p) return p.Character and (p.Character:FindFirstChild(flags.aimPart) or p.Character:FindFirstChild("Head")) end
+local function inFov(part, limit)
+	local sp, on = Camera:WorldToViewportPoint(part.Position)
+	if not on then return false end
+	return (Vector2.new(sp.X, sp.Y) - screenCenter()).Magnitude <= limit, (Vector2.new(sp.X, sp.Y) - screenCenter()).Magnitude
+end
 local function getClosest(fovLimit)
 	fovLimit = fovLimit or flags.fov
-	local center = screenCenter()
-	local best, bestDist
+	if flags.sticky and stickyTarget and Players:FindFirstChild(stickyTarget.Name) and validAim(stickyTarget) then
+		local part = partOf(stickyTarget)
+		if part and select(1, inFov(part, fovLimit * 1.35)) and ((not flags.visCheck) or visible(part)) then return part end
+		stickyTarget = nil
+	end
+	local best, bestDist, bestPlr
 	for _, p in ipairs(Players:GetPlayers()) do
 		if validAim(p) then
-			local part = p.Character:FindFirstChild(flags.aimPart) or p.Character:FindFirstChild("Head")
+			local part = partOf(p)
 			if part then
-				local sp, on = Camera:WorldToViewportPoint(part.Position)
-				if on then
-					local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
-					if d <= fovLimit and (not bestDist or d < bestDist) then
-						if (not flags.visCheck) or visible(part) then best, bestDist = part, d end
-					end
+				local ok, d = inFov(part, fovLimit)
+				if ok and (not bestDist or d < bestDist) and ((not flags.visCheck) or visible(part)) then
+					best, bestDist, bestPlr = part, d, p
 				end
 			end
 		end
 	end
+	if best then stickyTarget = bestPlr end
 	return best
 end
-
--- ------------------------------------------------------------------ FOV circle (Drawing)
-local fovCircle
-if Drawing then
-	fovCircle = Drawing.new("Circle")
-	fovCircle.Thickness = 1.5; fovCircle.NumSides = 64; fovCircle.Filled = false
-	fovCircle.Color = Color3.fromRGB(255, 255, 255); fovCircle.Transparency = 0.7; fovCircle.Visible = false
+local function aimPosition(part)
+	return part.Position + (part.AssemblyLinearVelocity or Vector3.zero) * flags.prediction
 end
 
--- ------------------------------------------------------------------ Aim state
-local aiming = false
-local aimKeyObj  -- set after UI build
+-- ------------------------------------------------------------------ FOV circle + crosshair (Drawing)
+local fovCircle, cross = nil, nil
+if Drawing then
+	fovCircle = Drawing.new("Circle"); fovCircle.Thickness = 1.5; fovCircle.NumSides = 64; fovCircle.Filled = false; fovCircle.Transparency = 0.75; fovCircle.Visible = false
+	cross = {}
+	for _, k in ipairs({ "t", "b", "l", "r" }) do cross[k] = Drawing.new("Line"); cross[k].Thickness = 1.5; cross[k].Visible = false end
+end
+local function updateCrosshair()
+	if not cross then return end
+	local ctr = screenCenter(); local s = flags.crossSize; local col = flags.crossColor; local on = flags.crosshair == true
+	for _, k in ipairs({ "t", "b", "l", "r" }) do cross[k].Visible = on; cross[k].Color = col end
+	if on then
+		cross.t.From = ctr - Vector2.new(0, s); cross.t.To = ctr - Vector2.new(0, s*2)
+		cross.b.From = ctr + Vector2.new(0, s); cross.b.To = ctr + Vector2.new(0, s*2)
+		cross.l.From = ctr - Vector2.new(s, 0); cross.l.To = ctr - Vector2.new(s*2, 0)
+		cross.r.From = ctr + Vector2.new(s, 0); cross.r.To = ctr + Vector2.new(s*2, 0)
+	end
+end
+
+-- ------------------------------------------------------------------ Aim state (hold / toggle)
+local aiming, aimToggled = false, false
+local aimKeyObj
 UIS.InputBegan:Connect(function(input, gp)
 	if gp or not aimKeyObj then return end
 	local k = aimKeyObj:GetKey()
-	if input.KeyCode == k or input.UserInputType == k then aiming = true end
+	if input.KeyCode == k or input.UserInputType == k then
+		if flags.aimMode == "Toggle" then aimToggled = not aimToggled else aiming = true end
+	end
 end)
 UIS.InputEnded:Connect(function(input)
 	if not aimKeyObj then return end
 	local k = aimKeyObj:GetKey()
-	if input.KeyCode == k or input.UserInputType == k then aiming = false end
+	if (input.KeyCode == k or input.UserInputType == k) and flags.aimMode ~= "Toggle" then aiming = false end
 end)
+local function isAiming() return flags.aimMode == "Toggle" and aimToggled or aiming end
 
--- ------------------------------------------------------------------ ESP (Drawing)
-local esp = {}
-local function newDraw(t, props)
-	local d = Drawing.new(t)
-	for k, v in pairs(props) do d[k] = v end
-	d.Visible = false
-	return d
-end
+-- ------------------------------------------------------------------ ESP (Drawing) + Chams (Highlight)
+local esp, chams = {}, {}
+local function newDraw(t, props) local d = Drawing.new(t); for k, v in pairs(props) do d[k] = v end; d.Visible = false; return d end
 local function makeEsp(p)
 	if not Drawing then return end
 	esp[p] = {
-		box       = newDraw("Square", { Thickness = 1, Filled = false, Transparency = 1 }),
-		name      = newDraw("Text",   { Size = 13, Center = true, Outline = true }),
-		hpBg      = newDraw("Square", { Thickness = 1, Filled = true, Color = Color3.new(0,0,0), Transparency = 0.6 }),
-		hp        = newDraw("Square", { Thickness = 1, Filled = true }),
-		tracer    = newDraw("Line",   { Thickness = 1, Transparency = 1 }),
+		box = newDraw("Square", { Thickness = 1, Filled = false }),
+		name = newDraw("Text", { Size = 13, Center = true, Outline = true }),
+		dist = newDraw("Text", { Size = 12, Center = true, Outline = true }),
+		hpBg = newDraw("Square", { Thickness = 1, Filled = true, Color = Color3.new(0,0,0), Transparency = 0.6 }),
+		hp = newDraw("Square", { Thickness = 1, Filled = true }),
+		tracer = newDraw("Line", { Thickness = 1 }),
+		dot = newDraw("Circle", { Thickness = 1, NumSides = 12, Radius = 3, Filled = true }),
 	}
 end
 local function removeEsp(p)
 	if esp[p] then for _, d in pairs(esp[p]) do pcall(function() d:Remove() end) end esp[p] = nil end
+	if chams[p] then pcall(function() chams[p]:Destroy() end) chams[p] = nil end
 end
 local function hideEsp(e) for _, d in pairs(e) do d.Visible = false end end
-
 local function espColorFor(p)
 	if flags.espTeam and p.Team and p.Team.TeamColor then return p.Team.TeamColor.Color end
 	return flags.espColor
 end
-
+local function updateChams(p, show)
+	if show then
+		local h = chams[p]
+		if not h or not h.Parent then
+			h = Instance.new("Highlight"); h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			h.FillTransparency = 0.5; h.OutlineTransparency = 0
+			h.Parent = getChar() and game:GetService("CoreGui") or workspace
+			pcall(function() h.Parent = (gethui and gethui()) or game:GetService("CoreGui") end)
+			chams[p] = h
+		end
+		h.Adornee = p.Character
+		h.FillColor = flags.chamsColor; h.OutlineColor = flags.chamsColor
+	elseif chams[p] then chams[p]:Destroy(); chams[p] = nil end
+end
 local function updateEsp()
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LP then
-			if not esp[p] then makeEsp(p) end
-			local e = esp[p]; if not e then break end
-			local show = flags.esp and alive(p) and ((not flags.espTeamCheck) or p.Team ~= LP.Team)
-			if show then
-				local head = p.Character.Head
-				local hrp = p.Character:FindFirstChild("HumanoidRootPart") or head
-				local topPos = (head.CFrame * CFrame.new(0, 0.7, 0)).Position
-				local botPos = (hrp.CFrame * CFrame.new(0, -3.2, 0)).Position
-				local topV, onTop = Camera:WorldToViewportPoint(topPos)
-				local botV = Camera:WorldToViewportPoint(botPos)
-				if onTop then
-					local h = math.abs(topV.Y - botV.Y)
-					local w = h * 0.62
-					local x, y = topV.X - w / 2, topV.Y
-					local col = espColorFor(p)
-					-- Box
-					e.box.Visible = flags.espBox; e.box.Position = Vector2.new(x, y); e.box.Size = Vector2.new(w, h); e.box.Color = col
-					-- Name
-					if flags.espName then
-						e.name.Visible = true; e.name.Text = p.Name; e.name.Color = col
-						e.name.Position = Vector2.new(topV.X, y - 16)
-					else e.name.Visible = false end
-					-- Health bar (left of box)
-					if flags.espHealth then
-						local hum = p.Character:FindFirstChildOfClass("Humanoid")
-						local frac = hum and math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1) or 1
-						e.hpBg.Visible = true; e.hpBg.Position = Vector2.new(x - 5, y); e.hpBg.Size = Vector2.new(2, h)
-						e.hp.Visible = true
-						e.hp.Size = Vector2.new(2, h * frac)
-						e.hp.Position = Vector2.new(x - 5, y + h * (1 - frac))
-						e.hp.Color = Color3.fromRGB(255 - math.floor(255 * frac), math.floor(255 * frac), 60)
-					else e.hpBg.Visible = false; e.hp.Visible = false end
-					-- Tracer (from bottom center of screen)
-					if flags.espTracer then
-						e.tracer.Visible = true; e.tracer.Color = col
-						e.tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-						e.tracer.To = Vector2.new(topV.X, y + h)
-					else e.tracer.Visible = false end
+			if not esp[p] and Drawing then makeEsp(p) end
+			local e = esp[p]
+			local base = alive(p) and ((not flags.espTeamCheck) or p.Team ~= LP.Team)
+			updateChams(p, flags.chams and base)
+			if e then
+				if flags.esp and base then
+					local head = p.Character.Head
+					local hrp = p.Character:FindFirstChild("HumanoidRootPart") or head
+					local topV, onTop = Camera:WorldToViewportPoint((head.CFrame * CFrame.new(0, 0.7, 0)).Position)
+					local botV = Camera:WorldToViewportPoint((hrp.CFrame * CFrame.new(0, -3.2, 0)).Position)
+					if onTop then
+						local h = math.abs(topV.Y - botV.Y); local w = h * 0.62
+						local x, y = topV.X - w/2, topV.Y; local col = espColorFor(p)
+						e.box.Visible = flags.espBox; e.box.Position = Vector2.new(x, y); e.box.Size = Vector2.new(w, h); e.box.Color = col
+						e.dot.Visible = flags.espDot; e.dot.Position = Vector2.new(topV.X, topV.Y); e.dot.Color = col
+						if flags.espName then e.name.Visible = true; e.name.Text = p.Name; e.name.Color = col; e.name.Position = Vector2.new(topV.X, y - 16) else e.name.Visible = false end
+						if flags.espDist then local d = math.floor((Camera.CFrame.Position - hrp.Position).Magnitude); e.dist.Visible = true; e.dist.Text = d .. "m"; e.dist.Color = col; e.dist.Position = Vector2.new(topV.X, y + h + 2) else e.dist.Visible = false end
+						if flags.espHealth then
+							local hum = p.Character:FindFirstChildOfClass("Humanoid")
+							local frac = hum and math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1) or 1
+							e.hpBg.Visible = true; e.hpBg.Position = Vector2.new(x - 5, y); e.hpBg.Size = Vector2.new(2, h)
+							e.hp.Visible = true; e.hp.Size = Vector2.new(2, h * frac); e.hp.Position = Vector2.new(x - 5, y + h * (1 - frac))
+							e.hp.Color = Color3.fromRGB(255 - math.floor(255 * frac), math.floor(255 * frac), 60)
+						else e.hpBg.Visible = false; e.hp.Visible = false end
+						if flags.espTracer then e.tracer.Visible = true; e.tracer.Color = col; e.tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y); e.tracer.To = Vector2.new(topV.X, y + h) else e.tracer.Visible = false end
+					else hideEsp(e) end
 				else hideEsp(e) end
-			else hideEsp(e) end
+			end
 		end
 	end
 end
 Players.PlayerRemoving:Connect(removeEsp)
 
--- ------------------------------------------------------------------ Main render loop (aimbot + fov circle + esp)
+-- ------------------------------------------------------------------ Main render loop
 RunService.RenderStepped:Connect(function()
-	if fovCircle then
-		fovCircle.Visible = flags.aimbot and flags.showFov
-		fovCircle.Radius = flags.fov
-		fovCircle.Position = screenCenter()
-	end
-	if flags.aimbot and aiming then
+	if fovCircle then fovCircle.Visible = flags.aimbot and flags.showFov; fovCircle.Radius = flags.fov; fovCircle.Position = screenCenter(); fovCircle.Color = flags.fovColor; fovCircle.Filled = flags.fovFilled == true end
+	updateCrosshair()
+	if flags.aimbot and isAiming() then
 		local target = getClosest()
 		if target then
-			local goal = CFrame.new(Camera.CFrame.Position, target.Position)
+			local goal = CFrame.new(Camera.CFrame.Position, aimPosition(target))
 			Camera.CFrame = Camera.CFrame:Lerp(goal, math.clamp(1 / math.max(flags.smooth, 1), 0.02, 1))
 		end
 	end
@@ -1101,42 +1127,35 @@ task.spawn(function()
 	while Window.gui and Window.gui.Parent do
 		if flags.trigger and mouse1click then
 			local t = getClosest(8)
-			if t and ((not flags.visCheck) or visible(t)) then
-				mouse1click()
-				task.wait((flags.trigDelay or 60) / 1000)
-			end
+			if t and ((not flags.visCheck) or visible(t)) then mouse1click(); task.wait((flags.trigDelay or 60)/1000) end
 		end
 		task.wait()
 	end
 end)
 
--- ------------------------------------------------------------------ Movement maintainers
+-- ------------------------------------------------------------------ World / movement maintainers
 RunService.Heartbeat:Connect(function()
 	local h = getHum()
 	if h then
 		if flags.speed then h.WalkSpeed = flags.walkspeed end
 		if flags.highjump then h.UseJumpPower = true; h.JumpPower = flags.jumppower end
 	end
-	if flags.noclip then
-		local c = getChar()
-		if c then for _, pt in ipairs(c:GetDescendants()) do if pt:IsA("BasePart") and pt.CanCollide then pt.CanCollide = false end end end
-	end
+	if flags.noclip then local c = getChar(); if c then for _, pt in ipairs(c:GetDescendants()) do if pt:IsA("BasePart") and pt.CanCollide then pt.CanCollide = false end end end end
 	if flags.fovChanger and flags.fovChanger > 0 then Camera.FieldOfView = flags.fovChanger end
+	if flags.fullbright then Lighting.Brightness = 2; Lighting.ClockTime = 12; Lighting.FogEnd = 1e9; Lighting.GlobalShadows = false; Lighting.Ambient = Color3.fromRGB(180,180,180) end
+	if flags.nofog then Lighting.FogStart = 0; Lighting.FogEnd = 1e9 end
+	if flags.spinbot then local r = getRoot(); if r then r.CFrame = r.CFrame * CFrame.Angles(0, math.rad(flags.spinspeed), 0) end end
+	if flags.bhop then local hh = getHum(); if hh and UIS:IsKeyDown(Enum.KeyCode.Space) and hh.FloorMaterial ~= Enum.Material.Air then hh:ChangeState(Enum.HumanoidStateType.Jumping) end end
 end)
 
 -- Fly
 local flyConn, flyBV, flyBG
-local function stopFly()
-	flags.fly = false
-	if flyConn then flyConn:Disconnect(); flyConn = nil end
-	if flyBV then flyBV:Destroy(); flyBV = nil end
-	if flyBG then flyBG:Destroy(); flyBG = nil end
-end
+local function stopFly() flags.fly = false; if flyConn then flyConn:Disconnect(); flyConn = nil end; if flyBV then flyBV:Destroy(); flyBV = nil end; if flyBG then flyBG:Destroy(); flyBG = nil end end
 local function startFly()
 	local root = getRoot(); if not root then return end
 	flags.fly = true
 	flyBV = Instance.new("BodyVelocity"); flyBV.MaxForce = Vector3.new(1,1,1)*9e9; flyBV.Velocity = Vector3.zero; flyBV.Parent = root
-	flyBG = Instance.new("BodyGyro");     flyBG.MaxTorque = Vector3.new(1,1,1)*9e9; flyBG.P = 9e4;               flyBG.Parent = root
+	flyBG = Instance.new("BodyGyro"); flyBG.MaxTorque = Vector3.new(1,1,1)*9e9; flyBG.P = 9e4; flyBG.Parent = root
 	flyConn = RunService.RenderStepped:Connect(function()
 		if not flags.fly or not root.Parent then return end
 		local dir = Vector3.zero
@@ -1146,27 +1165,77 @@ local function startFly()
 		if UIS:IsKeyDown(Enum.KeyCode.D) then dir = dir + Camera.CFrame.RightVector end
 		if UIS:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
 		if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.new(0,1,0) end
-		flyBV.Velocity = dir * flags.flyspeed
-		flyBG.CFrame = Camera.CFrame
+		flyBV.Velocity = dir * flags.flyspeed; flyBG.CFrame = Camera.CFrame
 	end)
 end
-LP.CharacterAdded:Connect(function()
-	if flags.fly then task.wait(0.6); if flyConn then flyConn:Disconnect() end; flyBV, flyBG = nil, nil; startFly() end
-end)
+LP.CharacterAdded:Connect(function() if flags.fly then task.wait(0.6); if flyConn then flyConn:Disconnect() end; flyBV, flyBG = nil, nil; startFly() end end)
 
 -- Infinite jump
-UIS.JumpRequest:Connect(function()
-	if flags.infjump then local h = getHum(); if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end end
-end)
+UIS.JumpRequest:Connect(function() if flags.infjump then local h = getHum(); if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end end end)
+
+-- Freecam (mouse look)
+local fcConn, fcYaw, fcPitch, fcPos
+local function stopFreecam()
+	flags.freecam = false
+	if fcConn then fcConn:Disconnect(); fcConn = nil end
+	UIS.MouseBehavior = Enum.MouseBehavior.Default
+	pcall(function() Camera.CameraType = Enum.CameraType.Custom end)
+end
+local function startFreecam()
+	flags.freecam = true
+	Camera.CameraType = Enum.CameraType.Scriptable
+	local cf = Camera.CFrame; fcPos = cf.Position
+	local _, ry = cf:ToEulerAnglesYXZ(); fcYaw, fcPitch = math.deg(ry), 0
+	fcConn = RunService.RenderStepped:Connect(function(dt)
+		if not flags.freecam then return end
+		UIS.MouseBehavior = Enum.MouseBehavior.LockCenter
+		local md = UIS:GetMouseDelta()
+		fcYaw = fcYaw - md.X * 0.25
+		fcPitch = math.clamp(fcPitch - md.Y * 0.25, -89, 89)
+		local rot = CFrame.fromEulerAnglesYXZ(math.rad(fcPitch), math.rad(fcYaw), 0)
+		local move = Vector3.zero
+		if UIS:IsKeyDown(Enum.KeyCode.W) then move = move + rot.LookVector end
+		if UIS:IsKeyDown(Enum.KeyCode.S) then move = move - rot.LookVector end
+		if UIS:IsKeyDown(Enum.KeyCode.A) then move = move - rot.RightVector end
+		if UIS:IsKeyDown(Enum.KeyCode.D) then move = move + rot.RightVector end
+		if UIS:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
+		if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then move = move - Vector3.new(0,1,0) end
+		fcPos = fcPos + move * (flags.flyspeed * dt)
+		Camera.CFrame = CFrame.new(fcPos) * rot
+	end)
+end
 
 -- Anti-AFK
 local afkConn
 local function setAntiAFK(on)
 	if on and not afkConn then
-		afkConn = LP.Idled:Connect(function()
-			pcall(function() local V = game:GetService("VirtualUser"); V:CaptureController(); V:ClickButton2(Vector2.new()) end)
-		end)
+		afkConn = LP.Idled:Connect(function() pcall(function() local V = game:GetService("VirtualUser"); V:CaptureController(); V:ClickButton2(Vector2.new()) end) end)
 	elseif not on and afkConn then afkConn:Disconnect(); afkConn = nil end
+end
+
+-- Instant respawn
+local function instantRespawn()
+	local r = rivalsRemote("Replication", "Fighter", "ResetCharacter")
+	if r then pcall(function() r:FireServer() end); Window:Notify({ Title = "Respawn", Description = "Requested reset.", Duration = 2 })
+	else local h = getHum(); if h then h.Health = 0 end end
+end
+
+-- Server hop
+local function serverHop()
+	Window:Notify({ Title = "Server Hop", Description = "Finding a server...", Duration = 3 })
+	task.spawn(function()
+		local ok, body = pcall(function()
+			return HttpSvc:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+		end)
+		if ok and body and body.data then
+			for _, s in ipairs(body.data) do
+				if s.playing and s.maxPlayers and s.playing < s.maxPlayers and s.id ~= game.JobId then
+					pcall(function() TPS:TeleportToPlaceInstance(game.PlaceId, s.id, LP) end); return
+				end
+			end
+		end
+		pcall(function() TPS:Teleport(game.PlaceId, LP) end)
+	end)
 end
 
 -- ==============================================================================
@@ -1176,11 +1245,16 @@ local combatSec = Window:CreateSection("Combat")
 
 local aimTab = combatSec:CreateTab("Aimbot")
 aimTab:CreateToggle({ Name = "Aimbot", Default = false, Flag = "aimbot", Callback = function(v) flags.aimbot = v end })
+aimTab:CreateDropdown({ Name = "Aim Mode", Options = { "Hold", "Toggle" }, Default = "Hold", Flag = "aimmode", Callback = function(v) flags.aimMode = v end })
 aimKeyObj = aimTab:CreateKeybind({ Name = "Aim Key", Default = Enum.UserInputType.MouseButton2, Callback = function() end })
 aimTab:CreateDropdown({ Name = "Target Part", Options = { "Head", "HumanoidRootPart", "Torso" }, Default = "Head", Flag = "aimpart", Callback = function(v) flags.aimPart = v end })
 aimTab:CreateSlider({ Name = "FOV", Min = 20, Max = 600, Default = flags.fov, Step = 5, Flag = "fov", Callback = function(v) flags.fov = v end })
 aimTab:CreateToggle({ Name = "Show FOV Circle", Default = false, Flag = "showfov", Callback = function(v) flags.showFov = v end })
+aimTab:CreateToggle({ Name = "FOV Circle Filled", Default = false, Flag = "fovfilled", Callback = function(v) flags.fovFilled = v end })
+aimTab:CreateColorPicker({ Name = "FOV Circle Color", Default = flags.fovColor, Flag = "fovcolor", Callback = function(v) flags.fovColor = v end })
 aimTab:CreateSlider({ Name = "Smoothness", Min = 1, Max = 25, Default = flags.smooth, Step = 1, Flag = "smooth", Callback = function(v) flags.smooth = v end })
+aimTab:CreateSlider({ Name = "Prediction", Min = 0, Max = 100, Default = math.floor(flags.prediction * 100), Step = 1, Suffix = "%", Flag = "prediction", Callback = function(v) flags.prediction = v / 100 end })
+aimTab:CreateToggle({ Name = "Sticky Target", Default = false, Flag = "sticky", Callback = function(v) flags.sticky = v end })
 aimTab:CreateToggle({ Name = "Team Check", Default = true, Flag = "teamcheck", Callback = function(v) flags.teamCheck = v end })
 aimTab:CreateToggle({ Name = "Visible Check", Default = false, Flag = "vischeck", Callback = function(v) flags.visCheck = v end })
 aimTab:CreateToggle({ Name = "Triggerbot", Default = false, Flag = "trigger", Callback = function(v) flags.trigger = v end })
@@ -1191,34 +1265,55 @@ espTab:CreateToggle({ Name = "ESP", Default = false, Flag = "esp", Callback = fu
 espTab:CreateToggle({ Name = "Boxes", Default = true, Flag = "espbox", Callback = function(v) flags.espBox = v end })
 espTab:CreateToggle({ Name = "Names", Default = true, Flag = "espname", Callback = function(v) flags.espName = v end })
 espTab:CreateToggle({ Name = "Health Bars", Default = true, Flag = "esphealth", Callback = function(v) flags.espHealth = v end })
+espTab:CreateToggle({ Name = "Distance", Default = false, Flag = "espdist", Callback = function(v) flags.espDist = v end })
+espTab:CreateToggle({ Name = "Head Dot", Default = false, Flag = "espdot", Callback = function(v) flags.espDot = v end })
 espTab:CreateToggle({ Name = "Tracers", Default = false, Flag = "esptracer", Callback = function(v) flags.espTracer = v end })
+espTab:CreateToggle({ Name = "Chams (through walls)", Default = false, Flag = "chams", Callback = function(v) flags.chams = v end })
+espTab:CreateColorPicker({ Name = "Chams Color", Default = flags.chamsColor, Flag = "chamscolor", Callback = function(v) flags.chamsColor = v end })
 espTab:CreateToggle({ Name = "Team Check (ESP)", Default = true, Flag = "espteamcheck", Callback = function(v) flags.espTeamCheck = v end })
 espTab:CreateToggle({ Name = "Use Team Colors", Default = false, Flag = "espteam", Callback = function(v) flags.espTeam = v end })
-espTab:CreateColorPicker({ Name = "ESP Color", Default = flags.espColor, Flag = "espcolor", Callback = function(col) flags.espColor = col end })
+espTab:CreateColorPicker({ Name = "ESP Color", Default = flags.espColor, Flag = "espcolor", Callback = function(v) flags.espColor = v end })
 
-local playerTab = Window:CreateSection("Player"):CreateTab("Movement")
-playerTab:CreateToggle({ Name = "Speed", Default = false, Flag = "speed", Callback = function(v) flags.speed = v end })
-playerTab:CreateSlider({ Name = "WalkSpeed", Min = 16, Max = 120, Default = flags.walkspeed, Step = 1, Flag = "walkspeed", Callback = function(v) flags.walkspeed = v end })
-playerTab:CreateToggle({ Name = "High Jump", Default = false, Flag = "highjump", Callback = function(v) flags.highjump = v end })
-playerTab:CreateSlider({ Name = "JumpPower", Min = 50, Max = 250, Default = flags.jumppower, Step = 1, Flag = "jumppower", Callback = function(v) flags.jumppower = v end })
-playerTab:CreateToggle({ Name = "Infinite Jump", Default = false, Flag = "infjump", Callback = function(v) flags.infjump = v end })
-playerTab:CreateToggle({ Name = "Noclip", Default = false, Flag = "noclip", Callback = function(v)
+local worldTab = Window:CreateSection("World"):CreateTab("World")
+worldTab:CreateToggle({ Name = "Fullbright", Default = false, Flag = "fullbright", Callback = function(v) flags.fullbright = v end })
+worldTab:CreateToggle({ Name = "No Fog", Default = false, Flag = "nofog", Callback = function(v) flags.nofog = v end })
+worldTab:CreateToggle({ Name = "Custom Crosshair", Default = false, Flag = "crosshair", Callback = function(v) flags.crosshair = v end })
+worldTab:CreateColorPicker({ Name = "Crosshair Color", Default = flags.crossColor, Flag = "crosscolor", Callback = function(v) flags.crossColor = v end })
+worldTab:CreateSlider({ Name = "Crosshair Size", Min = 2, Max = 20, Default = flags.crossSize, Step = 1, Flag = "crosssize", Callback = function(v) flags.crossSize = v end })
+
+local moveTab = Window:CreateSection("Player"):CreateTab("Movement")
+moveTab:CreateToggle({ Name = "Speed", Default = false, Flag = "speed", Callback = function(v) flags.speed = v end })
+moveTab:CreateSlider({ Name = "WalkSpeed", Min = 16, Max = 120, Default = flags.walkspeed, Step = 1, Flag = "walkspeed", Callback = function(v) flags.walkspeed = v end })
+moveTab:CreateToggle({ Name = "High Jump", Default = false, Flag = "highjump", Callback = function(v) flags.highjump = v end })
+moveTab:CreateSlider({ Name = "JumpPower", Min = 50, Max = 250, Default = flags.jumppower, Step = 1, Flag = "jumppower", Callback = function(v) flags.jumppower = v end })
+moveTab:CreateToggle({ Name = "Infinite Jump", Default = false, Flag = "infjump", Callback = function(v) flags.infjump = v end })
+moveTab:CreateToggle({ Name = "Bhop", Default = false, Flag = "bhop", Callback = function(v) flags.bhop = v end })
+moveTab:CreateToggle({ Name = "Noclip", Default = false, Flag = "noclip", Callback = function(v)
 	flags.noclip = v
 	if not v then local c = getChar(); if c then for _, pt in ipairs(c:GetDescendants()) do if pt:IsA("BasePart") and pt.Name ~= "HumanoidRootPart" then pt.CanCollide = true end end end end
 end })
-playerTab:CreateToggle({ Name = "Fly (WASD + Space/Ctrl)", Default = false, Flag = "fly", Callback = function(v) if v then startFly() else stopFly() end end })
-playerTab:CreateSlider({ Name = "Fly Speed", Min = 20, Max = 250, Default = flags.flyspeed, Step = 5, Flag = "flyspeed", Callback = function(v) flags.flyspeed = v end })
+moveTab:CreateToggle({ Name = "Fly (WASD + Space/Ctrl)", Default = false, Flag = "fly", Callback = function(v) if v then startFly() else stopFly() end end })
+moveTab:CreateSlider({ Name = "Fly / Freecam Speed", Min = 20, Max = 300, Default = flags.flyspeed, Step = 5, Flag = "flyspeed", Callback = function(v) flags.flyspeed = v end })
+moveTab:CreateToggle({ Name = "Spinbot", Default = false, Flag = "spinbot", Callback = function(v) flags.spinbot = v end })
+moveTab:CreateSlider({ Name = "Spin Speed", Min = 5, Max = 90, Default = flags.spinspeed, Step = 5, Flag = "spinspeed", Callback = function(v) flags.spinspeed = v end })
+moveTab:CreateToggle({ Name = "Freecam (experimental)", Default = false, Flag = "freecam", Callback = function(v) if v then startFreecam() else stopFreecam() end end })
+moveTab:CreateButton({ Name = "Instant Respawn", Callback = instantRespawn })
 
 local miscTab = Window:CreateSection("Misc"):CreateTab("Misc")
 miscTab:CreateSlider({ Name = "FOV (0 = off)", Min = 0, Max = 120, Default = 0, Step = 1, Flag = "fovchanger", Callback = function(v) flags.fovChanger = v end })
+miscTab:CreateSlider({ Name = "FPS Cap (0 = off)", Min = 0, Max = 360, Default = 0, Step = 10, Flag = "fpscap", Callback = function(v) flags.fpsCap = v; if setfpscap then pcall(function() setfpscap(v > 0 and v or 9999) end) end end })
 miscTab:CreateToggle({ Name = "Anti-AFK", Default = false, Flag = "antiafk", Callback = function(v) setAntiAFK(v) end })
+miscTab:CreateButton({ Name = "Server Hop", Callback = serverHop })
+miscTab:CreateButton({ Name = "Rejoin Server", Callback = function() pcall(function() TPS:Teleport(game.PlaceId, LP) end) end })
+miscTab:CreateButton({ Name = "Copy Job ID", Callback = function() if setclipboard then setclipboard(game.JobId); Window:Notify({ Title = "Copied", Description = "Job ID copied.", Duration = 2 }) end end })
 miscTab:CreateDropdown({ Name = "UI Theme", Options = { "Dark", "Light", "Midnight", "Rose", "Ocean", "Forest" }, Default = "Dark", Callback = function(t) Window:SetTheme(t) end })
 miscTab:CreateButton({ Name = "Reset Character", Callback = function() local h = getHum(); if h then h.Health = 0 end end })
-miscTab:CreateButton({ Name = "Rejoin Server", Callback = function() pcall(function() TPS:Teleport(game.PlaceId, LP) end) end })
 miscTab:CreateButton({ Name = "Unload Ez Hub", Callback = function()
-	stopFly(); setAntiAFK(false)
+	stopFly(); stopFreecam(); setAntiAFK(false)
 	if fovCircle then pcall(function() fovCircle:Remove() end) end
+	if cross then for _, d in pairs(cross) do pcall(function() d:Remove() end) end end
 	for p in pairs(esp) do removeEsp(p) end
+	for p in pairs(chams) do pcall(function() chams[p]:Destroy() end) end
 	Window:Destroy()
 end })
 
