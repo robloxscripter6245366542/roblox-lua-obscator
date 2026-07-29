@@ -959,6 +959,10 @@ end
 
 -- ------------------------------------------------------------------ Window
 local Window = Library.new("Ez Hub - RIVALS", "EzHubRivals")
+-- Rivals runs anti-cheat. The Acrylic blur spawns a Part inside
+-- workspace.CurrentCamera (a common detection vector), so drop it here to
+-- reduce the surface. (Best-effort: it lowers detection, not a guaranteed bypass.)
+if Window._blur then pcall(function() Window._blur:Destroy() end); Window._blur = nil end
 Window:SetToggleKey(Enum.KeyCode.RightShift)
 if game.PlaceId ~= 18126510175 then
 	Window:Notify({ Title = "Heads up", Description = "This script is built for RIVALS. Some features may not work here.", Duration = 5 })
