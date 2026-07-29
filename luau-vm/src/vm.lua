@@ -29,6 +29,58 @@ local VM = {}
 local PROF = nil
 function VM.setProfile(counters) PROF = counters end
 
+-- Execute one "pure" instruction (no control flow, no multi-value/top). This is
+-- the authority for SUPEROP sub-instructions; it mirrors the inline handlers in
+-- the main dispatch exactly (the differential fuzzer keeps them in lockstep).
+-- Only the opcodes in Opcodes.pure ever reach here.
+local function execPure(ins, R, K, upvals, env)
+  local op, a = ins.op, ins.a
+  if op == Op.MOVE then R[a] = R[ins.b]
+  elseif op == Op.LOADK then R[a] = K[ins.bx]
+  elseif op == Op.LOADINT then R[a] = ins.sbx
+  elseif op == Op.ADD then R[a] = R[ins.b] + R[ins.c]
+  elseif op == Op.SUB then R[a] = R[ins.b] - R[ins.c]
+  elseif op == Op.MUL then R[a] = R[ins.b] * R[ins.c]
+  elseif op == Op.GETFIELD then R[a] = R[ins.b][K[ins.bx]]
+  elseif op == Op.GETTABLE then R[a] = R[ins.b][R[ins.c]]
+  elseif op == Op.GETGLOBAL then R[a] = env[K[ins.bx]]
+  elseif op == Op.GETCELL then R[a] = R[ins.b].v
+  elseif op == Op.SETCELL then R[a].v = R[ins.b]
+  elseif op == Op.GETUPVAL then R[a] = upvals[ins.b].v
+  elseif op == Op.SETUPVAL then upvals[ins.b].v = R[a]
+  elseif op == Op.LE then R[a] = (R[ins.b] <= R[ins.c])
+  elseif op == Op.LT then R[a] = (R[ins.b] < R[ins.c])
+  elseif op == Op.EQ then R[a] = (R[ins.b] == R[ins.c])
+  elseif op == Op.SETTABLE then R[a][R[ins.b]] = R[ins.c]
+  elseif op == Op.SETFIELD then R[a][K[ins.bx]] = R[ins.c]
+  elseif op == Op.SETGLOBAL then env[K[ins.bx]] = R[a]
+  elseif op == Op.NEWTABLE then R[a] = {}
+  elseif op == Op.SELF then R[a + 1] = R[ins.b]; R[a] = R[ins.b][K[ins.c]]
+  elseif op == Op.NEWCELL then R[a] = { v = R[a] }
+  elseif op == Op.LOADBOOL then R[a] = (ins.b ~= 0)
+  elseif op == Op.LOADNIL then for i = a, a + ins.b do R[i] = nil end
+  elseif op == Op.DIV then R[a] = R[ins.b] / R[ins.c]
+  elseif op == Op.MOD then R[a] = R[ins.b] % R[ins.c]
+  elseif op == Op.POW then R[a] = R[ins.b] ^ R[ins.c]
+  elseif op == Op.IDIV then R[a] = math.floor(R[ins.b] / R[ins.c])
+  elseif op == Op.BAND then R[a] = Bit.band(R[ins.b], R[ins.c])
+  elseif op == Op.BOR then R[a] = Bit.bor(R[ins.b], R[ins.c])
+  elseif op == Op.BXOR then R[a] = Bit.bxor(R[ins.b], R[ins.c])
+  elseif op == Op.SHL then R[a] = Bit.lshift(R[ins.b], R[ins.c])
+  elseif op == Op.SHR then R[a] = Bit.rshift(R[ins.b], R[ins.c])
+  elseif op == Op.CONCAT then
+    local s = R[ins.b]
+    for i = ins.b + 1, ins.c do s = s .. R[i] end
+    R[a] = s
+  elseif op == Op.UNM then R[a] = -R[ins.b]
+  elseif op == Op.NOT then R[a] = not R[ins.b]
+  elseif op == Op.LEN then R[a] = #R[ins.b]
+  elseif op == Op.BNOT then R[a] = Bit.bnot(R[ins.b])
+  elseif op == Op.NOP then -- nothing
+  else error('ferret-vm: bad SUPEROP sub-opcode ' .. Opcodes.mnemonic(op))
+  end
+end
+
 -- Forward declaration: execute runs a proto with its upvalues/env/args.
 local execute
 
@@ -210,6 +262,11 @@ execute = function(proto, upvals, env, args, argN)
         pc = pc + ins.sbx
       end
     elseif op == Op.NOP then -- nothing
+    elseif op == Op.SUPEROP then
+      -- run the fused run of pure instructions in order (semantically identical
+      -- to executing them individually; see obfuscate.fuse / execPure)
+      local subs = ins.subs
+      for si = 1, #subs do execPure(subs[si], R, K, upvals, env) end
     else
       error('ferret-vm: bad opcode ' .. Opcodes.mnemonic(op) .. ' at pc ' .. (pc - 1))
     end

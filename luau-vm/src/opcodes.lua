@@ -86,6 +86,14 @@ def('TFORLOOP')  -- A sBx    generic-for: if R[A+1] ~= nil then R[A]=R[A+1]; pc 
 
 def('NOP')       -- (used by peephole/DCE)
 
+-- Superoperator: a single dispatched opcode that carries a run of N ordinary
+-- "pure" instructions (no control flow, no multi-value/top interaction) in
+-- ins.subs and executes them in order. Produced per build by obfuscate.fuse, it
+-- makes the bytecode stop decomposing 1:1 into Lua ops — a devirtualizer sees
+-- variable-length fused blobs whose boundaries differ every build. Its operands
+-- are variable-length, so the serializer / seal / validator special-case it.
+def('SUPEROP')
+
 -- Operand layout per opcode: which instruction fields carry data. Used by the
 -- serializer for a compact, self-validating encoding, and as documentation.
 local A, AB, ABC = { 'a' }, { 'a', 'b' }, { 'a', 'b', 'c' }
@@ -109,9 +117,24 @@ local operands = {
   [Op.FORPREP] = { 'a', 'sbx' }, [Op.FORLOOP] = { 'a', 'sbx' },
   [Op.TFORPREP] = A, [Op.TFORCALL] = { 'a', 'c' }, [Op.TFORLOOP] = { 'a', 'sbx' },
   [Op.NOP] = {},
+  [Op.SUPEROP] = {}, -- variable-length; sub-instructions live in ins.subs
 }
 
-local Opcodes = { Op = Op, name = names, count = n, operands = operands }
+-- Opcodes safe to pack into a SUPEROP: they never change pc, never return, and
+-- never touch the multi-value `top` (so fusing a contiguous run is exactly
+-- equivalent to running them one by one). Everything else — jumps, calls,
+-- returns, varargs, for-loop ops, SETLIST, CLOSURE — is excluded.
+local PURE = {}
+for _, nm in ipairs({
+  'MOVE', 'LOADK', 'LOADINT', 'LOADBOOL', 'LOADNIL',
+  'GETGLOBAL', 'SETGLOBAL', 'NEWCELL', 'GETCELL', 'SETCELL', 'GETUPVAL', 'SETUPVAL',
+  'NEWTABLE', 'GETTABLE', 'SETTABLE', 'GETFIELD', 'SETFIELD', 'SELF',
+  'ADD', 'SUB', 'MUL', 'DIV', 'MOD', 'POW', 'IDIV',
+  'BAND', 'BOR', 'BXOR', 'SHL', 'SHR', 'CONCAT',
+  'UNM', 'NOT', 'LEN', 'BNOT', 'EQ', 'LT', 'LE', 'NOP',
+}) do PURE[Op[nm]] = true end
+
+local Opcodes = { Op = Op, name = names, count = n, operands = operands, pure = PURE }
 
 function Opcodes.mnemonic(op)
   return names[op] or ('?' .. tostring(op))

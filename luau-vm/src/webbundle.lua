@@ -151,6 +151,12 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
     require('obfuscate').junk(proto, Harden.prng((seed + 40503) % 4294967296),
       { density = (opts and opts.junkDensity) or auto.junk, maxRun = 3 })
   end
+  -- SUPEROPERATORS: fuse runs of pure ops into single macro-ops so the bytecode
+  -- no longer maps 1:1 to Lua operations (run lengths differ per build). Applied
+  -- last, on the final instruction stream. Disable with opts.fuse == false.
+  if not (opts and opts.fuse == false) then
+    require('obfuscate').fuse(proto, Harden.prng((seed + 374761393) % 4294967296))
+  end
   -- opcode MUTATION: each opcode has several interchangeable byte encodings,
   -- picked per instruction, so one opcode appears as different bytes.
   local fwd, inv = Harden.opMutationMap(Opcodes.count, rng, 3)
