@@ -3,15 +3,20 @@
 
 	Uses the Acrylic UI Library v3.5 (embedded below) as the UI for the whole
 	hub. On load it checks game.PlaceId against the SUPPORTED games list:
-	    * supported   -> the hub loads, opening that game's tab
-	    * NOT supported -> the local player is KICKED (set KICK_IF_UNSUPPORTED
-	                       = false to only warn instead of kicking)
+	    * supported     -> the hub loads AND auto-runs that game's script
+	    * NOT supported  -> the local player is KICKED (set KICK_IF_UNSUPPORTED
+	                        = false to only warn instead of kicking)
 
 	HOW TO ADD YOUR SCRIPTS
 	-----------------------
-	Edit the GAMES list near the bottom. Each game has name, placeIds and items;
-	each item is { name = ..., run = ... } where run is a function OR a HttpGet
-	URL string. UNIVERSAL scripts appear in every supported game.
+	Edit the GAMES list near the bottom. Each game has:
+	    name     = tab label
+	    placeIds = { PlaceIds that count as this game }
+	    script   = the CORRECT/main script for this game — auto-runs on join.
+	               A function OR a HttpGet URL string. (optional)
+	    items    = extra buttons { name = ..., run = ... } (optional)
+	`run`/`script` are a function OR a HttpGet URL string. UNIVERSAL scripts
+	appear in every supported game.
 ]==]
 
 -- ╔══════════════════════════════════════════════════════════════════════╗
@@ -910,47 +915,68 @@ end
 local Players     = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- When true, being in an unsupported game kicks the player. When false, the
--- hub still won't build but the player is only notified (no kick).
+-- Being in an unsupported game kicks the player when true; only warns when false.
 local KICK_IF_UNSUPPORTED = true
+-- Auto-run the detected game's `script` as soon as the hub loads.
+local AUTO_LOAD_GAME_SCRIPT = true
 
 -- ===========================================================================
 -- >>> SUPPORTED GAMES + SCRIPTS <<<
 --   name      -> tab label
---   placeIds  -> PlaceIds that count as this game (used for support + detect)
---   items     -> buttons; run = function() ... end  OR  a HttpGet URL string
--- Any game whose PlaceId is not listed here is treated as UNSUPPORTED.
--- Verify these PlaceIds for your target games before relying on them.
+--   placeIds  -> PlaceIds that count as this game (support + detection)
+--   script    -> the correct/main script for this game; AUTO-RUNS on join
+--                (function OR HttpGet URL). Omit if the game has no auto script.
+--   items     -> extra buttons; run = function() ... end OR a HttpGet URL
+-- Any game whose PlaceId is not listed is treated as UNSUPPORTED.
 -- ===========================================================================
 local GAMES = {
 
-	{ name = "Blox Fruits", placeIds = { 2753915549, 4442272183, 7449423635 }, items = {
-		{ name = "Auto Farm",       run = function() --[[ paste working Auto Farm here ]] end },
-		{ name = "Devil Fruit ESP", run = function() --[[ ... ]] end },
-	}},
+	{ name = "Blox Fruits", placeIds = { 2753915549, 4442272183, 7449423635 },
+		-- script = "https://raw.githubusercontent.com/.../bloxfruits.lua",  -- auto-loads on join
+		script = function() --[[ paste the correct Blox Fruits script here (auto-runs) ]] end,
+		items = {
+			{ name = "Auto Farm",       run = function() --[[ ... ]] end },
+			{ name = "Devil Fruit ESP", run = function() --[[ ... ]] end },
+		},
+	},
 
-	{ name = "Arsenal", placeIds = { 286090429 }, items = {
-		{ name = "Aimbot", run = function() --[[ paste working Arsenal Aimbot here ]] end },
-		{ name = "ESP",    run = function() --[[ ... ]] end },
-	}},
+	{ name = "Arsenal", placeIds = { 286090429 },
+		script = function() --[[ paste the correct Arsenal script here (auto-runs) ]] end,
+		items = {
+			{ name = "Aimbot", run = function() --[[ ... ]] end },
+			{ name = "ESP",    run = function() --[[ ... ]] end },
+		},
+	},
 
-	{ name = "Murder Mystery 2", placeIds = { 142823291 }, items = {
-		{ name = "Murderer/Sheriff ESP", run = function() --[[ ... ]] end },
-		{ name = "Coin Collector",       run = function() --[[ ... ]] end },
-	}},
+	{ name = "Murder Mystery 2", placeIds = { 142823291 },
+		script = function() --[[ paste the correct MM2 script here (auto-runs) ]] end,
+		items = {
+			{ name = "Murderer/Sheriff ESP", run = function() --[[ ... ]] end },
+			{ name = "Coin Collector",       run = function() --[[ ... ]] end },
+		},
+	},
 
-	{ name = "Phantom Forces", placeIds = { 292439477 }, items = {
-		{ name = "Aimbot", run = function() --[[ ... ]] end },
-		{ name = "ESP",    run = function() --[[ ... ]] end },
-	}},
+	{ name = "Phantom Forces", placeIds = { 292439477 },
+		script = function() --[[ paste the correct Phantom Forces script here (auto-runs) ]] end,
+		items = {
+			{ name = "Aimbot", run = function() --[[ ... ]] end },
+			{ name = "ESP",    run = function() --[[ ... ]] end },
+		},
+	},
 
-	{ name = "Pet Simulator X", placeIds = { 6284583030 }, items = {
-		{ name = "Auto Farm", run = function() --[[ ... ]] end },
-	}},
+	{ name = "Pet Simulator X", placeIds = { 6284583030 },
+		script = function() --[[ paste the correct Pet Sim X script here (auto-runs) ]] end,
+		items = {
+			{ name = "Auto Farm", run = function() --[[ ... ]] end },
+		},
+	},
 
-	{ name = "Doors", placeIds = { 6839171747, 6516141723 }, items = {
-		{ name = "Entity Alert", run = function() --[[ ... ]] end },
-	}},
+	{ name = "Doors", placeIds = { 6839171747, 6516141723 },
+		script = function() --[[ paste the correct Doors script here (auto-runs) ]] end,
+		items = {
+			{ name = "Entity Alert", run = function() --[[ ... ]] end },
+		},
+	},
 
 }
 
@@ -974,7 +1000,7 @@ for _, g in ipairs(GAMES) do
 	if currentGame then break end
 end
 
--- SUPPORTED-GAME GATE: kick the player if the game is not supported.
+-- SUPPORTED-GAME GATE: kick if the game is not supported.
 if not currentGame then
 	local msg = "[Ez Hub] This game is not supported (PlaceId " .. tostring(game.PlaceId)
 		.. "). Join a supported game to use Ez Hub."
@@ -983,24 +1009,28 @@ if not currentGame then
 	else
 		warn(msg)
 	end
-	return  -- do not build the UI in an unsupported game
+	return
 end
 
 -- Supported: build the hub UI.
 local Window = Library.new("Ez Hub - " .. currentGame.name, "EzHubConfigs")
 Window:SetToggleKey(Enum.KeyCode.RightShift)
 
+local function run(source)
+	if type(source) == "function" then
+		return pcall(source)
+	elseif type(source) == "string" and #source > 0 then
+		return pcall(function() loadstring(game:HttpGet(source))() end)
+	end
+	return false, "no script"
+end
+
 local function runEntry(entry)
-	local run = entry.run
-	local ok, err
-	if type(run) == "function" then
-		ok, err = pcall(run)
-	elseif type(run) == "string" and #run > 0 then
-		ok, err = pcall(function() loadstring(game:HttpGet(run))() end)
-	else
+	if entry.run == nil then
 		Window:Notify({ Title = "Not set", Description = entry.name .. " has no script attached.", Duration = 3 })
 		return
 	end
+	local ok, err = run(entry.run)
 	Window:Notify({
 		Title = ok and "Executed" or "Error",
 		Description = ok and entry.name or (entry.name .. ": " .. tostring(err)),
@@ -1008,14 +1038,27 @@ local function runEntry(entry)
 	})
 end
 
+-- Loads the correct script for the current game.
+local function loadGameScript()
+	if not currentGame.script then
+		Window:Notify({ Title = currentGame.name, Description = "No dedicated script set for this game.", Duration = 3 })
+		return
+	end
+	Window:Notify({ Title = "Loading " .. currentGame.name, Description = "Running the game's script...", Duration = 3 })
+	local ok, err = run(currentGame.script)
+	Window:Notify({
+		Title = ok and ("Loaded " .. currentGame.name) or "Error",
+		Description = ok and "Game script is running." or ("Game script: " .. tostring(err)),
+		Duration = ok and 3 or 6,
+	})
+end
+
 -- Detected game's tab.
 local gameSection = Window:CreateSection(currentGame.name)
 local gameTab = gameSection:CreateTab(currentGame.name)
 gameTab:CreateParagraph({ Title = "Detected game", Content = currentGame.name .. "  (PlaceId " .. tostring(game.PlaceId) .. ")" })
-if #currentGame.items == 0 then
-	gameTab:CreateParagraph({ Title = "No scripts yet", Content = "Add scripts for this game in the GAMES table." })
-end
-for _, entry in ipairs(currentGame.items) do
+gameTab:CreateButton({ Name = "Load " .. currentGame.name .. " script", Callback = loadGameScript })
+for _, entry in ipairs(currentGame.items or {}) do
 	gameTab:CreateButton({ Name = entry.name, Callback = function() runEntry(entry) end })
 end
 
@@ -1028,18 +1071,28 @@ end
 -- Settings + config.
 local settingsSection = Window:CreateSection("Settings")
 local settingsTab = settingsSection:CreateTab("Settings")
+settingsTab:CreateToggle({
+	Name = "Auto-load game script on join",
+	Default = AUTO_LOAD_GAME_SCRIPT,
+	Flag = "auto_load_game_script",
+	Callback = function(v) AUTO_LOAD_GAME_SCRIPT = v end,
+})
 settingsTab:CreateDropdown({
 	Name = "Theme",
 	Options = { "Dark", "Light", "Midnight", "Rose", "Ocean", "Forest" },
 	Default = "Dark",
 	Callback = function(t) Window:SetTheme(t) end,
 })
-settingsTab:CreateParagraph({ Title = "Toggle key", Content = "Press Right-Shift (or your bound key) to show/hide the hub." })
 settingsTab:CreateButton({ Name = "Unload Ez Hub", Callback = function() Window:Destroy() end })
 
 local configTab = settingsSection:CreateTab("Configuration")
 configTab:CreateConfigSection()
 
 Window:Notify({ Title = "Ez Hub", Description = "Loaded for " .. currentGame.name .. ".", Duration = 4 })
+
+-- Auto-load the correct script for this game.
+if AUTO_LOAD_GAME_SCRIPT and currentGame.script then
+	task.spawn(loadGameScript)
+end
 
 return Window
