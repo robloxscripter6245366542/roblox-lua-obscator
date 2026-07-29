@@ -925,7 +925,10 @@ local Players     = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
 -- Being in an unsupported game kicks the player when true; only warns when false.
-local KICK_IF_UNSUPPORTED = true
+-- Default false: many games (e.g. Rivals) use multiple PlaceIds for lobby vs
+-- match arenas, so kicking on an unlisted PlaceId would boot you from a game you
+-- actually support. Set true only if you really want the hard kick behaviour.
+local KICK_IF_UNSUPPORTED = false
 -- Auto-run the detected game's `script` as soon as the hub loads.
 local AUTO_LOAD_GAME_SCRIPT = true
 
