@@ -981,9 +981,18 @@ local GAMES = {
 	},
 
 	{ name = "Doors", placeIds = { 6839171747, 6516141723 },
-		script = function() --[[ paste the correct Doors script here (auto-runs) ]] end,
+		-- Full DOORS script (auto-runs on join): ESP, entities, auto-loot, padlock, etc.
+		script = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/Ez-Hub/Scripts/Doors.lua",
 		items = {
-			{ name = "Entity Alert", run = function() --[[ ... ]] end },
+			{ name = "Load DOORS script", run = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/Ez-Hub/Scripts/Doors.lua" },
+		},
+	},
+
+	{ name = "Rivals", placeIds = { 18126510175 },
+		-- Full RIVALS script (auto-runs on join): aimbot, ESP, triggerbot, movement, emotes, etc.
+		script = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/Ez-Hub/Scripts/Rivals.lua",
+		items = {
+			{ name = "Load RIVALS script", run = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/Ez-Hub/Scripts/Rivals.lua" },
 		},
 	},
 
