@@ -1238,6 +1238,44 @@ local function serverHop()
 	end)
 end
 
+-- ------------------------------------------------------------------ Rivals-specific remotes (from the dump)
+local function duelFire(name) local r = rivalsRemote("Duels", name); if r then pcall(function() r:FireServer() end) end end
+local function matchFire(name) local r = rivalsRemote("Matchmaking", name); if r then pcall(function() r:FireServer() end) end end
+local function playEmote(nm)
+	local r = rivalsRemote("Replication", "Fighter", "UseEmoteByName")
+	if r and nm and nm ~= "" then pcall(function() r:FireServer(nm) end) end
+end
+local function redeemCode(code)
+	local r = rivalsRemote("Data", "RedeemCode")
+	if r and code and code ~= "" then
+		local ok = pcall(function() r:InvokeServer(code) end)
+		Window:Notify({ Title = "Redeem Code", Description = ok and ("Sent: " .. code) or "Failed to send.", Duration = 3 })
+	end
+end
+
+-- Auto respawn: on death, fire the duel RespawnNow remote.
+local function bindAutoRespawn()
+	local function hook(char)
+		local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 5)
+		if hum then
+			hum.Died:Connect(function()
+				if flags.autoRespawn then task.wait(0.3); duelFire("RespawnNow") end
+			end)
+		end
+	end
+	if LP.Character then hook(LP.Character) end
+	LP.CharacterAdded:Connect(hook)
+end
+bindAutoRespawn()
+
+-- Emote spam loop.
+task.spawn(function()
+	while Window.gui and Window.gui.Parent do
+		if flags.emoteSpam and flags.emoteName and flags.emoteName ~= "" then playEmote(flags.emoteName); task.wait(1.2) end
+		task.wait(0.2)
+	end
+end)
+
 -- ==============================================================================
 -- UI
 -- ==============================================================================
@@ -1316,6 +1354,20 @@ miscTab:CreateButton({ Name = "Unload Ez Hub", Callback = function()
 	for p in pairs(chams) do pcall(function() chams[p]:Destroy() end) end
 	Window:Destroy()
 end })
+
+local gameSec = Window:CreateSection("Rivals")
+local gameTab = gameSec:CreateTab("Game")
+gameTab:CreateButton({ Name = "Respawn Now", Callback = function() duelFire("RespawnNow") end })
+gameTab:CreateToggle({ Name = "Auto Respawn", Default = false, Flag = "autorespawn", Callback = function(v) flags.autoRespawn = v end })
+gameTab:CreateButton({ Name = "Leave Duel", Callback = function() duelFire("LeaveDuel") end })
+gameTab:CreateButton({ Name = "Rematch", Callback = function() duelFire("Rematch") end })
+gameTab:CreateButton({ Name = "Switch Team", Callback = function() local r = rivalsRemote("Duels", "SwitchTeam"); if r then pcall(function() r:InvokeServer() end) end end })
+gameTab:CreateButton({ Name = "Play Again", Callback = function() matchFire("PlayAgain") end })
+gameTab:CreateButton({ Name = "Back To Hub", Callback = function() matchFire("BackToHub") end })
+gameTab:CreateTextBox({ Name = "Emote Name", Placeholder = "e.g. Wave", Flag = "emotename", Callback = function(t) flags.emoteName = t end })
+gameTab:CreateButton({ Name = "Play Emote", Callback = function() playEmote(flags.emoteName) end })
+gameTab:CreateToggle({ Name = "Emote Spam", Default = false, Flag = "emotespam", Callback = function(v) flags.emoteSpam = v end })
+gameTab:CreateTextBox({ Name = "Redeem Code (Enter)", Placeholder = "code...", Callback = function(t) redeemCode(t) end })
 
 local cfgTab = Window:CreateSection("Config"):CreateTab("Configuration")
 cfgTab:CreateConfigSection()
