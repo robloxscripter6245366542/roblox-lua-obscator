@@ -1245,6 +1245,22 @@ local function playEmote(nm)
 	local r = rivalsRemote("Replication", "Fighter", "UseEmoteByName")
 	if r and nm and nm ~= "" then pcall(function() r:FireServer(nm) end) end
 end
+
+-- Every emote name, read straight from the game's cosmetic catalog at runtime
+-- (ReplicatedStorage.Modules.CosmeticLibrary -> Cosmetics[name].Type == "Emote").
+local function getEmoteNames()
+	local list = {}
+	local ok, lib = pcall(function()
+		return require(RS:WaitForChild("Modules", 5):WaitForChild("CosmeticLibrary", 5))
+	end)
+	if ok and type(lib) == "table" and type(lib.Cosmetics) == "table" then
+		for name, data in pairs(lib.Cosmetics) do
+			if type(data) == "table" and data.Type == "Emote" then table.insert(list, tostring(name)) end
+		end
+		table.sort(list)
+	end
+	return list
+end
 local function redeemCode(code)
 	local r = rivalsRemote("Data", "RedeemCode")
 	if r and code and code ~= "" then
@@ -1364,9 +1380,22 @@ gameTab:CreateButton({ Name = "Rematch", Callback = function() duelFire("Rematch
 gameTab:CreateButton({ Name = "Switch Team", Callback = function() local r = rivalsRemote("Duels", "SwitchTeam"); if r then pcall(function() r:InvokeServer() end) end end })
 gameTab:CreateButton({ Name = "Play Again", Callback = function() matchFire("PlayAgain") end })
 gameTab:CreateButton({ Name = "Back To Hub", Callback = function() matchFire("BackToHub") end })
-gameTab:CreateTextBox({ Name = "Emote Name", Placeholder = "e.g. Wave", Flag = "emotename", Callback = function(t) flags.emoteName = t end })
-gameTab:CreateButton({ Name = "Play Emote", Callback = function() playEmote(flags.emoteName) end })
-gameTab:CreateToggle({ Name = "Emote Spam", Default = false, Flag = "emotespam", Callback = function(v) flags.emoteSpam = v end })
+local emoteNames = getEmoteNames()
+local emoteDD
+if #emoteNames > 0 then
+	flags.emoteName = emoteNames[1]
+	emoteDD = gameTab:CreateDropdown({ Name = "Emote (" .. #emoteNames .. ")", Options = emoteNames, Default = emoteNames[1], Flag = "emotesel", Callback = function(v) flags.emoteName = v end })
+else
+	gameTab:CreateParagraph({ Title = "Emotes", Content = "Couldn't read the emote catalog on this executor. Use the text box below to type an emote name." })
+end
+gameTab:CreateButton({ Name = "Play Selected Emote", Callback = function() playEmote(flags.emoteName) end })
+gameTab:CreateToggle({ Name = "Emote Spam (selected)", Default = false, Flag = "emotespam", Callback = function(v) flags.emoteSpam = v end })
+gameTab:CreateButton({ Name = "Refresh Emote List", Callback = function()
+	local l = getEmoteNames()
+	if emoteDD and #l > 0 then emoteDD:Refresh(l) end
+	Window:Notify({ Title = "Emotes", Description = #l .. " emotes found.", Duration = 3 })
+end })
+gameTab:CreateTextBox({ Name = "Or type emote (Enter)", Placeholder = "emote name...", Callback = function(t) if t ~= "" then flags.emoteName = t; playEmote(t) end end })
 gameTab:CreateTextBox({ Name = "Redeem Code (Enter)", Placeholder = "code...", Callback = function(t) redeemCode(t) end })
 
 local cfgTab = Window:CreateSection("Config"):CreateTab("Configuration")
