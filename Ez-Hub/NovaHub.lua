@@ -3,9 +3,10 @@
 	(the Fusion-style reactive library embedded directly below). One file, no
 	external require/HttpGet for the UI; works on all devices and all executors.
 
-	This build has ONE TAB PER GAME and detects the current game by PlaceId:
-	on load it checks game.PlaceId against each game's placeIds, then auto-opens
-	the matching tab and notifies you. A Universal tab is always available.
+	Clean purple theme, softly rounded corners, glowing accent edges. One tab
+	per game with PlaceId auto-detection: on load it checks game.PlaceId against
+	each game's placeIds, then auto-opens the matching tab and notifies you. A
+	Universal tab is always available.
 
 	HOW TO ADD YOUR SCRIPTS
 	-----------------------
@@ -181,16 +182,16 @@ local isState    = Reactive.isState
 --==============================================================================
 
 local Theme = {
-	Accent   = Color3.fromRGB(0, 210, 255),
-	Accent2  = Color3.fromRGB(130, 90, 255),
-	Bg       = Color3.fromRGB(9, 11, 18),
-	Glass    = Color3.fromRGB(16, 19, 30),
-	Surface  = Color3.fromRGB(22, 26, 40),
-	Surface2 = Color3.fromRGB(30, 36, 54),
-	Stroke   = Color3.fromRGB(46, 54, 82),
-	Text     = Color3.fromRGB(236, 241, 255),
-	Sub      = Color3.fromRGB(140, 150, 180),
-	Off      = Color3.fromRGB(38, 44, 64),
+	Accent   = Color3.fromRGB(157, 112, 255),  -- clean violet
+	Accent2  = Color3.fromRGB(206, 138, 255),  -- light purple
+	Bg       = Color3.fromRGB(13, 12, 18),
+	Glass    = Color3.fromRGB(19, 17, 27),
+	Surface  = Color3.fromRGB(26, 23, 36),
+	Surface2 = Color3.fromRGB(35, 31, 48),
+	Stroke   = Color3.fromRGB(58, 50, 82),      -- purple-tinted border
+	Text     = Color3.fromRGB(240, 238, 250),
+	Sub      = Color3.fromRGB(151, 145, 172),
+	Off      = Color3.fromRGB(44, 40, 60),
 	Font     = Enum.Font.GothamMedium,
 	Bold     = Enum.Font.GothamBold,
 	Mono     = Enum.Font.Code,
@@ -229,7 +230,7 @@ local function tween(inst, info, goal)
 	local t = TweenService:Create(inst, info, goal); t:Play(); return t
 end
 
-local function corner(inst, r) return new("UICorner", { CornerRadius = UDim.new(0, r or 10), Parent = inst }) end
+local function corner(inst, r) return new("UICorner", { CornerRadius = UDim.new(0, r or 12), Parent = inst }) end
 
 local function pad(inst, all)
 	return new("UIPadding", {
@@ -423,7 +424,7 @@ function NovaUI.new(config)
 	})
 	shadow(window)
 	glassGradient(window)
-	corner(window, 14)
+	corner(window, 18)
 	neonBorder(window, 1.6, 0.15)
 	self.window = window
 
@@ -439,8 +440,8 @@ function NovaUI.new(config)
 		BackgroundColor3 = Theme.Surface, BackgroundTransparency = 0.25,
 		BorderSizePixel = 0, Parent = window,
 	})
-	corner(topbar, 14)
-	new("Frame", { Size = UDim2.new(1, 0, 0, 14), Position = UDim2.new(0, 0, 1, -14),
+	corner(topbar, 18)
+	new("Frame", { Size = UDim2.new(1, 0, 0, 18), Position = UDim2.new(0, 0, 1, -18),
 		BackgroundColor3 = Theme.Surface, BackgroundTransparency = 0.25, BorderSizePixel = 0, Parent = topbar })
 
 	-- Glowing accent emblem
@@ -655,7 +656,7 @@ function NovaUI:Tab(name, icon)
 			BackgroundColor3 = Theme.Surface, BackgroundTransparency = 0.2,
 			Size = UDim2.new(1, 0, 0, height or 40), BorderSizePixel = 0, Parent = page,
 		})
-		corner(frame, 10)
+		corner(frame, 12)
 		stroke(frame, Theme.Stroke, 1, 0.45)
 		return frame
 	end
@@ -938,8 +939,8 @@ end
 
 local Hub = NovaUI.new({
 	Title  = "NOVA HUB",
-	Accent  = Color3.fromRGB(0, 210, 255),
-	Accent2 = Color3.fromRGB(140, 90, 255),
+	Accent  = Color3.fromRGB(157, 112, 255),  -- clean violet
+	Accent2 = Color3.fromRGB(206, 138, 255),  -- light purple
 	Width   = 760,   -- bigger window (auto-shrinks to fit small screens)
 	Height  = 520,
 })
