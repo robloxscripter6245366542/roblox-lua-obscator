@@ -266,7 +266,7 @@ function Library:Toggle()
         task.delay(ease.Fluid[1], function() if self.container then self.container.Visible = false end end)
     end
     if self._blur then self._blur:SetEnabled(self._visible) end
-    if self._mobileBtn then self._mobileBtn.Visible = not self._visible end
+    if self._mobileBtn and IsMobile() then self._mobileBtn.Visible = not self._visible end
 end
 
 function Library:SetToggleKey(k) self._toggleKey = k end
@@ -294,7 +294,15 @@ function Library:_Build()
     self:_BuildContent()
     MakeDraggable(self.container, self.topBar, self._conns)
     local lp = plr.LocalPlayer
-    self.gui.Parent = lp:WaitForChild("PlayerGui")
+    -- Executor-agnostic mounting: hide from the game where supported; fall back to PlayerGui.
+    pcall(function() if syn and syn.protect_gui then syn.protect_gui(self.gui) end end)
+    pcall(function() if protectgui then protectgui(self.gui) end end)
+    local mounted = false
+    for _, get in ipairs({ function() return gethui and gethui() end, function() return get_hidden_gui and get_hidden_gui() end, function() return game:GetService("CoreGui") end }) do
+        local ok, target = pcall(get)
+        if ok and target and pcall(function() self.gui.Parent = target end) and self.gui.Parent then mounted = true; break end
+    end
+    if not mounted then self.gui.Parent = lp:WaitForChild("PlayerGui") end
     self._blur = AcrylicBlur.new(self.container)
 end
 
@@ -632,20 +640,21 @@ end
 function Library._Slider(tab, cfg)
     local name, min, max, step, default, cb, flag, suffix = cfg.Name or "Slider", cfg.Min or 0, cfg.Max or 100, cfg.Step or 1, math.clamp(cfg.Default or (cfg.Min or 0), cfg.Min or 0, cfg.Max or 100), cfg.Callback or function() end, cfg.Flag, cfg.Suffix or ""
     local cur = default
+    local span = (max ~= min) and (max - min) or 1
     local frame, stk = Card(tab, "Sld_" .. name, sz.SliderH)
     Label({ FontFace = font.Medium, TextColor3 = c.Text, Text = name, TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1, Position = UDim2.new(0, 16, 0, 10), TextSize = fs.Body, Size = UDim2.new(0, 240, 0, 18), Parent = frame })
     local valLbl = Label({ FontFace = font.SemiBold, TextColor3 = c.TextSubtle, Text = tostring(cur) .. suffix, TextXAlignment = Enum.TextXAlignment.Right, BackgroundTransparency = 1, Position = UDim2.new(1, -64, 0, 10), TextSize = fs.Body, Size = UDim2.new(0, 56, 0, 18), Parent = frame })
     local track = Make("Frame", { BackgroundColor3 = Color3.fromRGB(12, 12, 15), Position = UDim2.new(0, 16, 0, 36), Size = UDim2.new(1, -32, 0, 6), Parent = frame })
     Corner(track, sz.Pill); Stroke(track, Color3.fromRGB(30, 30, 35), 1)
-    local fill = Make("Frame", { BackgroundColor3 = c.Accent, Size = UDim2.new((cur - min) / (max - min), 0, 1, 0), Parent = track }); Corner(fill, sz.Pill)
-    local dimFill = Make("Frame", { BackgroundColor3 = c.BorderSubtle, BackgroundTransparency = 0.5, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(1 - (cur - min) / (max - min), 0, 1, 0), Parent = track }); Corner(dimFill, sz.Pill)
-    local knob = Make("Frame", { BackgroundColor3 = c.Text, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new((cur - min) / (max - min), 0, 0.5, 0), Size = UDim2.new(0, 16, 0, 16), ZIndex = frame.ZIndex + 3, Parent = track })
+    local fill = Make("Frame", { BackgroundColor3 = c.Accent, Size = UDim2.new((cur - min) / span, 0, 1, 0), Parent = track }); Corner(fill, sz.Pill)
+    local dimFill = Make("Frame", { BackgroundColor3 = c.BorderSubtle, BackgroundTransparency = 0.5, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(1 - (cur - min) / span, 0, 1, 0), Parent = track }); Corner(dimFill, sz.Pill)
+    local knob = Make("Frame", { BackgroundColor3 = c.Text, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new((cur - min) / span, 0, 0.5, 0), Size = UDim2.new(0, 16, 0, 16), ZIndex = frame.ZIndex + 3, Parent = track })
     Corner(knob, sz.Pill); Stroke(knob, Color3.fromRGB(0, 0, 0), 1, 0.4)
     local dragging, mConn, eConn = false, nil, nil
     local function SnapVal(v) if step and step > 0 then v = math.round((v - min) / step) * step + min end; return math.clamp(v, min, max) end
     local function SetPct(pct)
-        pct = math.clamp(pct, 0, 1); cur = SnapVal(min + (max - min) * pct)
-        local truePct = (cur - min) / (max - min)
+        pct = math.clamp(pct, 0, 1); cur = SnapVal(min + span * pct)
+        local truePct = (cur - min) / span
         Tween(fill, { Size = UDim2.new(truePct, 0, 1, 0) }, ease.Snap)
         Tween(dimFill, { Size = UDim2.new(1 - truePct, 0, 1, 0) }, ease.Snap)
         Tween(knob, { Position = UDim2.new(truePct, 0, 0.5, 0) }, ease.Snap)
@@ -667,7 +676,7 @@ function Library._Slider(tab, cfg)
             if mConn then mConn:Disconnect(); mConn = nil end; if eConn then eConn:Disconnect(); eConn = nil end
         end)
     end))
-    local methods = { SetValue = function(_, v) cur = math.clamp(v, min, max); SetPct((cur - min) / (max - min)); cb(cur) end, GetValue = function() return cur end }
+    local methods = { SetValue = function(_, v) cur = math.clamp(v, min, max); SetPct((cur - min) / span); cb(cur) end, GetValue = function() return cur end }
     if flag and tab._lib then tab._lib:_RegisterCfg(flag, "Slider", function() return cur end, function(v) methods:SetValue(v) end) end
     return methods
 end
@@ -1078,10 +1087,24 @@ local function startFly()
 	end)
 end
 
+-- Re-attach fly to a freshly spawned character (the old body movers die with it).
+LP.CharacterAdded:Connect(function()
+	if flags.fly then
+		task.wait(0.6)
+		if flyConn then flyConn:Disconnect(); flyConn = nil end
+		flyBV, flyBG = nil, nil
+		startFly()
+	end
+end)
+
 -- ------------------------------------------------------------------ Automation
+local warnedNoPrompt = false
 local function firePrompts(includeDoors)
 	if not fireproximityprompt then
-		Window:Notify({ Title = "Unsupported", Description = "Your executor lacks fireproximityprompt.", Duration = 5 })
+		if not warnedNoPrompt then
+			warnedNoPrompt = true
+			Window:Notify({ Title = "Unsupported", Description = "Your executor lacks fireproximityprompt.", Duration = 5 })
+		end
 		return 0
 	end
 	local cr = workspace:FindFirstChild("CurrentRooms")
@@ -1169,7 +1192,18 @@ player:CreateToggle({ Name = "Speed",   Default = false, Flag = "speed",    Call
 player:CreateSlider({ Name = "WalkSpeed", Min = 16, Max = 120, Default = flags.walkspeed, Step = 1, Suffix = " sps", Flag = "walkspeed", Callback = function(v) flags.walkspeed = v end })
 player:CreateToggle({ Name = "High Jump", Default = false, Flag = "highjump", Callback = function(v) flags.highjump = v end })
 player:CreateSlider({ Name = "JumpPower", Min = 50, Max = 250, Default = flags.jumppower, Step = 1, Flag = "jumppower", Callback = function(v) flags.jumppower = v end })
-player:CreateToggle({ Name = "Noclip",  Default = false, Flag = "noclip",   Callback = function(v) flags.noclip = v end })
+player:CreateToggle({ Name = "Noclip",  Default = false, Flag = "noclip",   Callback = function(v)
+	flags.noclip = v
+	if not v then
+		-- Restore collisions so the player stops falling through the world.
+		local c = getChar()
+		if c then
+			for _, p in ipairs(c:GetDescendants()) do
+				if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then p.CanCollide = true end
+			end
+		end
+	end
+end })
 player:CreateToggle({ Name = "Fly (WASD + Space/Ctrl)", Default = false, Flag = "fly", Callback = function(v) if v then startFly() else stopFly() end end })
 player:CreateSlider({ Name = "Fly Speed", Min = 20, Max = 250, Default = flags.flyspeed, Step = 5, Flag = "flyspeed", Callback = function(v) flags.flyspeed = v end })
 
