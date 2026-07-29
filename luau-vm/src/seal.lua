@@ -74,10 +74,19 @@ function M.seal(proto, sk)
   local code = proto.code
   local n = #code
   local slices = {}
+  local SUPEROP = Opcodes.Op.SUPEROP
   for i = 1, n do
     local ins = code[i]
     local raw = { ins.op % 256 }
-    for _, f in ipairs(Opcodes.operands[ins.op]) do putSV(raw, ins[f] or 0) end
+    if ins.op == SUPEROP then
+      putUV(raw, #ins.subs)
+      for _, sub in ipairs(ins.subs) do
+        raw[#raw + 1] = sub.op % 256
+        for _, f in ipairs(Opcodes.operands[sub.op]) do putSV(raw, sub[f] or 0) end
+      end
+    else
+      for _, f in ipairs(Opcodes.operands[ins.op]) do putSV(raw, ins[f] or 0) end
+    end
     local st, kb = seed1(sk, i), nil
     local enc = {}
     for j = 1, #raw do
@@ -143,10 +152,9 @@ function M.decode(sealed, i)
     st, kb = nextByte(st)
     bytes[k] = (s:byte(k) - kb) % 256 -- inverse of additive cipher
   end
-  local op = bytes[1]
-  local ins = { op = op }
-  local rp = 2
-  for _, f in ipairs(Opcodes.operands[op]) do
+  local rp = 1
+  local function readByteAt() local b = bytes[rp]; rp = rp + 1; return b end
+  local function readUV()
     local x, shift = 0, 1
     while true do
       local bb = bytes[rp]; rp = rp + 1
@@ -154,9 +162,25 @@ function M.decode(sealed, i)
       if bb < 128 then break end
       shift = shift * 128
     end
-    ins[f] = (x % 2 == 0) and math.floor(x / 2) or -math.floor((x + 1) / 2) -- un-zig-zag
+    return x
   end
-  return ins
+  local function readSV()
+    local x = readUV()
+    return (x % 2 == 0) and math.floor(x / 2) or -math.floor((x + 1) / 2) -- un-zig-zag
+  end
+  local function readInsFrom(op)
+    local ins = { op = op }
+    for _, f in ipairs(Opcodes.operands[op]) do ins[f] = readSV() end
+    return ins
+  end
+  local op = readByteAt()
+  if op == Opcodes.Op.SUPEROP then
+    local nsub = readUV()
+    local subs = {}
+    for k = 1, nsub do subs[k] = readInsFrom(readByteAt()) end
+    return { op = op, subs = subs }
+  end
+  return readInsFrom(op)
 end
 
 return M

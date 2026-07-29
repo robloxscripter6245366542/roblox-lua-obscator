@@ -174,10 +174,20 @@ local function writeProto(w, p, opMap, pick)
   for _, c in ipairs(p.consts) do writeValue(w, c) end
   -- code
   writeUVarint(w, #p.code)
-  for _, ins in ipairs(p.code) do
+  local SUPEROP = Opcodes.Op.SUPEROP
+  local function writeIns(ins)
     writeByte(w, opByte(opMap, ins.op, pick))
     for _, field in ipairs(Opcodes.operands[ins.op]) do
       writeSVarint(w, ins[field] or 0)
+    end
+  end
+  for _, ins in ipairs(p.code) do
+    if ins.op == SUPEROP then
+      writeByte(w, opByte(opMap, SUPEROP, pick))
+      writeUVarint(w, #ins.subs)
+      for _, sub in ipairs(ins.subs) do writeIns(sub) end -- each sub-op byte is mapped too
+    else
+      writeIns(ins)
     end
   end
   -- nested protos
@@ -197,12 +207,27 @@ local function readProto(r, invMap)
   end
   for i = 1, readUVarint(r) do p.consts[i] = readValue(r) end
   local ncode = readUVarint(r)
-  for i = 1, ncode do
+  local SUPEROP = Opcodes.Op.SUPEROP
+  local function readIns()
     local op = readByte(r)
     if invMap then op = invMap[op] end
     local ins = { op = op }
     for _, field in ipairs(Opcodes.operands[op]) do ins[field] = readSVarint(r) end
-    p.code[i] = ins
+    return ins
+  end
+  for i = 1, ncode do
+    local op = readByte(r)
+    if invMap then op = invMap[op] end
+    if op == SUPEROP then
+      local nsub = readUVarint(r)
+      local subs = {}
+      for k = 1, nsub do subs[k] = readIns() end
+      p.code[i] = { op = SUPEROP, subs = subs }
+    else
+      local ins = { op = op }
+      for _, field in ipairs(Opcodes.operands[op]) do ins[field] = readSVarint(r) end
+      p.code[i] = ins
+    end
   end
   for i = 1, readUVarint(r) do p.protos[i] = readProto(r, invMap) end
   return p

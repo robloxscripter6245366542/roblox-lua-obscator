@@ -72,43 +72,63 @@ local function checkProto(p, path)
   -- extra slot of head-room before flagging a register as out of range.
   local regMax = maxstack
 
-  for i = 1, ncode do
-    local ins = p.code[i]
+  local SUPEROP = Op.SUPEROP
+  local function checkIns(ins, i, subIdx)
     local layout = kinds[ins.op]
-    if not layout then return false, string.format('%s[%d]: unknown opcode %s', path, i, tostring(ins.op)) end
+    local where = subIdx and ('%s[%d].sub[%d]'):format(path, i, subIdx) or ('%s[%d]'):format(path, i)
+    if not layout then return false, string.format('%s: unknown opcode %s', where, tostring(ins.op)) end
     for field, kind in pairs(layout) do
       local v = ins[field] or 0
       if kind == 'reg' then
         if v < 0 or v > regMax then
-          return false, string.format('%s[%d] %s: register %d out of range [0,%d]',
-            path, i, Opcodes.mnemonic(ins.op), v, regMax)
+          return false, string.format('%s %s: register %d out of range [0,%d]',
+            where, Opcodes.mnemonic(ins.op), v, regMax)
         end
       elseif kind == 'const' then
-        -- constant/proto/upvalue operands index 1-based Lua tables (K[bx], etc.)
         if v < 1 or v > nconst then
-          return false, string.format('%s[%d] %s: const index %d out of range [1,%d]',
-            path, i, Opcodes.mnemonic(ins.op), v, nconst)
+          return false, string.format('%s %s: const index %d out of range [1,%d]',
+            where, Opcodes.mnemonic(ins.op), v, nconst)
         end
       elseif kind == 'proto' then
         if v < 1 or v > nproto then
-          return false, string.format('%s[%d] %s: proto index %d out of range [1,%d]',
-            path, i, Opcodes.mnemonic(ins.op), v, nproto)
+          return false, string.format('%s %s: proto index %d out of range [1,%d]',
+            where, Opcodes.mnemonic(ins.op), v, nproto)
         end
       elseif kind == 'upval' then
         if v < 1 or v > nupval then
-          return false, string.format('%s[%d] %s: upvalue index %d out of range [1,%d]',
-            path, i, Opcodes.mnemonic(ins.op), v, nupval)
+          return false, string.format('%s %s: upvalue index %d out of range [1,%d]',
+            where, Opcodes.mnemonic(ins.op), v, nupval)
         end
       elseif kind == 'jump' then
         local target = i + 1 + v
         if target < 1 or target > ncode then
-          return false, string.format('%s[%d] %s: jump target %d out of range [1,%d]',
-            path, i, Opcodes.mnemonic(ins.op), target, ncode)
+          return false, string.format('%s %s: jump target %d out of range [1,%d]',
+            where, Opcodes.mnemonic(ins.op), target, ncode)
         end
       end
     end
+    return true
   end
 
+  for i = 1, ncode do
+    local ins = p.code[i]
+    if ins.op == SUPEROP then
+      if type(ins.subs) ~= 'table' or #ins.subs < 1 then
+        return false, string.format('%s[%d] SUPEROP: missing sub-instructions', path, i)
+      end
+      for si, sub in ipairs(ins.subs) do
+        if not Opcodes.pure[sub.op] then
+          return false, string.format('%s[%d].sub[%d]: non-pure opcode %s in SUPEROP',
+            path, i, si, Opcodes.mnemonic(sub.op))
+        end
+        local sok, serr = checkIns(sub, i, si)
+        if not sok then return false, serr end
+      end
+    else
+      local iok, ierr = checkIns(ins, i, nil)
+      if not iok then return false, ierr end
+    end
+  end
   -- upvalue descriptors must reference sane parent slots
   for j, d in ipairs(p.upvals) do
     if d.kind ~= 'reg' and d.kind ~= 'up' then

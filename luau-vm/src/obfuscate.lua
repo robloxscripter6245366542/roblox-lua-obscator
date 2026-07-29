@@ -363,6 +363,66 @@ function M.flatten(proto, rng)
   return proto
 end
 
+-- ── superoperators: fuse runs of pure ops into single SUPEROP instructions ────
+-- Makes the bytecode stop decomposing 1:1 into Lua operations: a contiguous run
+-- of "pure" instructions (Opcodes.pure — no control flow, no multi-value/top)
+-- becomes one dispatched SUPEROP carrying the run in ins.subs. The VM executes
+-- the run in order, so it is exactly equivalent; only the shape of the stream
+-- changes, and the run lengths differ per build. A run may start on a jump
+-- target but must not CONTAIN one (nothing may jump into the middle of a fused
+-- run), so every jump still lands on a whole instruction.
+local SUPEROP = Op.SUPEROP
+
+local function fuseProto(proto, rng, maxRun)
+  local code = proto.code
+  local ncode = #code
+  local absTarget, isTarget = {}, {}
+  for i, ins in ipairs(code) do
+    if JUMP[ins.op] then local t = i + 1 + ins.sbx; absTarget[i] = t; isTarget[t] = true end
+  end
+
+  local newCode, newIndexOf = {}, {}
+  local i = 1
+  while i <= ncode do
+    local ins = code[i]
+    if Opcodes.pure[ins.op] then
+      local run = { ins }
+      local j = i + 1
+      while j <= ncode and #run < maxRun and Opcodes.pure[code[j].op] and not isTarget[j] do
+        run[#run + 1] = code[j]; j = j + 1
+      end
+      if #run >= 2 then
+        newCode[#newCode + 1] = { op = SUPEROP, subs = run }
+        for k = i, j - 1 do newIndexOf[k] = #newCode end -- i is the only possible target
+        i = j
+      else
+        newCode[#newCode + 1] = ins; newIndexOf[i] = #newCode; i = i + 1
+      end
+    else
+      newCode[#newCode + 1] = ins; newIndexOf[i] = #newCode; i = i + 1
+    end
+  end
+  newIndexOf[ncode + 1] = #newCode + 1
+
+  -- relocate jumps against the new indices (jump ops are non-pure, so they are
+  -- never fused and keep their identity in newCode)
+  for oldI, ins in ipairs(code) do
+    if JUMP[ins.op] then
+      ins.sbx = newIndexOf[absTarget[oldI]] - (newIndexOf[oldI] + 1)
+    end
+  end
+
+  proto.code = newCode
+  for _, child in ipairs(proto.protos) do fuseProto(child, rng, maxRun) end
+end
+
+function M.fuse(proto, rng, opts)
+  opts = opts or {}
+  local maxRun = opts.maxRun or (rng.int(3) + 3) -- 3..5 per build
+  fuseProto(proto, rng, maxRun)
+  return proto
+end
+
 -- Public: inject opaque predicates into a parsed chunk. `rng` is a Harden.prng
 -- (has :int(n)); `opts.density` is the per-statement injection chance in
 -- thousandths (default 350 = ~35%).
