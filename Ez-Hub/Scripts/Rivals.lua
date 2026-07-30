@@ -47,6 +47,8 @@ local ease = {
     Fluid = { 0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out },
     Spring = { 0.40, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, 0 },
     Pop = { 0.20, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, 0 },
+    Bounce = { 0.55, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out, 0, false, 0 },
+    Gentle = { 0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.Out },
     Linear = { 0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out } -- FIXED: Added missing Linear
 }
 
@@ -287,7 +289,12 @@ function Library:_Build()
     self.gui = Make("ScreenGui", { Name = "Acrylic", ZIndexBehavior = Enum.ZIndexBehavior.Sibling, ResetOnSpawn = false, IgnoreGuiInset = true })
     self.container = Make("Frame", { Name = "Container", BackgroundColor3 = c.Background, BackgroundTransparency = 1, Position = UDim2.new(0.5, -sz.Window.W/2, 0.5, -sz.Window.H/2 + 24), Size = UDim2.new(0, sz.Window.W, 0, sz.Window.H), ClipsDescendants = false, Parent = self.gui })
     Corner(self.container, sz.RadiusLg); self._windowStroke = Stroke(self.container, c.Border, 1, 0.15)
-    task.delay(0, function() Tween(self.container, { BackgroundTransparency = 0.03, Position = UDim2.new(0.5, -sz.Window.W/2, 0.5, -sz.Window.H/2) }, ease.Spring) end)
+    -- Spring the whole window in: scale 0.9 -> 1 while it fades and rises into place.
+    local openScale = Make("UIScale", { Scale = 0.9, Parent = self.container })
+    task.delay(0, function()
+        Tween(self.container, { BackgroundTransparency = 0.03, Position = UDim2.new(0.5, -sz.Window.W/2, 0.5, -sz.Window.H/2) }, ease.Spring)
+        Tween(openScale, { Scale = 1 }, ease.Spring)
+    end)
     self.topBar = Make("Frame", { Name = "TopBar", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, sz.TopBar), Parent = self.container })
     Label({ Name = "Title", FontFace = font.SemiBold, TextColor3 = c.Text, Text = self.title, BackgroundTransparency = 1, Position = UDim2.new(0, 18, 0.5, -10), TextXAlignment = Enum.TextXAlignment.Left, TextSize = fs.Title, Size = UDim2.new(0, 240, 0, 20), Parent = self.topBar })
     self:_BuildControls()
@@ -527,11 +534,17 @@ function Library._CreateTab(sec, name, icon)
     local accentBar = Make("Frame", { BackgroundColor3 = c.Accent, BackgroundTransparency = 1, Position = UDim2.new(0, 0, sz.AccentBar.VPad, 0), Size = UDim2.new(0, sz.AccentBar.W, 1 - sz.AccentBar.VPad * 2, 0), Parent = btn })
     Corner(accentBar, sz.Pill)
     local iconLbl = Make("ImageLabel", { Image = icon or "rbxassetid://112235310154264", ImageColor3 = c.TextMuted, BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 16, 0.5, 0), Size = UDim2.new(0, 16, 0, 16), Parent = btn })
+    tab._iconScale = Make("UIScale", { Scale = 1, Parent = iconLbl })
     local txtLbl = Label({ FontFace = font.Medium, TextColor3 = c.TextSubtle, Text = name, TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1, Position = UDim2.new(0, 40, 0, 0), Size = UDim2.new(1, -50, 1, 0), TextSize = fs.Small, Parent = btn })
     Pad(txtLbl, 0, 0, 0, 8)
     local txtGrad = Make("UIGradient", { Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, c.TextSubtle), ColorSequenceKeypoint.new(0.72, c.TextSubtle), ColorSequenceKeypoint.new(1, c.TextFade) }), Parent = txtLbl })
     local clickBtn = Make("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Parent = btn })
-    tab.content = Make("Frame", { Name = name .. "_Content", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false, Parent = sec._lib.contentScroll })
+    -- CanvasGroup so the entire tab can be faded/slid in as one composited layer.
+    -- Falls back to a plain Frame on any executor that can't build a CanvasGroup
+    -- (the reveal just skips the group-fade; everything else still works).
+    local okCG, cg = pcall(Make, "CanvasGroup", { Name = name .. "_Content", BackgroundTransparency = 1, GroupTransparency = 0, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false, Parent = sec._lib.contentScroll })
+    tab.content = (okCG and cg) or Make("Frame", { Name = name .. "_Content", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false, Parent = sec._lib.contentScroll })
+    tab.contentScale = Make("UIScale", { Scale = 1, Parent = tab.content })
     List(tab.content, 10)
     tab.button, tab.stroke, tab.accentBar, tab.iconLbl, tab.txtLbl, tab.txtGrad, tab._lib = btn, btnStroke, accentBar, iconLbl, txtLbl, txtGrad, sec._lib
     clickBtn.MouseEnter:Connect(function() if sec._lib.currentTab ~= tab then Tween(btn, { BackgroundTransparency = 0.6 }, ease.Swift) end end)
@@ -567,7 +580,17 @@ function Library._SelectTab(lib, tab)
     Tween(tab.button, { BackgroundTransparency = 0.45 }, ease.Smooth)
     Tween(tab.iconLbl, { ImageColor3 = c.Text }, ease.Smooth)
     tab.stroke.Transparency = 0.15; Tween(tab.accentBar, { BackgroundTransparency = 0 }, ease.Spring)
-    tab.txtGrad.Enabled = false; tab.txtLbl.TextColor3 = c.Text; tab.content.Visible = true
+    tab.txtGrad.Enabled = false; tab.txtLbl.TextColor3 = c.Text
+    -- Pop the selected tab's icon.
+    if tab._iconScale then tab._iconScale.Scale = 1; Tween(tab._iconScale, { Scale = 1.18 }, ease.Snap); task.delay(ease.Snap[1], function() if tab._iconScale then Tween(tab._iconScale, { Scale = 1 }, ease.Spring) end end) end
+    -- Reveal the tab: fade + gentle scale-in of the whole content layer.
+    tab.content.Visible = true
+    if tab.content:IsA("CanvasGroup") then
+        tab.content.GroupTransparency = 1
+        if tab.contentScale then tab.contentScale.Scale = 0.98 end
+        Tween(tab.content, { GroupTransparency = 0 }, ease.Fluid)
+        if tab.contentScale then Tween(tab.contentScale, { Scale = 1 }, ease.Spring) end
+    end
 end
 
 local function Card(tab, name, height, autoSize)
