@@ -1082,6 +1082,11 @@ local function startFly()
 		if UIS:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector end
 		if UIS:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
 		if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.new(0,1,0) end
+		-- Mobile: no keyboard — steer with the joystick, flying where you look.
+		if UIS.TouchEnabled and not UIS.KeyboardEnabled then
+			local hh = getHum()
+			if hh and hh.MoveDirection.Magnitude > 0.05 then dir = cam.CFrame.LookVector end
+		end
 		flyBV.Velocity = dir * flags.flyspeed
 		flyBG.CFrame = cam.CFrame
 	end)

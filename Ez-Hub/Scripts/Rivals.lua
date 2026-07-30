@@ -922,6 +922,7 @@ local RS         = game:GetService("ReplicatedStorage")
 local HttpSvc    = game:GetService("HttpService")
 local LP         = Players.LocalPlayer
 local Camera     = workspace.CurrentCamera
+local IS_MOBILE  = UIS.TouchEnabled and not UIS.KeyboardEnabled  -- Delta/mobile
 
 local flags = {
 	aimPart = "Head", fov = 120, smooth = 6, prediction = 0.15, teamCheck = true, visCheck = false, sticky = false,
@@ -1036,7 +1037,8 @@ UIS.InputEnded:Connect(function(input)
 	local k = aimKeyObj:GetKey()
 	if (input.KeyCode == k or input.UserInputType == k) and flags.aimMode ~= "Toggle" then aiming = false end
 end)
-local function isAiming() return flags.aimMode == "Toggle" and aimToggled or aiming end
+-- "Always" needs no key (essential on mobile — there's no aim key to hold).
+local function isAiming() return flags.aimMode == "Always" or (flags.aimMode == "Toggle" and aimToggled) or aiming end
 
 -- ------------------------------------------------------------------ ESP (Drawing) + Chams (Highlight)
 local esp, chams = {}, {}
@@ -1169,6 +1171,11 @@ local function startFly()
 		if UIS:IsKeyDown(Enum.KeyCode.D) then dir = dir + Camera.CFrame.RightVector end
 		if UIS:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
 		if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.new(0,1,0) end
+		-- Mobile: no keyboard — steer with the joystick, flying where you look.
+		if IS_MOBILE then
+			local hh = getHum()
+			if hh and hh.MoveDirection.Magnitude > 0.05 then dir = Camera.CFrame.LookVector end
+		end
 		flyBV.Velocity = dir * flags.flyspeed; flyBG.CFrame = Camera.CFrame
 	end)
 end
@@ -1303,7 +1310,8 @@ local combatSec = Window:CreateSection("Combat")
 
 local aimTab = combatSec:CreateTab("Aimbot")
 aimTab:CreateToggle({ Name = "Aimbot", Default = false, Flag = "aimbot", Callback = function(v) flags.aimbot = v end })
-aimTab:CreateDropdown({ Name = "Aim Mode", Options = { "Hold", "Toggle" }, Default = "Hold", Flag = "aimmode", Callback = function(v) flags.aimMode = v end })
+flags.aimMode = flags.aimMode or (IS_MOBILE and "Always" or "Hold")  -- default to Always on mobile
+aimTab:CreateDropdown({ Name = "Aim Mode (Always = mobile)", Options = { "Hold", "Toggle", "Always" }, Default = flags.aimMode, Flag = "aimmode", Callback = function(v) flags.aimMode = v end })
 aimKeyObj = aimTab:CreateKeybind({ Name = "Aim Key", Default = Enum.UserInputType.MouseButton2, Callback = function() end })
 aimTab:CreateDropdown({ Name = "Target Part", Options = { "Head", "HumanoidRootPart", "Torso" }, Default = "Head", Flag = "aimpart", Callback = function(v) flags.aimPart = v end })
 aimTab:CreateSlider({ Name = "FOV", Min = 20, Max = 600, Default = flags.fov, Step = 5, Flag = "fov", Callback = function(v) flags.fov = v end })
