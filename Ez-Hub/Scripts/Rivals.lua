@@ -7,7 +7,8 @@
 
 	Rivals validates hits server-side, so silent-aim / hitbox expansion / no-recoil
 	(server-side) are intentionally omitted. Everything here is client-side.
-	ESP/crosshair need a Drawing-capable executor; triggerbot needs mouse1click;
+	ESP/crosshair need a Drawing-capable executor; the triggerbot fires through the
+	game's own mobile shoot input (works on phones), then mouse1click, then VIM;
 	FPS cap needs setfpscap; server hop needs HttpGet + TeleportService.
 ]==]
 
@@ -923,6 +924,51 @@ local HttpSvc    = game:GetService("HttpService")
 local LP         = Players.LocalPlayer
 local Camera     = workspace.CurrentCamera
 local IS_MOBILE  = UIS.TouchEnabled and not UIS.KeyboardEnabled  -- Delta/mobile
+local VIM        = nil
+pcall(function() VIM = game:GetService("VirtualInputManager") end)
+
+-- Rivals' own mobile shoot controller. On phones the game fires by calling
+-- MobileInputs:MobileInput("mobile_shoot", down) rather than a real mouse
+-- click, so the triggerbot has to drive the same input the shoot button does.
+local MobileInputs
+local function getMobileInputs()
+	if MobileInputs ~= nil then return MobileInputs end
+	MobileInputs = false
+	pcall(function()
+		local ps  = LP:FindFirstChild("PlayerScripts")
+		local mod = ps and ps:FindFirstChild("Modules")
+		local ui  = mod and mod:FindFirstChild("UserInterface")
+		local mi  = ui and ui:FindFirstChild("MobileInputs")
+		if mi then MobileInputs = require(mi) end
+	end)
+	return MobileInputs
+end
+
+-- Fire one shot through the best available path:
+--   1. the game's mobile shoot input   (works on mobile executors, no mouse)
+--   2. the executor's mouse1click()     (PC executors)
+--   3. VirtualInputManager mouse events (synthetic click at screen centre)
+local function doShoot()
+	local mi = getMobileInputs()
+	if mi then
+		local ok = pcall(function()
+			mi:MobileInput("mobile_shoot", true)
+			task.wait()
+			mi:MobileInput("mobile_shoot", false)
+		end)
+		if ok then return end
+	end
+	if mouse1click then mouse1click(); return end
+	if VIM then
+		local vp = (Camera and Camera.ViewportSize) or Vector2.new(0, 0)
+		local x, y = vp.X / 2, vp.Y / 2
+		pcall(function()
+			VIM:SendMouseButtonEvent(x, y, 0, true,  game, 0)
+			task.wait()
+			VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
+		end)
+	end
+end
 
 local flags = {
 	aimPart = "Head", fov = 120, smooth = 6, prediction = 0.15, teamCheck = true, visCheck = false, sticky = false,
@@ -1131,9 +1177,9 @@ end)
 -- ------------------------------------------------------------------ Triggerbot loop
 task.spawn(function()
 	while Window.gui and Window.gui.Parent do
-		if flags.trigger and mouse1click then
+		if flags.trigger then
 			local t = getClosest(8)
-			if t and ((not flags.visCheck) or visible(t)) then mouse1click(); task.wait((flags.trigDelay or 60)/1000) end
+			if t and ((not flags.visCheck) or visible(t)) then doShoot(); task.wait((flags.trigDelay or 60)/1000) end
 		end
 		task.wait()
 	end
