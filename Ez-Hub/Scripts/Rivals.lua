@@ -1318,12 +1318,46 @@ local function getEmoteNames()
 	end
 	return list
 end
+-- Generic remote firers so the Auto tab can drive any Data/Misc remote the
+-- same way the game does (the server still validates eligibility on every one).
+local function dataFire(name, ...)
+	local r = rivalsRemote("Data", name); if not r then return false end
+	local a = { ... }
+	return pcall(function() r:FireServer(table.unpack(a)) end)
+end
+local function dataInvoke(name, ...)
+	local r = rivalsRemote("Data", name); if not r then return false end
+	local a = { ... }
+	local ok, res = pcall(function() return r:InvokeServer(table.unpack(a)) end)
+	return ok, res
+end
+local function miscFire(name, ...)
+	local r = rivalsRemote("Misc", name); if not r then return false end
+	local a = { ... }
+	return pcall(function() r:FireServer(table.unpack(a)) end)
+end
+
 local function redeemCode(code)
-	local r = rivalsRemote("Data", "RedeemCode")
-	if r and code and code ~= "" then
-		local ok = pcall(function() r:InvokeServer(code) end)
-		Window:Notify({ Title = "Redeem Code", Description = ok and ("Sent: " .. code) or "Failed to send.", Duration = 3 })
+	if not code then return false end
+	code = tostring(code):lower():gsub("%s+", "")
+	if code == "" then return false end
+	-- The game redeems codes lowercased through the Data.RedeemCode function and
+	-- shows whatever message the server hands back.
+	local ok, res = dataInvoke("RedeemCode", code)
+	local msg = (ok and type(res) == "string" and res) or (ok and "Redeemed: " .. code) or "Failed to send."
+	Window:Notify({ Title = "Redeem Code", Description = msg, Duration = 3, Error = not ok })
+	return ok
+end
+
+-- Fire every no-arg "claim" remote once. Returns how many were actually sent.
+local function claimAllRewards()
+	local sent = 0
+	for _, n in ipairs({ "ClaimLikeReward", "ClaimFavoriteReward", "ClaimNotificationsReward", "ClaimWelcomeBackGift" }) do
+		if dataFire(n) then sent = sent + 1 end
 	end
+	if select(1, dataInvoke("ClaimGroupReward")) then sent = sent + 1 end
+	if miscFire("ClaimEventGift") then sent = sent + 1 end
+	return sent
 end
 
 -- Auto respawn: on death, fire the duel RespawnNow remote.
@@ -1455,6 +1489,56 @@ gameTab:CreateButton({ Name = "Refresh Emote List", Callback = function()
 end })
 gameTab:CreateTextBox({ Name = "Or type emote (Enter)", Placeholder = "emote name...", Callback = function(t) if t ~= "" then flags.emoteName = t; playEmote(t) end end })
 gameTab:CreateTextBox({ Name = "Redeem Code (Enter)", Placeholder = "code...", Callback = function(t) redeemCode(t) end })
+
+-- ------------------------------------------------------------------ Auto tab
+-- Every button here fires a real game remote the same way the game's own UI
+-- does. The server still validates eligibility (you only get what you're owed),
+-- so this is convenience automation, not an item/currency exploit.
+local autoSec = Window:CreateSection("Utility")
+local autoTab = autoSec:CreateTab("Auto")
+
+autoTab:CreateSection("Rewards")
+autoTab:CreateButton({ Name = "Claim All Rewards", Callback = function()
+	local n = claimAllRewards()
+	Window:Notify({ Title = "Auto", Description = "Fired " .. n .. " claim remotes.", Duration = 3 })
+end })
+autoTab:CreateButton({ Name = "Claim Like Reward",     Callback = function() dataFire("ClaimLikeReward") end })
+autoTab:CreateButton({ Name = "Claim Group Reward",    Callback = function() dataInvoke("ClaimGroupReward") end })
+autoTab:CreateButton({ Name = "Claim Favorite Reward", Callback = function() dataFire("ClaimFavoriteReward") end })
+autoTab:CreateButton({ Name = "Claim Welcome Gift",    Callback = function() dataFire("ClaimWelcomeBackGift") end })
+autoTab:CreateButton({ Name = "Claim Event Gift",      Callback = function() miscFire("ClaimEventGift") end })
+autoTab:CreateToggle({ Name = "Auto Claim (loop)", Default = false, Flag = "autoclaim", Callback = function(v) flags.autoClaim = v end })
+
+autoTab:CreateSection("Codes")
+autoTab:CreateTextBox({ Name = "Codes (comma / space)", Placeholder = "code1, code2, ...", Flag = "codes", Callback = function(t) flags.codes = t end })
+autoTab:CreateButton({ Name = "Redeem All Entered", Callback = function()
+	local raw = flags.codes or ""
+	local n = 0
+	for code in tostring(raw):gmatch("[^,%s]+") do
+		if redeemCode(code) then n = n + 1 end
+		task.wait(0.35) -- small gap so the server doesn't rate-limit the burst
+	end
+	Window:Notify({ Title = "Codes", Description = n > 0 and ("Redeemed " .. n .. " code(s).") or "No valid codes entered.", Duration = 3 })
+end })
+
+autoTab:CreateSection("Events / Pickups")
+autoTab:CreateButton({ Name = "Take Cake",   Callback = function() dataFire("TakeCake") end })
+autoTab:CreateToggle({ Name = "Auto Take Cake (loop)", Default = false, Flag = "autocake", Callback = function(v) flags.autoCake = v end })
+
+autoTab:CreateSection("Shooting Range")
+autoTab:CreateButton({ Name = "Enter Shooting Range", Callback = function() miscFire("ShootingRangeEnter") end })
+autoTab:CreateButton({ Name = "Leave Shooting Range", Callback = function() miscFire("ShootingRangeLeave") end })
+autoTab:CreateButton({ Name = "Trash Range Items",    Callback = function() miscFire("ShootingRangeTrashItems") end })
+
+-- Background loop for the auto toggles (server validates each fire, so spamming
+-- when there's nothing to claim just no-ops).
+task.spawn(function()
+	while Window.gui and Window.gui.Parent do
+		if flags.autoClaim then pcall(claimAllRewards) end
+		if flags.autoCake then pcall(dataFire, "TakeCake") end
+		task.wait(30)
+	end
+end)
 
 local cfgTab = Window:CreateSection("Config"):CreateTab("Configuration")
 cfgTab:CreateConfigSection()
