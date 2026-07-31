@@ -43,26 +43,9 @@ local LISTS = {UNC_LIST, SUNC_LIST, MYRIAD_LIST}
 local LCOLS = {C.ACC, C.BLUE, C.YELL}
 local LNAMES = {"UNC", "SUNC", "Myriad"}
 
--- ── hasFunc — detect function presence ───────────────────────────────────────
-local function hasFunc(name)
-    local root = name:match("^([^%.]+)%.")
-    if root then
-        local tbl = (getfenv and getfenv()[root]) or _G[root]
-        if type(tbl) == "table" then
-            local sub = name:match("%.(.+)$")
-            return tbl[sub] ~= nil
-        end
-        return false
-    end
-    if getfenv and getfenv()[name] ~= nil then return true end
-    return _G[name] ~= nil
-end
-
 -- ── buildList ─────────────────────────────────────────────────────────────────
 buildList = function(li)
-    for _, ch in ChkScr:GetChildren() do
-        if not ch:IsA("UIListLayout") then ch:Destroy() end
-    end
+    clearLayout(ChkScr)
     local list    = LISTS[li]
     local col     = LCOLS[li]
     local listNm  = LNAMES[li]
@@ -71,7 +54,7 @@ buildList = function(li)
 
     for _, name in list do
         if filter == "" or name:lower():find(filter, 1, true) then
-            local ok2 = hasFunc(name)
+            local ok2 = hasGlobal(name)
             if ok2 then pass += 1 else fail += 1 end
 
             local Row = F(ChkScr, UDim2.new(1,-4,0,22), nil, C.BLK)
@@ -99,7 +82,7 @@ buildList = function(li)
         if not writefile then return end
         local lines = {listNm .. " CHECK — " .. os.date("%Y-%m-%d %H:%M:%S")}
         for _, name in list do
-            lines[#lines+1] = (hasFunc(name) and "[✓] " or "[✗] ") .. name
+            lines[#lines+1] = (hasGlobal(name) and "[✓] " or "[✗] ") .. name
         end
         local fname = "nexus_checker_" .. listNm:lower() .. ".txt"
         writefile(fname, table.concat(lines, "\n"))

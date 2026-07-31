@@ -29,8 +29,7 @@ for i, cat in CATS do
     end)
 end
 
-local SHOut = OUT(P9, UDim2.new(1,0,0,38), UDim2.new(0,0,1,-40))
-local function shOut(msg, ok2) SHOut.TextColor3=ok2 and C.GRN or C.RED; SHOut.Text=ts()..tostring(msg) end
+local shOut = statusOut(P9, UDim2.new(1,0,0,38), UDim2.new(0,0,1,-40))
 
 local SHScr = SCR(P9, UDim2.new(1,0,1,-110), UDim2.new(0,0,0,76))
 listV(SHScr, 4)
@@ -67,9 +66,7 @@ local SCRIPTS = {
 
 -- ── Build / rebuild listing ───────────────────────────────────────────────────
 buildScripts = function(filter)
-    for _, ch in SHScr:GetChildren() do
-        if not ch:IsA("UIListLayout") then ch:Destroy() end
-    end
+    clearLayout(SHScr)
     local shown = 0
     for _, entry in SCRIPTS do
         local catMatch = selCat == "All" or entry.cat == selCat
@@ -95,11 +92,11 @@ buildScripts = function(filter)
                 task.spawn(function()
                     local ok, src = pcall(game.HttpGet, game, url, true)
                     if not ok then shOut("HTTP fail: " .. tostring(src), false); return end
-                    local fn, ce = _ld(src)
-                    if not fn then shOut("Compile:\n" .. tostring(ce), false); return end
-                    local ok2, re = pcall(fn)
-                    shOut(ok2 and (nm .. " loaded ✓  (" .. #src .. " bytes)")
-                        or "Error:\n" .. tostring(re), ok2)
+                    local ok2, err, stage = runCode(src)
+                    if not ok2 then
+                        shOut((stage=="compile" and "Compile:\n" or "Error:\n")..err, false); return
+                    end
+                    shOut(nm .. " loaded ✓  (" .. #src .. " bytes)", true)
                 end)
             end)
             BCpy.MouseButton1Click:Connect(function()

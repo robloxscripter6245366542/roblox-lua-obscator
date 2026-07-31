@@ -5,11 +5,7 @@
 local P3 = newTab("⛓", "Sandbox")
 L(P3, "SANDBOX & BYPASS TOOLS", UDim2.new(1,0,0,16), UDim2.new(0,0,0,0), C.TXTS, FB, 11)
 
-local SBOut = OUT(P3, UDim2.new(1,0,0,44), UDim2.new(0,0,1,-46))
-local function sbOut(msg, ok2)
-    SBOut.TextColor3 = ok2 and C.GRN or C.RED
-    SBOut.Text = ts() .. tostring(msg)
-end
+local sbOut = statusOut(P3, UDim2.new(1,0,0,44), UDim2.new(0,0,1,-46))
 
 local SBScr = SCR(P3, UDim2.new(1,0,1,-104), UDim2.new(0,0,0,20))
 listV(SBScr, 4)
@@ -156,10 +152,11 @@ BSnip.TextSize = 11; hov(BSnip, C.ACC, C.ACCHV)
 BSnip.MouseButton1Click:Connect(function()
     local code = SnipBox.Text
     if trim(code) == "" then sbOut("No snippet entered.", false); return end
-    local fn, ce = _ld(code)
-    if not fn then sbOut("Compile error:\n" .. tostring(ce), false); return end
-    local ok2, re = pcall(fn)
-    sbOut(ok2 and "✓ Snippet executed OK." or "✗ " .. tostring(re), ok2)
+    local ok2, err, stage = runCode(code)
+    if not ok2 then
+        sbOut(stage=="compile" and ("Compile error:\n"..err) or ("✗ "..err), false); return
+    end
+    sbOut("✓ Snippet executed OK.", true)
 end)
 
 -- ── Auto-detect available bypass functions ────────────────────────────────────
@@ -171,7 +168,7 @@ task.spawn(function()
     }
     local have, miss = {}, {}
     for _, name in check do
-        if _G[name] or (getfenv and getfenv()[name]) then
+        if hasGlobal(name) then
             have[#have+1] = name
         else
             miss[#miss+1] = name
