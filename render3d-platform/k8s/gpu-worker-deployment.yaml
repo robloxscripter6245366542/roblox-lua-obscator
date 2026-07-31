@@ -1,0 +1,55 @@
+# GPU-backed Celery worker pool. Requires the NVIDIA GPU Operator installed
+# on the cluster (nodeSelector below assumes it has labeled GPU nodes via
+# node feature discovery: nvidia.com/gpu.present=true).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: render3d-gpu-worker
+  labels: { app: render3d-gpu-worker }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: render3d-gpu-worker }
+  template:
+    metadata:
+      labels: { app: render3d-gpu-worker }
+    spec:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: worker
+          image: render3d/worker:latest
+          envFrom:
+            - secretRef: { name: render3d-secrets }
+          resources:
+            requests: { cpu: "1", memory: "4Gi" }
+            limits:
+              cpu: "2"
+              memory: "8Gi"
+              nvidia.com/gpu: 1
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: render3d-gpu-worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: render3d-gpu-worker
+  minReplicas: 1
+  maxReplicas: 8
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: celery_queue_length
+          selector:
+            matchLabels: { queue: render3d }
+        target:
+          type: AverageValue
+          averageValue: "5"
