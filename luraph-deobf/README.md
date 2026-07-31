@@ -95,6 +95,15 @@ The deep writeup: the full bootstrap chain, the bytecode-format
 observations, and the step-by-step roadmap for lifting the bytecode using
 the now-recovered interpreter source.
 
+### `dynamic/` — run the recovered VM under real Luau
+`dynamic/run.py` executes the sample in a real Luau runtime inside a
+stubbed, network-blocked environment and logs everything it does — HttpGet
+URLs, config, method calls. It self-unpacks and boots the VM, and its stub
+**satisfies the W5 anti-tamper** (the `loadstring` second-return-value probe
+— see `dynamic/README.md`). Verified capture on the sample: the SigilUI URL,
+the Discord, the key filename, the shop funnel, and `LaunchJunkie{Service=Mm,
+Identifier=1027906}`. `dynamic/build_luau.sh` builds the Luau CLI it needs.
+
 ---
 
 ## Typical workflow
