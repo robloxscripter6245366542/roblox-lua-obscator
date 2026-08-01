@@ -167,8 +167,8 @@ def dst_reg(dst, a, b, c):
 
 
 def lift_proto(pid, instrs, opmap):
+    """Flat mode: emit in pc order with labels + gotos (faithful, un-structured)."""
     n = len(instrs)
-    # only emit labels that are actually targeted by a goto/branch (less noise)
     targets = set()
     for pc, op, ops in instrs:
         if CLASS.get(op) in ("jump", "branch"):
@@ -186,12 +186,137 @@ def lift_proto(pid, instrs, opmap):
     return "\n".join(out)
 
 
+# ---- control-flow structuring (trace-linearise the flattened CFG) --------
+
+def build_blocks(instrs, n):
+    """Split into basic blocks. Returns {start_pc: block} where block =
+    dict(start, instrs, kind, target, fall). kind in goto/branch/return/fall."""
+    pc_index = {pc: i for i, (pc, _, _) in enumerate(instrs)}
+    leaders = {instrs[0][0]}
+    for i, (pc, op, ops) in enumerate(instrs):
+        cls = CLASS.get(op)
+        if cls in ("jump", "branch"):
+            t = opval(ops, "b")
+            if is_pc(t, n):
+                leaders.add(t)
+            if i + 1 < len(instrs):
+                leaders.add(instrs[i + 1][0])
+    starts = sorted(leaders)
+    blocks = {}
+    for si, start in enumerate(starts):
+        end = starts[si + 1] if si + 1 < len(starts) else None
+        body = []
+        j = pc_index[start]
+        while j < len(instrs) and (end is None or instrs[j][0] < end):
+            body.append(instrs[j]); j += 1
+        lpc, lop, lops = body[-1]
+        cls = CLASS.get(lop)
+        nxt = instrs[pc_index[lpc] + 1][0] if pc_index[lpc] + 1 < len(instrs) else None
+        blk = {"start": start, "instrs": body}
+        if cls == "jump":
+            t = opval(lops, "b")
+            if is_pc(t, n):
+                blk.update(kind="goto", target=t, fall=None)
+            else:
+                blk.update(kind="return", target=None, fall=None)
+        elif cls == "branch":
+            t = opval(lops, "b")
+            blk.update(kind="branch", target=t if is_pc(t, n) else None, fall=nxt)
+        else:
+            blk.update(kind="fall", target=None, fall=nxt)
+        blocks[start] = blk
+    return blocks, starts[0]
+
+
+def linearise(blocks, entry):
+    """Order blocks so a block's natural successor follows it (fall-through)."""
+    order, placed, work = [], set(), [entry]
+    while work:
+        b = work.pop()
+        while b is not None and b in blocks and b not in placed:
+            order.append(b); placed.add(b)
+            blk = blocks[b]
+            if blk["kind"] == "branch":
+                succs = [blk["fall"], blk["target"]]
+            elif blk["kind"] == "goto":
+                succs = [blk["target"]]
+            elif blk["kind"] == "fall":
+                succs = [blk["fall"]]
+            else:
+                succs = []
+            nxt = None
+            for s in succs:
+                if s in blocks and s not in placed:
+                    if nxt is None:
+                        nxt = s
+                    else:
+                        work.append(s)
+            b = nxt
+    # append any unreachable blocks (defensive)
+    for s in blocks:
+        if s not in placed:
+            order.append(s)
+    return order
+
+
+def structure_proto(pid, instrs, opmap):
+    n = len(instrs)
+    blocks, entry = build_blocks(instrs, n)
+    order = linearise(blocks, entry)
+    pos = {b: i for i, b in enumerate(order)}
+    ctrl = {"jump", "branch"}
+    referenced = set()
+    lines = []
+    for i, start in enumerate(order):
+        blk = blocks[start]
+        nextblk = order[i + 1] if i + 1 < len(order) else None
+        blines = []
+        # non-terminator instructions
+        for (pc, op, ops) in blk["instrs"][:-1]:
+            blines.append("  " + emit(pc, op, ops, opmap.get(str(op)), n))
+        # terminator
+        lpc, lop, lops = blk["instrs"][-1]
+        if blk["kind"] == "goto":
+            if blk["target"] != nextblk:
+                blines.append(f"  goto L_{blk['target']}"); referenced.add(blk["target"])
+            # else fall-through: drop the jump
+        elif blk["kind"] == "branch":
+            a = opval(lops, "a")
+            cond = f"e[{a}]" if a is not None else "cond"
+            back = blk["target"] in pos and pos[blk["target"]] <= i
+            note = "  -- back-edge (loop)" if back else ""
+            if blk["fall"] == nextblk:
+                blines.append(f"  if {cond} then goto L_{blk['target']} end{note}")
+                referenced.add(blk["target"])
+            else:
+                blines.append(f"  if {cond} then goto L_{blk['target']} else goto L_{blk['fall']} end{note}")
+                referenced.add(blk["target"]); referenced.add(blk["fall"])
+        elif blk["kind"] == "return":
+            blines.append("  " + emit(lpc, lop, lops, opmap.get(str(lop)), n))
+        else:  # fall
+            blines.append("  " + emit(lpc, lop, lops, opmap.get(str(lop)), n))
+            if blk["fall"] is not None and blk["fall"] != nextblk:
+                blines.append(f"  goto L_{blk['fall']}"); referenced.add(blk["fall"])
+        lines.append((start, blines))
+
+    out = [f"local function proto{pid}(...)  -- {n} instrs, {len(order)} blocks (structured)"]
+    out.append("  local e = regs")
+    for start, blines in lines:
+        if start in referenced:
+            out.append(f"  ::L_{start}::")
+        out.extend(blines)
+    out.append("end")
+    return "\n".join(out)
+
+
 def main():
     ap = argparse.ArgumentParser(description="lift Luraph bytecode to register-level Lua")
     ap.add_argument("fulldump", help="output of run_vm.py --mode fulldump")
     ap.add_argument("--map", default="opcodes.full.json")
     ap.add_argument("-o", "--out", default="lifted.lua")
     ap.add_argument("--protos", type=int, default=0, help="limit to first N protos (0=all)")
+    ap.add_argument("--flat", action="store_true",
+                    help="emit in raw pc order (skip control-flow structuring)")
     args = ap.parse_args()
 
     opmap = json.load(open(args.map))
@@ -212,16 +337,19 @@ def main():
             if CLASS.get(op, "unknown") != "unknown":
                 known += 1
 
+    mode = "flat (pc order)" if args.flat else "structured (trace-linearised CFG)"
     header = [
         "-- Devirtualised from Luraph v14.7 bytecode by luraph-deobf/devirt/lift.py",
         "-- Register-level transliteration (semantically faithful, not original source).",
         "-- e[] = VM register file; K(i) = constant #i; L_n = basic-block labels.",
+        f"-- mode: {mode}.",
         f"-- {len(ids)} protos, {total} instructions, "
         f"{known} ({known*100//max(total,1)}%) with a known opcode.",
         "local regs = {}",
         "",
     ]
-    body = "\n\n".join(lift_proto(pid, protos[pid], opmap) for pid in ids)
+    gen = lift_proto if args.flat else structure_proto
+    body = "\n\n".join(gen(pid, protos[pid], opmap) for pid in ids)
     with open(args.out, "w") as f:
         f.write("\n".join(header) + "\n" + body + "\n")
     print(f"[lift] {len(ids)} protos, {total} instructions "

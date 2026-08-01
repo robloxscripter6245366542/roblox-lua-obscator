@@ -101,10 +101,13 @@ python3 lift.py full.txt --map opcodes.full.json -o lifted.lua   # -> compiles a
 3. **Rare `op?` opcodes.** ✅ The 8 executed-but-unsampled ops are now
    classified from the control-flow census (all flow-through data ops). Zero
    `op?` remain among **executed** opcodes.
-4. **High-level structuring (if/while).** ◻ Partial. Control flow is emitted
-   faithfully as basic blocks + `goto` (Lua 5.4) — correct and readable, but
-   not yet folded into `if`/`while`/`for`. That reducer is a separate pass on
-   top of the lifted CFG and is the main remaining beautification step.
+4. **High-level structuring.** ◑ Substantial. `lift.py` (default mode) builds
+   the per-proto CFG, **trace-linearises** it (so Luraph's scattered jump-chain
+   becomes execution-ordered fall-through), emits conditionals as
+   `if cond then goto L end`, and annotates back-edges as loops. Output still
+   **compiles as Lua 5.4**. Full folding of the linearised CFG into
+   `if`/`while`/`for` keywords (a DREAM/relooper-style reducer) is the last
+   beautification step; `--flat` keeps the raw pc-order form for comparison.
 
 ### The honest residue
 `lift.py` reaches ~97%, not 100%, because **112 opcodes appear in the
