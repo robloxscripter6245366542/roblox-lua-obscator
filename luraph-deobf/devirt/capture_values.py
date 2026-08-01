@@ -36,15 +36,13 @@ def build(vm_src, bytecode, dstmap, steps):
     disp = run_vm.find_dispatch(vm_src)
     if not disp:
         sys.exit("!! dispatch not found")
-    anchor, (V, W, C, operand_arrays), _ = disp
+    anchor, (V, W, C, operand_arrays, regfile), _ = disp
     arr = ",".join(f"{a}[{C}]" for a in operand_arrays)
     # probe: pass the proto's opcode-array identity W (for numbering), pc, op,
     # operands and the register file to __step (which owns all bookkeeping so
     # nothing is referenced from the VM chunk's env except __step itself).
-    probe = (f'repeat local {V}={W}[{C}];'
-             f'__step({W},{C},{V},{arr},e);'
-             f'if {V}')
-    patched = vm_src.replace(anchor + f'if {V}', probe, 1)
+    patched = vm_src.replace(
+        anchor, anchor + f'__step({W},{C},{V},{arr},{regfile});', 1)
     if patched == vm_src:
         sys.exit("!! probe injection failed")
 

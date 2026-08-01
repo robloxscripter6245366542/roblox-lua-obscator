@@ -32,8 +32,13 @@ annotate.py + opcodes.json ->  annotated listing (mnemonics + effects)
 - **`run_vm.py`** — generates a self-contained Luau harness that runs the
   recovered VM over the bytecode in a stubbed, network-blocked environment,
   and **injects a probe at the dispatch** so every executed instruction is
-  reported. Auto-detects the build-specific dispatch variables. Modes:
-  `disasm` / `freq` / `trace`. This is the engine; it works today.
+  reported. `find_dispatch` locates the dispatch **generically across v14.7
+  builds** — the outermost loop of the biggest function (whether `repeat` or
+  `while true do`, whatever the variable names), auto-detecting the pc var,
+  opcode array, operand arrays and register file. Modes: `disasm` / `freq` /
+  `trace` / `cf` / `fulldump`. Verified on two independent v14.7 builds
+  (sigil + `mycode.lua`), which have different opcode numbers, dispatch
+  layouts and (mycode) no dispatch that the old fixed regex matched.
 - **`architecture.md`** — the recovered VM model (register machine; `W[C]`
   opcode, `e[]` registers, `j/q/U/c[C]` operand arrays, binary-search
   dispatch), a sample disassembly, the opcode frequency table, and what's

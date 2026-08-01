@@ -39,10 +39,9 @@ def build_harness(vm_src, bytecode, steps):
     disp = run_vm.find_dispatch(vm_src)
     if not disp:
         sys.exit("!! could not locate dispatch loop")
-    anchor, (V, W, C, operand_arrays), _ = disp
+    anchor, (V, W, C, operand_arrays, regfile), _ = disp
     args = ",".join(f"{a}[{C}]" for a in operand_arrays) or "nil"
-    probe = f'repeat local {V}={W}[{C}];__op({C},{V},{args},e);if {V}'
-    patched = vm_src.replace(anchor + f'if {V}', probe, 1)
+    patched = vm_src.replace(anchor, anchor + f'__op({C},{V},{args},{regfile});', 1)
     if patched == vm_src:
         sys.exit("!! probe injection failed")
 

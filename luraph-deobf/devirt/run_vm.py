@@ -42,27 +42,66 @@ import sys
 # ---- auto-detect the dispatch signature in the VM source ----------------
 
 def find_dispatch(vm_src):
-    """Return (probe_target, replacement, meta) for injecting a probe.
+    """Locate the VM dispatch loop generically across Luraph v14.7 builds.
 
-    Matches  repeat local <V>=<W>[<C>]; if <V><cmp>  and then finds the
-    operand arrays: tables indexed by the pc var <C> inside the dispatch
-    function. Returns None if the pattern isn't found.
+    Builds vary the loop keyword (`repeat` vs `while true do`), the variable
+    names, and what follows the opcode fetch (an anti-tamper check may sit
+    before the opcode comparisons). We therefore match any
+        (repeat | while true do) local <V> = ( <W>[<C>] )
+    whose fetched var <V> then drives a binary-search comparison tree, pick
+    the one with the most comparisons (the real dispatch), and auto-detect:
+      * operand arrays  = tables indexed by the pc var <C>
+      * register file   = the first local initialised from a `x[n](...)` call
+    Returns (anchor, (V, W, C, operand_arrays, regfile), None) or None.
+
+    `anchor` is the exact matched text; inject a probe by inserting right
+    after it.
     """
-    m = re.search(r'repeat local (\w+)=(\w+)\[(\w+)\];if \1[<>=~]', vm_src)
-    if not m:
+    # The dispatch is the OUTERMOST loop of the BIGGEST function (the VM core).
+    # Scope the search there to avoid matching flattened handler loops.
+    fns = [(mm.start(), mm.group(1))
+           for mm in re.finditer(r'([A-Za-z_]\w*)=function\(', vm_src)]
+    spans = sorted(((fns[i + 1][0] - p if i + 1 < len(fns) else len(vm_src) - p), p)
+                   for i, (p, _) in enumerate(fns)) if fns else []
+    search_regions = []
+    if spans:
+        _, big = spans[-1]
+        end = min((p for p, _ in fns if p > big), default=len(vm_src))
+        search_regions.append((big, vm_src[big:end]))
+    search_regions.append((0, vm_src))   # fallback: whole file
+
+    best = None
+    for base, hay in search_regions:
+        for m in re.finditer(
+                r'(?:repeat|while true do)\s*local (\w+)\s*=\s*\(?(\w+)\[(\w+)\]\)?\s*;',
+                hay):
+            V, W, C = m.group(1), m.group(2), m.group(3)
+            region = hay[m.end(): m.end() + 9000]
+            cmps = (len(re.findall(r'\b' + re.escape(V) + r'\s*[<>=~]', region))
+                    + len(re.findall(r'not\(\s*' + re.escape(V), region)))
+            if cmps < 3:
+                continue
+            ops = []
+            for om in re.finditer(r'(\w+)\[' + re.escape(C) + r'\]', region):
+                nm = om.group(1)
+                if nm != W and nm not in ops:
+                    ops.append(nm)
+            # first (outermost) qualifying loop in the biggest function wins
+            best = (m.group(0), V, W, C, base + m.end(), ops[:4])
+            break
+        if best:
+            break
+    if not best:
         return None
-    V, W, C = m.group(1), m.group(2), m.group(3)
-    anchor = f'repeat local {V}={W}[{C}];'
-    # operand arrays: distinct identifiers used as  <name>[C]  right after
-    dispatch_region = vm_src[m.start(): m.start() + 8000]
-    ops = []
-    for om in re.finditer(r'(\w+)\[' + re.escape(C) + r'\]', dispatch_region):
-        name = om.group(1)
-        if name not in (W,) and name not in ops:
-            ops.append(name)
-    # keep the first four operand arrays (A,B,C,D). e[] is the register file.
-    operand_arrays = [o for o in ops if o != 'e'][:4]
-    return anchor, (V, W, C, operand_arrays), None
+    anchor, V, W, C, endpos, operand_arrays = best
+    # register file: first local in this function assigned from a call like
+    # `<name> = <tbl>[<n>](<arg>)`. Search backfrom the loop to the enclosing
+    # `function(` and grab the first such initialiser.
+    fn_start = vm_src.rfind("function(", 0, endpos)
+    head = vm_src[fn_start: endpos]
+    rf = re.search(r'local (\w+)[\w,]*=\s*\w+\[\d+\]\(', head)
+    regfile = rf.group(1) if rf else "e"
+    return anchor, (V, W, C, operand_arrays, regfile), None
 
 
 PROBE_TMPL = ('repeat local {V}={W}[{C}];__op({C},{V},{args});'
@@ -73,20 +112,23 @@ def build_harness(vm_src, bytecode, mode, cap, dis_n):
     disp = find_dispatch(vm_src)
     if not disp:
         sys.exit("!! could not locate the dispatch loop in the VM source")
-    anchor, (V, W, C, operand_arrays), _ = disp
+    anchor, (V, W, C, operand_arrays, regfile), _ = disp
     args = ",".join(f"{a}[{C}]" for a in operand_arrays) or "nil"
     nargs = len(operand_arrays)
+
+    def inject(call):
+        """Insert probe code immediately after the dispatch fetch (anchor)."""
+        patched = vm_src.replace(anchor, anchor + call, 1)
+        if patched == vm_src:
+            sys.exit("!! probe injection failed (anchor not found)")
+        return patched
 
     if mode == "fulldump":
         # dump the COMPLETE instruction array of every proto on first entry
         # (all instructions, not just executed ones) -> input for lift.py
         arr = ",".join(operand_arrays)
-        probe = (f'repeat local {V}={W}[{C}];'
-                 f'if not __seen[{W}] then __seen[{W}]=true; __dump({W},{arr}) end;'
-                 f'if {V}')
-        patched = vm_src.replace(anchor + f'if {V}', probe, 1)
-        if patched == vm_src:
-            sys.exit("!! probe injection failed")
+        patched = inject(
+            f'if not __seen[{W}] then __seen[{W}]=true; __dump({W},{arr}) end;')
         fields = "".join(" ..' %s='..tostring(a%d[i])" % (chr(97+k), k) for k in range(nargs))
         params = "W," + ",".join("a%d" % k for k in range(nargs))
         op_body = (
@@ -101,12 +143,8 @@ def build_harness(vm_src, bytecode, mode, cap, dis_n):
         return (HARNESS.replace("__OP_BODY__", op_body).replace("__B64__", b64)
                 .replace("__VMSRC__", patched))
 
-    # inject probe (only the first occurrence — the real dispatch)
-    probe = PROBE_TMPL.format(V=V, W=W, C=C, args=args)
-    # the anchor ends with '...;'; keep the trailing 'if <V>' by re-adding
-    patched = vm_src.replace(anchor + f'if {V}', probe, 1)
-    if patched == vm_src:
-        sys.exit("!! probe injection failed (anchor not replaced)")
+    # all other modes: insert an __op(pc, op, operands...) call after the fetch
+    patched = inject(f'__op({C},{V},{args});')
 
     if mode == "cf":
         # control-flow census: per opcode, sequential (next==pc+1) vs jump.
