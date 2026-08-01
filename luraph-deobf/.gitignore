@@ -1,0 +1,6 @@
+*.luau
+vm_out.txt
+trace.txt
+dis.txt
+deobf_out/
+__pycache__/
