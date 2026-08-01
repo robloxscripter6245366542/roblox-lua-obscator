@@ -75,23 +75,46 @@ in a `286` jump to the next), which is why 286 dominates.
 
 (Regenerate with `run_vm.py --mode freq`.)
 
-## Confirmed vs. remaining
+## Opcode semantics — recovered by register-delta analysis
 
-**Confirmed (dynamically):**
-- register-VM model, operand arrays, dispatch shape (above)
-- `286` = unconditional JMP (drives the flattened control flow)
-- `205` loads a string constant into a register
-- the full constant pool (see `../dynamic/sample_constants.txt`)
+Rather than read 120 obfuscated handler leaves by eye, `semantics.py`
+recovers semantics from **ground truth**: it snapshots the register file
+`e[]` at every step and diffs consecutive states, so each register write is
+attributed to the opcode that produced it. This sidesteps the obfuscation —
+we observe what each opcode *does*, never needing to understand its code.
 
-**Remaining — the per-opcode semantic map.** Each of the other ~120 opcodes
-needs its leaf in `o` read once to record: which registers/constants it
-touches, and its effect (MOVE / LOADK / GETTABLE / SETTABLE / CALL / arith /
-comparisons / RETURN …). The operand *shape* from `--mode disasm` narrows
-each one (how many fields are non-nil, whether an operand is a string/number/
-jump-target), and the leaf code gives the exact op. Luraph **randomises the
-opcode numbering per build**, so this map is specific to this sample — but it
-is fully recoverable from `o` + the disasm trace, which is what this tool
-produces.
+Recovered so far (this build; opcode numbers are per-build):
 
-The last step, `lift.py`, then walks each proto's instructions emitting Lua
-per the opcode map and inlining the recovered constants.
+| op | mnemonic | effect | evidence |
+|----|----------|--------|----------|
+| 286 | JMP | `C = target` (unconditional) | no reg write; dominates histogram |
+| 283 | ADD | `e[a] = e[c] + d` | e[25]: 150 → 22959, d=22809 |
+| 205 | LOADK | `e[a] = const` (num/str) | e[25] ← 306 |
+| 293/235/192 | LOADK_N | `e[dst] = number const` | e ← 223 / 222 / 3758096397 |
+| 264/176 | LOADK_S | `e[dst] = string const` | e ← `"  nc213<< H<="` |
+| 31/118/182/48 | NEWTABLE | `e[dst] = {}` | fresh table into reg |
+| 52 | MOVE | `e[dst] = e[src]` | table moved e[14]→e[15] |
+| 105 | GETTABLE | `e[a] = e[obj][key]` | table#16 → table#17 |
+| 168 | GETGLOBAL/CALL | `e[a] = _G[name]`/call | d="Vector3", fn→table |
+| 295/216 | COMPARE | `e[dst] = bool` (lt/le/eq) | e ← false / true |
+| 49/50/228 | SETTABLE/CALL* | table store / call (no reg write) | *inferred (0-delta) |
+
+Full map with confidence + evidence in `opcodes.json` (14 confirmed, 9
+inferred). Feeding it to `annotate.py` labels **~92% of executed
+instructions** on the sample, because the hot opcodes (JMP, SETTABLE,
+NEWTABLE, LOADK, GETTABLE) cover most of execution.
+
+## Remaining
+
+- Split the 0-register-write opcodes (SETTABLE vs conditional-jump: 49, 50,
+  73, 83, 204, 55, 9, 135, 92, …) by probing table contents / control-flow —
+  a table-write probe finishes these the way the register probe finished the
+  data ops.
+- Fill the long tail of rare opcodes.
+- `lift.py`: walk each proto emitting Lua per the opcode map, inlining the
+  recovered constants. With ~92% of hot instructions already classified, the
+  lifter's output is mostly real Lua with a shrinking set of `op?` holes.
+
+Luraph **randomises the opcode numbering per build**, so this map is specific
+to this sample — but `semantics.py` regenerates it for any build
+automatically.

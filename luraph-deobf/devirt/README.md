@@ -41,9 +41,16 @@ annotate.py + opcodes.json ->  annotated listing (mnemonics + effects)
 - **`opcodes.json`** — the per-build opcode map. Seeded with confirmed
   entries (`286`=JMP, `205`=load-string-constant) and operand-shape hints for
   the hot ones; extend it by reading each leaf in func `o`.
+- **`semantics.py`** — recovers opcode semantics by **register-delta
+  analysis**: snapshots the register file each step and diffs consecutive
+  states, attributing every write to its opcode. Sidesteps the obfuscation
+  entirely (observe effects, don't read handlers). Regenerates the opcode map
+  for any build. Produced the 14 confirmed + 9 inferred entries in
+  `opcodes.json`.
 - **`annotate.py`** — renders a `disasm` trace through `opcodes.json` into a
-  readable listing (mnemonic + effect for known ops; operand shape + hint for
-  unknown ops).
+  readable listing (mnemonic + effect for known ops, `~` for inferred,
+  operand shape + hint for unknown). Labels **~92% of executed instructions**
+  on the sample.
 
 ## Quick start
 
@@ -51,7 +58,8 @@ annotate.py + opcodes.json ->  annotated listing (mnemonics + effects)
 bash ../dynamic/build_luau.sh        # builds ../dynamic/luau
 python3 ../peel.py ../sample_sigil.lua -o peeled
 python3 run_vm.py --vmdir peeled --luau ../dynamic/luau --mode disasm --n 400 --out dis.txt
-python3 annotate.py dis.txt --map opcodes.json
+python3 semantics.py --vmdir peeled --luau ../dynamic/luau   # (re)build the opcode map
+python3 annotate.py dis.txt --map opcodes.json               # ~92% of instrs labelled
 python3 run_vm.py --vmdir peeled --luau ../dynamic/luau --mode freq
 ```
 

@@ -25,7 +25,14 @@ import sys
 def load_map(path):
     with open(path) as f:
         m = json.load(f)
-    return m.get("confirmed", {}), m.get("shape_hints", {})
+    confirmed = dict(m.get("confirmed", {}))
+    inferred = m.get("inferred", {})
+    # fold inferred in, marked so the listing shows the lower confidence
+    for op, e in inferred.items():
+        e = dict(e)
+        e["_inferred"] = True
+        confirmed.setdefault(op, e)
+    return confirmed, m.get("shape_hints", {})
 
 
 DIS_RE = re.compile(
@@ -65,7 +72,8 @@ def main():
             known += 1
             name = entry["name"]
             eff = entry.get("effect", "")
-            print(f"{pc:>6}:  {name:<12} {operand_str:<34} ; {eff}")
+            mark = "~" if entry.get("_inferred") else " "
+            print(f"{pc:>6}:{mark} {name:<14} {operand_str:<34} ; {eff}")
         else:
             unknown += 1
             hint = hints.get(op, "")
