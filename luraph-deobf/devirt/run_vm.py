@@ -75,6 +75,32 @@ def build_harness(vm_src, bytecode, mode, cap, dis_n):
         sys.exit("!! could not locate the dispatch loop in the VM source")
     anchor, (V, W, C, operand_arrays), _ = disp
     args = ",".join(f"{a}[{C}]" for a in operand_arrays) or "nil"
+    nargs = len(operand_arrays)
+
+    if mode == "fulldump":
+        # dump the COMPLETE instruction array of every proto on first entry
+        # (all instructions, not just executed ones) -> input for lift.py
+        arr = ",".join(operand_arrays)
+        probe = (f'repeat local {V}={W}[{C}];'
+                 f'if not __seen[{W}] then __seen[{W}]=true; __dump({W},{arr}) end;'
+                 f'if {V}')
+        patched = vm_src.replace(anchor + f'if {V}', probe, 1)
+        if patched == vm_src:
+            sys.exit("!! probe injection failed")
+        fields = "".join(" ..' %s='..tostring(a%d[i])" % (chr(97+k), k) for k in range(nargs))
+        params = "W," + ",".join("a%d" % k for k in range(nargs))
+        op_body = (
+            "env.__seen=setmetatable({},{__mode='k'}) local NP=0\n"
+            f"env.__dump=function({params}) NP=NP+1 local n=#W\n"
+            " print('[[P]] proto='..NP..' ninstr='..n)\n"
+            " for i=1,n do print('[[I]] p='..NP..' pc='..i..' op='..tostring(W[i])"
+            f"{fields}) end\n"
+            f" if NP>={dis_n} then error('__enough__') end end\n"
+            "env.__op=function() end\nenv.__fin=function() end")
+        b64 = base64.b64encode(bytecode).decode()
+        return (HARNESS.replace("__OP_BODY__", op_body).replace("__B64__", b64)
+                .replace("__VMSRC__", patched))
+
     # inject probe (only the first occurrence — the real dispatch)
     probe = PROBE_TMPL.format(V=V, W=W, C=C, args=args)
     # the anchor ends with '...;'; keep the trailing 'if <V>' by re-adding
@@ -82,7 +108,6 @@ def build_harness(vm_src, bytecode, mode, cap, dis_n):
     if patched == vm_src:
         sys.exit("!! probe injection failed (anchor not replaced)")
 
-    nargs = len(operand_arrays)
     if mode == "cf":
         # control-flow census: per opcode, sequential (next==pc+1) vs jump.
         # Emits [[CF]] lines that build_map.py consumes (write to cf.json).
@@ -185,7 +210,7 @@ def main():
     ap.add_argument("--vmdir", default="../dynamic/peeled",
                     help="dir with stage_0.lua (VM src) + stage_1.bin (bytecode)")
     ap.add_argument("--luau", default="./luau")
-    ap.add_argument("--mode", choices=["disasm", "freq", "trace", "cf"], default="disasm")
+    ap.add_argument("--mode", choices=["disasm", "freq", "trace", "cf", "fulldump"], default="disasm")
     ap.add_argument("--cap", type=int, default=3000000, help="max instructions to run")
     ap.add_argument("--n", type=int, default=200, help="how many to print (disasm/trace)")
     ap.add_argument("--timeout", type=int, default=90)
@@ -211,9 +236,10 @@ def main():
         except FileNotFoundError:
             sys.exit("!! luau not found; build it: bash ../dynamic/build_luau.sh")
 
-    tag = {"disasm": "[[DIS]]", "freq": "[[FREQ]]", "trace": "[[TRACE]]", "cf": "[[CF]]"}[args.mode]
+    tags = {"disasm": ("[[DIS]]",), "freq": ("[[FREQ]]",), "trace": ("[[TRACE]]",),
+            "cf": ("[[CF]]",), "fulldump": ("[[P]]", "[[I]]")}[args.mode]
     for line in open(args.out, errors="replace"):
-        if line.startswith(tag) or line.startswith("[[H]]"):
+        if line.startswith(tags) or line.startswith("[[H]]"):
             sys.stdout.write(line)
     return 0
 

@@ -99,6 +99,12 @@ def mnemonic(op, cf, w):
         return "TEST/BRANCH", f"conditional jump (taken {pct}%)", "high"
     # --- data opcodes (flow-through) ---
     if not w or w["n"] == 0:
+        # not sampled in the register-delta window, but the control-flow
+        # census tells us how it behaves.
+        if total_j and jmp == 0 and seq > 0:
+            return "DATAOP", "flow-through data op (no register-delta sample)", "low"
+        if total_j and jmp > 0:
+            return "JMP/RETURN", "control transfer (unsampled)", "low"
         return "op?", "unobserved", "none"
     nowrite_ratio = w["nowrite"] / w["n"]
     if nowrite_ratio >= 0.8:
@@ -145,7 +151,7 @@ def main():
     curated = {}
     try:
         cm = json.load(open(args.curated))
-        curated = {**cm.get("confirmed", {}), **cm.get("inferred", {})}
+        curated = {**cm.get("inferred", {}), **cm.get("confirmed", {})}
     except (FileNotFoundError, ValueError):
         pass
 
@@ -161,8 +167,12 @@ def main():
             name, eff, conf = mnemonic(op, cf.get(op), writes.get(op))
         counts[name.split("/")[0]] += 1
         d = cf.get(op, {})
-        ex = writes.get(op, {}).get("ex", "")
+        w = writes.get(op, {})
+        ex = w.get("ex", "")
+        dst = max(w["dst"], key=w["dst"].get) if w.get("dst") else None
+        wt = max(w["vt"], key=w["vt"].get) if w.get("vt") else None
         table[str(op)] = {"name": name, "effect": eff, "confidence": conf,
+                          "dst": dst, "wtype": wt,
                           "cf": {"seq": d.get("seq", 0), "jmp": d.get("jmp", 0)},
                           "example": ex}
         print(f"{op:>4} {name:<16} {conf:<5} {eff}")

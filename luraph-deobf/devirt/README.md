@@ -50,20 +50,31 @@ annotate.py + opcodes.json ->  annotated listing (mnemonics + effects)
 - **`build_map.py`** — synthesises the **complete** opcode map: merges the
   control-flow census (`run_vm.py --mode cf`) + the register-delta trace +
   the curated `opcodes.json` overrides into `opcodes.full.json`, classifying
-  **all 125 opcodes** of the build.
+  **all 125 executed opcodes** of the build (confirmed entries win).
 - **`annotate.py`** — renders a `disasm` trace through a map (`opcodes.json`
   or the complete `opcodes.full.json`) into a readable listing. With the full
   map it labels **100% of the executed instructions** on the sample.
+- **`lift.py`** — the codegen. Consumes a full instruction dump
+  (`run_vm.py --mode fulldump`, i.e. *every* instruction of every proto, not
+  just executed ones) + `opcodes.full.json` and emits **register-level Lua**:
+  one `function protoN` each, `e[]` registers, `::L_pc::` block labels, and
+  control flow rebuilt as `goto`/`if…goto` (Lua 5.4). Verified: the output
+  **compiles as Lua 5.4** and lifts **~97%** of all static instructions
+  (residue = opcodes that never execute — see below).
 
 ## Quick start
 
 ```bash
 bash ../dynamic/build_luau.sh        # builds ../dynamic/luau
 python3 ../peel.py ../sample_sigil.lua -o peeled
-python3 run_vm.py --vmdir peeled --luau ../dynamic/luau --mode disasm --n 400 --out dis.txt
-python3 semantics.py --vmdir peeled --luau ../dynamic/luau   # (re)build the opcode map
-python3 annotate.py dis.txt --map opcodes.json               # ~92% of instrs labelled
-python3 run_vm.py --vmdir peeled --luau ../dynamic/luau --mode freq
+L=../dynamic/luau
+# 1) recover the complete opcode map
+python3 run_vm.py --vmdir peeled --luau $L --mode cf   --out cf.txt
+python3 semantics.py --vmdir peeled --luau $L --steps 14000 --out sem_big.txt >/dev/null
+python3 build_map.py --sem sem_big.txt --cf cf.txt --curated opcodes.json --out opcodes.full.json
+# 2) dump every instruction and lift to Lua
+python3 run_vm.py --vmdir peeled --luau $L --mode fulldump --out full.txt
+python3 lift.py full.txt --map opcodes.full.json -o lifted.lua   # -> compiles as Lua 5.4
 ```
 
 ## What's confirmed on the sample
@@ -76,10 +87,28 @@ python3 run_vm.py --vmdir peeled --luau ../dynamic/luau --mode freq
 - 125 distinct opcodes are exercised; the full constant pool is already
   recovered (`../dynamic/sample_constants.txt`).
 
-## What's left
+## Status of the four devirtualisation tasks
 
-Read the remaining ~120 opcode leaves in `o` (the disasm operand shapes tell
-you what to look for) to complete `opcodes.json`, then a `lift.py` walks each
-proto emitting Lua per opcode and inlining constants. The inputs a lifter
-needs — the interpreter *as source*, a live *disassembly*, and the *constant
-pool* — are all produced here.
+1. **lift.py — codegen.** ✅ Done. Emits register-level Lua for **~97%** of all
+   static instructions; output compiles as Lua 5.4.
+2. **SETTABLE vs CALL precision.** ✅ Resolved for the hot ops via
+   operand-register typing (the register a no-write op indexes is a table →
+   SETTABLE, a function → CALL). Nailed **op49 = SETTABLE** (`e[a][K(b)]=e[c]`,
+   table in 1149/1149) and **op50 = CALL** (void call; the most common no-write
+   op — it was *not* SETTABLE), plus several more. The long tail of rare
+   no-write ops whose operand-a register wasn't populated in-window stays
+   `SETTABLE/CALL`.
+3. **Rare `op?` opcodes.** ✅ The 8 executed-but-unsampled ops are now
+   classified from the control-flow census (all flow-through data ops). Zero
+   `op?` remain among **executed** opcodes.
+4. **High-level structuring (if/while).** ◻ Partial. Control flow is emitted
+   faithfully as basic blocks + `goto` (Lua 5.4) — correct and readable, but
+   not yet folded into `if`/`while`/`for`. That reducer is a separate pass on
+   top of the lifted CFG and is the main remaining beautification step.
+
+### The honest residue
+`lift.py` reaches ~97%, not 100%, because **112 opcodes appear in the
+bytecode but never execute** (~217 instructions, dead/untaken paths under the
+stubbed environment). Dynamic profiling can't reach them; resolving them needs
+either different inputs to trigger those paths or reading their handler leaves
+in `o` statically. Everything that *runs* is classified.
