@@ -13,6 +13,23 @@ and, importantly, it *can't* be: see the honest-scope note at the bottom.
 
 ---
 
+## Runnable unpacking (`unpack_runnable.py`)
+
+Two distinct "deobfuscation" goals — pick the one you actually want:
+
+- **Readable analysis** (`devirt/lift.py`) — register-level Lua you *read*, not
+  run. Best for understanding logic.
+- **Unpacked but RUNNABLE** (`unpack_runnable.py`) — strips the base-85 +
+  LZMA + anti-tamper shell and re-emits a **self-contained script that runs
+  identically**, with the VM interpreter now exposed as plain readable source
+  (the program logic stays VM bytecode). Verified: the emitted file errors at
+  the *exact same* point as the original when run outside Roblox — i.e.
+  behaviour-identical.
+
+```bash
+python3 unpack_runnable.py sample.lua -o unpacked_runnable.lua
+```
+
 ## One-command pipeline
 
 `pipeline.py` runs every stage against a sample and writes a consolidated
