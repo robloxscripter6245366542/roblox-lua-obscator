@@ -71,25 +71,49 @@ CALL LaunchJunkie {Service="Mm", Identifier="1027906", Provider="Mm"}
 i.e. the key-system UI library URL, the Discord, the local key filename, the
 shop funnel, and the launched game id — all recovered dynamically.
 
-## Honest limit reached
+## Big finding — the whole constant pool falls out of `buffer.readstring`
 
-After the loader runs, the **VM boots and then enters a compute-bound loop
-that makes no boundary calls** (no `HttpGet`, no `wait`, no `string.*` on the
-constant pool) before it would emit further network/constant activity. Under
-a synthetic clock/environment this reads as an anti-analysis tarpit (or is
-simply a very slow VM-in-VM init over 2.36 MB of bytecode). The harness
-already advances the clock and budgets `wait`, but this loop is internal to
-the interpreted bytecode.
+`run.py --strings` now dumps the VM's decoded constant pool. The v14.7
+deserialiser reads string constants out of the bytecode buffer via
+**`buffer.readstring`**, so the program reads that global from *its* env —
+hand it a logging wrapper and every constant is printed as the VM
+deserialises, *before* any spin loop. (String-lib and `table.concat` hooks
+catch anything assembled at runtime; `buffer.readstring` is the one that
+matters for v14.7.)
 
-Pushing past it needs one of:
-- **real-environment execution** (an actual executor), which is out of scope
-  here and not something this toolkit automates; or
-- **instrumenting the VM dispatch directly** — inject logging into the
-  recovered `stage_0.lua` at the constant-decode / dispatch sites (the ~53 KB
-  function `o`), then run under this same harness. That's the bridge from
-  "boots the VM" to "dumps the program", and it's the recommended next step
-  in `../devirt.md`.
+Result on the sample: the **complete 165-entry constant pool**, saved to
+`sample_constants.txt`. It contains the VM's environment-name table
+(`bit32`, `buffer`, `coroutine`, `debug`, `task`, `getfenv`, …), a large set
+of Roblox UI API names (`ScreenGui`, `Frame`, `TextButton`, `UIPadding`,
+`Path2D`, `GetPositionOnCurve`, …), Luraph's own runtime messages, and a few
+watermark/junk constants (`<nLB=>`, `I4Bbh=<`, `JdL>>>`).
+
+**What this tells us about the sample:** the Luraph-protected blob is a **UI
+library**, not the key checker. There are no URLs/tokens/HWID strings in its
+constant pool — the network/key logic lives in the separately-fetched
+`cdn.jnkie.com/SigilUI.lua` (captured by the loader run above), not in the
+protected blob. So for *this* sample the constant pool is fully recovered and
+there is nothing further hidden in it.
+
+## The spin loop, and how the harness avoids it
+
+A universal chainable stub for unknown globals makes execution spin forever
+(loop conditions that read a missing global become permanently truthy).
+`run.py` instead resolves unknown globals to real libs, else **`nil`**: the
+deserialiser still completes (full pool emitted) and the program then errors
+cleanly at the first genuinely-missing global, rather than tarpitting. Common
+Roblox datatypes (`Instance`, `Vector3`, `Path2DControlPoint`, …) are stubbed
+explicitly so UI construction proceeds.
+
+## What still needs the opcode lifter
+
+Constant-pool + behaviour are now recovered. Full *source* reconstruction
+still needs devirtualising the bytecode (mapping the custom opcodes in the
+~53 KB dispatch function `o` back to Lua) — see `../devirt.md`. That's the
+last mile and it's a manual per-version lift; everything up to it is
+automated here.
 
 ## Files
-- `run.py` — generate + execute the harness (parameterised).
+- `run.py` — generate + execute the harness; `--strings` dumps the pool.
 - `build_luau.sh` — build the Luau CLI this needs.
+- `sample_constants.txt` — the 165-entry pool recovered from the sample.

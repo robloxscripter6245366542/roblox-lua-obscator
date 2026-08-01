@@ -55,11 +55,32 @@ the base-85 header length; supply `D=5` and it's inert (weakness W5).
   **variable-length integer / tagged operand** encoding, not fixed-width
   Lua 5.1 opcodes.
 - Plaintext that survives in the constant region: Luraph's own runtime error
-  strings (`"…does not support load or loadstring…"`, the debug-library
-  message) and the Luraph ASCII-art banner. The *program's* own strings
-  (URLs, key logic) are in the VM constant table under a per-build transform,
-  so they come out by running the interpreter's constant decoder, not by
-  `strings`.
+  strings and the ASCII-art banner. The *program's* string constants come out
+  by running the interpreter's constant decoder — see below.
+
+## Serialisation grammar (recovered dynamically — `dynamic/trace.py`)
+
+Tracing the VM's `buffer.read*` calls (the deserialiser reads the bytecode
+from a Luau `buffer`) recovers the on-disk grammar without lifting anything:
+
+- **Header:** a few fixed bytes at the start (`C5 2B 00 …` on the sample).
+- **Constant table**, a tagged list. Observed encodings:
+  - **strings** via `buffer.readstring(off, len)` — real names come out
+    directly (`Instance`, `GetPositionOnCurveArcLength`, `readu8`, a regex
+    `":(%d+)[:…"`, …); this is how the full **165-entry constant pool** was
+    dumped (`dynamic/sample_constants.txt`).
+  - **f64 number constants** stored as **8-byte `readstring` reads** (e.g.
+    `"\0\0\0\0\0\0\0="`) — raw IEEE-754 bytes.
+  - **wider ints decoded via `string.pack` format specifiers** that appear
+    inline as short strings (`">i8"`, `"<i8"`).
+  - **small ints** inline as `u8`, with recurring **tag bytes** (`0x12`,
+    `0x11`, `0x14`) separating/typing entries.
+- **Instruction stream** per proto follows the constant table (the dense
+  `u8`/tag region), then nested protos.
+
+So the constant side is essentially solved: `dynamic/run.py --strings`
+dumps every string, and the number encodings above are readable from the
+trace. What remains is the **opcode** side.
 
 ## Devirtualisation roadmap (the hard step)
 
@@ -91,6 +112,44 @@ Suggested order of attack:
 Steps 1–2 are mechanical given the source. Step 3 is the labour. Step 4 is
 codegen. This is a real project, but it is no longer *blind* — every rule you
 need is sitting in `stage_0.lua`.
+
+## Status of the full-devirtualisation effort
+
+Done / automated:
+- **Unpack** → VM source + bytecode (keyless). `peel.py`
+- **Boot** the VM in real Luau, anti-tamper bypassed. `dynamic/run.py`
+- **Constant table** fully recovered (strings + number encodings). `--strings`,
+  `trace.py`
+- **Serialisation grammar** mapped (header, tagged constants, string.pack
+  number decode, where the instruction stream begins).
+
+Remaining — the genuine hard mile (opcode side), now under way in `devirt/`:
+1. **Drive + instrument the VM** — `devirt/run_vm.py` runs the recovered VM
+   over the bytecode and injects a probe at the dispatch, emitting a live
+   disassembly (opcode + 4 operand fields), an opcode histogram, or a pc/op
+   trace. This is done and working.
+2. **Opcode → semantics map** — read each leaf in the ~53 KB dispatch `o`
+   (the disasm operand shapes say what to look for) into
+   `devirt/opcodes.json`. Seeded with confirmed entries; the rest is the
+   manual, build-specific labour (Luraph randomises opcode numbering).
+3. **Codegen** — walk each proto emitting Lua per opcode, inlining the
+   recovered constants.
+
+### What `devirt/` has already established (verified on the sample)
+
+- The VM is a **register machine**: `W[C]`=opcode, `C`=pc, `e[]`=registers,
+  operands in parallel arrays `j/q/U/c[C]`; dispatch is a binary search on the
+  opcode.
+- `286` = unconditional **JMP** and dominates the histogram — control flow is
+  flattened at the bytecode level too.
+- `205` loads a string constant; 125 distinct opcodes are exercised.
+- Full pipeline works: `run_vm.py --mode disasm` → `annotate.py` → readable
+  listing. See `devirt/architecture.md` and `devirt/README.md`.
+
+This remains week-scale, build-specific RE for a *complete* lift — but it is
+no longer blind or manual-from-scratch: the VM runs under instrumentation and
+every input a lifter needs (interpreter source, live disassembly, constant
+pool) is produced automatically.
 
 ## Reproduce
 

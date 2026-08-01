@@ -13,6 +13,25 @@ and, importantly, it *can't* be: see the honest-scope note at the bottom.
 
 ---
 
+## One-command pipeline
+
+`pipeline.py` runs every stage against a sample and writes a consolidated
+`report.md` (unpack → IOCs → constant pool → behaviour → disassembly →
+opcode histogram → annotated listing → status):
+
+```bash
+bash dynamic/build_luau.sh                    # once: builds dynamic/luau
+python3 pipeline.py sample_sigil.lua -o out   # -> out/report.md
+```
+
+Static stages run without `luau`; the dynamic stages (constant pool,
+behaviour, disassembly) use it and are skipped with a note if it's absent.
+What's fully automated vs. the remaining manual "last mile" (the per-build
+opcode→source lift) is spelled out in the report's status table and in
+`devirt/README.md`.
+
+---
+
 ## The Luraph weakness map
 
 Luraph is a **VM-virtualisation** obfuscator: it compiles the real Lua into

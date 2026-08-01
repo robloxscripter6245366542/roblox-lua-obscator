@@ -1,0 +1,33 @@
+{
+  "_comment": "Luraph v14.7 opcode map for sample_sigil.lua. Opcode numbering is PER-BUILD (Luraph randomises it), so this is specific to this sample. Operand fields a/b/c/d are as emitted by run_vm.py --mode disasm (parallel arrays j/c/q/U indexed by pc). Semantics were recovered by register-delta analysis (semantics.py): snapshot the register file each step and diff. 'confirmed' = strong/direct evidence; 'inferred' = consistent with the observed pattern but not uniquely pinned (e.g. no-register-write ops are SETTABLE-or-jump).",
+  "confirmed": {
+    "286": {"name": "JMP", "operands": {"b": "target_pc"}, "effect": "C = target; unconditional jump. Dominant opcode -> control flow is flattened at the bytecode level (every block ends in a JMP).", "evidence": "no register write; jump target in operand"},
+    "283": {"name": "ADD", "operands": {"a": "dst", "c": "src_reg", "d": "imm"}, "effect": "e[a] = e[c] + d", "evidence": "e[25]: 150 -> 22959 with d=22809 (150+22809=22959)"},
+    "205": {"name": "LOADK", "operands": {"a": "dst", "d": "const"}, "effect": "e[a] = constant (number or string)", "evidence": "e[25] <- 306 (d=306); also observed loading strings"},
+    "293": {"name": "LOADK_N", "operands": {"c": "dst"}, "effect": "e[c] = number constant", "evidence": "e[25] <- 223"},
+    "235": {"name": "LOADK_N", "operands": {"b": "dst"}, "effect": "e[b] = number constant", "evidence": "e[26] <- 222"},
+    "176": {"name": "LOADK_S", "operands": {}, "effect": "e[dst] = string constant", "evidence": "e[27] <- string"},
+    "264": {"name": "LOADK_S", "operands": {"c": "dst"}, "effect": "e[c+1] = string constant (constant-pair load)", "evidence": "e[26] <- \"  nc213<< H<=\""},
+    "31":  {"name": "NEWTABLE", "operands": {"a": "dst"}, "effect": "e[a] = {}", "evidence": "e[32] <- fresh table"},
+    "118": {"name": "NEWTABLE", "operands": {"a": "dst"}, "effect": "e[a] = {}", "evidence": "e[34] <- fresh table"},
+    "182": {"name": "NEWTABLE", "operands": {"a": "dst"}, "effect": "e[a] = {}", "evidence": "e[31] <- fresh table"},
+    "48":  {"name": "NEWTABLE", "operands": {"b": "dst"}, "effect": "e[b] = {}", "evidence": "e[33] <- fresh table"},
+    "52":  {"name": "MOVE", "operands": {"a": "src", "b": "dst"}, "effect": "e[dst] = e[src]", "evidence": "table moved e[14] -> e[15]"},
+    "105": {"name": "GETTABLE", "operands": {"a": "dst", "b": "obj", "c": "key"}, "effect": "e[a] = e[obj][key]", "evidence": "e[15]: table#16 -> table#17 (field read)"},
+    "168": {"name": "GETGLOBAL/CALL", "operands": {"a": "dst", "d": "name"}, "effect": "e[a] = _G[name] or call result (d is a global name string, e.g. \"Vector3\")", "evidence": "e[15]: function -> table with d=\"Vector3\""}
+  },
+  "inferred": {
+    "206": {"name": "GETINDEX?", "effect": "reads a field into e[c] (function/value); mostly no visible reg change", "evidence": "e[15] <- function; often 0 delta"},
+    "292": {"name": "GETTABLE/CLOSURE?", "effect": "e[c] = table/function", "evidence": "e[8] <- table"},
+    "142": {"name": "UNOP/arith?", "operands": {"a": "dst"}, "effect": "e[a] = f(e[b]) numeric (len/mod/bit?)", "evidence": "e[25]: 22959 -> 14"},
+    "192": {"name": "LOADK_N", "effect": "e[dst] = large number constant", "evidence": "e[25] <- 3758096397"},
+    "49":  {"name": "SETTABLE?", "effect": "e[a][e[b]] = e[c]; no register write (4 operands)", "evidence": "very common, 0 reg delta"},
+    "50":  {"name": "SETTABLE?", "effect": "table store; no register write", "evidence": "most common non-jump, 0 reg delta"},
+    "228": {"name": "CALL?", "effect": "call/close; clears a register range (consumed args/results)", "evidence": "e[31..33] cleared together"},
+    "295": {"name": "COMPARE", "effect": "e[dst] = boolean (lt/le/eq)", "evidence": "e[25] <- false"},
+    "216": {"name": "COMPARE", "effect": "e[dst] = boolean", "evidence": "e[25] <- true"}
+  },
+  "shape_hints": {
+    "_comment": "0-register-write opcodes not yet split between SETTABLE and control flow: 73, 204, 83, 55, 9, 135, 92, 273, 237, 197, 2, 28, 86, 77, 33 (the hot ones). Resolve by probing table contents / control flow."
+  }
+}

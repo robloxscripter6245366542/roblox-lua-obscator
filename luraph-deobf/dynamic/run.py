@@ -138,11 +138,15 @@ env._G = env
 for _, n in ipairs({"Instance","Vector3","Vector2","Color3","UDim","UDim2",
     "CFrame","Rect","Region3","Ray","TweenInfo","NumberSequence","ColorSequence",
     "NumberRange","BrickColor","PhysicalProperties","Random","Font","Drawing",
-    "DateTime","Enum","OverlapParams","RaycastParams"}) do env[n] = inst() end
+    "DateTime","Enum","OverlapParams","RaycastParams","Path2D","Path2DControlPoint",
+    "ColorSequenceKeypoint","NumberSequenceKeypoint"}) do env[n] = inst() end
 local realG = getfenv(1)
-setmetatable(env, {__index = function(_, k)
-    local r = realG[k]; if r ~= nil then return r end; return inst()
-end})
+-- Unknown globals resolve to real libs, else nil. We deliberately do NOT
+-- fall back to a universal chainable stub: that makes loop conditions
+-- permanently truthy and the program spins forever. Returning nil lets the
+-- deserialiser finish (the full constant pool is emitted) and then error
+-- cleanly at the first genuinely-missing global.
+setmetatable(env, {__index = function(_, k) return realG[k] end})
 env.print = print
 __STRINGS__
 log("harness-ready")
@@ -151,19 +155,33 @@ local SRC = [====[
 '''
 
 STRINGS_BLOCK = r'''
-do  -- string proxy: dump decoded constants the VM builds via string.*
-    local rs = realG.string ; local seen = {}
-    local function maybe(s)
-        if type(s)=="string" and #s>=4 and #s<=400 and not seen[s] and s:find("%a%a%a%a") then
-            seen[s]=true; print("[[STR]] "..string.format("%q", s))
+do  -- dump the VM's decoded constant pool. The v14.7 deserialiser reads
+    -- string constants via buffer.readstring, so that hook is the key one;
+    -- string.*/table.concat catch anything assembled at runtime.
+    local seen = {}
+    local function maybe(s, src)
+        if type(s)=="string" and #s>=3 and #s<=500 and not seen[s] and s:find("%a%a%a") then
+            seen[s]=true; print("[[STR:"..src.."]] "..string.format("%q", s))
         end
         return s
     end
-    local proxy = {} ; for k,v in pairs(rs) do proxy[k]=v end
-    proxy.char=function(...) return maybe(rs.char(...)) end
-    proxy.sub =function(...) return maybe(rs.sub(...)) end
-    proxy.format=function(...) return maybe(rs.format(...)) end
-    env.string = proxy
+    local rs = realG.string
+    local sp = {} ; for k,v in pairs(rs) do sp[k]=v end
+    sp.char=function(...) return maybe(rs.char(...),"char") end
+    sp.sub =function(...) return maybe(rs.sub(...),"sub") end
+    sp.format=function(...) return maybe(rs.format(...),"fmt") end
+    env.string = sp
+    local rt = realG.table
+    local tp = {} ; for k,v in pairs(rt) do tp[k]=v end
+    tp.concat=function(...) return maybe(rt.concat(...),"concat") end
+    env.table = tp
+    local rb = realG.buffer
+    if rb then
+        local bp = {} ; for k,v in pairs(rb) do bp[k]=v end
+        if rb.readstring then bp.readstring=function(...) return maybe(rb.readstring(...),"bufrd") end end
+        if rb.tostring  then bp.tostring =function(...) return maybe(rb.tostring(...),"buf") end end
+        env.buffer = bp
+    end
 end
 '''
 
