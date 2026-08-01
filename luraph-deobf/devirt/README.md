@@ -54,13 +54,19 @@ annotate.py + opcodes.json ->  annotated listing (mnemonics + effects)
 - **`annotate.py`** — renders a `disasm` trace through a map (`opcodes.json`
   or the complete `opcodes.full.json`) into a readable listing. With the full
   map it labels **100% of the executed instructions** on the sample.
+- **`capture_values.py`** — records the **concrete value** each instruction
+  produces, keyed by (proto, pc), by observing the destination register after
+  execution. Sidesteps reverse-engineering the constant-table indexing — we
+  just watch what gets loaded. Feeds `lift.py --values`.
 - **`lift.py`** — the codegen. Consumes a full instruction dump
   (`run_vm.py --mode fulldump`, i.e. *every* instruction of every proto, not
   just executed ones) + `opcodes.full.json` and emits **register-level Lua**:
   one `function protoN` each, `e[]` registers, `::L_pc::` block labels, and
-  control flow rebuilt as `goto`/`if…goto` (Lua 5.4). Verified: the output
-  **compiles as Lua 5.4** and lifts **~97%** of all static instructions
-  (residue = opcodes that never execute — see below).
+  control flow **trace-linearised** into fall-through with `goto`/`if…goto`.
+  With `--values` it **inlines observed constants** — real string/number
+  literals and library accesses like `e[o]["format"]` instead of `K(i)`.
+  Verified: output **compiles as Lua 5.4** and lifts **~97%** of all static
+  instructions (residue = opcodes that never execute — see below).
 
 ## Quick start
 
@@ -90,7 +96,9 @@ python3 lift.py full.txt --map opcodes.full.json -o lifted.lua   # -> compiles a
 ## Status of the four devirtualisation tasks
 
 1. **lift.py — codegen.** ✅ Done. Emits register-level Lua for **~97%** of all
-   static instructions; output compiles as Lua 5.4.
+   static instructions; output compiles as Lua 5.4. **Constant inlining**
+   (via `capture_values.py --values`) replaces `K(i)` placeholders with the
+   real string/number literals and library accesses observed at runtime.
 2. **SETTABLE vs CALL precision.** ✅ Resolved for the hot ops via
    operand-register typing (the register a no-write op indexes is a table →
    SETTABLE, a function → CALL). Nailed **op49 = SETTABLE** (`e[a][K(b)]=e[c]`,

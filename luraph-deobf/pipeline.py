@@ -160,12 +160,18 @@ def main():
     lift_done = False
     if luau and have_stages:
         full_txt = os.path.join(outdir, "fulldump.txt")
+        vals_txt = os.path.join(outdir, "values.txt")
         sh(["python3", os.path.join("devirt", "run_vm.py"), "--vmdir", peeldir,
             "--luau", luau, "--mode", "fulldump", "--n", "300", "--out", full_txt],
            args.timeout)
+        # capture concrete constants to inline (item: constant inlining)
+        sh(["python3", os.path.join("devirt", "capture_values.py"),
+            "--vmdir", peeldir, "--luau", luau,
+            "--map", os.path.join("devirt", "opcodes.full.json"),
+            "--steps", "80000", "--out", vals_txt], args.timeout)
         rc, out = sh(["python3", os.path.join("devirt", "lift.py"), full_txt,
                       "--map", os.path.join("devirt", "opcodes.full.json"),
-                      "-o", lifted], args.timeout)
+                      "--values", vals_txt, "-o", lifted], args.timeout)
         rep.append("```\n" + out.strip() + "\n```")
         try:
             head = "".join(open(lifted).readlines()[:26])

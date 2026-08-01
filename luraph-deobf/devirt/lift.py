@@ -115,7 +115,9 @@ def classify(name):
     return "unknown"
 
 
-CLASS = {}   # op(int) -> class, filled from the map
+CLASS = {}      # op(int) -> class, filled from the map
+VALUES = {}     # (proto, pc) -> concrete value literal (from capture_values.py)
+CURPROTO = None  # proto currently being emitted (for VALUES lookup)
 
 
 def emit(pc, op, ops, entry, n):
@@ -126,9 +128,13 @@ def emit(pc, op, ops, entry, n):
     a, b, c, d = (opval(ops, k) for k in "abcd")
     raw = " ".join(f"{k}={ops[k]}" for k in "abcd" if k in ops)
     cm = f"  -- {name} [{raw}]"
+    val = VALUES.get((CURPROTO, pc))   # concrete value this instr produced
 
     def reg(x):
         return f"e[{x}]" if x is not None else "?"
+
+    # a "K" that becomes the real literal when we observed it, else a placeholder
+    konst = val if val is not None else (f"K({b})")
 
     if cls == "jump":
         if is_pc(b, n):
@@ -138,27 +144,34 @@ def emit(pc, op, ops, entry, n):
         tgt = f"goto L_{b}" if is_pc(b, n) else "return"
         return f"if {reg(a)} then {tgt} end{cm}"
     if cls == "compare":
-        return f"{reg(dst_reg(dst, a, b, c))} = ({reg(a)} == {reg(c)}){cm} -- cmp (op-specific)"
+        vc = f"  -- = {val}" if val is not None else ""
+        return f"{reg(dst_reg(dst, a, b, c))} = ({reg(a)} == {reg(c)}){cm}{vc}"
     if cls == "newtable":
         return f"{reg(dst_reg(dst, a, b, c))} = {{}}{cm}"
     if cls == "move":
-        return f"{reg(b)} = {reg(a)}{cm}"
+        vc = f"  -- = {val}" if val is not None else ""
+        return f"{reg(b)} = {reg(a)}{cm}{vc}"
     if cls == "add":
-        return f"{reg(a)} = {reg(c)} + {d}{cm}"
+        vc = f"  -- = {val}" if val is not None else ""
+        return f"{reg(a)} = {reg(c)} + {d}{cm}{vc}"
     if cls == "loadk":
-        return f"{reg(dst_reg(dst, a, b, c))} = K({b}){cm} -- constant"
+        return f"{reg(dst_reg(dst, a, b, c))} = {konst}{cm}"
     if cls == "arith":
-        return f"{reg(dst_reg(dst, a, b, c))} = arith({reg(b)}, {reg(c)}){cm}"
+        vc = f"  -- = {val}" if val is not None else ""
+        return f"{reg(dst_reg(dst, a, b, c))} = arith({reg(b)}, {reg(c)}){cm}{vc}"
     if cls == "gettable":
-        return f"{reg(dst_reg(dst, a, b, c))} = {reg(a)}[K({c})]{cm}"
+        vc = f"  -- = {val}" if val is not None else ""
+        return f"{reg(dst_reg(dst, a, b, c))} = {reg(a)}[{konst}]{cm}{vc}"
     if cls == "call":
+        vc = f"  -- returns {val}" if val is not None else ""
         if dst:
-            return f"{reg(dst_reg(dst, a, b, c))} = call({reg(a)}, {reg(c)}){cm}"
+            return f"{reg(dst_reg(dst, a, b, c))} = call({reg(a)}, {reg(c)}){cm}{vc}"
         return f"call({reg(a)}, {reg(c)}){cm} -- void call"
     if cls == "settable":
-        return f"{reg(a)}[K({b})] = {reg(c)}{cm} -- settable/void-call (inferred)"
+        return f"{reg(a)}[{konst}] = {reg(c)}{cm} -- settable/void-call (inferred)"
     if cls == "dataop":
-        return f"dataop({reg(a)}, {reg(b)}, {reg(c)}){cm} -- flow-through, effect unprofiled"
+        vc = f"  -- = {val}" if val is not None else ""
+        return f"dataop({reg(a)}, {reg(b)}, {reg(c)}){cm}{vc}"
     return f"-- UNKNOWN {name} [{raw}]"
 
 
@@ -167,6 +180,7 @@ def dst_reg(dst, a, b, c):
 
 
 def lift_proto(pid, instrs, opmap):
+    global CURPROTO; CURPROTO = pid
     """Flat mode: emit in pc order with labels + gotos (faithful, un-structured)."""
     n = len(instrs)
     targets = set()
@@ -260,6 +274,7 @@ def linearise(blocks, entry):
 
 
 def structure_proto(pid, instrs, opmap):
+    global CURPROTO; CURPROTO = pid
     n = len(instrs)
     blocks, entry = build_blocks(instrs, n)
     order = linearise(blocks, entry)
@@ -317,6 +332,8 @@ def main():
     ap.add_argument("--protos", type=int, default=0, help="limit to first N protos (0=all)")
     ap.add_argument("--flat", action="store_true",
                     help="emit in raw pc order (skip control-flow structuring)")
+    ap.add_argument("--values", default=None,
+                    help="capture_values.py output: inline observed constants")
     args = ap.parse_args()
 
     opmap = json.load(open(args.map))
@@ -324,6 +341,13 @@ def main():
         if op.startswith("_") or not isinstance(e, dict):
             continue
         CLASS[int(op)] = classify(e.get("name", "op?"))
+
+    if args.values:
+        import re as _re
+        for _l in open(args.values, errors="replace"):
+            _m = _re.match(r"\[\[V\]\] p=(\d+) pc=(\d+) op=\S+ v=(.*)", _l.rstrip())
+            if _m:
+                VALUES[(int(_m.group(1)), int(_m.group(2)))] = _m.group(3)
 
     protos = parse_fulldump(args.fulldump)
     ids = sorted(protos)
@@ -345,6 +369,7 @@ def main():
         f"-- mode: {mode}.",
         f"-- {len(ids)} protos, {total} instructions, "
         f"{known} ({known*100//max(total,1)}%) with a known opcode.",
+        f"-- {len(VALUES)} concrete values inlined from execution." if VALUES else "-- (no value capture; run capture_values.py + --values to inline constants)",
         "local regs = {}",
         "",
     ]
