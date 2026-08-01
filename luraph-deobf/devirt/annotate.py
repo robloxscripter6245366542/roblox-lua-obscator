@@ -25,14 +25,24 @@ import sys
 def load_map(path):
     with open(path) as f:
         m = json.load(f)
-    confirmed = dict(m.get("confirmed", {}))
-    inferred = m.get("inferred", {})
-    # fold inferred in, marked so the listing shows the lower confidence
-    for op, e in inferred.items():
+    # Curated format: {confirmed:{}, inferred:{}, shape_hints:{}}
+    if "confirmed" in m or "inferred" in m:
+        confirmed = dict(m.get("confirmed", {}))
+        for op, e in m.get("inferred", {}).items():
+            e = dict(e); e["_inferred"] = True
+            confirmed.setdefault(op, e)
+        return confirmed, m.get("shape_hints", {})
+    # Flat full-map format from build_map.py: {op:{name,effect,confidence}}
+    out = {}
+    for op, e in m.items():
+        if op.startswith("_") or not isinstance(e, dict) or "name" not in e:
+            continue
         e = dict(e)
-        e["_inferred"] = True
-        confirmed.setdefault(op, e)
-    return confirmed, m.get("shape_hints", {})
+        if e.get("name") == "op?":
+            continue  # leave genuinely-unknown ops unlabelled
+        e["_inferred"] = e.get("confidence") in ("med", "low")
+        out[op] = e
+    return out, {}
 
 
 DIS_RE = re.compile(

@@ -104,17 +104,48 @@ inferred). Feeding it to `annotate.py` labels **~92% of executed
 instructions** on the sample, because the hot opcodes (JMP, SETTABLE,
 NEWTABLE, LOADK, GETTABLE) cover most of execution.
 
+## Complete map — all 125 opcodes classified (`build_map.py`)
+
+`build_map.py` merges two independent dynamic signals and emits
+`opcodes.full.json` covering **every** opcode the build executes:
+
+- **control-flow census** (`run_vm.py --mode cf`): per opcode, next-pc
+  sequential vs jump → JMP / conditional-branch / flow-through
+- **register-delta** (`semantics.py`): what each opcode writes → NEWTABLE /
+  GETTABLE / LOADK / MOVE / ARITH / COMPARE / SETTABLE(no-write)
+- **curated overrides**: the hand-verified `opcodes.json` entries win where
+  they exist (e.g. 286=JMP, 283=ADD), fixing the few the heuristic rounds off.
+
+Resulting class distribution over the 125 opcodes:
+
+| class | count | class | count |
+|-------|-------|-------|-------|
+| SETTABLE/CALL (no write) | ~39 | JMP/RETURN | ~11 |
+| TEST/BRANCH (conditional) | ~14 | ARITH | ~10 |
+| COMPARE (→bool) | ~14 | NEWTABLE | ~8 |
+| GETTABLE / CLOSURE | ~6 | LOADK (num/str) | ~7 |
+| curated (MOVE/ADD/…) | ~9 | unresolved `op?` | ~8 |
+
+Feeding `opcodes.full.json` to `annotate.py` labels **100% of the executed
+instructions** in a 400-instruction disassembly window (only ~8 rare opcodes
+remain `op?`, and they didn't appear in that window). Regenerate everything:
+
+```bash
+python3 run_vm.py --vmdir peeled --luau ./luau --mode cf  --out cf.txt
+python3 semantics.py --vmdir peeled --luau ./luau --steps 14000 --out sem_big.txt >/dev/null
+python3 build_map.py --sem sem_big.txt --cf cf.txt --curated opcodes.json --out opcodes.full.json
+python3 annotate.py dis.txt --map opcodes.full.json
+```
+
 ## Remaining
 
-- Split the 0-register-write opcodes (SETTABLE vs conditional-jump: 49, 50,
-  73, 83, 204, 55, 9, 135, 92, …) by probing table contents / control-flow —
-  a table-write probe finishes these the way the register probe finished the
-  data ops.
-- Fill the long tail of rare opcodes.
-- `lift.py`: walk each proto emitting Lua per the opcode map, inlining the
-  recovered constants. With ~92% of hot instructions already classified, the
-  lifter's output is mostly real Lua with a shrinking set of `op?` holes.
+- The ~39 no-register-write ops still bundle SETTABLE with void CALL and a few
+  conditional forms; a table-content probe would split those precisely.
+- ~8 rare `op?` opcodes need more coverage (they sit off the exercised path).
+- `lift.py`: walk each proto emitting Lua per `opcodes.full.json`, inlining
+  the recovered constants — now that ~100% of hot instructions carry a
+  mnemonic, the output is mostly real Lua with a small residue.
 
 Luraph **randomises the opcode numbering per build**, so this map is specific
-to this sample — but `semantics.py` regenerates it for any build
-automatically.
+to this sample — but the whole chain (`--mode cf` → `semantics.py` →
+`build_map.py`) regenerates it for any build automatically.

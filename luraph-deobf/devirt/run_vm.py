@@ -83,7 +83,20 @@ def build_harness(vm_src, bytecode, mode, cap, dis_n):
         sys.exit("!! probe injection failed (anchor not replaced)")
 
     nargs = len(operand_arrays)
-    if mode == "freq":
+    if mode == "cf":
+        # control-flow census: per opcode, sequential (next==pc+1) vs jump.
+        # Emits [[CF]] lines that build_map.py consumes (write to cf.json).
+        op_body = (
+            "local seq={} local jmp={} local tot={} local lop,lpc local N=0\n"
+            "env.__op=function(C,V) N=N+1\n"
+            " if lop~=nil then tot[lop]=(tot[lop] or 0)+1\n"
+            "  if C==lpc+1 then seq[lop]=(seq[lop] or 0)+1 else jmp[lop]=(jmp[lop] or 0)+1 end end\n"
+            " lop=V lpc=C\n"
+            f" if N>{cap} then error('__cap__') end end\n"
+            "env.__fin=function() local a={} for k in pairs(tot) do a[#a+1]=k end table.sort(a)\n"
+            " print('[[CF]] distinct='..#a)\n"
+            " for _,op in ipairs(a) do print('[[CF]] op='..op..' seq='..(seq[op] or 0)..' jmp='..(jmp[op] or 0)) end end")
+    elif mode == "freq":
         op_body = (
             "local F={} local N=0\n"
             "env.__op=function(C,V) N=N+1; F[V]=(F[V] or 0)+1;"
@@ -172,7 +185,7 @@ def main():
     ap.add_argument("--vmdir", default="../dynamic/peeled",
                     help="dir with stage_0.lua (VM src) + stage_1.bin (bytecode)")
     ap.add_argument("--luau", default="./luau")
-    ap.add_argument("--mode", choices=["disasm", "freq", "trace"], default="disasm")
+    ap.add_argument("--mode", choices=["disasm", "freq", "trace", "cf"], default="disasm")
     ap.add_argument("--cap", type=int, default=3000000, help="max instructions to run")
     ap.add_argument("--n", type=int, default=200, help="how many to print (disasm/trace)")
     ap.add_argument("--timeout", type=int, default=90)
@@ -198,7 +211,7 @@ def main():
         except FileNotFoundError:
             sys.exit("!! luau not found; build it: bash ../dynamic/build_luau.sh")
 
-    tag = {"disasm": "[[DIS]]", "freq": "[[FREQ]]", "trace": "[[TRACE]]"}[args.mode]
+    tag = {"disasm": "[[DIS]]", "freq": "[[FREQ]]", "trace": "[[TRACE]]", "cf": "[[CF]]"}[args.mode]
     for line in open(args.out, errors="replace"):
         if line.startswith(tag) or line.startswith("[[H]]"):
             sys.stdout.write(line)

@@ -47,10 +47,13 @@ annotate.py + opcodes.json ->  annotated listing (mnemonics + effects)
   entirely (observe effects, don't read handlers). Regenerates the opcode map
   for any build. Produced the 14 confirmed + 9 inferred entries in
   `opcodes.json`.
-- **`annotate.py`** — renders a `disasm` trace through `opcodes.json` into a
-  readable listing (mnemonic + effect for known ops, `~` for inferred,
-  operand shape + hint for unknown). Labels **~92% of executed instructions**
-  on the sample.
+- **`build_map.py`** — synthesises the **complete** opcode map: merges the
+  control-flow census (`run_vm.py --mode cf`) + the register-delta trace +
+  the curated `opcodes.json` overrides into `opcodes.full.json`, classifying
+  **all 125 opcodes** of the build.
+- **`annotate.py`** — renders a `disasm` trace through a map (`opcodes.json`
+  or the complete `opcodes.full.json`) into a readable listing. With the full
+  map it labels **100% of the executed instructions** on the sample.
 
 ## Quick start
 
