@@ -13,6 +13,28 @@ and, importantly, it *can't* be: see the honest-scope note at the bottom.
 
 ---
 
+## Staged deobfuscator (`deobfuscate.py`) — start here
+
+One entry point that runs the full methodology as explicit, ordered stages and
+**regenerates everything build-specific per sample** (opcode map included —
+Luraph randomises it every build):
+
+```bash
+bash dynamic/build_luau.sh                      # once
+python3 deobfuscate.py sample.lua -o out        # -> out/report.md + artifacts
+```
+
+Stages: **0** fingerprint (version + LPH streams) · **1** peel (base-85 → LZMA,
+keyless) → VM source + bytecode · **2** locate/neutralise the anti-tamper
+probe · **3** dynamic instrumentation in a stubbed Luau env — control-flow
+census, **per-build opcode map** (register-delta), concrete constant capture,
+behaviour · **4–5** disassemble + lift using *this build's* map · **+** emit
+`unpacked_runnable.lua`. Outputs: `peeled/`, `opcodes.json` (per-build),
+`values.txt`, `lifted.lua`, `unpacked_runnable.lua`, `report.md`.
+
+(Prefer this over `pipeline.py`, which used the committed sigil map rather than
+regenerating one — wrong opcodes on any other build.)
+
 ## Runnable unpacking (`unpack_runnable.py`)
 
 Two distinct "deobfuscation" goals — pick the one you actually want:
