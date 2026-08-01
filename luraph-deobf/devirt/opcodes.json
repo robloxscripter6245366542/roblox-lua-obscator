@@ -1,0 +1,18 @@
+{
+  "_comment": "Luraph v14.7 sample opcode map. Opcode numbering is per-build (Luraph randomises it), so this is specific to sample_sigil.lua. 'a/b/c/d' are the operand fields as emitted by run_vm.py --mode disasm (parallel arrays j/q/U/c indexed by pc). Confirmed entries are dynamically or statically verified; the rest are to be filled by reading each leaf in func o (see architecture.md).",
+  "confirmed": {
+    "286": {"name": "JMP", "operands": {"b": "target_pc"}, "effect": "C = target; unconditional jump (block terminator in flattened CFG)"},
+    "205": {"name": "LOADK_STR", "operands": {"a": "dst_reg", "c": "string_const"}, "effect": "e[a] = <string constant>"}
+  },
+  "shape_hints": {
+    "_comment": "operand-shape observations from --mode disasm; not yet confirmed semantics",
+    "48":  "a=0, b=const_index -> likely LOADK/LOADN into a fixed reg",
+    "31":  "a=reg, rest 0 -> likely MOVE/LOADNIL",
+    "49":  "a,b,c,d all set -> 3+ operand op (GETTABLE/SETTABLE/arith candidate)",
+    "228": "a=reg, c=reg -> 2-reg op (CALL/SETTABLE candidate)",
+    "285": "c=reg -> single-operand op",
+    "33":  "very hot -> arithmetic/loop-body candidate",
+    "77":  "hot",
+    "197": "hot"
+  }
+}

@@ -123,20 +123,33 @@ Done / automated:
 - **Serialisation grammar** mapped (header, tagged constants, string.pack
   number decode, where the instruction stream begins).
 
-Remaining — the genuine hard mile (opcode side):
-1. From the trace, fix the exact **per-proto layout** (counts: #consts,
-   #instructions, #protos, upvalue table) and the **instruction word format**
-   (how opcode + A/B/C operands are packed into the `u8`/tag stream).
-2. Read the dispatch (`o`) to build the **opcode → semantics** table for
-   *this build* (Luraph randomises the opcode numbering per build, so this is
-   build-specific — but the trace + source pin it down).
-3. **Codegen**: emit Lua per instruction, reattach nested protos, inline the
+Remaining — the genuine hard mile (opcode side), now under way in `devirt/`:
+1. **Drive + instrument the VM** — `devirt/run_vm.py` runs the recovered VM
+   over the bytecode and injects a probe at the dispatch, emitting a live
+   disassembly (opcode + 4 operand fields), an opcode histogram, or a pc/op
+   trace. This is done and working.
+2. **Opcode → semantics map** — read each leaf in the ~53 KB dispatch `o`
+   (the disasm operand shapes say what to look for) into
+   `devirt/opcodes.json`. Seeded with confirmed entries; the rest is the
+   manual, build-specific labour (Luraph randomises opcode numbering).
+3. **Codegen** — walk each proto emitting Lua per opcode, inlining the
    recovered constants.
 
-This is week-scale reverse-engineering, not a one-shot script, and the opcode
-map is build-specific. The value delivered here is that steps up to it are
-automated and the two inputs a lifter needs — the interpreter *as source* and
-the *constant/grammar trace* — are both in hand.
+### What `devirt/` has already established (verified on the sample)
+
+- The VM is a **register machine**: `W[C]`=opcode, `C`=pc, `e[]`=registers,
+  operands in parallel arrays `j/q/U/c[C]`; dispatch is a binary search on the
+  opcode.
+- `286` = unconditional **JMP** and dominates the histogram — control flow is
+  flattened at the bytecode level too.
+- `205` loads a string constant; 125 distinct opcodes are exercised.
+- Full pipeline works: `run_vm.py --mode disasm` → `annotate.py` → readable
+  listing. See `devirt/architecture.md` and `devirt/README.md`.
+
+This remains week-scale, build-specific RE for a *complete* lift — but it is
+no longer blind or manual-from-scratch: the VM runs under instrumentation and
+every input a lifter needs (interpreter source, live disassembly, constant
+pool) is produced automatically.
 
 ## Reproduce
 
