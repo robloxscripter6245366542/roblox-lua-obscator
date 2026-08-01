@@ -1,5 +1,6 @@
 luau
-vm_harness.luau
 peeled/
 *.txt
+*.luau
+lifted.lua
 __pycache__/

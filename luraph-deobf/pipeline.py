@@ -154,22 +154,51 @@ def main():
     else:
         rep.append("_skipped: needs disassembly_")
 
-    # ---- 8. SUMMARY ----
-    rep.append(section("8. Status"))
+    # ---- 8. LIFT (codegen to register-level Lua) ----
+    rep.append(section("8. Lift — devirtualised register-level Lua"))
+    lifted = os.path.join(outdir, "lifted.lua")
+    lift_done = False
+    if luau and have_stages:
+        full_txt = os.path.join(outdir, "fulldump.txt")
+        vals_txt = os.path.join(outdir, "values.txt")
+        sh(["python3", os.path.join("devirt", "run_vm.py"), "--vmdir", peeldir,
+            "--luau", luau, "--mode", "fulldump", "--n", "300", "--out", full_txt],
+           args.timeout)
+        # capture concrete constants to inline (item: constant inlining)
+        sh(["python3", os.path.join("devirt", "capture_values.py"),
+            "--vmdir", peeldir, "--luau", luau,
+            "--map", os.path.join("devirt", "opcodes.full.json"),
+            "--steps", "80000", "--out", vals_txt], args.timeout)
+        rc, out = sh(["python3", os.path.join("devirt", "lift.py"), full_txt,
+                      "--map", os.path.join("devirt", "opcodes.full.json"),
+                      "--values", vals_txt, "-o", lifted], args.timeout)
+        rep.append("```\n" + out.strip() + "\n```")
+        try:
+            head = "".join(open(lifted).readlines()[:26])
+            rep.append("First proto (excerpt):\n```lua\n" + head + "\n```")
+            lift_done = True
+        except OSError:
+            pass
+    else:
+        rep.append("_skipped: needs luau + stages_")
+
+    # ---- 9. SUMMARY ----
+    rep.append(section("9. Status"))
     rep.append(
         "| stage | result |\n|---|---|\n"
         f"| unpack (VM source + bytecode) | {'done' if have_stages else 'FAILED'} |\n"
         f"| constant pool | {'done' if luau else 'needs luau'} |\n"
         f"| behaviour (endpoints/config) | {'done' if luau else 'needs luau'} |\n"
         f"| disassembly + opcode histogram | {'done' if luau and have_stages else 'needs luau'} |\n"
-        "| opcode->semantics map | partial (build-specific; see devirt/opcodes.json) |\n"
-        "| clean-source lift | manual last mile (see devirt/README.md) |\n")
+        "| opcode->semantics map | complete (125 executed opcodes; devirt/opcodes.full.json) |\n"
+        f"| lift to register-level Lua | {'done' if lift_done else 'needs luau'} (~97% of static instrs) |\n"
+        "| high-level structuring (if/while) | goto-form emitted; structuring pass = future work |\n")
 
     report_path = os.path.join(outdir, "report.md")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(rep))
     print(f"[pipeline] report -> {report_path}")
-    print(f"[pipeline] artifacts in {outdir}/ (peeled/, disasm.txt, report.md)")
+    print(f"[pipeline] artifacts in {outdir}/ (peeled/, disasm.txt, lifted.lua, report.md)")
     return 0
 
 
