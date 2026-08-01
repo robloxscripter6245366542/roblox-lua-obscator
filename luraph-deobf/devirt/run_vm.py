@@ -94,13 +94,16 @@ def find_dispatch(vm_src):
     if not best:
         return None
     anchor, V, W, C, endpos, operand_arrays = best
-    # register file: first local in this function assigned from a call like
-    # `<name> = <tbl>[<n>](<arg>)`. Search backfrom the loop to the enclosing
-    # `function(` and grab the first such initialiser.
-    fn_start = vm_src.rfind("function(", 0, endpos)
-    head = vm_src[fn_start: endpos]
-    rf = re.search(r'local (\w+)[\w,]*=\s*\w+\[\d+\]\(', head)
-    regfile = rf.group(1) if rf else "e"
+    # register file: the table indexed by operand VALUES, i.e. the `X` in
+    # `X[<operand>[C]]` (e.g. e[j[C]] / J[W[h]]). Pick the most frequent such
+    # X across the dispatch region — robust across builds/variable names.
+    rf_region = vm_src[endpos: endpos + 20000]
+    rf_counts = {}
+    for opnd in operand_arrays:
+        for om in re.finditer(r'(\w+)\[' + re.escape(opnd) + r'\[' + re.escape(C) + r'\]\]',
+                              rf_region):
+            rf_counts[om.group(1)] = rf_counts.get(om.group(1), 0) + 1
+    regfile = max(rf_counts, key=rf_counts.get) if rf_counts else "e"
     return anchor, (V, W, C, operand_arrays, regfile), None
 
 
