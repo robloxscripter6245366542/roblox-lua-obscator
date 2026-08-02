@@ -55,6 +55,10 @@ local Config = {
     hitboxReach   = 0,              -- studs subtracted from ball distance
     parryCooldown = 0.09,           -- min seconds between fires
 
+    -- Manual spam (fire parry on a fixed interval, ignore threat check)
+    manualSpam    = false,
+    spamInterval  = 0.05,           -- seconds between spam fires
+
     -- Abilities / movement
     autoAbility   = false,          -- fire primary ability when targeted
     abilityDelay  = 0.6,
@@ -117,6 +121,20 @@ local function fireParry()
         fireRemote("ParryAttempt")
     end
 end
+
+-- Manual spam: fire the parry on a fixed interval, no threat check. The
+-- most reliable ("OP") method — it never misses a timing window because
+-- it is always parrying.
+task.spawn(function()
+    while true do
+        if Config.manualSpam then
+            fireParry()
+            task.wait(Config.spamInterval)
+        else
+            task.wait(0.1)
+        end
+    end
+end)
 
 -- ═══════════════════════════════════════════════════════════════════
 --  PING COMPENSATION
@@ -593,6 +611,26 @@ ParryTab:Keybind({
     Callback = function()
         Config.autoParry = not Config.autoParry
         pcall(function() parryToggle:SetValue(Config.autoParry) end)
+    end,
+})
+
+ParryTab:Section({ Title = "Manual Spam" })
+
+local spamToggle = ParryTab:Toggle({
+    Title = "Manual Spam", Desc = "Spam parry on a fixed interval — never misses a window.",
+    Value = Config.manualSpam,
+    Callback = function(v) Config.manualSpam = v end,
+})
+ParryTab:Slider({
+    Title = "Spam Interval (ms)", Desc = "Lower = faster spam (25–200 ms).",
+    Value = { Min = 25, Max = 200, Default = math.floor(Config.spamInterval * 1000) },
+    Step = 5, Callback = function(v) Config.spamInterval = v / 1000 end,
+})
+ParryTab:Keybind({
+    Title = "Toggle Manual Spam", Value = "O",
+    Callback = function()
+        Config.manualSpam = not Config.manualSpam
+        pcall(function() spamToggle:SetValue(Config.manualSpam) end)
     end,
 })
 
