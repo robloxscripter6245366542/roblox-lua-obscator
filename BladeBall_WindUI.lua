@@ -62,8 +62,17 @@ local Config = {
     -- Abilities / movement
     autoAbility   = false,          -- fire primary ability when targeted
     abilityDelay  = 0.6,
+    spamAbility   = false,          -- rapid-fire ability regardless of threat
     autoDash      = false,          -- dash away from an incoming ball
+    autoDoubleJump= false,          -- fire DoubleJump on every jump
     infiniteJump  = false,
+
+    -- Farm / automation extras
+    autoSpin      = false,          -- claim daily spin on a loop
+    autoCrate     = false,          -- open crates on a loop
+    swordColor    = Color3.fromRGB(255, 255, 255),
+    afkMode       = false,
+    muteMusic     = false,
 
     -- Character
     walkSpeed     = 16,
@@ -313,11 +322,42 @@ LocalPlayer.CharacterAdded:Connect(function()
     applyCharacterMods()
 end)
 
--- Infinite jump
+-- Infinite jump + auto double-jump
 UserInputService.JumpRequest:Connect(function()
     if Config.infiniteJump then
         local hum = getHumanoid()
         if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+    if Config.autoDoubleJump then
+        task.delay(0.12, function()
+            if not fireRemote("DoubleJump") then fireRemote("XtraJumped") end
+        end)
+    end
+end)
+
+-- Spam ability: fire the primary ability trigger on a tight loop.
+task.spawn(function()
+    while true do
+        if Config.spamAbility then
+            fireRemote("AbilityButtonPress")
+            task.wait(0.12)
+        else
+            task.wait(0.1)
+        end
+    end
+end)
+
+-- Farm loops: daily spin + crate opening.
+task.spawn(function()
+    while true do
+        if Config.autoSpin then
+            fireRemote("useSpin")
+            fireRemote("canUseDailySpin")
+        end
+        if Config.autoCrate then
+            if not fireRemote("OpenCrate") then fireRemote("RequestCrateOpen") end
+        end
+        task.wait(3)
     end
 end)
 
@@ -573,6 +613,8 @@ local CombatTab = Window:Tab({ Title = "Combat",      Icon = "zap" })
 local VisualTab = Window:Tab({ Title = "Visuals",     Icon = "eye" })
 local PlayerTab = Window:Tab({ Title = "Player",      Icon = "user" })
 local AutoTab   = Window:Tab({ Title = "Automation",  Icon = "repeat" })
+local FarmTab   = Window:Tab({ Title = "Farm",        Icon = "gift" })
+local MiscTab   = Window:Tab({ Title = "Misc",        Icon = "settings" })
 local InfoTab   = Window:Tab({ Title = "Info",        Icon = "info" })
 
 -- ── AUTO PARRY ──────────────────────────────────────────────────────
@@ -657,6 +699,14 @@ CombatTab:Button({
         end
     end,
 })
+CombatTab:Toggle({
+    Title = "Spam Ability", Desc = "Rapid-fire your ability (~8/sec), no threat check.",
+    Value = Config.spamAbility, Callback = function(v) Config.spamAbility = v end,
+})
+CombatTab:Button({
+    Title = "Reset Ability Cooldown (visual)",
+    Callback = function() fireRemote("ResetAbilityCooldown") end,
+})
 
 CombatTab:Section({ Title = "Movement" })
 CombatTab:Toggle({
@@ -664,8 +714,21 @@ CombatTab:Toggle({
     Value = Config.autoDash, Callback = function(v) Config.autoDash = v end,
 })
 CombatTab:Toggle({
+    Title = "Auto Double Jump", Desc = "Fire DoubleJump on every jump.",
+    Value = Config.autoDoubleJump, Callback = function(v) Config.autoDoubleJump = v end,
+})
+CombatTab:Toggle({
     Title = "Infinite Jump",
     Value = Config.infiniteJump, Callback = function(v) Config.infiniteJump = v end,
+})
+CombatTab:Button({
+    Title = "Cloak Jump", Callback = function() fireRemote("CloakJump") end,
+})
+CombatTab:Button({
+    Title = "Double Jump",
+    Callback = function()
+        if not fireRemote("DoubleJump") then fireRemote("XtraJumped") end
+    end,
 })
 
 -- ── VISUALS ─────────────────────────────────────────────────────────
@@ -743,6 +806,22 @@ AutoTab:Toggle({
     Title = "Anti-AFK", Value = Config.antiAfk,
     Callback = function(v) Config.antiAfk = v end,
 })
+AutoTab:Button({
+    Title = "Play Ranked", Callback = function() fireRemote("PlayRanked") end,
+})
+AutoTab:Button({
+    Title = "Play No-Ability Ranked",
+    Callback = function() fireRemote("PlayNoAbilityRanked") end,
+})
+AutoTab:Button({
+    Title = "Play Training", Callback = function() fireRemote("PlayTrainingMode") end,
+})
+AutoTab:Button({
+    Title = "Return to Lobby",
+    Callback = function()
+        if not fireRemote("ReturnToLobby") then fireRemote("RequestTeleportToMain") end
+    end,
+})
 
 AutoTab:Section({ Title = "Server" })
 AutoTab:Button({
@@ -762,6 +841,80 @@ AutoTab:Button({
     Callback = function()
         if setclipboard then setclipboard(game.JobId) end
         WindUI:Notify({ Title = "Copied", Content = game.JobId, Duration = 4 })
+    end,
+})
+
+-- ── FARM ────────────────────────────────────────────────────────────
+FarmTab:Section({ Title = "Rewards" })
+FarmTab:Toggle({
+    Title = "Auto Daily Spin", Desc = "Claim the spin wheel on a loop.",
+    Value = Config.autoSpin, Callback = function(v) Config.autoSpin = v end,
+})
+FarmTab:Button({
+    Title = "Spin Now", Callback = function() fireRemote("useSpin") end,
+})
+FarmTab:Toggle({
+    Title = "Auto Open Crates", Desc = "Open crates on a loop.",
+    Value = Config.autoCrate, Callback = function(v) Config.autoCrate = v end,
+})
+FarmTab:Button({
+    Title = "Open Crate Now",
+    Callback = function()
+        if not fireRemote("OpenCrate") then fireRemote("RequestCrateOpen") end
+    end,
+})
+
+FarmTab:Section({ Title = "Codes" })
+local codeBox = ""
+FarmTab:Input({
+    Title = "Redeem Code", Placeholder = "enter code…",
+    Callback = function(v) codeBox = v end,
+})
+FarmTab:Button({
+    Title = "Submit Code",
+    Callback = function()
+        if codeBox ~= "" then
+            fireRemote("SubmitCodeRequest", codeBox)
+            WindUI:Notify({ Title = "Code Sent", Content = codeBox, Duration = 4 })
+        end
+    end,
+})
+
+-- ── MISC ────────────────────────────────────────────────────────────
+MiscTab:Section({ Title = "Cosmetic" })
+MiscTab:Colorpicker({
+    Title = "Sword Color", Default = Config.swordColor,
+    Callback = function(c)
+        Config.swordColor = c
+        fireRemote("ChangeSwordColor", c)
+    end,
+})
+MiscTab:Button({
+    Title = "Apply Sword Color",
+    Callback = function() fireRemote("ChangeSwordColor", Config.swordColor) end,
+})
+
+MiscTab:Section({ Title = "Match" })
+MiscTab:Dropdown({
+    Title = "Parry Type",
+    Values = { "Default", "Confident", "Raging", "Calming" },
+    Value = "Default",
+    Callback = function(v) fireRemote("SetParryType", v) end,
+})
+MiscTab:Toggle({
+    Title = "AFK Mode",
+    Value = Config.afkMode,
+    Callback = function(v) Config.afkMode = v fireRemote("SetAfkMode", v) end,
+})
+
+MiscTab:Section({ Title = "Audio" })
+MiscTab:Toggle({
+    Title = "Mute Music",
+    Value = Config.muteMusic,
+    Callback = function(v)
+        Config.muteMusic = v
+        fireRemote("MuteMusic", v)
+        if v then fireRemote("StopBrazilSong") end
     end,
 })
 
