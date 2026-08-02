@@ -407,8 +407,35 @@ end))
 -- ============================================================
 -- TARGETING HELPERS
 -- ============================================================
+-- Rivals PlayerStatus values that mean the player is not a live combatant.
+-- A player in any of these is a "ghost" and must never be locked.
+local GHOST_STATUS = {
+	Lobby = true,
+	Dead = true,
+	Spectate = true,
+	Spectating = true,
+	Respawning = true,
+	Eliminated = true,
+	Menu = true,
+}
+
+-- True when the player is in the lobby / dead / spectating / respawning.
+-- Uses Rivals' own PlayerStatus attribute; unknown/absent values fail open
+-- so ordinary games (no such attribute) are unaffected.
+local function isGhost(p)
+	local status = p:GetAttribute("PlayerStatus")
+	return type(status) == "string" and GHOST_STATUS[status] == true
+end
+
 local function isFriendly(p)
 	if not Settings.TeamCheck then return false end
+	-- Rivals: TeamID attribute is the authoritative team check.
+	local myId = lp:GetAttribute("TeamID")
+	local theirId = p:GetAttribute("TeamID")
+	if myId ~= nil and theirId ~= nil then
+		return myId == theirId
+	end
+	-- Fallback for games without TeamID: standard Team property.
 	if lp.Team == nil then return false end
 	return p.Team ~= nil and p.Team == lp.Team
 end
@@ -462,7 +489,7 @@ local function hasLineOfSight(char, part)
 end
 
 local function isValidTarget(p)
-	if p == lp or isFriendly(p) then return false end
+	if p == lp or isFriendly(p) or isGhost(p) then return false end
 	local char = p.Character
 	if not char then return nil end
 	local hum = char:FindFirstChildOfClass("Humanoid")
@@ -495,13 +522,14 @@ end
 -- Evaluate a locked character. Returns (aimPart, hardInvalid).
 --   aimPart      -> the part to aim at right now, or nil if not aimable
 --   hardInvalid  -> true only when the lock must be dropped immediately
---                   (dead, despawned, or now a teammate). Soft losses
+--                   (dead, despawned, teammate, or gone ghost:
+--                   lobby/spectate/respawning). Soft losses
 --                   (off-screen, behind a wall, out of FOV) return nil,false
 --                   so the caller can hold the target through the blip.
 local function evalLocked(char, center)
 	if not char or not char.Parent then return nil, true end
 	local p = Players:GetPlayerFromCharacter(char)
-	if not p or isFriendly(p) then return nil, true end
+	if not p or isFriendly(p) or isGhost(p) then return nil, true end
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if not hum or hum.Health <= 0 then return nil, true end
 	local part = getHitPart(char)
