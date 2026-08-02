@@ -48,6 +48,18 @@ local CONFIG = {
     YieldEvery     = 3,        -- task.wait() after this many decompiles
     TimeBudget     = 0.008,    -- ...and yield if a step ran longer than this (s)
     MaxBeautify    = 150000,   -- skip re-indent on bodies bigger than this
+
+    -- ── Crash-proofing (heavy/protected scripts crash decompilers) ──
+    -- SafeDecompile size-gates the decompiler: scripts whose bytecode is
+    -- bigger than this are NOT decompiled (that's what kills the client on
+    -- TSB-style protected games) - we dump their raw bytecode hex instead.
+    SafeDecompile  = true,
+    MaxDecompileBC = 200000,   -- bytecode bytes above which we skip decompile
+    -- Resume makes it self-healing: it records each script before touching
+    -- it, so if a NATIVE decompiler crash still kills the client, re-running
+    -- skips the offender and every script already done, and finishes.
+    Resume         = true,
+
     IgnoreRoots    = { "CoreGui", "CorePackages", "RobloxGui", "RobloxReplicatedStorage", "CoreScripts" },
 }
 -- ──────────────────────────────────────────────────────────
@@ -63,6 +75,9 @@ local setclipboard_fn = rawget(ENV, "setclipboard")      or setclipboard or tocl
 local writefile_fn    = rawget(ENV, "writefile")         or writefile
 local makefolder_fn   = rawget(ENV, "makefolder")        or makefolder
 local isfolder_fn     = rawget(ENV, "isfolder")          or isfolder
+local readfile_fn     = rawget(ENV, "readfile")          or readfile
+local isfile_fn       = rawget(ENV, "isfile")            or isfile
+local appendfile_fn   = rawget(ENV, "appendfile")        or appendfile
 
 local REMOTE_CLASSES = {
     RemoteEvent = { call = "FireServer", server = true },
@@ -112,9 +127,19 @@ local function pathExpr(inst)
     return out
 end
 
--- ── Decompile with fallbacks ──────────────────────────────
+-- ── Decompile with fallbacks (size-gated to avoid crashes) ──
+-- Getting bytecode is cheap and rarely crashes; decompiling a giant
+-- protected script is what kills the client. So we fetch bytecode FIRST,
+-- and only hand the decompiler scripts small enough to be safe.
 local function getScriptCode(scr)
-    if decompile_fn then
+    local bc
+    if getbytecode_fn then
+        local okb, b = pcall(getbytecode_fn, scr)
+        if okb and type(b) == "string" and #b > 0 then bc = b end
+    end
+
+    local tooBig = CONFIG.SafeDecompile and bc and #bc > CONFIG.MaxDecompileBC
+    if decompile_fn and not tooBig then
         local ok, src = pcall(decompile_fn, scr)
         if ok and type(src) == "string" and #src > 0 then return src, "decompile" end
     end
@@ -124,11 +149,9 @@ local function getScriptCode(scr)
     end
     local ok, src = pcall(function() return scr.Source end)
     if ok and type(src) == "string" and #src > 0 then return src, "Source" end
-    if getbytecode_fn then
-        local okb, bc = pcall(getbytecode_fn, scr)
-        if okb and type(bc) == "string" and #bc > 0 then
-            return (CONFIG.BytecodeAsHex and toHex(bc) or bc), "bytecode"
-        end
+    if bc then
+        return (CONFIG.BytecodeAsHex and toHex(bc) or bc),
+               tooBig and ("bytecode(too big to decompile: " .. #bc .. "b)") or "bytecode"
     end
     return nil, "unavailable"
 end
@@ -329,12 +352,66 @@ local function run()
         end
     end
 
+    -- ── Resume / crash-skip ──────────────────────────────────
+    -- Before touching a script we record it in _current. If a NATIVE
+    -- decompiler crash kills the client, the next run reads _current, adds
+    -- that one to the skip list, reads _progress to skip everything already
+    -- done, and carries on - so you always finish within a rerun or two.
+    if makefolder_fn then
+        pcall(function() if isfolder_fn and not isfolder_fn(CONFIG.OutputFolder) then makefolder_fn(CONFIG.OutputFolder) end end)
+    end
+    local progressPath = CONFIG.OutputFolder .. "/_progress.txt"
+    local currentPath  = CONFIG.OutputFolder .. "/_current.txt"
+    local doneSet, skipSet, resumed = {}, {}, 0
+    if CONFIG.Resume and readfile_fn then
+        -- A non-empty _current means the last run crashed mid-script => resume.
+        -- Empty/absent means the last run finished cleanly => start fresh.
+        local crashed
+        pcall(function()
+            if isfile_fn and isfile_fn(currentPath) then
+                local c = readfile_fn(currentPath)
+                if c and c ~= "" then crashed = c end
+            end
+        end)
+        if crashed then
+            skipSet[crashed] = true
+            warn("[MegaDumper] Skipping script that crashed a previous run: " .. crashed)
+            pcall(function()
+                if isfile_fn and isfile_fn(progressPath) then
+                    for line in (readfile_fn(progressPath) .. "\n"):gmatch("(.-)\n") do
+                        if line ~= "" then doneSet[line] = true; resumed = resumed + 1 end
+                    end
+                end
+            end)
+            notify(("Resuming after a crash - skipping %d done + 1 bad script."):format(resumed))
+        else
+            -- Fresh run: wipe the previous progress log so nothing is skipped.
+            if writefile_fn then pcall(writefile_fn, progressPath, "") end
+        end
+    end
+    local function markCurrent(p) if CONFIG.Resume and writefile_fn then pcall(writefile_fn, currentPath, p) end end
+    local function clearCurrent() if CONFIG.Resume and writefile_fn then pcall(writefile_fn, currentPath, "") end end
+    local function markDone(p)
+        if not (CONFIG.Resume and writefile_fn) then return end
+        if appendfile_fn then pcall(appendfile_fn, progressPath, p .. "\n") end
+    end
+
     for i, s in ipairs(kS) do
         local cn = "Script"; pcall(function() cn = s.obj.ClassName end)
         local code, method
-        if done < CONFIG.MaxDecompiles then
+
+        if doneSet[s.path] then
+            -- Already dumped in a previous run; don't touch it again.
+            method = "done (previous run)"
+        elseif skipSet[s.path] then
+            -- This one crashed the decompiler last time; never retry it.
+            method = "skipped (crashed a previous run)"
+        elseif done < CONFIG.MaxDecompiles then
+            markCurrent(s.path)                       -- record BEFORE the risky call
             local ok, c, m = pcall(getScriptCode, s.obj)
+            clearCurrent()                            -- survived it
             if ok then code, method = c, m else method = "error" end
+            markDone(s.path)
             done = done + 1
             if done % CONFIG.YieldEvery == 0 then task.wait(); lastClock = os.clock() end
         else method = "skipped (cap)" end
@@ -354,7 +431,8 @@ local function run()
         local header = ("[%d] %s  (%s)  [%s | via %s]"):format(i, s.path, cn, cls, tostring(method))
 
         -- Stream to its own file (complete output, unaffected by the cap).
-        if CONFIG.SavePerScript and writefile_fn then
+        -- Never overwrite a file that a previous run already dumped good code to.
+        if CONFIG.SavePerScript and writefile_fn and method ~= "done (previous run)" then
             local ext = (cls == "vm") and ".vm.lua" or (cls == "unavailable") and ".missing.lua" or ".lua"
             pcall(writefile_fn, safePath(s.path, cls, ext), "-- " .. header .. "\n\n" .. body)
         end
