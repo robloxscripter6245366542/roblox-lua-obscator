@@ -35,7 +35,7 @@ local Settings = {
 	RainbowUI        = true,
 	ShowFOV          = true,
 	Fov              = 150,     -- circle radius (px), 50 .. 1000
-	Strength         = 0.92,    -- smoothing / snap, 0.05 .. 1.0 (1 = instant)
+	Strength         = 0.96,    -- smoothing / snap, 0.05 .. 1.0 (1 = instant)
 	PredictionAmount = 0.16,    -- seconds of lead, 0 .. 1 (only if Prediction on)
 	TargetPart       = "Head",  -- Head / Torso / HumanoidRootPart
 }
@@ -47,8 +47,9 @@ local PART_OPTIONS = { "Head", "Torso", "HumanoidRootPart" }
 local LOCK_GRACE = 0.45
 
 -- Once the crosshair is within this angle of the target, the lock snaps
--- fully (hard-lock on the head) instead of continuing to ease in.
-local HARD_LOCK_ANGLE = math.rad(2.2)
+-- fully (hard-lock on the head) instead of continuing to ease in. A wider
+-- angle = stiffer feel (clamps onto the target from farther out).
+local HARD_LOCK_ANGLE = math.rad(3.6)
 
 local function LoadSettings()
 	if isfile and readfile and isfile(ConfigFile) then
