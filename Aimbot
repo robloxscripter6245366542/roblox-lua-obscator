@@ -42,6 +42,10 @@ local Settings = {
 
 local PART_OPTIONS = { "Head", "Torso", "HumanoidRootPart" }
 
+-- Seconds a lock is held through brief off-screen / wall / dodge losses
+-- before it is allowed to switch to another target.
+local LOCK_GRACE = 0.45
+
 -- Once the crosshair is within this angle of the target, the lock snaps
 -- fully (hard-lock on the head) instead of continuing to ease in.
 local HARD_LOCK_ANGLE = math.rad(2.2)
@@ -488,31 +492,35 @@ local function acquireTarget(center)
 	return bestChar, bestPart
 end
 
--- Is a locked character still a legal target? When ignoreFov is true the
--- lock is kept even if the target has moved outside the FOV circle, so the
--- aim keeps following the same player instead of dropping on every dodge.
-local function stillTargetable(char, center, ignoreFov)
-	if not char or not char.Parent then return nil end
+-- Evaluate a locked character. Returns (aimPart, hardInvalid).
+--   aimPart      -> the part to aim at right now, or nil if not aimable
+--   hardInvalid  -> true only when the lock must be dropped immediately
+--                   (dead, despawned, or now a teammate). Soft losses
+--                   (off-screen, behind a wall, out of FOV) return nil,false
+--                   so the caller can hold the target through the blip.
+local function evalLocked(char, center)
+	if not char or not char.Parent then return nil, true end
 	local p = Players:GetPlayerFromCharacter(char)
-	if not p or isFriendly(p) then return nil end
+	if not p or isFriendly(p) then return nil, true end
 	local hum = char:FindFirstChildOfClass("Humanoid")
-	if not hum or hum.Health <= 0 then return nil end
+	if not hum or hum.Health <= 0 then return nil, true end
 	local part = getHitPart(char)
-	if not part then return nil end
+	if not part then return nil, false end
 	local screenPos, onScreen = cam:WorldToViewportPoint(part.Position)
-	if not onScreen then return nil end
-	if not ignoreFov then
+	if not onScreen then return nil, false end
+	if not Settings.StickyIgnoreFOV then
 		local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-		if dist > Settings.Fov then return nil end
+		if dist > Settings.Fov then return nil, false end
 	end
-	if not hasLineOfSight(char, part) then return nil end
-	return part
+	if not hasLineOfSight(char, part) then return nil, false end
+	return part, false
 end
 
 -- ============================================================
 -- AIM LOOP
 -- ============================================================
 local lockedChar = nil
+local lockGrace = 0
 
 track(RunService.RenderStepped:Connect(function(dt)
 	cam = workspace.CurrentCamera or cam
@@ -539,20 +547,32 @@ track(RunService.RenderStepped:Connect(function(dt)
 		return
 	end
 
-	-- Sticky target: keep the current lock while it stays legal. With
-	-- StickyIgnoreFOV the lock follows the player even outside the circle.
+	-- Sticky target with a grace window: keep the current lock through brief
+	-- off-screen / wall / dodge frames instead of instantly switching to
+	-- another player. Only drop on a hard loss (dead / gone / teammate) or
+	-- once the grace window elapses.
 	local char, part
 	if Settings.StickyTarget and lockedChar then
-		local keepPart = stillTargetable(lockedChar, center, Settings.StickyIgnoreFOV)
+		local keepPart, hardInvalid = evalLocked(lockedChar, center)
 		if keepPart then
 			char, part = lockedChar, keepPart
-		else
+			lockGrace = 0
+		elseif hardInvalid then
 			lockedChar = nil
+			lockGrace = 0
+		else
+			lockGrace = lockGrace + dt
+			if lockGrace <= LOCK_GRACE then
+				return -- hold this target, wait for it to reappear
+			end
+			lockedChar = nil
+			lockGrace = 0
 		end
 	end
 	if not char then
 		char, part = acquireTarget(center)
 		lockedChar = char
+		lockGrace = 0
 	end
 
 	if char and part then
