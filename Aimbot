@@ -1,37 +1,79 @@
 --!nocheck
--- Compact iPad FOV Aimbot
--- Small vertical touch UI. One toggle turns everything on:
---   * draws a FOV circle at the screen centre
---   * automatically locks the camera onto any target inside the circle
---   * auto-switches to the closest target when several are inside the circle
---   * FOV radius is adjustable from 10 up to 300
--- Self contained: no external loaders, works on iPad / mobile executors.
+-- [[ d4vid ELITE V25: MAX VELOCITY HUB (PERSISTENT & MOBILE) ]]
+-- Velocity-predicted, buttery-smooth FOV aimbot hub.
+--   * true velocity/lead prediction  -> tracks moving targets, no miss
+--   * frame-rate independent smoothing -> consistent feel on any FPS / ping
+--   * sticky target                   -> locks one target cleanly, no jitter
+--   * selectable hit part, team / wall check, FOV up to 1000
+--   * scrollable mobile hub, floating toggle, auto-saving config
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
 
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+local lp = Players.LocalPlayer
+local cam = workspace.CurrentCamera
 
--- Clean up a previous run of this script (re-execute friendly)
-local genv = (getgenv and getgenv()) or _G
-if type(genv.__ipadFovCleanup) == "function" then
-	pcall(genv.__ipadFovCleanup)
+-- ============================================================
+-- CONFIG & PERSISTENCE
+-- ============================================================
+local ConfigFile = "d4vid_v25_config.json"
+
+local Settings = {
+	MasterEnabled   = true,
+	Aimbot          = true,
+	TeamCheck       = true,
+	WallCheck       = true,
+	Prediction      = true,
+	Smoothing       = true,
+	StickyTarget    = true,
+	RainbowUI       = true,
+	ShowFOV         = true,
+	Fov             = 300,     -- circle radius (px), 50 .. 1000
+	Strength        = 0.85,    -- smoothing / snap, 0.05 .. 1.0 (1 = instant)
+	PredictionAmount = 0.16,   -- seconds of lead, 0 .. 1
+	TargetPart      = "Head",  -- Head / Torso / HumanoidRootPart
+}
+
+local PART_OPTIONS = { "Head", "Torso", "HumanoidRootPart" }
+
+-- Once the crosshair is within this angle of the target, the lock snaps
+-- fully (hard-lock on the head) instead of continuing to ease in.
+local HARD_LOCK_ANGLE = math.rad(2.2)
+
+local function LoadSettings()
+	if isfile and readfile and isfile(ConfigFile) then
+		pcall(function()
+			local decoded = HttpService:JSONDecode(readfile(ConfigFile))
+			if type(decoded) == "table" then
+				for k, v in pairs(decoded) do
+					if Settings[k] ~= nil then
+						Settings[k] = v
+					end
+				end
+			end
+		end)
+	end
 end
 
--- ============================================================
--- Settings
--- ============================================================
-local FOV_MIN = 10
-local FOV_MAX = 300
+local function SaveSettings()
+	if writefile then
+		pcall(function()
+			writefile(ConfigFile, HttpService:JSONEncode(Settings))
+		end)
+	end
+end
 
-local state = {
-	enabled = false,   -- master toggle: auto FOV lock
-	fov = 120,         -- circle radius in pixels
-	smooth = 1,        -- 1 = instant hard lock, lower = smoother
-	teamCheck = true,  -- don't lock teammates when the game has teams
-}
+LoadSettings()
+
+-- ============================================================
+-- CLEANUP (re-execute friendly)
+-- ============================================================
+local genv = (getgenv and getgenv()) or _G
+if type(genv.__d4vidCleanup) == "function" then
+	pcall(genv.__d4vidCleanup)
+end
 
 local conns = {}
 local function track(c)
@@ -39,362 +81,510 @@ local function track(c)
 	return c
 end
 
--- ============================================================
--- GUI host (protected container when the executor supports it)
--- ============================================================
-local function getGuiParent()
-	if gethui then
-		local ok, hui = pcall(gethui)
-		if ok and hui then
-			return hui
-		end
+local targetGuiName = "d4vid_V25_Mobile"
+for _, host in ipairs({ game:GetService("CoreGui"), lp:FindFirstChildOfClass("PlayerGui") }) do
+	if host then
+		local old = host:FindFirstChild(targetGuiName)
+		if old then old:Destroy() end
 	end
-	local ok, cg = pcall(function()
-		return game:GetService("CoreGui")
+end
+
+-- ============================================================
+-- GUI CONTAINER
+-- ============================================================
+local sg = Instance.new("ScreenGui")
+sg.Name = targetGuiName
+sg.ResetOnSpawn = false
+sg.IgnoreGuiInset = true
+sg.DisplayOrder = 100
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local okParent = pcall(function()
+	sg.Parent = game:GetService("CoreGui")
+end)
+if not okParent then
+	sg.Parent = lp:WaitForChild("PlayerGui")
+end
+if gethui then
+	pcall(function()
+		sg.Parent = gethui()
 	end)
-	if ok and cg then
-		return cg
-	end
-	return LocalPlayer:WaitForChild("PlayerGui")
-end
-
-local guiParent = getGuiParent()
-
-local function protect(gui)
-	if syn and syn.protect_gui then
-		pcall(syn.protect_gui, gui)
-	end
-	if protect_gui then
-		pcall(protect_gui, gui)
-	end
-end
-
-local screen = Instance.new("ScreenGui")
-screen.Name = "\0"
-screen.ResetOnSpawn = false
-screen.IgnoreGuiInset = true
-screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-protect(screen)
-screen.Parent = guiParent
-
--- ============================================================
--- FOV circle (centre of screen)
--- ============================================================
-local circle = Instance.new("Frame")
-circle.Name = "FOV"
-circle.AnchorPoint = Vector2.new(0.5, 0.5)
-circle.Position = UDim2.new(0.5, 0, 0.5, 0)
-circle.Size = UDim2.new(0, state.fov * 2, 0, state.fov * 2)
-circle.BackgroundTransparency = 1
-circle.Visible = false
-circle.ZIndex = 1
-circle.Parent = screen
-
-local circleCorner = Instance.new("UICorner")
-circleCorner.CornerRadius = UDim.new(1, 0)
-circleCorner.Parent = circle
-
-local circleStroke = Instance.new("UIStroke")
-circleStroke.Thickness = 2
-circleStroke.Color = Color3.fromRGB(120, 200, 255)
-circleStroke.Transparency = 0.15
-circleStroke.Parent = circle
-
-local function refreshCircle()
-	circle.Size = UDim2.new(0, state.fov * 2, 0, state.fov * 2)
-	circle.Visible = state.enabled
 end
 
 -- ============================================================
--- Small vertical UI panel
+-- DRAGGABLE UTILITY (mouse + touch)
 -- ============================================================
-local panel = Instance.new("Frame")
-panel.Name = "Panel"
-panel.AnchorPoint = Vector2.new(0, 0.5)
-panel.Position = UDim2.new(0, 18, 0.5, 0)
-panel.Size = UDim2.new(0, 170, 0, 176)
-panel.BackgroundColor3 = Color3.fromRGB(16, 18, 26)
-panel.BackgroundTransparency = 0.08
-panel.BorderSizePixel = 0
-panel.ZIndex = 5
-panel.Active = true
-panel.Parent = screen
+local function makeDraggable(gui, handle)
+	handle = handle or gui
+	local dragging, dragInput, dragStart, startPos
 
-local panelCorner = Instance.new("UICorner")
-panelCorner.CornerRadius = UDim.new(0, 14)
-panelCorner.Parent = panel
-
-local panelStroke = Instance.new("UIStroke")
-panelStroke.Thickness = 1
-panelStroke.Color = Color3.fromRGB(120, 200, 255)
-panelStroke.Transparency = 0.4
-panelStroke.Parent = panel
-
-local layout = Instance.new("UIListLayout")
-layout.FillDirection = Enum.FillDirection.Vertical
-layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.Padding = UDim.new(0, 8)
-layout.Parent = panel
-
-local pad = Instance.new("UIPadding")
-pad.PaddingTop = UDim.new(0, 8)
-pad.PaddingBottom = UDim.new(0, 8)
-pad.Parent = panel
-
--- Title / drag handle
-local title = Instance.new("TextLabel")
-title.Name = "Title"
-title.LayoutOrder = 1
-title.Size = UDim2.new(1, -16, 0, 24)
-title.BackgroundTransparency = 1
-title.Text = "FOV LOCK"
-title.Font = Enum.Font.GothamBold
-title.TextSize = 15
-title.TextColor3 = Color3.fromRGB(235, 240, 255)
-title.ZIndex = 6
-title.Parent = panel
-
--- Master toggle button
-local toggle = Instance.new("TextButton")
-toggle.Name = "Toggle"
-toggle.LayoutOrder = 2
-toggle.Size = UDim2.new(1, -20, 0, 40)
-toggle.BackgroundColor3 = Color3.fromRGB(40, 44, 58)
-toggle.AutoButtonColor = false
-toggle.Text = "OFF"
-toggle.Font = Enum.Font.GothamBold
-toggle.TextSize = 16
-toggle.TextColor3 = Color3.fromRGB(235, 240, 255)
-toggle.ZIndex = 6
-toggle.Parent = panel
-
-local toggleCorner = Instance.new("UICorner")
-toggleCorner.CornerRadius = UDim.new(0, 10)
-toggleCorner.Parent = toggle
-
--- FOV value label
-local fovLabel = Instance.new("TextLabel")
-fovLabel.Name = "FovLabel"
-fovLabel.LayoutOrder = 3
-fovLabel.Size = UDim2.new(1, -20, 0, 20)
-fovLabel.BackgroundTransparency = 1
-fovLabel.Text = "FOV: " .. state.fov
-fovLabel.Font = Enum.Font.GothamSemibold
-fovLabel.TextSize = 14
-fovLabel.TextColor3 = Color3.fromRGB(190, 200, 220)
-fovLabel.ZIndex = 6
-fovLabel.Parent = panel
-
--- FOV slider
-local sliderBar = Instance.new("Frame")
-sliderBar.Name = "Slider"
-sliderBar.LayoutOrder = 4
-sliderBar.Size = UDim2.new(1, -24, 0, 26)
-sliderBar.BackgroundColor3 = Color3.fromRGB(40, 44, 58)
-sliderBar.BorderSizePixel = 0
-sliderBar.ZIndex = 6
-sliderBar.Active = true
-sliderBar.Parent = panel
-
-local sliderCorner = Instance.new("UICorner")
-sliderCorner.CornerRadius = UDim.new(1, 0)
-sliderCorner.Parent = sliderBar
-
-local fill = Instance.new("Frame")
-fill.Name = "Fill"
-fill.Size = UDim2.new((state.fov - FOV_MIN) / (FOV_MAX - FOV_MIN), 0, 1, 0)
-fill.BackgroundColor3 = Color3.fromRGB(120, 200, 255)
-fill.BorderSizePixel = 0
-fill.ZIndex = 7
-fill.Parent = sliderBar
-
-local fillCorner = Instance.new("UICorner")
-fillCorner.CornerRadius = UDim.new(1, 0)
-fillCorner.Parent = fill
-
-local hint = Instance.new("TextLabel")
-hint.Name = "Hint"
-hint.LayoutOrder = 5
-hint.Size = UDim2.new(1, -20, 0, 16)
-hint.BackgroundTransparency = 1
-hint.Text = "drag to set (10-300)"
-hint.Font = Enum.Font.Gotham
-hint.TextSize = 11
-hint.TextColor3 = Color3.fromRGB(140, 150, 170)
-hint.ZIndex = 6
-hint.Parent = panel
-
--- ============================================================
--- UI behaviour
--- ============================================================
-local function applyToggleStyle()
-	if state.enabled then
-		toggle.Text = "ON"
-		toggle.BackgroundColor3 = Color3.fromRGB(60, 200, 120)
-	else
-		toggle.Text = "OFF"
-		toggle.BackgroundColor3 = Color3.fromRGB(40, 44, 58)
-	end
-end
-
-local function setEnabled(on)
-	state.enabled = on and true or false
-	applyToggleStyle()
-	refreshCircle()
-end
-
-local function setFov(value)
-	state.fov = math.clamp(math.floor(value + 0.5), FOV_MIN, FOV_MAX)
-	fovLabel.Text = "FOV: " .. state.fov
-	fill.Size = UDim2.new((state.fov - FOV_MIN) / (FOV_MAX - FOV_MIN), 0, 1, 0)
-	refreshCircle()
-end
-
-track(toggle.MouseButton1Click:Connect(function()
-	setEnabled(not state.enabled)
-end))
-
--- Slider dragging (mouse + touch)
-local sliderDragging = false
-local function setFovFromX(x)
-	local rel = math.clamp((x - sliderBar.AbsolutePosition.X) / math.max(sliderBar.AbsoluteSize.X, 1), 0, 1)
-	setFov(FOV_MIN + rel * (FOV_MAX - FOV_MIN))
-end
-
-track(sliderBar.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		sliderDragging = true
-		setFovFromX(input.Position.X)
-	end
-end))
-track(UserInputService.InputChanged:Connect(function(input)
-	if sliderDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-		setFovFromX(input.Position.X)
-	end
-end))
-track(UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		sliderDragging = false
-	end
-end))
-
--- Panel dragging via the title (mouse + touch)
-do
-	local dragging = false
-	local dragStart, startPos
-	track(title.InputBegan:Connect(function(input)
+	track(handle.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			dragStart = input.Position
-			startPos = panel.Position
+			startPos = gui.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
 		end
 	end))
+
+	track(handle.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end))
+
+	track(UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			local delta = input.Position - dragStart
+			gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end))
+end
+
+-- ============================================================
+-- FOV CIRCLE (touch passes through)
+-- ============================================================
+local fovCircle = Instance.new("Frame")
+fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+fovCircle.BackgroundTransparency = 1
+fovCircle.Active = false        -- do not block jump / touch controls
+fovCircle.Selectable = false
+fovCircle.ZIndex = 1
+fovCircle.Visible = Settings.ShowFOV and Settings.MasterEnabled
+fovCircle.Parent = sg
+local fovStroke = Instance.new("UIStroke", fovCircle)
+fovStroke.Thickness = 1.5
+fovStroke.Color = Color3.fromRGB(255, 50, 50)
+Instance.new("UICorner", fovCircle).CornerRadius = UDim.new(1, 0)
+
+-- ============================================================
+-- MAIN HUB WINDOW
+-- ============================================================
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 250, 0, 360)
+main.Position = UDim2.new(0.5, -125, 0.35, -180)
+main.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+main.ClipsDescendants = true
+main.Active = true
+main.ZIndex = 5
+main.Parent = sg
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
+local mainStroke = Instance.new("UIStroke", main)
+mainStroke.Thickness = 2
+mainStroke.Color = Color3.fromRGB(255, 50, 50)
+
+local title = Instance.new("TextLabel", main)
+title.Size = UDim2.new(1, 0, 0, 36)
+title.Text = "d4vid ELITE V25"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.Code
+title.TextSize = 15
+title.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+title.Active = true
+title.ZIndex = 6
+makeDraggable(main, title)
+
+local body = Instance.new("ScrollingFrame", main)
+body.Position = UDim2.new(0, 0, 0, 36)
+body.Size = UDim2.new(1, 0, 1, -60)
+body.BackgroundTransparency = 1
+body.BorderSizePixel = 0
+body.ScrollBarThickness = 4
+body.ScrollBarImageColor3 = Color3.fromRGB(255, 50, 50)
+body.CanvasSize = UDim2.new(0, 0, 0, 0)
+body.AutomaticCanvasSize = Enum.AutomaticSize.Y
+body.ZIndex = 6
+
+local bodyPad = Instance.new("UIPadding", body)
+bodyPad.PaddingLeft = UDim.new(0, 10)
+bodyPad.PaddingRight = UDim.new(0, 10)
+bodyPad.PaddingTop = UDim.new(0, 8)
+bodyPad.PaddingBottom = UDim.new(0, 8)
+
+local bodyList = Instance.new("UIListLayout", body)
+bodyList.FillDirection = Enum.FillDirection.Vertical
+bodyList.SortOrder = Enum.SortOrder.LayoutOrder
+bodyList.Padding = UDim.new(0, 8)
+
+local orderCounter = 0
+local function nextOrder()
+	orderCounter = orderCounter + 1
+	return orderCounter
+end
+
+-- ============================================================
+-- CONTROL BUILDERS
+-- ============================================================
+local rainbowElements = {}
+
+local function createToggle(txt, settingKey)
+	local b = Instance.new("TextButton", body)
+	b.Size = UDim2.new(1, 0, 0, 30)
+	b.LayoutOrder = nextOrder()
+	b.Font = Enum.Font.Code
+	b.TextSize = 12
+	b.AutoButtonColor = false
+	b.ZIndex = 6
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+
+	local function updateState()
+		local st = Settings[settingKey]
+		b.Text = txt .. ": " .. (st and "ENABLED" or "DISABLED")
+		b.BackgroundColor3 = st and Color3.fromRGB(25, 60, 35) or Color3.fromRGB(25, 25, 30)
+		b.TextColor3 = st and Color3.fromRGB(100, 255, 140) or Color3.fromRGB(180, 180, 180)
+	end
+
+	track(b.MouseButton1Click:Connect(function()
+		Settings[settingKey] = not Settings[settingKey]
+		updateState()
+		SaveSettings()
+	end))
+	updateState()
+end
+
+local function createSlider(name, min, max, settingKey, isFloat)
+	local function fmt(v)
+		if v >= (max * 0.99) then return "MAX" end
+		if isFloat then return string.format("%.2f", v) end
+		return tostring(math.floor(v))
+	end
+
+	local label = Instance.new("TextLabel", body)
+	label.Size = UDim2.new(1, 0, 0, 16)
+	label.LayoutOrder = nextOrder()
+	label.Text = name .. ": " .. fmt(Settings[settingKey])
+	label.TextColor3 = Color3.fromRGB(200, 200, 200)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.Code
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextSize = 11
+	label.ZIndex = 6
+
+	local bg = Instance.new("Frame", body)
+	bg.Size = UDim2.new(1, 0, 0, 8)
+	bg.LayoutOrder = nextOrder()
+	bg.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+	bg.Active = true
+	bg.ZIndex = 6
+	Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
+
+	local fill = Instance.new("Frame", bg)
+	fill.Size = UDim2.new((Settings[settingKey] - min) / (max - min), 0, 1, 0)
+	fill.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+	fill.ZIndex = 7
+	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+	rainbowElements[#rainbowElements + 1] = fill
+
+	local knob = Instance.new("TextButton", bg)
+	knob.Size = UDim2.new(0, 18, 0, 18)
+	knob.Position = UDim2.new(fill.Size.X.Scale, -9, 0.5, -9)
+	knob.Text = ""
+	knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	knob.ZIndex = 8
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+	local dragging = false
+	local function update(input)
+		local pos = math.clamp((input.Position.X - bg.AbsolutePosition.X) / math.max(bg.AbsoluteSize.X, 1), 0, 1)
+		fill.Size = UDim2.new(pos, 0, 1, 0)
+		knob.Position = UDim2.new(pos, -9, 0.5, -9)
+		local val = min + (max - min) * pos
+		if not isFloat then val = math.floor(val + 0.5) end
+		Settings[settingKey] = val
+		label.Text = name .. ": " .. fmt(val)
+	end
+
+	local function beginDrag(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			update(input)
+		end
+	end
+	track(knob.InputBegan:Connect(beginDrag))
+	track(bg.InputBegan:Connect(beginDrag))
+
 	track(UserInputService.InputChanged:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			local delta = input.Position - dragStart
-			panel.Position = UDim2.new(
-				startPos.X.Scale, startPos.X.Offset + delta.X,
-				startPos.Y.Scale, startPos.Y.Offset + delta.Y
-			)
+			update(input)
 		end
 	end))
 	track(UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
 			dragging = false
+			SaveSettings()
 		end
 	end))
 end
 
--- ============================================================
--- Targeting
--- ============================================================
-local function isFriendly(player)
-	if not state.teamCheck then
-		return false
+local function createCycle(name, settingKey, options)
+	local b = Instance.new("TextButton", body)
+	b.Size = UDim2.new(1, 0, 0, 30)
+	b.LayoutOrder = nextOrder()
+	b.Font = Enum.Font.Code
+	b.TextSize = 12
+	b.AutoButtonColor = false
+	b.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+	b.TextColor3 = Color3.fromRGB(220, 220, 220)
+	b.ZIndex = 6
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+
+	local function refresh()
+		b.Text = name .. ": " .. tostring(Settings[settingKey])
 	end
-	local myTeam = LocalPlayer.Team
-	if myTeam == nil then
-		return false -- FFA game: everyone is a target
-	end
-	return player.Team ~= nil and player.Team == myTeam
+
+	track(b.MouseButton1Click:Connect(function()
+		local cur = 1
+		for i, opt in ipairs(options) do
+			if opt == Settings[settingKey] then cur = i break end
+		end
+		Settings[settingKey] = options[(cur % #options) + 1]
+		refresh()
+		SaveSettings()
+	end))
+	refresh()
 end
 
-local function getAimPart(character)
-	return character:FindFirstChild("Head")
-		or character:FindFirstChild("HumanoidRootPart")
-		or character:FindFirstChild("UpperTorso")
-		or character:FindFirstChild("Torso")
+-- ============================================================
+-- BUILD HUB
+-- ============================================================
+createToggle("MASTER POWER", "MasterEnabled")
+createToggle("AIMBOT", "Aimbot")
+createSlider("FOV SIZE", 50, 1000, "Fov", false)
+createSlider("SMOOTH STRENGTH", 0.05, 1.0, "Strength", true)
+createSlider("PREDICTION LEAD", 0.0, 1.0, "PredictionAmount", true)
+createCycle("HIT PART", "TargetPart", PART_OPTIONS)
+createToggle("VELOCITY PREDICTION", "Prediction")
+createToggle("SMOOTHING", "Smoothing")
+createToggle("STICKY TARGET", "StickyTarget")
+createToggle("TEAM CHECK", "TeamCheck")
+createToggle("WALL CHECK", "WallCheck")
+createToggle("SHOW FOV", "ShowFOV")
+createToggle("RAINBOW UI", "RainbowUI")
+
+local saveInfo = Instance.new("TextLabel", main)
+saveInfo.Size = UDim2.new(1, 0, 0, 22)
+saveInfo.Position = UDim2.new(0, 0, 1, -24)
+saveInfo.Text = "settings auto-save active"
+saveInfo.TextColor3 = Color3.fromRGB(120, 120, 120)
+saveInfo.BackgroundTransparency = 1
+saveInfo.Font = Enum.Font.Code
+saveInfo.TextSize = 10
+saveInfo.ZIndex = 6
+
+-- Floating open/close button
+local toggleBtn = Instance.new("TextButton", sg)
+toggleBtn.Size = UDim2.new(0, 48, 0, 48)
+toggleBtn.Position = UDim2.new(0, 15, 0.4, 0)
+toggleBtn.Text = "d4"
+toggleBtn.Font = Enum.Font.Code
+toggleBtn.TextSize = 18
+toggleBtn.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+toggleBtn.TextColor3 = Color3.fromRGB(255, 50, 50)
+toggleBtn.Active = true
+toggleBtn.ZIndex = 10
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
+local tStroke = Instance.new("UIStroke", toggleBtn)
+tStroke.Thickness = 2
+tStroke.Color = Color3.fromRGB(255, 50, 50)
+makeDraggable(toggleBtn)
+track(toggleBtn.MouseButton1Click:Connect(function()
+	main.Visible = not main.Visible
+end))
+
+-- ============================================================
+-- TARGETING HELPERS
+-- ============================================================
+local function isFriendly(p)
+	if not Settings.TeamCheck then return false end
+	if lp.Team == nil then return false end
+	return p.Team ~= nil and p.Team == lp.Team
 end
 
--- Returns the aim part of the target closest to the screen centre that
--- sits inside the FOV circle. This is how "everyone in the circle" is
--- handled: the closest in-circle target is picked every frame, so the
--- lock automatically switches between however many targets are present.
-local function getClosestInFOV()
-	local viewport = Camera.ViewportSize
-	local centre = Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
-	local bestPart = nil
-	local bestDist = state.fov
+local function getHitPart(char)
+	local want = Settings.TargetPart
+	if want == "Torso" then
+		return char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+			or char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")
+	elseif want == "HumanoidRootPart" then
+		return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")
+	end
+	return char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+end
 
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and not isFriendly(player) then
-			local character = player.Character
-			if character then
-				local humanoid = character:FindFirstChildOfClass("Humanoid")
-				local part = getAimPart(character)
-				if humanoid and humanoid.Health > 0 and part then
-					local screenPoint, onScreen = Camera:WorldToViewportPoint(part.Position)
-					if onScreen then
-						local dist = (Vector2.new(screenPoint.X, screenPoint.Y) - centre).Magnitude
-						if dist <= state.fov and dist < bestDist then
-							bestDist = dist
-							bestPart = part
-						end
-					end
+local function getVelocity(char, part)
+	local src = char:FindFirstChild("HumanoidRootPart") or part
+	if not src then return Vector3.zero end
+	local ok, v = pcall(function() return src.AssemblyLinearVelocity end)
+	if ok and typeof(v) == "Vector3" then return v end
+	ok, v = pcall(function() return src.Velocity end)
+	if ok and typeof(v) == "Vector3" then return v end
+	return Vector3.zero
+end
+
+-- Predicted aim point: lead the target by its velocity so a moving
+-- target is tracked instead of trailed. Lead is measured in seconds.
+local function getAimPoint(char, part)
+	local pos = part.Position
+	if not Settings.Prediction then return pos end
+	local vel = getVelocity(char, part)
+	if vel.Magnitude < 1 then return pos end
+	return pos + vel * Settings.PredictionAmount
+end
+
+local raycastParams = RaycastParams.new()
+raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+raycastParams.IgnoreWater = true
+
+-- True when nothing solid sits between the camera and the target part.
+-- If a wall (or any instance that is not part of the target) is hit first,
+-- the target is behind cover and must not be locked.
+local function hasLineOfSight(char, part)
+	if not Settings.WallCheck then return true end
+	local origin = cam.CFrame.Position
+	-- Ignore our own character so a held tool / hat never counts as a wall.
+	raycastParams.FilterDescendantsInstances = { lp.Character, char, cam }
+	local hit = workspace:Raycast(origin, part.Position - origin, raycastParams)
+	-- Nothing between us and the target -> visible. Anything else -> blocked.
+	return hit == nil
+end
+
+local function isValidTarget(p)
+	if p == lp or isFriendly(p) then return false end
+	local char = p.Character
+	if not char then return nil end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 then return nil end
+	local part = getHitPart(char)
+	if not part then return nil end
+	return char, part, hum
+end
+
+-- Closest valid target to the screen centre, within FOV & (optionally) LOS.
+local function acquireTarget(center)
+	local bestChar, bestPart
+	local closest = Settings.Fov
+	for _, p in ipairs(Players:GetPlayers()) do
+		local char, part = isValidTarget(p)
+		if char and part then
+			local screenPos, onScreen = cam:WorldToViewportPoint(part.Position)
+			if onScreen then
+				local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+				if dist < closest and hasLineOfSight(char, part) then
+					closest = dist
+					bestChar, bestPart = char, part
 				end
 			end
 		end
 	end
-	return bestPart
+	return bestChar, bestPart
+end
+
+-- Is a locked character still a legal target inside the FOV circle?
+local function stillTargetable(char, center)
+	if not char or not char.Parent then return nil end
+	local p = Players:GetPlayerFromCharacter(char)
+	if not p or isFriendly(p) then return nil end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 then return nil end
+	local part = getHitPart(char)
+	if not part then return nil end
+	local screenPos, onScreen = cam:WorldToViewportPoint(part.Position)
+	if not onScreen then return nil end
+	local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+	if dist > Settings.Fov then return nil end
+	if not hasLineOfSight(char, part) then return nil end
+	return part
 end
 
 -- ============================================================
--- Aim loop
+-- AIM LOOP
 -- ============================================================
-track(RunService.RenderStepped:Connect(function()
-	Camera = workspace.CurrentCamera or Camera
-	if not state.enabled or not Camera then
+local lockedChar = nil
+
+track(RunService.RenderStepped:Connect(function(dt)
+	cam = workspace.CurrentCamera or cam
+	if not cam or not lp.Character then return end
+
+	local center = Vector2.new(cam.ViewportSize.X * 0.5, cam.ViewportSize.Y * 0.5)
+
+	if Settings.RainbowUI then
+		local rainbow = Color3.fromHSV((tick() % 3) / 3, 0.9, 1)
+		mainStroke.Color = rainbow
+		fovStroke.Color = rainbow
+		tStroke.Color = rainbow
+		for _, el in ipairs(rainbowElements) do
+			el.BackgroundColor3 = rainbow
+		end
+	end
+
+	fovCircle.Visible = Settings.MasterEnabled and Settings.Aimbot and Settings.ShowFOV
+	fovCircle.Position = UDim2.new(0, center.X, 0, center.Y)
+	fovCircle.Size = UDim2.new(0, Settings.Fov * 2, 0, Settings.Fov * 2)
+
+	if not Settings.MasterEnabled or not Settings.Aimbot then
+		lockedChar = nil
 		return
 	end
-	local part = getClosestInFOV()
-	if part then
-		local goal = CFrame.new(Camera.CFrame.Position, part.Position)
-		if state.smooth >= 1 then
-			Camera.CFrame = goal
+
+	-- Sticky target: keep the current lock while it stays legal in-FOV.
+	local char, part
+	if Settings.StickyTarget and lockedChar then
+		local keepPart = stillTargetable(lockedChar, center)
+		if keepPart then
+			char, part = lockedChar, keepPart
 		else
-			Camera.CFrame = Camera.CFrame:Lerp(goal, math.clamp(state.smooth, 0.05, 1))
+			lockedChar = nil
 		end
+	end
+	if not char then
+		char, part = acquireTarget(center)
+		lockedChar = char
+	end
+
+	if char and part then
+		local origin = cam.CFrame.Position
+		local aimPos = getAimPoint(char, part)
+		local goal = CFrame.new(origin, aimPos)
+		local strength = math.clamp(Settings.Strength, 0.05, 1)
+		if not Settings.Smoothing or strength >= 0.99 then
+			cam.CFrame = goal
+		else
+			-- Smooth acquire, then hard-lock on the head: once the crosshair
+			-- is within a small angle of the target it snaps fully and stays
+			-- glued, so it tracks the head tightly instead of trailing it.
+			local wantDir = aimPos - origin
+			if wantDir.Magnitude <= 0 then
+				cam.CFrame = goal
+			else
+				local dot = math.clamp(cam.CFrame.LookVector:Dot(wantDir.Unit), -1, 1)
+				if math.acos(dot) <= HARD_LOCK_ANGLE then
+					cam.CFrame = goal
+				else
+					-- Frame-rate independent smoothing: same feel at any FPS.
+					local alpha = 1 - (1 - strength) ^ (dt * 60)
+					cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(alpha, 0, 1))
+				end
+			end
+		end
+	else
+		lockedChar = nil
 	end
 end))
 
 -- ============================================================
--- Cleanup handle
+-- CLEANUP HANDLE
 -- ============================================================
-genv.__ipadFovCleanup = function()
+genv.__d4vidCleanup = function()
 	for _, c in ipairs(conns) do
-		pcall(function()
-			c:Disconnect()
-		end)
+		pcall(function() c:Disconnect() end)
 	end
 	table.clear(conns)
-	if screen then
-		pcall(function()
-			screen:Destroy()
-		end)
-	end
-	genv.__ipadFovCleanup = nil
+	if sg then pcall(function() sg:Destroy() end) end
+	genv.__d4vidCleanup = nil
 end
-
-applyToggleStyle()
-setFov(state.fov)
+-- keep legacy handle working too
+genv.EliteLock = { Disconnect = genv.__d4vidCleanup }
