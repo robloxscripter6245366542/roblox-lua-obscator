@@ -18,22 +18,26 @@ local cam = workspace.CurrentCamera
 -- ============================================================
 -- CONFIG & PERSISTENCE
 -- ============================================================
-local ConfigFile = "d4vid_v25_config.json"
+local ConfigFile = "d4vid_v26_config.json"
 
+-- Defaults tuned for Rivals (hitscan, team based):
+--   * prediction OFF  -> crosshair sits ON the head, not ahead of it
+--   * sticky keeps following the locked player even outside the FOV circle
 local Settings = {
-	MasterEnabled   = true,
-	Aimbot          = true,
-	TeamCheck       = true,
-	WallCheck       = true,
-	Prediction      = true,
-	Smoothing       = true,
-	StickyTarget    = true,
-	RainbowUI       = true,
-	ShowFOV         = true,
-	Fov             = 300,     -- circle radius (px), 50 .. 1000
-	Strength        = 0.85,    -- smoothing / snap, 0.05 .. 1.0 (1 = instant)
-	PredictionAmount = 0.16,   -- seconds of lead, 0 .. 1
-	TargetPart      = "Head",  -- Head / Torso / HumanoidRootPart
+	MasterEnabled    = true,
+	Aimbot           = true,
+	TeamCheck        = true,
+	WallCheck        = true,
+	Prediction       = false,  -- Rivals is hitscan: leading misses the head
+	Smoothing        = true,
+	StickyTarget     = true,
+	StickyIgnoreFOV  = true,    -- keep tracking a locked target off-circle
+	RainbowUI        = true,
+	ShowFOV          = true,
+	Fov              = 150,     -- circle radius (px), 50 .. 1000
+	Strength         = 0.92,    -- smoothing / snap, 0.05 .. 1.0 (1 = instant)
+	PredictionAmount = 0.16,    -- seconds of lead, 0 .. 1 (only if Prediction on)
+	TargetPart       = "Head",  -- Head / Torso / HumanoidRootPart
 }
 
 local PART_OPTIONS = { "Head", "Torso", "HumanoidRootPart" }
@@ -360,6 +364,7 @@ createCycle("HIT PART", "TargetPart", PART_OPTIONS)
 createToggle("VELOCITY PREDICTION", "Prediction")
 createToggle("SMOOTHING", "Smoothing")
 createToggle("STICKY TARGET", "StickyTarget")
+createToggle("STICKY OUTSIDE FOV", "StickyIgnoreFOV")
 createToggle("TEAM CHECK", "TeamCheck")
 createToggle("WALL CHECK", "WallCheck")
 createToggle("SHOW FOV", "ShowFOV")
@@ -483,8 +488,10 @@ local function acquireTarget(center)
 	return bestChar, bestPart
 end
 
--- Is a locked character still a legal target inside the FOV circle?
-local function stillTargetable(char, center)
+-- Is a locked character still a legal target? When ignoreFov is true the
+-- lock is kept even if the target has moved outside the FOV circle, so the
+-- aim keeps following the same player instead of dropping on every dodge.
+local function stillTargetable(char, center, ignoreFov)
 	if not char or not char.Parent then return nil end
 	local p = Players:GetPlayerFromCharacter(char)
 	if not p or isFriendly(p) then return nil end
@@ -494,8 +501,10 @@ local function stillTargetable(char, center)
 	if not part then return nil end
 	local screenPos, onScreen = cam:WorldToViewportPoint(part.Position)
 	if not onScreen then return nil end
-	local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-	if dist > Settings.Fov then return nil end
+	if not ignoreFov then
+		local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+		if dist > Settings.Fov then return nil end
+	end
 	if not hasLineOfSight(char, part) then return nil end
 	return part
 end
@@ -530,10 +539,11 @@ track(RunService.RenderStepped:Connect(function(dt)
 		return
 	end
 
-	-- Sticky target: keep the current lock while it stays legal in-FOV.
+	-- Sticky target: keep the current lock while it stays legal. With
+	-- StickyIgnoreFOV the lock follows the player even outside the circle.
 	local char, part
 	if Settings.StickyTarget and lockedChar then
-		local keepPart = stillTargetable(lockedChar, center)
+		local keepPart = stillTargetable(lockedChar, center, Settings.StickyIgnoreFOV)
 		if keepPart then
 			char, part = lockedChar, keepPart
 		else
