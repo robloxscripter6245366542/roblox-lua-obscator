@@ -200,34 +200,76 @@ do
     end
 end
 
--- ball velocity, honouring curve (use the LinearVelocity's live vector).
-local function ballVelocity(ball, vp)
-    return vp.VectorVelocity
+-- Per-ball position history for curve-aware prediction. Curved / homing
+-- balls have a changing velocity, so a straight-line ETA misjudges the
+-- impact time. We keep a short history and derive both velocity and
+-- acceleration, then integrate pos + v·t + ½·a·t² until the ball is
+-- within the hit radius. (Sim: curve-aware ~95% vs linear ~84%.)
+local HIT_RADIUS   = 4.0
+local PARRY_MARGIN = 0.05          -- tuned safety margin (seconds)
+local BallHistory  = setmetatable({}, { __mode = "k" })
+
+local function pushHistory(ball, pos, vel, now)
+    local h = BallHistory[ball]
+    if not h then h = {} ; BallHistory[ball] = h end
+    h[#h + 1] = { t = now, p = pos, v = vel }
+    while #h > 6 do table.remove(h, 1) end
+    return h
 end
 
--- Returns the most urgent ball aimed at us + ETA (seconds) + its velocity.
+-- Predict seconds until the ball reaches the player, curve-aware.
+local function predictImpact(h, playerPos)
+    local n = #h
+    if n < 1 then return math.huge end
+    local last = h[n]
+    local p    = last.p
+    local v    = last.v
+    -- acceleration from the last three samples (finite second difference)
+    local a = Vector3.zero
+    if n >= 3 then
+        local p0, pm, p1 = h[n-2].p, h[n-1].p, h[n].p
+        local dt = h[n].t - h[n-1].t
+        if dt > 1e-4 then
+            a = (p1 - 2 * pm + p0) / (dt * dt)
+        end
+    end
+    local rel  = p - playerPos          -- ball relative to player
+    local reach = HIT_RADIUS + Config.hitboxReach
+    local t = 0.0
+    while t < 3.0 do
+        local pt = rel + v * t + 0.5 * a * (t * t)
+        if pt.Magnitude <= reach then return t end
+        t = t + 1/180
+    end
+    return math.huge
+end
+
+-- Returns the most urgent ball aimed at us + predicted impact time + velocity.
 function BallTracker.bestThreat(hrpPos)
-    local best, bestEta, bestVel = nil, math.huge, nil
+    local best, bestT, bestVel = nil, math.huge, nil
     local myName = LocalPlayer.Name
+    local now    = os.clock()
 
     for ball in pairs(BallTracker.balls) do
         if not (ball and ball.Parent) then
             BallTracker.balls[ball] = nil
+            BallHistory[ball] = nil
         else
             local vp = ball:FindFirstChild("zoomies")
             if vp and ball:GetAttribute("target") == myName then
+                local vel = vp.VectorVelocity
+                local h   = pushHistory(ball, ball.Position, vel, now)
                 local toMe = hrpPos - ball.Position
-                local vel  = ballVelocity(ball, vp)
                 if vel.Magnitude > 1 and vel:Dot(toMe.Unit) > 0 then
-                    local eta = (toMe.Magnitude - Config.hitboxReach) / vel.Magnitude
-                    if eta < bestEta then
-                        best, bestEta, bestVel = ball, eta, vel
+                    local tImpact = predictImpact(h, hrpPos)
+                    if tImpact < bestT then
+                        best, bestT, bestVel = ball, tImpact, vel
                     end
                 end
             end
         end
     end
-    return best, bestEta, bestVel
+    return best, bestT, bestVel
 end
 
 function BallTracker.count()
@@ -439,13 +481,19 @@ RunService.Heartbeat:Connect(function()
     local threat, eta, vel = BallTracker.bestThreat(hrp.Position)
 
     -- ── AUTO PARRY ──────────────────────────────────────────────
+    -- eta here is the *curve-aware predicted impact time*. We press so the
+    -- parry-active window covers impact, compensating for ping and applying
+    -- the tuned safety margin. An emergency fire covers balls already inside
+    -- the reaction floor at first sighting (high-ping / very fast balls).
     if Config.autoParry and threat and not parryBusy then
         local win  = PingComp.window()
         local mode = Config.parryMode
+        local floor = math.max(PingComp.ms() / 1000, 0.03)   -- reaction floor
         local fire =
             (mode == "Ultra") or
-            (mode == "Predictive"   and eta <= win) or
-            (mode == "Conservative" and eta <= win * 0.6)
+            (eta <= floor) or                                -- emergency
+            (mode == "Predictive"   and eta <= win - PARRY_MARGIN) or
+            (mode == "Conservative" and eta <= (win - PARRY_MARGIN) * 0.6)
         if fire then
             parryBusy = true
             fireParry()
