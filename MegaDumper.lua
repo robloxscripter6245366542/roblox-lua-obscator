@@ -297,7 +297,6 @@ local function collect()
         local ok, desc = pcall(function() return root:GetDescendants() end)
         if ok then for _, o in ipairs(desc) do consider(o) end end
     end
->>>>>>> Stashed changes
     if CONFIG.IncludeNil and getnil_fn then
         local okn, nils = pcall(getnil_fn)
         if okn and type(nils) == "table" then
