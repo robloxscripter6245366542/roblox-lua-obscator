@@ -32,6 +32,29 @@ local CONFIG = {
     IncludeNil     = true,
     UseGetScripts  = true,
 
+<<<<<<< Updated upstream
+=======
+    -- Scope: nil = whole game. Set a list of service names to scan ONLY
+    -- those (far fewer scripts; survivable on low-RAM devices like iPad):
+    --   getgenv().MegaDumper_Config = { Scope = {"ReplicatedStorage"} }
+    Scope          = nil,
+
+    -- Important = true: keep ALL remotes, but only dump the code that
+    -- actually matters (shared modules, client logic, anti-cheat, network,
+    -- data) and drop the useless noise (character Animate/emote scripts,
+    -- default health/sound, cutscene rigs & asset previews). Auto-scopes to
+    -- the client + shared services, so it's also much lighter on an iPad.
+    Important      = false,
+    ImportantScope = { "ReplicatedStorage", "ReplicatedFirst",
+                       "StarterPlayer", "StarterGui", "StarterPack", "Lighting" },
+    -- Case-insensitive path substrings that mark a script as useless noise.
+    UselessPatterns = {
+        "%.animate", "playemote", "emotes?%.", "%.health$",
+        "cutscene", "%.rigs?%.", "assets%.", "preview",
+        "defaultsound", "%.sound$", "animsaves", "animatecontroller",
+    },
+
+>>>>>>> Stashed changes
     -- Master switch. Set to false (or run in NoDecompile mode below) on
     -- games whose decompiler crashes the client (e.g. TSB): we then NEVER
     -- call decompile() and only dump raw bytecode/source, which cannot
@@ -119,6 +142,16 @@ local function isIgnored(path)
     for _, r in ipairs(CONFIG.IgnoreRoots) do
         r = lower(r)
         if p == r or p:sub(1, #r + 1) == r .. "." then return true end
+    end
+    return false
+end
+
+-- In Important mode, drop scripts whose path matches known-useless noise.
+local function isUseless(path)
+    if not CONFIG.Important then return false end
+    local p = lower(path)
+    for _, pat in ipairs(CONFIG.UselessPatterns) do
+        if p:find(pat) then return true end
     end
     return false
 end
@@ -241,10 +274,37 @@ local function collect()
             remotes[#remotes + 1] = { obj = inst, cn = cn, info = REMOTE_CLASSES[cn] }
         end
         local oks, isSrc = pcall(function() return inst:IsA("LuaSourceContainer") end)
-        if oks and isSrc then scripts[#scripts + 1] = inst end
+        if oks and isSrc and not isUseless(fullPath(inst)) then scripts[#scripts + 1] = inst end
     end
+<<<<<<< Updated upstream
     local ok, desc = pcall(function() return game:GetDescendants() end)
     if ok then for _, o in ipairs(desc) do consider(o) end end
+=======
+    -- Scope: when CONFIG.Scope is a list of service names, only walk those
+    -- services (far fewer scripts -> survivable on low-RAM devices like an
+    -- iPad). Otherwise walk the whole game.
+    local roots = {}
+    -- Explicit Scope wins; else Important mode auto-scopes to client+shared
+    -- services; else the whole game.
+    local scopeList = CONFIG.Scope
+    if (not scopeList) and CONFIG.Important then scopeList = CONFIG.ImportantScope end
+    if type(scopeList) == "table" and #scopeList > 0 then
+        for _, name in ipairs(scopeList) do
+            local okS, svc = pcall(function() return game:GetService(name) end)
+            if okS and svc then roots[#roots + 1] = svc
+            else
+                local okF, f = pcall(function() return game:FindFirstChild(name) end)
+                if okF and f then roots[#roots + 1] = f end
+            end
+        end
+    else
+        roots[1] = game
+    end
+    for _, root in ipairs(roots) do
+        local ok, desc = pcall(function() return root:GetDescendants() end)
+        if ok then for _, o in ipairs(desc) do consider(o) end end
+    end
+>>>>>>> Stashed changes
     if CONFIG.IncludeNil and getnil_fn then
         local okn, nils = pcall(getnil_fn)
         if okn and type(nils) == "table" then
