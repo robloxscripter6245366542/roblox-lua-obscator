@@ -32,8 +32,6 @@ local CONFIG = {
     IncludeNil     = true,
     UseGetScripts  = true,
 
-<<<<<<< Updated upstream
-=======
     -- Scope: nil = whole game. Set a list of service names to scan ONLY
     -- those (far fewer scripts; survivable on low-RAM devices like iPad):
     --   getgenv().MegaDumper_Config = { Scope = {"ReplicatedStorage"} }
@@ -54,7 +52,6 @@ local CONFIG = {
         "defaultsound", "%.sound$", "animsaves", "animatecontroller",
     },
 
->>>>>>> Stashed changes
     -- Master switch. Set to false (or run in NoDecompile mode below) on
     -- games whose decompiler crashes the client (e.g. TSB): we then NEVER
     -- call decompile() and only dump raw bytecode/source, which cannot
@@ -276,10 +273,6 @@ local function collect()
         local oks, isSrc = pcall(function() return inst:IsA("LuaSourceContainer") end)
         if oks and isSrc and not isUseless(fullPath(inst)) then scripts[#scripts + 1] = inst end
     end
-<<<<<<< Updated upstream
-    local ok, desc = pcall(function() return game:GetDescendants() end)
-    if ok then for _, o in ipairs(desc) do consider(o) end end
-=======
     -- Scope: when CONFIG.Scope is a list of service names, only walk those
     -- services (far fewer scripts -> survivable on low-RAM devices like an
     -- iPad). Otherwise walk the whole game.
