@@ -24,7 +24,7 @@ local Settings = {
 	MasterEnabled   = true,
 	Aimbot          = true,
 	TeamCheck       = true,
-	WallCheck       = false,
+	WallCheck       = true,
 	Prediction      = true,
 	Smoothing       = true,
 	StickyTarget    = true,
@@ -439,13 +439,17 @@ local raycastParams = RaycastParams.new()
 raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 raycastParams.IgnoreWater = true
 
+-- True when nothing solid sits between the camera and the target part.
+-- If a wall (or any instance that is not part of the target) is hit first,
+-- the target is behind cover and must not be locked.
 local function hasLineOfSight(char, part)
 	if not Settings.WallCheck then return true end
 	local origin = cam.CFrame.Position
-	raycastParams.FilterDescendantsInstances = { lp.Character, cam }
+	-- Ignore our own character so a held tool / hat never counts as a wall.
+	raycastParams.FilterDescendantsInstances = { lp.Character, char, cam }
 	local hit = workspace:Raycast(origin, part.Position - origin, raycastParams)
-	if not hit then return true end
-	return hit.Instance:IsDescendantOf(char)
+	-- Nothing between us and the target -> visible. Anything else -> blocked.
+	return hit == nil
 end
 
 local function isValidTarget(p)
