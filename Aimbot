@@ -38,6 +38,10 @@ local Settings = {
 
 local PART_OPTIONS = { "Head", "Torso", "HumanoidRootPart" }
 
+-- Once the crosshair is within this angle of the target, the lock snaps
+-- fully (hard-lock on the head) instead of continuing to ease in.
+local HARD_LOCK_ANGLE = math.rad(2.2)
+
 local function LoadSettings()
 	if isfile and readfile and isfile(ConfigFile) then
 		pcall(function()
@@ -538,15 +542,29 @@ track(RunService.RenderStepped:Connect(function(dt)
 	end
 
 	if char and part then
+		local origin = cam.CFrame.Position
 		local aimPos = getAimPoint(char, part)
-		local goal = CFrame.new(cam.CFrame.Position, aimPos)
+		local goal = CFrame.new(origin, aimPos)
 		local strength = math.clamp(Settings.Strength, 0.05, 1)
 		if not Settings.Smoothing or strength >= 0.99 then
 			cam.CFrame = goal
 		else
-			-- Frame-rate independent smoothing: same feel at any FPS.
-			local alpha = 1 - (1 - strength) ^ (dt * 60)
-			cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(alpha, 0, 1))
+			-- Smooth acquire, then hard-lock on the head: once the crosshair
+			-- is within a small angle of the target it snaps fully and stays
+			-- glued, so it tracks the head tightly instead of trailing it.
+			local wantDir = aimPos - origin
+			if wantDir.Magnitude <= 0 then
+				cam.CFrame = goal
+			else
+				local dot = math.clamp(cam.CFrame.LookVector:Dot(wantDir.Unit), -1, 1)
+				if math.acos(dot) <= HARD_LOCK_ANGLE then
+					cam.CFrame = goal
+				else
+					-- Frame-rate independent smoothing: same feel at any FPS.
+					local alpha = 1 - (1 - strength) ^ (dt * 60)
+					cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(alpha, 0, 1))
+				end
+			end
 		end
 	else
 		lockedChar = nil
