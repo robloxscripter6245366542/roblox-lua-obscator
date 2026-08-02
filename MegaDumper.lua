@@ -31,6 +31,13 @@ local CONFIG = {
     IncludeBindables = true,
     IncludeNil     = true,
     UseGetScripts  = true,
+
+    -- Master switch. Set to false (or run in NoDecompile mode below) on
+    -- games whose decompiler crashes the client (e.g. TSB): we then NEVER
+    -- call decompile() and only dump raw bytecode/source, which cannot
+    -- trigger the native decompiler crash.
+    Decompile      = true,
+
     Reindent       = true,     -- beautify the clean scripts
     IndentStr      = "    ",
     MaxBlankRun    = 1,
@@ -65,6 +72,13 @@ local CONFIG = {
 -- ──────────────────────────────────────────────────────────
 
 local getgenv_fn      = getgenv or function() return _G end
+-- Let users override any CONFIG value WITHOUT editing the file, e.g.:
+--   getgenv().MegaDumper_Config = { Decompile = false }   -- TSB-safe mode
+--   loadstring(game:HttpGet(".../MegaDumper.lua"))()
+do
+    local ov = rawget(getgenv_fn(), "MegaDumper_Config")
+    if type(ov) == "table" then for k, v in pairs(ov) do CONFIG[k] = v end end
+end
 local ENV             = getgenv_fn()
 local getscripts_fn   = rawget(ENV, "getscripts")        or getscripts
 local getnil_fn       = rawget(ENV, "getnilinstances")   or getnilinstances
@@ -139,7 +153,7 @@ local function getScriptCode(scr)
     end
 
     local tooBig = CONFIG.SafeDecompile and bc and #bc > CONFIG.MaxDecompileBC
-    if decompile_fn and not tooBig then
+    if decompile_fn and CONFIG.Decompile and not tooBig then
         local ok, src = pcall(decompile_fn, scr)
         if ok and type(src) == "string" and #src > 0 then return src, "decompile" end
     end
