@@ -124,7 +124,13 @@ local System = {
         -- the ball WILL be when the packet reaches the server.
         __prediction_enabled = true,
         __reaction_time = 0,          -- extra lead in seconds (0 - 0.08)
-        __ping_spike_guard = true     -- suppress on sudden ping spikes
+        __ping_spike_guard = true,    -- suppress on sudden ping spikes
+        -- Parry state reset window. Recovered from the SwordsController parry
+        -- proto in the game bytecode (ParryTime countdown; candidate constants
+        -- 0.35 / 0.5 / 0.6). Replaces the old hard-coded 1.0s so rapid,
+        -- back-to-back parries aren't blocked longer than the game allows.
+        __parry_reset = 0.5,
+        __respect_noob_parry = true   -- if the game auto-parries (NoobParryEnabled), don't double up
     },
     __config = {
         __curve_names = {'Camera','Random','Accelerated','Backwards','Slow','High'},
@@ -1160,6 +1166,8 @@ function System.autoparry.start()
             if one_ball and one_ball:GetAttribute('target') == LocalPlayer.Name and curved then continue end
             if ball:FindFirstChild('ComboCounter') then continue end
             if LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape') then continue end
+            -- If the game's own assist parry is active for us, don't double up.
+            if System.__properties.__respect_noob_parry and LocalPlayer.Character:GetAttribute('NoobParryEnabled') then continue end
             
             if System.__config.__detections.__infinity and System.__properties.__infinity_active then continue end
             if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then continue end
@@ -1202,7 +1210,7 @@ function System.autoparry.start()
 
             local last_parrys = tick()
             repeat RunService.Stepped:Wait()
-            until (tick() - last_parrys) >= 1 or not System.__properties.__parried
+            until (tick() - last_parrys) >= (System.__properties.__parry_reset or 0.5) or not System.__properties.__parried
             System.__properties.__parried = false
         end
         
@@ -1242,7 +1250,7 @@ function System.autoparry.start()
                         
                         local last_parrys = tick()
                         repeat RunService.Stepped:Wait()
-                        until (tick() - last_parrys) >= 1 or not System.__properties.__training_parried
+                        until (tick() - last_parrys) >= (System.__properties.__parry_reset or 0.5) or not System.__properties.__training_parried
                         System.__properties.__training_parried = false
                     end
                 end
@@ -1671,6 +1679,21 @@ autoparry_section:Toggle({
     Desc = "Ignore sudden ping spikes so the predictor never over-fires.",
     Value = true,
     Callback = function(value) System.__properties.__ping_spike_guard = value end
+})
+
+autoparry_section:Slider({
+    Title = "Parry Reset (s)",
+    Desc = "How long to hold parried state. Recovered from the game's ParryTime (~0.35-0.6). Lower = faster back-to-back parries.",
+    Value = {Min = 0.2, Max = 1.0, Default = 0.5},
+    Step = 0.05,
+    Callback = function(value) System.__properties.__parry_reset = value end
+})
+
+autoparry_section:Toggle({
+    Title = "Respect Game Assist-Parry",
+    Desc = "If the game's own NoobParry is auto-parrying for you, don't double up.",
+    Value = true,
+    Callback = function(value) System.__properties.__respect_noob_parry = value end
 })
 
 autoparry_section:Toggle({Title = "Cooldown Protection", Value = false, Callback = function(value) g.CooldownProtection = value end})
@@ -2754,9 +2777,17 @@ local function stats_hud_update()
         local z = ball:FindFirstChild('zoomies')
         if z then speed = z.VectorVelocity.Magnitude end
     end
+    -- Prefer the game's authoritative ServerParryCount attribute when present.
+    local serverCount
+    local ch = LocalPlayer.Character
+    if ch then serverCount = ch:GetAttribute('ServerParryCount') end
+    if serverCount == nil then serverCount = LocalPlayer:GetAttribute('ServerParryCount') end
+    local parryLine = serverCount ~= nil
+        and string.format('Parries: %d (server)', serverCount)
+        or  string.format('Parries: %d', Stats_Session.parries)
     StatsHUD.label.Text = string.format(
-        '<b><font color="#00aaff">EAGLE HUB X</font></b>\nParries: %d\nBall Speed: %.0f\nPing: %d ms\nFPS: %d\nTime: %02d:%02d',
-        Stats_Session.parries, speed, ping, Stats_Session.fps, mins, secs)
+        '<b><font color="#00aaff">EAGLE HUB X</font></b>\n%s\nBall Speed: %.0f\nPing: %d ms\nFPS: %d\nTime: %02d:%02d',
+        parryLine, speed, ping, Stats_Session.fps, mins, secs)
 end
 
 local function stats_hud_set(state)
