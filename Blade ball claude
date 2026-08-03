@@ -1468,12 +1468,33 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 end)
 
 -- ========== UI SETUP (Wind UI) ==========
+-- White, slightly translucent theme
+pcall(function()
+    WindUI:AddTheme({
+        Name        = "EagleWhite",
+        Accent      = "#ffffff",
+        Dialog      = "#f2f2f2",
+        Outline     = "#dcdcdc",
+        Text        = "#1a1a1a",
+        Placeholder = "#8a8a8a",
+        Background  = "#ffffff",
+        Button      = "#f5f5f5",
+        Icon        = "#1a1a1a",
+    })
+    WindUI:SetTheme("EagleWhite")
+end)
+
 local Window = WindUI:CreateWindow({
     Title = "Eagle Hub X",
     Folder = "EagleHubX",
     Icon = "solar:folder-2-bold-duotone",
     NewElements = true,
+    Transparent = true,       -- white glass: a tiny bit transparent
+    Theme = "EagleWhite",
 })
+
+-- Make the window a touch translucent (older/newer WindUI both covered)
+pcall(function() Window:SetTransparent(true) end)
 
 Window:Tag({
     Title = "BEST",
