@@ -1086,11 +1086,38 @@ local function get_ready_deflect_ability()
     return nil
 end
 
+-- Deobfuscated from SwordsController: the game sets ParryTime via
+--   SetAttribute("ParryTime", math.max(GrabParryAnim.Length - TimePosition, floor))
+-- i.e. the "parried" window equals the equipped GrabParry animation length.
+-- So derive our reset window from the real animation length for an exact,
+-- per-sword match. Clamped and floored so it can never become 0.
+local function derive_parry_reset()
+    task.spawn(function()
+        local ok = pcall(function()
+            local anim = GetParryAnimation()
+            local hum = GetHumanoid()
+            local animator = hum and hum:FindFirstChildOfClass('Animator')
+            if not anim or not animator then return end
+            local track = animator:LoadAnimation(anim)
+            if not track then return end
+            local t0 = os.clock()
+            while track.Length <= 0 and (os.clock() - t0) < 2 do task.wait(0.1) end
+            local len = track.Length
+            pcall(function() track:Destroy() end)
+            if len and len > 0.15 then
+                System.__properties.__parry_reset = math.clamp(len, 0.2, 1.0)
+            end
+        end)
+        return ok
+    end)
+end
+
 System.autoparry = {}
 function System.autoparry.start()
     if System.__properties.__connections.__autoparry then
         System.__properties.__connections.__autoparry:Disconnect()
     end
+    derive_parry_reset()
     
     System.__properties.__connections.__autoparry = RunService.PreSimulation:Connect(function()
         if not System.__properties.__autoparry_enabled or not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
