@@ -2914,6 +2914,12 @@ local function collect_config()
         SpamThreshold = System.__properties.__spam_threshold,
         AutoSpamDistanceMultiplier = System.__properties.__auto_spam_distance_multiplier,
         CameraFOV = g.CameraFOV,
+        PredictionEnabled = System.__properties.__prediction_enabled,
+        ReactionTime = System.__properties.__reaction_time,
+        PingSpikeGuard = System.__properties.__ping_spike_guard,
+        ParryReset = System.__properties.__parry_reset,
+        RespectNoobParry = System.__properties.__respect_noob_parry,
+        AutoDeriveWindow = System.__properties.__auto_derive_window,
         Detections = {
             infinity = System.__config.__detections.__infinity,
             deathslash = System.__config.__detections.__deathslash,
@@ -2937,6 +2943,12 @@ local function apply_config(cfg)
     if cfg.SpamThreshold then System.__properties.__spam_threshold = cfg.SpamThreshold end
     if cfg.AutoSpamDistanceMultiplier then System.__properties.__auto_spam_distance_multiplier = cfg.AutoSpamDistanceMultiplier end
     if cfg.CameraFOV then g.CameraFOV = cfg.CameraFOV end
+    if cfg.PredictionEnabled ~= nil then System.__properties.__prediction_enabled = cfg.PredictionEnabled end
+    if cfg.ReactionTime ~= nil then System.__properties.__reaction_time = cfg.ReactionTime end
+    if cfg.PingSpikeGuard ~= nil then System.__properties.__ping_spike_guard = cfg.PingSpikeGuard end
+    if cfg.ParryReset ~= nil then System.__properties.__parry_reset = cfg.ParryReset end
+    if cfg.RespectNoobParry ~= nil then System.__properties.__respect_noob_parry = cfg.RespectNoobParry end
+    if cfg.AutoDeriveWindow ~= nil then System.__properties.__auto_derive_window = cfg.AutoDeriveWindow end
     if type(cfg.Detections) == 'table' then
         local d = cfg.Detections
         System.__config.__detections.__infinity = d.infinity or false
@@ -2965,6 +2977,48 @@ local function load_config()
     if not ok2 then return false, 'decode failed' end
     apply_config(decoded)
     return true, 'loaded (logic applied; re-toggle UI elements to see values)'
+end
+
+-- ========== EAGLE RECOMMENDED PRESET (my opinion of the best config) ==========
+-- These are the settings I'd run for the most accurate, safest autoparry,
+-- based on the SwordsController deobfuscation:
+--   * Native parry mode  -> the game does its own targeting/timing (most legit).
+--   * Prediction + spike guard on, zero extra lead -> pure ping compensation.
+--   * Auto-derive window on -> parry hold matches the equipped sword's ParryTime.
+--   * All ability/curveball detections on -> never parry into a punish.
+--   * High (but not maxed) accuracy, randomisation off -> consistent radius.
+local EAGLE_RECOMMENDED = {
+    AutoParryMode = "Native",
+    Accuracy = 80,
+    CurveMode = 1,                    -- Camera
+    RandomizedAccuracy = false,
+    CooldownProtection = true,
+    AutoAbility = true,
+    ManualSpamMode = "Remote",
+    AutoSpamMode = "Remote",
+    SpamThreshold = 2.5,
+    AutoSpamDistanceMultiplier = 1.0,
+    PredictionEnabled = true,
+    ReactionTime = 0,
+    PingSpikeGuard = true,
+    ParryReset = 0.5,
+    RespectNoobParry = true,
+    AutoDeriveWindow = true,
+    Detections = {
+        infinity = true, deathslash = true, timehole = true,
+        slashesoffury = true, phantom = true,
+    },
+}
+
+-- Apply the recommended preset and (best-effort) persist it as the saved config.
+local function apply_recommended(persist)
+    apply_config(EAGLE_RECOMMENDED)
+    if System.__properties.__auto_derive_window then
+        -- refresh the per-sword window immediately if the autoparry is running
+        if type(derive_parry_reset) == "function" then pcall(derive_parry_reset) end
+    end
+    if persist then return save_config() end
+    return true, "applied"
 end
 
 -- ========== UI: ESP (Visuals) ==========
@@ -3044,6 +3098,24 @@ utility_section:Button({
 
 -- ========== UI: Config (Settings) ==========
 local config_section = Tabs.Settings:Section({Title = "Configuration"})
+
+config_section:Paragraph({
+    Title = "Eagle Recommended",
+    Desc = "My opinion of the best setup: Native parry, prediction + spike guard, per-sword auto window, all detections on. Applies and saves it as your config.",
+})
+
+config_section:Button({
+    Title = "Apply Recommended (Eagle)",
+    Desc = "Sets the optimal autoparry config and saves it.",
+    Callback = function()
+        local ok, msg = apply_recommended(true)
+        WindUI:Notify({
+            Title = "Eagle Recommended",
+            Content = ok and "Applied + saved. Re-open tabs to see values." or ("Applied (save: " .. tostring(msg) .. ")"),
+            Duration = 4,
+        })
+    end
+})
 
 config_section:Button({
     Title = "Save Config",
