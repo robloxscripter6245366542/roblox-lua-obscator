@@ -119,7 +119,19 @@ local System = {
         __spam_target = nil,
         __spam_target_time = 0,
         __auto_spam_distance_multiplier = 1.0,
-        __speed_display_enabled = false
+        __speed_display_enabled = false,
+        -- Predictive parry: compensate for latency by parrying based on where
+        -- the ball WILL be when the packet reaches the server.
+        __prediction_enabled = true,
+        __reaction_time = 0,          -- extra lead in seconds (0 - 0.08)
+        __ping_spike_guard = true,    -- suppress on sudden ping spikes
+        -- Parry state reset window. Recovered from the SwordsController parry
+        -- proto in the game bytecode (ParryTime countdown; candidate constants
+        -- 0.35 / 0.5 / 0.6). Replaces the old hard-coded 1.0s so rapid,
+        -- back-to-back parries aren't blocked longer than the game allows.
+        __parry_reset = 0.5,
+        __respect_noob_parry = true,  -- if the game auto-parries (NoobParryEnabled), don't double up
+        __auto_derive_window = true   -- derive __parry_reset from the equipped GrabParry animation
     },
     __config = {
         __curve_names = {'Camera','Random','Accelerated','Backwards','Slow','High'},
@@ -167,6 +179,26 @@ task.spawn(function()
     end
 end)
 
+-- ========== SMOOTHED LATENCY (for predictive parry) ==========
+-- Exponentially smooths Data Ping so a single jittery reading can't make the
+-- predictor over-lead, and reports transient spikes so we can be conservative.
+local __ping_state = { smooth = 0 }
+local function get_latency()
+    local ok, ms = pcall(function() return Stats.Network.ServerStatsItem['Data Ping']:GetValue() end)
+    ms = (ok and ms) or 0
+    if __ping_state.smooth <= 0 then __ping_state.smooth = ms end
+    __ping_state.smooth = __ping_state.smooth + (ms - __ping_state.smooth) * 0.25
+    local spike = ms > (__ping_state.smooth * 1.8) and (ms - __ping_state.smooth) > 60
+    local lead_ms
+    if System.__properties.__ping_spike_guard then
+        -- Use the calmer of raw vs smoothed for the lead so spikes never over-fire.
+        lead_ms = spike and __ping_state.smooth or math.min(ms, __ping_state.smooth * 1.3)
+    else
+        lead_ms = ms
+    end
+    return ms / 1000, lead_ms / 1000, spike
+end
+
 -- ========== REMOTE HOOK ==========
 local function getCurveCFrame()
     local camera = workspace.CurrentCamera
@@ -180,7 +212,7 @@ local function getCurveCFrame()
     
     if Alive then
         for _, entity in pairs(Alive:GetChildren()) do
-            if entity ~= char and entity:FindFirstChild("HumanoidRootPart") then
+            if entity ~= char and entity:FindFirstChild("HumanoidRootPart") and not entity:GetAttribute("DoNotTarget") then
                 local dir = (entity.HumanoidRootPart.Position - camera.CFrame.Position).Unit
                 local dot = camera.CFrame.LookVector:Dot(dir)
                 if dot > closestDot then 
@@ -434,7 +466,7 @@ function System.player.get_closest()
     if not Alive then return nil end
     
     for _, entity in pairs(Alive:GetChildren()) do
-        if entity ~= LocalPlayer.Character and entity.PrimaryPart then
+        if entity ~= LocalPlayer.Character and entity.PrimaryPart and not entity:GetAttribute("DoNotTarget") then
             local distance = LocalPlayer:DistanceFromCharacter(entity.PrimaryPart.Position)
             if distance < max_distance then 
                 max_distance = distance
@@ -462,7 +494,8 @@ function System.player.get_closest_to_cursor()
     for _, player in pairs(Alive:GetChildren()) do
         if player == LocalPlayer.Character then continue end
         if not player:FindFirstChild('HumanoidRootPart') then continue end
-        
+        if player:GetAttribute('DoNotTarget') then continue end
+
         local direction = (player.HumanoidRootPart.Position - camera.CFrame.Position).Unit
         local dot = pointer.LookVector:Dot(direction)
         if dot > minimal_dot then 
@@ -477,16 +510,24 @@ System.curve = {}
 function System.curve.get_cframe() return getCurveCFrame() end
 
 local function Parry()
+    if not ParryRemote then return end
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local aliveFolder = Alive or workspace:FindFirstChild('Alive')
     local PlayerPositions = {}
-    for _, char in next, workspace.Alive:GetChildren() do
-        if char:FindFirstChild('HumanoidRootPart') then
-            PlayerPositions[char.Name] = char.HumanoidRootPart.Position
+    if aliveFolder then
+        for _, char in next, aliveFolder:GetChildren() do
+            if char:FindFirstChild('HumanoidRootPart') then
+                PlayerPositions[char.Name] = char.HumanoidRootPart.Position
+            end
         end
     end
-    local CameraCenter = Camera.ViewportSize / 2
+    local CameraCenter = cam.ViewportSize / 2
     local CameraData = {CameraCenter.X, CameraCenter.Y}
+    -- Use the selected curve CFrame (mode 1 = Camera, preserving default behaviour)
+    local sendCF = getCurveCFrame()
     pcall(function()
-        ParryRemote:FireServer(Hash1, Hash2, Hash3(), 0.025, Camera.CFrame, PlayerPositions, CameraData, false)
+        ParryRemote:FireServer(Hash1, Hash2, Hash3(), 0.025, sendCF, PlayerPositions, CameraData, false)
     end)
 end
 
@@ -809,15 +850,16 @@ function System.manual_spam.start()
             local now = os.clock()
             if now - last_spam >= threshold then
                 last_spam = now
-                if g.ManualSpamMode == "Keypress" then 
+                if g.ManualSpamMode == "Keypress" then
                     parry_keypress()
-                else 
+                else
                     parry_execute()
-                    if g.ManualSpamAnimationFix then 
+                    if g.ManualSpamAnimationFix then
                         play_animation()
-                        SpamParry_Animation() 
-                    end 
+                        SpamParry_Animation()
+                    end
                 end
+                macroFrameFireCount = macroFrameFireCount + 1
             end
             coroutine.yield()
         end
@@ -837,19 +879,15 @@ function System.manual_spam.stop()
     manualSpamThread = nil
 end
 
+-- CPS bookkeeping only. Parry firing for manual spam is driven solely by the
+-- coroutine in System.manual_spam.start() so we never double-fire (which spikes
+-- the remote rate and risks anti-cheat kicks).
 RunService.Heartbeat:Connect(function(dt)
     macroFrameTime = macroFrameTime + dt
     if macroFrameTime >= 0.1 then
         if macroSpamActive then macroRealCPS = math.floor(macroFrameFireCount / macroFrameTime) end
         macroFrameFireCount = 0
         macroFrameTime = 0
-    end
-    if macroSpamActive and ParryRemote then
-        pcall(function() 
-            fireParry()
-            macroFrameFireCount = macroFrameFireCount + 1 
-        end)
-        if macroAnimFix then SpamParry_Animation() end
     end
 end)
 
@@ -1028,11 +1066,60 @@ function System.auto_spam.stop()
     autoSpamThread = nil
 end
 
+-- Full deflection / counter ability set (from the game's Abilities list).
+-- Any of these, when equipped + off cooldown, deflects an incoming ball on
+-- AbilityButtonPress, so Auto Ability can cover every one of them.
+local DEFLECT_ABILITIES = {
+    "Raging Deflection", "Calming Deflection", "Aerodynamic Slash", "Rapture",
+    "Fracture", "Death Slash", "Flash Counter", "Parry Counter",
+    "Slashes of Fury", "Slash of Duality", "Revenge", "Guardian Angel",
+}
+
+-- Returns the name of an equipped, enabled deflection ability, or nil.
+local function get_ready_deflect_ability()
+    local char = LocalPlayer.Character
+    local abilities = char and char:FindFirstChild("Abilities")
+    if not abilities then return nil end
+    for _, name in ipairs(DEFLECT_ABILITIES) do
+        local a = abilities:FindFirstChild(name)
+        if a and a.Enabled then return name end
+    end
+    return nil
+end
+
+-- Deobfuscated from SwordsController: the game sets ParryTime via
+--   SetAttribute("ParryTime", math.max(GrabParryAnim.Length - TimePosition, floor))
+-- i.e. the "parried" window equals the equipped GrabParry animation length.
+-- So derive our reset window from the real animation length for an exact,
+-- per-sword match. Clamped and floored so it can never become 0.
+local function derive_parry_reset()
+    if not System.__properties.__auto_derive_window then return end
+    task.spawn(function()
+        local ok = pcall(function()
+            local anim = GetParryAnimation()
+            local hum = GetHumanoid()
+            local animator = hum and hum:FindFirstChildOfClass('Animator')
+            if not anim or not animator then return end
+            local track = animator:LoadAnimation(anim)
+            if not track then return end
+            local t0 = os.clock()
+            while track.Length <= 0 and (os.clock() - t0) < 2 do task.wait(0.1) end
+            local len = track.Length
+            pcall(function() track:Destroy() end)
+            if len and len > 0.15 then
+                System.__properties.__parry_reset = math.clamp(len, 0.2, 1.0)
+            end
+        end)
+        return ok
+    end)
+end
+
 System.autoparry = {}
 function System.autoparry.start()
     if System.__properties.__connections.__autoparry then
         System.__properties.__connections.__autoparry:Disconnect()
     end
+    derive_parry_reset()
     
     System.__properties.__connections.__autoparry = RunService.PreSimulation:Connect(function()
         if not System.__properties.__autoparry_enabled or not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
@@ -1057,7 +1144,11 @@ function System.autoparry.start()
             
             local zoomies = ball:FindFirstChild('zoomies')
             if not zoomies then continue end
-            
+
+            -- Game marks balls the client must NOT parry (ability projectiles,
+            -- decoys, orbiting/held balls). Honouring it removes wrong parries.
+            if ball:GetAttribute('DoNotParry') then continue end
+
             ball:GetAttributeChangedSignal('target'):Once(function() System.__properties.__parried = false end)
             if System.__properties.__parried then continue end
             
@@ -1071,7 +1162,27 @@ function System.autoparry.start()
             local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
             local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
             local curved = System.detection.is_curved()
-            
+
+            -- ===== PREDICTIVE PARRY (latency + velocity compensation) =====
+            -- Parry based on where the ball WILL be once our packet reaches the
+            -- server. For an approaching ball this fires exactly the network
+            -- delay earlier, which is precisely when input must be sent to land
+            -- on time. It is bounded by real latency, so it stays a near no-op
+            -- at low ping / low speed and only shines when it matters.
+            local within = distance <= parry_accuracy
+            if System.__properties.__prediction_enabled then
+                local _, lead_latency = get_latency()
+                local lead = lead_latency + (System.__properties.__reaction_time or 0)
+                local predicted_pos = ball.Position + velocity * lead
+                local predicted_distance = (LocalPlayer.Character.PrimaryPart.Position - predicted_pos).Magnitude
+                -- Only trust the prediction when the ball is genuinely closing
+                -- in (predicted < current); never use it to fire on a ball that
+                -- is moving away.
+                if predicted_distance < distance and predicted_distance <= parry_accuracy then
+                    within = true
+                end
+            end
+
             if ball:FindFirstChild('AeroDynamicSlashVFX') then
                 ball.AeroDynamicSlashVFX:Destroy()
                 System.__properties.__tornado_time = tick()
@@ -1084,47 +1195,53 @@ function System.autoparry.start()
             if one_ball and one_ball:GetAttribute('target') == LocalPlayer.Name and curved then continue end
             if ball:FindFirstChild('ComboCounter') then continue end
             if LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape') then continue end
+            -- If the game's own assist parry is active for us, don't double up.
+            if System.__properties.__respect_noob_parry and LocalPlayer.Character:GetAttribute('NoobParryEnabled') then continue end
             
             if System.__config.__detections.__infinity and System.__properties.__infinity_active then continue end
             if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then continue end
             if System.__config.__detections.__timehole and System.__properties.__timehole_active then continue end
             if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then continue end
             
-            if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
+            if ball_target == LocalPlayer.Name and within then
                 if g.AutoAbility then
                     local AbilityCD = LocalPlayer.PlayerGui:FindFirstChild("Hotbar") and LocalPlayer.PlayerGui.Hotbar:FindFirstChild("Ability") and LocalPlayer.PlayerGui.Hotbar.Ability:FindFirstChild("UIGradient")
+                    -- Offset.Y == 0.5 means the hotbar gradient is full => ability ready.
                     if AbilityCD and AbilityCD.Offset.Y == 0.5 then
-                        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Abilities") then
-                            local abilities = LocalPlayer.Character.Abilities
-                            if (abilities:FindFirstChild("Raging Deflection") and abilities["Raging Deflection"].Enabled) or
-                               (abilities:FindFirstChild("Rapture") and abilities["Rapture"].Enabled) or
-                               (abilities:FindFirstChild("Calming Deflection") and abilities["Calming Deflection"].Enabled) or
-                               (abilities:FindFirstChild("Aerodynamic Slash") and abilities["Aerodynamic Slash"].Enabled) or
-                               (abilities:FindFirstChild("Fracture") and abilities["Fracture"].Enabled) or
-                               (abilities:FindFirstChild("Death Slash") and abilities["Death Slash"].Enabled) then
-                                System.__properties.__parried = true
-                                pcall(function() ReplicatedStorage.Remotes.AbilityButtonPress:Fire() end)
-                                task.wait(2.432)
-                                pcall(function() ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DeathSlashShootActivation"):FireServer(true) end)
-                                continue
+                        local ready = get_ready_deflect_ability()
+                        if ready then
+                            System.__properties.__parried = true
+                            pcall(function() ReplicatedStorage.Remotes.AbilityButtonPress:Fire() end)
+                            -- Death Slash needs a follow-up shoot activation; do it
+                            -- OFF the parry loop so we never freeze parrying for 2.4s.
+                            if ready == "Death Slash" then
+                                task.spawn(function()
+                                    task.wait(2.432)
+                                    pcall(function()
+                                        ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DeathSlashShootActivation"):FireServer(true)
+                                    end)
+                                end)
                             end
+                            continue
                         end
                     end
                 end
             end
             
-            if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
-                if g.AutoParryMode == "Keypress" then 
+            if ball_target == LocalPlayer.Name and within then
+                if g.AutoParryMode == "Native" then
+                    System.parry.native_action()
+                elseif g.AutoParryMode == "Keypress" then
                     System.parry.keypress()
-                else 
-                    System.parry.execute_action() 
+                else
+                    System.parry.execute_action()
                 end
                 System.__properties.__parried = true
             end
-            
+
             local last_parrys = tick()
             repeat RunService.Stepped:Wait()
-            until (tick() - last_parrys) >= 1 or not System.__properties.__parried
+            until (tick() - last_parrys) >= (System.__properties.__parry_reset or 0.5) or not System.__properties.__parried
             System.__properties.__parried = false
         end
         
@@ -1142,9 +1259,22 @@ function System.autoparry.start()
                     local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
                     local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
                     local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
-                    
-                    if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
-                        if g.AutoParryMode == "Keypress" then 
+
+                    local within = distance <= parry_accuracy
+                    if System.__properties.__prediction_enabled then
+                        local _, lead_latency = get_latency()
+                        local lead = lead_latency + (System.__properties.__reaction_time or 0)
+                        local predicted_pos = training_ball.Position + velocity * lead
+                        local predicted_distance = LocalPlayer:DistanceFromCharacter(predicted_pos)
+                        if predicted_distance < distance and predicted_distance <= parry_accuracy then
+                            within = true
+                        end
+                    end
+
+                    if ball_target == LocalPlayer.Name and within then
+                        if g.AutoParryMode == "Native" then
+                            System.parry.native_action()
+                        elseif g.AutoParryMode == "Keypress" then
                             System.parry.keypress()
                         else 
                             System.parry.execute_action() 
@@ -1153,7 +1283,7 @@ function System.autoparry.start()
                         
                         local last_parrys = tick()
                         repeat RunService.Stepped:Wait()
-                        until (tick() - last_parrys) >= 1 or not System.__properties.__training_parried
+                        until (tick() - last_parrys) >= (System.__properties.__parry_reset or 0.5) or not System.__properties.__training_parried
                         System.__properties.__training_parried = false
                     end
                 end
@@ -1463,12 +1593,33 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 end)
 
 -- ========== UI SETUP (Wind UI) ==========
+-- White, slightly translucent theme
+pcall(function()
+    WindUI:AddTheme({
+        Name        = "EagleWhite",
+        Accent      = "#ffffff",
+        Dialog      = "#f2f2f2",
+        Outline     = "#dcdcdc",
+        Text        = "#1a1a1a",
+        Placeholder = "#8a8a8a",
+        Background  = "#ffffff",
+        Button      = "#f5f5f5",
+        Icon        = "#1a1a1a",
+    })
+    WindUI:SetTheme("EagleWhite")
+end)
+
 local Window = WindUI:CreateWindow({
     Title = "Eagle Hub X",
     Folder = "EagleHubX",
     Icon = "solar:folder-2-bold-duotone",
     NewElements = true,
+    Transparent = true,       -- white glass: a tiny bit transparent
+    Theme = "EagleWhite",
 })
+
+-- Make the window a touch translucent (older/newer WindUI both covered)
+pcall(function() Window:SetTransparent(true) end)
 
 Window:Tag({
     Title = "BEST",
@@ -1506,7 +1657,8 @@ autoparry_section:Toggle({
 
 autoparry_section:Dropdown({
     Title = "Parry Mode",
-    Values = {"Remote", "Keypress"},
+    Desc = "Native = fire the game's own ParryButtonPress (most legit + game-accurate). Remote/Keypress = direct.",
+    Values = {"Native", "Remote", "Keypress"},
     Value = "Remote",
     Callback = function(value) g.AutoParryMode = value end
 })
@@ -1539,6 +1691,43 @@ autoparry_section:Toggle({
         System.__properties.__randomized_accuracy_enabled = value
         if value then update_randomized_accuracy() end
     end
+})
+
+autoparry_section:Toggle({
+    Title = "Predictive Parry",
+    Desc = "Latency + velocity aware — parries where the ball WILL be. Best on high ping / fast balls.",
+    Value = true,
+    Callback = function(value) System.__properties.__prediction_enabled = value end
+})
+
+autoparry_section:Slider({
+    Title = "Reaction Lead (ms)",
+    Desc = "Extra lead added on top of measured ping. 0 = pure ping compensation.",
+    Value = {Min = 0, Max = 80, Default = 0},
+    Step = 1,
+    Callback = function(value) System.__properties.__reaction_time = value / 1000 end
+})
+
+autoparry_section:Toggle({
+    Title = "Ping Spike Guard",
+    Desc = "Ignore sudden ping spikes so the predictor never over-fires.",
+    Value = true,
+    Callback = function(value) System.__properties.__ping_spike_guard = value end
+})
+
+autoparry_section:Slider({
+    Title = "Parry Reset (s)",
+    Desc = "How long to hold parried state. Recovered from the game's ParryTime (~0.35-0.6). Lower = faster back-to-back parries.",
+    Value = {Min = 0.2, Max = 1.0, Default = 0.5},
+    Step = 0.05,
+    Callback = function(value) System.__properties.__parry_reset = value end
+})
+
+autoparry_section:Toggle({
+    Title = "Respect Game Assist-Parry",
+    Desc = "If the game's own NoobParry is auto-parrying for you, don't double up.",
+    Value = true,
+    Callback = function(value) System.__properties.__respect_noob_parry = value end
 })
 
 autoparry_section:Toggle({Title = "Cooldown Protection", Value = false, Callback = function(value) g.CooldownProtection = value end})
@@ -2263,8 +2452,27 @@ local function create_mobile_ui_button()
     text.ZIndex = 10001
     text.Parent = button
     
-    button.MouseButton1Click:Connect(function() 
-        WindUI:Notify({Title = "UI", Content = "Toggle functionality depends on Wind UI version", Duration = 2})
+    local __ui_open = true
+    button.MouseButton1Click:Connect(function()
+        __ui_open = not __ui_open
+        text.Text = __ui_open and "" or "☰"
+        -- Probe the common WindUI window methods so this works across versions.
+        local handled = false
+        for _, m in ipairs({"Toggle", "Minimize", "SetVisible", "Open", "Close"}) do
+            if type(Window[m]) == "function" then
+                pcall(function()
+                    if m == "SetVisible" then Window[m](Window, __ui_open)
+                    elseif m == "Open" and __ui_open then Window[m](Window)
+                    elseif m == "Close" and not __ui_open then Window[m](Window)
+                    elseif m == "Toggle" or m == "Minimize" then Window[m](Window) end
+                end)
+                handled = true
+                if m == "Toggle" or m == "Minimize" or m == "SetVisible" then break end
+            end
+        end
+        if not handled then
+            WindUI:Notify({Title = "UI", Content = __ui_open and "Shown" or "Hidden", Duration = 1})
+        end
     end)
     
     button.Parent = gui
@@ -2356,4 +2564,666 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
-print("Eagle Hub X loaded successfully with Wind UI and Anti-Cheat Bypass!")
+
+-- ========================================================================
+-- ========== EAGLE HUB X — EXTENDED FEATURE PACK =========================
+-- ========================================================================
+
+local HttpService = cloneref(game:GetService('HttpService'))
+local TeleportService = cloneref(game:GetService('TeleportService'))
+local VirtualUser = cloneref(game:GetService('VirtualUser'))
+
+-- Somewhere to park GUI-based ESP adornments that survives respawns.
+local ESP_HOLDER = Instance.new('Folder')
+ESP_HOLDER.Name = 'EagleHubX_ESP'
+pcall(function()
+    ESP_HOLDER.Parent = (gethui and gethui()) or CoreGui
+end)
+
+-- ========== SESSION STATISTICS ==========
+local Stats_Session = {
+    parries = 0,
+    session_start = tick(),
+    fps = 60,
+    _fps_last = tick(),
+    _fps_count = 0,
+}
+
+-- Count real successful parries and reset parry state the instant the game
+-- confirms a hit. ParrySuccessClient is the game's own local BindableEvent
+-- (fired the same frame a parry lands), so it's faster and more reliable than
+-- waiting on the server RemoteEvent — this tightens back-to-back parries.
+pcall(function()
+    local psc = ReplicatedStorage.Remotes:FindFirstChild('ParrySuccessClient')
+    if psc and psc:IsA('BindableEvent') then
+        psc.Event:Connect(function()
+            Stats_Session.parries = Stats_Session.parries + 1
+            System.__properties.__parried = false
+            System.__properties.__training_parried = false
+        end)
+    else
+        -- Fallback to the server event if the bindable isn't present.
+        ReplicatedStorage.Remotes.ParrySuccess.OnClientEvent:Connect(function()
+            Stats_Session.parries = Stats_Session.parries + 1
+        end)
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    Stats_Session._fps_count = Stats_Session._fps_count + 1
+    local now = tick()
+    if now - Stats_Session._fps_last >= 0.5 then
+        Stats_Session.fps = math.floor(Stats_Session._fps_count / (now - Stats_Session._fps_last))
+        Stats_Session._fps_count = 0
+        Stats_Session._fps_last = now
+    end
+end)
+
+-- ========== PLAYER + BALL ESP ==========
+local ESP = {
+    players_enabled = false,
+    ball_enabled = false,
+    show_tracers = false,
+    player_color = Color3.fromRGB(0, 170, 255),
+    ball_color = Color3.fromRGB(255, 60, 60),
+    highlights = {},
+    billboards = {},
+    tracers = {},
+    conn = nil,
+}
+
+local function esp_clear_all()
+    for k, hl in pairs(ESP.highlights) do
+        if hl then pcall(function() hl:Destroy() end) end
+        ESP.highlights[k] = nil
+    end
+    for k, bb in pairs(ESP.billboards) do
+        if bb then pcall(function() bb:Destroy() end) end
+        ESP.billboards[k] = nil
+    end
+    for k, tr in pairs(ESP.tracers) do
+        if tr then pcall(function() tr:Remove() end) end
+        ESP.tracers[k] = nil
+    end
+end
+
+local function esp_ensure_highlight(adornee, color)
+    local hl = ESP.highlights[adornee]
+    if not hl or not hl.Parent then
+        hl = Instance.new('Highlight')
+        hl.FillColor = color
+        hl.FillTransparency = 0.55
+        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+        hl.OutlineTransparency = 0.35
+        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        hl.Adornee = adornee
+        hl.Parent = ESP_HOLDER
+        ESP.highlights[adornee] = hl
+    end
+    hl.FillColor = color
+    return hl
+end
+
+local function esp_ensure_billboard(char)
+    local head = char:FindFirstChild('Head') or char:FindFirstChild('HumanoidRootPart')
+    if not head then return nil end
+    local bb = ESP.billboards[char]
+    if not bb or not bb.Parent then
+        bb = Instance.new('BillboardGui')
+        bb.Name = 'EagleESPTag'
+        bb.Size = UDim2.new(0, 200, 0, 34)
+        bb.StudsOffset = Vector3.new(0, 3.4, 0)
+        bb.AlwaysOnTop = true
+        bb.Adornee = head
+        bb.Parent = ESP_HOLDER
+        local lbl = Instance.new('TextLabel')
+        lbl.Name = 'Info'
+        lbl.Size = UDim2.new(1, 0, 1, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 13
+        lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+        lbl.TextStrokeTransparency = 0.4
+        lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        lbl.Parent = bb
+        ESP.billboards[char] = bb
+    end
+    return ESP.billboards[char]
+end
+
+local function esp_update()
+    local myChar = LocalPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild('HumanoidRootPart')
+
+    -- Players
+    local seen = {}
+    if ESP.players_enabled and Alive then
+        for _, char in ipairs(Alive:GetChildren()) do
+            if char ~= myChar and char:FindFirstChild('Humanoid') and char:FindFirstChild('HumanoidRootPart') then
+                seen[char] = true
+                esp_ensure_highlight(char, ESP.player_color)
+                local bb = esp_ensure_billboard(char)
+                if bb then
+                    local lbl = bb:FindFirstChild('Info')
+                    if lbl then
+                        local dist = myRoot and math.floor((myRoot.Position - char.HumanoidRootPart.Position).Magnitude) or 0
+                        local hum = char:FindFirstChildOfClass('Humanoid')
+                        local hp = hum and math.floor(hum.Health) or 0
+                        lbl.Text = string.format('%s  [%dm]  HP:%d', char.Name, dist, hp)
+                    end
+                end
+            end
+        end
+    end
+
+    -- Balls
+    local balls = workspace:FindFirstChild('Balls')
+    if ESP.ball_enabled and balls then
+        for _, ball in ipairs(balls:GetChildren()) do
+            if ball:GetAttribute('realBall') then
+                seen[ball] = true
+                local target = ball:GetAttribute('target')
+                local col = (target == LocalPlayer.Name) and Color3.fromRGB(255, 0, 0) or ESP.ball_color
+                esp_ensure_highlight(ball, col)
+            end
+        end
+    end
+
+    -- Cleanup stale / disabled adornments
+    for adornee, hl in pairs(ESP.highlights) do
+        if not seen[adornee] or not adornee.Parent then
+            pcall(function() hl:Destroy() end)
+            ESP.highlights[adornee] = nil
+        end
+    end
+    for char, bb in pairs(ESP.billboards) do
+        if not seen[char] or not char.Parent then
+            pcall(function() bb:Destroy() end)
+            ESP.billboards[char] = nil
+        end
+    end
+end
+
+local function esp_set_running(state)
+    if state then
+        if not ESP.conn then
+            ESP.conn = RunService.RenderStepped:Connect(esp_update)
+        end
+    else
+        if not ESP.players_enabled and not ESP.ball_enabled then
+            if ESP.conn then ESP.conn:Disconnect(); ESP.conn = nil end
+            esp_clear_all()
+        end
+    end
+end
+
+-- ========== STATS HUD ==========
+local StatsHUD = { enabled = false, gui = nil, label = nil, conn = nil }
+
+local function stats_hud_build()
+    if StatsHUD.gui then StatsHUD.gui:Destroy() end
+    StatsHUD.gui = Instance.new('ScreenGui')
+    StatsHUD.gui.Name = 'EagleStatsHUD'
+    StatsHUD.gui.ResetOnSpawn = false
+    StatsHUD.gui.DisplayOrder = 998
+    local frame = Instance.new('Frame')
+    frame.Size = UDim2.new(0, 190, 0, 92)
+    frame.Position = UDim2.new(0, 10, 0, 60)
+    frame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    frame.BackgroundTransparency = 0.25
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    Instance.new('UICorner', frame).CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new('UIStroke', frame)
+    stroke.Color = Color3.fromRGB(0, 170, 255)
+    stroke.Thickness = 1
+    stroke.Transparency = 0.4
+    local lbl = Instance.new('TextLabel')
+    lbl.Size = UDim2.new(1, -12, 1, -12)
+    lbl.Position = UDim2.new(0, 6, 0, 6)
+    lbl.BackgroundTransparency = 1
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextYAlignment = Enum.TextYAlignment.Top
+    lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    lbl.RichText = true
+    lbl.Text = ''
+    lbl.Parent = frame
+    frame.Parent = StatsHUD.gui
+    StatsHUD.label = lbl
+    pcall(function() StatsHUD.gui.Parent = (gethui and gethui()) or CoreGui end)
+end
+
+local function stats_hud_update()
+    if not StatsHUD.enabled or not StatsHUD.label then return end
+    local ok, ping = pcall(function()
+        return math.floor(Stats.Network.ServerStatsItem['Data Ping']:GetValue())
+    end)
+    ping = ok and ping or 0
+    local elapsed = tick() - Stats_Session.session_start
+    local mins = math.floor(elapsed / 60)
+    local secs = math.floor(elapsed % 60)
+    local ball = System.ball.get()
+    local speed = 0
+    if ball then
+        local z = ball:FindFirstChild('zoomies')
+        if z then speed = z.VectorVelocity.Magnitude end
+    end
+    -- Prefer the game's authoritative ServerParryCount attribute when present.
+    local serverCount
+    local ch = LocalPlayer.Character
+    if ch then serverCount = ch:GetAttribute('ServerParryCount') end
+    if serverCount == nil then serverCount = LocalPlayer:GetAttribute('ServerParryCount') end
+    local parryLine = serverCount ~= nil
+        and string.format('Parries: %d (server)', serverCount)
+        or  string.format('Parries: %d', Stats_Session.parries)
+    -- Live parry window (game's ParryTime attribute) via the SwordController system.
+    local windowLine = ''
+    if System.swordcontroller then
+        local pt = System.swordcontroller.get_parry_time and System.swordcontroller.get_parry_time()
+        if type(pt) == 'number' then windowLine = string.format('\nParry Window: %.2fs', pt) end
+    end
+    StatsHUD.label.Text = string.format(
+        '<b><font color="#00aaff">EAGLE HUB X</font></b>\n%s\nBall Speed: %.0f\nPing: %d ms\nFPS: %d\nTime: %02d:%02d%s',
+        parryLine, speed, ping, Stats_Session.fps, mins, secs, windowLine)
+end
+
+local function stats_hud_set(state)
+    StatsHUD.enabled = state
+    if state then
+        stats_hud_build()
+        if not StatsHUD.conn then
+            StatsHUD.conn = RunService.RenderStepped:Connect(stats_hud_update)
+        end
+    else
+        if StatsHUD.conn then StatsHUD.conn:Disconnect(); StatsHUD.conn = nil end
+        if StatsHUD.gui then StatsHUD.gui:Destroy(); StatsHUD.gui = nil; StatsHUD.label = nil end
+    end
+end
+
+-- ========== ANTI-AFK ==========
+local antiafk_conn = nil
+local function anti_afk_set(state)
+    if state then
+        if not antiafk_conn then
+            antiafk_conn = LocalPlayer.Idled:Connect(function()
+                pcall(function()
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton2(Vector2.new(0, 0))
+                end)
+            end)
+        end
+    else
+        if antiafk_conn then antiafk_conn:Disconnect(); antiafk_conn = nil end
+    end
+end
+
+-- ========== REJOIN / SERVER HOP ==========
+local function rejoin_server()
+    pcall(function()
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+    end)
+end
+
+local function server_hop()
+    local ok, body = pcall(function()
+        local url = 'https://games.roblox.com/v1/games/' .. tostring(game.PlaceId)
+            .. '/servers/Public?sortOrder=Asc&limit=100'
+        return game:HttpGet(url)
+    end)
+    if ok and body then
+        local decoded
+        local ok2 = pcall(function() decoded = HttpService:JSONDecode(body) end)
+        if ok2 and decoded and decoded.data then
+            local candidates = {}
+            for _, s in ipairs(decoded.data) do
+                if type(s) == 'table' and s.id and s.id ~= game.JobId
+                    and s.playing and s.maxPlayers and s.playing < s.maxPlayers then
+                    table.insert(candidates, s)
+                end
+            end
+            if #candidates > 0 then
+                local pick = candidates[math.random(1, #candidates)]
+                local teleported = pcall(function()
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, pick.id, LocalPlayer)
+                end)
+                if teleported then return true end
+            end
+        end
+    end
+    -- Fallback: plain rejoin
+    rejoin_server()
+    return false
+end
+
+-- ========== CONFIG SAVE / LOAD ==========
+local CONFIG_FILE = 'EagleHubX_Config.json'
+
+local function collect_config()
+    return {
+        AutoParryMode = g.AutoParryMode,
+        Accuracy = System.__properties.__accuracy,
+        CurveMode = System.__properties.__curve_mode,
+        RandomizedAccuracy = System.__properties.__randomized_accuracy_enabled,
+        CooldownProtection = g.CooldownProtection,
+        AutoAbility = g.AutoAbility,
+        ManualSpamMode = g.ManualSpamMode,
+        AutoSpamMode = g.AutoSpamMode,
+        SpamThreshold = System.__properties.__spam_threshold,
+        AutoSpamDistanceMultiplier = System.__properties.__auto_spam_distance_multiplier,
+        CameraFOV = g.CameraFOV,
+        Detections = {
+            infinity = System.__config.__detections.__infinity,
+            deathslash = System.__config.__detections.__deathslash,
+            timehole = System.__config.__detections.__timehole,
+            slashesoffury = System.__config.__detections.__slashesoffury,
+            phantom = System.__config.__detections.__phantom,
+        },
+    }
+end
+
+local function apply_config(cfg)
+    if type(cfg) ~= 'table' then return end
+    if cfg.AutoParryMode then g.AutoParryMode = cfg.AutoParryMode end
+    if cfg.Accuracy then System.__properties.__accuracy = cfg.Accuracy; update_divisor() end
+    if cfg.CurveMode then System.__properties.__curve_mode = cfg.CurveMode end
+    if cfg.RandomizedAccuracy ~= nil then System.__properties.__randomized_accuracy_enabled = cfg.RandomizedAccuracy end
+    if cfg.CooldownProtection ~= nil then g.CooldownProtection = cfg.CooldownProtection end
+    if cfg.AutoAbility ~= nil then g.AutoAbility = cfg.AutoAbility end
+    if cfg.ManualSpamMode then g.ManualSpamMode = cfg.ManualSpamMode end
+    if cfg.AutoSpamMode then g.AutoSpamMode = cfg.AutoSpamMode end
+    if cfg.SpamThreshold then System.__properties.__spam_threshold = cfg.SpamThreshold end
+    if cfg.AutoSpamDistanceMultiplier then System.__properties.__auto_spam_distance_multiplier = cfg.AutoSpamDistanceMultiplier end
+    if cfg.CameraFOV then g.CameraFOV = cfg.CameraFOV end
+    if type(cfg.Detections) == 'table' then
+        local d = cfg.Detections
+        System.__config.__detections.__infinity = d.infinity or false
+        System.__config.__detections.__deathslash = d.deathslash or false
+        System.__config.__detections.__timehole = d.timehole or false
+        System.__config.__detections.__slashesoffury = d.slashesoffury or false
+        System.__config.__detections.__phantom = d.phantom or false
+    end
+end
+
+local function save_config()
+    if not writefile then return false, 'writefile not supported by executor' end
+    local ok, enc = pcall(function() return HttpService:JSONEncode(collect_config()) end)
+    if not ok then return false, 'encode failed' end
+    local wrote = pcall(writefile, CONFIG_FILE, enc)
+    return wrote, wrote and 'saved' or 'write failed'
+end
+
+local function load_config()
+    if not (readfile and isfile) then return false, 'readfile not supported by executor' end
+    if not isfile(CONFIG_FILE) then return false, 'no saved config' end
+    local ok, data = pcall(readfile, CONFIG_FILE)
+    if not ok then return false, 'read failed' end
+    local decoded
+    local ok2 = pcall(function() decoded = HttpService:JSONDecode(data) end)
+    if not ok2 then return false, 'decode failed' end
+    apply_config(decoded)
+    return true, 'loaded (logic applied; re-toggle UI elements to see values)'
+end
+
+-- ========== UI: ESP (Visuals) ==========
+local esp_section = Tabs.Visuals:Section({Title = "ESP"})
+
+esp_section:Toggle({
+    Title = "Player ESP",
+    Desc = "Highlight players + show name / distance / HP",
+    Value = false,
+    Callback = function(v)
+        ESP.players_enabled = v
+        esp_set_running(v or ESP.ball_enabled)
+    end
+})
+
+esp_section:Toggle({
+    Title = "Ball ESP",
+    Desc = "Highlight real balls (red = targeting you)",
+    Value = false,
+    Callback = function(v)
+        ESP.ball_enabled = v
+        esp_set_running(v or ESP.players_enabled)
+    end
+})
+
+esp_section:Colorpicker({
+    Title = "Player ESP Color",
+    Default = ESP.player_color,
+    Callback = function(c) ESP.player_color = c end
+})
+
+-- ========== UI: Stats HUD (Visuals) ==========
+local stats_section = Tabs.Visuals:Section({Title = "Statistics"})
+stats_section:Toggle({
+    Title = "Stats HUD",
+    Desc = "On-screen parries / ball speed / ping / FPS / time",
+    Value = false,
+    Callback = function(v) stats_hud_set(v) end
+})
+stats_section:Button({
+    Title = "Reset Parry Counter",
+    Callback = function()
+        Stats_Session.parries = 0
+        Stats_Session.session_start = tick()
+        WindUI:Notify({Title = "Statistics", Content = "Counters reset", Duration = 2})
+    end
+})
+
+-- ========== UI: Utility (Misc) ==========
+local utility_section = Tabs.Misc:Section({Title = "Utility"})
+
+utility_section:Toggle({
+    Title = "Anti-AFK",
+    Desc = "Prevents the 20-minute idle kick",
+    Value = false,
+    Callback = function(v)
+        anti_afk_set(v)
+        WindUI:Notify({Title = "Anti-AFK", Content = v and "Enabled" or "Disabled", Duration = 2})
+    end
+})
+
+utility_section:Button({
+    Title = "Rejoin Server",
+    Callback = function()
+        WindUI:Notify({Title = "Rejoin", Content = "Rejoining current server...", Duration = 3})
+        rejoin_server()
+    end
+})
+
+utility_section:Button({
+    Title = "Server Hop",
+    Callback = function()
+        WindUI:Notify({Title = "Server Hop", Content = "Searching for a new server...", Duration = 3})
+        task.spawn(server_hop)
+    end
+})
+
+-- ========== UI: Config (Settings) ==========
+local config_section = Tabs.Settings:Section({Title = "Configuration"})
+
+config_section:Button({
+    Title = "Save Config",
+    Callback = function()
+        local ok, msg = save_config()
+        WindUI:Notify({Title = "Config", Content = ok and "Saved" or ("Failed: " .. tostring(msg)), Duration = 3})
+    end
+})
+
+config_section:Button({
+    Title = "Load Config",
+    Callback = function()
+        local ok, msg = load_config()
+        WindUI:Notify({Title = "Config", Content = tostring(msg), Duration = 4})
+    end
+})
+
+config_section:Toggle({
+    Title = "Auto-Load On Launch",
+    Desc = "Applies the saved config each time the hub loads",
+    Value = false,
+    Callback = function(v)
+        g.EagleAutoLoadConfig = v
+        if v then pcall(function() writefile("EagleHubX_AutoLoad.flag", "1") end)
+        else pcall(function() if delfile then delfile("EagleHubX_AutoLoad.flag") end end) end
+    end
+})
+
+-- Apply saved config automatically if the auto-load flag file exists.
+task.spawn(function()
+    if isfile and isfile("EagleHubX_AutoLoad.flag") then
+        task.wait(1)
+        local ok, msg = load_config()
+        if ok then WindUI:Notify({Title = "Config", Content = "Auto-loaded saved config", Duration = 3}) end
+    end
+end)
+
+
+
+-- ========================================================================
+-- ========== SWORD CONTROLLER SYSTEM =====================================
+-- Built from the deobfuscated SwordsController. The controller listens to the
+-- ParryButtonPress BindableEvent, writes the ParryTime attribute (= GrabParry
+-- animation length) and tallies ServerParryCount. This system taps those.
+-- ========================================================================
+System.swordcontroller = {}
+local SwordCtl = System.swordcontroller
+
+local _remotes = ReplicatedStorage:FindFirstChild("Remotes")
+SwordCtl.controller = ReplicatedStorage:FindFirstChild("Controllers")
+    and ReplicatedStorage.Controllers:FindFirstChild("SwordsController")
+SwordCtl.ParryButtonPress = _remotes and _remotes:FindFirstChild("ParryButtonPress")
+SwordCtl.FireSwordInfo    = _remotes and _remotes:FindFirstChild("FireSwordInfo")
+SwordCtl.M1Stop           = _remotes and _remotes:FindFirstChild("M1Stop")
+
+-- Native parry: fire the exact client input the game itself uses. The
+-- SwordsController then runs its own targeting (camera/mouse ray), animation
+-- and server call, so the parry is perfectly game-accurate and looks legit.
+function SwordCtl.native_parry()
+    local pbp = SwordCtl.ParryButtonPress
+    if not pbp then return false end
+    return (pcall(function() pbp:Fire() end))
+end
+
+-- Route used by the autoparry loop when Parry Mode = "Native".
+function System.parry.native_action()
+    if System.__properties.__parries > 10000 or not LocalPlayer.Character then return end
+    SwordCtl.native_parry()
+    System.__properties.__parries = System.__properties.__parries + 1
+    task.delay(0.5, function()
+        if System.__properties.__parries > 0 then
+            System.__properties.__parries = System.__properties.__parries - 1
+        end
+    end)
+end
+
+-- Live readouts (attributes the controller writes on the character).
+function SwordCtl.get_parry_time()
+    local ch = LocalPlayer.Character
+    return ch and ch:GetAttribute("ParryTime") or nil
+end
+function SwordCtl.get_server_parry_count()
+    local ch = LocalPlayer.Character
+    local v = ch and ch:GetAttribute("ServerParryCount")
+    if v == nil then v = LocalPlayer:GetAttribute("ServerParryCount") end
+    return v
+end
+function SwordCtl.get_current_sword()
+    local ch = LocalPlayer.Character
+    return ch and ch:GetAttribute("CurrentlyEquippedSword") or nil
+end
+
+-- Re-derive the parry window whenever the equipped sword changes, so the
+-- reset window always matches the current sword's GrabParry length.
+local function hook_sword_changes(char)
+    if not char then return end
+    pcall(function()
+        char:GetAttributeChangedSignal("CurrentlyEquippedSword"):Connect(function()
+            task.wait(0.2)
+            derive_parry_reset()
+        end)
+    end)
+end
+hook_sword_changes(LocalPlayer.Character)
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.3)
+    hook_sword_changes(char)
+    derive_parry_reset()
+end)
+
+-- ========== SWORD TAB (UI) ==========
+local sword_tab = Window:Tab({ Title = "Sword", Icon = "solar:sword-bold-duotone" })
+local sword_info_section = sword_tab:Section({ Title = "Sword Controller" })
+
+sword_info_section:Paragraph({
+    Title = "Native Parry Engine",
+    Desc = "Deobfuscated from the game's SwordsController. Native mode fires the game's own ParryButtonPress so parries use the real targeting, animation and timing — the most game-accurate option.",
+})
+
+sword_info_section:Button({
+    Title = "Enable Native Parry Mode",
+    Desc = "Sets Auto Parry to fire the game's own ParryButtonPress.",
+    Callback = function()
+        g.AutoParryMode = "Native"
+        WindUI:Notify({
+            Title = "Sword Controller",
+            Content = SwordCtl.ParryButtonPress and "Native Parry enabled" or "ParryButtonPress not found — using Remote",
+            Duration = 3,
+        })
+        if not SwordCtl.ParryButtonPress then g.AutoParryMode = "Remote" end
+    end
+})
+
+sword_info_section:Button({
+    Title = "Show Sword Info",
+    Callback = function()
+        local sword = SwordCtl.get_current_sword() or "?"
+        local pt = SwordCtl.get_parry_time()
+        local spc = SwordCtl.get_server_parry_count()
+        WindUI:Notify({
+            Title = "Sword Info",
+            Content = string.format("Sword: %s\nParryTime: %s\nServer Parries: %s\nController: %s",
+                tostring(sword),
+                pt and string.format("%.3fs", pt) or "n/a",
+                spc ~= nil and tostring(spc) or "n/a",
+                SwordCtl.controller and "found" or "not found"),
+            Duration = 5,
+        })
+    end
+})
+
+sword_info_section:Toggle({
+    Title = "Auto-derive Parry Window",
+    Desc = "Match the parried-state hold to the equipped sword's GrabParry length (exact ParryTime).",
+    Value = true,
+    Callback = function(v)
+        System.__properties.__auto_derive_window = v
+        if v then derive_parry_reset() end
+    end
+})
+
+local sword_swing_section = sword_tab:Section({ Title = "Swing" })
+sword_swing_section:Button({
+    Title = "Stop M1 (cancel swing)",
+    Desc = "Fires the game's M1Stop to cancel your current swing.",
+    Callback = function()
+        if SwordCtl.M1Stop then
+            pcall(function() SwordCtl.M1Stop:Fire() end)
+            WindUI:Notify({ Title = "Sword", Content = "M1 stopped", Duration = 2 })
+        end
+    end
+})
+
+
+pcall(function()
+    WindUI:Notify({
+        Title = "Eagle Hub X",
+        Content = "Loaded! World-class autoparry + full feature pack ready.",
+        Duration = 4,
+    })
+end)
+
+print("Eagle Hub X loaded successfully — Autoparry, Triggerbot, Spam, ESP, Stats HUD, Anti-AFK, Server Hop, Config Save/Load + Anti-Cheat Bypass!")
