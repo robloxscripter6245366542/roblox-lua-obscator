@@ -131,7 +131,11 @@ local System = {
         -- back-to-back parries aren't blocked longer than the game allows.
         __parry_reset = 0.5,
         __respect_noob_parry = true,  -- if the game auto-parries (NoobParryEnabled), don't double up
-        __auto_derive_window = true   -- derive __parry_reset from the equipped GrabParry animation
+        __auto_derive_window = true,  -- derive __parry_reset from the equipped GrabParry animation
+        -- Source-verified block conditions from the decompiled SwordsController:
+        -- the game itself refuses to parry while ChargingAdrenaline (Qi-Charge < 2)
+        -- or InLobbyParryCooldown, so honouring them avoids wasted parries.
+        __source_guards = true
     },
     __config = {
         __curve_names = {'Camera','Random','Accelerated','Backwards','Slow','High'},
@@ -1197,7 +1201,18 @@ function System.autoparry.start()
             if LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape') then continue end
             -- If the game's own assist parry is active for us, don't double up.
             if System.__properties.__respect_noob_parry and LocalPlayer.Character:GetAttribute('NoobParryEnabled') then continue end
-            
+            -- Source-verified guards: the SwordsController itself refuses to parry
+            -- in these states, so firing would just be a wasted (rejected) parry.
+            if System.__properties.__source_guards then
+                local myChar = LocalPlayer.Character
+                if myChar:GetAttribute('LobbyParry') and myChar:GetAttribute('InLobbyParryCooldown') then continue end
+                if myChar:GetAttribute('ChargingAdrenaline') then
+                    local upg = myChar:FindFirstChild('Upgrades')
+                    local qi = upg and upg:FindFirstChild('Qi-Charge')
+                    if not (qi and qi.Value and qi.Value >= 2) then continue end
+                end
+            end
+
             if System.__config.__detections.__infinity and System.__properties.__infinity_active then continue end
             if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then continue end
             if System.__config.__detections.__timehole and System.__properties.__timehole_active then continue end
@@ -1231,6 +1246,8 @@ function System.autoparry.start()
             if ball_target == LocalPlayer.Name and within then
                 if g.AutoParryMode == "Native" then
                     System.parry.native_action()
+                elseif g.AutoParryMode == "Direct" then
+                    System.parry.direct_action()
                 elseif g.AutoParryMode == "Keypress" then
                     System.parry.keypress()
                 else
@@ -1274,6 +1291,8 @@ function System.autoparry.start()
                     if ball_target == LocalPlayer.Name and within then
                         if g.AutoParryMode == "Native" then
                             System.parry.native_action()
+                        elseif g.AutoParryMode == "Direct" then
+                            System.parry.direct_action()
                         elseif g.AutoParryMode == "Keypress" then
                             System.parry.keypress()
                         else 
@@ -1658,7 +1677,7 @@ autoparry_section:Toggle({
 autoparry_section:Dropdown({
     Title = "Parry Mode",
     Desc = "Native = fire the game's own ParryButtonPress (most legit + game-accurate). Remote/Keypress = direct.",
-    Values = {"Native", "Remote", "Keypress"},
+    Values = {"Native", "Direct", "Remote", "Keypress"},
     Value = "Remote",
     Callback = function(value) g.AutoParryMode = value end
 })
@@ -1728,6 +1747,13 @@ autoparry_section:Toggle({
     Desc = "If the game's own NoobParry is auto-parrying for you, don't double up.",
     Value = true,
     Callback = function(value) System.__properties.__respect_noob_parry = value end
+})
+
+autoparry_section:Toggle({
+    Title = "Source-Accurate Guards",
+    Desc = "Skip parrying in states the SwordsController itself blocks (Charging Adrenaline w/ low Qi-Charge, Lobby parry cooldown) — avoids wasted parries.",
+    Value = true,
+    Callback = function(value) System.__properties.__source_guards = value end
 })
 
 autoparry_section:Toggle({Title = "Cooldown Protection", Value = false, Callback = function(value) g.CooldownProtection = value end})
@@ -2920,6 +2946,7 @@ local function collect_config()
         ParryReset = System.__properties.__parry_reset,
         RespectNoobParry = System.__properties.__respect_noob_parry,
         AutoDeriveWindow = System.__properties.__auto_derive_window,
+        SourceGuards = System.__properties.__source_guards,
         Detections = {
             infinity = System.__config.__detections.__infinity,
             deathslash = System.__config.__detections.__deathslash,
@@ -2949,6 +2976,7 @@ local function apply_config(cfg)
     if cfg.ParryReset ~= nil then System.__properties.__parry_reset = cfg.ParryReset end
     if cfg.RespectNoobParry ~= nil then System.__properties.__respect_noob_parry = cfg.RespectNoobParry end
     if cfg.AutoDeriveWindow ~= nil then System.__properties.__auto_derive_window = cfg.AutoDeriveWindow end
+    if cfg.SourceGuards ~= nil then System.__properties.__source_guards = cfg.SourceGuards end
     if type(cfg.Detections) == 'table' then
         local d = cfg.Detections
         System.__config.__detections.__infinity = d.infinity or false
@@ -3004,6 +3032,7 @@ local EAGLE_RECOMMENDED = {
     ParryReset = 0.5,
     RespectNoobParry = true,
     AutoDeriveWindow = true,
+    SourceGuards = true,
     Detections = {
         infinity = true, deathslash = true, timehole = true,
         slashesoffury = true, phantom = true,
@@ -3196,6 +3225,21 @@ function System.parry.native_action()
     if System.__properties.__parries > 10000 or not LocalPlayer.Character then return end
     System.animation.play_grab_parry()   -- match a real key press (cosmetic)
     SwordCtl.native_parry()
+    System.__properties.__parries = System.__properties.__parries + 1
+    task.delay(0.5, function()
+        if System.__properties.__parries > 0 then
+            System.__properties.__parries = System.__properties.__parries - 1
+        end
+    end)
+end
+
+-- Route used when Parry Mode = "Direct": the exact server call the game makes
+-- (ParryAttempt:FireServer(), no args) — the most minimal, future-proof parry.
+function System.parry.direct_action()
+    if System.__properties.__parries > 10000 or not LocalPlayer.Character then return end
+    System.animation.play_grab_parry()
+    local pa = SwordCtl.ParryAttempt
+    if pa then pcall(function() pa:FireServer() end) end
     System.__properties.__parries = System.__properties.__parries + 1
     task.delay(0.5, function()
         if System.__properties.__parries > 0 then
