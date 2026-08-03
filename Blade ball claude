@@ -1059,6 +1059,27 @@ function System.auto_spam.stop()
     autoSpamThread = nil
 end
 
+-- Full deflection / counter ability set (from the game's Abilities list).
+-- Any of these, when equipped + off cooldown, deflects an incoming ball on
+-- AbilityButtonPress, so Auto Ability can cover every one of them.
+local DEFLECT_ABILITIES = {
+    "Raging Deflection", "Calming Deflection", "Aerodynamic Slash", "Rapture",
+    "Fracture", "Death Slash", "Flash Counter", "Parry Counter",
+    "Slashes of Fury", "Slash of Duality", "Revenge", "Guardian Angel",
+}
+
+-- Returns the name of an equipped, enabled deflection ability, or nil.
+local function get_ready_deflect_ability()
+    local char = LocalPlayer.Character
+    local abilities = char and char:FindFirstChild("Abilities")
+    if not abilities then return nil end
+    for _, name in ipairs(DEFLECT_ABILITIES) do
+        local a = abilities:FindFirstChild(name)
+        if a and a.Enabled then return name end
+    end
+    return nil
+end
+
 System.autoparry = {}
 function System.autoparry.start()
     if System.__properties.__connections.__autoparry then
@@ -1148,21 +1169,23 @@ function System.autoparry.start()
             if ball_target == LocalPlayer.Name and within then
                 if g.AutoAbility then
                     local AbilityCD = LocalPlayer.PlayerGui:FindFirstChild("Hotbar") and LocalPlayer.PlayerGui.Hotbar:FindFirstChild("Ability") and LocalPlayer.PlayerGui.Hotbar.Ability:FindFirstChild("UIGradient")
+                    -- Offset.Y == 0.5 means the hotbar gradient is full => ability ready.
                     if AbilityCD and AbilityCD.Offset.Y == 0.5 then
-                        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Abilities") then
-                            local abilities = LocalPlayer.Character.Abilities
-                            if (abilities:FindFirstChild("Raging Deflection") and abilities["Raging Deflection"].Enabled) or
-                               (abilities:FindFirstChild("Rapture") and abilities["Rapture"].Enabled) or
-                               (abilities:FindFirstChild("Calming Deflection") and abilities["Calming Deflection"].Enabled) or
-                               (abilities:FindFirstChild("Aerodynamic Slash") and abilities["Aerodynamic Slash"].Enabled) or
-                               (abilities:FindFirstChild("Fracture") and abilities["Fracture"].Enabled) or
-                               (abilities:FindFirstChild("Death Slash") and abilities["Death Slash"].Enabled) then
-                                System.__properties.__parried = true
-                                pcall(function() ReplicatedStorage.Remotes.AbilityButtonPress:Fire() end)
-                                task.wait(2.432)
-                                pcall(function() ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DeathSlashShootActivation"):FireServer(true) end)
-                                continue
+                        local ready = get_ready_deflect_ability()
+                        if ready then
+                            System.__properties.__parried = true
+                            pcall(function() ReplicatedStorage.Remotes.AbilityButtonPress:Fire() end)
+                            -- Death Slash needs a follow-up shoot activation; do it
+                            -- OFF the parry loop so we never freeze parrying for 2.4s.
+                            if ready == "Death Slash" then
+                                task.spawn(function()
+                                    task.wait(2.432)
+                                    pcall(function()
+                                        ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DeathSlashShootActivation"):FireServer(true)
+                                    end)
+                                end)
                             end
+                            continue
                         end
                     end
                 end
