@@ -477,16 +477,24 @@ System.curve = {}
 function System.curve.get_cframe() return getCurveCFrame() end
 
 local function Parry()
+    if not ParryRemote then return end
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local aliveFolder = Alive or workspace:FindFirstChild('Alive')
     local PlayerPositions = {}
-    for _, char in next, workspace.Alive:GetChildren() do
-        if char:FindFirstChild('HumanoidRootPart') then
-            PlayerPositions[char.Name] = char.HumanoidRootPart.Position
+    if aliveFolder then
+        for _, char in next, aliveFolder:GetChildren() do
+            if char:FindFirstChild('HumanoidRootPart') then
+                PlayerPositions[char.Name] = char.HumanoidRootPart.Position
+            end
         end
     end
-    local CameraCenter = Camera.ViewportSize / 2
+    local CameraCenter = cam.ViewportSize / 2
     local CameraData = {CameraCenter.X, CameraCenter.Y}
+    -- Use the selected curve CFrame (mode 1 = Camera, preserving default behaviour)
+    local sendCF = getCurveCFrame()
     pcall(function()
-        ParryRemote:FireServer(Hash1, Hash2, Hash3(), 0.025, Camera.CFrame, PlayerPositions, CameraData, false)
+        ParryRemote:FireServer(Hash1, Hash2, Hash3(), 0.025, sendCF, PlayerPositions, CameraData, false)
     end)
 end
 
@@ -809,15 +817,16 @@ function System.manual_spam.start()
             local now = os.clock()
             if now - last_spam >= threshold then
                 last_spam = now
-                if g.ManualSpamMode == "Keypress" then 
+                if g.ManualSpamMode == "Keypress" then
                     parry_keypress()
-                else 
+                else
                     parry_execute()
-                    if g.ManualSpamAnimationFix then 
+                    if g.ManualSpamAnimationFix then
                         play_animation()
-                        SpamParry_Animation() 
-                    end 
+                        SpamParry_Animation()
+                    end
                 end
+                macroFrameFireCount = macroFrameFireCount + 1
             end
             coroutine.yield()
         end
@@ -837,19 +846,15 @@ function System.manual_spam.stop()
     manualSpamThread = nil
 end
 
+-- CPS bookkeeping only. Parry firing for manual spam is driven solely by the
+-- coroutine in System.manual_spam.start() so we never double-fire (which spikes
+-- the remote rate and risks anti-cheat kicks).
 RunService.Heartbeat:Connect(function(dt)
     macroFrameTime = macroFrameTime + dt
     if macroFrameTime >= 0.1 then
         if macroSpamActive then macroRealCPS = math.floor(macroFrameFireCount / macroFrameTime) end
         macroFrameFireCount = 0
         macroFrameTime = 0
-    end
-    if macroSpamActive and ParryRemote then
-        pcall(function() 
-            fireParry()
-            macroFrameFireCount = macroFrameFireCount + 1 
-        end)
-        if macroAnimFix then SpamParry_Animation() end
     end
 end)
 
@@ -2263,8 +2268,27 @@ local function create_mobile_ui_button()
     text.ZIndex = 10001
     text.Parent = button
     
-    button.MouseButton1Click:Connect(function() 
-        WindUI:Notify({Title = "UI", Content = "Toggle functionality depends on Wind UI version", Duration = 2})
+    local __ui_open = true
+    button.MouseButton1Click:Connect(function()
+        __ui_open = not __ui_open
+        text.Text = __ui_open and "" or "☰"
+        -- Probe the common WindUI window methods so this works across versions.
+        local handled = false
+        for _, m in ipairs({"Toggle", "Minimize", "SetVisible", "Open", "Close"}) do
+            if type(Window[m]) == "function" then
+                pcall(function()
+                    if m == "SetVisible" then Window[m](Window, __ui_open)
+                    elseif m == "Open" and __ui_open then Window[m](Window)
+                    elseif m == "Close" and not __ui_open then Window[m](Window)
+                    elseif m == "Toggle" or m == "Minimize" then Window[m](Window) end
+                end)
+                handled = true
+                if m == "Toggle" or m == "Minimize" or m == "SetVisible" then break end
+            end
+        end
+        if not handled then
+            WindUI:Notify({Title = "UI", Content = __ui_open and "Shown" or "Hidden", Duration = 1})
+        end
     end)
     
     button.Parent = gui
@@ -2356,4 +2380,503 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
-print("Eagle Hub X loaded successfully with Wind UI and Anti-Cheat Bypass!")
+
+-- ========================================================================
+-- ========== EAGLE HUB X — EXTENDED FEATURE PACK =========================
+-- ========================================================================
+
+local HttpService = cloneref(game:GetService('HttpService'))
+local TeleportService = cloneref(game:GetService('TeleportService'))
+local VirtualUser = cloneref(game:GetService('VirtualUser'))
+
+-- Somewhere to park GUI-based ESP adornments that survives respawns.
+local ESP_HOLDER = Instance.new('Folder')
+ESP_HOLDER.Name = 'EagleHubX_ESP'
+pcall(function()
+    ESP_HOLDER.Parent = (gethui and gethui()) or CoreGui
+end)
+
+-- ========== SESSION STATISTICS ==========
+local Stats_Session = {
+    parries = 0,
+    session_start = tick(),
+    fps = 60,
+    _fps_last = tick(),
+    _fps_count = 0,
+}
+
+-- Count real successful parries reported by the server.
+pcall(function()
+    ReplicatedStorage.Remotes.ParrySuccess.OnClientEvent:Connect(function()
+        Stats_Session.parries = Stats_Session.parries + 1
+    end)
+end)
+
+RunService.RenderStepped:Connect(function()
+    Stats_Session._fps_count = Stats_Session._fps_count + 1
+    local now = tick()
+    if now - Stats_Session._fps_last >= 0.5 then
+        Stats_Session.fps = math.floor(Stats_Session._fps_count / (now - Stats_Session._fps_last))
+        Stats_Session._fps_count = 0
+        Stats_Session._fps_last = now
+    end
+end)
+
+-- ========== PLAYER + BALL ESP ==========
+local ESP = {
+    players_enabled = false,
+    ball_enabled = false,
+    show_tracers = false,
+    player_color = Color3.fromRGB(0, 170, 255),
+    ball_color = Color3.fromRGB(255, 60, 60),
+    highlights = {},
+    billboards = {},
+    tracers = {},
+    conn = nil,
+}
+
+local function esp_clear_all()
+    for k, hl in pairs(ESP.highlights) do
+        if hl then pcall(function() hl:Destroy() end) end
+        ESP.highlights[k] = nil
+    end
+    for k, bb in pairs(ESP.billboards) do
+        if bb then pcall(function() bb:Destroy() end) end
+        ESP.billboards[k] = nil
+    end
+    for k, tr in pairs(ESP.tracers) do
+        if tr then pcall(function() tr:Remove() end) end
+        ESP.tracers[k] = nil
+    end
+end
+
+local function esp_ensure_highlight(adornee, color)
+    local hl = ESP.highlights[adornee]
+    if not hl or not hl.Parent then
+        hl = Instance.new('Highlight')
+        hl.FillColor = color
+        hl.FillTransparency = 0.55
+        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+        hl.OutlineTransparency = 0
+        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        hl.Adornee = adornee
+        hl.Parent = ESP_HOLDER
+        ESP.highlights[adornee] = hl
+    end
+    hl.FillColor = color
+    return hl
+end
+
+local function esp_ensure_billboard(char)
+    local head = char:FindFirstChild('Head') or char:FindFirstChild('HumanoidRootPart')
+    if not head then return nil end
+    local bb = ESP.billboards[char]
+    if not bb or not bb.Parent then
+        bb = Instance.new('BillboardGui')
+        bb.Name = 'EagleESPTag'
+        bb.Size = UDim2.new(0, 200, 0, 34)
+        bb.StudsOffset = Vector3.new(0, 3.4, 0)
+        bb.AlwaysOnTop = true
+        bb.Adornee = head
+        bb.Parent = ESP_HOLDER
+        local lbl = Instance.new('TextLabel')
+        lbl.Name = 'Info'
+        lbl.Size = UDim2.new(1, 0, 1, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 13
+        lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+        lbl.TextStrokeTransparency = 0.4
+        lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        lbl.Parent = bb
+        ESP.billboards[char] = bb
+    end
+    return ESP.billboards[char]
+end
+
+local function esp_update()
+    local myChar = LocalPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild('HumanoidRootPart')
+
+    -- Players
+    local seen = {}
+    if ESP.players_enabled and Alive then
+        for _, char in ipairs(Alive:GetChildren()) do
+            if char ~= myChar and char:FindFirstChild('Humanoid') and char:FindFirstChild('HumanoidRootPart') then
+                seen[char] = true
+                esp_ensure_highlight(char, ESP.player_color)
+                local bb = esp_ensure_billboard(char)
+                if bb then
+                    local lbl = bb:FindFirstChild('Info')
+                    if lbl then
+                        local dist = myRoot and math.floor((myRoot.Position - char.HumanoidRootPart.Position).Magnitude) or 0
+                        local hum = char:FindFirstChildOfClass('Humanoid')
+                        local hp = hum and math.floor(hum.Health) or 0
+                        lbl.Text = string.format('%s  [%dm]  HP:%d', char.Name, dist, hp)
+                    end
+                end
+            end
+        end
+    end
+
+    -- Balls
+    local balls = workspace:FindFirstChild('Balls')
+    if ESP.ball_enabled and balls then
+        for _, ball in ipairs(balls:GetChildren()) do
+            if ball:GetAttribute('realBall') then
+                seen[ball] = true
+                local target = ball:GetAttribute('target')
+                local col = (target == LocalPlayer.Name) and Color3.fromRGB(255, 0, 0) or ESP.ball_color
+                esp_ensure_highlight(ball, col)
+            end
+        end
+    end
+
+    -- Cleanup stale / disabled adornments
+    for adornee, hl in pairs(ESP.highlights) do
+        if not seen[adornee] or not adornee.Parent then
+            pcall(function() hl:Destroy() end)
+            ESP.highlights[adornee] = nil
+        end
+    end
+    for char, bb in pairs(ESP.billboards) do
+        if not seen[char] or not char.Parent then
+            pcall(function() bb:Destroy() end)
+            ESP.billboards[char] = nil
+        end
+    end
+end
+
+local function esp_set_running(state)
+    if state then
+        if not ESP.conn then
+            ESP.conn = RunService.RenderStepped:Connect(esp_update)
+        end
+    else
+        if not ESP.players_enabled and not ESP.ball_enabled then
+            if ESP.conn then ESP.conn:Disconnect(); ESP.conn = nil end
+            esp_clear_all()
+        end
+    end
+end
+
+-- ========== STATS HUD ==========
+local StatsHUD = { enabled = false, gui = nil, label = nil, conn = nil }
+
+local function stats_hud_build()
+    if StatsHUD.gui then StatsHUD.gui:Destroy() end
+    StatsHUD.gui = Instance.new('ScreenGui')
+    StatsHUD.gui.Name = 'EagleStatsHUD'
+    StatsHUD.gui.ResetOnSpawn = false
+    StatsHUD.gui.DisplayOrder = 998
+    local frame = Instance.new('Frame')
+    frame.Size = UDim2.new(0, 190, 0, 92)
+    frame.Position = UDim2.new(0, 10, 0, 60)
+    frame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    frame.BackgroundTransparency = 0.25
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    Instance.new('UICorner', frame).CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new('UIStroke', frame)
+    stroke.Color = Color3.fromRGB(0, 170, 255)
+    stroke.Thickness = 1
+    stroke.Transparency = 0.4
+    local lbl = Instance.new('TextLabel')
+    lbl.Size = UDim2.new(1, -12, 1, -12)
+    lbl.Position = UDim2.new(0, 6, 0, 6)
+    lbl.BackgroundTransparency = 1
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextYAlignment = Enum.TextYAlignment.Top
+    lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    lbl.RichText = true
+    lbl.Text = ''
+    lbl.Parent = frame
+    frame.Parent = StatsHUD.gui
+    StatsHUD.label = lbl
+    pcall(function() StatsHUD.gui.Parent = (gethui and gethui()) or CoreGui end)
+end
+
+local function stats_hud_update()
+    if not StatsHUD.enabled or not StatsHUD.label then return end
+    local ok, ping = pcall(function()
+        return math.floor(Stats.Network.ServerStatsItem['Data Ping']:GetValue())
+    end)
+    ping = ok and ping or 0
+    local elapsed = tick() - Stats_Session.session_start
+    local mins = math.floor(elapsed / 60)
+    local secs = math.floor(elapsed % 60)
+    local ball = System.ball.get()
+    local speed = 0
+    if ball then
+        local z = ball:FindFirstChild('zoomies')
+        if z then speed = z.VectorVelocity.Magnitude end
+    end
+    StatsHUD.label.Text = string.format(
+        '<b><font color="#00aaff">EAGLE HUB X</font></b>\nParries: %d\nBall Speed: %.0f\nPing: %d ms\nFPS: %d\nTime: %02d:%02d',
+        Stats_Session.parries, speed, ping, Stats_Session.fps, mins, secs)
+end
+
+local function stats_hud_set(state)
+    StatsHUD.enabled = state
+    if state then
+        stats_hud_build()
+        if not StatsHUD.conn then
+            StatsHUD.conn = RunService.RenderStepped:Connect(stats_hud_update)
+        end
+    else
+        if StatsHUD.conn then StatsHUD.conn:Disconnect(); StatsHUD.conn = nil end
+        if StatsHUD.gui then StatsHUD.gui:Destroy(); StatsHUD.gui = nil; StatsHUD.label = nil end
+    end
+end
+
+-- ========== ANTI-AFK ==========
+local antiafk_conn = nil
+local function anti_afk_set(state)
+    if state then
+        if not antiafk_conn then
+            antiafk_conn = LocalPlayer.Idled:Connect(function()
+                pcall(function()
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton2(Vector2.new(0, 0))
+                end)
+            end)
+        end
+    else
+        if antiafk_conn then antiafk_conn:Disconnect(); antiafk_conn = nil end
+    end
+end
+
+-- ========== REJOIN / SERVER HOP ==========
+local function rejoin_server()
+    pcall(function()
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+    end)
+end
+
+local function server_hop()
+    local ok, body = pcall(function()
+        local url = 'https://games.roblox.com/v1/games/' .. tostring(game.PlaceId)
+            .. '/servers/Public?sortOrder=Asc&limit=100'
+        return game:HttpGet(url)
+    end)
+    if ok and body then
+        local decoded
+        local ok2 = pcall(function() decoded = HttpService:JSONDecode(body) end)
+        if ok2 and decoded and decoded.data then
+            local candidates = {}
+            for _, s in ipairs(decoded.data) do
+                if type(s) == 'table' and s.id and s.id ~= game.JobId
+                    and s.playing and s.maxPlayers and s.playing < s.maxPlayers then
+                    table.insert(candidates, s)
+                end
+            end
+            if #candidates > 0 then
+                local pick = candidates[math.random(1, #candidates)]
+                local teleported = pcall(function()
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, pick.id, LocalPlayer)
+                end)
+                if teleported then return true end
+            end
+        end
+    end
+    -- Fallback: plain rejoin
+    rejoin_server()
+    return false
+end
+
+-- ========== CONFIG SAVE / LOAD ==========
+local CONFIG_FILE = 'EagleHubX_Config.json'
+
+local function collect_config()
+    return {
+        AutoParryMode = g.AutoParryMode,
+        Accuracy = System.__properties.__accuracy,
+        CurveMode = System.__properties.__curve_mode,
+        RandomizedAccuracy = System.__properties.__randomized_accuracy_enabled,
+        CooldownProtection = g.CooldownProtection,
+        AutoAbility = g.AutoAbility,
+        ManualSpamMode = g.ManualSpamMode,
+        AutoSpamMode = g.AutoSpamMode,
+        SpamThreshold = System.__properties.__spam_threshold,
+        AutoSpamDistanceMultiplier = System.__properties.__auto_spam_distance_multiplier,
+        CameraFOV = g.CameraFOV,
+        Detections = {
+            infinity = System.__config.__detections.__infinity,
+            deathslash = System.__config.__detections.__deathslash,
+            timehole = System.__config.__detections.__timehole,
+            slashesoffury = System.__config.__detections.__slashesoffury,
+            phantom = System.__config.__detections.__phantom,
+        },
+    }
+end
+
+local function apply_config(cfg)
+    if type(cfg) ~= 'table' then return end
+    if cfg.AutoParryMode then g.AutoParryMode = cfg.AutoParryMode end
+    if cfg.Accuracy then System.__properties.__accuracy = cfg.Accuracy; update_divisor() end
+    if cfg.CurveMode then System.__properties.__curve_mode = cfg.CurveMode end
+    if cfg.RandomizedAccuracy ~= nil then System.__properties.__randomized_accuracy_enabled = cfg.RandomizedAccuracy end
+    if cfg.CooldownProtection ~= nil then g.CooldownProtection = cfg.CooldownProtection end
+    if cfg.AutoAbility ~= nil then g.AutoAbility = cfg.AutoAbility end
+    if cfg.ManualSpamMode then g.ManualSpamMode = cfg.ManualSpamMode end
+    if cfg.AutoSpamMode then g.AutoSpamMode = cfg.AutoSpamMode end
+    if cfg.SpamThreshold then System.__properties.__spam_threshold = cfg.SpamThreshold end
+    if cfg.AutoSpamDistanceMultiplier then System.__properties.__auto_spam_distance_multiplier = cfg.AutoSpamDistanceMultiplier end
+    if cfg.CameraFOV then g.CameraFOV = cfg.CameraFOV end
+    if type(cfg.Detections) == 'table' then
+        local d = cfg.Detections
+        System.__config.__detections.__infinity = d.infinity or false
+        System.__config.__detections.__deathslash = d.deathslash or false
+        System.__config.__detections.__timehole = d.timehole or false
+        System.__config.__detections.__slashesoffury = d.slashesoffury or false
+        System.__config.__detections.__phantom = d.phantom or false
+    end
+end
+
+local function save_config()
+    if not writefile then return false, 'writefile not supported by executor' end
+    local ok, enc = pcall(function() return HttpService:JSONEncode(collect_config()) end)
+    if not ok then return false, 'encode failed' end
+    local wrote = pcall(writefile, CONFIG_FILE, enc)
+    return wrote, wrote and 'saved' or 'write failed'
+end
+
+local function load_config()
+    if not (readfile and isfile) then return false, 'readfile not supported by executor' end
+    if not isfile(CONFIG_FILE) then return false, 'no saved config' end
+    local ok, data = pcall(readfile, CONFIG_FILE)
+    if not ok then return false, 'read failed' end
+    local decoded
+    local ok2 = pcall(function() decoded = HttpService:JSONDecode(data) end)
+    if not ok2 then return false, 'decode failed' end
+    apply_config(decoded)
+    return true, 'loaded (logic applied; re-toggle UI elements to see values)'
+end
+
+-- ========== UI: ESP (Visuals) ==========
+local esp_section = Tabs.Visuals:Section({Title = "ESP"})
+
+esp_section:Toggle({
+    Title = "Player ESP",
+    Desc = "Highlight players + show name / distance / HP",
+    Value = false,
+    Callback = function(v)
+        ESP.players_enabled = v
+        esp_set_running(v or ESP.ball_enabled)
+    end
+})
+
+esp_section:Toggle({
+    Title = "Ball ESP",
+    Desc = "Highlight real balls (red = targeting you)",
+    Value = false,
+    Callback = function(v)
+        ESP.ball_enabled = v
+        esp_set_running(v or ESP.players_enabled)
+    end
+})
+
+esp_section:Colorpicker({
+    Title = "Player ESP Color",
+    Default = ESP.player_color,
+    Callback = function(c) ESP.player_color = c end
+})
+
+-- ========== UI: Stats HUD (Visuals) ==========
+local stats_section = Tabs.Visuals:Section({Title = "Statistics"})
+stats_section:Toggle({
+    Title = "Stats HUD",
+    Desc = "On-screen parries / ball speed / ping / FPS / time",
+    Value = false,
+    Callback = function(v) stats_hud_set(v) end
+})
+stats_section:Button({
+    Title = "Reset Parry Counter",
+    Callback = function()
+        Stats_Session.parries = 0
+        Stats_Session.session_start = tick()
+        WindUI:Notify({Title = "Statistics", Content = "Counters reset", Duration = 2})
+    end
+})
+
+-- ========== UI: Utility (Misc) ==========
+local utility_section = Tabs.Misc:Section({Title = "Utility"})
+
+utility_section:Toggle({
+    Title = "Anti-AFK",
+    Desc = "Prevents the 20-minute idle kick",
+    Value = false,
+    Callback = function(v)
+        anti_afk_set(v)
+        WindUI:Notify({Title = "Anti-AFK", Content = v and "Enabled" or "Disabled", Duration = 2})
+    end
+})
+
+utility_section:Button({
+    Title = "Rejoin Server",
+    Callback = function()
+        WindUI:Notify({Title = "Rejoin", Content = "Rejoining current server...", Duration = 3})
+        rejoin_server()
+    end
+})
+
+utility_section:Button({
+    Title = "Server Hop",
+    Callback = function()
+        WindUI:Notify({Title = "Server Hop", Content = "Searching for a new server...", Duration = 3})
+        task.spawn(server_hop)
+    end
+})
+
+-- ========== UI: Config (Settings) ==========
+local config_section = Tabs.Settings:Section({Title = "Configuration"})
+
+config_section:Button({
+    Title = "Save Config",
+    Callback = function()
+        local ok, msg = save_config()
+        WindUI:Notify({Title = "Config", Content = ok and "Saved" or ("Failed: " .. tostring(msg)), Duration = 3})
+    end
+})
+
+config_section:Button({
+    Title = "Load Config",
+    Callback = function()
+        local ok, msg = load_config()
+        WindUI:Notify({Title = "Config", Content = tostring(msg), Duration = 4})
+    end
+})
+
+config_section:Toggle({
+    Title = "Auto-Load On Launch",
+    Desc = "Applies the saved config each time the hub loads",
+    Value = false,
+    Callback = function(v)
+        g.EagleAutoLoadConfig = v
+        if v then pcall(function() writefile("EagleHubX_AutoLoad.flag", "1") end)
+        else pcall(function() if delfile then delfile("EagleHubX_AutoLoad.flag") end end) end
+    end
+})
+
+-- Apply saved config automatically if the auto-load flag file exists.
+task.spawn(function()
+    if isfile and isfile("EagleHubX_AutoLoad.flag") then
+        task.wait(1)
+        local ok, msg = load_config()
+        if ok then WindUI:Notify({Title = "Config", Content = "Auto-loaded saved config", Duration = 3}) end
+    end
+end)
+
+
+pcall(function()
+    WindUI:Notify({
+        Title = "Eagle Hub X",
+        Content = "Loaded! World-class autoparry + full feature pack ready.",
+        Duration = 4,
+    })
+end)
+
+print("Eagle Hub X loaded successfully — Autoparry, Triggerbot, Spam, ESP, Stats HUD, Anti-AFK, Server Hop, Config Save/Load + Anti-Cheat Bypass!")
