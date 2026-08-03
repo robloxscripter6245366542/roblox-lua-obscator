@@ -119,7 +119,12 @@ local System = {
         __spam_target = nil,
         __spam_target_time = 0,
         __auto_spam_distance_multiplier = 1.0,
-        __speed_display_enabled = false
+        __speed_display_enabled = false,
+        -- Predictive parry: compensate for latency by parrying based on where
+        -- the ball WILL be when the packet reaches the server.
+        __prediction_enabled = true,
+        __reaction_time = 0,          -- extra lead in seconds (0 - 0.08)
+        __ping_spike_guard = true     -- suppress on sudden ping spikes
     },
     __config = {
         __curve_names = {'Camera','Random','Accelerated','Backwards','Slow','High'},
@@ -166,6 +171,26 @@ task.spawn(function()
         if System.__properties.__randomized_accuracy_enabled then update_randomized_accuracy() end
     end
 end)
+
+-- ========== SMOOTHED LATENCY (for predictive parry) ==========
+-- Exponentially smooths Data Ping so a single jittery reading can't make the
+-- predictor over-lead, and reports transient spikes so we can be conservative.
+local __ping_state = { smooth = 0 }
+local function get_latency()
+    local ok, ms = pcall(function() return Stats.Network.ServerStatsItem['Data Ping']:GetValue() end)
+    ms = (ok and ms) or 0
+    if __ping_state.smooth <= 0 then __ping_state.smooth = ms end
+    __ping_state.smooth = __ping_state.smooth + (ms - __ping_state.smooth) * 0.25
+    local spike = ms > (__ping_state.smooth * 1.8) and (ms - __ping_state.smooth) > 60
+    local lead_ms
+    if System.__properties.__ping_spike_guard then
+        -- Use the calmer of raw vs smoothed for the lead so spikes never over-fire.
+        lead_ms = spike and __ping_state.smooth or math.min(ms, __ping_state.smooth * 1.3)
+    else
+        lead_ms = ms
+    end
+    return ms / 1000, lead_ms / 1000, spike
+end
 
 -- ========== REMOTE HOOK ==========
 local function getCurveCFrame()
@@ -1076,7 +1101,27 @@ function System.autoparry.start()
             local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
             local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
             local curved = System.detection.is_curved()
-            
+
+            -- ===== PREDICTIVE PARRY (latency + velocity compensation) =====
+            -- Parry based on where the ball WILL be once our packet reaches the
+            -- server. For an approaching ball this fires exactly the network
+            -- delay earlier, which is precisely when input must be sent to land
+            -- on time. It is bounded by real latency, so it stays a near no-op
+            -- at low ping / low speed and only shines when it matters.
+            local within = distance <= parry_accuracy
+            if System.__properties.__prediction_enabled then
+                local _, lead_latency = get_latency()
+                local lead = lead_latency + (System.__properties.__reaction_time or 0)
+                local predicted_pos = ball.Position + velocity * lead
+                local predicted_distance = (LocalPlayer.Character.PrimaryPart.Position - predicted_pos).Magnitude
+                -- Only trust the prediction when the ball is genuinely closing
+                -- in (predicted < current); never use it to fire on a ball that
+                -- is moving away.
+                if predicted_distance < distance and predicted_distance <= parry_accuracy then
+                    within = true
+                end
+            end
+
             if ball:FindFirstChild('AeroDynamicSlashVFX') then
                 ball.AeroDynamicSlashVFX:Destroy()
                 System.__properties.__tornado_time = tick()
@@ -1095,7 +1140,7 @@ function System.autoparry.start()
             if System.__config.__detections.__timehole and System.__properties.__timehole_active then continue end
             if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then continue end
             
-            if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
+            if ball_target == LocalPlayer.Name and within then
                 if g.AutoAbility then
                     local AbilityCD = LocalPlayer.PlayerGui:FindFirstChild("Hotbar") and LocalPlayer.PlayerGui.Hotbar:FindFirstChild("Ability") and LocalPlayer.PlayerGui.Hotbar.Ability:FindFirstChild("UIGradient")
                     if AbilityCD and AbilityCD.Offset.Y == 0.5 then
@@ -1118,15 +1163,15 @@ function System.autoparry.start()
                 end
             end
             
-            if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
-                if g.AutoParryMode == "Keypress" then 
+            if ball_target == LocalPlayer.Name and within then
+                if g.AutoParryMode == "Keypress" then
                     System.parry.keypress()
-                else 
-                    System.parry.execute_action() 
+                else
+                    System.parry.execute_action()
                 end
                 System.__properties.__parried = true
             end
-            
+
             local last_parrys = tick()
             repeat RunService.Stepped:Wait()
             until (tick() - last_parrys) >= 1 or not System.__properties.__parried
@@ -1147,9 +1192,20 @@ function System.autoparry.start()
                     local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
                     local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
                     local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
-                    
-                    if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
-                        if g.AutoParryMode == "Keypress" then 
+
+                    local within = distance <= parry_accuracy
+                    if System.__properties.__prediction_enabled then
+                        local _, lead_latency = get_latency()
+                        local lead = lead_latency + (System.__properties.__reaction_time or 0)
+                        local predicted_pos = training_ball.Position + velocity * lead
+                        local predicted_distance = LocalPlayer:DistanceFromCharacter(predicted_pos)
+                        if predicted_distance < distance and predicted_distance <= parry_accuracy then
+                            within = true
+                        end
+                    end
+
+                    if ball_target == LocalPlayer.Name and within then
+                        if g.AutoParryMode == "Keypress" then
                             System.parry.keypress()
                         else 
                             System.parry.execute_action() 
@@ -1565,6 +1621,28 @@ autoparry_section:Toggle({
         System.__properties.__randomized_accuracy_enabled = value
         if value then update_randomized_accuracy() end
     end
+})
+
+autoparry_section:Toggle({
+    Title = "Predictive Parry",
+    Desc = "Latency + velocity aware — parries where the ball WILL be. Best on high ping / fast balls.",
+    Value = true,
+    Callback = function(value) System.__properties.__prediction_enabled = value end
+})
+
+autoparry_section:Slider({
+    Title = "Reaction Lead (ms)",
+    Desc = "Extra lead added on top of measured ping. 0 = pure ping compensation.",
+    Value = {Min = 0, Max = 80, Default = 0},
+    Step = 1,
+    Callback = function(value) System.__properties.__reaction_time = value / 1000 end
+})
+
+autoparry_section:Toggle({
+    Title = "Ping Spike Guard",
+    Desc = "Ignore sudden ping spikes so the predictor never over-fires.",
+    Value = true,
+    Callback = function(value) System.__properties.__ping_spike_guard = value end
 })
 
 autoparry_section:Toggle({Title = "Cooldown Protection", Value = false, Callback = function(value) g.CooldownProtection = value end})
