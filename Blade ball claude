@@ -2457,7 +2457,7 @@ local function esp_ensure_highlight(adornee, color)
         hl.FillColor = color
         hl.FillTransparency = 0.55
         hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-        hl.OutlineTransparency = 0
+        hl.OutlineTransparency = 0.35
         hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
         hl.Adornee = adornee
         hl.Parent = ESP_HOLDER
