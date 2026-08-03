@@ -130,7 +130,8 @@ local System = {
         -- 0.35 / 0.5 / 0.6). Replaces the old hard-coded 1.0s so rapid,
         -- back-to-back parries aren't blocked longer than the game allows.
         __parry_reset = 0.5,
-        __respect_noob_parry = true   -- if the game auto-parries (NoobParryEnabled), don't double up
+        __respect_noob_parry = true,  -- if the game auto-parries (NoobParryEnabled), don't double up
+        __auto_derive_window = true   -- derive __parry_reset from the equipped GrabParry animation
     },
     __config = {
         __curve_names = {'Camera','Random','Accelerated','Backwards','Slow','High'},
@@ -1092,6 +1093,7 @@ end
 -- So derive our reset window from the real animation length for an exact,
 -- per-sword match. Clamped and floored so it can never become 0.
 local function derive_parry_reset()
+    if not System.__properties.__auto_derive_window then return end
     task.spawn(function()
         local ok = pcall(function()
             local anim = GetParryAnimation()
@@ -1227,7 +1229,9 @@ function System.autoparry.start()
             end
             
             if ball_target == LocalPlayer.Name and within then
-                if g.AutoParryMode == "Keypress" then
+                if g.AutoParryMode == "Native" then
+                    System.parry.native_action()
+                elseif g.AutoParryMode == "Keypress" then
                     System.parry.keypress()
                 else
                     System.parry.execute_action()
@@ -1268,7 +1272,9 @@ function System.autoparry.start()
                     end
 
                     if ball_target == LocalPlayer.Name and within then
-                        if g.AutoParryMode == "Keypress" then
+                        if g.AutoParryMode == "Native" then
+                            System.parry.native_action()
+                        elseif g.AutoParryMode == "Keypress" then
                             System.parry.keypress()
                         else 
                             System.parry.execute_action() 
@@ -1651,7 +1657,8 @@ autoparry_section:Toggle({
 
 autoparry_section:Dropdown({
     Title = "Parry Mode",
-    Values = {"Remote", "Keypress"},
+    Desc = "Native = fire the game's own ParryButtonPress (most legit + game-accurate). Remote/Keypress = direct.",
+    Values = {"Native", "Remote", "Keypress"},
     Value = "Remote",
     Callback = function(value) g.AutoParryMode = value end
 })
@@ -2812,9 +2819,15 @@ local function stats_hud_update()
     local parryLine = serverCount ~= nil
         and string.format('Parries: %d (server)', serverCount)
         or  string.format('Parries: %d', Stats_Session.parries)
+    -- Live parry window (game's ParryTime attribute) via the SwordController system.
+    local windowLine = ''
+    if System.swordcontroller then
+        local pt = System.swordcontroller.get_parry_time and System.swordcontroller.get_parry_time()
+        if type(pt) == 'number' then windowLine = string.format('\nParry Window: %.2fs', pt) end
+    end
     StatsHUD.label.Text = string.format(
-        '<b><font color="#00aaff">EAGLE HUB X</font></b>\n%s\nBall Speed: %.0f\nPing: %d ms\nFPS: %d\nTime: %02d:%02d',
-        parryLine, speed, ping, Stats_Session.fps, mins, secs)
+        '<b><font color="#00aaff">EAGLE HUB X</font></b>\n%s\nBall Speed: %.0f\nPing: %d ms\nFPS: %d\nTime: %02d:%02d%s',
+        parryLine, speed, ping, Stats_Session.fps, mins, secs, windowLine)
 end
 
 local function stats_hud_set(state)
@@ -3067,6 +3080,142 @@ task.spawn(function()
         if ok then WindUI:Notify({Title = "Config", Content = "Auto-loaded saved config", Duration = 3}) end
     end
 end)
+
+
+
+-- ========================================================================
+-- ========== SWORD CONTROLLER SYSTEM =====================================
+-- Built from the deobfuscated SwordsController. The controller listens to the
+-- ParryButtonPress BindableEvent, writes the ParryTime attribute (= GrabParry
+-- animation length) and tallies ServerParryCount. This system taps those.
+-- ========================================================================
+System.swordcontroller = {}
+local SwordCtl = System.swordcontroller
+
+local _remotes = ReplicatedStorage:FindFirstChild("Remotes")
+SwordCtl.controller = ReplicatedStorage:FindFirstChild("Controllers")
+    and ReplicatedStorage.Controllers:FindFirstChild("SwordsController")
+SwordCtl.ParryButtonPress = _remotes and _remotes:FindFirstChild("ParryButtonPress")
+SwordCtl.FireSwordInfo    = _remotes and _remotes:FindFirstChild("FireSwordInfo")
+SwordCtl.M1Stop           = _remotes and _remotes:FindFirstChild("M1Stop")
+
+-- Native parry: fire the exact client input the game itself uses. The
+-- SwordsController then runs its own targeting (camera/mouse ray), animation
+-- and server call, so the parry is perfectly game-accurate and looks legit.
+function SwordCtl.native_parry()
+    local pbp = SwordCtl.ParryButtonPress
+    if not pbp then return false end
+    return (pcall(function() pbp:Fire() end))
+end
+
+-- Route used by the autoparry loop when Parry Mode = "Native".
+function System.parry.native_action()
+    if System.__properties.__parries > 10000 or not LocalPlayer.Character then return end
+    SwordCtl.native_parry()
+    System.__properties.__parries = System.__properties.__parries + 1
+    task.delay(0.5, function()
+        if System.__properties.__parries > 0 then
+            System.__properties.__parries = System.__properties.__parries - 1
+        end
+    end)
+end
+
+-- Live readouts (attributes the controller writes on the character).
+function SwordCtl.get_parry_time()
+    local ch = LocalPlayer.Character
+    return ch and ch:GetAttribute("ParryTime") or nil
+end
+function SwordCtl.get_server_parry_count()
+    local ch = LocalPlayer.Character
+    local v = ch and ch:GetAttribute("ServerParryCount")
+    if v == nil then v = LocalPlayer:GetAttribute("ServerParryCount") end
+    return v
+end
+function SwordCtl.get_current_sword()
+    local ch = LocalPlayer.Character
+    return ch and ch:GetAttribute("CurrentlyEquippedSword") or nil
+end
+
+-- Re-derive the parry window whenever the equipped sword changes, so the
+-- reset window always matches the current sword's GrabParry length.
+local function hook_sword_changes(char)
+    if not char then return end
+    pcall(function()
+        char:GetAttributeChangedSignal("CurrentlyEquippedSword"):Connect(function()
+            task.wait(0.2)
+            derive_parry_reset()
+        end)
+    end)
+end
+hook_sword_changes(LocalPlayer.Character)
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.3)
+    hook_sword_changes(char)
+    derive_parry_reset()
+end)
+
+-- ========== SWORD TAB (UI) ==========
+local sword_tab = Window:Tab({ Title = "Sword", Icon = "solar:sword-bold-duotone" })
+local sword_info_section = sword_tab:Section({ Title = "Sword Controller" })
+
+sword_info_section:Paragraph({
+    Title = "Native Parry Engine",
+    Desc = "Deobfuscated from the game's SwordsController. Native mode fires the game's own ParryButtonPress so parries use the real targeting, animation and timing — the most game-accurate option.",
+})
+
+sword_info_section:Button({
+    Title = "Enable Native Parry Mode",
+    Desc = "Sets Auto Parry to fire the game's own ParryButtonPress.",
+    Callback = function()
+        g.AutoParryMode = "Native"
+        WindUI:Notify({
+            Title = "Sword Controller",
+            Content = SwordCtl.ParryButtonPress and "Native Parry enabled" or "ParryButtonPress not found — using Remote",
+            Duration = 3,
+        })
+        if not SwordCtl.ParryButtonPress then g.AutoParryMode = "Remote" end
+    end
+})
+
+sword_info_section:Button({
+    Title = "Show Sword Info",
+    Callback = function()
+        local sword = SwordCtl.get_current_sword() or "?"
+        local pt = SwordCtl.get_parry_time()
+        local spc = SwordCtl.get_server_parry_count()
+        WindUI:Notify({
+            Title = "Sword Info",
+            Content = string.format("Sword: %s\nParryTime: %s\nServer Parries: %s\nController: %s",
+                tostring(sword),
+                pt and string.format("%.3fs", pt) or "n/a",
+                spc ~= nil and tostring(spc) or "n/a",
+                SwordCtl.controller and "found" or "not found"),
+            Duration = 5,
+        })
+    end
+})
+
+sword_info_section:Toggle({
+    Title = "Auto-derive Parry Window",
+    Desc = "Match the parried-state hold to the equipped sword's GrabParry length (exact ParryTime).",
+    Value = true,
+    Callback = function(v)
+        System.__properties.__auto_derive_window = v
+        if v then derive_parry_reset() end
+    end
+})
+
+local sword_swing_section = sword_tab:Section({ Title = "Swing" })
+sword_swing_section:Button({
+    Title = "Stop M1 (cancel swing)",
+    Desc = "Fires the game's M1Stop to cancel your current swing.",
+    Callback = function()
+        if SwordCtl.M1Stop then
+            pcall(function() SwordCtl.M1Stop:Fire() end)
+            WindUI:Notify({ Title = "Sword", Content = "M1 stopped", Duration = 2 })
+        end
+    end
+})
 
 
 pcall(function()
