@@ -1,6 +1,6 @@
 -- Initialize getgenv defaults early to prevent nil references
 local g = getgenv()
-g.AutoParryMode = g.AutoParryMode or "Remote"
+g.AutoParryMode = g.AutoParryMode or "Native"
 g.AutoParryNotify = g.AutoParryNotify or false
 g.CooldownProtection = g.CooldownProtection or false
 g.AutoAbility = g.AutoAbility or false
@@ -9,10 +9,10 @@ g.AutoCurveHotkeyNotify = g.AutoCurveHotkeyNotify or false
 g.AutoCurveHotkeyEnabled = g.AutoCurveHotkeyEnabled or false
 g.InfinityNotify = g.InfinityNotify or false
 g.ManualSpamNotify = g.ManualSpamNotify or false
-g.ManualSpamMode = g.ManualSpamMode or "Remote"
+g.ManualSpamMode = g.ManualSpamMode or "Direct"
 g.ManualSpamAnimationFix = g.ManualSpamAnimationFix or false
 g.AutoSpamNotify = g.AutoSpamNotify or false
-g.AutoSpamMode = g.AutoSpamMode or "Remote"
+g.AutoSpamMode = g.AutoSpamMode or "Direct"
 g.AutoSpamAnimationFix = g.AutoSpamAnimationFix or false
 g.AutoStop = g.AutoStop or false
 g.CameraEnabled = g.CameraEnabled or false
@@ -261,62 +261,6 @@ end
 local Camera = workspace.CurrentCamera
 local PRY = require(ReplicatedStorage:FindFirstChild('PRY', true) or ReplicatedStorage:WaitForChild('PRY'))
 
-local Network = getupvalue(PRY, 6)
-local Constants = getupvalue(PRY, 3)
-local Convert = getupvalue(PRY, 4)
-
-local Hash1 = getupvalue(PRY, 8)
-local Hash2 = Constants[2]
-local Hash3 = function()
-    local Constant = Convert(Hash2, 'TIME')
-    local Time = tostring(math.floor(workspace:GetServerTimeNow() * 100))
-    local Encoded = {}
-    for i = 1, #Time do
-        local s1 = string.byte(Constant, ((i - 1) % #Constant) + 1)
-        Encoded[i] = string.char(bit32.bxor((string.byte(Time, i) + i) % 256, s1))
-    end
-    return table.concat(Encoded)
-end
-
-local ParryRemote = nil
-do
-    local RemoteName = string.gsub(game.JobId, '-', '')
-    local GetRemote = Network.RemoteEvent
-    task.spawn(function()
-        local setthread = setthreadidentity or setidentity
-        if setthread then pcall(setthread, 2) end
-        pcall(function()
-            setfenv(0, getfenv(PRY))
-            setfenv(1, getfenv(PRY))
-        end)
-        ParryRemote = GetRemote(Network, RemoteName)
-    end)
-end
-
-local function fireParry()
-    if not ParryRemote then return end
-    local cam = workspace.CurrentCamera
-    if not cam then return end
-    local char = LocalPlayer.Character
-    if not char then return end
-    
-    local event_data = {}
-    if Alive then
-        for _, entity in pairs(Alive:GetChildren()) do
-            if entity.PrimaryPart then
-                local ok, sp = pcall(function() return cam:WorldToScreenPoint(entity.PrimaryPart.Position) end)
-                if ok then event_data[entity.Name] = sp end
-            end
-        end
-    end
-    
-    local viewport = cam.ViewportSize
-    local curveCF = getCurveCFrame()
-    pcall(function() 
-        ParryRemote:FireServer(Hash1, Hash2, Hash3(), 0.025, curveCF, event_data, {viewport.X/2, viewport.Y/2}, false) 
-    end)
-end
-
 System.animation = {}
 
 -- ========== ANIMATION ==========
@@ -513,32 +457,10 @@ end
 System.curve = {}
 function System.curve.get_cframe() return getCurveCFrame() end
 
-local function Parry()
-    if not ParryRemote then return end
-    local cam = workspace.CurrentCamera
-    if not cam then return end
-    local aliveFolder = Alive or workspace:FindFirstChild('Alive')
-    local PlayerPositions = {}
-    if aliveFolder then
-        for _, char in next, aliveFolder:GetChildren() do
-            if char:FindFirstChild('HumanoidRootPart') then
-                PlayerPositions[char.Name] = char.HumanoidRootPart.Position
-            end
-        end
-    end
-    local CameraCenter = cam.ViewportSize / 2
-    local CameraData = {CameraCenter.X, CameraCenter.Y}
-    -- Use the selected curve CFrame (mode 1 = Camera, preserving default behaviour)
-    local sendCF = getCurveCFrame()
-    pcall(function()
-        ParryRemote:FireServer(Hash1, Hash2, Hash3(), 0.025, sendCF, PlayerPositions, CameraData, false)
-    end)
-end
-
 System.parry = {}
 function System.parry.execute()
     if System.__properties.__parries > 10000 or not LocalPlayer.Character then return end
-    Parry()
+    System.parry.direct_action()
     if System.__properties.__parries > 10000 then return end
     System.__properties.__parries = System.__properties.__parries + 1
     task.delay(0.5, function() 
@@ -550,7 +472,7 @@ end
 
 function System.parry.keypress()
     if System.__properties.__parries > 10000 or not LocalPlayer.Character then return end
-    fireParry()
+    System.parry.native_action()
     if System.__properties.__parries > 10000 then return end
     System.__properties.__parries = System.__properties.__parries + 1
     task.delay(0.5, function() 
