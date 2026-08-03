@@ -39,6 +39,21 @@ g.swordFX = g.swordFX or ""
 g.slashName = g.slashName or "SlashEffect"
 g.AutoVote = g.AutoVote or false
 
+-- New feature defaults (v2)
+g.PingCompensation = (g.PingCompensation == nil) and true or g.PingCompensation
+g.ParryRangeBonus = g.ParryRangeBonus or 0
+g.HumanizeParry = g.HumanizeParry or false
+g.AntiAFK = (g.AntiAFK == nil) and true or g.AntiAFK
+g.BallESP = g.BallESP or false
+g.PlayerESP = g.PlayerESP or false
+g.TargetHighlight = g.TargetHighlight or false
+g.AutoRetry = g.AutoRetry or false
+g.FlyEnabled = g.FlyEnabled or false
+g.FlySpeed = g.FlySpeed or 60
+g.NoclipEnabled = g.NoclipEnabled or false
+g.StatsPanel = g.StatsPanel or false
+g.AutoParryKeybindEnabled = g.AutoParryKeybindEnabled or false
+
 -- ========== ANTI-CHEAT BYPASS HOOKS ==========
 local hookfunction = hookfunction or (getgenv and getgenv().hookfunction)
 if hookfunction and getrenv then
@@ -146,14 +161,27 @@ if ReplicatedStorage:FindFirstChild("Controllers") then
     end
 end
 
+-- Safe ping reader with short cache to avoid repeated service lookups every frame
+local __ping_cache = 0
+local __ping_last = 0
+local function getPing()
+    local now = os.clock()
+    if now - __ping_last < 0.25 then return __ping_cache end
+    __ping_last = now
+    local ok, val = pcall(function()
+        return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+    end)
+    if ok and type(val) == "number" then __ping_cache = val end
+    return __ping_cache
+end
+
 local function update_divisor()
     System.__properties.__divisor_multiplier = 0.7 + (System.__properties.__accuracy - 1) * (0.9/99)
 end
 
 local function update_randomized_accuracy()
     if not System.__properties.__randomized_accuracy_enabled then return end
-    local ping_str = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
-    local ping = tonumber(ping_str:match("%d+")) or 0
+    local ping = getPing()
     local new_accuracy
     if ping >= 90 then new_accuracy = 4
     elseif ping <= 50 then new_accuracy = math.random(70, 100)
@@ -477,16 +505,24 @@ System.curve = {}
 function System.curve.get_cframe() return getCurveCFrame() end
 
 local function Parry()
+    if not ParryRemote then return end
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local alive = Alive or workspace:FindFirstChild("Alive")
     local PlayerPositions = {}
-    for _, char in next, workspace.Alive:GetChildren() do
-        if char:FindFirstChild('HumanoidRootPart') then
-            PlayerPositions[char.Name] = char.HumanoidRootPart.Position
+    if alive then
+        for _, char in next, alive:GetChildren() do
+            if char:FindFirstChild('HumanoidRootPart') then
+                PlayerPositions[char.Name] = char.HumanoidRootPart.Position
+            end
         end
     end
-    local CameraCenter = Camera.ViewportSize / 2
+    local CameraCenter = cam.ViewportSize / 2
     local CameraData = {CameraCenter.X, CameraCenter.Y}
+    -- Use the selected curve CFrame so curve modes work in Remote mode too (bug fix)
+    local aimCF = getCurveCFrame()
     pcall(function()
-        ParryRemote:FireServer(Hash1, Hash2, Hash3(), 0.025, Camera.CFrame, PlayerPositions, CameraData, false)
+        ParryRemote:FireServer(Hash1, Hash2, Hash3(), 0.025, aimCF, PlayerPositions, CameraData, false)
     end)
 end
 
@@ -494,6 +530,7 @@ System.parry = {}
 function System.parry.execute()
     if System.__properties.__parries > 10000 or not LocalPlayer.Character then return end
     Parry()
+    System.__properties.__parry_total = (System.__properties.__parry_total or 0) + 1
     if System.__properties.__parries > 10000 then return end
     System.__properties.__parries = System.__properties.__parries + 1
     task.delay(0.5, function() 
@@ -506,6 +543,7 @@ end
 function System.parry.keypress()
     if System.__properties.__parries > 10000 or not LocalPlayer.Character then return end
     fireParry()
+    System.__properties.__parry_total = (System.__properties.__parry_total or 0) + 1
     if System.__properties.__parries > 10000 then return end
     System.__properties.__parries = System.__properties.__parries + 1
     task.delay(0.5, function() 
@@ -545,7 +583,7 @@ function System.detection.is_curved()
     local pos = char.PrimaryPart.Position
     local direction = (pos - ball.Position).Unit
     local dot = direction:Dot(ball_dir)
-    local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+    local ping = getPing() / 1000
     local distance = (pos - ball.Position).Magnitude
     local reach_time = distance / speed - ping
     
@@ -710,7 +748,7 @@ pcall(function()
         local Ball_Direction = Velocity.Unit
         local Direction = (LocalPlayer.Character.PrimaryPart.Position - Ball.Position).Unit
         local Dot = Direction:Dot(Ball_Direction)
-        local Pings = Stats.Network.ServerStatsItem['Data Ping']:GetValue()
+        local Pings = getPing()
         local Speed_Threshold = math.min(Speed / 100, 40)
         local Reach_Time = Distance / Speed - (Pings / 1000)
         local Enough_Speed = Speed > 1
@@ -966,7 +1004,7 @@ function System.auto_spam.start()
         local entity_properties = System.auto_spam:get_entity_properties()
         
         if ball_properties and entity_properties then
-            local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue()
+            local ping = getPing()
             local ping_threshold = math.clamp(ping / 5, 1, 16)
             
             local spam_accuracy = System.auto_spam.spam_service({
@@ -1064,12 +1102,12 @@ function System.autoparry.start()
             local ball_target = ball:GetAttribute('target')
             local velocity = zoomies.VectorVelocity
             local distance = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Magnitude
-            local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue() / 10
-            local ping_threshold = math.clamp(ping / 10, 5, 17)
+            local ping = getPing() / 10
+            local ping_threshold = g.PingCompensation and math.clamp(ping / 10, 5, 17) or 8
             local speed = velocity.Magnitude
             local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
             local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
-            local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+            local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5) + (g.ParryRangeBonus or 0)
             local curved = System.detection.is_curved()
             
             if ball:FindFirstChild('AeroDynamicSlashVFX') then
@@ -1103,9 +1141,12 @@ function System.autoparry.start()
                                (abilities:FindFirstChild("Fracture") and abilities["Fracture"].Enabled) or
                                (abilities:FindFirstChild("Death Slash") and abilities["Death Slash"].Enabled) then
                                 System.__properties.__parried = true
-                                pcall(function() ReplicatedStorage.Remotes.AbilityButtonPress:Fire() end)
-                                task.wait(2.432)
-                                pcall(function() ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DeathSlashShootActivation"):FireServer(true) end)
+                                -- Run ability sequence off-thread so the parry loop never blocks (bug fix)
+                                task.spawn(function()
+                                    pcall(function() ReplicatedStorage.Remotes.AbilityButtonPress:Fire() end)
+                                    task.wait(2.432)
+                                    pcall(function() ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DeathSlashShootActivation"):FireServer(true) end)
+                                end)
                                 continue
                             end
                         end
@@ -1137,11 +1178,11 @@ function System.autoparry.start()
                     local velocity = zoomies.VectorVelocity
                     local distance = LocalPlayer:DistanceFromCharacter(training_ball.Position)
                     local speed = velocity.Magnitude
-                    local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue() / 10
-                    local ping_threshold = math.clamp(ping / 10, 5, 17)
+                    local ping = getPing() / 10
+                    local ping_threshold = g.PingCompensation and math.clamp(ping / 10, 5, 17) or 8
                     local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
                     local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
-                    local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+                    local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5) + (g.ParryRangeBonus or 0)
                     
                     if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
                         if g.AutoParryMode == "Keypress" then 
@@ -1462,6 +1503,324 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
+-- ==================================================================
+-- ========== NEW FEATURE MODULES (v2 enhancements) =================
+-- ==================================================================
+local TeleportService = cloneref(game:GetService("TeleportService"))
+local HttpService = cloneref(game:GetService("HttpService"))
+
+-- ---------- Total parry counter (for stats panel) ----------
+System.__properties.__parry_total = System.__properties.__parry_total or 0
+
+-- ---------- Anti-AFK ----------
+do
+    local ok, VirtualUser = pcall(function() return cloneref(game:GetService("VirtualUser")) end)
+    if ok and VirtualUser then
+        pcall(function()
+            LocalPlayer.Idled:Connect(function()
+                if not g.AntiAFK then return end
+                pcall(function()
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton2(Vector2.new())
+                end)
+            end)
+        end)
+    end
+end
+
+-- ---------- ESP System (Ball / Player / Threat) ----------
+local ESP = {balls = {}, players = {}, threat = {hl = nil, target = nil}, renderConn = nil, removingConn = nil}
+
+local function ESP_newHighlight(adornee, fill, outline, fillT)
+    local h = Instance.new("Highlight")
+    h.FillColor = fill
+    h.OutlineColor = outline
+    h.FillTransparency = fillT or 0.5
+    h.OutlineTransparency = 0
+    h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    h.Adornee = adornee
+    h.Parent = adornee
+    return h
+end
+
+local function ESP_clearBalls()
+    for ball, h in pairs(ESP.balls) do pcall(function() h:Destroy() end) end
+    ESP.balls = {}
+end
+
+local function ESP_clearThreat()
+    if ESP.threat.hl then pcall(function() ESP.threat.hl:Destroy() end) end
+    ESP.threat.hl = nil
+    ESP.threat.target = nil
+end
+
+local function ESP_removePlayer(plr)
+    local d = ESP.players[plr]
+    if d then
+        if d.highlight then pcall(function() d.highlight:Destroy() end) end
+        if d.bb then pcall(function() d.bb:Destroy() end) end
+        ESP.players[plr] = nil
+    end
+end
+
+local function ESP_clearPlayers()
+    for plr in pairs(ESP.players) do ESP_removePlayer(plr) end
+end
+
+local function ESP_setupPlayer(plr)
+    if plr == LocalPlayer or ESP.players[plr] then return end
+    local char = plr.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head") or char:FindFirstChildWhichIsA("BasePart")
+    if not head then return end
+
+    local hl = ESP_newHighlight(char, Color3.fromRGB(255, 70, 70), Color3.fromRGB(255, 255, 255), 0.65)
+
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "EagleESP_BB"
+    bb.Adornee = head
+    bb.Size = UDim2.new(0, 220, 0, 20)
+    bb.StudsOffset = Vector3.new(0, 2.6, 0)
+    bb.AlwaysOnTop = true
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 13
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextStrokeTransparency = 0.4
+    label.Parent = bb
+    bb.Parent = head
+
+    ESP.players[plr] = {highlight = hl, bb = bb, label = label, char = char}
+end
+
+local function ESP_render()
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+
+    -- Ball ESP
+    if g.BallESP then
+        local balls = System.ball.get_all()
+        local seen = {}
+        for _, ball in ipairs(balls) do
+            seen[ball] = true
+            if not ESP.balls[ball] then
+                ESP.balls[ball] = ESP_newHighlight(ball, Color3.fromRGB(0, 200, 255), Color3.fromRGB(255, 255, 255), 0.3)
+            end
+        end
+        for ball, h in pairs(ESP.balls) do
+            if not seen[ball] or not ball.Parent then
+                pcall(function() h:Destroy() end)
+                ESP.balls[ball] = nil
+            end
+        end
+    elseif next(ESP.balls) then
+        ESP_clearBalls()
+    end
+
+    -- Player ESP
+    if g.PlayerESP then
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+                local d = ESP.players[plr]
+                if d and d.char ~= plr.Character then ESP_removePlayer(plr); d = nil end
+                if not d then ESP_setupPlayer(plr) end
+            end
+        end
+        for plr, d in pairs(ESP.players) do
+            if not plr.Parent or not plr.Character or not plr.Character.Parent then
+                ESP_removePlayer(plr)
+            elseif d.label then
+                local dist = 0
+                local prroot = plr.Character:FindFirstChild("HumanoidRootPart")
+                if root and prroot then dist = math.floor((root.Position - prroot.Position).Magnitude) end
+                d.label.Text = string.format("%s [%dm]", plr.DisplayName, dist)
+            end
+        end
+    elseif next(ESP.players) then
+        ESP_clearPlayers()
+    end
+
+    -- Threat highlight (whoever the ball currently targets)
+    if g.TargetHighlight then
+        local ball = System.ball.get()
+        local targetName = ball and ball:GetAttribute("target")
+        local targetChar = (targetName and Alive) and Alive:FindFirstChild(targetName) or nil
+        if targetChar ~= ESP.threat.target then
+            ESP_clearThreat()
+            if targetChar then
+                ESP.threat.hl = ESP_newHighlight(targetChar, Color3.fromRGB(255, 200, 0), Color3.fromRGB(255, 0, 0), 0.4)
+                ESP.threat.target = targetChar
+            end
+        end
+    elseif ESP.threat.hl then
+        ESP_clearThreat()
+    end
+end
+
+local function ESP_updateState()
+    if g.BallESP or g.PlayerESP or g.TargetHighlight then
+        if not ESP.renderConn then
+            ESP.renderConn = RunService.RenderStepped:Connect(function() pcall(ESP_render) end)
+        end
+        if not ESP.removingConn then
+            ESP.removingConn = Players.PlayerRemoving:Connect(function(plr) ESP_removePlayer(plr) end)
+        end
+    else
+        if ESP.renderConn then ESP.renderConn:Disconnect(); ESP.renderConn = nil end
+        if ESP.removingConn then ESP.removingConn:Disconnect(); ESP.removingConn = nil end
+        ESP_clearBalls(); ESP_clearPlayers(); ESP_clearThreat()
+    end
+end
+
+-- ---------- Fly ----------
+local Fly = {conn = nil, bv = nil, bg = nil}
+local function Fly_stop()
+    g.FlyEnabled = false
+    if Fly.conn then Fly.conn:Disconnect(); Fly.conn = nil end
+    if Fly.bv then pcall(function() Fly.bv:Destroy() end); Fly.bv = nil end
+    if Fly.bg then pcall(function() Fly.bg:Destroy() end); Fly.bg = nil end
+end
+local function Fly_start()
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    Fly_stop()
+    g.FlyEnabled = true
+
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(1, 1, 1) * 9e9
+    bv.Velocity = Vector3.zero
+    bv.P = 9e4
+    bv.Parent = root
+    Fly.bv = bv
+
+    local bg = Instance.new("BodyGyro")
+    bg.MaxTorque = Vector3.new(1, 1, 1) * 9e9
+    bg.P = 9e4
+    bg.Parent = root
+    Fly.bg = bg
+
+    Fly.conn = RunService.Heartbeat:Connect(function()
+        if not g.FlyEnabled then return end
+        local c = LocalPlayer.Character
+        local r = c and c:FindFirstChild("HumanoidRootPart")
+        if not r then return end
+        if bv.Parent ~= r then bv.Parent = r end
+        if bg.Parent ~= r then bg.Parent = r end
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+        bg.CFrame = cam.CFrame
+        local dir = Vector3.zero
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0, 1, 0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.new(0, 1, 0) end
+        bv.Velocity = dir * (g.FlySpeed or 60)
+    end)
+end
+
+-- ---------- Noclip ----------
+local Noclip = {conn = nil}
+local function Noclip_start()
+    g.NoclipEnabled = true
+    if Noclip.conn then return end
+    Noclip.conn = RunService.Stepped:Connect(function()
+        if not g.NoclipEnabled then return end
+        local char = LocalPlayer.Character
+        if not char then return end
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") and p.CanCollide then p.CanCollide = false end
+        end
+    end)
+end
+local function Noclip_stop()
+    g.NoclipEnabled = false
+    if Noclip.conn then Noclip.conn:Disconnect(); Noclip.conn = nil end
+end
+
+-- ---------- Stats Panel (FPS / Ping / Parries) ----------
+local StatsPanel = {gui = nil, label = nil, conn = nil}
+local function Stats_start()
+    if StatsPanel.gui then return end
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "EagleStatsPanel"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.DisplayOrder = 998
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 172, 0, 78)
+    frame.Position = UDim2.new(0, 10, 0, 60)
+    frame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    frame.BackgroundTransparency = 0.2
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new("UIStroke", frame)
+    stroke.Color = Color3.fromRGB(236, 162, 1)
+    stroke.Transparency = 0.3
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -12, 1, -8)
+    label.Position = UDim2.new(0, 8, 0, 4)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.GothamMedium
+    label.TextSize = 13
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextYAlignment = Enum.TextYAlignment.Top
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.RichText = true
+    label.Text = ""
+    label.Parent = frame
+    frame.Parent = gui
+    gui.Parent = CoreGui
+    StatsPanel.gui = gui
+    StatsPanel.label = label
+
+    local frames, fps, acc = 0, 0, 0
+    StatsPanel.conn = RunService.RenderStepped:Connect(function(dt)
+        frames = frames + 1
+        acc = acc + dt
+        if acc >= 0.5 then fps = math.floor(frames / acc); frames = 0; acc = 0 end
+        label.Text = string.format(
+            "<b><font color=\"#ECA201\">Eagle Hub X</font></b>\nFPS: %d\nPing: %d ms\nParries: %d",
+            fps, math.floor(getPing()), System.__properties.__parry_total or 0
+        )
+    end)
+end
+local function Stats_stop()
+    if StatsPanel.conn then StatsPanel.conn:Disconnect(); StatsPanel.conn = nil end
+    if StatsPanel.gui then pcall(function() StatsPanel.gui:Destroy() end); StatsPanel.gui = nil; StatsPanel.label = nil end
+end
+
+-- ---------- Rejoin / Server Hop ----------
+local function Rejoin()
+    pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end)
+end
+local function ServerHop()
+    task.spawn(function()
+        local ok, body = pcall(function()
+            return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")
+        end)
+        if not ok then Rejoin(); return end
+        local ok2, data = pcall(function() return HttpService:JSONDecode(body) end)
+        if not ok2 or type(data) ~= "table" or not data.data then Rejoin(); return end
+        for _, s in ipairs(data.data) do
+            if s.playing and s.maxPlayers and s.playing < s.maxPlayers and s.id ~= game.JobId then
+                local done = pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LocalPlayer) end)
+                if done then return end
+            end
+        end
+        Rejoin()
+    end)
+end
+
 -- ========== UI SETUP (Wind UI) ==========
 local Window = WindUI:CreateWindow({
     Title = "Eagle Hub X",
@@ -1541,8 +1900,29 @@ autoparry_section:Toggle({
     end
 })
 
+autoparry_section:Slider({
+    Title = "Parry Range Bonus",
+    Desc = "Extra studs added to parry reach (0 = default tuning)",
+    Value = {Min = 0, Max = 25, Default = 0},
+    Step = 1,
+    Callback = function(v) g.ParryRangeBonus = v end
+})
+
+autoparry_section:Toggle({
+    Title = "Ping Compensation",
+    Desc = "Adapt parry timing to your latency",
+    Value = true,
+    Callback = function(v) g.PingCompensation = v end
+})
+
 autoparry_section:Toggle({Title = "Cooldown Protection", Value = false, Callback = function(value) g.CooldownProtection = value end})
 autoparry_section:Toggle({Title = "Auto Ability", Value = false, Callback = function(value) g.AutoAbility = value end})
+autoparry_section:Toggle({
+    Title = "Toggle Key Enabled",
+    Desc = "Use the Auto Parry hotkey (set in Settings)",
+    Value = false,
+    Callback = function(v) g.AutoParryKeybindEnabled = v end
+})
 autoparry_section:Toggle({Title = "Notify", Value = false, Callback = function(value) g.AutoParryNotify = value end})
 
 -- TRIGGERBOT
@@ -1989,6 +2369,31 @@ character_section:Slider({
     end
 })
 
+-- Movement Section (Player tab)
+local movement_section = Tabs.Player:Section({Title = "Movement"})
+movement_section:Toggle({
+    Title = "Fly",
+    Desc = "WASD + Space/Shift to fly (PC)",
+    Value = false,
+    Callback = function(v)
+        if v then Fly_start() else Fly_stop() end
+    end
+})
+movement_section:Slider({
+    Title = "Fly Speed",
+    Value = {Min = 10, Max = 250, Default = 60},
+    Step = 5,
+    Callback = function(v) g.FlySpeed = v end
+})
+movement_section:Toggle({
+    Title = "Noclip",
+    Desc = "Walk through parts",
+    Value = false,
+    Callback = function(v)
+        if v then Noclip_start() else Noclip_stop() end
+    end
+})
+
 -- VISUALS TAB
 local ability_esp = {
     __config = {
@@ -2179,6 +2584,39 @@ ball_velocity_section:Toggle({
     end
 })
 
+-- ESP Section
+local esp_section = Tabs.Visuals:Section({Title = "ESP"})
+esp_section:Toggle({
+    Title = "Ball ESP",
+    Desc = "Highlight the real ball(s)",
+    Value = false,
+    Callback = function(v) g.BallESP = v; ESP_updateState() end
+})
+esp_section:Toggle({
+    Title = "Player ESP",
+    Desc = "Highlight players with name + distance",
+    Value = false,
+    Callback = function(v) g.PlayerESP = v; ESP_updateState() end
+})
+esp_section:Toggle({
+    Title = "Threat Highlight",
+    Desc = "Highlight whoever the ball is targeting",
+    Value = false,
+    Callback = function(v) g.TargetHighlight = v; ESP_updateState() end
+})
+
+-- Stats Panel Section
+local stats_section = Tabs.Visuals:Section({Title = "Overlay"})
+stats_section:Toggle({
+    Title = "Stats Panel",
+    Desc = "On-screen FPS / Ping / Parry counter",
+    Value = false,
+    Callback = function(v)
+        g.StatsPanel = v
+        if v then Stats_start() else Stats_stop() end
+    end
+})
+
 -- MISC TAB
 local skin_changer_section = Tabs.Misc:Section({Title = "Skin Changer"})
 
@@ -2226,6 +2664,28 @@ no_render_section:Toggle({
     end
 })
 
+-- Server Section (Misc tab)
+local server_section = Tabs.Misc:Section({Title = "Server"})
+server_section:Toggle({
+    Title = "Anti-AFK",
+    Desc = "Prevent the 20-minute idle kick",
+    Value = true,
+    Callback = function(v) g.AntiAFK = v end
+})
+server_section:Button({
+    Title = "Rejoin Server",
+    Desc = "Teleport back into the current place",
+    Callback = function() Rejoin() end
+})
+server_section:Button({
+    Title = "Server Hop",
+    Desc = "Jump to a different public server",
+    Callback = function()
+        WindUI:Notify({Title = "Server Hop", Content = "Searching for a server...", Duration = 3})
+        ServerHop()
+    end
+})
+
 -- Mobile UI button
 local mobile_ui_button = nil
 local function create_mobile_ui_button()
@@ -2263,8 +2723,19 @@ local function create_mobile_ui_button()
     text.ZIndex = 10001
     text.Parent = button
     
-    button.MouseButton1Click:Connect(function() 
-        WindUI:Notify({Title = "UI", Content = "Toggle functionality depends on Wind UI version", Duration = 2})
+    local __ui_open = true
+    button.MouseButton1Click:Connect(function()
+        __ui_open = not __ui_open
+        local toggled = pcall(function()
+            if __ui_open then
+                if Window.Open then Window:Open() elseif Window.Maximize then Window:Maximize() end
+            else
+                if Window.Close then Window:Close() elseif Window.Minimize then Window:Minimize() end
+            end
+        end)
+        if not toggled then
+            pcall(function() Window:Toggle() end)
+        end
     end)
     
     button.Parent = gui
@@ -2281,6 +2752,7 @@ end
 local keybinds_section = Tabs.Settings:Section({Title = "Keybinds"})
 local spamKeyCode = Enum.KeyCode.E
 local trigKeyCode = Enum.KeyCode.R
+local apKeyCode = Enum.KeyCode.T
 
 keybinds_section:Keybind({
     Title = "Spam Key",
@@ -2299,14 +2771,34 @@ keybinds_section:Keybind({
     Value = "R",
     Callback = function(v)
         local kc = Enum.KeyCode[v]
-        if kc then 
+        if kc then
             trigKeyCode = kc
-            WindUI:Notify({Title = "Trigger Key Set", Content = v, Duration = 2}) 
+            WindUI:Notify({Title = "Trigger Key Set", Content = v, Duration = 2})
+        end
+    end
+})
+
+keybinds_section:Keybind({
+    Title = "Auto Parry Key",
+    Value = "T",
+    Callback = function(v)
+        local kc = Enum.KeyCode[v]
+        if kc then
+            apKeyCode = kc
+            WindUI:Notify({Title = "Auto Parry Key Set", Content = v, Duration = 2})
         end
     end
 })
 
 -- ========== KEYBIND HANDLER (PC + Xbox + PS) ==========
+local function toggleAutoParryHotkey()
+    local ns = not System.__properties.__autoparry_enabled
+    System.__properties.__autoparry_enabled = ns
+    System.__properties.__play_animation = ns
+    if ns then System.autoparry.start() else System.autoparry.stop() end
+    WindUI:Notify({Title = "Auto Parry", Content = ns and "ON" or "OFF", Duration = 1})
+end
+
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
 
@@ -2328,6 +2820,10 @@ UserInputService.InputBegan:Connect(function(input, gp)
         if g.TriggerbotNotify then
             WindUI:Notify({Title = "Triggerbot", Content = ns and "ON" or "OFF", Duration = 1})
         end
+    end
+
+    if kc == apKeyCode and g.AutoParryKeybindEnabled then
+        toggleAutoParryHotkey()
     end
 end)
 
@@ -2354,6 +2850,18 @@ UserInputService.InputBegan:Connect(function(input, gp)
             WindUI:Notify({Title = "Triggerbot", Content = ns and "ON" or "OFF", Duration = 1})
         end
     end
+
+    if kc == apKeyCode and g.AutoParryKeybindEnabled then
+        toggleAutoParryHotkey()
+    end
 end)
 
-print("Eagle Hub X loaded successfully with Wind UI and Anti-Cheat Bypass!")
+-- Apply persisted defaults on load
+pcall(function()
+    if g.AntiAFK == nil then g.AntiAFK = true end
+    if g.StatsPanel then Stats_start() end
+    if g.BallESP or g.PlayerESP or g.TargetHighlight then ESP_updateState() end
+end)
+
+WindUI:Notify({Title = "Eagle Hub X", Content = "Loaded — world-class Auto Parry ready!", Duration = 4})
+print("Eagle Hub X v2 loaded successfully with Wind UI, Anti-Cheat Bypass, ESP, Fly, Server tools and enhanced Auto Parry!")
