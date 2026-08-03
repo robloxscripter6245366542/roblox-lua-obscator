@@ -3168,21 +3168,33 @@ local _remotes = ReplicatedStorage:FindFirstChild("Remotes")
 SwordCtl.controller = ReplicatedStorage:FindFirstChild("Controllers")
     and ReplicatedStorage.Controllers:FindFirstChild("SwordsController")
 SwordCtl.ParryButtonPress = _remotes and _remotes:FindFirstChild("ParryButtonPress")
+SwordCtl.ParryAttempt     = _remotes and _remotes:FindFirstChild("ParryAttempt")
 SwordCtl.FireSwordInfo    = _remotes and _remotes:FindFirstChild("FireSwordInfo")
 SwordCtl.M1Stop           = _remotes and _remotes:FindFirstChild("M1Stop")
 
--- Native parry: fire the exact client input the game itself uses. The
--- SwordsController then runs its own targeting (camera/mouse ray), animation
--- and server call, so the parry is perfectly game-accurate and looks legit.
+-- Native parry — verified against the decompiled SwordsController:
+--   ParryButtonPress.Event:Connect(function() ParryAttempt:FireServer() end)
+-- i.e. the game's own parry is simply ParryAttempt:FireServer() (no args); the
+-- server validates against ball state. So we fire the ParryButtonPress bindable
+-- (runs the game's own handler) and fall back to ParryAttempt:FireServer()
+-- directly if the bindable isn't present. The grab animation is played to match
+-- what a real key press looks like.
 function SwordCtl.native_parry()
     local pbp = SwordCtl.ParryButtonPress
-    if not pbp then return false end
-    return (pcall(function() pbp:Fire() end))
+    if pbp then
+        return (pcall(function() pbp:Fire() end))
+    end
+    local pa = SwordCtl.ParryAttempt
+    if pa then
+        return (pcall(function() pa:FireServer() end))
+    end
+    return false
 end
 
 -- Route used by the autoparry loop when Parry Mode = "Native".
 function System.parry.native_action()
     if System.__properties.__parries > 10000 or not LocalPlayer.Character then return end
+    System.animation.play_grab_parry()   -- match a real key press (cosmetic)
     SwordCtl.native_parry()
     System.__properties.__parries = System.__properties.__parries + 1
     task.delay(0.5, function()
