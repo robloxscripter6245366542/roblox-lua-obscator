@@ -39,26 +39,6 @@ g.swordFX = g.swordFX or ""
 g.slashName = g.slashName or "SlashEffect"
 g.AutoVote = g.AutoVote or false
 
--- ========== ANTI-CHEAT BYPASS HOOKS ==========
-local hookfunction = hookfunction or (getgenv and getgenv().hookfunction)
-if hookfunction and getrenv then
-    pcall(function()
-        local _BAC_oldDebugInfo
-        _BAC_oldDebugInfo = hookfunction(getrenv().debug.info, function(f, t)
-            if type(f) == "function" then return "[C]"
-            elseif f == 4 and t == "s" then return "ReplicatedStorage.Controllers.SwordsController " end
-            return _BAC_oldDebugInfo(f, t)
-        end)
-
-        local _BAC_oldGetfenv
-        _BAC_oldGetfenv = hookfunction(getrenv().getfenv, function(l)
-            if l ~= nil and type(l) == "number" and l >= 1 and l <= 10 then return _BAC_oldGetfenv(10) end
-            return _BAC_oldGetfenv(l)
-        end)
-    end)
-end
--- ==============================================
-
 -- Safe cloneref fallback
 local cloneref = cloneref or clonereference or function(instance) return instance end
 
