@@ -1,0 +1,3293 @@
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+-- Global settings table
+_G.HubData = {
+    InvisCounters = false,
+    CustomAnims = false
+}
+
+-- Shared table to clean up connection loops for custom presets
+local Cons = {}
+
+-- List of known Counter Animation IDs to block
+local CounterAnimationIDs = {
+    ["12447705141"] = true, 
+    ["10467554224"] = true, 
+    ["118270485922095"] = true, 
+    ["15311685628"] = true,     
+    ["12351854556"] = true,     
+}
+
+-- Safely get the Animator
+local function GetAnimator()
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChild("Humanoid")
+        if hum then
+            return hum:FindFirstChildOfClass("Animator")
+        end
+    end
+    return nil
+end
+
+-- Check if an animation is a counter based on ID or Name
+local function IsCounterTrack(track)
+    if not track or not track.Animation then return false end
+    
+    local animId = tostring(track.Animation.AnimationId):match("%d+")
+    local animName = track.Name:lower()
+    
+    if CounterAnimationIDs[animId] or animName:find("counter") or animName:find("vessel_counter") then
+        return true
+    end
+    return false
+end
+
+-- Helper function to find the closest enemy player
+local function GetClosestEnemy()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+    local myChar = LocalPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    
+    if not myRoot then return nil end
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local enemyRoot = player.Character:FindFirstChild("HumanoidRootPart")
+            local enemyHum = player.Character:FindFirstChildOfClass("Humanoid")
+            
+            if enemyRoot and enemyHum and enemyHum.Health > 0 then
+                local distance = (myRoot.Position - enemyRoot.Position).Magnitude
+                if distance < shortestDistance then
+                    shortestDistance = distance
+                    closestPlayer = player
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+local function GetVictimModel(hitAttr)
+    if not hitAttr then return nil end
+    local name = hitAttr:match("([^;]+)")
+    if not name then return nil end
+    local player = Players:FindFirstChild(name)
+    if player and player.Character then return player.Character end
+    local live = Workspace:FindFirstChild("Live")
+    if live then
+        local dummy = live:FindFirstChild(name)
+        if dummy then return dummy end
+    end
+    return Workspace:FindFirstChild(name)
+end
+
+-- ==========================================
+-- WINDUI SETUP (PINK THEME)
+-- ==========================================
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+WindUI:AddTheme({
+    Name = "Pink Neon",
+    Accent = Color3.fromHex("#FF66B2"),      -- Vibrant Pink
+    Background = Color3.fromHex("#0A0508"),  -- Sleek dark pinkish-black
+    Outline = Color3.fromHex("#FF66B2"),     -- Pink Border
+    Text = Color3.fromHex("#FFFFFF"),        -- Crisp white text
+    Placeholder = Color3.fromHex("#A3708B"), -- Soft muted pinkish-gray
+    Button = Color3.fromHex("#1A0D15"),      -- Dark pink button base
+    Icon = Color3.fromHex("#FF66B2"),        -- Pink UI icons
+})
+
+local Window = WindUI:CreateWindow({
+    Title = "Animation hub",
+    Icon = "rbxassetid://110312595891409",
+    Author = "By khengie_slayer",
+    Folder = "KhengieSlayerHub",
+    Background = "rbxassetid://98852755585971",
+    Size = UDim2.fromOffset(580, 460), 
+    MinSize = Vector2.new(560, 350),
+    MaxSize = Vector2.new(850, 560),
+    Transparent = true,
+    Theme = "Pink Neon",
+    Resizable = true,
+    SideBarWidth = 200,
+    BackgroundImageTransparency = 0.65,
+    HideSearchBar = true,
+    ScrollBarEnabled = false,
+    User = {
+        Enabled = true,
+        Anonymous = false,
+        Callback = function() end,
+    },
+    Keybind = Enum.KeyCode.RightControl,
+})
+
+Window:EditOpenButton({
+    Title = "KhengieSlayerHub",
+    Icon = "rbxassetid://98852755585971",
+    CornerRadius = UDim.new(0, 16),
+    StrokeThickness = 2,
+    Color = ColorSequence.new(Color3.fromHex("#FF66B2"), Color3.fromHex("#1A0D15")), -- Pink Gradient
+    OnlyMobile = false,
+    Enabled = true,
+    Draggable = true,
+})
+
+-- === TABS ===
+local mainTab = Window:Tab({ Title = "Main", Icon = "sword", Desc = "credits" })
+local creditTab = Window:Tab({ Title = "credit", Icon = "sword", Desc = "credits" })
+local SaitamaTab = Window:Tab({ Title = "Saitama", Icon = "rbxassetid://71401505984375", Desc = "Miscellaneous" })
+local garouTab = Window:Tab({ Title = "Garou", Icon = "rbxassetid://136623423359346", Desc = "Miscellaneous" })
+local AnimTab = Window:Tab({ Title = "Animations", Icon = "biceps-flexed" }) 
+local TeleportTab = Window:Tab({ Title = "Teleports", Icon = "map" })
+local AutoTechTab = Window:Tab({ Title = "Auto Tech", Icon = "cpu", Desc = "Automated mechanics" })
+local EffectsTab = Window:Tab({ Title = "Effects Preset", Icon = "sparkles", Desc = "Custom M1 Presets" })
+
+-- === SECTIONS ===
+local AnimationSection = AnimTab:Section({ Title = "Animation Presets", Box = true, BoxBorder = true, Opened = true })
+local KYOTOSection = garouTab:Section({ Title = "Garou kyoto", Box = true, BoxBorder = true, Opened = true })
+local aimbotSection = mainTab:Section({ Title = "aimbot", Box = true, BoxBorder = true, Opened = true })
+local TeleportSection = TeleportTab:Section({ Title = "Map Teleports", Box = true, BoxBorder = true, Opened = true })
+local garouSection = garouTab:Section({ Title = "Garou Tech", Box = true, BoxBorder = true, Opened = true })
+local creditSection = creditTab:Section({ Title = "Information", Box = true, BoxBorder = true, Opened = true })
+local EffectsSection = EffectsTab:Section({ Title = "Combat Cosmetics", Box = true, BoxBorder = true, Opened = true })
+local kibaSection = AutoTechTab:Section({ Title = "Kiba version", Box = true, BoxBorder = true, Opened = true })
+
+-- ==========================================
+-- ANIMATION LOGIC & PRESETS
+-- ==========================================
+local CurrentAnimTrack = nil
+local CurrentWalkId = nil
+local RunningConnection = nil
+local TargetCustomAssetId = "" 
+
+local function ClearCurrentAnimation()
+    if CurrentAnimTrack then
+        CurrentAnimTrack:Stop()
+        CurrentAnimTrack:Destroy()
+        CurrentAnimTrack = nil
+    end
+    if RunningConnection then
+        RunningConnection:Disconnect()
+        RunningConnection = nil
+    end
+end
+
+local function PlayCustomAnim(assetId)
+    ClearCurrentAnimation()
+    CurrentWalkId = nil 
+
+    local animator = GetAnimator()
+    if animator then
+        local anim = Instance.new("Animation")
+        anim.AnimationId = "rbxassetid://" .. assetId
+        
+        CurrentAnimTrack = animator:LoadAnimation(anim)
+        CurrentAnimTrack.Priority = Enum.AnimationPriority.Action4 
+        CurrentAnimTrack.Looped = true
+        CurrentAnimTrack:Play()
+    end
+end
+
+local function SetupWalkAnimation(assetId)
+    ClearCurrentAnimation()
+    CurrentWalkId = assetId
+
+    local char = LocalPlayer.Character
+    if not char then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    local animator = GetAnimator()
+
+    if humanoid and animator then
+        local anim = Instance.new("Animation")
+        anim.AnimationId = "rbxassetid://" .. assetId
+
+        local function handleRunning(speed)
+            if CurrentWalkId ~= assetId then return end 
+            
+            if speed > 0.5 then 
+                for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+                    if track.Name == "WalkAnim" or track.Name == "RunAnim" or track.Animation.AnimationId:find("run") or track.Animation.AnimationId:find("walk") then
+                        if track ~= CurrentAnimTrack then
+                            track:Stop(0.1)
+                        end
+                    end
+                end
+
+                if not CurrentAnimTrack then
+                    CurrentAnimTrack = animator:LoadAnimation(anim)
+                    CurrentAnimTrack.Priority = Enum.AnimationPriority.Action4 
+                    CurrentAnimTrack.Looped = true
+                    CurrentAnimTrack:Play(0.2) 
+                elseif not CurrentAnimTrack.IsPlaying then
+                    CurrentAnimTrack:Play(0.2)
+                end
+            else
+                if CurrentAnimTrack and CurrentAnimTrack.IsPlaying then
+                    CurrentAnimTrack:Stop(0.2) 
+                end
+            end
+        end
+
+        handleRunning(humanoid.MoveDirection.Magnitude)
+        RunningConnection = humanoid.Running:Connect(handleRunning)
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.5) 
+    if CurrentWalkId then
+        SetupWalkAnimation(CurrentWalkId)
+    end
+end)
+
+local IdlePresets = { ["Fly"] = "17124061663", ["Helicopter"] = "17862998594" }
+local WalkPresets = {
+    ["Helicopter"] = "17862998594", ["Girly Walk"] = "17861862787", ["Kazotsky"] = "17861870996",
+    ["Hop Walk"] = "17861872519", ["Sassy Walk"] = "17861893094", ["Sword Walk"] = "17120635926",
+    ["Yandere"] = "17086054994", ["March"] = "15962443652", ["Hunter"] = "15962326593",
+}
+
+local IdleNames = {}
+for name, _ in pairs(IdlePresets) do table.insert(IdleNames, name) end
+local WalkNames = {}
+for name, _ in pairs(WalkPresets) do table.insert(WalkNames, name) end
+
+AnimationSection:Button({
+    Title = 'ð Stop Current Animation',
+    Callback = function() 
+        ClearCurrentAnimation()
+        CurrentWalkId = nil
+    end,
+})
+
+AnimationSection:Input({
+    Title = "Custom Animation ID",
+    Placeholder = "Enter Asset ID here...",
+    Callback = function(text)
+        TargetCustomAssetId = text:gsub("%D", "")
+    end
+})
+
+AnimationSection:Button({
+    Title = 'â¶ï¸ Play Custom Animation ID',
+    Callback = function()
+        if TargetCustomAssetId ~= "" then PlayCustomAnim(TargetCustomAssetId) else print("Please enter a valid Animation ID first!") end
+    end,
+})
+
+AnimationSection:Dropdown({
+    Title = "Select Idle Preset",
+    Multi = false,
+    Values = IdleNames, 
+    Callback = function(selected)
+        local assetId = IdlePresets[selected]
+        if assetId then PlayCustomAnim(assetId) end
+    end,
+})
+
+AnimationSection:Dropdown({
+    Title = "Select Walk Preset",
+    Multi = false,
+    Values = WalkNames, 
+    Callback = function(selected)
+        local assetId = WalkPresets[selected]
+        if assetId then SetupWalkAnimation(assetId) end
+    end,
+})
+
+AnimationSection:Toggle({
+    Title = 'Invisible Counters',
+    Value = false, 
+    Callback = function(state) 
+        _G.HubData.InvisCounters = state
+        if state then
+            local animator = GetAnimator()
+            if animator then
+                for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+                    if IsCounterTrack(track) then track:Stop() end
+                end
+            end
+        end
+    end
+})
+
+local AnimationConnection = nil
+local function HookAnimationListener(char)
+    if AnimationConnection then AnimationConnection:Disconnect() end
+    local hum = char:WaitForChild("Humanoid", 5)
+    local animator = hum and hum:WaitForChild("Animator", 5)
+    
+    if animator then
+        AnimationConnection = animator.AnimationPlayed:Connect(function(track)
+            if _G.HubData.InvisCounters and IsCounterTrack(track) then
+                task.wait() 
+                track:Stop(0)
+            end
+        end)
+    end
+end
+
+if LocalPlayer.Character then HookAnimationListener(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(HookAnimationListener)
+
+AnimationSection:Button({ Title = 'Invisible Block', Callback = function() print("Invisible Block Active") end })
+
+-- ==========================================
+-- DYNAMIC M1 EFFECTS PRESETS (NEW PRESET TAB)
+-- ==========================================
+EffectsSection:Dropdown({
+    Title = "Select Effect",
+    Values = {"None", "Killua", "Itadori", "Fire", "Gojo"},
+    Value = "None",
+    Callback = function(val)
+        for _, c in pairs(Cons) do c:Disconnect() end
+        table.clear(Cons)
+        
+        if val == "None" then return end
+        
+        local soundData = {
+            [2] = {{id = "13064223399", volume = 2}},
+            [3] = {{id = "13064223291", volume = 2}},
+            [4] = {{id = "13064223483", volume = 2}},
+            [5] = {{id = "13064442279", volume = 2}, {id = "12244488581", volume = 2}, {id = "17173355584", volume = 0.5}, {id = "17173354974", volume = 0.5}}
+        }
+
+        local function PlaySoundBase(id, vol)
+            local s = Instance.new("Sound", LocalPlayer:WaitForChild("PlayerGui"))
+            s.SoundId, s.Volume = "rbxassetid://"..id, vol
+            s:Play()
+            game:GetService("Debris"):AddItem(s, 2)
+        end
+
+        local function setupEffect(char)
+            table.insert(Cons, char:GetAttributeChangedSignal("LastM1Hitted"):Connect(function()
+                local combo = tonumber(char:GetAttribute("Combo")) or 2
+                if soundData[combo] then 
+                    for _, s in ipairs(soundData[combo]) do 
+                        PlaySoundBase(s.id, s.volume)
+                        task.wait(0.05) 
+                    end 
+                end
+                
+                local attVal = char:GetAttribute("LastM1Hitted")
+                local tModel = GetVictimModel(attVal)
+                if not tModel then return end
+                
+                local tRoot = tModel:FindFirstChild("HumanoidRootPart") or tModel:FindFirstChild("Torso") or tModel:FindFirstChild("UpperTorso")
+                local lHand, rHand = char:FindFirstChild("LeftHand") or char:FindFirstChild("Left Arm"), char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm")
+                local hrp = char:WaitForChild("HumanoidRootPart")
+
+                if tRoot then
+                    local tAtt = Instance.new("Attachment", tRoot)
+                    game:GetService("Debris"):AddItem(tAtt, 1.5)
+
+                    if val == "Gojo" then
+                        -- Directional alignment calculations
+                        local direction = (hrp.Position - tRoot.Position).Unit
+                        local rotX = math.atan2(direction.Y, math.sqrt(direction.X^2 + direction.Z^2))
+                        local rotY = math.atan2(direction.X, direction.Z)
+                        tAtt.Rotation = Vector3.new(math.deg(rotX), math.deg(rotY), 0)
+
+                        local function createEmitter(name, properties)
+                            local emitter = Instance.new("ParticleEmitter")
+                            emitter.Name = name
+                            for prop, value in pairs(properties) do emitter[prop] = value end
+                            emitter.Parent = tAtt
+                            return emitter
+                        end
+
+                        local shockwave1 = createEmitter("Shockwaves2", {Color = ColorSequence.new(Color3.fromRGB(255, 252, 252), Color3.fromRGB(255, 255, 255)), Drag = 5, ZOffset = 0, LightInfluence = 0, Lifetime = NumberRange.new(0.5, 0.5), Speed = NumberRange.new(0.0146053, 0.0146053), Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.1, 5.11184), NumberSequenceKeypoint.new(0.2, 8.93842), NumberSequenceKeypoint.new(0.3, 11.1292), NumberSequenceKeypoint.new(0.517, 15.7153), NumberSequenceKeypoint.new(1, 20.4474)}), Enabled = false, Acceleration = Vector3.new(0, 0, 0), LockedToPart = false, Rate = 50, EmissionDirection = Enum.NormalId.Back, Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.2, 0.8), NumberSequenceKeypoint.new(1, 1)}), VelocityInheritance = 0, LightEmission = 1, SpreadAngle = Vector2.new(2, 2), Texture = "http://www.roblox.com/asset/?id=11703233149", Rotation = NumberRange.new(0, 360)})
+                        local shockwave2 = createEmitter("Shockwaves3", {Color = ColorSequence.new(Color3.fromRGB(255, 252, 252), Color3.fromRGB(255, 255, 255)), Drag = 5, ZOffset = 0, LightInfluence = 0, Lifetime = NumberRange.new(0.5, 0.5), Speed = NumberRange.new(0.0146053, 0.0146053), Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.1, 10.2237), NumberSequenceKeypoint.new(0.2, 17.8768), NumberSequenceKeypoint.new(0.3, 22.2584), NumberSequenceKeypoint.new(0.517, 31.4305), NumberSequenceKeypoint.new(1, 40.8947)}), Enabled = false, Acceleration = Vector3.new(0, 0, 0), LockedToPart = false, Rate = 75, EmissionDirection = Enum.NormalId.Back, Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.2, 0.8), NumberSequenceKeypoint.new(1, 1)}), VelocityInheritance = 0, LightEmission = 1, SpreadAngle = Vector2.new(0, 0), Texture = "http://www.roblox.com/asset/?id=11703233149", Rotation = NumberRange.new(0, 360)})
+                        local dustShockwave = createEmitter("DustShockwaves", {Color = ColorSequence.new(Color3.fromRGB(255, 252, 252), Color3.fromRGB(255, 255, 255)), Drag = 5, ZOffset = 0, LightInfluence = 0, Lifetime = NumberRange.new(0.2, 1.05), Speed = NumberRange.new(0.0146053, 0.0146053), Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 58.421)}), Enabled = false, Acceleration = Vector3.new(0, 0, 0), LockedToPart = false, Rate = 35, EmissionDirection = Enum.NormalId.Back, Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.04, 0.96), NumberSequenceKeypoint.new(1, 1)}), VelocityInheritance = 0, LightEmission = 0, SpreadAngle = Vector2.new(10, 10), Texture = "http://www.roblox.com/asset/?id=11703216487", Rotation = NumberRange.new(0, 360)})
+                        local redDust = createEmitter("RedDust2", {Color = ColorSequence.new(Color3.fromRGB(252, 252, 252), Color3.fromRGB(255, 255, 255)), Drag = 4, ZOffset = 0, LightInfluence = 0, Lifetime = NumberRange.new(0.1, 1), Speed = NumberRange.new(18.75, 90), Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.281, 2.91889), NumberSequenceKeypoint.new(1, 7.30263)}), Enabled = false, Acceleration = Vector3.new(0, 0, 0), LockedToPart = false, Rate = 50, EmissionDirection = Enum.NormalId.Back, Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.339323, 0), NumberSequenceKeypoint.new(0.80798, 0.3625), NumberSequenceKeypoint.new(1, 1)}), VelocityInheritance = 0, LightEmission = 0.8, SpreadAngle = Vector2.new(25, 25), Texture = "rbxassetid://7216854921", Rotation = NumberRange.new(0, 0)})
+                        local pushEffect = createEmitter("Push", {Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 255, 255)), Drag = 10, ZOffset = 1, LightInfluence = 0, Lifetime = NumberRange.new(0.1, 0.5), Speed = NumberRange.new(0, 375), Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2.36514), NumberSequenceKeypoint.new(0.8125, 0.632135), NumberSequenceKeypoint.new(1, 12.9375)}), Enabled = false, Acceleration = Vector3.new(0, 0, 0), LockedToPart = false, Rate = 155, EmissionDirection = Enum.NormalId.Back, Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.0625, 0.9375), NumberSequenceKeypoint.new(1, 1)}), VelocityInheritance = 0, LightEmission = 0, SpreadAngle = Vector2.new(-15, 15), Texture = "http://www.roblox.com/asset/?id=9160490836", Rotation = NumberRange.new(-25, 25)})
+
+                        shockwave1:Emit(1)
+                        shockwave2:Emit(1)
+                        dustShockwave:Emit(30)
+                        redDust:Emit(10)
+                        pushEffect:Emit(30)
+
+                        -- Gojo Combo 5 Black Flash handler
+                        if combo == 5 then
+                            local resources = ReplicatedStorage:FindFirstChild("Resources")
+                            local kjEffects = resources and resources:FindFirstChild("KJEffects")
+                            if kjEffects then
+                                local dropkick = kjEffects:FindFirstChild("DropkickExtra")
+                                local firstHit = dropkick and dropkick:FindFirstChild("firstHit")
+                                local template = firstHit and firstHit:FindFirstChild("Attachment")
+                                if template then
+                                    local bfClone = template:Clone()
+                                    bfClone.Parent = tRoot
+                                    for _, emitter in ipairs(bfClone:GetChildren()) do 
+                                        if emitter:IsA("ParticleEmitter") then emitter:Emit(5) end 
+                                    end
+                                    game:GetService("Debris"):AddItem(bfClone, 1)
+                                end
+                            end
+                        end
+                    elseif val == "Killua" then
+                        local e1 = Instance.new("ParticleEmitter", tAtt)
+                        e1.Name, e1.Texture, e1.Color = "Dusty Impact", "rbxassetid://10198439352", ColorSequence.new(Color3.new(0.455,0.573,1))
+                        e1.Size, e1.Transparency, e1.ZOffset, e1.EmissionDirection = NumberSequence.new(2.599), NumberSequence.new(0), 2, Enum.NormalId.Top
+                        e1.Lifetime, e1.Rate, e1.Speed, e1.Rotation = NumberRange.new(0.1), 10, NumberRange.new(0.026), NumberRange.new(-360, 360)
+                        e1.SpreadAngle, e1.LockedToPart, e1.Orientation = Vector2.new(-360, 360), true, Enum.ParticleOrientation.VelocityPerpendicular
+                        e1.Shape, e1.ShapeInOut, e1.ShapeStyle = Enum.ParticleEmitterShape.Box, Enum.ParticleEmitterShapeInOut.Outward, Enum.ParticleEmitterShapeStyle.Volume
+                        e1.FlipbookMode, e1.FlipbookFramerate, e1.FlipbookLayout = Enum.ParticleFlipbookMode.OneShot, NumberRange.new(1), Enum.ParticleFlipbookLayout.Grid4x4
+                        e1.Brightness = 5
+                        e1:Emit(50)
+                    elseif val == "Itadori" and combo == 5 then
+                        local e1 = Instance.new("ParticleEmitter", tAtt)
+                        e1.Name, e1.Texture, e1.Color = "Lightning", "rbxassetid://16836633376", ColorSequence.new(Color3.new(1,0,0))
+                        e1.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0,0),NumberSequenceKeypoint.new(0.056,5.437,4.188),NumberSequenceKeypoint.new(0.133,7.812,5.031),NumberSequenceKeypoint.new(0.362,9.125,4.639),NumberSequenceKeypoint.new(1,10,4.472)})
+                        e1.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.661,0),NumberSequenceKeypoint.new(1,1)})
+                        e1.ZOffset, e1.EmissionDirection, e1.Lifetime, e1.Rate = 2, Enum.NormalId.Top, NumberRange.new(0.7), 100
+                        e1.Speed, e1.Rotation, e1.SpreadAngle, e1.Drag, e1.LockedToPart = NumberRange.new(0.001,10), NumberRange.new(0,360), Vector2.new(360,360), 3, true
+                        e1.Orientation, e1.Shape, e1.ShapeInOut = Enum.ParticleOrientation.VelocityPerpendicular, Enum.ParticleEmitterShape.Box, Enum.ParticleEmitterShapeInOut.Outward
+                        e1.ShapeStyle, e1.FlipbookMode, e1.FlipbookFramerate = Enum.ParticleEmitterShapeStyle.Volume, Enum.ParticleFlipbookMode.OneShot, NumberRange.new(20,40)
+                        e1.FlipbookLayout, e1.Brightness = Enum.ParticleFlipbookLayout.Grid4x4, 5
+                        e1:Emit(50)
+                        
+                        local e2 = Instance.new("ParticleEmitter", tAtt)
+                        e2.Name, e2.Texture, e2.Color = "Sparks2", "rbxassetid://17547405831", ColorSequence.new(Color3.new(1,0,0))
+                        e2.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,2,1),NumberSequenceKeypoint.new(1,0,0)})
+                        e2.EmissionDirection, e2.Lifetime, e2.Rate, e2.Speed = Enum.NormalId.Front, NumberRange.new(0.7), 400, NumberRange.new(20,150)
+                        e2.Rotation, e2.RotSpeed, e2.SpreadAngle, e2.Acceleration = NumberRange.new(0,360), NumberRange.new(-300,300), Vector2.new(360,360), Vector3.new(0,5,0)
+                        e2.Drag, e2.Orientation, e2.Shape, e2.ShapeInOut = 7, Enum.ParticleOrientation.VelocityParallel, Enum.ParticleEmitterShape.Box, Enum.ParticleEmitterShapeInOut.Outward
+                        e2.ShapeStyle, e2.Brightness = Enum.ParticleEmitterShapeStyle.Volume, 15
+                        e2:Emit(50)
+                        
+                        local e3 = Instance.new("ParticleEmitter", tAtt)
+                        e3.Name, e3.Texture, e3.Color = "Sparks", "rbxassetid://15407518755", ColorSequence.new(Color3.new(1,0,0))
+                        e3.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,2,1),NumberSequenceKeypoint.new(1,0,0)})
+                        e3.EmissionDirection, e3.Lifetime, e3.Rate, e3.Speed = Enum.NormalId.Front, NumberRange.new(0.7), 100, NumberRange.new(80,150)
+                        e3.Rotation, e3.SpreadAngle, e3.Drag, e3.Orientation = NumberRange.new(90,90), Vector2.new(360,360), 10, Enum.ParticleOrientation.VelocityParallel
+                        e3.Squash = NumberSequence.new({NumberSequenceKeypoint.new(0,0,0),NumberSequenceKeypoint.new(0.3,3,0),NumberSequenceKeypoint.new(1,0,0)})
+                        e3.Shape, e3.ShapeInOut, e3.ShapeStyle = Enum.ParticleEmitterShape.Box, Enum.ParticleEmitterShapeInOut.Outward, Enum.ParticleEmitterShapeStyle.Volume
+                        e3.FlipbookMode, e3.Brightness = Enum.ParticleFlipbookMode.Loop, 15
+                        e3:Emit(50)
+                        
+                        local e4 = Instance.new("ParticleEmitter", tAtt)
+                        e4.Name, e4.Texture, e4.Color, e4.Size = "Wind2", "rbxassetid://1053548563", ColorSequence.new(Color3.new(1,0,0)), NumberSequence.new(80)
+                        e4.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,1)})
+                        e4.EmissionDirection, e4.Lifetime, e4.Rate, e4.Speed = Enum.NormalId.Top, NumberRange.new(0.7), 100, NumberRange.new(0.01)
+                        e4.Rotation, e4.SpreadAngle, e4.LightEmission, e4.Orientation = NumberRange.new(-360,360), Vector2.new(360,360), 1, Enum.ParticleOrientation.VelocityPerpendicular
+                        e4.Squash = NumberSequence.new({NumberSequenceKeypoint.new(0,-3,0),NumberSequenceKeypoint.new(1,0,0)})
+                        e4.Shape, e4.ShapeInOut, e4.ShapeStyle = Enum.ParticleEmitterShape.Box, Enum.ParticleEmitterShapeInOut.Outward, Enum.ParticleEmitterShapeStyle.Volume
+                        e4.FlipbookMode, e4.Brightness = Enum.ParticleFlipbookMode.Loop, 3
+                        e4:Emit(50)
+                    elseif val == "Fire" then
+                        local e1 = Instance.new("ParticleEmitter", tAtt)
+                        e1.Name, e1.Texture, e1.Color = "impact2", "rbxassetid://16892247104", ColorSequence.new(Color3.new(1,0.34,0.20))
+                        e1.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.5,15),NumberSequenceKeypoint.new(1,15)})
+                        e1.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.6,0.8),NumberSequenceKeypoint.new(1,1)})
+                        e1.Lifetime, e1.Rate, e1.Speed, e1.Rotation = NumberRange.new(0.3), 0, NumberRange.new(0.002), NumberRange.new(-360,360)
+                        e1.SpreadAngle, e1.LightEmission, e1.Orientation = Vector2.new(360,360), 1, Enum.ParticleOrientation.VelocityPerpendicular
+                        e1.FlipbookMode, e1.FlipbookFramerate, e1.Brightness = Enum.ParticleFlipbookMode.Loop, NumberRange.new(1), 3
+                        e1:Emit(50)
+                    end
+                end
+                
+                -- Hands and Arm VFX Logic (Exclude Gojo)
+                if val ~= "Gojo" then
+                    for _, arm in pairs({lHand, rHand}) do
+                        if arm then
+                            local att = Instance.new("Attachment", arm)
+                            att.CFrame = arm.Name:match("Arm") and CFrame.new(0, -1, 0) or CFrame.new(0, -0.6, 0)
+                            game:GetService("Debris"):AddItem(att, 1.5)
+                            
+                            if val == "Killua" then
+                                local e2 = Instance.new("ParticleEmitter", att)
+                                e2.Name, e2.Texture, e2.Color = "Circular Smack", "rbxassetid://18140248952", ColorSequence.new(Color3.new(0.455,0.573,1))
+                                e2.Size, e2.Transparency, e2.ZOffset, e2.EmissionDirection = NumberSequence.new(1.2), NumberSequence.new(0), 2, Enum.NormalId.Top
+                                e2.Lifetime, e2.Rate, e2.Speed, e2.Rotation = NumberRange.new(0.1, 0.2), 10, NumberRange.new(0.026), NumberRange.new(-360, 360)
+                                e2.SpreadAngle, e2.LockedToPart, e2.Orientation = Vector2.new(-360, 360), true, Enum.ParticleOrientation.VelocityPerpendicular
+                                e2.Shape, e2.ShapeInOut, e2.ShapeStyle = Enum.ParticleEmitterShape.Box, Enum.ParticleEmitterShapeInOut.Outward, Enum.ParticleEmitterShapeStyle.Volume
+                                e2.FlipbookMode, e2.FlipbookFramerate, e2.FlipbookLayout = Enum.ParticleFlipbookMode.OneShot, NumberRange.new(1), Enum.ParticleFlipbookLayout.Grid4x4
+                                e2.Brightness = 5
+                                e2:Emit(50)
+                                
+                                local e3 = Instance.new("ParticleEmitter", att)
+                                e3.Name, e3.Texture, e3.Color = "Shockreal", "rbxassetid://124692159307028", ColorSequence.new(Color3.new(0.224,0.302,1))
+                                e3.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.1,0),NumberSequenceKeypoint.new(0.106,1.08,0.2),NumberSequenceKeypoint.new(1,1.85,0)})
+                                e3.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.065,0),NumberSequenceKeypoint.new(0.43,0.07),NumberSequenceKeypoint.new(0.663,0.118),NumberSequenceKeypoint.new(0.83,0.177),NumberSequenceKeypoint.new(1,1)})
+                                e3.ZOffset, e3.EmissionDirection, e3.Lifetime, e3.Rate = 2, Enum.NormalId.Front, NumberRange.new(0.244,0.274), 7.29
+                                e3.Speed, e3.Rotation, e3.RotSpeed, e3.SpreadAngle = NumberRange.new(0.0002), NumberRange.new(-360,360), NumberRange.new(-145.8,145.8), Vector2.new(40,40)
+                                e3.Drag, e3.LockedToPart, e3.Orientation, e3.Shape = 0.729, true, Enum.ParticleOrientation.FacingCamera, Enum.ParticleEmitterShape.Box
+                                e3.ShapeInOut, e3.ShapeStyle, e3.FlipbookMode = Enum.ParticleEmitterShapeInOut.Outward, Enum.ParticleEmitterShapeStyle.Volume, Enum.ParticleFlipbookMode.OneShot
+                                e3.FlipbookFramerate, e3.FlipbookLayout, e3.Brightness = NumberRange.new(0.729), Enum.ParticleFlipbookLayout.Grid4x4, 15
+                                e3:Emit(50)
+                            elseif val == "Itadori" then
+                                local e2 = Instance.new("ParticleEmitter", att)
+                                e2.Name, e2.Texture, e2.Color = "Shockreal", "rbxassetid://124692159307028", ColorSequence.new(Color3.new(0.224,0.302,1))
+                                e2.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.05,0),NumberSequenceKeypoint.new(0.106,0.54,0.1),NumberSequenceKeypoint.new(1,0.92,0)})
+                                e2.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.065,0),NumberSequenceKeypoint.new(0.43,0.07),NumberSequenceKeypoint.new(0.663,0.118),NumberSequenceKeypoint.new(0.83,0.177),NumberSequenceKeypoint.new(1,1)})
+                                e2.ZOffset, e2.EmissionDirection, e2.Lifetime, e2.Rate = 2, Enum.NormalId.Front, NumberRange.new(0.244,0.274), 7.29
+                                e2.Speed, e2.Rotation, e2.RotSpeed, e2.SpreadAngle = NumberRange.new(0.0002), NumberRange.new(-360,360), NumberRange.new(-145.8,145.8), Vector2.new(40,40)
+                                e2.Drag, e2.LockedToPart, e2.Orientation, e2.Shape = 0.729, true, Enum.ParticleOrientation.FacingCamera, Enum.ParticleEmitterShape.Box
+                                e2.ShapeInOut, e2.ShapeStyle, e2.FlipbookMode = Enum.ParticleEmitterShapeInOut.Outward, Enum.ParticleEmitterShapeStyle.Volume, Enum.ParticleFlipbookMode.OneShot
+                                e2.FlipbookFramerate, e2.FlipbookLayout, e2.Brightness = NumberRange.new(0.729), Enum.ParticleFlipbookLayout.Grid4x4, 15
+                                e2:Emit(50)
+                                
+                                local e3 = Instance.new("ParticleEmitter", att)
+                                e3.Name, e3.Texture, e3.Color = "Aura", "rbxassetid://9285330517", ColorSequence.new(Color3.new(0.337,0.714,1))
+                                e3.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,2.4,0.4),NumberSequenceKeypoint.new(0.36,0.8,0.3),NumberSequenceKeypoint.new(0.706,0.6,0.2),NumberSequenceKeypoint.new(0.868,0.4,0.1),NumberSequenceKeypoint.new(1,0.25,0)})
+                                e3.ZOffset, e3.EmissionDirection, e3.Lifetime, e3.Rate = 1, Enum.NormalId.Top, NumberRange.new(0.1,0.2), 35
+                                e3.Speed, e3.Rotation, e3.Acceleration, e3.LockedToPart = NumberRange.new(0, 5), NumberRange.new(-360,360), Vector3.new(0, 2, 0), true
+                                e3.Orientation, e3.Shape, e3.ShapeInOut, e3.ShapeStyle = Enum.ParticleOrientation.FacingCamera, Enum.ParticleEmitterShape.Box, Enum.ParticleEmitterShapeInOut.Outward, Enum.ParticleEmitterShapeStyle.Volume
+                                e3.FlipbookMode, e3.FlipbookFramerate, e3.FlipbookLayout, e3.Brightness = Enum.ParticleFlipbookMode.OneShot, NumberRange.new(1), Enum.ParticleFlipbookLayout.Grid4x4, 4
+                                e3:Emit(50)
+                            elseif val == "Fire" then
+                                local e2 = Instance.new("ParticleEmitter", att)
+                                e2.Name, e2.Texture = "Flames", "rbxassetid://15269497616"
+                                e2.Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(1,1,0.498)),ColorSequenceKeypoint.new(0.15,Color3.new(1,0.333,0)),ColorSequenceKeypoint.new(0.5,Color3.new(1,0,0)),ColorSequenceKeypoint.new(1,Color3.new(1,0,0))})
+                                e2.Size, e2.Transparency = NumberSequence.new(1), NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.1,0),NumberSequenceKeypoint.new(1,0)})
+                                e2.ZOffset, e2.EmissionDirection, e2.Lifetime, e2.Rate = 1, Enum.NormalId.Top, NumberRange.new(0.5,1), 0
+                                e2.Speed, e2.Rotation, e2.RotSpeed, e2.SpreadAngle = NumberRange.new(0), NumberRange.new(-360,360), NumberRange.new(-100,100), Vector2.new(0,0)
+                                e2.Acceleration, e2.Drag, e2.LockedToPart, e2.LightEmission = Vector3.new(0,15,0), 5, true, 0.5
+                                e2.Orientation, e2.Shape, e2.ShapeInOut, e2.ShapeStyle = Enum.ParticleOrientation.FacingCamera, Enum.ParticleEmitterShape.Box, Enum.ParticleEmitterShapeInOut.Outward, Enum.ParticleEmitterShapeStyle.Volume
+                                e2.FlipbookMode, e2.FlipbookFramerate, e2.FlipbookLayout, e2.Brightness = Enum.ParticleFlipbookMode.OneShot, NumberRange.new(1), Enum.ParticleFlipbookLayout.Grid4x4, 5
+                                e2:Emit(50)
+                            end
+                        end
+                    end
+                end
+            end))
+        end
+
+        if LocalPlayer.Character then setupEffect(LocalPlayer.Character) end
+        table.insert(Cons, LocalPlayer.CharacterAdded:Connect(setupEffect))
+    end
+})
+
+creditSection:Paragraph({ Title = "made by", Text = "khengie_slayer" })
+creditSection:Paragraph({ Title = "khengie_slayerð", Text = "khengie_slayer" })
+
+-- === AIMBOT SECTION ===
+aimbotSection:Button({
+    Title = "aimbot v1",
+    Desc = "it changes your m1 effect",
+    Callback = function()
+        task.spawn(function()
+            local success, result = pcall(function() return loadstring(game:HttpGet("https://pastebin.com/raw/pWd9ji4D"))() end)
+            if not success then warn("GUI Tech failed to load:", result) end
+        end)
+    end
+})
+
+aimbotSection:Button({
+    Title = "aimbot v2",
+    Desc = "it changes your m1 effect",
+    Callback = function()
+        task.spawn(function()
+            local success, result = pcall(function() return loadstring(game:HttpGet("https://pastebin.com/raw/F5k2nV6R"))() end)
+            if not success then warn("GUI Tech failed to load:", result) end
+        end)
+    end
+})
+
+aimbotSection:Button({
+    Title = "aimbot v3",
+    Desc = "it changes your m1 effect",
+    Callback = function()
+        task.spawn(function()
+            local success, result = pcall(function() return loadstring(game:HttpGet("https://pastebin.com/raw/aa2XJ5Wm"))() end)
+            if not success then warn("GUI Tech failed to load:", result) end
+        end)
+    end
+})
+
+-- === KYOTO SECTION ===
+KYOTOSection:Button({
+    Title = "kyoto v1",
+    Desc = "flowing water and ir will lethal",
+    Callback = function()
+        task.spawn(function()
+            local success, result = pcall(function() return loadstring(game:HttpGet("https://pastebin.com/raw/XHJZ9Vky"))() end)
+            if not success then warn("GUI Tech failed to load:", result) end
+        end)
+    end
+})
+
+KYOTOSection:Button({
+    Title = "kyoto v2",
+    Desc = "flowing water and it will lethal",
+    Callback = function()
+        task.spawn(function()
+            local success, result = pcall(function() return loadstring(game:HttpGet("https://pastebin.com/raw/3K7VebmS"))() end)
+            if not success then warn("GUI Tech failed to load:", result) end
+        end)
+    end
+})
+
+KYOTOSection:Button({
+    Title = "kyoto v3",
+    Desc = "flowing water and it will lethal",
+    Callback = function()
+        task.spawn(function()
+            local success, result = pcall(function() return loadstring(game:HttpGet("https://pastebin.com/raw/SdXEbFrp"))() end)
+            if not success then warn("GUI Tech failed to load:", result) end
+        end)
+    end
+})
+
+-- === GAROU SECTION ===
+garouSection:Toggle({
+    Title = "Flowing + Grasp",
+    Value = false,
+    Callback = function(isEnabled)
+        -- Clear previous active frame loops
+        if _G.FlowGraspConn then
+            _G.FlowGraspConn:Disconnect()
+            _G.FlowGraspConn = nil
+        end
+
+        if isEnabled then
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local TweenService = game:GetService("TweenService")
+            local player = Players.LocalPlayer
+
+            -- Runtime State Tracker Flags
+            local isTweening = false
+            local lastPlaying = false
+
+            _G.FlowGraspConn = RunService.RenderStepped:Connect(function()
+                if not _G.FlowGraspConn then return end
+
+                local char = player.Character
+                local humanoid = char and char:FindFirstChild("Humanoid")
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if not humanoid or not hrp then return end
+
+                -- Detect target combat sequence activation track
+                local isPlaying = false
+                for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+                    if track.Animation and track.Animation.AnimationId == "rbxassetid://12273188754" then 
+                        isPlaying = true 
+                        break 
+                    end
+                end
+
+                if isPlaying and not isTweening and not lastPlaying then
+                    isTweening = true 
+                    lastPlaying = true
+                    
+                    task.delay(1.8, function()
+                        -- Recalculate runtime state checks before launching movement
+                        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then 
+                            isTweening = false 
+                            return 
+                        end
+                        
+                        local currentHrp = player.Character.HumanoidRootPart
+                        local fwdCF = currentHrp.CFrame + currentHrp.CFrame.LookVector * 24
+                        
+                        local tween = TweenService:Create(currentHrp, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {CFrame = fwdCF})
+                        tween:Play() 
+                        tween.Completed:Wait()
+
+                        -- Handle tool verification and packet sequence firing
+                        local tool = player.Backpack:FindFirstChild("Hunter's Grasp") or (player.Character and player.Character:FindFirstChild("Hunter's Grasp"))
+                        local remote = player.Character and player.Character:FindFirstChild("Communicate")
+                        
+                        if tool and remote then 
+                            remote:FireServer({["Tool"] = tool, ["Goal"] = "Console Move"}) 
+                        end
+                        isTweening = false
+                    end)
+                elseif not isPlaying then 
+                    lastPlaying = false 
+                end
+            end)
+        end
+    end,
+})
+
+
+garouSection:Toggle({
+    Title = "Whirlwind Dunk Auto-Teleport",
+    Value = false,
+    Callback = function(isEnabled)
+        if _G.TeleportAnimConnection then 
+            _G.TeleportAnimConnection:Disconnect() 
+            _G.TeleportAnimConnection = nil 
+        end
+        
+        if isEnabled then
+            local isTeleporting = false
+            local lastTrack = nil
+            
+            _G.TeleportAnimConnection = RunService.RenderStepped:Connect(function()
+                local character = LocalPlayer.Character
+                if not character or isTeleporting then return end
+                
+                local hum = character:FindFirstChildWhichIsA("Humanoid")
+                local root = character:FindFirstChild("HumanoidRootPart")
+                if not hum or not root then return end
+                
+                for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
+                    if track.Animation and track.Animation.AnimationId == "rbxassetid://12296113986" then
+                        if lastTrack == track then return end
+                        lastTrack = track
+                        isTeleporting = true
+                        
+                        task.delay(1, function()
+                            local enemy = GetClosestEnemy()
+                            if enemy and enemy.Character then
+                                local enemyRoot = enemy.Character:FindFirstChild("HumanoidRootPart")
+                                if enemyRoot and root and root.Parent then
+                                    root.CFrame = enemyRoot.CFrame * CFrame.new(0, 60, 0)
+                                end
+                            else
+                                if root and root.Parent then
+                                    root.CFrame = root.CFrame * CFrame.new(0, 60, 0)
+                                end
+                            end
+                            isTeleporting = false
+                        end)
+                        break
+                    end
+                end
+                
+                if lastTrack and not lastTrack.IsPlaying then 
+                    lastTrack = nil 
+                end
+            end)
+        end
+    end,
+})
+
+garouSection:Toggle({
+    Title = "Surf Tech Auto-Boost",
+    Value = false,
+    Callback = function(isEnabled)
+        if _G.SurfTechConnection then 
+            _G.SurfTechConnection:Disconnect() 
+            _G.SurfTechConnection = nil 
+        end
+        
+        if isEnabled then
+            local tweenService = game:GetService("TweenService")
+            local targetAnimId = "rbxassetid://12309835105"
+            
+            local function listenToCharacter(character)
+                local humanoid = character:WaitForChild("Humanoid", 10)
+                if not humanoid then return end
+                
+                local animTrackConnection
+                animTrackConnection = humanoid.AnimationPlayed:Connect(function(track)
+                    if not _G.SurfTechConnection then 
+                        if animTrackConnection then animTrackConnection:Disconnect() end
+                        return 
+                    end
+                    
+                    if track.Animation and track.Animation.AnimationId == targetAnimId then
+                        task.wait(1.1)
+                        
+                        local rootPart = character:FindFirstChild("HumanoidRootPart")
+                        if rootPart then
+                            local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+                            local targetCFrame = rootPart.CFrame * CFrame.new(0, 2, -10)
+                            
+                            tweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame}):Play()
+                        end
+                    end
+                end)
+            end
+
+            if LocalPlayer.Character then
+                listenToCharacter(LocalPlayer.Character)
+            end
+            
+            _G.SurfTechConnection = LocalPlayer.CharacterAdded:Connect(listenToCharacter)
+        end
+    end,
+})
+
+garouSection:Toggle({
+    Title = "Kiba Lethal",
+    Value = false,
+    Callback = function(isEnabled)
+        -- Clear previous active connection wrappers
+        if _G.LethalDashHeartbeat then
+            _G.LethalDashHeartbeat:Disconnect()
+            _G.LethalDashHeartbeat = nil
+        end
+        if _G.LethalDashPartCleanup then
+            pcall(function() _G.LethalDashPartCleanup:Destroy() end)
+            _G.LethalDashPartCleanup = nil
+        end
+
+        if isEnabled then
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local LocalPlayer = Players.LocalPlayer
+
+            -- Configuration Options Matrix
+            local SETTINGS = {
+                AnimID = "rbxassetid://12296113986",
+                DashAnimID = "rbxassetid://10479335397",
+                DetectRadius = 20,
+                EarlyFire = 0.365
+            }
+
+            -- Dynamic Core Tracker Variables
+            local isTrackingAction = false
+            local animationStarted = false
+            local actionFired = false
+
+            -- Initialize Base Range Visual Part
+            local rangeDetectorPart = Instance.new("Part")
+            rangeDetectorPart.Size = Vector3.new(SETTINGS.DetectRadius * 2, 0.1, SETTINGS.DetectRadius * 2)
+            rangeDetectorPart.CanCollide = false
+            rangeDetectorPart.Anchored = true
+            rangeDetectorPart.CastShadow = false
+            rangeDetectorPart.Transparency = 1
+            rangeDetectorPart.Material = Enum.Material.Air
+            rangeDetectorPart.Parent = workspace
+            _G.LethalDashPartCleanup = rangeDetectorPart
+
+            -- Core Utility: Safely fetch standard BaseParts from targeting characters
+            local function getPrimaryBasePart(model)
+                return model:FindFirstChild("HumanoidRootPart") 
+                    or model:FindFirstChild("Torso") 
+                    or model:FindFirstChild("UpperTorso") 
+                    or model:FindFirstChildOfClass("BasePart")
+            end
+
+            -- Target Identifier Engine (Detect players & models in operational bounds)
+            local function findValidCombatTarget(myRoot)
+                local currentTarget = nil
+                local currentMinDistance = SETTINGS.DetectRadius
+
+                -- Check Player Characters
+                for _, targetPlayer in ipairs(Players:GetPlayers()) do
+                    if targetPlayer ~= LocalPlayer and targetPlayer.Character then
+                        local tRoot = getPrimaryBasePart(targetPlayer.Character)
+                        local tHumanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+                        if tRoot and tHumanoid and tHumanoid.Health > 0 then
+                            local distance = (tRoot.Position - myRoot.Position).Magnitude
+                            if distance < currentMinDistance then
+                                currentMinDistance = distance
+                                currentTarget = targetPlayer.Character
+                            end
+                        end
+                    end
+                end
+
+                -- Check Workspace Non-Player Dummies
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
+                        local tRoot = getPrimaryBasePart(obj)
+                        local tHumanoid = obj:FindFirstChildOfClass("Humanoid")
+                        if tRoot and tHumanoid and tHumanoid.Health > 0 then
+                            local distance = (tRoot.Position - myRoot.Position).Magnitude
+                            if distance < currentMinDistance then
+                                currentMinDistance = distance
+                                currentTarget = obj
+                            end
+                        end
+                    end
+                end
+
+                return currentTarget
+            end
+
+            -- Math Matrix Position Processor
+            local function calculateTargetCFrame(targetRoot)
+                return CFrame.new(targetRoot.Position - Vector3.new(0, 3, 0)) * CFrame.Angles(math.rad(90), 0, 0)
+            end
+
+            -- Force Position Assembly Setter
+            local function forceAnchorFrame(myRoot, targetRoot)
+                local computedCFrame = calculateTargetCFrame(targetRoot)
+                for _ = 1, 6 do
+                    myRoot.CFrame = computedCFrame
+                    myRoot.AssemblyLinearVelocity = Vector3.zero
+                    myRoot.AssemblyAngularVelocity = Vector3.zero
+                end
+            end
+
+            -- Sequence Processing Thread Logic
+            local function executeLethalSequence(myHumanoid, myRoot, targetChar, targetRoot)
+                local savedAutoRotate = myHumanoid.AutoRotate
+                myHumanoid.AutoRotate = false
+                myHumanoid:ChangeState(Enum.HumanoidStateType.Physics)
+
+                -- Sequence Trigger Phase
+                forceAnchorFrame(myRoot, targetRoot)
+                local character = LocalPlayer.Character
+                if character and character:FindFirstChild("Communicate") then
+                    character.Communicate:FireServer({
+                        Dash = Enum.KeyCode.W,
+                        Key = Enum.KeyCode.Q,
+                        Goal = "KeyPress"
+                    })
+                end
+                forceAnchorFrame(myRoot, targetRoot)
+
+                local dashStarted = false
+                local durationElapsed = 0
+                local heartbeatConnection
+
+                heartbeatConnection = RunService.Heartbeat:Connect(function(dt)
+                    if not _G.LethalDashHeartbeat then
+                        heartbeatConnection:Disconnect()
+                        return
+                    end
+
+                    durationElapsed = durationElapsed + dt
+                    local animator = myHumanoid:FindFirstChildOfClass("Animator")
+                    local dashAnimPlaying = false
+
+                    if animator then
+                        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                            if track.Animation and track.Animation.AnimationId == SETTINGS.DashAnimID then
+                                dashAnimPlaying = true
+                                dashStarted = true
+                                break
+                            end
+                        end
+                    end
+
+                    -- Keep aligning positions to moving targets
+                    local actualTargetRoot = getPrimaryBasePart(targetChar)
+                    if actualTargetRoot then
+                        for _ = 1, 3 do
+                            myRoot.CFrame = calculateTargetCFrame(actualTargetRoot)
+                            myRoot.AssemblyLinearVelocity = Vector3.zero
+                            myRoot.AssemblyAngularVelocity = Vector3.zero
+                        end
+                    end
+
+                    -- Check completion boundary conditions
+                    if (dashStarted and not dashAnimPlaying) or durationElapsed >= 0.75 then
+                        heartbeatConnection:Disconnect()
+                        myHumanoid:ChangeState(Enum.HumanoidStateType.Running)
+                        myHumanoid.AutoRotate = savedAutoRotate
+                        isTrackingAction = false
+                        actionFired = false
+                        animationStarted = false
+                    end
+                end)
+            end
+
+            -- Continuous State Evaluation Tick Loop
+            _G.LethalDashHeartbeat = RunService.Heartbeat:Connect(function()
+                if not _G.LethalDashHeartbeat then return end
+                if isTrackingAction then return end
+
+                local character = LocalPlayer.Character
+                if not character then return end
+                
+                local myRoot = character:FindFirstChild("HumanoidRootPart")
+                local myHumanoid = character:FindFirstChildOfClass("Humanoid")
+                if not myRoot or not myHumanoid then return end
+
+                local animator = myHumanoid:FindFirstChildOfClass("Animator")
+                if not animator then return end
+
+                -- Sync spatial orientation reference block part
+                rangeDetectorPart.CFrame = CFrame.new(myRoot.Position.X, myRoot.Position.Y - 2, myRoot.Position.Z)
+
+                local targetTrack = nil
+                for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                    if track.Animation and track.Animation.AnimationId == SETTINGS.AnimID then
+                        targetTrack = track
+                        break
+                    end
+                end
+
+                if targetTrack then
+                    animationStarted = true
+                    actionFired = false
+                    if targetTrack.Length > 0 then
+                        local timeRemaining = targetTrack.Length - targetTrack.TimePosition
+                        if timeRemaining <= SETTINGS.EarlyFire then
+                            actionFired = true
+                            animationStarted = false
+                            
+                            local targetChar = findValidCombatTarget(myRoot)
+                            if not targetChar then actionFired = false return end
+                            
+                            local targetRoot = getPrimaryBasePart(targetChar)
+                            if not targetRoot then actionFired = false return end
+
+                            isTrackingAction = true
+                            executeLethalSequence(myHumanoid, myRoot, targetChar, targetRoot)
+                        end
+                    end
+                else
+                    if animationStarted and not actionFired then
+                        actionFired = true
+                        animationStarted = false
+                        
+                        local targetChar = findValidCombatTarget(myRoot)
+                        if not targetChar then actionFired = false return end
+                        
+                        local targetRoot = getPrimaryBasePart(targetChar)
+                        if not targetRoot then actionFired = false return end
+
+                        isTrackingAction = true
+                        executeLethalSequence(myHumanoid, myRoot, targetChar, targetRoot)
+                    elseif not animationStarted then
+                        actionFired = false
+                    end
+                end
+            end)
+        else
+            -- Process Safe Controls Variable Reset 
+            pcall(function()
+                local character = game:GetService("Players").LocalPlayer.Character
+                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid.PlatformStand = false
+                    humanoid.AutoRotate = true
+                end
+            end)
+        end
+    end,
+})
+
+
+garouSection:Toggle({
+    Title = "Upper + Grasp",
+    Value = false,
+    Callback = function(isEnabled)
+        -- Clear previous connections
+        if _G.UpperGraspRenderConn then
+            _G.UpperGraspRenderConn:Disconnect()
+            _G.UpperGraspRenderConn = nil
+        end
+
+        if isEnabled then
+            local TweenService = game:GetService("TweenService")
+            local RunService = game:GetService("RunService")
+            local Players = game:GetService("Players")
+            local LocalPlayer = Players.LocalPlayer
+
+            -- Runtime State Tracker Flags
+            local isTweening = false
+            local lastPlaying = false
+            local cooldown = false
+
+            _G.UpperGraspRenderConn = RunService.RenderStepped:Connect(function()
+                if not _G.UpperGraspRenderConn then return end
+
+                local character = LocalPlayer.Character
+                local hrp = character and character:FindFirstChild("HumanoidRootPart")
+                local humanoid = character and character:FindFirstChild("Humanoid")
+                if not character or not hrp or not humanoid then return end
+
+                -- Detect target combat sequence activation track
+                local isPlaying = false
+                for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+                    if track.Animation and track.Animation.AnimationId == "rbxassetid://10503381238" then
+                        isPlaying = true
+                        break
+                    end
+                end
+
+                if isPlaying and not isTweening and not lastPlaying and not cooldown then
+                    isTweening = true
+                    lastPlaying = true
+                    cooldown = true
+
+                    task.delay(0.18, function()
+                        local target = nil
+                        local shortest = 7
+                        local live = workspace:FindFirstChild("Live")
+                        
+                        if live then
+                            for _, model in ipairs(live:GetChildren()) do
+                                if model:IsA("Model") and model ~= character then
+                                    local torso = model:FindFirstChild("Torso") or model:FindFirstChild("UpperTorso")
+                                    if torso then
+                                        local dist = (hrp.Position - torso.Position).Magnitude
+                                        if dist <= shortest then
+                                            shortest = dist
+                                            target = torso
+                                        end
+                                    end
+                                end
+                            end
+                        end
+
+                        -- Execute calculated teleports on execution alignment
+                        if target then
+                            local targetPos = target.Position + Vector3.new(0, 8, 0)
+                            TweenService:Create(hrp, TweenInfo.new(0.1, Enum.EasingStyle.Linear), {
+                                CFrame = CFrame.new(targetPos)
+                            }):Play()
+                        end
+
+                        -- Network fire tools handling payload packets
+                        local tool = LocalPlayer.Backpack:FindFirstChild("Hunter's Grasp")
+                        local remote = character and character:FindFirstChild("Communicate")
+                        if tool and remote then
+                            remote:FireServer({["Tool"] = tool, ["Goal"] = "Console Move"})
+                        end
+
+                        isTweening = false
+                        task.delay(15, function() 
+                            cooldown = false 
+                        end)
+                    end)
+                elseif not isPlaying then
+                    lastPlaying = false
+                end
+            end)
+        end
+    end,
+})
+
+
+-- ==========================================
+-- AUTO TECH SECTION (COMBINED)
+-- ==========================================
+
+AutoTechTab:Toggle({
+    Title = "crazy tech",
+    Value = false,
+    Callback = function(isEnabled)
+        if _G.UppercutTechConnection then 
+            _G.UppercutTechConnection:Disconnect() 
+            _G.UppercutTechConnection = nil 
+        end
+        if _G.UppercutHeartbeatConnection then
+            _G.UppercutHeartbeatConnection:Disconnect()
+            _G.UppercutHeartbeatConnection = nil
+        end
+        
+        if isEnabled then
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local LocalPlayer = Players.LocalPlayer
+            
+            local uppercutAnimationId = "rbxassetid://10503381238"
+            local lastTriggerTime = 0
+            
+            local function getClosestTarget(myRoot)
+                local live = workspace:FindFirstChild("Live") or workspace
+                local closest, shortest = nil, 50
+                
+                for _, model in ipairs(live:GetChildren()) do
+                    if model:IsA("Model") and model ~= LocalPlayer.Character then
+                        local hrp = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso")
+                        if hrp then
+                            if model.Name == "Weakest Dummy" or Players:GetPlayerFromCharacter(model) or model:FindFirstChild("Humanoid") then
+                                local dist = (hrp.Position - myRoot.Position).Magnitude
+                                if dist < shortest then
+                                    shortest = dist
+                                    closest = model
+                                end
+                            end
+                        end
+                    end
+                end
+                return closest
+            end
+            
+            local function processAction(character)
+                local myRoot = character and character:FindFirstChild("HumanoidRootPart")
+                if not myRoot then return end
+
+                myRoot.CFrame = myRoot.CFrame + myRoot.CFrame.LookVector * -3
+
+                local comm = character:FindFirstChild("Communicate")
+                if comm and comm:IsA("RemoteEvent") then
+                    comm:FireServer({
+                        Dash = Enum.KeyCode.W,
+                        Key = Enum.KeyCode.Q,
+                        Goal = "KeyPress"
+                    })
+                end
+
+                local target = getClosestTarget(myRoot)
+                if target then
+                    local targetHRP = target:FindFirstChild("HumanoidRootPart") or target:FindFirstChild("Torso")
+                    if targetHRP then
+                        local frontPos = targetHRP.Position + targetHRP.CFrame.LookVector * 2
+                        myRoot.CFrame = CFrame.new(frontPos, targetHRP.Position)
+
+                        local start = tick()
+                        if _G.UppercutHeartbeatConnection then _G.UppercutHeartbeatConnection:Disconnect() end
+                        
+                        _G.UppercutHeartbeatConnection = RunService.Heartbeat:Connect(function()
+                            if not _G.UppercutTechConnection then
+                                if _G.UppercutHeartbeatConnection then
+                                    _G.UppercutHeartbeatConnection:Disconnect()
+                                    _G.UppercutHeartbeatConnection = nil
+                                end
+                                return
+                            end
+                            
+                            local elapsed = tick() - start
+                            if elapsed > 1 then
+                                if _G.UppercutHeartbeatConnection then
+                                    _G.UppercutHeartbeatConnection:Disconnect()
+                                    _G.UppercutHeartbeatConnection = nil
+                                end
+                            elseif elapsed > 0.7 then
+                                myRoot.CFrame = CFrame.new(frontPos, targetHRP.Position)
+                            else
+                                local offsetY = math.floor(elapsed * 20) % 2 == 0 and 3 or -3
+                                local movePos = targetHRP.Position + targetHRP.CFrame.LookVector * 2 + Vector3.new(0, offsetY, 0)
+                                myRoot.CFrame = CFrame.new(movePos, targetHRP.Position)
+                            end
+                        end)
+                    end
+                end
+            end
+            
+            local function listenToCharacter(character)
+                local humanoid = character:WaitForChild("Humanoid", 10)
+                if not humanoid then return end
+                
+                local animTrackConnection
+                animTrackConnection = humanoid.AnimationPlayed:Connect(function(track)
+                    if not _G.UppercutTechConnection then 
+                        if animTrackConnection then animTrackConnection:Disconnect() end
+                        return 
+                    end
+                    
+                    local id = track.Animation and track.Animation.AnimationId
+                    local now = tick()
+                    
+                    if id == uppercutAnimationId then
+                        if now - lastTriggerTime < 1.5 then return end 
+                        lastTriggerTime = now
+                        
+                        task.delay(0.31, function()
+                            if _G.UppercutTechConnection and character and character.Parent then 
+                                processAction(character)
+                            end
+                        end)
+                    end
+                end)
+            end
+
+            if LocalPlayer.Character then
+                listenToCharacter(LocalPlayer.Character)
+            end
+            
+            _G.UppercutTechConnection = LocalPlayer.CharacterAdded:Connect(listenToCharacter)
+        end
+    end,
+})
+
+AutoTechTab:Toggle({
+    Title = "Auto Wall Combo",
+    Value = false,
+    Callback = function(isEnabled)
+        if _G.AutoWallConnection then 
+            _G.AutoWallConnection:Disconnect() 
+            _G.AutoWallConnection = nil 
+        end
+        
+        if isEnabled then
+            local Players = game:GetService("Players")
+            local LocalPlayer = Players.LocalPlayer
+            
+            local ValidAnimations = {
+                ["rbxassetid://10469643643"] = true,
+                ["rbxassetid://10470104242"] = true,
+                ["rbxassetid://10503381238"] = true,
+                ["rbxassetid://18716478642"] = true,
+                ["rbxassetid://15162694192"] = true,
+                ["rbxassetid://16552234590"] = true,
+                ["rbxassetid://18716647575"] = true,
+                ["rbxassetid://18716001119"] = true,
+                ["rbxassetid://18715820628"] = true,
+                ["rbxassetid://18716149223"] = true,
+                ["rbxassetid://134775406437626"] = true,
+                ["rbxassetid://18715747362"] = true,
+                ["rbxassetid://17325537719"] = true,
+                ["rbxassetid://13294471966"] = true,
+                ["rbxassetid://13295936866"] = true,
+                ["rbxassetid://13378708199"] = true,
+                ["rbxassetid://13379003796"] = true,
+                ["rbxassetid://14136436157"] = true,
+                ["rbxassetid://17889290569"] = true,
+            }
+            
+            local Debounce = false
+            
+            local function listenToCharacter(character)
+                local humanoid = character:WaitForChild("Humanoid", 10)
+                local rootPart = character:WaitForChild("HumanoidRootPart", 10)
+                local communicate = character:WaitForChild("Communicate", 10)
+                local animator = humanoid and humanoid:WaitForChild("Animator", 10)
+                
+                if not (humanoid and rootPart and communicate and animator) then return end
+                
+                local animTrackConnection
+                animTrackConnection = animator.AnimationPlayed:Connect(function(track)
+                    if not _G.AutoWallConnection then 
+                        if animTrackConnection then animTrackConnection:Disconnect() end
+                        return 
+                    end
+                    
+                    if Debounce then return end
+                    
+                    local animation = track.Animation
+                    if not animation then return end
+                    
+                    local animationId = animation.AnimationId
+                    if not ValidAnimations[animationId] then return end
+                    
+                    Debounce = true
+                    humanoid.AutoRotate = false
+                    
+                    local attachment = Instance.new("Attachment")
+                    attachment.Parent = rootPart
+                    
+                    local align = Instance.new("AlignOrientation")
+                    align.Attachment0 = attachment
+                    align.Mode = Enum.OrientationAlignmentMode.OneAttachment
+                    align.RigidityEnabled = true
+                    align.Responsiveness = 200
+                    align.MaxTorque = math.huge
+                    align.CFrame = rootPart.CFrame * CFrame.Angles(math.rad(-90), 0, 0)
+                    align.Parent = rootPart
+                    
+                    task.spawn(function()
+                        for i = 1, 40 do
+                            if not _G.AutoWallConnection then break end
+                            
+                            pcall(function()
+                                communicate:FireServer({
+                                    Goal = "Wall Combo"
+                                })
+                            end)
+                            
+                            task.wait()
+                        end
+                    end)
+                    
+                    task.wait(0.5)
+                    
+                    if align then align:Destroy() end
+                    if attachment then attachment:Destroy() end
+                    
+                    if humanoid and humanoid.Parent then
+                        humanoid.AutoRotate = true
+                    end
+                    
+                    task.wait(1)
+                    Debounce = false
+                end)
+            end
+
+            if LocalPlayer.Character then
+                listenToCharacter(LocalPlayer.Character)
+            end
+            
+            _G.AutoWallConnection = LocalPlayer.CharacterAdded:Connect(listenToCharacter)
+        end
+    end,
+})
+
+AutoTechTab:Toggle({
+    Title = "Tornado Tech",
+    Value = false,
+    Callback = function(isEnabled)
+        if _G.TornadoConnection then _G.TornadoConnection:Disconnect() _G.TornadoConnection = nil end
+        if _G.TornadoHeartbeat then _G.TornadoHeartbeat:Disconnect() _G.TornadoHeartbeat = nil end
+        if _G.TornadoDashConnection then _G.TornadoDashConnection:Disconnect() _G.TornadoDashConnection = nil end
+        
+        _G.TornadoEnabled = isEnabled
+
+        if isEnabled then
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local LocalPlayer = Players.LocalPlayer
+            
+            _G.TornadoEarlyFire = _G.TornadoEarlyFire or 0.6
+            _G.TornadoTilt = _G.TornadoTilt or 85
+            _G.TornadoSpinSpeed = _G.TornadoSpinSpeed or 65
+            _G.TornadoQDelay = _G.TornadoQDelay or 0.55
+            _G.TornadoUpHeight = _G.TornadoUpHeight or 38
+            _G.TornadoSpinTime = _G.TornadoSpinTime or 0.55
+
+            local TARGET_ANIM_ID = "10503381238"
+            local DETECTION_RANGE = 12.7
+            local MAX_COOLDOWN = 5
+            
+            local Character, Humanoid, RootPart, Animator, CommunicateRemote
+            local isAttacking, hasFired, isExecuting, lastTarget = false, false, false, nil
+            local lastFireTime = 0
+
+            local function ResetState()
+                isAttacking = false
+                hasFired = false
+                isExecuting = false
+                lastTarget = nil
+            end
+
+            local function StopDash()
+                if _G.TornadoDashConnection then
+                    _G.TornadoDashConnection:Disconnect()
+                    _G.TornadoDashConnection = nil
+                end
+                if Humanoid and Humanoid.Parent then
+                    Humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                    Humanoid.AutoRotate = true
+                end
+            end
+
+            local function GetNearestTarget()
+                if not RootPart or not RootPart.Parent then return nil end
+                local closestTarget = nil
+                local minDistance = DETECTION_RANGE
+
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer and player.Character then
+                        local pRoot = player.Character:FindFirstChild("HumanoidRootPart")
+                        local pHum = player.Character:FindFirstChild("Humanoid")
+                        if pRoot and pHum and pHum.Health > 0 then
+                            local dist = (pRoot.Position - RootPart.Position).Magnitude
+                            if dist < minDistance then minDistance = dist; closestTarget = pRoot end
+                        end
+                    end
+                end
+
+                for _, model in ipairs(workspace:GetDescendants()) do
+                    if model:IsA("Model") and model ~= Character then
+                        local mRoot = model:FindFirstChild("HumanoidRootPart")
+                        local mHum = model:FindFirstChild("Humanoid")
+                        if mRoot and mHum and mHum.Health > 0 then
+                            local isPlayer = false
+                            for _, player in ipairs(Players:GetPlayers()) do
+                                if player.Character == model then isPlayer = true break end
+                            end
+                            if not isPlayer then
+                                local dist = (mRoot.Position - RootPart.Position).Magnitude
+                                if dist < minDistance then minDistance = dist; closestTarget = mRoot end
+                            end
+                        end
+                    end
+                end
+                return closestTarget
+            end
+
+            local function CheckForAttackAnimation()
+                if not Animator or not Animator.Parent then return false, nil end
+                for _, track in ipairs(Animator:GetPlayingAnimationTracks()) do
+                    local id = tostring(track.Animation.AnimationId):match("%d+$")
+                    if id == TARGET_ANIM_ID then return true, track end
+                end
+                return false, nil
+            end
+
+            local function ExecuteAttack(targetPart)
+                if not RootPart or not RootPart.Parent or not CommunicateRemote then return end
+                
+                lastFireTime = tick()
+
+                pcall(function()
+                    CommunicateRemote:FireServer(unpack({ {Dash = Enum.KeyCode.W, Key = Enum.KeyCode.Q, Goal = "KeyPress"} }))
+                end)
+
+                if targetPart and targetPart.Parent then
+                    if Humanoid and Humanoid.Parent then
+                        Humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+                        Humanoid.AutoRotate = false
+                    end
+                    RootPart.AssemblyLinearVelocity = Vector3.zero
+                    RootPart.AssemblyAngularVelocity = Vector3.zero
+
+                    if _G.TornadoDashConnection then _G.TornadoDashConnection:Disconnect() end
+                    
+                    local elapsed = 0
+                    local DASH_TIME = _G.TornadoSpinTime
+
+                    _G.TornadoDashConnection = RunService.RenderStepped:Connect(function(dt)
+                        if not _G.TornadoEnabled then StopDash() return end
+                        if not RootPart or not RootPart.Parent then StopDash(); return end
+
+                        elapsed += dt
+                        if elapsed >= DASH_TIME or not targetPart or not targetPart.Parent then
+                            StopDash()
+                            return
+                        end
+
+                        local aimPos = Vector3.new(targetPart.Position.X, targetPart.Position.Y - 2.8, targetPart.Position.Z)
+                        local progress = elapsed / DASH_TIME
+                        local arcY = math.sin(progress * math.pi) * _G.TornadoUpHeight
+                        local diffX = aimPos.X - RootPart.Position.X
+                        local diffZ = aimPos.Z - RootPart.Position.Z
+
+                        RootPart.AssemblyLinearVelocity = Vector3.new(diffX * 28, arcY, diffZ * 28)
+                        RootPart.AssemblyAngularVelocity = Vector3.zero
+
+                        local spinRad = math.rad(_G.TornadoSpinSpeed * 40 * elapsed)
+                        local tiltRad = math.rad(_G.TornadoTilt)
+                        RootPart.CFrame = CFrame.new(RootPart.Position) * CFrame.Angles(tiltRad, spinRad, 0)
+                    end)
+                end
+
+                task.wait(_G.TornadoQDelay)
+                
+                StopDash()
+                isExecuting = false
+                hasFired = false
+                lastTarget = nil
+            end
+
+            local function listenToCharacter(newChar)
+                Character = newChar
+                Humanoid = Character:WaitForChild("Humanoid", 10)
+                RootPart = Character:WaitForChild("HumanoidRootPart", 10)
+                Animator = Humanoid and Humanoid:WaitForChild("Animator", 10)
+                CommunicateRemote = Character:WaitForChild("Communicate", 5)
+                ResetState()
+            end
+
+            if LocalPlayer.Character then listenToCharacter(LocalPlayer.Character) end
+            _G.TornadoConnection = LocalPlayer.CharacterAdded:Connect(listenToCharacter)
+
+            _G.TornadoHeartbeat = RunService.Heartbeat:Connect(function()
+                if not Character or not RootPart or not RootPart.Parent then return end
+                if (tick() - lastFireTime) < MAX_COOLDOWN then return end
+
+                local isPlaying, animTrack = CheckForAttackAnimation()
+                local earlyFireThreshold = tonumber(_G.TornadoEarlyFire) or 0.6
+
+                if isPlaying and not isAttacking then
+                    isAttacking = true
+                    hasFired = false
+                    isExecuting = false
+                    lastTarget = GetNearestTarget()
+
+                elseif isPlaying and isAttacking then
+                    if not hasFired and not isExecuting and lastTarget then
+                        if animTrack and animTrack.Length > 0.01 then
+                            if (animTrack.Length - animTrack.TimePosition) <= earlyFireThreshold then
+                                hasFired = true
+                                isExecuting = true
+                                local target = lastTarget
+                                task.spawn(function() ExecuteAttack(target) end)
+                            end
+                        end
+                    end
+
+                elseif not isPlaying and isAttacking then
+                    isAttacking = false
+                    if not hasFired and not isExecuting and lastTarget then
+                        hasFired = true
+                        isExecuting = true
+                        local target = lastTarget
+                        task.spawn(function() ExecuteAttack(target) end)
+                    else
+                        ResetState()
+                    end
+                else
+                    ResetState()
+                end
+            end)
+        else
+            pcall(function()
+                local char = LocalPlayer.Character
+                local hum = char and char:FindFirstChild("Humanoid")
+                if hum then
+                    hum:ChangeState(Enum.HumanoidStateType.Running)
+                    hum.AutoRotate = true
+                end
+            end)
+        end
+    end,
+})
+
+AutoTechTab:Toggle({
+    Title = "Supa Tech",
+    Value = false,
+    Callback = function(isEnabled)
+        if _G.SupaTechTechConnection then 
+            _G.SupaTechTechConnection:Disconnect() 
+            _G.SupaTechTechConnection = nil 
+        end
+        if _G.SupaTechFreezeConnection then
+            _G.SupaTechFreezeConnection:Disconnect()
+            _G.SupaTechFreezeConnection = nil
+        end
+        if _G.SupaTechFollowConnection then
+            _G.SupaTechFollowConnection:Disconnect()
+            _G.SupaTechFollowConnection = nil
+        end
+        if _G.SupaTechAnimConnection then
+            _G.SupaTechAnimConnection:Disconnect()
+            _G.SupaTechAnimConnection = nil
+        end
+        
+        if isEnabled then
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local LocalPlayer = Players.LocalPlayer
+            
+            local stickRange = 18
+            local dashDuration = 0.15
+            local followOffset = 2.5
+            local angleTilt = math.rad(55)
+            local cooldownDuration = 4
+            local animationIds = {"10503381238", "13379003796"}
+            
+            local inCooldown = false
+            
+            local function getClosestTarget(myRoot)
+                local live = workspace:FindFirstChild("Live") or workspace
+                local closest, shortest = nil, stickRange
+                
+                for _, model in ipairs(live:GetChildren()) do
+                    if model:IsA("Model") and model ~= LocalPlayer.Character then
+                        local hrp = model:FindFirstChild("HumanoidRootPart")
+                        local hum = model:FindFirstChildOfClass("Humanoid")
+                        if hrp and (not hum or hum.Health > 0) then
+                            local dist = (hrp.Position - myRoot.Position).Magnitude
+                            if dist < shortest then
+                                shortest = dist
+                                closest = hrp
+                            end
+                        end
+                    end
+                end
+                
+                if not closest and live ~= workspace then
+                    for _, model in ipairs(workspace:GetChildren()) do
+                        if model:IsA("Model") and model ~= LocalPlayer.Character then
+                            local hrp = model:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local dist = (hrp.Position - myRoot.Position).Magnitude
+                                if dist < shortest then
+                                    shortest = dist
+                                    closest = hrp
+                                end
+                            end
+                        end
+                    end
+                end
+                return closest
+            end
+            
+            local function performStickDash(character)
+                local myRoot = character:FindFirstChild("HumanoidRootPart")
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if not myRoot or not humanoid then return end
+                
+                local targetHRP = getClosestTarget(myRoot)
+                if not targetHRP then return end
+                
+                local savedWalkSpeed = humanoid.WalkSpeed
+                local savedJumpPower = humanoid.JumpPower
+                local savedAutoRotate = humanoid.AutoRotate
+                
+                if _G.SupaTechFreezeConnection then _G.SupaTechFreezeConnection:Disconnect() end
+                _G.SupaTechFreezeConnection = RunService.Heartbeat:Connect(function()
+                    if myRoot and myRoot.Parent then myRoot.AssemblyLinearVelocity = Vector3.zero end
+                    if humanoid and humanoid.Parent then humanoid.WalkSpeed = 0 end
+                end)
+                
+                local comm = character:FindFirstChild("Communicate")
+                if comm and comm:IsA("RemoteEvent") then
+                    pcall(function()
+                        comm:FireServer({
+                            Dash = Enum.KeyCode.W,
+                            Key = Enum.KeyCode.Q,
+                            Goal = "KeyPress"
+                        })
+                    end)
+                end
+                
+                task.wait(0.2)
+                
+                if not _G.SupaTechTechConnection or not myRoot or not myRoot.Parent or not targetHRP or not targetHRP.Parent then
+                    if _G.SupaTechFreezeConnection then _G.SupaTechFreezeConnection:Disconnect() end
+                    if humanoid and humanoid.Parent then
+                        humanoid.WalkSpeed = savedWalkSpeed
+                        humanoid.AutoRotate = savedAutoRotate
+                    end
+                    return 
+                end
+                
+                pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Physics) end)
+                myRoot.CFrame = myRoot.CFrame * CFrame.Angles(angleTilt, 0, 0)
+                
+                local start = tick()
+                if _G.SupaTechFollowConnection then _G.SupaTechFollowConnection:Disconnect() end
+                
+                _G.SupaTechFollowConnection = RunService.Heartbeat:Connect(function()
+                    if not _G.SupaTechTechConnection or not myRoot or not myRoot.Parent or not targetHRP or not targetHRP.Parent then
+                        if _G.SupaTechFollowConnection then _G.SupaTechFollowConnection:Disconnect() _G.SupaTechFollowConnection = nil end
+                        return
+                    end
+                    
+                    local elapsed = tick() - start
+                    if elapsed >= dashDuration then
+                        if _G.SupaTechFollowConnection then _G.SupaTechFollowConnection:Disconnect() _G.SupaTechFollowConnection = nil end
+                    else
+                        local dir = (targetHRP.Position - myRoot.Position).Unit
+                        myRoot.CFrame = CFrame.new(targetHRP.Position - dir * followOffset) * CFrame.Angles(angleTilt, 0, 0)
+                    end
+                end)
+                
+                task.wait(dashDuration)
+                
+                if _G.SupaTechFreezeConnection then _G.SupaTechFreezeConnection:Disconnect() _G.SupaTechFreezeConnection = nil end
+                if _G.SupaTechFollowConnection then _G.SupaTechFollowConnection:Disconnect() _G.SupaTechFollowConnection = nil end
+                
+                pcall(function()
+                    if humanoid and humanoid.Parent then
+                        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+                        humanoid.WalkSpeed = savedWalkSpeed
+                        humanoid.JumpPower = savedJumpPower
+                        humanoid.AutoRotate = savedAutoRotate
+                    end
+                end)
+            end
+            
+            local function listenToCharacter(character)
+                local humanoid = character:WaitForChild("Humanoid", 10)
+                if not humanoid then return end
+                
+                if _G.SupaTechAnimConnection then _G.SupaTechAnimConnection:Disconnect() end
+                _G.SupaTechAnimConnection = humanoid.AnimationPlayed:Connect(function(track)
+                    if not _G.SupaTechTechConnection then return end
+                    
+                    local anim = track.Animation
+                    if anim then
+                        local id = tostring(anim.AnimationId)
+                        for _, targetId in ipairs(animationIds) do
+                            if string.find(id, targetId) then
+                                task.delay(0.3, function()
+                                    if _G.SupaTechTechConnection and not inCooldown then
+                                        inCooldown = true
+                                        task.spawn(function() performStickDash(character) end)
+                                        task.wait(cooldownDuration)
+                                        inCooldown = false
+                                    end
+                                end)
+                                break
+                            end
+                        end
+                    end
+                end)
+            end
+
+            if LocalPlayer.Character then
+                listenToCharacter(LocalPlayer.Character)
+            end
+            
+            _G.SupaTechTechConnection = LocalPlayer.CharacterAdded:Connect(listenToCharacter)
+        else
+            pcall(function()
+                local character = game:GetService("Players").LocalPlayer.Character
+                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+                    humanoid.AutoRotate = true
+                end
+            end)
+        end
+    end,
+})
+
+AutoTechTab:Toggle({
+    Title = "LoopDash",
+    Value = false,
+    Callback = function(isEnabled)
+        if _G.LoopDashTechConnection then 
+            _G.LoopDashTechConnection:Disconnect() 
+            _G.LoopDashTechConnection = nil 
+        end
+        if _G.LoopDashLerpConnection then
+            _G.LoopDashLerpConnection:Disconnect()
+            _G.LoopDashLerpConnection = nil
+        end
+        
+        if isEnabled then
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local LocalPlayer = Players.LocalPlayer
+            
+            local dashAnimationId = "10503381238"
+            local lastTriggerTime = 0
+            
+            local targetRadius = 50
+            local waitDetect = 0.3
+            local waitJump = 0
+            local waitRemote = 0.1
+            local lockDuration = 1.5
+            local cooldownDuration = 1.0
+            local responsiveness = 483
+            local jumpVelocity = 62
+            
+            local debounce = false
+            
+            local function getClosestTarget(myRoot)
+                local live = workspace:FindFirstChild("Live") or workspace
+                local closest, shortest = nil, targetRadius
+                
+                for _, model in ipairs(live:GetChildren()) do
+                    if model:IsA("Model") and model ~= LocalPlayer.Character then
+                        local hrp = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso")
+                        local hum = model:FindFirstChildOfClass("Humanoid")
+                        if hrp and hum and hum.Health > 0 then
+                            if model.Name == "Weakest Dummy" or Players:GetPlayerFromCharacter(model) or model:FindFirstChild("Humanoid") then
+                                local dist = (hrp.Position - myRoot.Position).Magnitude
+                                if dist < shortest then
+                                    shortest = dist
+                                    closest = hrp
+                                end
+                            end
+                        end
+                    end
+                end
+                return closest
+            end
+            
+            local function processAction(character)
+                if debounce then return end
+                debounce = true
+                
+                task.wait(waitDetect)
+                if not _G.LoopDashTechConnection then debounce = false return end
+                
+                local myRoot = character:FindFirstChild("HumanoidRootPart")
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if not myRoot or not humanoid then debounce = false return end
+                
+                humanoid.AutoRotate = false
+                myRoot.AssemblyLinearVelocity = Vector3.new(myRoot.AssemblyLinearVelocity.X, jumpVelocity, myRoot.AssemblyLinearVelocity.Z)
+                
+                if waitJump > 0 then task.wait(waitJump) end
+                if not _G.LoopDashTechConnection then humanoid.AutoRotate = true debounce = false return end
+                
+                local comm = character:FindFirstChild("Communicate")
+                if comm and comm:IsA("RemoteEvent") then
+                    pcall(function()
+                        comm:FireServer({
+                            Dash = Enum.KeyCode.W,
+                            Key = Enum.KeyCode.Q,
+                            Goal = "KeyPress"
+                        })
+                    end)
+                end
+                
+                task.wait(waitRemote)
+                if not _G.LoopDashTechConnection then humanoid.AutoRotate = true debounce = false return end
+                
+                local targetHRP = getClosestTarget(myRoot)
+                if targetHRP then
+                    local start = tick()
+                    if _G.LoopDashLerpConnection then _G.LoopDashLerpConnection:Disconnect() end
+                    
+                    _G.LoopDashLerpConnection = RunService.RenderStepped:Connect(function(dt)
+                        if not _G.LoopDashTechConnection or not myRoot or not myRoot.Parent or not targetHRP or not targetHRP.Parent then
+                            if _G.LoopDashLerpConnection then
+                                _G.LoopDashLerpConnection:Disconnect()
+                                _G.LoopDashLerpConnection = nil
+                            end
+                            if humanoid and humanoid.Parent then humanoid.AutoRotate = true end
+                            return
+                        end
+                        
+                        local elapsed = tick() - start
+                        if elapsed >= lockDuration then
+                            if _G.LoopDashLerpConnection then
+                                _G.LoopDashLerpConnection:Disconnect()
+                                _G.LoopDashLerpConnection = nil
+                            end
+                            humanoid.AutoRotate = true
+                        else
+                            humanoid.AutoRotate = false
+                            local currentPos = myRoot.Position
+                            local targetLookPos = Vector3.new(targetHRP.Position.X, currentPos.Y, targetHRP.Position.Z)
+                            
+                            if (targetLookPos - currentPos).Magnitude >= 0.001 then
+                                local targetCFrame = CFrame.new(currentPos, targetLookPos)
+                                local alpha = math.clamp(1 - math.exp(-0.02 * responsiveness * dt), 0, 1)
+                                local lerpedCFrame = myRoot.CFrame:Lerp(targetCFrame, alpha)
+                                
+                                myRoot.CFrame = CFrame.new(currentPos) * CFrame.fromMatrix(Vector3.new(), lerpedCFrame.RightVector, lerpedCFrame.UpVector)
+                            end
+                        end
+                    end)
+                else
+                    humanoid.AutoRotate = true
+                end
+                
+                task.wait(cooldownDuration)
+                debounce = false
+            end
+            
+            local function listenToCharacter(character)
+                local humanoid = character:WaitForChild("Humanoid", 10)
+                if not humanoid then return end
+                
+                local animTrackConnection
+                animTrackConnection = humanoid.AnimationPlayed:Connect(function(track)
+                    if not _G.LoopDashTechConnection then 
+                        if animTrackConnection then animTrackConnection:Disconnect() end
+                        return 
+                    end
+                    
+                    local id = track.Animation and track.Animation.AnimationId
+                    local now = tick()
+                    
+                    if id and tostring(id):find(dashAnimationId) then
+                        if now - lastTriggerTime < (cooldownDuration + waitDetect + waitRemote) then return end 
+                        lastTriggerTime = now
+                        
+                        task.spawn(function()
+                            processAction(character)
+                        end)
+                    end
+                end)
+            end
+
+            if LocalPlayer.Character then
+                listenToCharacter(LocalPlayer.Character)
+            end
+            
+            _G.LoopDashTechConnection = LocalPlayer.CharacterAdded:Connect(listenToCharacter)
+        else
+            pcall(function()
+                local character = game:GetService("Players").LocalPlayer.Character
+                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid.AutoRotate = true
+                end
+            end)
+        end
+    end,
+})
+
+AutoTechTab:Toggle({
+    Title = "FreezeTech",
+    Value = false,
+    Callback = function(isEnabled)
+        -- Clear previous connections
+        if _G.FreezeTechAnimationConn then 
+            _G.FreezeTechAnimationConn:Disconnect() 
+            _G.FreezeTechAnimationConn = nil 
+        end
+        if _G.FreezeTechCharAddedConn then 
+            _G.FreezeTechCharAddedConn:Disconnect() 
+            _G.FreezeTechCharAddedConn = nil 
+        end
+        if _G.FreezeTechLoopConn then
+            _G.FreezeTechLoopConn:Disconnect()
+            _G.FreezeTechLoopConn = nil
+        end
+        
+        if isEnabled then
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local VirtualInputManager = game:GetService("VirtualInputManager")
+            local LocalPlayer = Players.LocalPlayer
+
+            -- Configuration constants
+            local TARGET_ANIMATION = "10503381238"
+            local DISABLE_ANIMATION = "10479335397"
+            local DASH_DELAY = 0.236
+            local FREEZE_DELAY = 0.2
+            local FREEZE_DURATION = 0.67
+            local COOLDOWN_TIME = 5
+            local DISABLE_DURATION = 5
+            local TILT_ANGLE = 0
+
+            -- Runtime states
+            local cooldownActive = false
+            local disabledTimerActive = false
+            local nextAvailableTime = 0
+            local disableUntilTime = 0
+
+            -- Freeze Action Mechanics
+            local function doFreeze(char, duration)
+                local humanoid = char:FindFirstChild("Humanoid")
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if not humanoid or not root then return end
+
+                local freezePos = root.Position
+                local freezeLook = root.CFrame.LookVector
+                local start = tick()
+
+                humanoid.AutoRotate = false
+                humanoid.PlatformStand = true
+
+                local bodyGyro = Instance.new("BodyGyro")
+                bodyGyro.Parent = root
+                bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                bodyGyro.P = 50000
+                bodyGyro.D = 1000
+
+                local bodyPos = Instance.new("BodyPosition")
+                bodyPos.Parent = root
+                bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                bodyPos.P = 50000
+                bodyPos.D = 1000
+                bodyPos.Position = freezePos
+
+                if _G.FreezeTechLoopConn then _G.FreezeTechLoopConn:Disconnect() end
+
+                _G.FreezeTechLoopConn = RunService.RenderStepped:Connect(function()
+                    if not _G.FreezeTechLoopConn or not char.Parent then
+                        if _G.FreezeTechLoopConn then _G.FreezeTechLoopConn:Disconnect() _G.FreezeTechLoopConn = nil end
+                        pcall(function() bodyGyro:Destroy() bodyPos:Destroy() end)
+                        return
+                    end
+
+                    if tick() - start >= duration then
+                        if _G.FreezeTechLoopConn then _G.FreezeTechLoopConn:Disconnect() _G.FreezeTechLoopConn = nil end
+                        pcall(function() bodyGyro:Destroy() bodyPos:Destroy() end)
+                        if humanoid and humanoid.Parent then
+                            humanoid.PlatformStand = false
+                            humanoid.AutoRotate = true
+                        end
+                        return
+                    end
+
+                    bodyPos.Position = freezePos
+                    local targetCFrame = CFrame.lookAt(freezePos, freezePos + freezeLook) * CFrame.Angles(math.rad(35), 0, math.rad(TILT_ANGLE))
+                    bodyGyro.CFrame = targetCFrame
+
+                    root.AssemblyLinearVelocity = Vector3.zero
+                    root.AssemblyAngularVelocity = Vector3.zero
+                    humanoid.PlatformStand = true
+                end)
+            end
+
+            -- Process input trigger sequencing
+            local function processTechSequence(char)
+                cooldownActive = true
+                nextAvailableTime = tick() + DASH_DELAY + FREEZE_DELAY + FREEZE_DURATION + COOLDOWN_TIME
+
+                task.wait(DASH_DELAY)
+                if not _G.FreezeTechAnimationConn or not char.Parent then cooldownActive = false return end
+
+                -- Virtual key stroke for Dash Q
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+                task.wait(0.03)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+
+                task.wait(FREEZE_DELAY)
+                if char.Parent and _G.FreezeTechAnimationConn then
+                    doFreeze(char, FREEZE_DURATION)
+                end
+
+                task.wait(FREEZE_DURATION + COOLDOWN_TIME)
+                cooldownActive = false
+            end
+
+            -- Character Listener Configuration
+            local function listenToCharacter(character)
+                local humanoid = character:WaitForChild("Humanoid", 10)
+                local animator = humanoid and humanoid:WaitForChild("Animator", 10)
+                if not animator then return end
+
+                if _G.FreezeTechAnimationConn then _G.FreezeTechAnimationConn:Disconnect() end
+
+                _G.FreezeTechAnimationConn = animator.AnimationPlayed:Connect(function(track)
+                    if not _G.FreezeTechAnimationConn then return end
+                    local anim = track.Animation
+                    if not anim then return end
+
+                    local animId = tostring(anim.AnimationId)
+                    local currentTime = tick()
+
+                    -- Check Disable Condition Animation
+                    if animId:find(DISABLE_ANIMATION) then
+                        if currentTime > disableUntilTime then
+                            disableUntilTime = currentTime + DISABLE_DURATION
+                        end
+                        return
+                    end
+
+                    -- Check Action Target Animation
+                    if animId:find(TARGET_ANIMATION) then
+                        if cooldownActive or currentTime < nextAvailableTime or currentTime < disableUntilTime then return end
+
+                        task.spawn(function()
+                            processTechSequence(character)
+                        end)
+                    end
+                end)
+            end
+
+            if LocalPlayer.Character then
+                listenToCharacter(LocalPlayer.Character)
+            end
+            
+            _G.FreezeTechCharAddedConn = LocalPlayer.CharacterAdded:Connect(listenToCharacter)
+        else
+            -- Cleanup character mechanics state upon disabling toggle
+            pcall(function()
+                local character = game:GetService("Players").LocalPlayer.Character
+                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid.PlatformStand = false
+                    humanoid.AutoRotate = true
+                end
+            end)
+        end
+    end,
+})
+
+AutoTechTab:Toggle({
+    Title = "Auto Down Slam",
+    Value = false,
+    Callback = function(isEnabled)
+        -- Clear previous active lifecycle connections
+        if _G.SlamAnimConn then
+            _G.SlamAnimConn:Disconnect()
+            _G.SlamAnimConn = nil
+        end
+        if _G.SlamCharConn then
+            _G.SlamCharConn:Disconnect()
+            _G.SlamCharConn = nil
+        end
+
+        if isEnabled then
+            local Players = game:GetService("Players")
+            local TweenService = game:GetService("TweenService")
+            local LocalPlayer = Players.LocalPlayer
+
+            -- Targeted down slam animation hash list
+            local slamAnimations = {
+                ["rbxassetid://10469639222"] = true,
+                ["rbxassetid://13532604085"] = true,
+                ["rbxassetid://13295919399"] = true,
+                ["rbxassetid://13378751717"] = true,
+                ["rbxassetid://14001963401"] = true,
+                ["rbxassetid://15240176873"] = true,
+                ["rbxassetid://16515448089"] = true,
+                ["rbxassetid://17889471098"] = true,
+                ["rbxassetid://104895379416342"] = true
+            }
+
+            -- Spatial evaluation utility to look for adjacent targets
+            local function isNearEnemy(character, rootPart)
+                local liveFolder = workspace:FindFirstChild("Live")
+                if not liveFolder then return false end
+                
+                for _, v in ipairs(liveFolder:GetChildren()) do
+                    if v:IsA("Model") and v ~= character then
+                        local enemyRoot = v:FindFirstChild("HumanoidRootPart")
+                        if enemyRoot and (enemyRoot.Position - rootPart.Position).Magnitude <= 15 then
+                            if Players:GetPlayerFromCharacter(v) or v.Name == "Weakest Dummy" then
+                                return true
+                            end
+                        end
+                    end
+                end
+                return false
+            end
+
+            -- Execute jump-evasion dynamic override sequence
+            local function performSlamJump(character, rootPart, humanoid)
+                if not (rootPart and humanoid) then return end
+                
+                if isNearEnemy(character, rootPart) then
+                    local tween = TweenService:Create(
+                        rootPart,
+                        TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                        {CFrame = rootPart.CFrame + Vector3.new(0, 6, 0)}
+                    )
+                    tween:Play()
+                    
+                    local forceStates = {
+                        Enum.HumanoidStateType.PlatformStanding,
+                        Enum.HumanoidStateType.Freefall,
+                        Enum.HumanoidStateType.GettingUp
+                    }
+                    for _, state in ipairs(forceStates) do
+                        if humanoid:GetState() == state then
+                            humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+                            task.wait()
+                        end
+                    end
+                    
+                    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                end
+            end
+
+            -- Initialize tracking hooks onto the local humanoid
+            local function setupCharacter()
+                local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                task.wait(0.5)
+                
+                local humanoid = char:WaitForChild("Humanoid", 5) or char:FindFirstChildOfClass("Humanoid")
+                local rootPart = char:WaitForChild("HumanoidRootPart", 5) or char:FindFirstChild("HumanoidRootPart")
+                
+                if _G.SlamAnimConn then
+                    _G.SlamAnimConn:Disconnect()
+                end
+                
+                if humanoid and rootPart then
+                    _G.SlamAnimConn = humanoid.AnimationPlayed:Connect(function(animTrack)
+                        if animTrack.Animation and slamAnimations[animTrack.Animation.AnimationId] then
+                            performSlamJump(char, rootPart, humanoid)
+                        end
+                    end)
+                end
+            end
+
+            -- Active connection setup
+            setupCharacter()
+            _G.SlamCharConn = LocalPlayer.CharacterAdded:Connect(setupCharacter)
+        end
+    end,
+})
+
+
+kibaSection:Toggle({
+    Title = "Kiba v1",
+    Value = _G.KibaEnabled or false,
+    Callback = function(isEnabled)
+        _G.KibaEnabled = isEnabled
+        
+        -- Cleanup connections when disabled
+        if not isEnabled then
+            if _G.KibaConnection then _G.KibaConnection:Disconnect() end
+            return
+        end
+
+        -- Variables
+        local Players = game:GetService("Players")
+        local RunService = game:GetService("RunService")
+        local LocalPlayer = Players.LocalPlayer
+        local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local HRP = Character:WaitForChild("HumanoidRootPart")
+        local Humanoid = Character:WaitForChild("Humanoid")
+        local Communicate = Character:WaitForChild("Communicate")
+        
+        local ANIM_ID = "10503381238" -- Replace if needed
+        local COOLDOWN = 5.0
+        local lastDash = 0
+        local isDashing = false
+
+        -- Core Logic
+        local function getTarget()
+            local target, shortest = nil, 20 -- Range
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character then
+                    local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp and (hrp.Position - HRP.Position).Magnitude < shortest then
+                        shortest = (hrp.Position - HRP.Position).Magnitude
+                        target = hrp
+                    end
+                end
+            end
+            return target
+        end
+
+        local function performDash(target)
+            if isDashing then return end
+            isDashing = true
+            
+            -- Fire Remote
+            Communicate:FireServer({Dash = Enum.KeyCode.W, Key = Enum.KeyCode.Q, Goal = "KeyPress"})
+            
+            -- Dash logic
+            local oldCFrame = HRP.CFrame
+            HRP.CFrame = CFrame.new(HRP.Position, Vector3.new(target.Position.X, HRP.Position.Y, target.Position.Z))
+            
+            task.wait(0.55)
+            
+            HRP.CFrame = oldCFrame
+            isDashing = false
+        end
+
+        -- Monitor Animations
+        _G.KibaConnection = Humanoid.AnimationPlayed:Connect(function(track)
+            if not _G.KibaEnabled then return end
+            
+            local id = tostring(track.Animation.AnimationId):match("%d+$")
+            if id == ANIM_ID and (tick() - lastDash) > COOLDOWN then
+                local target = getTarget()
+                if target then
+                    lastDash = tick()
+                    performDash(target)
+                end
+            end
+        end)
+    end,
+})
+
+kibaSection:Toggle({
+    Title = "Kiba Tech V2",
+    Value = _G.KibaV3Enabled or false,
+    Callback = function(isEnabled)
+        _G.KibaV3Enabled = isEnabled
+        
+        -- Master disconnect/cleanup wrapper routine
+        local function clearActiveTech()
+            if _G.KibaAnimConnection then _G.KibaAnimConnection:Disconnect() _G.KibaAnimConnection = nil end
+            if _G.KibaCharConnection then _G.KibaCharConnection:Disconnect() _G.KibaCharConnection = nil end
+            if _G.KibaRenderConnection then _G.KibaRenderConnection:Disconnect() _G.KibaRenderConnection = nil end
+            
+            -- Clear physical instances and tags
+            local player = game:GetService("Players").LocalPlayer
+            local char = player.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                for _, child in ipairs(hrp:GetChildren()) do
+                    if child:IsA("Attachment") or child:IsA("AlignPosition") or child:IsA("AlignOrientation") or child.Name == "HasSnapped" then
+                        child:Destroy()
+                    end
+                end
+            end
+            local oldFollowPart = workspace:FindFirstChild("FollowPart")
+            if oldFollowPart then oldFollowPart:Destroy() end
+        end
+
+        -- Erase remnants from previous toggle sessions
+        clearActiveTech()
+        if not isEnabled then return end
+
+        -- Local Environment Declarations
+        local Players = game:GetService('Players')
+        local RunService = game:GetService('RunService')
+        local LocalPlayer = Players.LocalPlayer
+
+        -- Configuration Tables
+        local DASH_ANIMS = { ['10503381238'] = true, ['13379003796'] = true }
+        local BURST_ANIMS = { ['10479335397'] = true, ['13380255751'] = true }
+        local MAX_RANGE = 10
+        local isOnCooldown = false
+
+        -- Instance Trackers
+        local alignPos, alignOrient, followPart
+
+        -- Specific structural cleanup
+        local function clearAlignment()
+            if alignPos then alignPos:Destroy() alignPos = nil end
+            if alignOrient then alignOrient:Destroy() alignOrient = nil end
+            if _G.KibaRenderConnection then _G.KibaRenderConnection:Disconnect() _G.KibaRenderConnection = nil end
+            if followPart then followPart:Destroy() followPart = nil end
+
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                for _, child in ipairs(hrp:GetChildren()) do
+                    if child:IsA('Attachment') or child.Name == 'HasSnapped' then
+                        child:Destroy()
+                    end
+                end
+            end
+        end
+
+        -- Creates physical alignment logic towards target
+        local function startFollow(targetRoot)
+            clearAlignment()
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+
+            followPart = Instance.new('Part')
+            followPart.Size = Vector3.new(0.5, 0.5, 0.5)
+            followPart.Transparency = 1
+            followPart.Anchored = true
+            followPart.CanCollide = false
+            followPart.Name = 'FollowPart'
+            followPart.Parent = workspace
+
+            local att0_pos = Instance.new('Attachment', hrp)
+            local att1_pos = Instance.new('Attachment', followPart)
+            local att0_rot = Instance.new('Attachment', hrp)
+            local att1_rot = Instance.new('Attachment', followPart)
+
+            alignPos = Instance.new('AlignPosition')
+            alignPos.Attachment0 = att0_pos
+            alignPos.Attachment1 = att1_pos
+            alignPos.RigidityEnabled = true
+            alignPos.Responsiveness = 200
+            alignPos.MaxForce = math.huge
+            alignPos.Parent = hrp
+
+            alignOrient = Instance.new('AlignOrientation')
+            alignOrient.Attachment0 = att0_rot
+            alignOrient.Attachment1 = att1_rot
+            alignOrient.RigidityEnabled = true
+            alignOrient.Responsiveness = 100
+            alignOrient.MaxTorque = math.huge
+            alignOrient.Parent = hrp
+
+            _G.KibaRenderConnection = RunService.RenderStepped:Connect(function()
+                if targetRoot and targetRoot.Parent and hrp and hrp.Parent then
+                    local offsetCFrame = targetRoot.CFrame * CFrame.new(0, 0, 0) * CFrame.Angles(math.rad(55), 0, 0)
+                    followPart.CFrame = offsetCFrame
+
+                    if not hrp:FindFirstChild('HasSnapped') then
+                        hrp.CFrame = offsetCFrame
+                        local snapTag = Instance.new('BoolValue')
+                        snapTag.Name = 'HasSnapped'
+                        snapTag.Parent = hrp
+                    end
+                else
+                    clearAlignment()
+                end
+            end)
+        end
+
+        -- Scans workspace environment targets
+        local function getClosestTarget()
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return nil end
+
+            local closestTarget = nil
+            local shortestDistance = MAX_RANGE
+            local liveFolder = workspace:FindFirstChild("Live")
+            if not liveFolder then return nil end
+
+            for _, child in ipairs(liveFolder:GetChildren()) do
+                if child:IsA('Model') and child ~= char then
+                    local targetHrp = child:FindFirstChild('HumanoidRootPart')
+                    local targetHum = child:FindFirstChildOfClass('Humanoid')
+
+                    if targetHrp and targetHum and targetHum.Health > 0 then
+                        local distance = (targetHrp.Position - hrp.Position).Magnitude
+                        if distance <= shortestDistance then
+                            if child.Name == 'Weakest Dummy' or Players:GetPlayerFromCharacter(child) then
+                                closestTarget = targetHrp
+                                shortestDistance = distance
+                            end
+                        end
+                    end
+                end
+            end
+            return closestTarget
+        end
+
+        -- Internal execution timing loop
+        local function runCooldownLogic(duration)
+            isOnCooldown = true
+            task.delay(duration, function()
+                isOnCooldown = false
+            end)
+        end
+
+        -- Tracks ongoing player animations
+        local function onAnimationPlayed(track)
+            if not _G.KibaV3Enabled or isOnCooldown then return end
+            local animId = string.match(track.Animation.AnimationId, '%d+')
+            if not animId then return end
+
+            if BURST_ANIMS[animId] then
+                isOnCooldown = true
+                task.delay(0.8, function()
+                    runCooldownLogic(4.6)
+                end)
+            elseif DASH_ANIMS[animId] then
+                isOnCooldown = true
+                task.delay(0.32, function()
+                    local char = LocalPlayer.Character
+                    local communicate = char and char:FindFirstChild('Communicate')
+                    if communicate then
+                        pcall(function()
+                            communicate:FireServer({
+                                Dash = Enum.KeyCode.W,
+                                Key = Enum.KeyCode.Q,
+                                Goal = 'KeyPress',
+                            })
+                        end)
+                    end
+
+                    local target = getClosestTarget()
+                    if target then
+                        startFollow(target)
+                        task.delay(0.5, clearAlignment)
+                    end
+                end)
+                task.delay(0.8, function()
+                    runCooldownLogic(4.6)
+                end)
+            end
+        end
+
+        -- Safe initialization for character state changes
+        local function setupCharacter(character)
+            if not character then return end
+            local humanoid = character:WaitForChild('Humanoid', 5)
+            if not humanoid then return end
+            
+            if _G.KibaAnimConnection then _G.KibaAnimConnection:Disconnect() end
+            _G.KibaAnimConnection = humanoid.AnimationPlayed:Connect(onAnimationPlayed)
+        end
+
+        if LocalPlayer.Character then setupCharacter(LocalPlayer.Character) end
+        _G.KibaCharConnection = LocalPlayer.CharacterAdded:Connect(function(char)
+            task.wait(0.1)
+            setupCharacter(char)
+        end)
+    end,
+})
+
+kibaSection:Toggle({
+    Title = "Kiba Tech V3",
+    Value = false,
+    Callback = function(isEnabled)
+        _G.KibaTechV4Enabled = isEnabled
+
+        -- Safely clean up background tasks and listeners if turned off
+        if not isEnabled then
+            if _G.CleanupKibaTech then
+                _G.CleanupKibaTech()
+            end
+            return
+        end
+
+        -- Services
+        local Players = game:GetService('Players')
+        local RunService = game:GetService('RunService')
+        local LocalPlayer = Players.LocalPlayer
+
+        -- Configuration Maps (Animation IDs)
+        local DASH_ANIMATIONS = {
+            ['10503381238'] = true,
+            ['13379003796'] = true,
+        }
+        local SPECIAL_ANIMATIONS = {
+            ['10479335397'] = true,
+            ['13380255751'] = true,
+        }
+
+        -- Script State Variables
+        local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local humanoid = character:WaitForChild('Humanoid', 5)
+        local rootPart = character:WaitForChild('HumanoidRootPart', 5)
+
+        local maxTargetDistance = 35 
+        local isExecuting = false
+
+        -- Connection Trackers
+        local animationConnection = nil
+        local lockOnRenderConnection = nil
+        local characterAddedConnection = nil
+        local characterRemovingConnection = nil
+
+        -- Clean up tracking positions and alignment physics objects
+        local function cleanupLockOn()
+            if lockOnRenderConnection then
+                lockOnRenderConnection:Disconnect()
+                lockOnRenderConnection = nil
+            end
+
+            if rootPart then
+                for _, child in ipairs(rootPart:GetChildren()) do
+                    if child:IsA('AlignPosition') or child:IsA('AlignOrientation') or child:IsA('Attachment') or child.Name == 'HasSnapped' then
+                        child:Destroy()
+                    end
+                end
+            end
+
+            local followPart = workspace:FindFirstChild('KibaFollowPart')
+            if followPart then
+                followPart:Destroy()
+            end
+        end
+
+        -- Find the closest valid player character or Weakest Dummy target
+        local function getClosestTarget()
+            local closestPart = nil
+            local currentMaxDist = maxTargetDistance
+            local liveFolder = workspace:FindFirstChild('Live')
+
+            if liveFolder then
+                for _, target in ipairs(liveFolder:GetChildren()) do
+                    if target:IsA('Model') and target ~= character then
+                        local targetRoot = target:FindFirstChild('HumanoidRootPart')
+                        local targetHumanoid = target:FindFirstChildOfClass('Humanoid')
+
+                        if targetRoot and targetHumanoid and targetHumanoid.Health > 0 then
+                            local originPos = rootPart and rootPart.Position or Vector3.zero
+                            local distance = (targetRoot.Position - originPos).Magnitude
+
+                            if distance <= currentMaxDist then
+                                if target.Name == 'Weakest Dummy' or Players:GetPlayerFromCharacter(target) then
+                                    currentMaxDist = distance
+                                    closestPart = targetRoot
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            return closestPart
+        end
+
+        -- Evaluator for tracked animation sequences
+        local function onAnimationPlayed(animationTrack)
+            if not _G.KibaTechV4Enabled or isExecuting then return end
+            if not animationTrack or not animationTrack.Animation then return end
+
+            local animId = tostring(string.match(animationTrack.Animation.AnimationId or '', '%d+'))
+            if animId == '' then return end
+
+            if SPECIAL_ANIMATIONS[animId] then
+                isExecuting = true
+                task.delay(0.8, function()
+                    isExecuting = false
+                end)
+            elseif DASH_ANIMATIONS[animId] then
+                isExecuting = true
+                
+                task.delay(0.32, function()
+                    if not _G.KibaTechV4Enabled then return end
+
+                    -- Remote Parameter formatting
+                    pcall(function()
+                        local communicate = character and character:FindFirstChild('Communicate')
+                        if communicate then
+                            communicate:FireServer({
+                                Dash = Enum.KeyCode.W,
+                                Key = Enum.KeyCode.Q,
+                                Goal = 'KeyPress',
+                            })
+                        end
+                    end)
+
+                    local target = getClosestTarget()
+                    if target then
+                        cleanupLockOn()
+
+                        local followPart = Instance.new('Part')
+                        followPart.Size = Vector3.new(0.5, 0.5, 0.5)
+                        followPart.Transparency = 1
+                        followPart.Anchored = true
+                        followPart.CanCollide = false
+                        followPart.Name = 'KibaFollowPart'
+                        followPart.Parent = workspace
+
+                        local att0_Pos = Instance.new('Attachment', rootPart)
+                        local att1_Pos = Instance.new('Attachment', followPart)
+                        local att0_Ori = Instance.new('Attachment', rootPart)
+                        local att1_Ori = Instance.new('Attachment', followPart)
+
+                        local alignPosition = Instance.new('AlignPosition')
+                        alignPosition.Attachment0 = att0_Pos
+                        alignPosition.Attachment1 = att1_Pos
+                        alignPosition.RigidityEnabled = true
+                        alignPosition.Responsiveness = 100
+                        alignPosition.MaxForce = math.huge
+                        alignPosition.Parent = rootPart
+
+                        local alignOrientation = Instance.new('AlignOrientation')
+                        alignOrientation.Attachment0 = att0_Ori
+                        alignOrientation.Attachment1 = att1_Ori
+                        alignOrientation.RigidityEnabled = true
+                        alignOrientation.Responsiveness = 200
+                        alignOrientation.MaxTorque = math.huge
+                        alignOrientation.Parent = rootPart
+
+                        lockOnRenderConnection = RunService.RenderStepped:Connect(function()
+                            if not _G.KibaTechV4Enabled then cleanupLockOn() return end
+                            
+                            if target and target.Parent then
+                                local calculatedCFrame = target.CFrame * CFrame.new(0, 1, 0) * CFrame.Angles(math.rad(55), 0, 0)
+                                followPart.CFrame = calculatedCFrame
+
+                                if rootPart and not rootPart:FindFirstChild('HasSnapped') and rootPart:IsDescendantOf(workspace) then
+                                    rootPart.CFrame = calculatedCFrame
+
+                                    local snapMarker = Instance.new('BoolValue')
+                                    snapMarker.Name = 'HasSnapped'
+                                    snapMarker.Parent = rootPart
+                                end
+                            else
+                                cleanupLockOn()
+                            end
+                        end)
+                        
+                        task.delay(0.5, cleanupLockOn)
+                    end
+                end)
+
+                task.delay(1.2, function()
+                    isExecuting = false
+                end)
+            end
+        end
+
+        -- Character Environment Initialization Routine
+        local function initializeCharacterState()
+            cleanupLockOn()
+            if animationConnection then
+                animationConnection:Disconnect()
+                animationConnection = nil
+            end
+
+            character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            humanoid = character:WaitForChild('Humanoid', 5)
+            rootPart = character:WaitForChild('HumanoidRootPart', 5)
+
+            if humanoid then
+                animationConnection = humanoid.AnimationPlayed:Connect(onAnimationPlayed)
+            end
+        end
+
+        -- Run initialization
+        initializeCharacterState()
+
+        characterAddedConnection = LocalPlayer.CharacterAdded:Connect(function()
+            task.wait(0.1)
+            if not _G.KibaTechV4Enabled then return end
+            initializeCharacterState()
+        end)
+
+        characterRemovingConnection = LocalPlayer.CharacterRemoving:Connect(function()
+            cleanupLockOn()
+            if animationConnection then
+                animationConnection:Disconnect()
+                animationConnection = nil
+            end
+        end)
+
+        -- Dynamic cleanup registry
+        _G.CleanupKibaTech = function()
+            cleanupLockOn()
+            if animationConnection then animationConnection:Disconnect() animationConnection = nil end
+            if characterAddedConnection then characterAddedConnection:Disconnect() characterAddedConnection = nil end
+            if characterRemovingConnection then characterRemovingConnection:Disconnect() characterRemovingConnection = nil end
+            _G.CleanupKibaTech = nil
+        end
+    end,
+})
+
+kibaSection:Toggle({
+    Title = "kibaz",
+    Value = false,
+    Callback = function(isEnabled)
+        -- Clear previous connections
+        if _G.StickDashMainConnections then
+            for _, conn in ipairs(_G.StickDashMainConnections) do
+                if conn and conn.Disconnect then
+                    pcall(function() conn:Disconnect() end)
+                end
+            end
+        end
+        _G.StickDashMainConnections = {}
+
+        if _G.StickDashRenderConn then
+            _G.StickDashRenderConn:Disconnect()
+            _G.StickDashRenderConn = nil
+        end
+        if _G.StickDashMovementConn then
+            _G.StickDashMovementConn:Disconnect()
+            _G.StickDashMovementConn = nil
+        end
+
+        if isEnabled then
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local LocalPlayer = Players.LocalPlayer
+
+            -- Configuration Constants
+            local TARGET_ANIMATION = "10503381238"
+            local DETECT_RADIUS = math.huge
+            local ATTACK_COOLDOWN = 7
+            local THROTTLE_INTERVAL = 0.35
+
+            -- Runtime State References
+            local localCharacter = nil
+            local localHumanoid = nil
+            local localRootPart = nil
+            local lastTriggerTimestamp = 0
+            local actionDebounceFlag = false
+
+            -- Internal Utility: Safely retrieve the closest target Model
+            local function getClosestEnemyTarget()
+                if not localRootPart then return nil end
+                local closestModel, shortestDistance = nil, DETECT_RADIUS
+
+                for _, descendant in ipairs(workspace:GetDescendants()) do
+                    if descendant:IsA("Model") and descendant ~= localCharacter and descendant:FindFirstChild("HumanoidRootPart") then
+                        local targetRoot = descendant.HumanoidRootPart
+                        local success, distance = pcall(function()
+                            return (localRootPart.Position - targetRoot.Position).Magnitude
+                        end)
+                        if success and distance and distance < shortestDistance then
+                            shortestDistance = distance
+                            closestModel = descendant
+                        end
+                    end
+                end
+                return closestModel
+            end
+
+            -- Internal Utility: Fire remote packets for actions & cleanup
+            local function executeNetworkDashPackets()
+                task.delay(0.1, function()
+                    pcall(function()
+                        if localCharacter and localCharacter:FindFirstChild("Communicate") then
+                            localCharacter.Communicate:FireServer({
+                                Dash = Enum.KeyCode.W,
+                                Key = Enum.KeyCode.Q,
+                                Goal = "KeyPress"
+                            })
+                        end
+                    end)
+                end)
+
+                -- Dynamic fallback detection for explicit movement values
+                local function findNilInstance(name, className)
+                    if type(getnilinstances) ~= "function" then return nil end
+                    for _, instance in ipairs(getnilinstances()) do
+                        if instance.ClassName == className and instance.Name == name then
+                            return instance
+                        end
+                    end
+                    return nil
+                end
+
+                pcall(function()
+                    if localCharacter and localCharacter:FindFirstChild("Communicate") then
+                        localCharacter.Communicate:FireServer({
+                            Goal = "delete bv",
+                            BV = findNilInstance("moveme", "BodyVelocity")
+                        })
+                    end
+                end)
+            end
+
+            -- Main Action Processing Loop
+            local function runStickDashSequence()
+                if not (localCharacter and localHumanoid and localRootPart) then return end
+                local targetModel = getClosestEnemyTarget()
+                if not targetModel then return end
+
+                local targetRoot = targetModel:FindFirstChild("HumanoidRootPart")
+                if not targetRoot then return end
+
+                -- Backup original values
+                local originalSpecs = {
+                    WalkSpeed = localHumanoid.WalkSpeed,
+                    JumpPower = localHumanoid.JumpPower,
+                    PlatformStand = localHumanoid.PlatformStand,
+                    AutoRotate = localHumanoid.AutoRotate
+                }
+
+                -- Anchor & Stop velocities instantly
+                local function stopMovement()
+                    pcall(function()
+                        localHumanoid.WalkSpeed = 0
+                        localHumanoid.JumpPower = 0
+                        localHumanoid.PlatformStand = true
+                        localHumanoid.AutoRotate = false
+                        if localRootPart then
+                            localRootPart.Velocity = Vector3.zero
+                            localRootPart.RotVelocity = Vector3.zero
+                        end
+                    end)
+
+                    -- Wipe background velocity modifiers
+                    for _, object in ipairs(localCharacter:GetDescendants()) do
+                        local cName = object.ClassName
+                        if cName == "BodyVelocity" or cName == "BodyPosition" or cName == "BodyGyro" or 
+                           cName == "VectorForce" or cName == "AlignPosition" or cName == "AlignOrientation" or 
+                           cName == "LinearVelocity" or cName == "AngularVelocity" then
+                            pcall(function() object:Destroy() end)
+                        end
+                    end
+
+                    _G.StickDashMovementConn = RunService.Heartbeat:Connect(function()
+                        if localRootPart then
+                            pcall(function()
+                                localRootPart.Velocity = Vector3.zero
+                                localRootPart.RotVelocity = Vector3.zero
+                            end)
+                        end
+                        if localHumanoid then
+                            pcall(function() localHumanoid.WalkSpeed = 0 end)
+                        end
+                    end)
+                end
+
+                -- Restore physics specs to character
+                local function restoreMovement()
+                    if _G.StickDashMovementConn then
+                        pcall(function() _G.StickDashMovementConn:Disconnect() end)
+                        _G.StickDashMovementConn = nil
+                    end
+                    pcall(function()
+                        if localHumanoid then
+                            localHumanoid.WalkSpeed = originalSpecs.WalkSpeed or 16
+                            localHumanoid.JumpPower = originalSpecs.JumpPower or 50
+                            localHumanoid.PlatformStand = originalSpecs.PlatformStand or false
+                            localHumanoid.AutoRotate = originalSpecs.AutoRotate or true
+                        end
+                        if localRootPart then
+                            localRootPart.Velocity = Vector3.zero
+                            localRootPart.RotVelocity = Vector3.zero
+                        end
+                    end)
+                end
+
+                stopMovement()
+                pcall(function() localHumanoid:ChangeState(Enum.HumanoidStateType.Physics) end)
+                localRootPart.CFrame = localRootPart.CFrame * CFrame.Angles(math.rad(85), 0, 0)
+
+                local sequenceStart = tick()
+                if _G.StickDashRenderConn then _G.StickDashRenderConn:Disconnect() end
+
+                _G.StickDashRenderConn = RunService.Heartbeat:Connect(function()
+                    if tick() - sequenceStart < 0.7 then
+                        local pass, nextCFrame = pcall(function()
+                            return CFrame.new(targetRoot.Position - targetRoot.CFrame.LookVector * 0.3) * CFrame.Angles(math.rad(85), 0, 0)
+                        end)
+                        if pass and nextCFrame and localRootPart then
+                            localRootPart.CFrame = nextCFrame
+                        end
+                    else
+                        if _G.StickDashRenderConn then _G.StickDashRenderConn:Disconnect() _G.StickDashRenderConn = nil end
+                    end
+                end)
+
+                task.delay(0.18, function() pcall(executeNetworkDashPackets) end)
+                task.delay(0.3, function()
+                    pcall(function() localHumanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+                end)
+                task.delay(0.7 + 0.3, function() pcall(restoreMovement) end)
+            end
+
+            -- Universal Trigger Evaluator
+            local function evaluateTriggerCondition()
+                if actionDebounceFlag then return end
+                if tick() - lastTriggerTimestamp >= THROTTLE_INTERVAL then
+                    lastTriggerTimestamp = tick()
+                    
+                    actionDebounceFlag = true
+                    task.spawn(function()
+                        pcall(runStickDashSequence)
+                    end)
+                    task.delay(ATTACK_COOLDOWN, function()
+                        actionDebounceFlag = false
+                    end)
+                end
+            end
+
+            -- Hook Event Observers
+            local function handleTrackActivation(track)
+                local animationObj = track.Animation
+                if animationObj then
+                    local idStr = tostring(animationObj.AnimationId or "")
+                    if idStr:find(TARGET_ANIMATION, 1, true) then
+                        evaluateTriggerCondition()
+                    end
+                end
+            end
+
+            local function listenToCharacter(character)
+                -- Flush sub-level configurations
+                localCharacter = character
+                localHumanoid = character:WaitForChild("Humanoid", 5) or character:FindFirstChildOfClass("Humanoid")
+                localRootPart = character:WaitForChild("HumanoidRootPart", 5) or character:FindFirstChild("HumanoidRootPart")
+
+                if localHumanoid and localRootPart then
+                    local s1, c1 = pcall(function() return localHumanoid.AnimationPlayed:Connect(handleTrackActivation) end)
+                    if s1 and c1 then table.insert(_G.StickDashMainConnections, c1) end
+
+                    local animator = localHumanoid:FindFirstChildOfClass("Animator")
+                    if animator then
+                        local s2, c2 = pcall(function() return animator.AnimationPlayed:Connect(handleTrackActivation) end)
+                        if s2 and c2 then table.insert(_G.StickDashMainConnections, c2) end
+                    end
+
+                    local c3 = character.DescendantAdded:Connect(function(descendant)
+                        if descendant:IsA("Animation") then
+                            local idStr = tostring(descendant.AnimationId or "")
+                            if idStr:find(TARGET_ANIMATION, 1, true) then
+                                evaluateTriggerCondition()
+                            end
+                        end
+                    end)
+                    table.insert(_G.StickDashMainConnections, c3)
+                end
+            end
+
+            -- Initialize character binding connections
+            if LocalPlayer.Character then
+                pcall(listenToCharacter, LocalPlayer.Character)
+            end
+
+            local spawnConnection = LocalPlayer.CharacterAdded:Connect(function(char)
+                task.wait(0.1)
+                pcall(listenToCharacter, char)
+            end)
+            table.insert(_G.StickDashMainConnections, spawnConnection)
+        else
+            -- Cleanup character physical states upon turning toggle off
+            pcall(function()
+                local character = game:GetService("Players").LocalPlayer.Character
+                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid.PlatformStand = false
+                    humanoid.AutoRotate = true
+                end
+            end)
+        end
+    end,
+})
+
+
+-- === TELEPORT DROPDOWN ===
+local Locations = {
+    ["Atomic samurai"]     = Vector3.new(-52, 1612, 25248),
+    ["Atomic samurai top"] = Vector3.new(-51, 1618, 25249),
+    ["Death counter"]      = Vector3.new(-66, 29, 20348),
+    ["Death counter top"]  = Vector3.new(-75, 83, 20351),
+    ["Prison"]             = Vector3.new(439, 438, -376),
+    ["Edge of the map"]    = Vector3.new(-172, 438, -410),
+    ["mountain 1"]         = Vector3.new(301, 669, 399),
+    ["mountain 2"]         = Vector3.new(619, 639, -152),
+    ["mountain 3"]         = Vector3.new(-59, 653, -381),
+}
+
+local LocationNames = {}
+for name, _ in pairs(Locations) do table.insert(LocationNames, name) end
+table.sort(LocationNames) 
+
+TeleportSection:Dropdown({
+    Title = "Select Destination",
+    Description = "Choose where you want to go",
+    Values = LocationNames,
+    Callback = function(selected)
+        local targetPos = Locations[selected]
+        local character = LocalPlayer.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if root and targetPos then
+            root.CFrame = CFrame.new(targetPos)
+        end
+    end
+})
+
+-- === SAITAMA TAB BUTTONS ===
+SaitamaTab:Toggle({
+    Title = "invisible tableflip",
+    Value = false,
+    Callback = function(isEnabled)
+        -- Clear previous connection variables safely
+        if _G.AnimPlayedConn then
+            _G.AnimPlayedConn:Disconnect()
+            _G.AnimPlayedConn = nil
+        end
+        if _G.AnimCharAddedConn then
+            _G.AnimCharAddedConn:Disconnect()
+            _G.AnimCharAddedConn = nil
+        end
+
+        if isEnabled then
+            local Players = game:GetService("Players")
+            local localPlayer = Players.LocalPlayer
+            local targetId = "11365563255"
+
+            -- Sets up the individual humanoid animation played hooks
+            local function setupCharacter(char)
+                local humanoid = char and char:WaitForChild("Humanoid", 3)
+                if humanoid then
+                    return humanoid.AnimationPlayed:Connect(function(animationTrack)
+                        local currentId = animationTrack.Animation.AnimationId:gsub("rbxassetid://", "")
+                        if currentId == targetId then
+                            -- Execute the payload script securely
+                            pcall(function()
+                                loadstring(game:HttpGet("https://pastebin.com/raw/iFWQZtvc"))()
+                            end)
+                            warn("Animation Triggered: ", animationTrack.Animation.AnimationId)
+                        end
+                    end)
+                end
+            end
+
+            -- Initialize connection for the current active character
+            if localPlayer.Character then
+                _G.AnimPlayedConn = setupCharacter(localPlayer.Character)
+            end
+
+            -- Handle character respawn event sequences dynamically
+            _G.AnimCharAddedConn = localPlayer.CharacterAdded:Connect(function(newChar)
+                if _G.AnimPlayedConn then 
+                    _G.AnimPlayedConn:Disconnect() 
+                end
+                _G.AnimPlayedConn = setupCharacter(newChar)
+            end)
+        end
+    end,
+})
+
+SaitamaTab:Toggle({
+    Title = "reflex ",
+    Value = false,
+    Callback = function(isEnabled)
+        -- Clean up previous execution loops & active listeners safely
+        if _G.ComboCleanupSignal then
+            _G.ComboCleanupSignal()
+            _G.ComboCleanupSignal = nil
+        end
+
+        if isEnabled then
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local VirtualInputManager = game:GetService("VirtualInputManager")
+            local LocalPlayer = Players.LocalPlayer
+
+            -- Trackers and Target State Anchors
+            local targetAnimationId = "rbxassetid://10471336737"
+            local runtimeConnections = {}
+            local liveFolder = workspace:WaitForChild("Live", 5)
+            local myLiveCharacter = liveFolder and liveFolder:WaitForChild(LocalPlayer.Name, 5)
+
+            -- Disconnect all localized runtime trackers
+            local function clearLocalConnections()
+                for _, connection in ipairs(runtimeConnections) do
+                    if connection then connection:Disconnect() end
+                end
+                runtimeConnections = {}
+            end
+
+            -- Engine: Find nearest active player target within boundary thresholds
+            local function getNearestTarget()
+                local character = LocalPlayer.Character
+                if not (character and character:FindFirstChild("HumanoidRootPart")) then return nil end
+
+                local myRoot = character.HumanoidRootPart
+                local closestDistance = math.huge
+                local closestTarget = nil
+
+                for _, targetPlayer in ipairs(Players:GetPlayers()) do
+                    if targetPlayer ~= LocalPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                        local targetRoot = targetPlayer.Character.HumanoidRootPart
+                        local distance = (myRoot.Position - targetRoot.Position).Magnitude
+                        if distance < closestDistance then
+                            closestTarget = targetPlayer
+                            closestDistance = distance
+                        end
+                    end
+                end
+                return closestTarget
+            end
+
+            -- Automatically align character facing direction with target
+            local function lockRotationToTarget()
+                local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                local humanoid = character:WaitForChild("Humanoid")
+                local hrp = character:WaitForChild("HumanoidRootPart")
+
+                humanoid.AutoRotate = false
+                
+                local autoRotateLock = humanoid:GetPropertyChangedSignal("AutoRotate"):Connect(function()
+                    if humanoid.AutoRotate == true then
+                        humanoid.AutoRotate = false
+                    end
+                end)
+                table.insert(runtimeConnections, autoRotateLock)
+
+                local currentTarget = getNearestTarget()
+                if currentTarget then
+                    local startTime = tick()
+                    local renderLoop
+                    
+                    renderLoop = RunService.RenderStepped:Connect(function()
+                        if tick() - startTime <= 3 then
+                            if currentTarget.Character and currentTarget.Character:FindFirstChild("HumanoidRootPart") then
+                                local targetPos = currentTarget.Character.HumanoidRootPart.Position
+                                hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
+                            end
+                        else
+                            renderLoop:Disconnect()
+                            autoRotateLock:Disconnect()
+                            humanoid.AutoRotate = true
+                        end
+                    end)
+                end
+            end
+
+            -- Fire precise combat virtual inputs and coordinate network packets
+            local function runComboExecutionSequence()
+                -- Step 1: Input injection jump sequence
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                task.delay(1, function()
+                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                end)
+                task.wait(0.29)
+
+                local character = LocalPlayer.Character
+                local communicate = character and character:FindFirstChild("Communicate")
+                if not communicate then return end
+
+                -- Step 2: Trigger click down sequence
+                communicate:FireServer({{Mobile = true, Goal = "LeftClick"}})
+                task.wait(0.1)
+                task.wait(0.5)
+
+                -- Step 3: Release click phase + initialize alignment locks
+                communicate:FireServer({{Goal = "LeftClickRelease", Mobile = true}})
+                lockRotationToTarget()
+
+                -- Step 4: Fire dash final execution packet payload
+                communicate:FireServer({{Dash = Enum.KeyCode.W, Key = Enum.KeyCode.Q, Goal = "KeyPress"}})
+            end
+
+            -- Initialize dynamic combat combo verification hooks
+            local function initializeComboEngine()
+                if not myLiveCharacter then return end
+                
+                local comboSignal = myLiveCharacter:GetAttributeChangedSignal("Combo"):Connect(function()
+                    if myLiveCharacter:GetAttribute("Combo") == 4 then
+                        local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                        local humanoid = character:WaitForChild("Humanoid")
+                        
+                        local animTrackSignal = humanoid.AnimationPlayed:Connect(function(track)
+                            if track.Animation and track.Animation.AnimationId == targetAnimationId then
+                                runComboExecutionSequence()
+                            end
+                        end)
+                        table.insert(runtimeConnections, animTrackSignal)
+
+                        -- Process fallback sequence validation loop
+                        for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+                            if track.Animation and track.Animation.AnimationId == targetAnimationId then
+                                runComboExecutionSequence()
+                                break
+                            end
+                        end
+                    end
+                end)
+                table.insert(runtimeConnections, comboSignal)
+            end
+
+            -- Active startup sequencing hooks
+            initializeComboEngine()
+
+            -- Register character lifecycle cleanup listener reset routines
+            local respawnHook = LocalPlayer.CharacterAdded:Connect(function()
+                clearLocalConnections()
+            end)
+
+            -- Global function binding wrapper map for handling future disables
+            _G.ComboCleanupSignal = function()
+                clearLocalConnections()
+                if respawnHook then respawnHook:Disconnect() end
+                
+                pcall(function()
+                    local character = LocalPlayer.Character
+                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                    if humanoid then humanoid.AutoRotate = true end
+                end)
+            end
+        else
+            -- Process Safe Controls Variable Reset 
+            if _G.ComboCleanupSignal then
+                _G.ComboCleanupSignal()
+                _G.ComboCleanupSignal = nil
+            end
+        end
+    end,
+})
