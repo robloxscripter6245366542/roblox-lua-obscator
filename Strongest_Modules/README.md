@@ -10,10 +10,10 @@ so they document structure and behavior rather than serving as drop-in scripts.
 | File | Pastebin ID | Hub button (`Strongest`) |
 | :--- | :--- | :--- |
 | `aimbot_v1_pWd9ji4D.dump.lua` | `pWd9ji4D` | aimbot v1 — CamLock (`BladLock`) |
+| `aimbot_v2_F5k2nV6R.dump.lua` | `F5k2nV6R` | aimbot v2 |
 | `aimbot_v3_aa2XJ5Wm.dump.lua` | `aa2XJ5Wm` | aimbot v3 — Camlock UI V3 |
 | `kyoto_v1_XHJZ9Vky.dump.lua` | `XHJZ9Vky` | kyoto v1 — Auto Kyoto |
 | `kyoto_v2_3K7VebmS.dump.lua` | `3K7VebmS` | kyoto v2 — Auto Kyoto |
 | `kyoto_v3_SdXEbFrp.dump.lua` | `SdXEbFrp` | kyoto v3 — Auto Kyoto (delay UI) |
 
-Not yet dumped: aimbot v2 (`F5k2nV6R`) and the Saitama tableflip payload
-(`iFWQZtvc`).
+Not yet dumped: the Saitama tableflip payload (`iFWQZtvc`).
