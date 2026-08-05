@@ -1,0 +1,103 @@
+============================================================
+  RemoteDumper Report
+  Ugc (PlaceId 10449761463, JobId 8b08a271-4f20-4286-b56b-e49aa9370c57)
+  Remotes found: 45
+    RemoteEvent            25
+    UnreliableRemoteEvent  1
+    RemoteFunction         10
+    BindableEvent          6
+    BindableFunction       3
+  Roblox-internal skipped: 32
+  Generated: 2026-08-05 14:13:48 UTC
+============================================================
+
+[1] (BindableEvent)  Event
+    game:GetService("Event"):Fire()
+[2] (BindableEvent)  Event
+    game:GetService("Event"):Fire()
+[3] (BindableEvent)  Event
+    game:GetService("Event"):Fire()
+[4] (BindableEvent)  Event
+    game:GetService("Event"):Fire()
+[5] (BindableEvent)  Event
+    game:GetService("Event"):Fire()
+[6] (BindableFunction)  Function
+    game:GetService("Function"):Invoke()
+[7] (BindableFunction)  Players.Restinpiecemygrannyb.PlayerScripts.Actors.Plane5204365.Event
+    game:GetService("Players").Restinpiecemygrannyb.PlayerScripts.Actors.Plane5204365.Event:Invoke()
+[8] (BindableFunction)  Players.Restinpiecemygrannyb.PlayerScripts.Actors.Short Sash5204365.Event
+    game:GetService("Players").Restinpiecemygrannyb.PlayerScripts.Actors["Short Sash5204365"].Event:Invoke()
+[9] (RemoteEvent)  ReplicatedStorage.CatalogueMapLifecycle
+    game:GetService("ReplicatedStorage").CatalogueMapLifecycle:FireServer()
+[10] (RemoteEvent)  ReplicatedStorage.CatalogueVoteBuffer
+    game:GetService("ReplicatedStorage").CatalogueVoteBuffer:FireServer()
+[11] (RemoteEvent)  ReplicatedStorage.CustomMoveVFX.Cast.BranchActivateEvent
+    game:GetService("ReplicatedStorage").CustomMoveVFX.Cast.BranchActivateEvent:FireServer()
+[12] (RemoteFunction)  ReplicatedStorage.CustomMoveVFX.Cast.FetchMoveAssets
+    game:GetService("ReplicatedStorage").CustomMoveVFX.Cast.FetchMoveAssets:InvokeServer()
+[13] (RemoteFunction)  ReplicatedStorage.CustomMoveVFX.Cast.FetchMoveData
+    game:GetService("ReplicatedStorage").CustomMoveVFX.Cast.FetchMoveData:InvokeServer()
+[14] (RemoteEvent)  ReplicatedStorage.CustomMoveVFX.Cast.LivePlayCastEvent
+    game:GetService("ReplicatedStorage").CustomMoveVFX.Cast.LivePlayCastEvent:FireServer()
+[15] (RemoteEvent)  ReplicatedStorage.Emotes.VFX.RealAssets.Emerge.VictimCLone.Communicate
+    game:GetService("ReplicatedStorage").Emotes.VFX.RealAssets.Emerge.VictimCLone.Communicate:FireServer()
+[16] (RemoteEvent)  ReplicatedStorage.Event
+    game:GetService("ReplicatedStorage").Event:FireServer()
+[17] (RemoteEvent)  ReplicatedStorage.Info.Disguise.BillboardGui.Frame.RemoteEvent
+    game:GetService("ReplicatedStorage").Info.Disguise.BillboardGui.Frame.RemoteEvent:FireServer()
+[18] (RemoteFunction)  ReplicatedStorage.MoveDataProvider
+    game:GetService("ReplicatedStorage").MoveDataProvider:InvokeServer()
+[19] (RemoteEvent)  ReplicatedStorage.MoveEditorTestStatus
+    game:GetService("ReplicatedStorage").MoveEditorTestStatus:FireServer()
+[20] (RemoteFunction)  ReplicatedStorage.Ranked.CustomServerHandler
+    game:GetService("ReplicatedStorage").Ranked.CustomServerHandler:InvokeServer()
+[21] (RemoteFunction)  ReplicatedStorage.Ranked.GauntletServerHandler
+    game:GetService("ReplicatedStorage").Ranked.GauntletServerHandler:InvokeServer()
+[22] (RemoteFunction)  ReplicatedStorage.Ranked.GetClientRegion
+    game:GetService("ReplicatedStorage").Ranked.GetClientRegion:InvokeServer()
+[23] (RemoteFunction)  ReplicatedStorage.Ranked.GetServerBrowserData
+    game:GetService("ReplicatedStorage").Ranked.GetServerBrowserData:InvokeServer()
+[24] (RemoteFunction)  ReplicatedStorage.Ranked.GlobalCatalogueHandler
+    game:GetService("ReplicatedStorage").Ranked.GlobalCatalogueHandler:InvokeServer()
+[25] (RemoteFunction)  ReplicatedStorage.Ranked.PingRoundTrip
+    game:GetService("ReplicatedStorage").Ranked.PingRoundTrip:InvokeServer()
+[26] (RemoteEvent)  ReplicatedStorage.Ranked.QueueHandler
+    game:GetService("ReplicatedStorage").Ranked.QueueHandler:FireServer()
+[27] (RemoteEvent)  ReplicatedStorage.Ranked.Receiver
+    game:GetService("ReplicatedStorage").Ranked.Receiver:FireServer()
+[28] (RemoteEvent)  ReplicatedStorage.Receiver
+    game:GetService("ReplicatedStorage").Receiver:FireServer()
+[29] (RemoteEvent)  ReplicatedStorage.Replication
+    game:GetService("ReplicatedStorage").Replication:FireServer()
+[30] (RemoteEvent)  ReplicatedStorage.Resources.Brother.#Friend.Communicate
+    game:GetService("ReplicatedStorage").Resources.Brother["#Friend"].Communicate:FireServer()
+[31] (UnreliableRemoteEvent)  ReplicatedStorage.UnreliableRemoteEvent
+    game:GetService("ReplicatedStorage").UnreliableRemoteEvent:FireServer()
+[32] (RemoteFunction)  StarterGui.Command.Frame.remote
+    game:GetService("StarterGui").Command.Frame.remote:InvokeServer()
+[33] (BindableEvent)  StarterGui.Command.Frame.server.history.pass
+    game:GetService("StarterGui").Command.Frame.server.history.pass:Fire()
+[34] (RemoteEvent)  StarterPlayer.StarterCharacter.Communicate
+    game:GetService("StarterPlayer").StarterCharacter.Communicate:FireServer()
+[35] (RemoteEvent)  Workspace.Live.Bruhkaiserlucky.Communicate
+    game:GetService("Workspace").Live.Bruhkaiserlucky.Communicate:FireServer()
+[36] (RemoteEvent)  Workspace.Live.Jiya_75425.Communicate
+    game:GetService("Workspace").Live.Jiya_75425.Communicate:FireServer()
+[37] (RemoteEvent)  Workspace.Live.Jsjdbehdbe2.Communicate
+    game:GetService("Workspace").Live.Jsjdbehdbe2.Communicate:FireServer()
+[38] (RemoteEvent)  Workspace.Live.Napawa1234.Communicate
+    game:GetService("Workspace").Live.Napawa1234.Communicate:FireServer()
+[39] (RemoteEvent)  Workspace.Live.Pancakeplayz000.Communicate
+    game:GetService("Workspace").Live.Pancakeplayz000.Communicate:FireServer()
+[40] (RemoteEvent)  Workspace.Live.Restinpiecemygrannyb.Communicate
+    game:GetService("Workspace").Live.Restinpiecemygrannyb.Communicate:FireServer()
+[41] (RemoteEvent)  Workspace.Live.Ryanjed1234.Communicate
+    game:GetService("Workspace").Live.Ryanjed1234.Communicate:FireServer()
+[42] (RemoteEvent)  Workspace.Live.Weakest Dummy.Communicate
+    game:GetService("Workspace").Live["Weakest Dummy"].Communicate:FireServer()
+[43] (RemoteEvent)  Workspace.Live.ayiru897.Communicate
+    game:GetService("Workspace").Live.ayiru897.Communicate:FireServer()
+[44] (RemoteEvent)  Workspace.Live.riorivals.Communicate
+    game:GetService("Workspace").Live.riorivals.Communicate:FireServer()
+[45] (RemoteEvent)  Workspace.Live.white_man12187.Communicate
+    game:GetService("Workspace").Live.white_man12187.Communicate:FireServer()
