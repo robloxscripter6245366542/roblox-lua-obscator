@@ -1265,8 +1265,8 @@ AutoTechTab:Toggle({
                         if now - lastTriggerTime < 1.5 then return end 
                         lastTriggerTime = now
                         
-                        task.delay(0.31, function()
-                            if _G.UppercutTechConnection and character and character.Parent then 
+                        task.delay(0.32, function()
+                            if _G.UppercutTechConnection and character and character.Parent then
                                 processAction(character)
                             end
                         end)
@@ -1632,7 +1632,7 @@ AutoTechTab:Toggle({
             local RunService = game:GetService("RunService")
             local LocalPlayer = Players.LocalPlayer
             
-            local stickRange = 18
+            local stickRange = 20
             local dashDuration = 0.15
             local followOffset = 2.5
             local angleTilt = math.rad(55)
@@ -1765,7 +1765,7 @@ AutoTechTab:Toggle({
                         local id = tostring(anim.AnimationId)
                         for _, targetId in ipairs(animationIds) do
                             if string.find(id, targetId) then
-                                task.delay(0.3, function()
+                                task.delay(0.32, function()
                                     if _G.SupaTechTechConnection and not inCooldown then
                                         inCooldown = true
                                         task.spawn(function() performStickDash(character) end)
@@ -1820,7 +1820,7 @@ AutoTechTab:Toggle({
             local lastTriggerTime = 0
             
             local targetRadius = 50
-            local waitDetect = 0.3
+            local waitDetect = 0.32
             local waitJump = 0
             local waitRemote = 0.1
             local lockDuration = 1.5
@@ -2370,7 +2370,7 @@ kibaSection:Toggle({
         -- Configuration Tables
         local DASH_ANIMS = { ['10503381238'] = true, ['13379003796'] = true }
         local BURST_ANIMS = { ['10479335397'] = true, ['13380255751'] = true }
-        local MAX_RANGE = 10
+        local MAX_RANGE = 25
         local isOnCooldown = false
 
         -- Instance Trackers
@@ -2575,7 +2575,7 @@ kibaSection:Toggle({
         local humanoid = character:WaitForChild('Humanoid', 5)
         local rootPart = character:WaitForChild('HumanoidRootPart', 5)
 
-        local maxTargetDistance = 35 
+        local maxTargetDistance = 25
         local isExecuting = false
 
         -- Connection Trackers
@@ -2802,7 +2802,7 @@ kibaSection:Toggle({
 
             -- Configuration Constants
             local TARGET_ANIMATION = "10503381238"
-            local DETECT_RADIUS = math.huge
+            local DETECT_RADIUS = 25
             local ATTACK_COOLDOWN = 7
             local THROTTLE_INTERVAL = 0.35
 
