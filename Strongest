@@ -259,7 +259,7 @@ local WalkNames = {}
 for name, _ in pairs(WalkPresets) do table.insert(WalkNames, name) end
 
 AnimationSection:Button({
-    Title = 'ð Stop Current Animation',
+    Title = '🛑 Stop Current Animation',
     Callback = function() 
         ClearCurrentAnimation()
         CurrentWalkId = nil
@@ -275,7 +275,7 @@ AnimationSection:Input({
 })
 
 AnimationSection:Button({
-    Title = 'â¶ï¸ Play Custom Animation ID',
+    Title = '▶️ Play Custom Animation ID',
     Callback = function()
         if TargetCustomAssetId ~= "" then PlayCustomAnim(TargetCustomAssetId) else print("Please enter a valid Animation ID first!") end
     end,
@@ -567,7 +567,7 @@ EffectsSection:Dropdown({
 })
 
 creditSection:Paragraph({ Title = "made by", Text = "khengie_slayer" })
-creditSection:Paragraph({ Title = "khengie_slayerð", Text = "khengie_slayer" })
+creditSection:Paragraph({ Title = "khengie_slayer👑", Text = "khengie_slayer" })
 
 -- === AIMBOT SECTION ===
 aimbotSection:Button({
@@ -2252,29 +2252,23 @@ kibaSection:Toggle({
     Value = _G.KibaEnabled or false,
     Callback = function(isEnabled)
         _G.KibaEnabled = isEnabled
-        
-        -- Cleanup connections when disabled
-        if not isEnabled then
-            if _G.KibaConnection then _G.KibaConnection:Disconnect() end
-            return
-        end
+
+        -- Cleanup connections when disabled (or before re-hooking on enable)
+        if _G.KibaConnection then _G.KibaConnection:Disconnect() _G.KibaConnection = nil end
+        if _G.KibaCharAddedConnection then _G.KibaCharAddedConnection:Disconnect() _G.KibaCharAddedConnection = nil end
+        if not isEnabled then return end
 
         -- Variables
         local Players = game:GetService("Players")
-        local RunService = game:GetService("RunService")
         local LocalPlayer = Players.LocalPlayer
-        local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-        local HRP = Character:WaitForChild("HumanoidRootPart")
-        local Humanoid = Character:WaitForChild("Humanoid")
-        local Communicate = Character:WaitForChild("Communicate")
-        
+
         local ANIM_ID = "10503381238" -- Replace if needed
         local COOLDOWN = 5.0
         local lastDash = 0
         local isDashing = false
 
         -- Core Logic
-        local function getTarget()
+        local function getTarget(HRP)
             local target, shortest = nil, 20 -- Range
             for _, p in ipairs(Players:GetPlayers()) do
                 if p ~= LocalPlayer and p.Character then
@@ -2288,36 +2282,52 @@ kibaSection:Toggle({
             return target
         end
 
-        local function performDash(target)
+        local function performDash(HRP, Communicate, target)
             if isDashing then return end
             isDashing = true
-            
+
             -- Fire Remote
             Communicate:FireServer({Dash = Enum.KeyCode.W, Key = Enum.KeyCode.Q, Goal = "KeyPress"})
-            
+
             -- Dash logic
             local oldCFrame = HRP.CFrame
             HRP.CFrame = CFrame.new(HRP.Position, Vector3.new(target.Position.X, HRP.Position.Y, target.Position.Z))
-            
+
             task.wait(0.55)
-            
-            HRP.CFrame = oldCFrame
+
+            if HRP and HRP.Parent then HRP.CFrame = oldCFrame end
             isDashing = false
         end
 
-        -- Monitor Animations
-        _G.KibaConnection = Humanoid.AnimationPlayed:Connect(function(track)
-            if not _G.KibaEnabled then return end
-            
-            local id = tostring(track.Animation.AnimationId):match("%d+$")
-            if id == ANIM_ID and (tick() - lastDash) > COOLDOWN then
-                local target = getTarget()
-                if target then
-                    lastDash = tick()
-                    performDash(target)
+        -- Bind the animation listener to the active character (re-hooked on respawn)
+        local function listenToCharacter(Character)
+            local Humanoid = Character:WaitForChild("Humanoid", 10)
+            local HRP = Character:WaitForChild("HumanoidRootPart", 10)
+            local Communicate = Character:WaitForChild("Communicate", 10)
+            if not (Humanoid and HRP and Communicate) then return end
+
+            isDashing = false
+
+            if _G.KibaConnection then _G.KibaConnection:Disconnect() end
+            _G.KibaConnection = Humanoid.AnimationPlayed:Connect(function(track)
+                if not _G.KibaEnabled then return end
+                if not track.Animation then return end
+
+                local id = tostring(track.Animation.AnimationId):match("%d+$")
+                if id == ANIM_ID and (tick() - lastDash) > COOLDOWN then
+                    local target = getTarget(HRP)
+                    if target then
+                        lastDash = tick()
+                        performDash(HRP, Communicate, target)
+                    end
                 end
-            end
-        end)
+            end)
+        end
+
+        if LocalPlayer.Character then
+            listenToCharacter(LocalPlayer.Character)
+        end
+        _G.KibaCharAddedConnection = LocalPlayer.CharacterAdded:Connect(listenToCharacter)
     end,
 })
 
@@ -2921,8 +2931,8 @@ kibaSection:Toggle({
                         if localHumanoid then
                             localHumanoid.WalkSpeed = originalSpecs.WalkSpeed or 16
                             localHumanoid.JumpPower = originalSpecs.JumpPower or 50
-                            localHumanoid.PlatformStand = originalSpecs.PlatformStand or false
-                            localHumanoid.AutoRotate = originalSpecs.AutoRotate or true
+                            localHumanoid.PlatformStand = originalSpecs.PlatformStand
+                            localHumanoid.AutoRotate = originalSpecs.AutoRotate
                         end
                         if localRootPart then
                             localRootPart.Velocity = Vector3.zero
