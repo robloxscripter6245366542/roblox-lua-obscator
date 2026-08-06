@@ -336,8 +336,6 @@ end
 if LocalPlayer.Character then HookAnimationListener(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(HookAnimationListener)
 
-AnimationSection:Button({ Title = 'Invisible Block', Callback = function() print("Invisible Block Active") end })
-
 -- ==========================================
 -- DYNAMIC M1 EFFECTS PRESETS (NEW PRESET TAB)
 -- ==========================================
@@ -566,8 +564,7 @@ EffectsSection:Dropdown({
     end
 })
 
-creditSection:Paragraph({ Title = "made by", Text = "khengie_slayer" })
-creditSection:Paragraph({ Title = "khengie_slayer👑", Text = "khengie_slayer" })
+creditSection:Paragraph({ Title = "Made by 👑", Text = "khengie_slayer" })
 
 -- === AIMBOT SECTION ===
 aimbotSection:Button({
@@ -3110,7 +3107,6 @@ SaitamaTab:Toggle({
                             pcall(function()
                                 loadstring(game:HttpGet("https://pastebin.com/raw/iFWQZtvc"))()
                             end)
-                            warn("Animation Triggered: ", animationTrack.Animation.AnimationId)
                         end
                     end)
                 end
@@ -3151,8 +3147,16 @@ SaitamaTab:Toggle({
             -- Trackers and Target State Anchors
             local targetAnimationId = "rbxassetid://10471336737"
             local runtimeConnections = {}
-            local liveFolder = workspace:WaitForChild("Live", 5)
-            local myLiveCharacter = liveFolder and liveFolder:WaitForChild(LocalPlayer.Name, 5)
+            local activeAnimSignal = nil
+            local myLiveCharacter = nil
+
+            -- Resolve (or, after a respawn, re-resolve) our character inside the Live folder
+            local function resolveLiveCharacter()
+                local liveFolder = workspace:WaitForChild("Live", 5)
+                myLiveCharacter = liveFolder and liveFolder:WaitForChild(LocalPlayer.Name, 5)
+                return myLiveCharacter
+            end
+            resolveLiveCharacter()
 
             -- Disconnect all localized runtime trackers
             local function clearLocalConnections()
@@ -3234,8 +3238,7 @@ SaitamaTab:Toggle({
 
                 -- Step 2: Trigger click down sequence
                 communicate:FireServer({{Mobile = true, Goal = "LeftClick"}})
-                task.wait(0.1)
-                task.wait(0.5)
+                task.wait(0.6)
 
                 -- Step 3: Release click phase + initialize alignment locks
                 communicate:FireServer({{Goal = "LeftClickRelease", Mobile = true}})
@@ -3254,12 +3257,14 @@ SaitamaTab:Toggle({
                         local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
                         local humanoid = character:WaitForChild("Humanoid")
                         
-                        local animTrackSignal = humanoid.AnimationPlayed:Connect(function(track)
+                        -- Only one active animation listener at a time (avoid stacking on repeat combos)
+                        if activeAnimSignal then activeAnimSignal:Disconnect() end
+                        activeAnimSignal = humanoid.AnimationPlayed:Connect(function(track)
                             if track.Animation and track.Animation.AnimationId == targetAnimationId then
                                 runComboExecutionSequence()
                             end
                         end)
-                        table.insert(runtimeConnections, animTrackSignal)
+                        table.insert(runtimeConnections, activeAnimSignal)
 
                         -- Process fallback sequence validation loop
                         for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
@@ -3276,9 +3281,14 @@ SaitamaTab:Toggle({
             -- Active startup sequencing hooks
             initializeComboEngine()
 
-            -- Register character lifecycle cleanup listener reset routines
+            -- On respawn: reset listeners, then re-resolve the Live character and re-arm
             local respawnHook = LocalPlayer.CharacterAdded:Connect(function()
                 clearLocalConnections()
+                activeAnimSignal = nil
+                task.wait(1)
+                if not _G.ComboCleanupSignal then return end -- toggle was turned off while waiting
+                resolveLiveCharacter()
+                initializeComboEngine()
             end)
 
             -- Global function binding wrapper map for handling future disables
