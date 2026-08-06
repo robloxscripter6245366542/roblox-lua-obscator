@@ -93,27 +93,26 @@ end
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
 WindUI:AddTheme({
-    Name = "Pink Neon",
-    Accent = Color3.fromHex("#FF66B2"),      -- Vibrant Pink
-    Background = Color3.fromHex("#0A0508"),  -- Sleek dark pinkish-black
-    Outline = Color3.fromHex("#FF66B2"),     -- Pink Border
-    Text = Color3.fromHex("#FFFFFF"),        -- Crisp white text
-    Placeholder = Color3.fromHex("#A3708B"), -- Soft muted pinkish-gray
-    Button = Color3.fromHex("#1A0D15"),      -- Dark pink button base
-    Icon = Color3.fromHex("#FF66B2"),        -- Pink UI icons
+    Name = "Fire",
+    Accent = Color3.fromHex("#FF3030"),      -- Red
+    Background = Color3.fromHex("#1A0606"),  -- Dark red-black
+    Outline = Color3.fromHex("#FF3B3B"),     -- Red border
+    Text = Color3.fromHex("#FFFFFF"),        -- White text
+    Placeholder = Color3.fromHex("#C98A8A"), -- Muted red-gray
+    Button = Color3.fromHex("#2A0A0A"),      -- Dark red button base
+    Icon = Color3.fromHex("#FF3030"),        -- Red icons
 })
 
 local Window = WindUI:CreateWindow({
     Title = "Fire Hub",
-    Icon = "flame",
-    Author = "By Fire Hub",
+    Icon = "rbxassetid://110312595891409",
+    Author = "By QUANTUAM_LABS",
     Folder = "FireHub",
-    Background = "rbxassetid://98852755585971",
     Size = UDim2.fromOffset(580, 460), 
     MinSize = Vector2.new(560, 350),
     MaxSize = Vector2.new(850, 560),
     Transparent = true,
-    Theme = "Pink Neon",
+    Theme = "Fire",
     Resizable = true,
     SideBarWidth = 200,
     BackgroundImageTransparency = 0.65,
@@ -129,10 +128,10 @@ local Window = WindUI:CreateWindow({
 
 Window:EditOpenButton({
     Title = "Fire Hub",
-    Icon = "flame",
+    Icon = "rbxassetid://98852755585971",
     CornerRadius = UDim.new(0, 16),
     StrokeThickness = 2,
-    Color = ColorSequence.new(Color3.fromHex("#FF66B2"), Color3.fromHex("#1A0D15")), -- Pink Gradient
+    Color = ColorSequence.new(Color3.fromHex("#FF3B3B"), Color3.fromHex("#7A0000")), -- Red Gradient
     OnlyMobile = false,
     Enabled = true,
     Draggable = true,
@@ -564,7 +563,7 @@ EffectsSection:Dropdown({
     end
 })
 
-creditSection:Paragraph({ Title = "Made by 🔥", Text = "Fire Hub" })
+creditSection:Paragraph({ Title = "Made by 🔥", Text = "QUANTUAM_LABS" })
 
 -- === AIMBOT SECTION ===
 aimbotSection:Button({
