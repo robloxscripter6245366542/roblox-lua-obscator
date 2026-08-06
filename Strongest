@@ -106,7 +106,7 @@ WindUI:AddTheme({
 local Window = WindUI:CreateWindow({
     Title = "Fire Hub",
     Icon = "rbxassetid://110312595891409",
-    Author = "By Fire Hub",
+    Author = "By QUANTUAM_LABS",
     Folder = "FireHub",
     Size = UDim2.fromOffset(580, 460), 
     MinSize = Vector2.new(560, 350),
@@ -563,7 +563,7 @@ EffectsSection:Dropdown({
     end
 })
 
-creditSection:Paragraph({ Title = "Made by 🔥", Text = "Fire Hub" })
+creditSection:Paragraph({ Title = "Made by 🔥", Text = "QUANTUAM_LABS" })
 
 -- === AIMBOT SECTION ===
 aimbotSection:Button({
