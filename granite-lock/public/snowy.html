@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Snowy Hub — Payload (deobfuscated) · download</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{--bg:#f5f7fa;--card:#fff;--ink:#141a22;--muted:#5c6773;--accent:#0b7fa6;
+    --accent-ink:#fff;--border:#e3e8ee;--ring:#0b7fa6;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+  @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--card:#151b23;--ink:#e7ecf2;
+    --muted:#98a3b0;--accent:#38bdf8;--accent-ink:#06222f;--border:#232c37;--ring:#38bdf8;}}
+  :root[data-theme="light"]{--bg:#f5f7fa;--card:#fff;--ink:#141a22;--muted:#5c6773;
+    --accent:#0b7fa6;--accent-ink:#fff;--border:#e3e8ee;--ring:#0b7fa6;}
+  :root[data-theme="dark"]{--bg:#0d1117;--card:#151b23;--ink:#e7ecf2;--muted:#98a3b0;
+    --accent:#38bdf8;--accent-ink:#06222f;--border:#232c37;--ring:#38bdf8;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    min-height:100dvh;display:grid;place-items:center;padding:24px;line-height:1.5}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    max-width:460px;width:100%;padding:28px 24px 24px;
+    box-shadow:0 1px 2px rgba(0,0,0,.04),0 12px 32px rgba(10,20,35,.10)}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+  h1{font-size:20px;line-height:1.25;margin:0 0 4px;text-wrap:balance}
+  .file{display:flex;align-items:center;gap:12px;margin:20px 0;padding:14px;
+    border:1px solid var(--border);border-radius:12px}
+  .glyph{flex:0 0 auto;width:44px;height:44px;border-radius:10px;display:grid;
+    place-items:center;background:color-mix(in srgb,var(--accent) 15%,transparent);
+    color:var(--accent);font-family:var(--mono);font-weight:700;font-size:12px}
+  .fname{font-family:var(--mono);font-size:14px;word-break:break-all;margin:0}
+  .meta{color:var(--muted);font-size:13px;margin:2px 0 0;font-variant-numeric:tabular-nums}
+  .btn{appearance:none;border:0;cursor:pointer;width:100%;text-decoration:none;
+    background:var(--accent);color:var(--accent-ink);font-family:var(--sans);
+    font-size:16px;font-weight:650;padding:15px 18px;border-radius:12px;
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    transition:transform .06s ease,filter .15s ease}
+  .btn:hover{filter:brightness(1.05)}
+  .btn:active{transform:translateY(1px)}
+  .btn:focus-visible{outline:3px solid var(--ring);outline-offset:2px}
+  .tip{margin:18px 0 0;padding-top:16px;border-top:1px solid var(--border);
+    font-size:13px;color:var(--muted)}
+  .tip b{color:var(--ink);font-weight:600}
+  @media (prefers-reduced-motion:reduce){.btn{transition:none}}
+</style>
+</head>
+<body>
+<main class="card">
+  <p class="eyebrow">Luraph v14.7 · deobfuscated</p>
+  <h1>Snowy Hub — payload recovery</h1>
+  <div class="file">
+    <div class="glyph">TXT</div>
+    <div>
+      <p class="fname">SnowyHub_2_Payload.txt</p>
+      <p class="meta">582 KB · 8,946 lines · plain text</p>
+    </div>
+  </div>
+  <a class="btn" href="/SnowyHub_2_Payload.txt" download="SnowyHub_2_Payload.txt">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/></svg>
+    Download the .txt
+  </a>
+  <p class="tip"><b>On iPhone/iPad:</b> tap the button, then choose <b>Save to Files</b>
+  (or <b>Download</b>). Contents: decoded constant pool + behaviour + the lifted
+  payload logic.</p>
+</main>
+</body>
+</html>
