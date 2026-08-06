@@ -105,7 +105,7 @@ WindUI:AddTheme({
 
 local Window = WindUI:CreateWindow({
     Title = "Fire Hub",
-    Icon = "rbxassetid://110312595891409",
+    Icon = "flame",
     Author = "By Fire Hub",
     Folder = "FireHub",
     Background = "rbxassetid://98852755585971",
@@ -129,7 +129,7 @@ local Window = WindUI:CreateWindow({
 
 Window:EditOpenButton({
     Title = "Fire Hub",
-    Icon = "rbxassetid://98852755585971",
+    Icon = "flame",
     CornerRadius = UDim.new(0, 16),
     StrokeThickness = 2,
     Color = ColorSequence.new(Color3.fromHex("#FF66B2"), Color3.fromHex("#1A0D15")), -- Pink Gradient
