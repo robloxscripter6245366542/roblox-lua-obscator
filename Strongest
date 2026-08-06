@@ -93,14 +93,14 @@ end
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
 WindUI:AddTheme({
-    Name = "Pink Neon",
-    Accent = Color3.fromHex("#FF66B2"),      -- Vibrant Pink
-    Background = Color3.fromHex("#0A0508"),  -- Sleek dark pinkish-black
-    Outline = Color3.fromHex("#FF66B2"),     -- Pink Border
-    Text = Color3.fromHex("#FFFFFF"),        -- Crisp white text
-    Placeholder = Color3.fromHex("#A3708B"), -- Soft muted pinkish-gray
-    Button = Color3.fromHex("#1A0D15"),      -- Dark pink button base
-    Icon = Color3.fromHex("#FF66B2"),        -- Pink UI icons
+    Name = "Fire",
+    Accent = Color3.fromHex("#FF6A18"),      -- Molten orange
+    Background = Color3.fromHex("#120704"),  -- Dark ember black
+    Outline = Color3.fromHex("#FF8A1E"),     -- Warm amber border
+    Text = Color3.fromHex("#FFF3E6"),        -- Warm white text
+    Placeholder = Color3.fromHex("#C79A80"), -- Muted ember-gray
+    Button = Color3.fromHex("#1E0E06"),      -- Charred button base
+    Icon = Color3.fromHex("#FF7A18"),        -- Flame-orange icons
 })
 
 local Window = WindUI:CreateWindow({
@@ -113,7 +113,7 @@ local Window = WindUI:CreateWindow({
     MinSize = Vector2.new(560, 350),
     MaxSize = Vector2.new(850, 560),
     Transparent = true,
-    Theme = "Pink Neon",
+    Theme = "Fire",
     Resizable = true,
     SideBarWidth = 200,
     BackgroundImageTransparency = 0.65,
@@ -132,7 +132,7 @@ Window:EditOpenButton({
     Icon = "flame",
     CornerRadius = UDim.new(0, 16),
     StrokeThickness = 2,
-    Color = ColorSequence.new(Color3.fromHex("#FF66B2"), Color3.fromHex("#1A0D15")), -- Pink Gradient
+    Color = ColorSequence.new(Color3.fromHex("#FFB020"), Color3.fromHex("#E23B0E")), -- Fire Gradient
     OnlyMobile = false,
     Enabled = true,
     Draggable = true,
