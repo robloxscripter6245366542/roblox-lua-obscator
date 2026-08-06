@@ -173,7 +173,7 @@ def main():
     sh(["python3", os.path.join("devirt", "run_vm.py"), "--vmdir", peeldir, "--luau", luau,
         "--mode", "fulldump", "--n", "300", "--out", full], args.timeout)
     rc, o = sh(["python3", os.path.join("devirt", "lift.py"), full, "--map", opmap,
-                "--values", vals, "-o", lifted], args.timeout)
+                "--values", vals, "--decoded", semf, "-o", lifted], args.timeout)
     print(grepl(o, "[lift]")[0] if grepl(o, "[lift]") else o.strip()[:200])
     rep.append("```\n" + (grepl(o, "[lift]")[0] if grepl(o, "[lift]") else "") + "\n```")
 
