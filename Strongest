@@ -94,13 +94,13 @@ local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/rel
 
 WindUI:AddTheme({
     Name = "Fire",
-    Accent = Color3.fromHex("#FF6A18"),      -- Molten orange
-    Background = Color3.fromHex("#120704"),  -- Dark ember black
-    Outline = Color3.fromHex("#FF8A1E"),     -- Warm amber border
-    Text = Color3.fromHex("#FFF3E6"),        -- Warm white text
-    Placeholder = Color3.fromHex("#C79A80"), -- Muted ember-gray
-    Button = Color3.fromHex("#1E0E06"),      -- Charred button base
-    Icon = Color3.fromHex("#FF7A18"),        -- Flame-orange icons
+    Accent = Color3.fromHex("#FF3030"),      -- Red
+    Background = Color3.fromHex("#1A0606"),  -- Dark red-black
+    Outline = Color3.fromHex("#FF3B3B"),     -- Red border
+    Text = Color3.fromHex("#FFFFFF"),        -- White text
+    Placeholder = Color3.fromHex("#C98A8A"), -- Muted red-gray
+    Button = Color3.fromHex("#2A0A0A"),      -- Dark red button base
+    Icon = Color3.fromHex("#FF3030"),        -- Red icons
 })
 
 local Window = WindUI:CreateWindow({
@@ -108,7 +108,6 @@ local Window = WindUI:CreateWindow({
     Icon = "flame",
     Author = "By Fire Hub",
     Folder = "FireHub",
-    Background = "rbxassetid://98852755585971",
     Size = UDim2.fromOffset(580, 460), 
     MinSize = Vector2.new(560, 350),
     MaxSize = Vector2.new(850, 560),
@@ -132,7 +131,7 @@ Window:EditOpenButton({
     Icon = "flame",
     CornerRadius = UDim.new(0, 16),
     StrokeThickness = 2,
-    Color = ColorSequence.new(Color3.fromHex("#FFB020"), Color3.fromHex("#E23B0E")), -- Fire Gradient
+    Color = ColorSequence.new(Color3.fromHex("#FF3B3B"), Color3.fromHex("#7A0000")), -- Red Gradient
     OnlyMobile = false,
     Enabled = true,
     Draggable = true,
