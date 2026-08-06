@@ -90,9 +90,10 @@ weak and which tool addresses it.
 | **W1b** | **The "inner encryption" is just LZMA compression.** The bootstrap ships a pure-Lua LZMA range decoder; the high entropy was compression, not a cipher. Keyless. | `python`'s `lzma` decodes the raw stream → VM source + bytecode, statically. | `peel.py` |
 | **W2** | **Code owns no environment; you do.** It must run in a real Lua VM and call real `string.*`, `game:HttpGet`, globals, metatables. | Replace the environment with instrumented copies and every real effect is observable. | `sandbox.lua` |
 | **W3** | **Program strings live in a VM constant table decoded at runtime.** | Run the interpreter's constant decoder (or the sandbox) to recover URLs/keys the static `strings` pass can't. | `sandbox.lua` |
+| **W4** | **Constants sit in the compiled closures.** In an executor, `debug.getconstants`/`getprotos`/`getupvalues` read them out of the bytecode **statically** — cold/dead code included, no execution, no key. | Recursive `getgc()` + `debug.get*` sweep dumps the *complete* constant pool, resolving the `K(i)` the offline lift can't. | `env_logger.lua` |
 | **W5** | **Anti-tamper is a value-poison, not a wall.** The integrity block only flips `D` (`D=5` → `D=20.0`) if a check fails; supply the right `D` or patch the check and it's inert. | Detectable, patchable, side-effect-free. | `peel.py -D`, manual patch |
-| **W6** | **External effects are in the clear.** URLs, key endpoints, HWID/whitelist calls all hit real APIs eventually. | Log `HttpGet`/`request`/IO in the sandbox → full behavioural profile without reading a line of VM code. | `sandbox.lua` |
-| **W7** | **`debug.*` is often still reachable** in executor contexts. | `debug.sethook` gives a call/line trace of the dispatch loop. | `sandbox.lua` (`TraceCalls`) |
+| **W6** | **External effects are in the clear.** URLs, key endpoints, HWID/whitelist calls all hit real APIs eventually. | Log `HttpGet`/`request`/IO in the sandbox, or a live `__namecall`/`hookfunction` spy in-executor → full behavioural profile without reading a line of VM code. | `sandbox.lua`, `env_logger.lua` |
+| **W7** | **`debug.*` is often still reachable** in executor contexts. | `debug.sethook` gives a call/line trace; `debug.getconstants`/`getprotos` give the whole constant/proto tree. | `sandbox.lua` (`TraceCalls`), `env_logger.lua` |
 | **W8** | **Toolchain fingerprinting.** `LPH%V` header + `Luraph v14.7` comment pin the exact version, so version-specific templates apply. | — | `peel.py` (header report) |
 
 **What stays hard (be honest):** W1–W8 recover the *encoding*, the
@@ -129,6 +130,31 @@ constant decoder / sandbox.
 ```bash
 python3 strings.py peeled/stage_1.bin
 ```
+
+### `env_logger.lua` — executor-side "env logger" / deep constant dumper
+Runs **inside a real Roblox executor** and extracts what the offline sandbox
+cannot: the **complete constant pool read statically from the compiled
+closures**, cold/dead code included. It walks `getgc()` and recurses through
+`debug.getconstants` / `debug.getprotos` / `debug.getupvalues` on every Lua
+closure — so it reads the VM's constants **without executing** them (no key,
+reaches unexecuted paths), directly resolving the `K(i)` residue `lift.py`
+leaves. It also hooks `loadstring`/`load` (every compiled stage), and spies
+live egress via `hookfunction` on `request` and a `__namecall` hook
+(`HttpGet`/`FireServer`/`InvokeServer`). Every primitive is feature-detected and
+degrades gracefully. **Egress is blocked by default** (`CONFIG.BlockNetwork`):
+URLs are logged, not forwarded — and the constant recovery doesn't need network,
+so you get the full pool with the target unable to phone home.
+
+```lua
+-- in the executor: set CONFIG.TargetSource or .TargetUrl, then run.
+-- dumps: lph_env/constants.txt (full pool, URLs flagged), protos.txt,
+--        stages/, network.txt, report.txt
+```
+
+This is the recovery step that closes the offline gap: feed `constants.txt`
+back alongside `devirt/lift.py`'s output and the previously-`K(i)` constants are
+now enumerated. Requires an executor exposing the `debug`/`getgc` primitives
+(most do). See the table above — it addresses **W3/W4/W6** at full coverage.
 
 ### `sandbox.lua` — dynamic capture harness
 Runs the target under an instrumented environment. Network and disk are
@@ -171,8 +197,11 @@ Identifier=1027906}`. `dynamic/build_luau.sh` builds the Luau CLI it needs.
 2. `strings.py` → plaintext triage over the bytecode.
 3. `sandbox.lua` → run stubbed to recover the *program's* runtime strings
    (URLs/keys) and its network/IO behaviour.
-4. `devirt.md` → follow the roadmap to lift the bytecode to Lua (the one
-   remaining hard step; no longer blind).
+4. `devirt/` → lift the bytecode to register-level Lua (parses as Lua 5.4).
+5. `env_logger.lua` → in a real executor, dump the **complete** constant pool
+   from the closures (`getgc` + `debug.getconstants/getprotos`) — resolves the
+   cold `K(i)` the offline lift can't reach, and spies live network/`__namecall`.
+   This is the step that turns "the constants that ran" into "every constant".
 
 ## Verified against
 `sample_sigil.lua` in this folder (a Luraph v14.7 build). `peel.py` recovers
