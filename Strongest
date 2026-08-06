@@ -104,10 +104,10 @@ WindUI:AddTheme({
 })
 
 local Window = WindUI:CreateWindow({
-    Title = "Animation hub",
+    Title = "Fire Hub",
     Icon = "rbxassetid://110312595891409",
-    Author = "By khengie_slayer",
-    Folder = "KhengieSlayerHub",
+    Author = "By Fire Hub",
+    Folder = "FireHub",
     Background = "rbxassetid://98852755585971",
     Size = UDim2.fromOffset(580, 460), 
     MinSize = Vector2.new(560, 350),
@@ -128,7 +128,7 @@ local Window = WindUI:CreateWindow({
 })
 
 Window:EditOpenButton({
-    Title = "KhengieSlayerHub",
+    Title = "Fire Hub",
     Icon = "rbxassetid://98852755585971",
     CornerRadius = UDim.new(0, 16),
     StrokeThickness = 2,
@@ -564,7 +564,7 @@ EffectsSection:Dropdown({
     end
 })
 
-creditSection:Paragraph({ Title = "Made by 👑", Text = "khengie_slayer" })
+creditSection:Paragraph({ Title = "Made by 🔥", Text = "Fire Hub" })
 
 -- === AIMBOT SECTION ===
 aimbotSection:Button({
