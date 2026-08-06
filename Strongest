@@ -3236,6 +3236,147 @@ AutoBlockConfig:Input({
 })
 
 
+-- ==========================================
+-- ABA TECH + EMOTE DASH (ported from VMT hub — logic only, wired to this hub's UI)
+-- ==========================================
+local ExtraTechTab = Window:Tab({ Title = "Extra Techs", Icon = "zap", Desc = "Aba Tech + Emote Dash" })
+local AbaSection = ExtraTechTab:Section({ Title = "Aba Tech", Box = true, BoxBorder = true, Opened = true })
+local EmoteSection = ExtraTechTab:Section({ Title = "Emote Dash", Box = true, BoxBorder = true, Opened = true })
+
+local ExtraSettings = { AbaRotation = false }
+local ExtraActionActive = false   -- single-flight guard (fixes VMT's per-helper flag that cancelled itself out)
+local ExtraLoadedAnims = {}
+
+local function ET_getCharHum()
+    local char = LocalPlayer.Character
+    return char, char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function ET_stopAllAnimations()
+    local _, hum = ET_getCharHum()
+    local animator = hum and hum:FindFirstChildOfClass("Animator")
+    if animator then
+        pcall(function()
+            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do track:Stop() end
+        end)
+    end
+end
+
+local function ET_playAnimation(animationId)
+    local _, hum = ET_getCharHum()
+    if not hum then return end
+    local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
+    local animation = ExtraLoadedAnims[animationId]
+    if not animation then
+        animation = Instance.new("Animation")
+        animation.AnimationId = "rbxassetid://" .. tostring(animationId)
+        ExtraLoadedAnims[animationId] = animation
+    end
+    local ok, track = pcall(function() return animator:LoadAnimation(animation) end)
+    if ok and track then
+        track.Priority = Enum.AnimationPriority.Action
+        track:Play()
+        pcall(function() track:AdjustSpeed(1.2) end)
+    end
+end
+
+local function ET_turnCamera(degrees)
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local cam = Workspace.CurrentCamera
+    pcall(function()
+        hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(degrees), 0)
+        local camPos = (cam and cam.CFrame.Position) or (hrp.Position + Vector3.new(0, 5, 0))
+        local camY = camPos.Y
+        local offset = camPos - hrp.Position
+        local horiz = Vector3.new(offset.X, 0, offset.Z)
+        local rotated = CFrame.fromAxisAngle(Vector3.yAxis, math.rad(degrees)) * horiz
+        local lookAt = hrp.Position + rotated
+        if cam then cam.CFrame = CFrame.lookAt(Vector3.new(lookAt.X, camY, lookAt.Z), hrp.Position) end
+    end)
+end
+
+local function ET_tweenMove(direction, distance, duration)
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local TweenService = game:GetService("TweenService")
+    local tween = TweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+        CFrame = hrp.CFrame * CFrame.new(direction * distance, 0, 0)
+    })
+    pcall(function() tween:Play() tween.Completed:Wait() tween:Destroy() end)
+end
+
+local function ET_applyBodyVelocity(directionX, distanceMultiplier, verticalForce, maxSpeed, duration)
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local bv = Instance.new("BodyVelocity")
+    local vec = hrp.CFrame.RightVector * directionX * distanceMultiplier + Vector3.new(0, verticalForce, 0)
+    if vec.Magnitude == 0 then vec = Vector3.new(0, 1, 0) end
+    bv.Velocity = vec.Unit * maxSpeed
+    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bv.Parent = hrp
+    task.delay(duration, function() pcall(function() bv:Destroy() end) end)
+end
+
+local function ET_abaTech()
+    if ExtraActionActive then return end
+    ExtraActionActive = true
+    ET_stopAllAnimations()
+    pcall(function() ET_playAnimation(10480793962) end)
+    pcall(function() ET_tweenMove(1, 26, 0.22) end)
+    if ExtraSettings.AbaRotation then pcall(function() ET_turnCamera(70) end) end
+    task.wait(0.003)
+    pcall(function()
+        local VIM = game:GetService("VirtualInputManager")
+        VIM:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+        VIM:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+    end)
+    ExtraActionActive = false
+end
+
+local function ET_emoteDash()
+    if ExtraActionActive then return end
+    ExtraActionActive = true
+    ET_stopAllAnimations()
+    pcall(function() ET_playAnimation(10480793962) end)
+    pcall(function() ET_turnCamera(90) end)
+    pcall(function() ET_applyBodyVelocity(1, 38, 8, 95, 0.27) end)
+    ExtraActionActive = false
+end
+
+AbaSection:Toggle({
+    Title = "Enable Rotation",
+    Value = false,
+    Callback = function(v) ExtraSettings.AbaRotation = v end
+})
+AbaSection:Button({
+    Title = "Activate Aba Tech",
+    Callback = function() task.spawn(ET_abaTech) end
+})
+pcall(function()
+    AbaSection:Keybind({
+        Title = "Aba Tech Keybind",
+        Key = "None",
+        Callback = function() task.spawn(ET_abaTech) end
+    })
+end)
+
+EmoteSection:Button({
+    Title = "Activate Emote Dash",
+    Callback = function() task.spawn(ET_emoteDash) end
+})
+pcall(function()
+    EmoteSection:Keybind({
+        Title = "Emote Dash Keybind",
+        Key = "None",
+        Callback = function() task.spawn(ET_emoteDash) end
+    })
+end)
+
+
 -- === TELEPORT DROPDOWN ===
 local Locations = {
     ["Atomic samurai"]     = Vector3.new(-52, 1612, 25248),
