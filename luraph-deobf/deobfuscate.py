@@ -85,15 +85,21 @@ def main():
 
     # ---- 0. FINGERPRINT ----
     sec("0. Fingerprint")
-    ver = re.search(r"Luraph Obfuscator v[0-9.]+", src)
-    ver = ver.group(0) if ver else "unknown"
-    lph = re.findall(r"\[=*\[LPH.{5}", src)
-    fp = [f"version: {ver}", f"LPH streams: {len(lph)}"] + [f"  {h}" for h in lph[:6]]
-    if "v14.7" not in ver:
-        fp.append("WARNING: this tool targets v14.7; other versions differ "
-                  "(e.g. v14.6 uses a non-LZMA inner codec).")
-    for l in fp:
-        print(l); rep.append("- " + l)
+    # Rich static triage: version, LPH_* macros, packed streams, outer layers
+    # (base-85/LZMA/XOR/fragmentation/config), anti-tamper, and a strategy.
+    rc, o = sh(["python3", "fingerprint.py", sample], args.timeout)
+    if o.strip():
+        print(o.strip()); rep.append("```\n" + o.strip() + "\n```")
+    else:  # fallback if fingerprint.py is unavailable
+        ver = re.search(r"Luraph Obfuscator v[0-9.]+", src)
+        ver = ver.group(0) if ver else "unknown"
+        lph = re.findall(r"\[=*\[LPH.{5}", src)
+        for l in [f"version: {ver}", f"LPH streams: {len(lph)}"]:
+            print(l); rep.append("- " + l)
+    if "v14.7" not in src:
+        w = ("NOTE: tuned on v14.7; other versions differ (e.g. non-LZMA inner "
+             "codec, XOR outer layer) — see fingerprint 'outer layers' + strategy.")
+        print(w); rep.append("- " + w)
 
     # ---- 1. PEEL ----
     sec("1. Peel (static, keyless)")

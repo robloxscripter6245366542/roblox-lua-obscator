@@ -110,6 +110,25 @@ dispatch core lives.
 
 ## Tools
 
+### `fingerprint.py` — static triage + strategy (start here, no execution)
+A fast no-execution pass that says *what you're looking at and how to attack
+it*, so the pipeline isn't hard-wired to one build. Reports the Luraph
+**version**, any **`LPH_*` macros** present (`LPH_NO_VIRTUALIZE`, `LPH_ENCSTR`,
+`LPH_JIT`, `LPH_NO_UPVALUES`, …), the **packed streams** (count, bracket level,
+header, size, `D` offset), the **outer layers** it detects (base-85, LZMA, XOR
+loops, fragmentation, inline config table), the **anti-tamper** probe (incl. the
+`\x1bLuaP` magic hidden as a hex/decimal byte-array), and a **recommended
+strategy** (which tool/stage to run next, with caveats — e.g. `LPH_NO_VIRTUALIZE`
+→ read as ordinary Lua after peel; `LPH_ENCSTR` → recover strings via
+`env_logger.lua`). Adopts the static-analysis strengths of other public Luraph
+tooling (macro tracking + bootstrap classification) so non-v14.7 builds are
+triaged instead of silently mishandled.
+
+```bash
+python3 fingerprint.py sample.lua          # human report
+python3 fingerprint.py sample.lua --json    # machine-readable
+```
+
 ### `peel.py` — static unpacker (safe, no execution)
 Reverses **both** keyless layers on every `LPH…` stream: base-85, then raw
 LZMA1. Writes `stage_N.lua` when a stage decompresses to Lua source and
@@ -192,6 +211,8 @@ Identifier=1027906}`. `dynamic/build_luau.sh` builds the Luau CLI it needs.
 
 ## Typical workflow
 
+0. `fingerprint.py` → triage: version, `LPH_*` macros, outer layers, anti-tamper,
+   and the recommended strategy for *this* build.
 1. `peel.py` → unpack statically to VM source (`stage_0.lua`) + bytecode
    (`stage_1.bin`). Read the source directly.
 2. `strings.py` → plaintext triage over the bytecode.
