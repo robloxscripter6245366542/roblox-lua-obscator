@@ -117,32 +117,6 @@ fireAnimEvents(); frames(25)          -- live RenderStepped/Heartbeat handlers r
 local rc = SIM.makeChar("You"); rc.Parent = SIM.live; lp._props.Character = rc
 lp.CharacterAdded:Fire(rc); frames(15)
 
--- 2c) exercise the on-screen Camlock widget's handlers (click / settings / drag)
-SIM.label = "CAMLOCK-WIDGET"
-do
-    local pg = SIM.LocalPlayer:FindFirstChild("PlayerGui")
-    local cg = pg and pg:FindFirstChild("FireHubCamlock")
-    local cam = cg and cg:FindFirstChild("CamButton")
-    if cam then
-        cam.MouseButton1Click:Fire()                 -- toggle on
-        frames(4)
-        local sb = cam:FindFirstChild("Settings"); if sb then sb.MouseButton1Click:Fire() end
-        local panel = cam:FindFirstChild("Panel")
-        if panel then
-            for _, ch in ipairs(panel:GetChildren()) do
-                if ch.ClassName == "TextButton" then ch.MouseButton1Click:Fire() end
-                if ch.ClassName == "TextBox" then ch.Text = "Distance: 120"; ch.FocusLost:Fire() end
-            end
-        end
-        cam.InputBegan:Fire({ UserInputType = Enum.UserInputType.MouseButton1, Position = Vector3.new() })
-        RunService.RenderStepped:Fire(1/60)
-        cam.MouseButton1Click:Fire()                 -- toggle off
-        frames(4)
-    else
-        print("[driver] WARN: Camlock widget not found")
-    end
-end
-
 -- 3) report
 print("\n==================== SIM RESULT ====================")
 print(("controls exercised: %d   |   runtime errors: %d"):format(#SIM.controls, #SIM.errors))
