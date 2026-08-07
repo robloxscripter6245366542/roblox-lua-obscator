@@ -191,6 +191,10 @@ local EVENT_NAMES = {
     ChildAdded=true, ChildRemoved=true, DescendantAdded=true, DescendantRemoving=true,
     CharacterAdded=true, CharacterRemoving=true, Completed=true, Destroying=true,
     StateChanged=true,
+    -- GUI events
+    MouseButton1Click=true, MouseButton1Down=true, MouseButton1Up=true, MouseButton2Click=true,
+    MouseEnter=true, MouseLeave=true, Activated=true, FocusLost=true, Focused=true,
+    InputBegan=true, InputChanged=true, InputEnded=true,
 }
 local Instance = {}
 local Inst = {}

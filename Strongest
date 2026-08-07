@@ -3508,6 +3508,168 @@ pcall(function()
 end)
 
 
+-- On-screen draggable Camlock widget (red, no circles) with a Settings panel
+do
+    local UIS = game:GetService("UserInputService")
+    local TweenService = game:GetService("TweenService")
+
+    local RED_BG  = Color3.fromRGB(42, 10, 10)
+    local RED_ACC = Color3.fromRGB(255, 59, 59)
+    local RED_ON  = Color3.fromRGB(255, 48, 48)
+    local WHITE   = Color3.fromRGB(255, 255, 255)
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "FireHubCamlock"
+    gui.ResetOnSpawn = false
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    gui.Parent = (gethui and gethui()) or LocalPlayer:WaitForChild("PlayerGui")
+
+    -- main draggable button (this IS the camlock button — drag it to move)
+    local main = Instance.new("TextButton")
+    main.Name = "CamButton"
+    main.Size = UDim2.fromOffset(150, 46)
+    main.Position = UDim2.new(0.5, -75, 0.68, 0)
+    main.BackgroundColor3 = RED_BG
+    main.BorderSizePixel = 0
+    main.AutoButtonColor = false
+    main.Text = "Camlock: Off"
+    main.TextColor3 = WHITE
+    main.Font = Enum.Font.GothamBold
+    main.TextSize = 16
+    main.Active = true
+    main.Parent = gui
+    Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
+    local stroke = Instance.new("UIStroke", main); stroke.Color = RED_ACC; stroke.Thickness = 2
+
+    -- settings button on top of the camlock button
+    local settingsBtn = Instance.new("TextButton")
+    settingsBtn.Name = "Settings"
+    settingsBtn.Size = UDim2.fromOffset(150, 22)
+    settingsBtn.Position = UDim2.new(0, 0, 0, -26)
+    settingsBtn.BackgroundColor3 = RED_ACC
+    settingsBtn.BorderSizePixel = 0
+    settingsBtn.AutoButtonColor = false
+    settingsBtn.Text = "Settings v"
+    settingsBtn.TextColor3 = WHITE
+    settingsBtn.Font = Enum.Font.GothamBold
+    settingsBtn.TextSize = 13
+    settingsBtn.Parent = main
+    Instance.new("UICorner", settingsBtn).CornerRadius = UDim.new(0, 8)
+
+    -- settings panel (hidden until you press Settings)
+    local PANEL_H = 104
+    local panel = Instance.new("Frame")
+    panel.Name = "Panel"
+    panel.Size = UDim2.fromOffset(150, 0)
+    panel.Position = UDim2.new(0, 0, 1, 6)
+    panel.BackgroundColor3 = RED_BG
+    panel.BorderSizePixel = 0
+    panel.ClipsDescendants = true
+    panel.Visible = false
+    panel.Parent = main
+    Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 10)
+    local ps = Instance.new("UIStroke", panel); ps.Color = RED_ACC; ps.Thickness = 2
+    local pad = Instance.new("UIPadding", panel)
+    pad.PaddingTop = UDim.new(0, 6); pad.PaddingBottom = UDim.new(0, 6)
+    pad.PaddingLeft = UDim.new(0, 6); pad.PaddingRight = UDim.new(0, 6)
+    local layout = Instance.new("UIListLayout", panel)
+    layout.Padding = UDim.new(0, 4); layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local function mkRow(text)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(1, 0, 0, 26)
+        b.BackgroundColor3 = RED_ACC
+        b.BorderSizePixel = 0
+        b.Text = text
+        b.TextColor3 = WHITE
+        b.Font = Enum.Font.GothamSemibold
+        b.TextSize = 13
+        b.Parent = panel
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+        return b
+    end
+
+    local modeBtn = mkRow("Mode: " .. CamlockSettings.Mode)
+    local partBtn = mkRow("Target: " .. CamlockSettings.TargetPart)
+    local distBox = Instance.new("TextBox")
+    distBox.Size = UDim2.new(1, 0, 0, 26)
+    distBox.BackgroundColor3 = RED_ACC
+    distBox.BorderSizePixel = 0
+    distBox.Text = "Distance: " .. tostring(CamlockSettings.MaxDistance)
+    distBox.PlaceholderText = "Distance"
+    distBox.ClearTextOnFocus = false
+    distBox.TextColor3 = WHITE
+    distBox.Font = Enum.Font.GothamSemibold
+    distBox.TextSize = 13
+    distBox.Parent = panel
+    Instance.new("UICorner", distBox).CornerRadius = UDim.new(0, 6)
+
+    -- toggle camlock on/off (skip if the click was actually a drag)
+    local dragMoved = false
+    main.MouseButton1Click:Connect(function()
+        if dragMoved then dragMoved = false; return end
+        CamlockSettings.Enabled = not CamlockSettings.Enabled
+        if CamlockSettings.Enabled then
+            CL_start(); main.Text = "Camlock: On"; main.BackgroundColor3 = RED_ON
+        else
+            CL_stop(); main.Text = "Camlock: Off"; main.BackgroundColor3 = RED_BG
+        end
+    end)
+
+    -- expand / collapse the settings panel
+    local open = false
+    settingsBtn.MouseButton1Click:Connect(function()
+        open = not open
+        settingsBtn.Text = open and "Settings ^" or "Settings v"
+        if open then panel.Visible = true end
+        local goal = UDim2.fromOffset(150, open and PANEL_H or 0)
+        local tw = TweenService:Create(panel, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = goal })
+        tw:Play()
+        if not open then task.delay(0.18, function() if not open then panel.Visible = false end end) end
+    end)
+
+    -- cycle mode / target part
+    modeBtn.MouseButton1Click:Connect(function()
+        CamlockSettings.Mode = (CamlockSettings.Mode == "Camlock") and "Silent Aim" or "Camlock"
+        camTargetLocked = nil
+        modeBtn.Text = "Mode: " .. CamlockSettings.Mode
+    end)
+    local parts = { "HumanoidRootPart", "Head", "Torso" }
+    partBtn.MouseButton1Click:Connect(function()
+        local idx = 1
+        for i, v in ipairs(parts) do if v == CamlockSettings.TargetPart then idx = i; break end end
+        CamlockSettings.TargetPart = parts[(idx % #parts) + 1]
+        camTargetLocked = nil
+        partBtn.Text = "Target: " .. CamlockSettings.TargetPart
+    end)
+    distBox.FocusLost:Connect(function()
+        local n = tonumber(tostring(distBox.Text):match("%d+%.?%d*"))
+        if n then CamlockSettings.MaxDistance = n end
+        distBox.Text = "Distance: " .. tostring(CamlockSettings.MaxDistance)
+    end)
+
+    -- drag the whole widget by dragging the camlock button
+    local dragging, dragStart, startPos = false, nil, nil
+    main.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; dragMoved = false; dragStart = input.Position; startPos = main.Position
+        end
+    end)
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            dragMoved = true
+            local delta = input.Position - dragStart
+            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+
 -- === TELEPORT DROPDOWN ===
 local Locations = {
     ["Atomic samurai"]     = Vector3.new(-52, 1612, 25248),
