@@ -17,16 +17,31 @@
 #      each with the raw operands in a trailing comment for verification
 #    * unknown / no-write ops emitted as annotated comments, never guessed
 #
+#  Constant resolution (readability): a K(i) placeholder is replaced by a real
+#  literal in priority order — runtime value observed by capture_values
+#  (--values) > a decoded constant learned per (opcode, operand) from executed
+#  traces (--decoded) > the instruction's own decoded `d` operand > K(i).
+#  String keys become dot-access (e[a].Name) when they are non-keyword
+#  identifiers, else bracket-index (e[a]["end"]).
+#
+#  Well-formedness: the output is guaranteed to PARSE as Lua 5.4. Every goto
+#  targets an emitted ::label:: (branch/goto terminators to a None/unknown
+#  target degrade to a plain return), and a final sanitiser rewrites any
+#  stray unresolved goto to a return. Verify with:  luac5.4 -p lifted.lua
+#  (define call/K/arith/dataop stubs first, or just parse-check).
+#
 #  HONEST SCOPE. This is a register-machine transliteration, not a
 #  recovery of the author's original source (variable names, exact
 #  expressions, and high-level if/while are not reconstructed here). It is
 #  correct at the instruction level for every opcode the map knows, and it
-#  marks the residue explicitly. That is what a devirtualiser produces
-#  before the optional structuring/data-flow passes.
+#  marks the residue explicitly (K(i) = a constant in cold/unexecuted code).
+#  That is what a devirtualiser produces before the optional
+#  structuring/data-flow passes.
 #
 #  Usage:
 #    python3 run_vm.py --vmdir peeled --luau ./luau --mode fulldump --out full.txt
-#    python3 lift.py full.txt --map opcodes.full.json -o lifted.lua
+#    python3 lift.py full.txt --map opcodes.full.json \
+#            --values values.txt --decoded sem_big.txt,disasm.txt -o lifted.lua
 # ============================================================
 
 import argparse
@@ -117,7 +132,45 @@ def classify(name):
 
 CLASS = {}      # op(int) -> class, filled from the map
 VALUES = {}     # (proto, pc) -> concrete value literal (from capture_values.py)
+DECODED = {}    # (op, b-operand) -> decoded constant literal (from executed traces)
 CURPROTO = None  # proto currently being emitted (for VALUES lookup)
+
+_IDENT_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+_LUA_KEYWORDS = frozenset((
+    "and", "break", "do", "else", "elseif", "end", "false", "for", "function",
+    "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return",
+    "then", "true", "until", "while",
+))
+
+
+def _quote(v):
+    """Render a captured value as a Lua literal. Ints/floats/bools pass through;
+    everything else is treated as a string constant and quoted."""
+    if isinstance(v, str):
+        s = v.strip()
+        # already a Lua literal produced upstream (quoted string, number, bool)?
+        if (s.startswith('"') or s.startswith("'")
+                or s in ("true", "false", "nil")):
+            return s
+        try:
+            int(s); return s
+        except ValueError:
+            pass
+        try:
+            float(s); return s
+        except ValueError:
+            pass
+        return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return str(v)
+
+
+def _key_access(base, konst):
+    """t[k] with dot-sugar when k is a plain string identifier literal."""
+    if isinstance(konst, str) and len(konst) >= 2 and konst[0] == '"' and konst[-1] == '"':
+        inner = konst[1:-1]
+        if _IDENT_RE.match(inner) and inner not in _LUA_KEYWORDS:
+            return f"{base}.{inner}"
+    return f"{base}[{konst}]"
 
 
 def emit(pc, op, ops, entry, n):
@@ -133,8 +186,16 @@ def emit(pc, op, ops, entry, n):
     def reg(x):
         return f"e[{x}]" if x is not None else "?"
 
-    # a "K" that becomes the real literal when we observed it, else a placeholder
-    konst = val if val is not None else (f"K({b})")
+    # Resolve a constant: runtime-observed value > decoded-from-trace (by op+b) >
+    # the instruction's own decoded d operand > opaque K(b) placeholder.
+    if val is not None:
+        konst = _quote(val)
+    elif (op, b) in DECODED:
+        konst = DECODED[(op, b)]
+    elif isinstance(d, str):          # d already holds a decoded constant
+        konst = _quote(d)
+    else:
+        konst = f"K({b})"
 
     if cls == "jump":
         if is_pc(b, n):
@@ -161,14 +222,14 @@ def emit(pc, op, ops, entry, n):
         return f"{reg(dst_reg(dst, a, b, c))} = arith({reg(b)}, {reg(c)}){cm}{vc}"
     if cls == "gettable":
         vc = f"  -- = {val}" if val is not None else ""
-        return f"{reg(dst_reg(dst, a, b, c))} = {reg(a)}[{konst}]{cm}{vc}"
+        return f"{reg(dst_reg(dst, a, b, c))} = {_key_access(reg(a), konst)}{cm}{vc}"
     if cls == "call":
         vc = f"  -- returns {val}" if val is not None else ""
         if dst:
             return f"{reg(dst_reg(dst, a, b, c))} = call({reg(a)}, {reg(c)}){cm}{vc}"
         return f"call({reg(a)}, {reg(c)}){cm} -- void call"
     if cls == "settable":
-        return f"{reg(a)}[{konst}] = {reg(c)}{cm} -- settable/void-call (inferred)"
+        return f"{_key_access(reg(a), konst)} = {reg(c)}{cm} -- settable/void-call (inferred)"
     if cls == "dataop":
         vc = f"  -- = {val}" if val is not None else ""
         return f"dataop({reg(a)}, {reg(b)}, {reg(c)}){cm}{vc}"
@@ -291,27 +352,41 @@ def structure_proto(pid, instrs, opmap):
             blines.append("  " + emit(pc, op, ops, opmap.get(str(op)), n))
         # terminator
         lpc, lop, lops = blk["instrs"][-1]
+        # a jump/branch target is only usable if it is a real emitted block start
+        tgt = blk.get("target") if blk.get("target") in pos else None
+        fall = blk.get("fall") if blk.get("fall") in pos else None
         if blk["kind"] == "goto":
-            if blk["target"] != nextblk:
-                blines.append(f"  goto L_{blk['target']}"); referenced.add(blk["target"])
+            if tgt is None:
+                blines.append("  do return end  -- goto target unresolved -> return")
+            elif tgt != nextblk:
+                blines.append(f"  goto L_{tgt}"); referenced.add(tgt)
             # else fall-through: drop the jump
         elif blk["kind"] == "branch":
             a = opval(lops, "a")
             cond = f"e[{a}]" if a is not None else "cond"
-            back = blk["target"] in pos and pos[blk["target"]] <= i
+            back = tgt in pos and pos[tgt] <= i if tgt is not None else False
             note = "  -- back-edge (loop)" if back else ""
-            if blk["fall"] == nextblk:
-                blines.append(f"  if {cond} then goto L_{blk['target']} end{note}")
-                referenced.add(blk["target"])
+            if tgt is None:
+                # conditional whose taken-target is unknown: fall through only
+                blines.append(f"  -- branch (taken target unresolved) [{ ' '.join(f'{k}={lops[k]}' for k in 'abcd' if k in lops) }]")
+                if fall is not None and fall != nextblk:
+                    blines.append(f"  goto L_{fall}"); referenced.add(fall)
+            elif fall is None:
+                # no fall path (last block): take-or-end
+                blines.append(f"  if {cond} then goto L_{tgt} end{note}")
+                referenced.add(tgt)
+            elif fall == nextblk:
+                blines.append(f"  if {cond} then goto L_{tgt} end{note}")
+                referenced.add(tgt)
             else:
-                blines.append(f"  if {cond} then goto L_{blk['target']} else goto L_{blk['fall']} end{note}")
-                referenced.add(blk["target"]); referenced.add(blk["fall"])
+                blines.append(f"  if {cond} then goto L_{tgt} else goto L_{fall} end{note}")
+                referenced.add(tgt); referenced.add(fall)
         elif blk["kind"] == "return":
             blines.append("  " + emit(lpc, lop, lops, opmap.get(str(lop)), n))
         else:  # fall
             blines.append("  " + emit(lpc, lop, lops, opmap.get(str(lop)), n))
-            if blk["fall"] is not None and blk["fall"] != nextblk:
-                blines.append(f"  goto L_{blk['fall']}"); referenced.add(blk["fall"])
+            if fall is not None and fall != nextblk:
+                blines.append(f"  goto L_{fall}"); referenced.add(fall)
         lines.append((start, blines))
 
     out = [f"local function proto{pid}(...)  -- {n} instrs, {len(order)} blocks (structured)"]
@@ -324,6 +399,58 @@ def structure_proto(pid, instrs, opmap):
     return "\n".join(out)
 
 
+def load_decoded(paths):
+    """Build (op, b-operand) -> decoded-constant map from executed traces
+    (semantics.py [[S]] / run_vm disasm [[DIS]]). A pair is kept only if every
+    observation of it agrees (unambiguous); conflicting pairs are dropped so we
+    never inline a wrong constant."""
+    line_re = re.compile(r'\bop=(\d+)\b.*?\bb=(\S+).*?\bd=(\S+)')
+    conflict = set()
+    for path in paths:
+        for line in open(path, errors="replace"):
+            if "op=" not in line or "d=" not in line:
+                continue
+            m = line_re.search(line)
+            if not m:
+                continue
+            op, b, d = m.group(1), m.group(2), m.group(3)
+            if d == "nil":
+                continue
+            try:
+                int(d)      # numeric d is a raw operand, not a decoded constant
+                continue
+            except ValueError:
+                pass
+            try:
+                key = (int(op), int(b))
+            except ValueError:
+                continue
+            lit = _quote(d)
+            if key in conflict:
+                continue
+            if key in DECODED and DECODED[key] != lit:
+                del DECODED[key]; conflict.add(key); continue
+            DECODED[key] = lit
+    return len(DECODED)
+
+
+def sanitize(text):
+    """Safety net: rewrite any `goto L_x` whose `::L_x::` was not emitted into a
+    return, so the output is always well-formed Lua that parses. Reports count."""
+    labels = set(re.findall(r'::L_(\w+)::', text))
+    fixed = [0]
+
+    def _repl(m):
+        tgt = m.group(1)
+        if tgt in labels:
+            return m.group(0)
+        fixed[0] += 1
+        return f"do return end  --[[ unresolved goto L_{tgt} ]]"
+
+    text = re.sub(r'goto L_(\w+)', _repl, text)
+    return text, fixed[0]
+
+
 def main():
     ap = argparse.ArgumentParser(description="lift Luraph bytecode to register-level Lua")
     ap.add_argument("fulldump", help="output of run_vm.py --mode fulldump")
@@ -334,6 +461,9 @@ def main():
                     help="emit in raw pc order (skip control-flow structuring)")
     ap.add_argument("--values", default=None,
                     help="capture_values.py output: inline observed constants")
+    ap.add_argument("--decoded", default=None,
+                    help="comma-separated executed traces (semantics.py / disasm) to "
+                         "resolve K(i) placeholders to real constants by (op,operand)")
     args = ap.parse_args()
 
     opmap = json.load(open(args.map))
@@ -349,6 +479,9 @@ def main():
             if _m:
                 VALUES[(int(_m.group(1)), int(_m.group(2)))] = _m.group(3)
 
+    if args.decoded:
+        load_decoded([p for p in args.decoded.split(",") if p])
+
     protos = parse_fulldump(args.fulldump)
     ids = sorted(protos)
     if args.protos:
@@ -361,24 +494,31 @@ def main():
             if CLASS.get(op, "unknown") != "unknown":
                 known += 1
 
+    gen = lift_proto if args.flat else structure_proto
+    body = "\n\n".join(gen(pid, protos[pid], opmap) for pid in ids)
+    body, fixed = sanitize(body)
+
+    kremain = len(re.findall(r'K\(\d+\)', body))
     mode = "flat (pc order)" if args.flat else "structured (trace-linearised CFG)"
     header = [
         "-- Devirtualised from Luraph v14.7 bytecode by luraph-deobf/devirt/lift.py",
         "-- Register-level transliteration (semantically faithful, not original source).",
-        "-- e[] = VM register file; K(i) = constant #i; L_n = basic-block labels.",
+        "-- e[] = VM register file; K(i) = an unresolved constant #i; L_n = block labels.",
         f"-- mode: {mode}.",
         f"-- {len(ids)} protos, {total} instructions, "
         f"{known} ({known*100//max(total,1)}%) with a known opcode.",
-        f"-- {len(VALUES)} concrete values inlined from execution." if VALUES else "-- (no value capture; run capture_values.py + --values to inline constants)",
+        (f"-- {len(VALUES)} runtime values + {len(DECODED)} decoded constants inlined; "
+         f"{kremain} K(i) placeholders remain (cold/unexecuted code)."),
+        f"-- {fixed} unresolved goto(s) rewritten to return for well-formedness."
+        if fixed else "-- control flow: all gotos resolve to emitted labels.",
         "local regs = {}",
         "",
     ]
-    gen = lift_proto if args.flat else structure_proto
-    body = "\n\n".join(gen(pid, protos[pid], opmap) for pid in ids)
     with open(args.out, "w") as f:
         f.write("\n".join(header) + "\n" + body + "\n")
     print(f"[lift] {len(ids)} protos, {total} instructions "
-          f"({known*100//max(total,1)}% known opcodes) -> {args.out}")
+          f"({known*100//max(total,1)}% known opcodes); "
+          f"{len(DECODED)} decoded consts, {kremain} K(i) left, {fixed} gotos fixed -> {args.out}")
     return 0
 
 

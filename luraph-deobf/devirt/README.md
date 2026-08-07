@@ -69,9 +69,17 @@ annotate.py + opcodes.json ->  annotated listing (mnemonics + effects)
   one `function protoN` each, `e[]` registers, `::L_pc::` block labels, and
   control flow **trace-linearised** into fall-through with `goto`/`if…goto`.
   With `--values` it **inlines observed constants** — real string/number
-  literals and library accesses like `e[o]["format"]` instead of `K(i)`.
-  Verified: output **compiles as Lua 5.4** and lifts **~97%** of all static
-  instructions (residue = opcodes that never execute — see below).
+  literals and library accesses like `e[o].format` instead of `K(i)`. With
+  `--decoded sem_big.txt,disasm.txt` it additionally resolves `K(i)` from the
+  executed traces by **(opcode, operand)**, keeping only unambiguous pairs, and
+  renders string keys as dot-access (`e[a].Name`) except for Lua keywords
+  (`e[a]["end"]`). **Well-formedness is guaranteed**: every `goto` resolves to
+  an emitted label — branch/goto terminators whose target is `None`/unknown
+  degrade to `return`, and a final sanitiser rewrites any stray goto — so the
+  output always **parses as Lua 5.4** (`luac5.4 -p`, with `call/K/arith/dataop`
+  stubs). Lifts **~98%** of all static instructions; the header now reports the
+  exact residue (`K(i)` left, gotos fixed). Residue = opcodes/constants in
+  cold, never-executed code — see below.
 
 ## Quick start
 
@@ -85,7 +93,14 @@ python3 semantics.py --vmdir peeled --luau $L --steps 14000 --out sem_big.txt >/
 python3 build_map.py --sem sem_big.txt --cf cf.txt --curated opcodes.json --out opcodes.full.json
 # 2) dump every instruction and lift to Lua
 python3 run_vm.py --vmdir peeled --luau $L --mode fulldump --out full.txt
-python3 lift.py full.txt --map opcodes.full.json -o lifted.lua   # -> compiles as Lua 5.4
+python3 run_vm.py --vmdir peeled --luau $L --mode disasm --n 4000 --out disasm.txt
+python3 capture_values.py --vmdir peeled --luau $L --map opcodes.full.json --steps 40000 --out values.txt
+python3 lift.py full.txt --map opcodes.full.json \
+    --values values.txt --decoded sem_big.txt,disasm.txt -o lifted.lua
+# verify it parses as Lua 5.4 (call/K/arith/dataop are runtime stubs):
+{ echo 'local function call(...) end local function K(i) return i end \
+        local function arith(...) end local function dataop(...) end'; \
+  cat lifted.lua; } | luac5.4 -p -   # -> no errors
 ```
 
 ## What's confirmed on the sample
@@ -100,10 +115,14 @@ python3 lift.py full.txt --map opcodes.full.json -o lifted.lua   # -> compiles a
 
 ## Status of the four devirtualisation tasks
 
-1. **lift.py — codegen.** ✅ Done. Emits register-level Lua for **~97%** of all
-   static instructions; output compiles as Lua 5.4. **Constant inlining**
-   (via `capture_values.py --values`) replaces `K(i)` placeholders with the
-   real string/number literals and library accesses observed at runtime.
+1. **lift.py — codegen.** ✅ Done. Emits register-level Lua for **~98%** of all
+   static instructions; output is **guaranteed to parse as Lua 5.4** (every goto
+   resolves to an emitted label; unresolved targets degrade to `return`).
+   **Constant inlining** replaces `K(i)` placeholders with real string/number
+   literals: from runtime values (`capture_values.py --values`) and, added
+   later, from executed traces by `(opcode, operand)` (`--decoded`), rendering
+   library accesses as `e[a].format`. The header reports the exact residue
+   (`K(i)` left in cold code, gotos rewritten).
 2. **SETTABLE vs CALL precision.** ✅ Resolved for the hot ops via
    operand-register typing (the register a no-write op indexes is a table →
    SETTABLE, a function → CALL). Nailed **op49 = SETTABLE** (`e[a][K(b)]=e[c]`,
