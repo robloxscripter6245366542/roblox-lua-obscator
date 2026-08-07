@@ -105,7 +105,7 @@ WindUI:AddTheme({
 
 local Window = WindUI:CreateWindow({
     Title = "Fire Hub",
-    Icon = "rbxassetid://110312595891409",
+    Icon = "flame",
     Author = "By QUANTUAM_LABS",
     Folder = "FireHub",
     Size = UDim2.fromOffset(580, 460), 
@@ -128,7 +128,7 @@ local Window = WindUI:CreateWindow({
 
 Window:EditOpenButton({
     Title = "Fire Hub",
-    Icon = "rbxassetid://98852755585971",
+    Icon = "flame",
     CornerRadius = UDim.new(0, 16),
     StrokeThickness = 2,
     Color = ColorSequence.new(Color3.fromHex("#FF3B3B"), Color3.fromHex("#7A0000")), -- Red Gradient
@@ -302,6 +302,7 @@ AnimationSection:Dropdown({
 
 AnimationSection:Toggle({
     Title = 'Invisible Counters',
+    Desc = "Locally hides/stops counter animations",
     Value = false, 
     Callback = function(state) 
         _G.HubData.InvisCounters = state
@@ -636,6 +637,7 @@ KYOTOSection:Button({
 -- === GAROU SECTION ===
 garouSection:Toggle({
     Title = "Flowing + Grasp",
+    Desc = "Auto Flowing Water into Hunter's Grasp extension",
     Value = false,
     Callback = function(isEnabled)
         -- Clear previous active frame loops
@@ -709,6 +711,7 @@ garouSection:Toggle({
 
 garouSection:Toggle({
     Title = "Whirlwind Dunk Auto-Teleport",
+    Desc = "Teleport above the closest enemy on Whirlwind Dunk",
     Value = false,
     Callback = function(isEnabled)
         if _G.TeleportAnimConnection then 
@@ -762,6 +765,7 @@ garouSection:Toggle({
 
 garouSection:Toggle({
     Title = "Surf Tech Auto-Boost",
+    Desc = "Auto forward boost when the Surf tech plays",
     Value = false,
     Callback = function(isEnabled)
         if _G.SurfTechConnection then 
@@ -809,6 +813,7 @@ garouSection:Toggle({
 
 garouSection:Toggle({
     Title = "Kiba Lethal",
+    Desc = "Anchor to the target and auto-fire the Kiba lethal dash",
     Value = false,
     Callback = function(isEnabled)
         -- Clear previous active connection wrappers
@@ -1055,6 +1060,7 @@ garouSection:Toggle({
 
 garouSection:Toggle({
     Title = "Upper + Grasp",
+    Desc = "Uppercut into Hunter's Grasp with auto-teleport",
     Value = false,
     Callback = function(isEnabled)
         -- Clear previous connections
@@ -1151,6 +1157,7 @@ garouSection:Toggle({
 
 AutoTechTab:Toggle({
     Title = "crazy tech",
+    Desc = "Auto uppercut tech: dash to target and hold position",
     Value = false,
     Callback = function(isEnabled)
         if _G.UppercutTechConnection then 
@@ -1281,6 +1288,7 @@ AutoTechTab:Toggle({
 
 AutoTechTab:Toggle({
     Title = "Auto Wall Combo",
+    Desc = "Spams the Wall Combo remote during valid attacks",
     Value = false,
     Callback = function(isEnabled)
         if _G.AutoWallConnection then 
@@ -1393,6 +1401,7 @@ AutoTechTab:Toggle({
 
 AutoTechTab:Toggle({
     Title = "Tornado Tech",
+    Desc = "Auto tornado spin-dash toward the nearest target",
     Value = false,
     Callback = function(isEnabled)
         if _G.TornadoConnection then _G.TornadoConnection:Disconnect() _G.TornadoConnection = nil end
@@ -1604,6 +1613,7 @@ AutoTechTab:Toggle({
 
 AutoTechTab:Toggle({
     Title = "Supa Tech",
+    Desc = "Stick-dash onto the closest target on the tech anim",
     Value = false,
     Callback = function(isEnabled)
         if _G.SupaTechTechConnection then 
@@ -1796,6 +1806,7 @@ AutoTechTab:Toggle({
 
 AutoTechTab:Toggle({
     Title = "LoopDash",
+    Desc = "Loop-dash toward the closest target with lock-on",
     Value = false,
     Callback = function(isEnabled)
         if _G.LoopDashTechConnection then 
@@ -1967,6 +1978,7 @@ AutoTechTab:Toggle({
 
 AutoTechTab:Toggle({
     Title = "FreezeTech",
+    Desc = "Freeze in place after the dash for a tech setup",
     Value = false,
     Callback = function(isEnabled)
         -- Clear previous connections
@@ -2138,6 +2150,7 @@ AutoTechTab:Toggle({
 
 AutoTechTab:Toggle({
     Title = "Auto Down Slam",
+    Desc = "Auto jump-cancel into a down slam near enemies",
     Value = false,
     Callback = function(isEnabled)
         -- Clear previous active lifecycle connections
@@ -2245,6 +2258,7 @@ AutoTechTab:Toggle({
 
 kibaSection:Toggle({
     Title = "Kiba v1",
+    Desc = "Basic Kiba dash to the nearest player on the tech anim",
     Value = _G.KibaEnabled or false,
     Callback = function(isEnabled)
         _G.KibaEnabled = isEnabled
@@ -2329,6 +2343,7 @@ kibaSection:Toggle({
 
 kibaSection:Toggle({
     Title = "Kiba Tech V2",
+    Desc = "Kiba dash with physics alignment follow to the target",
     Value = _G.KibaV3Enabled or false,
     Callback = function(isEnabled)
         _G.KibaV3Enabled = isEnabled
@@ -2539,6 +2554,7 @@ kibaSection:Toggle({
 
 kibaSection:Toggle({
     Title = "Kiba Tech V3",
+    Desc = "Kiba dash with lock-on snap to the target",
     Value = false,
     Callback = function(isEnabled)
         _G.KibaTechV4Enabled = isEnabled
@@ -2770,6 +2786,7 @@ kibaSection:Toggle({
 
 kibaSection:Toggle({
     Title = "kibaz",
+    Desc = "Stick-dash Kiba variant with full velocity freeze",
     Value = false,
     Callback = function(isEnabled)
         -- Clear previous connections
@@ -3194,6 +3211,7 @@ end
 
 AutoBlockSection:Toggle({
     Title = "Enable Auto Block",
+    Desc = "Auto-block incoming attacks detected on enemies",
     Value = false,
     Callback = function(state)
         AutoBlockData.isEnabled = state
@@ -3203,6 +3221,7 @@ AutoBlockSection:Toggle({
 
 AutoBlockSection:Toggle({
     Title = "Auto M1 After Block",
+    Desc = "Throws an M1 right after a successful block",
     Value = false,
     Callback = function(state) AutoBlockData.autoM1AfterBlock = state end
 })
@@ -3348,6 +3367,7 @@ end
 
 AbaSection:Toggle({
     Title = "Enable Rotation",
+    Desc = "Rotate the camera during Aba Tech",
     Value = false,
     Callback = function(v) ExtraSettings.AbaRotation = v end
 })
@@ -3374,6 +3394,280 @@ pcall(function()
         Callback = function() task.spawn(ET_emoteDash) end
     })
 end)
+
+
+-- ==========================================
+-- CAMLOCK / SILENT AIM (ported from VMT hub — logic only, this hub's UI)
+-- ==========================================
+local CamlockTab = Window:Tab({ Title = "Camlock", Icon = "target", Desc = "Native camlock / silent aim" })
+local CamlockSection = CamlockTab:Section({ Title = "Camlock / Silent Aim", Box = true, BoxBorder = true, Opened = true })
+
+local CamlockSettings = { Enabled = false, TargetPart = "HumanoidRootPart", Mode = "Camlock", MaxDistance = 200 }
+local camTargetLocked = nil
+
+local function CL_closest()
+    local closest, shortest = nil, tonumber(CamlockSettings.MaxDistance) or math.huge
+    local cam = Workspace.CurrentCamera
+    if not cam then return nil end
+    local myChar = LocalPlayer.Character
+    local part = CamlockSettings.TargetPart
+    if type(part) ~= "string" or part == "" then part = "HumanoidRootPart" end
+    local function consider(model)
+        if model == myChar then return end
+        local p = model:FindFirstChild(part)
+        local hum = model:FindFirstChildOfClass("Humanoid")
+        if p and hum and hum.Health > 0 then
+            local d = (p.Position - cam.CFrame.Position).Magnitude
+            if d < shortest then shortest = d closest = p end
+        end
+    end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then consider(plr.Character) end
+    end
+    local live = Workspace:FindFirstChild("Live")
+    if live then
+        for _, m in ipairs(live:GetChildren()) do
+            if m:IsA("Model") and not Players:GetPlayerFromCharacter(m) then consider(m) end
+        end
+    end
+    return closest
+end
+
+local function CL_stop()
+    if _G.CamlockRenderConn then _G.CamlockRenderConn:Disconnect() _G.CamlockRenderConn = nil end
+    camTargetLocked = nil
+end
+
+local function CL_start()
+    CL_stop()
+    _G.CamlockRenderConn = RunService.RenderStepped:Connect(function()
+        if not CamlockSettings.Enabled then return end
+        local part = CamlockSettings.TargetPart
+        if type(part) ~= "string" or part == "" then part = "HumanoidRootPart" end
+        local valid = false
+        if camTargetLocked and camTargetLocked.Parent then
+            local hum = camTargetLocked.Parent:FindFirstChild("Humanoid")
+            if hum and hum.Health > 0 and camTargetLocked.Parent:FindFirstChild(part) == camTargetLocked then valid = true end
+        end
+        if not valid then camTargetLocked = CL_closest() end
+        local cam = Workspace.CurrentCamera
+        if camTargetLocked and cam then
+            if CamlockSettings.Mode == "Camlock" then
+                cam.CFrame = CFrame.lookAt(cam.CFrame.Position, camTargetLocked.Position)
+            elseif CamlockSettings.Mode == "Silent Aim" then
+                local ch = LocalPlayer.Character
+                local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local pos = camTargetLocked.Position
+                    hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(pos.X, hrp.Position.Y, pos.Z))
+                end
+            end
+        end
+    end)
+end
+
+CamlockSection:Dropdown({
+    Title = "Mode",
+    Desc = "Camlock snaps the camera; Silent Aim turns your character",
+    Multi = false,
+    Values = { "Camlock", "Silent Aim" },
+    Callback = function(v) CamlockSettings.Mode = v; camTargetLocked = nil end
+})
+CamlockSection:Dropdown({
+    Title = "Target Part",
+    Desc = "Which body part to lock onto",
+    Multi = false,
+    Values = { "HumanoidRootPart", "Head", "Torso" },
+    Callback = function(v) CamlockSettings.TargetPart = v; camTargetLocked = nil end
+})
+CamlockSection:Input({
+    Title = "Max Distance",
+    Desc = "Only lock targets within this many studs",
+    Placeholder = tostring(CamlockSettings.MaxDistance),
+    Callback = function(t) local n = tonumber(t); if n then CamlockSettings.MaxDistance = n end end
+})
+CamlockSection:Toggle({
+    Title = "Enable Camlock / Silent Aim",
+    Desc = "Lock onto the closest valid target",
+    Value = false,
+    Callback = function(state)
+        CamlockSettings.Enabled = state
+        if state then CL_start() else CL_stop() end
+    end
+})
+pcall(function()
+    CamlockSection:Keybind({
+        Title = "Toggle Keybind",
+        Desc = "Hotkey to toggle camlock on/off",
+        Key = "E",
+        Callback = function()
+            CamlockSettings.Enabled = not CamlockSettings.Enabled
+            if CamlockSettings.Enabled then CL_start() else CL_stop() end
+        end
+    })
+end)
+
+
+-- On-screen draggable Camlock widget (red, no circles) with a Settings panel
+do
+    local UIS = game:GetService("UserInputService")
+    local TweenService = game:GetService("TweenService")
+
+    local RED_BG  = Color3.fromRGB(42, 10, 10)
+    local RED_ACC = Color3.fromRGB(255, 59, 59)
+    local RED_ON  = Color3.fromRGB(255, 48, 48)
+    local WHITE   = Color3.fromRGB(255, 255, 255)
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "FireHubCamlock"
+    gui.ResetOnSpawn = false
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    gui.Parent = (gethui and gethui()) or LocalPlayer:WaitForChild("PlayerGui")
+
+    -- main draggable button (this IS the camlock button — drag it to move)
+    local main = Instance.new("TextButton")
+    main.Name = "CamButton"
+    main.Size = UDim2.fromOffset(150, 46)
+    main.Position = UDim2.new(0.5, -75, 0.68, 0)
+    main.BackgroundColor3 = RED_BG
+    main.BorderSizePixel = 0
+    main.AutoButtonColor = false
+    main.Text = "Camlock: Off"
+    main.TextColor3 = WHITE
+    main.Font = Enum.Font.GothamBold
+    main.TextSize = 16
+    main.Active = true
+    main.Parent = gui
+    Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
+    local stroke = Instance.new("UIStroke", main); stroke.Color = RED_ACC; stroke.Thickness = 2
+
+    -- settings button on top of the camlock button
+    local settingsBtn = Instance.new("TextButton")
+    settingsBtn.Name = "Settings"
+    settingsBtn.Size = UDim2.fromOffset(150, 22)
+    settingsBtn.Position = UDim2.new(0, 0, 0, -26)
+    settingsBtn.BackgroundColor3 = RED_ACC
+    settingsBtn.BorderSizePixel = 0
+    settingsBtn.AutoButtonColor = false
+    settingsBtn.Text = "Settings v"
+    settingsBtn.TextColor3 = WHITE
+    settingsBtn.Font = Enum.Font.GothamBold
+    settingsBtn.TextSize = 13
+    settingsBtn.Parent = main
+    Instance.new("UICorner", settingsBtn).CornerRadius = UDim.new(0, 8)
+
+    -- settings panel (hidden until you press Settings)
+    local PANEL_H = 104
+    local panel = Instance.new("Frame")
+    panel.Name = "Panel"
+    panel.Size = UDim2.fromOffset(150, 0)
+    panel.Position = UDim2.new(0, 0, 1, 6)
+    panel.BackgroundColor3 = RED_BG
+    panel.BorderSizePixel = 0
+    panel.ClipsDescendants = true
+    panel.Visible = false
+    panel.Parent = main
+    Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 10)
+    local ps = Instance.new("UIStroke", panel); ps.Color = RED_ACC; ps.Thickness = 2
+    local pad = Instance.new("UIPadding", panel)
+    pad.PaddingTop = UDim.new(0, 6); pad.PaddingBottom = UDim.new(0, 6)
+    pad.PaddingLeft = UDim.new(0, 6); pad.PaddingRight = UDim.new(0, 6)
+    local layout = Instance.new("UIListLayout", panel)
+    layout.Padding = UDim.new(0, 4); layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local function mkRow(text)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(1, 0, 0, 26)
+        b.BackgroundColor3 = RED_ACC
+        b.BorderSizePixel = 0
+        b.Text = text
+        b.TextColor3 = WHITE
+        b.Font = Enum.Font.GothamSemibold
+        b.TextSize = 13
+        b.Parent = panel
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+        return b
+    end
+
+    local modeBtn = mkRow("Mode: " .. CamlockSettings.Mode)
+    local partBtn = mkRow("Target: " .. CamlockSettings.TargetPart)
+    local distBox = Instance.new("TextBox")
+    distBox.Size = UDim2.new(1, 0, 0, 26)
+    distBox.BackgroundColor3 = RED_ACC
+    distBox.BorderSizePixel = 0
+    distBox.Text = "Distance: " .. tostring(CamlockSettings.MaxDistance)
+    distBox.PlaceholderText = "Distance"
+    distBox.ClearTextOnFocus = false
+    distBox.TextColor3 = WHITE
+    distBox.Font = Enum.Font.GothamSemibold
+    distBox.TextSize = 13
+    distBox.Parent = panel
+    Instance.new("UICorner", distBox).CornerRadius = UDim.new(0, 6)
+
+    -- toggle camlock on/off (skip if the click was actually a drag)
+    local dragMoved = false
+    main.MouseButton1Click:Connect(function()
+        if dragMoved then dragMoved = false; return end
+        CamlockSettings.Enabled = not CamlockSettings.Enabled
+        if CamlockSettings.Enabled then
+            CL_start(); main.Text = "Camlock: On"; main.BackgroundColor3 = RED_ON
+        else
+            CL_stop(); main.Text = "Camlock: Off"; main.BackgroundColor3 = RED_BG
+        end
+    end)
+
+    -- expand / collapse the settings panel
+    local open = false
+    settingsBtn.MouseButton1Click:Connect(function()
+        open = not open
+        settingsBtn.Text = open and "Settings ^" or "Settings v"
+        if open then panel.Visible = true end
+        local goal = UDim2.fromOffset(150, open and PANEL_H or 0)
+        local tw = TweenService:Create(panel, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = goal })
+        tw:Play()
+        if not open then task.delay(0.18, function() if not open then panel.Visible = false end end) end
+    end)
+
+    -- cycle mode / target part
+    modeBtn.MouseButton1Click:Connect(function()
+        CamlockSettings.Mode = (CamlockSettings.Mode == "Camlock") and "Silent Aim" or "Camlock"
+        camTargetLocked = nil
+        modeBtn.Text = "Mode: " .. CamlockSettings.Mode
+    end)
+    local parts = { "HumanoidRootPart", "Head", "Torso" }
+    partBtn.MouseButton1Click:Connect(function()
+        local idx = 1
+        for i, v in ipairs(parts) do if v == CamlockSettings.TargetPart then idx = i; break end end
+        CamlockSettings.TargetPart = parts[(idx % #parts) + 1]
+        camTargetLocked = nil
+        partBtn.Text = "Target: " .. CamlockSettings.TargetPart
+    end)
+    distBox.FocusLost:Connect(function()
+        local n = tonumber(tostring(distBox.Text):match("%d+%.?%d*"))
+        if n then CamlockSettings.MaxDistance = n end
+        distBox.Text = "Distance: " .. tostring(CamlockSettings.MaxDistance)
+    end)
+
+    -- drag the whole widget by dragging the camlock button
+    local dragging, dragStart, startPos = false, nil, nil
+    main.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; dragMoved = false; dragStart = input.Position; startPos = main.Position
+        end
+    end)
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            dragMoved = true
+            local delta = input.Position - dragStart
+            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
 
 
 -- === TELEPORT DROPDOWN ===
@@ -3410,6 +3704,7 @@ TeleportSection:Dropdown({
 -- === SAITAMA TAB BUTTONS ===
 SaitamaTab:Toggle({
     Title = "invisible tableflip",
+    Desc = "Runs the tableflip payload when its animation plays",
     Value = false,
     Callback = function(isEnabled)
         -- Clear previous connection variables safely
@@ -3461,6 +3756,7 @@ SaitamaTab:Toggle({
 
 SaitamaTab:Toggle({
     Title = "reflex ",
+    Desc = "Auto reflex combo counter when your combo hits 4",
     Value = false,
     Callback = function(isEnabled)
         -- Clean up previous execution loops & active listeners safely
