@@ -1,0 +1,5278 @@
+-- This file was generated at discord.gg/syncrypt
+
+local t1 = {}
+local v2 = unpack or table.unpack
+t1[1] = loadstring(game:HttpGet("https://raw.githubusercontent.com/ART1Le/ART1LEL1B/refs/heads/main/dist/main.lua"))()
+-- Key system removed: no key required, all premium features unlocked by default.
+getgenv().IS_PREMIUM = true
+local v3 = t1[1]
+local t2 = {
+	Enabled = false,
+	Anonymous = false,
+	Callback = function()
+end
+}
+
+t1[3] = v3:CreateWindow({
+	Title = "LANY Labs | Sawah Indo",
+	Icon = "atom",
+	Author = "by G",
+	Transparent = true,
+	Folder = "LANY Labs",
+	User = t2
+})
+local v7 = t1[3]
+local color3 = Color3.fromHex("#30ff6a")
+
+v7:Tag({
+	Title = "v17.5",
+	Color = color3,
+	Radius = 8
+})
+if getgenv().IS_PREMIUM then
+    local v9 = t1[3]
+    local color3_2 = Color3.fromRGB(255, 215, 0)
+
+    v9:Tag({
+		Title = "PREMIUM",
+		Color = color3_2,
+		Radius = 8
+	})
+else
+    local v11 = t1[3]
+    local color3_3 = Color3.fromRGB(169, 169, 169)
+
+    v11:Tag({
+		Title = "FREEMIUM",
+		Color = color3_3,
+		Radius = 8
+	})
+end
+t1[4] = function(p2, p3, p4)
+    local v72 = t1[1]
+    local Notify = v72.Notify
+    local v74 = p4 or 3
+
+    Notify(v72, {
+		Title = p2,
+		Content = p3,
+		Duration = v74
+	})
+end
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+t1[5] = Players.LocalPlayer
+t1[6] = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("TutorialRemotes")
+t1[7] = t1[6]:WaitForChild("PlantCrop")
+t1[8] = t1[6]:WaitForChild("PlantLahanCrop")
+t1[9] = t1[6]:WaitForChild("RequestShop")
+t1[10] = t1[6]:WaitForChild("RequestSell")
+t1[11] = "Bibit Strawberry"
+t1[12] = "Bibit Strawberry"
+t1[13] = 1
+t1[14] = {
+	Strawberry = true
+}
+t1[15] = 1
+t1[16] = 3
+t1[17] = "Karakter"
+t1[18] = Vector3.new(-44.228378295898, 37.296875, -308.26971435547)
+t1[19] = t1[18] + Vector3.new(5, 0, 0)
+t1[20] = nil
+t1[21] = nil
+t1[22] = nil
+t1[23] = "Bibit Strawberry"
+t1[24] = 23
+local vector3 = Vector3.new(-94, 49, -205)
+local vector3_2 = Vector3.new(-78, 49, -205)
+local vector3_3 = Vector3.new(-254, 49, -181)
+local vector3_4 = Vector3.new(-41, 49, -181)
+local vector3_5 = Vector3.new(55, 49, -207)
+local vector3_6 = Vector3.new(-59, 49, -180)
+local vector3_7 = Vector3.new(-248, 49, -716)
+local vector3_8 = Vector3.new(-76, 49, -69)
+local vector3_9 = Vector3.new(-127, 42, -319)
+local vector3_10 = Vector3.new(79, 42, -319)
+local vector3_11 = Vector3.new(-67, 49, -820)
+
+t1[25] = {
+	["SELL NPC"] = vector3,
+	["BUY SEED"] = vector3_2,
+	["PDG TELUR"] = vector3_3,
+	["PDG TOOLS"] = vector3_4,
+	["PDG SAWIT"] = vector3_5,
+	Storage = vector3_6,
+	["Bos Sapi"] = vector3_7,
+	["Tenda Tidur"] = vector3_8,
+	["Lahan 1"] = vector3_9,
+	["Lahan 2"] = vector3_10,
+	["Lahan Sapi"] = vector3_11
+}
+t1[26] = "SELL NPC"
+t1[27] = {
+	PremiumMacroLoopRunning = false,
+	UltimateTaskMasterLoopRunning = false,
+	LevelingLoopRunning = false,
+	AutoPlantLoopRunning = false,
+	AutoHarvestLoopRunning = false,
+	AutoMandiLoopRunning = false,
+	AutoSellRarityLoopRunning = false,
+	NotifReadySawitLoopRunning = false,
+	AutoChickenLoopRunning = false,
+	AutoEggLoopRunning = false,
+	AutoCowFeedLoopRunning = false,
+	AutoCowMilkLoopRunning = false,
+	AutoSellEggLoopRunning = false,
+	NotifEggLoopRunning = false,
+	HideIdentitasLoopRunning = false,
+	AutoSellFarmLoopRunning = false,
+	AutoSellMilkLoopRunning = false,
+	DisableNotifLoopRunning = false
+}
+_G.IsSleeping = false
+t1[28] = function(p5)
+    if not p5 then
+        return nil
+    end
+
+    if typeof(p5) == "Vector3" then
+        return p5
+    end
+
+    if p5:IsA("Model") then
+        if p5.PrimaryPart then
+            return p5.PrimaryPart.Position
+        end
+
+        return p5:GetPivot().Position
+    end
+
+    if p5:IsA("BasePart") then
+        return p5.Position
+    end
+
+    for _, descendant in ipairs(p5:GetDescendants()) do
+        if descendant:IsA("BasePart") then
+            return descendant.Position
+        end
+    end
+
+    return nil
+end
+t1[29] = function(p6)
+    local Character = t1[5].Character
+
+    if not Character then
+        return false
+    end
+
+    local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+    local v103 = p6:lower()
+    local v104 = ({
+		["Bibit Padi"] = "bibittool",
+		["Bibit Terong"] = "terongtool",
+		["Bibit Sawit"] = "sawittool",
+		["Bibit Jagung"] = "jagungtool",
+		["Bibit Tomat"] = "tomattool",
+		["Bibit Strawberry"] = "strawberrytool",
+		["Bibit Durian"] = "duriantool",
+		["Bibit Semangka"] = "semangkatool",
+		["Bibit Cabai"] = "cabaitool"
+	})[p6]
+    local GetChildren = Character.GetChildren
+    local v106 = v104
+
+    local function v107(p7)
+        local v295 = p7:lower()
+
+        if string.find(v295, v103) then
+            return true
+        end
+
+        if v106 and string.find(v295, v106) then
+            return true
+        end
+
+        return false
+    end
+
+    local v108, v109, v110 = ipairs(GetChildren(Character))
+
+    repeat
+        local v111
+
+        v110, v111 = v108(v109, v110)
+
+        if not v110 then
+            for _, child in ipairs(t1[5].Backpack:GetChildren()) do
+                if child:IsA("Tool") and v107(child.Name) then
+                    if Humanoid then
+                        Humanoid:EquipTool(child)
+
+                        return true
+                    end
+
+                    return false
+                end
+            end
+
+            return false
+        end
+    until v111:IsA("Tool") and v107(v111.Name)
+
+    return true
+end
+t1[30] = function()
+    if t1[17] == "Post 1" then
+        return t1[18]
+    end
+
+    if t1[17] == "Post 2" then
+        return t1[19]
+    end
+
+    if t1[17] == "Custom" then
+        if t1[20] then
+            return t1[20]
+        end
+
+        local Character = t1[5].Character
+        local v115 = Character and Character:FindFirstChild("HumanoidRootPart")
+
+        return t1[28](v115)
+    end
+
+    local Character = t1[5].Character
+    local v117 = Character and Character:FindFirstChild("HumanoidRootPart")
+
+    return t1[28](v117)
+end
+t1[31] = function()
+    local PlayerGui = t1[5]:FindFirstChild("PlayerGui")
+
+    if not PlayerGui then
+        return
+    end
+
+    local ConfirmGui = PlayerGui:FindFirstChild("ConfirmGui")
+
+    if ConfirmGui then
+        local ConfirmOverlay = ConfirmGui:FindFirstChild("ConfirmOverlay")
+
+        if ConfirmOverlay and ConfirmOverlay.Visible then
+            local ConfirmCard = ConfirmOverlay:FindFirstChild("ConfirmCard")
+
+            if ConfirmCard then
+                local YesButton = ConfirmCard:FindFirstChild("YesButton")
+
+                if YesButton and YesButton:IsA("TextButton") then
+                    if firesignal then
+                        pcall(function()
+                            firesignal(YesButton.MouseButton1Click)
+                        end)
+                        pcall(function()
+                            firesignal(YesButton.Activated)
+                        end)
+                    end
+
+                    if getconnections then
+                        for _, v in pairs(getconnections(YesButton.MouseButton1Click)) do
+                            if type(v.Function) == "function" then
+                                v:Function()
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local FarmGui = PlayerGui:FindFirstChild("FarmGui")
+
+    if FarmGui then
+        local ConfirmOverlay = FarmGui:FindFirstChild("ConfirmOverlay")
+
+        if ConfirmOverlay and ConfirmOverlay.Visible then
+            local ConfirmCard = ConfirmOverlay:FindFirstChild("ConfirmCard")
+
+            if ConfirmCard then
+                local GetDescendants = ConfirmCard.GetDescendants
+
+                for _, v in ipairs(GetDescendants(ConfirmCard)) do
+                    local v92 = v
+
+                    if v92:IsA("TextButton") then
+                        local v93 = string.lower(v92.Text or "")
+                        local v94 = string.lower(v92.ContentText or "")
+                        local v95 = string.find(v93, "buy")
+
+                        if not v95 then
+                            v95 = string.find(v93, "beli") or (string.find(v94, "buy") or string.find(v94, "beli"))
+                        end
+
+                        if v95 then
+                            if firesignal then
+                                pcall(function()
+                                    firesignal(v92.MouseButton1Click)
+                                end)
+                                pcall(function()
+                                    firesignal(v92.Activated)
+                                end)
+                            end
+
+                            if getconnections then
+                                for _, v4 in pairs(getconnections(v92.MouseButton1Click)) do
+                                    if type(v4.Function) == "function" then
+                                        v4:Function()
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+t1[32] = function(p8, p9)
+    if type(p8) == "table" then
+        pcall(function()
+            p8:SetValue(p9)
+        end)
+        pcall(function()
+            p8:Set(p9)
+        end)
+        pcall(function()
+            p8:Toggle(p9)
+        end)
+        pcall(function()
+            p8:UpdateState(p9)
+        end)
+        pcall(function()
+            p8.Value = p9
+        end)
+    end
+end
+t1[33] = function(p10)
+    local t5 = {}
+
+    if type(p10) == "table" then
+        for k, v in pairs(p10) do
+            local v122 = k
+
+            if type(v122) == "number" then
+                t5[v] = true
+            elseif v == true then
+                t5[v122] = true
+            end
+        end
+
+        return t5
+    end
+
+    if type(p10) == "string" then
+        t5[p10] = true
+    end
+
+    return t5
+end
+t1[34] = function()
+    _G.AntiAFK = true
+
+    if not _G.AntiAfkSetup then
+        _G.AntiAfkSetup = true
+
+        local VirtualUser = game:GetService("VirtualUser")
+
+        if cloneref then
+            VirtualUser = cloneref(VirtualUser)
+        end
+
+        t1[5].Idled:Connect(function()
+            if _G.AntiAFK then
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.new())
+            end
+        end)
+    end
+end
+t1[35] = 20
+t1[36] = 15
+t1[37] = nil
+t1[38] = nil
+t1[39] = nil
+t1[40] = nil
+t1[41] = nil
+t1[42] = nil
+t1[43] = nil
+t1[44] = nil
+t1[45] = nil
+t1[46] = nil
+local v26 = t1[3]
+local fromRGB = Color3.fromRGB
+local Tab = v26.Tab
+local v29 = fromRGB(255, 255, 51)
+local v30 = Tab(v26, {
+	Title = "PREMIUM",
+	Icon = "chess-queen",
+	IconColor = v29
+})
+local v31 = not getgenv().IS_PREMIUM
+v30:Section({
+	Title = "Setup Koordinat Ladang"
+})
+v30:Button({
+	Title = "Save Posisi Ladang Kecil",
+	Locked = v31,
+	Callback = function()
+    local Character = t1[5].Character
+    local v124 = Character and Character:FindFirstChild("HumanoidRootPart")
+    local v125 = t1[28](v124)
+
+    if v125 then
+        t1[21] = v125
+        t1[4]("PREMIUM", "Posisi Ladang Kecil berhasil disimpan!", 3)
+
+        return
+    end
+
+    t1[4]("Error", "Gagal menemukan posisi karakter.", 3)
+end
+})
+v30:Button({
+	Title = "Save Posisi Ladang Sawit & Durian",
+	Locked = v31,
+	Callback = function()
+    local Character = t1[5].Character
+    local v127 = Character and Character:FindFirstChild("HumanoidRootPart")
+    local v128 = t1[28](v127)
+
+    if v128 then
+        t1[22] = v128
+        t1[4]("PREMIUM", "Posisi Ladang Sawit/Durian berhasil disimpan!", 3)
+
+        return
+    end
+
+    t1[4]("Error", "Gagal menemukan posisi karakter.", 3)
+end
+})
+v30:Section({
+	Title = "Setup Bibit & Auto Buy"
+})
+v30:Dropdown({
+	Title = "Pilih Bibit",
+	Flag = "Premium_PilihBibit",
+	Locked = v31,
+	Values = {
+		"Bibit Padi",
+		"Bibit Terong",
+		"Bibit Jagung",
+		"Bibit Tomat",
+		"Bibit Strawberry",
+		"Bibit Semangka",
+		"Bibit Cabai"
+	},
+	Value = "Bibit Padi",
+	Callback = function(p11)
+    t1[23] = p11
+end
+})
+t1[47] = v30:Toggle({
+	Title = "Auto Buy Bibit (Premium)",
+	Flag = "Premium_AutoBuyBibit",
+	Locked = v31,
+	Value = false,
+	Callback = function(p12)
+    _G.PremiumAutoBuy = p12
+end
+})
+v30:Dropdown({
+	Title = "Batas Maximum Bibit Biasa",
+	Flag = "Premium_BatasBibitBiasa",
+	Locked = v31,
+	Values = {
+		"13",
+		"14",
+		"15",
+		"19",
+		"21",
+		"23",
+		"25"
+	},
+	Value = "19",
+	Callback = function(p13)
+    t1[24] = tonumber(p13)
+end
+})
+v30:Section({
+	Title = "Master TASK PREMIUM"
+})
+v30:Toggle({
+	Title = "START TASK PREMIUM",
+	Flag = "Premium_StartTaskPremium",
+	Locked = v31,
+	Value = false,
+	Callback = function(p14)
+    _G.PremiumMacro = p14
+
+    if not p14 then
+        t1[27].PremiumMacroLoopRunning = false
+        t1[4]("PREMIUM", "Task Premium dihentikan.", 3)
+
+        return
+    end
+
+    if t1[27].PremiumMacroLoopRunning then
+        return
+    end
+
+    if not t1[21] or not t1[22] then
+        t1[4]("PREMIUM", "Harap Save Posisi Ladang Biasa & Luas terlebih dahulu!", 5)
+        _G.PremiumMacro = false
+
+        return
+    end
+
+    t1[4]("PREMIUM", "Ingat! Wajib nyalakan 'Auto Harvest' di tab AUTO agar macro ini berjalan lancar.", 6)
+
+    local str = tostring(t1[5].UserId)
+    local Name = t1[5].Name
+
+    t1[27].PremiumMacroLoopRunning = true
+    task.spawn(function()
+        while _G.PremiumMacro do
+            local success, result = pcall(function()
+                if _G.IsSleeping then
+                    return
+                end
+                local Character = t1[5].Character
+                local v450 = Character and Character:FindFirstChild("HumanoidRootPart")
+                if not v450 then
+                    return
+                end
+                local v451 = t1[28](v450)
+                if not v451 then
+                    return
+                end
+                local v452 = false
+                for v455, v456 in ipairs(workspace:GetChildren()) do
+
+                    local v457 = string.find(string.lower(v456.Name), "coopplot")
+
+                    if v457 then
+                        v457 = string.find(string.lower(v456.Name), string.lower(Name))
+                    end
+
+                    if v457 then
+                        local SlotMarkers = v456:FindFirstChild("SlotMarkers")
+
+                        if SlotMarkers then
+                            for _, child in ipairs(SlotMarkers:GetChildren()) do
+                                if not _G.PremiumMacro then
+                                    break
+                                end
+
+                                if string.find(child.Name, "Slot") then
+                                    local ProximityPrompt = child:FindFirstChildOfClass("ProximityPrompt")
+                                    local v462 = t1[28](child)
+
+                                    if ProximityPrompt and v462 then
+                                        local v463 = string.lower(ProximityPrompt.ActionText or "")
+
+                                        if string.find(v463, "feed") or (string.find(v463, "beri") or string.find(v463, "makan") and (not string.find(v463, "eating") and not string.find(v463, "sedang"))) then
+                                            if (v451 - v462).Magnitude > 10 then
+                                                v450.CFrame = CFrame.new(v462 + Vector3.new(0, 3, 0))
+                                            end
+
+                                            v452 = true
+                                            task.wait(0.5)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+
+                        if not v452 then
+                            local GetChildren = v456.GetChildren
+                            local v465, v466, v467 = ipairs(GetChildren(v456))
+
+                            while true do
+                                local v468
+
+                                v467, v468 = v465(v466, v467)
+
+                                if not v467 or not _G.PremiumMacro then
+                                    break
+                                end
+
+                                if string.find(v468.Name, "EggVisual") then
+                                    local v469 = t1[28](v468)
+
+                                    if v469 then
+                                        if (v451 - v469).Magnitude > 10 then
+                                            v450.CFrame = CFrame.new(v469 + Vector3.new(0, 3, 0))
+                                        end
+
+                                        v452 = true
+                                        task.wait(1)
+                                    end
+                                end
+                            end
+
+                            if not v452 and SlotMarkers then
+                                local GetChildren2 = SlotMarkers.GetChildren
+
+                                for _, v in ipairs(GetChildren2(SlotMarkers)) do
+                                    if not _G.PremiumMacro then
+                                        break
+                                    end
+
+                                    if string.find(v.Name, "Slot") then
+                                        local ProximityPrompt = v:FindFirstChildOfClass("ProximityPrompt")
+                                        local v474 = t1[28](v)
+
+                                        if ProximityPrompt and v474 then
+                                            local v475 = string.lower(ProximityPrompt.ActionText or "")
+
+                                            if string.find(v475, "interact") or (string.find(v475, "panen") or string.find(v475, "ambil")) then
+                                                if (v451 - v474).Magnitude > 10 then
+                                                    v450.CFrame = CFrame.new(v474 + Vector3.new(0, 3, 0))
+                                                end
+
+                                                v452 = true
+                                                task.wait(0.5)
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                if v452 then
+                    task.wait(0.5)
+
+                    return
+                end
+                local AreaTanamBesarPrivate
+                for _, child in ipairs(workspace:GetChildren()) do
+                    if string.find(string.lower(child.Name), "coopplot") and string.find(string.lower(child.Name), string.lower(Name)) then
+                        AreaTanamBesarPrivate = child:FindFirstChild("AreaTanamBesarPrivate")
+
+                        if AreaTanamBesarPrivate then
+                            break
+                        end
+                    end
+                end
+                local v479 = t1[28](AreaTanamBesarPrivate)
+                local v480 = false
+                local v481 = false
+                local n1 = 0
+                local v483 = false
+                local v484 = false
+                local v485 = false
+                local v486 = false
+                local ActiveCrops = workspace:FindFirstChild("ActiveCrops")
+                if ActiveCrops then
+                    local GetChildren = ActiveCrops.GetChildren
+
+                    for _, v in ipairs(GetChildren(ActiveCrops)) do
+                        if string.find(v.Name, "Crop_" .. str) then
+                            local Phase = v:GetAttribute("Phase")
+
+                            if not Phase then
+                                local Phase2 = v:FindFirstChild("Phase")
+
+                                if Phase2 then
+                                    Phase = Phase2.Value
+                                end
+                            end
+
+                            local PhaseModelName = v:GetAttribute("PhaseModelName")
+
+                            if not PhaseModelName then
+                                local PhaseModelName2 = v:FindFirstChild("PhaseModelName")
+
+                                if PhaseModelName2 then
+                                    PhaseModelName = PhaseModelName2.Value
+                                end
+                            end
+
+                            local Root = v:FindFirstChild("Root")
+                            local v496 = t1[28](Root)
+
+                            if PhaseModelName then
+                                local v497 = tostring(PhaseModelName):lower()
+
+                                if string.find(v497, "sawit") then
+                                    if tostring(Phase) == "3" then
+                                        v481 = true
+                                    end
+
+                                    if v496 then
+                                        if t1[22] and (v496 - t1[22]).Magnitude < 10 then
+                                            v484 = true
+                                        end
+
+                                        if v479 and (v496 - v479).Magnitude < 10 then
+                                            v486 = true
+                                        end
+                                    end
+                                elseif string.find(v497, "durian") then
+                                    if tostring(Phase) == "3" then
+                                        v483 = true
+                                    end
+
+                                    if v496 then
+                                        local v498 = t1[22] and t1[22] + Vector3.new(3, 0, 0)
+                                        local v499 = v479 and v479 + Vector3.new(3, 0, 0)
+
+                                        if v498 and (v496 - v498).Magnitude < 10 then
+                                            v485 = true
+                                        end
+
+                                        if v499 and (v496 - v499).Magnitude < 10 then
+                                            v480 = true
+                                        end
+                                    end
+                                else
+                                    n1 += 1
+                                end
+                            else
+                                n1 += 1
+                            end
+                        end
+                    end
+                end
+                if t1[24] == 14 then
+                    v480 = true
+                    v485 = true
+                end
+                if v481 or v483 then
+                    if t1[22] and (v451 - t1[22]).Magnitude > 10 then
+                        v450.CFrame = CFrame.new(t1[22] + Vector3.new(0, 3, 0))
+                    end
+
+                    t1[4]("PREMIUM", "Sawit/Durian siap! Menunggu Auto Harvest...", 3)
+                    task.wait(2)
+
+                    if v479 and (v451 - v479).Magnitude > 10 then
+                        v450.CFrame = CFrame.new(v479 + Vector3.new(0, 3, 0))
+                        task.wait(0.6)
+
+                        return
+                    end
+                else
+                    local v500 = not v484
+
+                    if not v500 then
+                        v500 = not v485 or (v479 and not v486 or not v480)
+                    end
+
+                    if v500 then
+                        if t1[22] and not v484 or not v485 then
+                            if (v451 - t1[22]).Magnitude > 10 then
+                                v450.CFrame = CFrame.new(t1[22] + Vector3.new(0, 3, 0))
+                                task.wait(0.5)
+                            end
+
+                            if not v484 then
+                                if t1[29]("Bibit Sawit") then
+                                    pcall(function()
+                                        t1[8]:FireServer(t1[22])
+                                    end)
+                                    task.wait(0.5)
+                                elseif _G.PremiumAutoBuy then
+                                    pcall(function()
+                                        t1[9]:InvokeServer("BUY", "Bibit Sawit", 25)
+                                    end)
+                                    t1[4]("PREMIUM", "Membeli 99 Bibit Sawit", 3)
+                                    task.wait(1)
+                                end
+                            end
+
+                            if not v485 then
+                                local v501 = t1[22] + Vector3.new(3, 0, 0)
+
+                                if t1[29]("Bibit Durian") then
+                                    pcall(function()
+                                        t1[8]:FireServer(v501)
+                                    end)
+                                    task.wait(0.5)
+                                elseif _G.PremiumAutoBuy then
+                                    pcall(function()
+                                        t1[9]:InvokeServer("BUY", "Bibit Durian", 25)
+                                    end)
+                                    t1[4]("PREMIUM", "Membeli 99 Bibit Durian", 3)
+                                    task.wait(1)
+                                end
+                            end
+                        end
+
+                        if v479 and not v486 or not v480 then
+                            if (v451 - v479).Magnitude > 10 then
+                                v450.CFrame = CFrame.new(v479 + Vector3.new(0, 3, 0))
+                                task.wait(0.5)
+                            end
+
+                            if not v486 then
+                                if t1[29]("Bibit Sawit") then
+                                    pcall(function()
+                                        t1[8]:FireServer(v479)
+                                    end)
+                                    task.wait(0.5)
+                                elseif _G.PremiumAutoBuy then
+                                    pcall(function()
+                                        t1[9]:InvokeServer("BUY", "Bibit Sawit", 25)
+                                    end)
+                                    t1[4]("PREMIUM", "Membeli 99 Bibit Sawit", 3)
+                                    task.wait(1)
+                                end
+                            end
+
+                            if not v480 then
+                                local v502 = v479 + Vector3.new(3, 0, 0)
+
+                                if t1[29]("Bibit Durian") then
+                                    pcall(function()
+                                        t1[8]:FireServer(v502)
+                                    end)
+                                    task.wait(0.5)
+
+                                    return
+                                end
+
+                                if _G.PremiumAutoBuy then
+                                    pcall(function()
+                                        t1[9]:InvokeServer("BUY", "Bibit Durian", 25)
+                                    end)
+                                    t1[4]("PREMIUM", "Membeli 99 Bibit Durian", 3)
+                                    task.wait(1)
+
+                                    return
+                                end
+                            end
+                        end
+                    elseif n1 < t1[24] then
+                        if t1[21] and (v451 - t1[21]).Magnitude > 10 then
+                            v450.CFrame = CFrame.new(t1[21] + Vector3.new(0, 3, 0))
+                            task.wait(0.5)
+                        end
+
+                        if not t1[29](t1[23]) then
+                            if _G.PremiumAutoBuy then
+                                pcall(function()
+                                    t1[9]:InvokeServer("BUY", t1[23], 99)
+                                end)
+                                t1[4]("PREMIUM", "Membeli 99 " .. t1[23], 3)
+                                task.wait(1)
+
+                                return
+                            end
+
+                            t1[4]("PREMIUM", "Bibit biasa habis! Nyalakan Auto Buy.", 3)
+                            task.wait(2)
+
+                            return
+                        end
+
+                        if t1[21] then
+                            pcall(function()
+                                t1[7]:FireServer(t1[21])
+                            end)
+
+                            return
+                        end
+                    else
+                        local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+
+                        if Humanoid then
+                            Humanoid:UnequipTools()
+                        end
+
+                        if t1[21] and (v451 - t1[21]).Magnitude > 10 then
+                            v450.CFrame = CFrame.new(t1[21] + Vector3.new(0, 3, 0))
+                        end
+                    end
+                end
+            end)
+            if not success then
+                warn("Premium Loop Error: ", (tostring(result)))
+            end
+            task.wait(0.1)
+        end
+
+        t1[27].PremiumMacroLoopRunning = false
+    end)
+end
+})
+v30:Section({
+	Title = "Ultimate System"
+})
+t1[48] = false
+t1[49] = 15
+t1[50] = 0
+t1[51] = 15
+v30:Paragraph({
+	Title = "ð Ultimate Task Master",
+	Desc = [[Persiapan sebelum menggunakan:
+1. Pilih jenis 'Bibit' yang ingin ditanam di menu atas.
+2. Atur 'Batas Maximum Bibit Biasa' (Pilih 14 jika kamu belum unlock Durian).
+3. Pilih Lokasi pada 'Posisi Ultimate' untuk menanam bibit Padi dan sejenisnya.
+
+Setelah setup, cukup aktifkan fitur Ultimate di bawah ini!
+
+*(Opsional): Kamu juga bisa menyalakan fitur Auto Sell secara manual di tab FARMING, SAWIT, dan CHICKEN agar hasil panen otomatis terjual.*]]
+})
+local vector3_12 = Vector3.new(71.557113647461, 39.296875, -268.08697509766)
+local vector3_13 = Vector3.new(92.948684692383, 37.296875, -300.75271606445)
+local vector3_14 = Vector3.new(17.787746429443, 37.296875, -300.1474609375)
+local vector3_15 = Vector3.new(-53.420555114746, 37.296875, -291.29373168945)
+local vector3_16 = Vector3.new(-107.03757476807, 37.296875, -300.2170715332)
+local vector3_17 = Vector3.new(-128.58058166504, 39.296875, -259.19470214844)
+local vector3_18 = Vector3.new(-99.051986694336, 39.296875, -261.39309692383)
+
+t1[52] = {
+	["Loc 1"] = vector3_12,
+	["Loc 2"] = vector3_13,
+	["Loc 3"] = vector3_14,
+	["Loc 4"] = vector3_15,
+	["Loc 5"] = vector3_16,
+	["Loc 6"] = vector3_17,
+	["Loc 7"] = vector3_18
+}
+t1[53] = "Loc 1"
+v30:Dropdown({
+	Title = "Posisi Ultimate",
+	Flag = "Premium_UltimateLoc",
+	Locked = v31,
+	Values = {
+		"Loc 1",
+		"Loc 2",
+		"Loc 3",
+		"Loc 4",
+		"Loc 5",
+		"Loc 6",
+		"Loc 7"
+	},
+	Value = "Loc 1",
+	Callback = function(p15)
+    t1[53] = p15
+end
+})
+t1[54] = v30:Toggle({
+	Title = "ULTIMATE TASK MASTER",
+	Flag = "Premium_UltimateTaskMaster",
+	Locked = v31,
+	Value = false,
+	Callback = function(p16)
+    _G.UltimateTaskMaster = p16
+
+    if p16 and _G.StartLeveling then
+        _G.StartLeveling = false
+        t1[32](t1[41], false)
+        t1[4]("INFO", "Leveling dimatikan karena Ultimate dinyalakan.", 3)
+    end
+
+    if not p16 then
+        t1[27].UltimateTaskMasterLoopRunning = false
+        t1[4]("ULTIMATE", "Ultimate Task Master dihentikan.", 3)
+
+        return
+    end
+
+    if t1[27].UltimateTaskMasterLoopRunning then
+        return
+    end
+
+    t1[27].UltimateTaskMasterLoopRunning = true
+    task.spawn(function()
+        local Character = t1[5].Character
+        local v299 = Character and Character:FindFirstChild("HumanoidRootPart")
+
+        if not v299 then
+            t1[27].UltimateTaskMasterLoopRunning = false
+
+            return
+        end
+
+        if not t1[48] then
+            t1[4]("ULTIMATE", "Mencari & Mengklaim Ladang Sawit/Durian...", 3)
+            local g323
+            for i = 1, 31 do
+                local v301 = i
+                local v302 = if v301 ~= 1 then "AreaTanamBesar" .. tostring(v301) else "AreaTanamBesar"
+                local v303 = workspace:FindFirstChild(v302)
+
+                if not v303 then
+                    continue
+                end
+
+                local ProximityPrompt = v303:FindFirstChildOfClass("ProximityPrompt", true)
+
+                if ProximityPrompt and (ProximityPrompt.Parent and ProximityPrompt.Parent:IsA("BasePart")) then
+                    local v305 = t1[28](v303) or ProximityPrompt.Parent.Position
+
+                    v299.CFrame = CFrame.new(v305 + Vector3.new(0, 3, 0))
+                    task.wait(1)
+                    fireproximityprompt(ProximityPrompt)
+                    task.wait(0.5)
+                    t1[22] = v299.Position
+                    t1[4]("ULTIMATE", "Berhasil Claim Ladang Sawit & Durian", 3)
+
+                    break
+                end
+            end
+            t1[4]("ULTIMATE", "Mencari & Mengklaim Kandang Ayam...", 3)
+            local CoopPlots = workspace:FindFirstChild("CoopPlots")
+            if CoopPlots then
+                for i = 1, 20 do
+                    local v308 = "CoopPlot_" .. tostring(i)
+                    local v309 = CoopPlots:FindFirstChild(v308)
+                    if not v309 then
+                        continue
+                    end
+                    local v310 = false
+                    for v313, v314 in ipairs(workspace:GetChildren()) do
+
+                        if string.find(v314.Name, "Coop_" .. v308 .. "_") then
+                            v310 = true
+
+                            break
+                        end
+                    end
+                    if not v310 then
+                        local ProximityPrompt = v309:FindFirstChildOfClass("ProximityPrompt", true)
+
+                        if not (ProximityPrompt and (ProximityPrompt.Parent and ProximityPrompt.Parent:IsA("BasePart"))) then
+                            continue
+                        end
+
+                        v299.CFrame = CFrame.new(ProximityPrompt.Parent.Position + Vector3.new(0, 3, 0))
+                        task.wait(1)
+                        fireproximityprompt(ProximityPrompt)
+                        task.wait(0.5)
+                        t1[4]("ULTIMATE", "Berhasil Claim Kandang Ayam", 3)
+
+                        break
+                    end
+                end
+            end
+            t1[4]("ULTIMATE", "Mencari & Mengklaim Kandang Sapi...", 3)
+            local BarnPlots = workspace:FindFirstChild("BarnPlots")
+            if BarnPlots then
+                local v317 = string.lower(t1[5].Name)
+                local v318 = false
+                local v319, v320, v321 = ipairs(workspace:GetChildren())
+
+                repeat
+                    local v322
+
+                    v321, v322 = v319(v320, v321)
+
+                    if not v321 then
+                        g323 = true
+                    end
+
+                    if g323 then
+                        break
+                    end
+
+                    local v324 = string.find(string.lower(v322.Name), "barn_plot_")
+
+                    if v324 then
+                        v324 = string.find(string.lower(v322.Name), v317)
+                    end
+                until v324
+
+                if not g323 then
+                    v318 = true
+                end
+
+                g323 = false
+
+                if not v318 then
+                    for i = 1, 14 do
+                        local v326 = i
+                        local v327 = BarnPlots:FindFirstChild("Plot_" .. tostring(v326))
+                        if not v327 then
+                            continue
+                        end
+                        local v328 = false
+                        for v331, v332 in ipairs(workspace:GetChildren()) do
+
+                            if string.find(string.lower(v332.Name), "barn_plot_" .. tostring(v326) .. "_") then
+                                v328 = true
+
+                                break
+                            end
+                        end
+                        if not v328 then
+                            local ProximityPrompt = v327:FindFirstChildOfClass("ProximityPrompt", true)
+
+                            if not (ProximityPrompt and (ProximityPrompt.Parent and ProximityPrompt.Parent:IsA("BasePart"))) then
+                                continue
+                            end
+
+                            v299.CFrame = CFrame.new(ProximityPrompt.Parent.Position + Vector3.new(0, 3, 0))
+                            task.wait(1)
+                            fireproximityprompt(ProximityPrompt)
+                            task.wait(0.5)
+                            t1[4]("ULTIMATE", "Berhasil Claim Kandang Sapi", 3)
+
+                            break
+                        end
+                    end
+                end
+            end
+            t1[4]("ULTIMATE", "Ladang Kecil Menggunakan Bypass Vector3!", 3)
+        end
+
+        t1[4]("ULTIMATE", "Menyalakan Semua Fitur Pendukung...", 2)
+        task.wait(0.5)
+        t1[32](t1[40], true)
+        t1[32](t1[47], true)
+        t1[32](t1[37], true)
+        t1[32](t1[38], true)
+        t1[32](t1[39], true)
+
+        if t1[44] then
+            t1[32](t1[44], true)
+        end
+
+        if t1[45] then
+            t1[32](t1[45], true)
+        end
+
+        if t1[42] then
+            t1[32](t1[42], true)
+        end
+
+        if t1[43] then
+            t1[32](t1[43], true)
+        end
+
+        if t1[46] then
+            t1[32](t1[46], true)
+        end
+
+        t1[34]()
+        _G.PremiumAutoBuy = true
+        t1[4]("ULTIMATE", "Setup Selesai! Menjalankan Siklus Penanaman Utama...", 3)
+
+        local str = tostring(t1[5].UserId)
+        local _ = t1[5].Name
+        local v336 = string.lower(t1[5].Name)
+
+        while _G.UltimateTaskMaster do
+            local u337 = false
+            local ok, result = pcall(function()
+                if _G.IsSleeping then
+                    return
+                end
+                local Character2 = t1[5].Character
+                local v505 = Character2 and Character2:FindFirstChild("HumanoidRootPart")
+                if not v505 then
+                    return
+                end
+                local v506 = t1[28](v505)
+                if not v506 then
+                    return
+                end
+                local v507 = false
+                for v510, v511 in ipairs(workspace:GetChildren()) do
+
+                    if string.find(string.lower(v511.Name), "coopplot") and string.find(string.lower(v511.Name), v336) then
+                        local SlotMarkers = v511:FindFirstChild("SlotMarkers")
+
+                        if SlotMarkers then
+                            for _, child in ipairs(SlotMarkers:GetChildren()) do
+                                if not _G.UltimateTaskMaster or _G.IsSleeping then
+                                    break
+                                end
+
+                                if string.find(child.Name, "Slot") then
+                                    local ProximityPrompt = child:FindFirstChildOfClass("ProximityPrompt")
+                                    local v516 = t1[28](child)
+
+                                    if ProximityPrompt and v516 then
+                                        local v517 = string.lower(ProximityPrompt.ActionText or "")
+
+                                        if string.find(v517, "feed") or (string.find(v517, "beri") or string.find(v517, "makan") and (not string.find(v517, "eating") and not string.find(v517, "sedang"))) then
+                                            if (v506 - v516).Magnitude > 10 then
+                                                v505.CFrame = CFrame.new(v516 + Vector3.new(0, 3, 0))
+                                            end
+
+                                            v507 = true
+                                            task.wait(0.3)
+                                            fireproximityprompt(ProximityPrompt)
+                                            task.wait(0.15)
+                                            t1[31]()
+                                        end
+                                    end
+                                end
+                            end
+                        end
+
+                        if not v507 then
+                            local v518, v519, v520 = ipairs(v511:GetChildren())
+
+                            while true do
+                                local v521
+
+                                v520, v521 = v518(v519, v520)
+
+                                if not v520 or (not _G.UltimateTaskMaster or _G.IsSleeping) then
+                                    break
+                                end
+
+                                if string.find(v521.Name, "EggVisual") then
+                                    local v522 = t1[28](v521)
+
+                                    if v522 then
+                                        if (v506 - v522).Magnitude > 10 then
+                                            v505.CFrame = CFrame.new(v522 + Vector3.new(0, 3, 0))
+                                        end
+
+                                        v507 = true
+                                        task.wait(0.3)
+
+                                        local ProximityPrompt = v521:FindFirstChildOfClass("ProximityPrompt")
+
+                                        if ProximityPrompt then
+                                            fireproximityprompt(ProximityPrompt)
+                                        end
+
+                                        task.wait(0.15)
+                                    end
+                                end
+                            end
+
+                            if not v507 and SlotMarkers then
+                                for _, child in ipairs(SlotMarkers:GetChildren()) do
+                                    if not _G.UltimateTaskMaster or _G.IsSleeping then
+                                        break
+                                    end
+
+                                    if string.find(child.Name, "Slot") then
+                                        local ProximityPrompt = child:FindFirstChildOfClass("ProximityPrompt")
+                                        local v527 = t1[28](child)
+
+                                        if ProximityPrompt and v527 then
+                                            local v528 = string.lower(ProximityPrompt.ActionText or "")
+
+                                            if string.find(v528, "interact") or (string.find(v528, "panen") or string.find(v528, "ambil")) then
+                                                if (v506 - v527).Magnitude > 10 then
+                                                    v505.CFrame = CFrame.new(v527 + Vector3.new(0, 3, 0))
+                                                end
+
+                                                v507 = true
+                                                task.wait(0.3)
+                                                fireproximityprompt(ProximityPrompt)
+                                                task.wait(0.15)
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                if not v507 then
+                    for _, child in ipairs(workspace:GetChildren()) do
+                        local v531 = string.lower(child.Name)
+
+                        if string.find(v531, "barn_plot_") and string.find(v531, v336) then
+                            local SlotMarkers = child:FindFirstChild("SlotMarkers")
+
+                            if SlotMarkers then
+                                for _, child2 in ipairs(SlotMarkers:GetChildren()) do
+                                    if not _G.UltimateTaskMaster or _G.IsSleeping then
+                                        break
+                                    end
+
+                                    local ProximityPrompt = child2:FindFirstChildOfClass("ProximityPrompt")
+                                    local v536 = t1[28](child2)
+
+                                    if ProximityPrompt and v536 then
+                                        local v537 = string.lower(ProximityPrompt.ActionText or "")
+
+                                        if string.find(v537, "feed") or string.find(v537, "makan") and (not string.find(v537, "eating") and not string.find(v537, "sedang")) then
+                                            if (v506 - v536).Magnitude > 10 then
+                                                v505.CFrame = CFrame.new(v536 + Vector3.new(0, 3, 0))
+                                            end
+
+                                            v507 = true
+                                            task.wait(0.3)
+                                            fireproximityprompt(ProximityPrompt)
+                                            task.wait(0.15)
+                                            t1[31]()
+                                        end
+                                    end
+                                end
+                            end
+
+                            if not v507 then
+                                local GetChildren = child.GetChildren
+
+                                for _, v in ipairs(GetChildren(child)) do
+                                    if not _G.UltimateTaskMaster or _G.IsSleeping then
+                                        break
+                                    end
+
+                                    if string.find(v.Name, "MilkVisual") then
+                                        local ProximityPrompt = v:FindFirstChildOfClass("ProximityPrompt")
+                                        local v542 = t1[28](v)
+
+                                        if ProximityPrompt and v542 then
+                                            if (v506 - v542).Magnitude > 10 then
+                                                v505.CFrame = CFrame.new(v542 + Vector3.new(0, 3, 0))
+                                            end
+
+                                            v507 = true
+                                            task.wait(0.3)
+                                            fireproximityprompt(ProximityPrompt)
+                                            task.wait(0.15)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                if v507 then
+                    task.wait(0.15)
+
+                    return
+                end
+                local AreaTanamBesarPrivate
+                for _, child in ipairs(workspace:GetChildren()) do
+                    if string.find(string.lower(child.Name), "coopplot") and string.find(string.lower(child.Name), v336) then
+                        AreaTanamBesarPrivate = child:FindFirstChild("AreaTanamBesarPrivate")
+
+                        if AreaTanamBesarPrivate then
+                            break
+                        end
+                    end
+                end
+                local v546 = t1[28](AreaTanamBesarPrivate)
+                local AreaTanamBesarPrivate2
+                for _, child in ipairs(workspace:GetChildren()) do
+                    if string.find(string.lower(child.Name), "barn_plot_") and string.find(string.lower(child.Name), v336) then
+                        AreaTanamBesarPrivate2 = child:FindFirstChild("AreaTanamBesarPrivate")
+
+                        if AreaTanamBesarPrivate2 then
+                            break
+                        end
+                    end
+                end
+                local v550 = false
+                local v551 = false
+                local t7 = {}
+                local v553 = false
+                local v554 = false
+                local v555 = t1[28](AreaTanamBesarPrivate2)
+                local v556 = false
+                local n2 = 0
+                local v558 = false
+                local ActiveCrops = workspace:FindFirstChild("ActiveCrops")
+                if ActiveCrops then
+                    for _, child in ipairs(ActiveCrops:GetChildren()) do
+                        if string.find(child.Name, "Crop_" .. str) then
+                            local Phase = child:GetAttribute("Phase")
+
+                            if not Phase then
+                                local Phase3 = child:FindFirstChild("Phase")
+
+                                if Phase3 then
+                                    Phase = Phase3.Value
+                                end
+                            end
+
+                            local PhaseModelName = child:GetAttribute("PhaseModelName")
+
+                            if not PhaseModelName then
+                                local PhaseModelName3 = child:FindFirstChild("PhaseModelName")
+
+                                if PhaseModelName3 then
+                                    PhaseModelName = PhaseModelName3.Value
+                                end
+                            end
+
+                            local Root = child:FindFirstChild("Root")
+                            local v567 = t1[28](Root)
+
+                            if PhaseModelName then
+                                local v568 = tostring(PhaseModelName):lower()
+
+                                if string.find(v568, "sawit") then
+                                    if v567 then
+                                        if tostring(Phase) == "3" then
+                                            table.insert(t7, {
+													tipe = "Bibit Sawit",
+													posisi = v567
+												})
+                                        end
+
+                                        if t1[22] and (v567 - t1[22]).Magnitude < t1[49] then
+                                            v550 = true
+                                        end
+
+                                        if v546 and (v567 - v546).Magnitude < t1[49] then
+                                            v553 = true
+                                        end
+
+                                        if v555 and (v567 - v555).Magnitude < t1[49] then
+                                            v551 = true
+                                        end
+                                    end
+                                elseif string.find(v568, "durian") then
+                                    if v567 then
+                                        if tostring(Phase) == "3" then
+                                            table.insert(t7, {
+													tipe = "Bibit Durian",
+													posisi = v567
+												})
+                                        end
+
+                                        local v569 = t1[22] and t1[22] + Vector3.new(3, 0, 0)
+                                        local v570 = v546 and v546 + Vector3.new(3, 0, 0)
+                                        local v571 = v555 and v555 + Vector3.new(3, 0, 0)
+
+                                        if v569 and (v567 - v569).Magnitude < t1[49] then
+                                            v556 = true
+                                        end
+
+                                        if v570 and (v567 - v570).Magnitude < t1[49] then
+                                            v554 = true
+                                        end
+
+                                        if v571 and (v567 - v571).Magnitude < t1[49] then
+                                            v558 = true
+                                        end
+                                    end
+                                else
+                                    n2 += 1
+                                end
+                            else
+                                n2 += 1
+                            end
+                        end
+                    end
+                end
+                if t1[24] == 14 then
+                    v558 = true
+                    v554 = true
+                    v556 = true
+                end
+                if tick() - t1[50] >= t1[51] then
+                    t1[50] = tick()
+                    t1[4]("ULTIMATE", string.format("ð Biasa: %d/%d | Sawit: %s | Durian: %s", n2, t1[24], not v550 and "â" or "â", not v556 and "â" or "â"), 4)
+                end
+                if #t7 > 0 then
+                    t1[4]("ULTIMATE", "Panen Besar! Teleport & Tanam Ulang...", 3)
+
+                    for _, v in ipairs(t7) do
+                        if not _G.UltimateTaskMaster or _G.IsSleeping then
+                            return
+                        end
+
+                        if (v505.Position - v.posisi).Magnitude > 5 then
+                            v505.CFrame = CFrame.new(v.posisi + Vector3.new(0, 3, 0))
+                            task.wait(0.15)
+                        end
+
+                        local n3 = 0
+
+                        while n3 < 5 do
+                            local v575 = true
+
+                            for _, child in ipairs(ActiveCrops:GetChildren()) do
+                                if not string.find(child.Name, "Crop_" .. str) then
+                                    continue
+                                end
+
+                                local Root = child:FindFirstChild("Root")
+
+                                if Root and (t1[28](Root) - v.posisi).Magnitude < 2 then
+                                    v575 = false
+
+                                    break
+                                end
+                            end
+
+                            if v575 then
+                                break
+                            end
+
+                            task.wait(0.2)
+                            n3 += 0.2
+                        end
+
+                        if t1[29](v.tipe) then
+                            task.wait(0.1)
+                            pcall(function()
+                                t1[8]:FireServer(v.posisi)
+                            end)
+                            task.wait(0.3)
+                        elseif _G.PremiumAutoBuy then
+                            pcall(function()
+                                t1[9]:InvokeServer("BUY", v.tipe, 25)
+                            end)
+                            task.wait(0.15)
+
+                            if t1[29](v.tipe) then
+                                task.wait(0.1)
+                                pcall(function()
+                                    t1[8]:FireServer(v.posisi)
+                                end)
+                                task.wait(0.3)
+                            end
+                        end
+                    end
+
+                    return
+                end
+                local v579 = not v550
+                if not v579 then
+                    v579 = not v556
+
+                    if not v579 then
+                        v579 = v546 and not v553 or (not v554 or (v555 and not v551 or not v558))
+                    end
+                end
+                if v579 then
+                    if t1[22] and not v550 or not v556 then
+                        if (v506 - t1[22]).Magnitude > 10 then
+                            v505.CFrame = CFrame.new(t1[22] + Vector3.new(0, 3, 0))
+                            task.wait(0.15)
+                        end
+
+                        if not v550 then
+                            if t1[29]("Bibit Sawit") then
+                                task.wait(0.1)
+                                pcall(function()
+                                    t1[8]:FireServer(t1[22])
+                                end)
+                                task.wait(0.3)
+                            elseif _G.PremiumAutoBuy then
+                                pcall(function()
+                                    t1[9]:InvokeServer("BUY", "Bibit Sawit", 25)
+                                end)
+                                task.wait(0.15)
+                            end
+                        end
+
+                        if not v556 then
+                            local v580 = t1[22] + Vector3.new(3, 0, 0)
+
+                            if t1[29]("Bibit Durian") then
+                                task.wait(0.1)
+                                pcall(function()
+                                    t1[8]:FireServer(v580)
+                                end)
+                                task.wait(0.3)
+                            elseif _G.PremiumAutoBuy then
+                                pcall(function()
+                                    t1[9]:InvokeServer("BUY", "Bibit Durian", 25)
+                                end)
+                                task.wait(0.15)
+                            end
+                        end
+                    end
+
+                    if v546 and not v553 or not v554 then
+                        if (v506 - v546).Magnitude > 10 then
+                            v505.CFrame = CFrame.new(v546 + Vector3.new(0, 3, 0))
+                            task.wait(0.15)
+                        end
+
+                        if not v553 then
+                            if t1[29]("Bibit Sawit") then
+                                task.wait(0.1)
+                                pcall(function()
+                                    t1[8]:FireServer(v546)
+                                end)
+                                task.wait(0.3)
+                            elseif _G.PremiumAutoBuy then
+                                pcall(function()
+                                    t1[9]:InvokeServer("BUY", "Bibit Sawit", 25)
+                                end)
+                                task.wait(0.15)
+                            end
+                        end
+
+                        if not v554 then
+                            local v581 = v546 + Vector3.new(3, 0, 0)
+
+                            if t1[29]("Bibit Durian") then
+                                task.wait(0.1)
+                                pcall(function()
+                                    t1[8]:FireServer(v581)
+                                end)
+                                task.wait(0.3)
+                            elseif _G.PremiumAutoBuy then
+                                pcall(function()
+                                    t1[9]:InvokeServer("BUY", "Bibit Durian", 25)
+                                end)
+                                task.wait(0.15)
+                            end
+                        end
+                    end
+
+                    if v555 and not v551 or not v558 then
+                        if (v506 - v555).Magnitude > 10 then
+                            v505.CFrame = CFrame.new(v555 + Vector3.new(0, 3, 0))
+                            task.wait(0.15)
+                        end
+
+                        if not v551 then
+                            if t1[29]("Bibit Sawit") then
+                                task.wait(0.1)
+                                pcall(function()
+                                    t1[8]:FireServer(v555)
+                                end)
+                                task.wait(0.3)
+                            elseif _G.PremiumAutoBuy then
+                                pcall(function()
+                                    t1[9]:InvokeServer("BUY", "Bibit Sawit", 25)
+                                end)
+                                task.wait(0.15)
+                            end
+                        end
+
+                        if not v558 then
+                            local v582 = v555 + Vector3.new(3, 0, 0)
+
+                            if t1[29]("Bibit Durian") then
+                                task.wait(0.1)
+                                pcall(function()
+                                    t1[8]:FireServer(v582)
+                                end)
+                                task.wait(0.3)
+
+                                return
+                            end
+
+                            if _G.PremiumAutoBuy then
+                                pcall(function()
+                                    t1[9]:InvokeServer("BUY", "Bibit Durian", 25)
+                                end)
+                                task.wait(0.15)
+
+                                return
+                            end
+                        end
+                    end
+                else
+                    if n2 < t1[24] then
+                        local v583 = t1[52][t1[53]] or Vector3.new(71.557113647461, 39.296875, -268.08697509766)
+
+                        if (v506 - v583).Magnitude > 10 then
+                            v505.CFrame = CFrame.new(v583 + Vector3.new(0, 3, 0))
+                            task.wait(0.15)
+                        end
+
+                        if t1[29](t1[23]) then
+                            local v584 = math.min(t1[24] - n2, 10)
+
+                            for i = 1, v584 do
+                                pcall(function()
+                                    t1[7]:FireServer(v583)
+                                end)
+
+                                if i < v584 then
+                                    task.wait(0.02)
+                                end
+                            end
+
+                            return
+                        end
+
+                        if _G.PremiumAutoBuy then
+                            pcall(function()
+                                t1[9]:InvokeServer("BUY", t1[23], 99)
+                            end)
+                            task.wait(0.15)
+
+                            return
+                        end
+
+                        task.wait(0.15)
+
+                        return
+                    end
+
+                    u337 = true
+
+                    local Humanoid = Character2:FindFirstChildOfClass("Humanoid")
+
+                    if Humanoid then
+                        Humanoid:UnequipTools()
+                    end
+
+                    local v587 = t1[52][t1[53]] or Vector3.new(71.557113647461, 39.296875, -268.08697509766)
+
+                    if (v506 - v587).Magnitude > 10 then
+                        v505.CFrame = CFrame.new(v587 + Vector3.new(0, 3, 0))
+                    end
+                end
+            end)
+
+            if not ok then
+                warn("Ultimate Loop Error: ", (tostring(result)))
+            end
+
+            task.wait(not u337 and 0.05 or 1)
+        end
+
+        t1[27].UltimateTaskMasterLoopRunning = false
+    end)
+end
+})
+v30:Section({
+	Title = "Leveling"
+})
+t1[55] = false
+t1[56] = nil
+t1[57] = nil
+t1[58] = "Loc 1"
+t1[59] = nil
+t1[60] = nil
+t1[61] = 200
+t1[62] = 200
+t1[57] = 0
+t1[56] = 0
+t1[59] = 0
+t1[60] = 15
+t1[63] = function()
+    local timestamp = tick()
+
+    if timestamp - t1[59] < t1[60] then
+        return
+    end
+
+    t1[59] = timestamp
+
+    local ok, result = pcall(function()
+        return t1[10]:InvokeServer("GET_LIST")
+    end)
+
+    if ok then
+        ok = result and result.Items
+    end
+
+    if ok then
+        local n4 = 0
+        local n5 = 0
+
+        for _, v in ipairs(result.Items) do
+            local v144 = string.lower(v.Name or "")
+
+            if string.find(v144, "padi") then
+                n5 = v.Owned or 0
+            elseif string.find(v144, "jagung") then
+                n4 = v.Owned or 0
+            end
+        end
+
+        t1[57] = n5
+        t1[56] = n4
+    end
+end
+v30:Paragraph({
+	Title = "ð Setup Leveling Mode",
+	Desc = [[1. Atur 'Stok Aman Padi' & 'Stok Aman Jagung'.
+2. Atur Batas Maximum Bibit Biasa diatas :
+--- 15 (Tanpa Gamepass Extra Slots)
+--- 25 (Jika punya Gamepass).
+3. Tentukan lokasi pada 'Posisi Ladang Leveling'.
+4. Nyalakan 'START LEVELING'.
+
+* Opsional: Nyalakan Auto Sell di tab Farming, Sawit, Chicken, Cow.]]
+})
+v30:Dropdown({
+	Title = "Posisi Ladang Leveling",
+	Flag = "Premium_LevelingLoc",
+	Locked = v31,
+	Values = {
+		"Loc 1",
+		"Loc 2",
+		"Loc 3",
+		"Loc 4",
+		"Loc 5",
+		"Loc 6",
+		"Loc 7"
+	},
+	Value = "Loc 6",
+	Callback = function(p17)
+    t1[58] = p17
+end
+})
+v30:Input({
+	Title = "Stok Aman Padi",
+	Desc = "Minimum stok Padi",
+	Flag = "Premium_StokPadi",
+	Locked = v31,
+	Placeholder = "Default: 200",
+	Callback = function(p18)
+    local num = tonumber(p18)
+
+    if num and num >= 1 then
+        t1[61] = num
+
+        return
+    end
+
+    t1[61] = 200
+end
+})
+v30:Input({
+	Title = "Stok Aman Jagung",
+	Desc = "Minimum stok Jagung",
+	Flag = "Premium_StokJagung",
+	Locked = v31,
+	Placeholder = "Default: 200",
+	Callback = function(p19)
+    local num = tonumber(p19)
+
+    if num and num >= 1 then
+        t1[62] = num
+
+        return
+    end
+
+    t1[62] = 200
+end
+})
+t1[41] = v30:Toggle({
+	Title = "START LEVELING",
+	Flag = "Premium_StartLeveling",
+	Locked = v31,
+	Value = false,
+	Callback = function(p20)
+    _G.StartLeveling = p20
+
+    if p20 and _G.UltimateTaskMaster then
+        _G.UltimateTaskMaster = false
+        t1[32](t1[54], false)
+        t1[4]("INFO", "Ultimate dimatikan karena Leveling dinyalakan.", 3)
+    end
+
+    if not p20 then
+        t1[27].LevelingLoopRunning = false
+        t1[4]("LEVELING", "Leveling dihentikan.", 3)
+
+        return
+    end
+
+    if t1[27].LevelingLoopRunning then
+        return
+    end
+
+    t1[27].LevelingLoopRunning = true
+    task.spawn(function()
+        local Character = t1[5].Character
+        local v341 = Character and Character:FindFirstChild("HumanoidRootPart")
+        if not v341 then
+            t1[27].LevelingLoopRunning = false
+
+            return
+        end
+        local g359
+        if not t1[55] then
+            t1[4]("LEVELING", "Mencari & Mengklaim Kandang Ayam...", 3)
+
+            local CoopPlots = workspace:FindFirstChild("CoopPlots")
+
+            if CoopPlots then
+                for i = 1, 20 do
+                    local v344 = "CoopPlot_" .. tostring(i)
+                    local v345 = CoopPlots:FindFirstChild(v344)
+                    if not v345 then
+                        continue
+                    end
+                    local v346 = false
+                    for v349, v350 in ipairs(workspace:GetChildren()) do
+
+                        if string.find(v350.Name, "Coop_" .. v344 .. "_") then
+                            v346 = true
+
+                            break
+                        end
+                    end
+                    if not v346 then
+                        local ProximityPrompt = v345:FindFirstChildOfClass("ProximityPrompt", true)
+
+                        if not (ProximityPrompt and (ProximityPrompt.Parent and ProximityPrompt.Parent:IsA("BasePart"))) then
+                            continue
+                        end
+
+                        v341.CFrame = CFrame.new(ProximityPrompt.Parent.Position + Vector3.new(0, 3, 0))
+                        task.wait(1)
+                        fireproximityprompt(ProximityPrompt)
+                        task.wait(0.5)
+                        t1[4]("LEVELING", "Berhasil Claim Kandang Ayam", 3)
+
+                        break
+                    end
+                end
+            end
+        end
+        t1[4]("LEVELING", "Mencari & Mengklaim Kandang Sapi...", 3)
+        local BarnPlots = workspace:FindFirstChild("BarnPlots")
+        if BarnPlots then
+            local v353 = string.lower(t1[5].Name)
+            local v354 = false
+            local v355, v356, v357 = ipairs(workspace:GetChildren())
+
+            repeat
+                local v358
+
+                v357, v358 = v355(v356, v357)
+
+                if not v357 then
+                    g359 = true
+                end
+
+                if g359 then
+                    break
+                end
+
+                local v360 = string.find(string.lower(v358.Name), "barn_plot_")
+
+                if v360 then
+                    v360 = string.find(string.lower(v358.Name), v353)
+                end
+            until v360
+
+            if not g359 then
+                v354 = true
+            end
+
+            g359 = false
+
+            if not v354 then
+                for i = 1, 14 do
+                    local v362 = i
+                    local v363 = BarnPlots:FindFirstChild("Plot_" .. tostring(v362))
+                    if not v363 then
+                        continue
+                    end
+                    local v364 = false
+                    for v367, v368 in ipairs(workspace:GetChildren()) do
+
+                        if string.find(string.lower(v368.Name), "barn_plot_" .. tostring(v362) .. "_") then
+                            v364 = true
+
+                            break
+                        end
+                    end
+                    if not v364 then
+                        local ProximityPrompt = v363:FindFirstChildOfClass("ProximityPrompt", true)
+
+                        if not (ProximityPrompt and (ProximityPrompt.Parent and ProximityPrompt.Parent:IsA("BasePart"))) then
+                            continue
+                        end
+
+                        v341.CFrame = CFrame.new(ProximityPrompt.Parent.Position + Vector3.new(0, 3, 0))
+                        task.wait(1)
+                        fireproximityprompt(ProximityPrompt)
+                        task.wait(0.5)
+                        t1[4]("LEVELING", "Berhasil Claim Kandang Sapi", 3)
+
+                        break
+                    end
+                end
+            end
+        end
+        t1[4]("LEVELING", "Menyalakan Fitur Wajib (Anti-AFK, Auto Buy, dll)...", 2)
+        task.wait(0.5)
+        t1[32](t1[40], true)
+        t1[32](t1[47], true)
+        t1[32](t1[37], true)
+        t1[32](t1[38], true)
+        t1[32](t1[39], true)
+        t1[32](t1[44], true)
+        t1[32](t1[45], true)
+        t1[32](t1[42], true)
+        if t1[43] then
+            t1[32](t1[43], true)
+        end
+        t1[32](t1[46], true)
+        t1[34]()
+        _G.PremiumAutoBuy = true
+        t1[4]("LEVELING", "Siklus Leveling Dimulai!", 3)
+        local str = tostring(t1[5].UserId)
+        local _ = t1[5].Name
+        local v372 = string.lower(t1[5].Name)
+        while _G.StartLeveling do
+            local u373 = false
+            local success, result = pcall(function()
+                if _G.IsSleeping then
+                    return
+                end
+                local Character3 = t1[5].Character
+                local v589 = Character3 and Character3:FindFirstChild("HumanoidRootPart")
+                if not v589 then
+                    return
+                end
+                local v590 = t1[28](v589)
+                if not v590 then
+                    return
+                end
+                t1[63]()
+                local v591 = false
+                for v594, v595 in ipairs(workspace:GetChildren()) do
+
+                    if string.find(string.lower(v595.Name), "coopplot") and string.find(string.lower(v595.Name), v372) then
+                        local SlotMarkers = v595:FindFirstChild("SlotMarkers")
+
+                        if SlotMarkers and t1[57] >= t1[61] then
+                            for _, child in ipairs(SlotMarkers:GetChildren()) do
+                                if not _G.StartLeveling or _G.IsSleeping then
+                                    break
+                                end
+
+                                if string.find(child.Name, "Slot") then
+                                    local ProximityPrompt = child:FindFirstChildOfClass("ProximityPrompt")
+                                    local v600 = t1[28](child)
+
+                                    if ProximityPrompt and v600 then
+                                        local v601 = string.lower(ProximityPrompt.ActionText or "")
+
+                                        if string.find(v601, "feed") or (string.find(v601, "beri") or string.find(v601, "makan") and (not string.find(v601, "eating") and not string.find(v601, "sedang"))) then
+                                            if (v590 - v600).Magnitude > 10 then
+                                                v589.CFrame = CFrame.new(v600 + Vector3.new(0, 3, 0))
+                                            end
+
+                                            v591 = true
+                                            task.wait(0.3)
+                                            fireproximityprompt(ProximityPrompt)
+                                            task.wait(0.15)
+                                            t1[31]()
+                                        end
+                                    end
+                                end
+                            end
+                        end
+
+                        if not v591 then
+
+                            for v604, v605 in ipairs(v595:GetChildren()) do
+
+                                local v606 = not _G.StartLeveling
+
+                                if not v606 then
+                                    v606 = _G.IsSleeping
+                                end
+
+                                if v606 then
+                                    break
+                                end
+
+                                if string.find(v605.Name, "EggVisual") then
+                                    local v607 = t1[28](v605)
+
+                                    if v607 then
+                                        if (v590 - v607).Magnitude > 10 then
+                                            v589.CFrame = CFrame.new(v607 + Vector3.new(0, 3, 0))
+                                        end
+
+                                        v591 = true
+                                        task.wait(0.3)
+
+                                        local ProximityPrompt = v605:FindFirstChildOfClass("ProximityPrompt")
+
+                                        if ProximityPrompt then
+                                            fireproximityprompt(ProximityPrompt)
+                                        end
+
+                                        task.wait(0.15)
+                                    end
+                                end
+                            end
+                            if not v591 and SlotMarkers then
+                                for _, child in ipairs(SlotMarkers:GetChildren()) do
+                                    if not _G.StartLeveling or _G.IsSleeping then
+                                        break
+                                    end
+
+                                    if string.find(child.Name, "Slot") then
+                                        local ProximityPrompt = child:FindFirstChildOfClass("ProximityPrompt")
+                                        local v612 = t1[28](child)
+
+                                        if ProximityPrompt and v612 then
+                                            local v613 = string.lower(ProximityPrompt.ActionText or "")
+
+                                            if string.find(v613, "interact") or (string.find(v613, "panen") or string.find(v613, "ambil")) then
+                                                if (v590 - v612).Magnitude > 10 then
+                                                    v589.CFrame = CFrame.new(v612 + Vector3.new(0, 3, 0))
+                                                end
+
+                                                v591 = true
+                                                task.wait(0.3)
+                                                fireproximityprompt(ProximityPrompt)
+                                                task.wait(0.15)
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                if v591 then
+                    task.wait(0.15)
+
+                    return
+                end
+                local v614 = false
+                local v615, v616, v617 = ipairs(workspace:GetChildren())
+                while true do
+                    local v618
+
+                    v617, v618 = v615(v616, v617)
+
+                    if not v617 or (not _G.StartLeveling or _G.IsSleeping) then
+                        break
+                    end
+
+                    local v619 = string.lower(v618.Name)
+
+                    if string.find(v619, "barn_plot_") and string.find(v619, v372) then
+                        local SlotMarkers = v618:FindFirstChild("SlotMarkers")
+
+                        if SlotMarkers and t1[56] >= t1[62] then
+                            for _, child in ipairs(SlotMarkers:GetChildren()) do
+                                if not _G.StartLeveling or _G.IsSleeping then
+                                    break
+                                end
+
+                                local ProximityPrompt = child:FindFirstChildOfClass("ProximityPrompt")
+                                local v624 = t1[28](child)
+
+                                if ProximityPrompt and v624 then
+                                    local v625 = string.lower(ProximityPrompt.ActionText or "")
+
+                                    if string.find(v625, "feed") or string.find(v625, "makan") and (not string.find(v625, "eating") and not string.find(v625, "sedang")) then
+                                        if (v590 - v624).Magnitude > 10 then
+                                            v589.CFrame = CFrame.new(v624 + Vector3.new(0, 3, 0))
+                                        end
+
+                                        v614 = true
+                                        task.wait(0.3)
+                                        fireproximityprompt(ProximityPrompt)
+                                        task.wait(0.15)
+                                        t1[31]()
+                                    end
+                                end
+                            end
+                        end
+
+                        if not v614 then
+                            local GetChildren = v618.GetChildren
+
+                            for _, v in ipairs(GetChildren(v618)) do
+                                if not _G.StartLeveling or _G.IsSleeping then
+                                    break
+                                end
+
+                                if string.find(v.Name, "MilkVisual") then
+                                    local ProximityPrompt = v:FindFirstChildOfClass("ProximityPrompt")
+                                    local v630 = t1[28](v)
+
+                                    if ProximityPrompt and v630 then
+                                        if (v590 - v630).Magnitude > 10 then
+                                            v589.CFrame = CFrame.new(v630 + Vector3.new(0, 3, 0))
+                                        end
+
+                                        v614 = true
+                                        task.wait(0.3)
+                                        fireproximityprompt(ProximityPrompt)
+                                        task.wait(0.15)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                if v614 then
+                    task.wait(0.15)
+
+                    return
+                end
+                local n6 = 0
+                local ActiveCrops = workspace:FindFirstChild("ActiveCrops")
+                if ActiveCrops then
+                    local GetChildren = ActiveCrops.GetChildren
+
+                    for _, v in ipairs(GetChildren(ActiveCrops)) do
+                        if string.find(v.Name, "Crop_" .. str) then
+                            n6 += 1
+                        end
+                    end
+                end
+                local v636 = t1[52][t1[58]] or Vector3.new(71.557113647461, 39.296875, -268.08697509766)
+                if n6 < t1[24] then
+                    if (v590 - v636).Magnitude > 10 then
+                        v589.CFrame = CFrame.new(v636 + Vector3.new(0, 3, 0))
+                        task.wait(0.15)
+                    end
+
+                    local u637 = t1[23]
+
+                    if t1[56] < t1[62] then
+                        u637 = "Bibit Jagung"
+                    elseif t1[57] < t1[61] then
+                        u637 = "Bibit Padi"
+                    end
+
+                    if t1[29](u637) then
+                        local v638 = math.min(t1[24] - n6, 10)
+                        local v639 = false
+                        local n7 = 0
+
+                        while true do
+                            n7 += 1
+
+                            if (not v639 or not (v638 <= n7)) and (v639 or not (n7 <= v638)) then
+                                break
+                            end
+
+                            pcall(function()
+                                t1[7]:FireServer(v636)
+                            end)
+
+                            if n7 < v638 then
+                                task.wait(0.02)
+                            end
+                        end
+                    elseif _G.PremiumAutoBuy then
+                        pcall(function()
+                            t1[9]:InvokeServer("BUY", u637, 99)
+                        end)
+                        task.wait(0.15)
+                    else
+                        task.wait(0.15)
+                    end
+
+                    return
+                end
+                local FindFirstChildOfClass = Character3.FindFirstChildOfClass
+                u373 = true
+                local v642 = FindFirstChildOfClass(Character3, "Humanoid")
+                if v642 then
+                    v642:UnequipTools()
+                end
+                if (v590 - v636).Magnitude > 10 then
+                    v589.CFrame = CFrame.new(v636 + Vector3.new(0, 3, 0))
+                end
+            end)
+            if not success then
+                warn("Leveling Loop Error: ", (tostring(result)))
+            end
+            task.wait(not u373 and 0.05 or 1)
+        end
+        t1[27].LevelingLoopRunning = false
+    end)
+end
+})
+local v39 = t1[3]:Tab({
+	Title = "FARMING",
+	Icon = "sprout"
+})
+v39:Section({
+	Title = "Shop System"
+})
+v39:Dropdown({
+	Title = "Pilih Jenis Bibit",
+	Flag = "Farm_JenisBibit",
+	Values = {
+		"Bibit Padi",
+		"Bibit Terong",
+		"Bibit Jagung",
+		"Bibit Tomat",
+		"Bibit Strawberry",
+		"Bibit Sawit",
+		"Bibit Durian",
+		"Bibit Semangka",
+		"Bibit Cabai"
+	},
+	Value = "Bibit Strawberry",
+	Callback = function(p21)
+    t1[11] = p21
+end
+})
+v39:Input({
+	Title = "Jumlah Beli",
+	Flag = "Farm_JumlahBeli",
+	Placeholder = "Nominal...",
+	Callback = function(p22)
+    t1[13] = tonumber(p22) or 1
+end
+})
+v39:Button({
+	Title = "Beli Bibit",
+	Callback = function()
+    if pcall(function()
+        t1[9]:InvokeServer("BUY", t1[11], t1[13])
+    end) then
+        t1[4]("Shop", "Membeli " .. t1[13] .. " " .. t1[11])
+    end
+end
+})
+v39:Section({
+	Title = "Selling System"
+})
+v39:Dropdown({
+	Title = "Pilih Hasil Panen",
+	Desc = "Bisa lebih dari 1 pilihan",
+	Flag = "Farm_HasilPanen",
+	Multi = true,
+	Values = {
+		"Padi",
+		"Terong",
+		"Sawit",
+		"Jagung",
+		"Tomat",
+		"Strawberry",
+		"Semangka",
+		"Cabai"
+	},
+	Value = { "Strawberry" },
+	Callback = function(p23)
+    t1[14] = t1[33](p23)
+end
+})
+v39:Input({
+	Title = "Jumlah Jual",
+	Flag = "Farm_JumlahJual",
+	Placeholder = "Nominal...",
+	Callback = function(p24)
+    t1[15] = tonumber(p24) or 1
+end
+})
+v39:Input({
+	Title = "Interval Auto Sell",
+	Desc = "Detik",
+	Flag = "Farm_IntervalSell",
+	Placeholder = "Min: 1 detik. Default: 3",
+	Callback = function(p25)
+    local num = tonumber(p25)
+
+    if num and num >= 1 then
+        t1[16] = num
+
+        return
+    end
+
+    t1[16] = 3
+end
+})
+v39:Button({
+	Title = "Jual PILIHAN",
+	Callback = function()
+    for k, v in pairs(t1[14]) do
+        local v159 = k
+
+        if v and pcall(function()
+            t1[10]:InvokeServer("SELL", v159, t1[15])
+        end) then
+            t1[4]("Selling", "Menjual " .. t1[15] .. " " .. v159)
+        end
+    end
+end
+})
+v39:Toggle({
+	Title = "Auto Sell Pilihan",
+	Locked = v31,
+	Flag = "Farm_AutoSell",
+	Value = false,
+	Callback = function(p26)
+    _G.AutoSellFarm = p26
+
+    if p26 and t1[27].AutoSellFarmLoopRunning then
+        return
+    end
+
+    if not p26 then
+        return
+    end
+
+    t1[27].AutoSellFarmLoopRunning = true
+    task.spawn(function()
+        while _G.AutoSellFarm do
+            for k, v in pairs(t1[14]) do
+                local v378 = k
+
+                if v then
+                    pcall(function()
+                        t1[10]:InvokeServer("SELL", v378, t1[15])
+                    end)
+                end
+            end
+
+            task.wait(t1[16])
+        end
+
+        t1[27].AutoSellFarmLoopRunning = false
+    end)
+end
+})
+v39:Button({
+	Title = "Sell All Panen (NO INC SAWIT/DURIAN)",
+	Locked = v31,
+	Callback = function()
+    local ok, result = pcall(function()
+        return t1[10]:InvokeServer("GET_LIST")
+    end)
+
+    if ok then
+        ok = result and result.Items
+    end
+
+    if ok then
+        local v163 = false
+
+        for _, v in ipairs(result.Items) do
+            if v.Owned and v.Owned > 0 and pcall(function()
+                t1[10]:InvokeServer("SELL", v.Name, v.Owned)
+            end) then
+                v163 = true
+            end
+        end
+
+        if v163 then
+            t1[4]("Selling", "Semua terjual!")
+
+            return
+        end
+
+        t1[4]("Selling", "Kosong.")
+    end
+end
+})
+v39:Button({
+	Title = "Sell Menu",
+	Desc = "Open NPC Menu Sell",
+	Callback = function()
+    local SellCrop = game:GetService("ReplicatedStorage").Remotes.TutorialRemotes.SellCrop
+
+    if firesignal then
+        local ok, result = pcall(function()
+            firesignal(SellCrop.OnClientEvent, nil, "OPEN_SELL_GUI")
+        end)
+
+        if ok then
+            t1[4]("FARMING", "Membuka GUI Sell...", 3)
+
+            return
+        end
+
+        t1[4]("ERROR", "Gagal membuka GUI: " .. tostring(result), 5)
+
+        return
+    end
+
+    t1[4]("ERROR", "Executor-mu tidak support 'firesignal'!", 5)
+end
+})
+v39:Section({
+	Title = "Planting System"
+})
+v39:Dropdown({
+	Title = "Bibit Yang Ditanam",
+	Flag = "Farm_BibitDitanam",
+	Values = {
+		"Bibit Padi",
+		"Bibit Terong",
+		"Bibit Jagung",
+		"Bibit Tomat",
+		"Bibit Strawberry",
+		"Bibit Semangka",
+		"Bibit Cabai"
+	},
+	Value = "Bibit Strawberry",
+	Callback = function(p27)
+    t1[12] = p27
+end
+})
+v39:Dropdown({
+	Title = "Pilih Lokasi Tanam",
+	Flag = "Farm_LokasiTanam",
+	Values = {
+		"Karakter",
+		"Post 1",
+		"Post 2",
+		"Custom"
+	},
+	Value = "Karakter",
+	Callback = function(p28)
+    t1[17] = p28
+end
+})
+v39:Button({
+	Title = "Save Posisi (Untuk Custom Loc Plant)",
+	Callback = function()
+    local Character = t1[5].Character
+    local v172 = Character and Character:FindFirstChild("HumanoidRootPart")
+
+    if v172 then
+        t1[28](v172)
+        t1[4]("Farming", "Posisi custom berhasil disimpan/ubah!", 3)
+
+        return
+    end
+
+    t1[4]("Error", "Gagal menemukan posisi karakter.", 3)
+end
+})
+t1[64] = 25
+v39:Dropdown({
+	Title = "Batas Maximum Crops",
+	Flag = "Farm_MaxCrops",
+	Values = {
+		"15",
+		"23",
+		"25"
+	},
+	Value = "25",
+	Callback = function(p29)
+    t1[64] = tonumber(p29)
+end
+})
+v39:Toggle({
+	Title = "Auto Buy Seed (Premium)",
+	Flag = "Farm_AutoBuyPremium",
+	Locked = v31,
+	Value = false,
+	Callback = function(p30)
+    _G.AutoBuyIfEmpty = p30
+end
+})
+v39:Toggle({
+	Title = "Auto Tanam",
+	Flag = "Farm_AutoTanam",
+	Value = false,
+	Callback = function(p31)
+    _G.AutoPlant = p31
+
+    if p31 and t1[27].AutoPlantLoopRunning then
+        return
+    end
+
+    if not p31 then
+        return
+    end
+
+    local str = tostring(t1[5].UserId)
+
+    t1[27].AutoPlantLoopRunning = true
+    task.spawn(function()
+        local v379 = false
+
+        while _G.AutoPlant do
+            local v380 = false
+
+            if not _G.IsSleeping then
+                local n8 = 0
+                local ActiveCrops = workspace:FindFirstChild("ActiveCrops")
+
+                if ActiveCrops then
+                    local GetChildren = ActiveCrops.GetChildren
+
+                    for _, v in ipairs(GetChildren(ActiveCrops)) do
+                        if string.find(v.Name, "Crop_" .. str) then
+                            n8 += 1
+                        end
+                    end
+                end
+
+                if n8 >= t1[64] then
+                    v380 = true
+
+                    if not v379 then
+                        local Character = t1[5].Character
+
+                        if Character then
+                            local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+
+                            if Humanoid then
+                                Humanoid:UnequipTools()
+                            end
+                        end
+
+                        pcall(function()
+                            local Notification = game:GetService("ReplicatedStorage").Remotes.TutorialRemotes.Notification
+
+                            if firesignal then
+                                firesignal(Notification.OnClientEvent, "Maximum " .. t1[64] .. " crops!")
+                            end
+                        end)
+                        v379 = true
+                    end
+
+                    task.wait(0.3)
+                else
+                    v379 = false
+
+                    if t1[29](t1[12]) then
+                        local v388 = t1[30]()
+
+                        if v388 then
+                            pcall(function()
+                                t1[7]:FireServer(v388)
+                            end)
+                        end
+                    elseif _G.AutoBuyIfEmpty then
+                        pcall(function()
+                            t1[9]:InvokeServer("BUY", t1[12], 99)
+                        end)
+                        t1[4]("Auto Buy", "Bibit habis! Membeli 99 " .. t1[12], 3)
+                        task.wait(0.3)
+                    else
+                        t1[4]("Planting", "Bibit habis! Nyalakan Auto Buy jika ingin beli otomatis.", 3)
+                        task.wait(2)
+                    end
+                end
+            end
+
+            local _task = task
+            local v390 = v380 and 1
+
+            _task.wait(v390 or 0.1)
+        end
+
+        t1[27].AutoPlantLoopRunning = false
+    end)
+end
+})
+local v40 = t1[3]:Tab({
+	Title = "TELEPORT",
+	Icon = "sparkles"
+})
+v40:Section({
+	Title = "Pilih Lokasi NPC"
+})
+v40:Dropdown({
+	Title = "Lokasi Teleport",
+	Flag = "Teleport_Lokasi",
+	Values = {
+		"SELL NPC",
+		"BUY SEED",
+		"PDG TELUR",
+		"PDG TOOLS",
+		"PDG SAWIT",
+		"Storage",
+		"Bos Sapi",
+		"Tenda Tidur",
+		"Lahan 1",
+		"Lahan 2",
+		"Lahan Sapi"
+	},
+	Value = "SELL NPC",
+	Callback = function(p32)
+    t1[26] = p32
+end
+})
+v40:Button({
+	Title = "Teleport",
+	Callback = function()
+    local Character = t1[5].Character
+    local v179 = Character and Character:FindFirstChild("HumanoidRootPart")
+    local v180 = t1[25][t1[26]]
+
+    if v179 and v180 then
+        v179.CFrame = CFrame.new(v180 + Vector3.new(0, 3, 0))
+        t1[4]("Teleport", "Berhasil ke " .. t1[26])
+    end
+end
+})
+local v41 = t1[3]:Tab({
+	Title = "AUTO",
+	Icon = "layout-list"
+})
+v41:Section({
+	Title = "Auto Interactions"
+})
+t1[37] = v41:Toggle({
+	Title = "Auto Harvest (INTERACT)",
+	Desc = "Tidak bisa terlalu jauh (BUKAN TELEPORT)",
+	Flag = "Auto_Harvest",
+	Value = false,
+	Callback = function(p33)
+    _G.AutoHarvest = p33
+
+    if p33 and t1[27].AutoHarvestLoopRunning then
+        return
+    end
+
+    if not p33 then
+        return
+    end
+
+    local str = tostring(t1[5].UserId)
+
+    t1[27].AutoHarvestLoopRunning = true
+    task.spawn(function()
+        while _G.AutoHarvest do
+            pcall(function()
+                if _G.IsSleeping then
+                    return
+                end
+
+                local ActiveCrops = workspace:FindFirstChild("ActiveCrops")
+
+                if ActiveCrops then
+                    for _, child in ipairs(ActiveCrops:GetChildren()) do
+                        if string.find(child.Name, "Crop_" .. str) then
+                            local Root = child:FindFirstChild("Root")
+                            local v648 = t1[28](Root)
+
+                            if v648 then
+                                local Character = t1[5].Character
+                                local v650 = Character and Character:FindFirstChild("HumanoidRootPart")
+                                local v651 = t1[28](v650)
+
+                                if v651 and (v651 - v648).Magnitude < t1[35] then
+                                    local ProximityPrompt = Root:FindFirstChildOfClass("ProximityPrompt")
+
+                                    if ProximityPrompt then
+                                        fireproximityprompt(ProximityPrompt)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(0.15)
+        end
+
+        t1[27].AutoHarvestLoopRunning = false
+    end)
+end
+})
+v41:Toggle({
+	Title = "Auto Mandi (INTERACT)",
+	Desc = "Tidak bisa terlalu jauh (BUKAN TELEPORT)",
+	Flag = "Auto_Mandi",
+	Value = false,
+	Callback = function(p34)
+    _G.AutoMandi = p34
+
+    if p34 and t1[27].AutoMandiLoopRunning then
+        return
+    end
+
+    if not p34 then
+        return
+    end
+
+    t1[27].AutoMandiLoopRunning = true
+    task.spawn(function()
+        while _G.AutoMandi do
+            pcall(function()
+                if _G.IsSleeping then
+                    return
+                end
+
+                local Mandi = workspace:FindFirstChild("Mandi")
+
+                if Mandi then
+                    local GetChildren = Mandi.GetChildren
+
+                    for _, v in ipairs(GetChildren(Mandi)) do
+                        local v657 = v:FindFirstChild("ProximityPrompt") or v:FindFirstChildOfClass("ProximityPrompt")
+                        local v658 = t1[28](v)
+
+                        if v657 and v658 then
+                            local Character = t1[5].Character
+                            local v660 = Character and Character:FindFirstChild("HumanoidRootPart")
+                            local v661 = t1[28](v660)
+
+                            if v661 and (v661 - v658).Magnitude < t1[36] then
+                                fireproximityprompt(v657)
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(0.2)
+        end
+
+        t1[27].AutoMandiLoopRunning = false
+    end)
+end
+})
+v41:Section({
+	Title = "Sistem Siang/Malam"
+})
+t1[65] = false
+local function v42(p35)
+    local t9 = {}
+
+    for _, child in ipairs(p35:GetChildren()) do
+        if child.Name == "Sleep1" and child:FindFirstChildOfClass("ProximityPrompt") then
+            table.insert(t9, child)
+        end
+    end
+
+    if #t9 == 0 then
+        return nil
+    end
+
+    return t9[math.random(1, #t9)]
+end
+t1[42] = v41:Toggle({
+	Title = "Auto Sleep",
+	Locked = v31,
+	Desc = "Tidur otomatis",
+	Flag = "Auto_Sleep",
+	Value = false,
+	Callback = function(p36)
+    _G.AutoSleep = p36
+
+    if p36 and t1[65] then
+        return
+    end
+
+    if not p36 then
+        _G.IsSleeping = false
+
+        return
+    end
+
+    task.spawn(function()
+        local u391 = false
+        local u392
+        local u393
+        local n9 = 0
+        while _G.AutoSleep do
+            pcall(function()
+                local DayNightPhase = workspace:GetAttribute("DayNightPhase")
+                local PlayerGui = t1[5]:FindFirstChild("PlayerGui")
+
+                if DayNightPhase == "Day" then
+                    u391 = false
+                    u392 = nil
+                    u393 = nil
+                    n9 = 0
+
+                    if not _G.AutoTidurSiang then
+                        _G.IsSleeping = false
+                    end
+                end
+
+                local v664 = false
+                local v665 = false
+
+                if PlayerGui then
+                    local DayNightNotifGui = PlayerGui:FindFirstChild("DayNightNotifGui")
+
+                    if DayNightNotifGui then
+                        local NotifLabel = DayNightNotifGui:FindFirstChild("NotifLabel")
+
+                        if NotifLabel and NotifLabel.Visible then
+                            local v668 = string.lower(NotifLabel.Text)
+
+                            if string.find(v668, "tidur selesai") then
+                                if not u391 then
+                                    v665 = true
+                                end
+
+                                u391 = true
+                            elseif string.find(v668, "sedang tidur") then
+                                v664 = true
+                            end
+                        end
+                    end
+                end
+
+                local Character = t1[5].Character
+                local v670 = Character and Character:FindFirstChild("HumanoidRootPart")
+
+                if v665 and (v670 and u392) then
+                    _G.IsSleeping = false
+                    v670.CFrame = CFrame.new(u392 + Vector3.new(0, 3, 0))
+                    t1[4]("AUTO SLEEP", "Buff diterima! Kembali ke posisi semula.", 3)
+                    u392 = nil
+                end
+
+                if DayNightPhase == "Night" and not u391 then
+                    _G.IsSleeping = true
+
+                    local Sleep = workspace:FindFirstChild("Sleep")
+
+                    if Sleep then
+                        if not u393 or not u393.Parent then
+                            u393 = v42(Sleep)
+                            n9 = tick()
+                        end
+
+                        if u393 and (not v664 and (n9 > 0 and tick() - n9 > 5)) then
+                            u393 = v42(Sleep)
+                            n9 = tick()
+                            t1[4]("AUTO SLEEP", "Kasur penuh! Mencari kasur lain...", 2)
+                        end
+
+                        if u393 then
+                            local ProximityPrompt = u393:FindFirstChildOfClass("ProximityPrompt")
+
+                            if ProximityPrompt then
+                                local v673 = u393
+                                local v674 = t1[28](v673)
+
+                                if v670 and v674 then
+                                    if not v664 then
+                                        if not u392 and (v670.Position - v674).Magnitude > 20 then
+                                            u392 = v670.Position
+                                        end
+
+                                        if (v670.Position - v674).Magnitude > 5 then
+                                            v670.CFrame = CFrame.new(v674 + Vector3.new(0, 3, 0))
+                                            task.wait(0.5)
+                                        end
+
+                                        fireproximityprompt(ProximityPrompt)
+                                        task.wait(1)
+
+                                        return
+                                    end
+
+                                    if (v670.Position - v674).Magnitude > 10 then
+                                        v670.CFrame = CFrame.new(v674 + Vector3.new(0, 3, 0))
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(0.5)
+        end
+        if not _G.AutoTidurSiang then
+            _G.IsSleeping = false
+        end
+    end)
+end
+})
+t1[66] = false
+t1[43] = v41:Toggle({
+	Title = "Auto Tidur Siang",
+	Locked = v31,
+	Desc = "Tidur otomatis di siang hari untuk buff +10% growth",
+	Flag = "Auto_TidurSiang",
+	Value = false,
+	Callback = function(p37)
+    _G.AutoTidurSiang = p37
+
+    if p37 and t1[66] then
+        return
+    end
+
+    if not p37 then
+        if not _G.AutoSleep then
+            _G.IsSleeping = false
+        end
+
+        return
+    end
+
+    task.spawn(function()
+        local u395 = false
+        local u396
+        local u397
+        local n10 = 0
+        local u399 = false
+        while _G.AutoTidurSiang do
+            pcall(function()
+                local DayNightPhase = workspace:GetAttribute("DayNightPhase")
+                local PlayerGui = t1[5]:FindFirstChild("PlayerGui")
+
+                if DayNightPhase == "Night" then
+                    u395 = false
+                    u396 = nil
+                    u397 = nil
+                    n10 = 0
+                    u399 = false
+
+                    if not _G.AutoSleep then
+                        _G.IsSleeping = false
+                    end
+                end
+
+                local v677 = false
+                local v678 = false
+
+                if PlayerGui then
+                    local DayNightNotifGui = PlayerGui:FindFirstChild("DayNightNotifGui")
+
+                    if DayNightNotifGui then
+                        local NotifLabel = DayNightNotifGui:FindFirstChild("NotifLabel")
+
+                        if NotifLabel and NotifLabel.Visible then
+                            local v681 = string.lower(NotifLabel.Text)
+
+                            if string.find(v681, "tidur siang selesai") or string.find(v681, "buff +10%") then
+                                if not u395 then
+                                    v678 = true
+                                end
+
+                                u395 = true
+                            elseif string.find(v681, "tidur siang...") then
+                                v677 = true
+                            elseif string.find(v681, "pagi telah") then
+                                u399 = true
+                            end
+                        end
+                    end
+                end
+
+                local Character = t1[5].Character
+                local v683 = Character and Character:FindFirstChild("HumanoidRootPart")
+
+                if v678 and (v683 and u396) then
+                    _G.IsSleeping = false
+                    v683.CFrame = CFrame.new(u396 + Vector3.new(0, 3, 0))
+                    t1[4]("AUTO TIDUR SIANG", "Tidur siang selesai! Buff +10% diterima.", 3)
+                    u396 = nil
+                end
+
+                if DayNightPhase == "Day" and (u399 and not u395) then
+                    _G.IsSleeping = true
+
+                    local Sleep = workspace:FindFirstChild("Sleep")
+
+                    if Sleep then
+                        if not u397 or not u397.Parent then
+                            u397 = v42(Sleep)
+                            n10 = tick()
+                        end
+
+                        if u397 and (not v677 and (n10 > 0 and tick() - n10 > 5)) then
+                            u397 = v42(Sleep)
+                            n10 = tick()
+                            t1[4]("AUTO TIDUR SIANG", "Kasur penuh! Mencari kasur lain...", 2)
+                        end
+
+                        if u397 then
+                            local ProximityPrompt = u397:FindFirstChildOfClass("ProximityPrompt")
+
+                            if ProximityPrompt then
+                                local v686 = string.lower(ProximityPrompt.ActionText or "")
+
+                                if string.find(v686, "tidur") then
+                                    local v687 = u397
+                                    local v688 = t1[28](v687)
+
+                                    if v683 and v688 then
+                                        if not v677 then
+                                            if not u396 and (v683.Position - v688).Magnitude > 20 then
+                                                u396 = v683.Position
+                                            end
+
+                                            if (v683.Position - v688).Magnitude > 5 then
+                                                v683.CFrame = CFrame.new(v688 + Vector3.new(0, 3, 0))
+                                                task.wait(0.5)
+                                            end
+
+                                            fireproximityprompt(ProximityPrompt)
+                                            task.wait(1)
+
+                                            return
+                                        end
+
+                                        if (v683.Position - v688).Magnitude > 10 then
+                                            v683.CFrame = CFrame.new(v688 + Vector3.new(0, 3, 0))
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(0.5)
+        end
+        if not _G.AutoSleep then
+            _G.IsSleeping = false
+        end
+    end)
+end
+})
+local v43 = t1[3]:Tab({
+	Title = "EMOTE",
+	Icon = "smile"
+})
+t1[67] = {
+	["SHAKE THAT THANG"] = "rbxassetid://118364690209655",
+	Dougie = "rbxassetid://93650537970037",
+	Stretch = "rbxassetid://119377401608190"
+}
+t1[68] = {
+	["Toy Idle"] = "rbxassetid://10921301576",
+	["Toy Run"] = "rbxassetid://10921306285",
+	["Toy Walk"] = "rbxassetid://10921312010",
+	["Toy Jump"] = "rbxassetid://10921308158",
+	["Bubbly Idle"] = "rbxassetid://10921054344",
+	["Bubbly Run"] = "rbxassetid://10921057244",
+	["Bubbly Walk"] = "rbxassetid://10980888364",
+	["Bubbly Jump"] = "rbxassetid://10921062673",
+	["Cartoony Idle"] = "rbxassetid://10921071918",
+	["Cartoony Run"] = "rbxassetid://10921076136",
+	["Cartoony Walk"] = "rbxassetid://10921082452",
+	["Cartoony Jump"] = "rbxassetid://10921078135",
+	["Adidas Com Idle"] = "rbxassetid://122257458498464",
+	["Adidas Com Run"] = "rbxassetid://82598234841035",
+	["Adidas Com Walk"] = "rbxassetid://122150855457006",
+	["Adidas Com Jump"] = "rbxassetid://75290611992385",
+	["Stylish Idle"] = "rbxassetid://10921272275",
+	["Stylish Run"] = "rbxassetid://10921276116",
+	["Stylish Walk"] = "rbxassetid://10921283326",
+	["Stylish Jump"] = "rbxassetid://10921279832",
+	["Zombie Idle"] = "rbxassetid://10921344533",
+	["Zombie Run"] = "rbxassetid://616163682",
+	["Zombie Walk"] = "rbxassetid://10921355261",
+	["Zombie Jump"] = "rbxassetid://10921351278",
+	["Ninja Idle"] = "rbxassetid://10921155160",
+	["Ninja Run"] = "rbxassetid://10921157929",
+	["Ninja Walk"] = "rbxassetid://10921162768",
+	["Ninja Jump"] = "rbxassetid://10921160088",
+	["Vampire Idle"] = "rbxassetid://10921315373",
+	["Vampire Run"] = "rbxassetid://10921320299",
+	["Vampire Walk"] = "rbxassetid://10921326949",
+	["Vampire Jump"] = "rbxassetid://10921322186"
+}
+t1[69] = nil
+t1[70] = nil
+t1[71] = function(p38, p39)
+    local t10 = {}
+
+    if p39 then
+        p39 = tostring(p39):lower()
+    end
+
+    local v193 = p39 or ""
+
+    for k, _ in pairs(p38) do
+        local v196 = k
+
+        if v193 == "" or tostring(v196):lower():find(v193, 1, true) then
+            table.insert(t10, v196)
+        end
+    end
+
+    if #t10 == 0 then
+        table.insert(t10, "- Tidak ditemukan -")
+    end
+
+    return t10
+end
+t1[72] = nil
+t1[69] = nil
+t1[73] = function(p40)
+    local Character = t1[5].Character
+
+    if not Character then
+        return
+    end
+
+    local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+
+    if not Humanoid then
+        return
+    end
+
+    local v205 = Humanoid:FindFirstChildOfClass("Animator") or Humanoid
+
+    if t1[69] then
+        t1[69]:Stop()
+    end
+
+    local Animation = Instance.new("Animation")
+
+    Animation.AnimationId = p40
+    t1[69] = v205:LoadAnimation(Animation)
+    t1[69].Looped = true
+    t1[69]:Play()
+end
+t1[74] = function()
+    if t1[69] then
+        t1[69]:Stop()
+    end
+
+    t1[69] = nil
+    t1[4]("Berhasil", "Emote dihentikan.")
+end
+t1[75] = nil
+t1[76] = nil
+t1[70] = {}
+t1[77] = function()
+    local Character = t1[5].Character
+
+    if not Character or not Character:FindFirstChild("Animate") then
+        return
+    end
+
+    if next(t1[70]) == nil then
+        for _, child in ipairs(Character.Animate:GetChildren()) do
+            if child:IsA("StringValue") or child:IsA("Folder") then
+                t1[70][child.Name] = {}
+
+                for _, child3 in pairs(child:GetChildren()) do
+                    if child3:IsA("Animation") then
+                        t1[70][child.Name][child3.Name] = child3.AnimationId
+                    end
+                end
+            end
+        end
+    end
+end
+local function v44(p41, p42)
+    local Character = t1[5].Character
+
+    if not Character or not Character:FindFirstChild("Animate") then
+        return t1[4]("Error", "Script Animate bawaan tidak ditemukan di karaktermu.")
+    end
+
+    t1[77]()
+
+    local Animate = Character.Animate
+    local v219 = string.lower(p41)
+    local t11 = {}
+
+    if string.find(v219, "run") then
+        table.insert(t11, "run")
+    elseif string.find(v219, "walk") then
+        table.insert(t11, "walk")
+    elseif string.find(v219, "idle") then
+        table.insert(t11, "idle")
+    elseif string.find(v219, "jump") then
+        table.insert(t11, "jump")
+    elseif string.find(v219, "fall") then
+        table.insert(t11, "fall")
+    else
+        table.insert(t11, "walk")
+        table.insert(t11, "run")
+    end
+
+    for _, v in ipairs(t11) do
+        local v5 = Animate:FindFirstChild(v)
+
+        if v5 then
+            local GetChildren = v5.GetChildren
+
+            for _, v6 in pairs(GetChildren(v5)) do
+                if v6:IsA("Animation") then
+                    v6.AnimationId = p42
+                end
+            end
+        end
+    end
+
+    Animate.Disabled = true
+    task.wait(0.05)
+    Animate.Disabled = false
+    t1[4]("Sukses", p41 .. " berhasil diaplikasikan!")
+end
+t1[78] = function()
+    local Character = t1[5].Character
+
+    if not Character or not Character:FindFirstChild("Animate") then
+        return
+    end
+
+    local Animate = Character.Animate
+
+    for k, v in pairs(t1[70]) do
+        local k2 = Animate:FindFirstChild(k)
+
+        if k2 then
+            for k3, v8 in pairs(v) do
+                local k3_2 = k2:FindFirstChild(k3)
+
+                if k3_2 and k3_2:IsA("Animation") then
+                    k3_2.AnimationId = v8
+                end
+            end
+        end
+    end
+
+    Animate.Disabled = true
+    task.wait(0.05)
+    Animate.Disabled = false
+    t1[4]("Sukses", "Gerakan dikembalikan ke default.")
+end
+v43:Section({
+	Title = "Categori Emote"
+})
+t1[79] = nil
+v43:Input({
+	Title = "Search Emote",
+	Flag = "Emote_Search",
+	Placeholder = "Ketik nama emote...",
+	Callback = function(p43)
+    if t1[79] then
+        local v228 = t1[79]
+        local t12 = { t1[71](t1[67], p43) }
+
+        v228:Refresh(v2(t12))
+    end
+end
+})
+local Dropdown = v43.Dropdown
+local v46 = t1[71](t1[67])
+
+t1[79] = Dropdown(v43, {
+	Title = "Pilih Emote",
+	Flag = "Emote_Pilih",
+	Values = v46,
+	Callback = function(p44)
+    t1[72] = t1[67][p44]
+end
+})
+v43:Button({
+	Title = "Play Emote",
+	Callback = function()
+    if t1[72] then
+        t1[73](t1[72])
+
+        return
+    end
+
+    t1[4]("Error", "Pilih emote dari list terlebih dahulu!")
+end
+})
+v43:Button({
+	Title = "Stop Emote",
+	Callback = function()
+    t1[74]()
+end
+})
+v43:Section({
+	Title = "Categori Animasi (Ubah Gaya Jalan)"
+})
+t1[80] = nil
+v43:Input({
+	Title = "Search Animasi",
+	Flag = "Animasi_Search",
+	Placeholder = "Ketik nama animasi...",
+	Callback = function(p45)
+    if t1[80] then
+        t1[80]:Refresh(t1[71](t1[68], p45))
+    end
+end
+})
+local v47 = t1[71](t1[68])
+
+t1[80] = v43:Dropdown({
+	Title = "Pilih Animasi",
+	Flag = "Animasi_Pilih",
+	Values = v47,
+	Callback = function(p46)
+    t1[75] = p46
+    t1[76] = t1[68][p46]
+end
+})
+v43:Button({
+	Title = "Apply Animasi (Override)",
+	Callback = function()
+    if t1[76] and t1[75] then
+        v44(t1[75], t1[76])
+
+        return
+    end
+
+    t1[4]("Error", "Pilih animasi dari list terlebih dahulu!")
+end
+})
+v43:Button({
+	Title = "Reset Default Animasi",
+	Callback = function()
+    t1[78]()
+end
+})
+local v48 = t1[3]:Tab({
+	Title = "SAWIT",
+	Icon = "leaf"
+})
+v48:Section({
+	Title = "Auto Sell By Rarity"
+})
+t1[81] = {
+	Sawit = true
+}
+t1[82] = {
+	Common = true
+}
+t1[83] = 3
+v48:Dropdown({
+	Title = "Pilih Jenis Buah",
+	Desc = "Bisa lebih dari 1 pilihan",
+	Flag = "Sawit_JenisBuah",
+	Multi = true,
+	Values = {
+		"Sawit",
+		"Durian"
+	},
+	Value = { "Sawit" },
+	Callback = function(p47)
+    t1[81] = t1[33](p47)
+end
+})
+v48:Dropdown({
+	Title = "Pilih Rarity",
+	Desc = "Bisa lebih dari 1 pilihan",
+	Flag = "Sawit_Rarity",
+	Multi = true,
+	Values = {
+		"Common",
+		"Uncommon",
+		"Rare",
+		"Epic",
+		"Super",
+		"Legendary",
+		"Mythic",
+		"Celestial"
+	},
+	Value = { "Common" },
+	Callback = function(p48)
+    t1[82] = t1[33](p48)
+end
+})
+v48:Input({
+	Title = "Interval Auto Sell",
+	Desc = "Detik",
+	Flag = "Sawit_Interval",
+	Placeholder = "Min: 1 detik. Default: 3",
+	Callback = function(p49)
+    local num = tonumber(p49)
+
+    if num and num >= 1 then
+        t1[83] = num
+
+        return
+    end
+
+    t1[83] = 3
+end
+})
+v48:Toggle({
+	Title = "Auto Sell Selected Rarity",
+	Locked = v31,
+	Flag = "Sawit_AutoSell",
+	Value = false,
+	Callback = function(p50)
+    _G.AutoSellRarity = p50
+
+    if p50 and t1[27].AutoSellRarityLoopRunning then
+        return
+    end
+
+    if not p50 then
+        return
+    end
+
+    t1[27].AutoSellRarityLoopRunning = true
+    task.spawn(function()
+        while _G.AutoSellRarity do
+            local u400 = false
+
+            local function v401(p51)
+                if u400 or not p51 then
+                    return
+                end
+
+                for _, child in ipairs(p51:GetChildren()) do
+                    if not _G.AutoSellRarity then
+                        return
+                    end
+
+                    if child:IsA("Tool") then
+                        local v692 = string.lower(child.Name)
+                        local v693 = string.lower(child.ToolTip or "")
+                        local s1
+                        if string.find(v692, "sawit") or string.find(v692, "palm") then
+                            s1 = "Sawit"
+                        end
+                        if string.find(v692, "durian") then
+                            s1 = "Durian"
+                        end
+                        if not (s1 and t1[81][s1]) then
+                            continue
+                        end
+                        local s2
+                        if string.find(v693, "common") or string.find(v693, "biasa") then
+                            s2 = "Common"
+                        elseif string.find(v693, "uncommon") or string.find(v693, "tidak biasa") then
+                            s2 = "Uncommon"
+                        elseif string.find(v693, "rare") or string.find(v693, "langka") then
+                            s2 = "Rare"
+                        elseif string.find(v693, "epic") or string.find(v693, "epik") then
+                            s2 = "Epic"
+                        elseif string.find(v693, "super") then
+                            s2 = "Super"
+                        elseif string.find(v693, "legendary") or string.find(v693, "legendaris") then
+                            s2 = "Legendary"
+                        elseif string.find(v693, "mythic") or string.find(v693, "mitos") then
+                            s2 = "Mythic"
+                        elseif string.find(v693, "celestial") or string.find(v693, "surgawi") then
+                            s2 = "Celestial"
+                        end
+                        local u696 = child:GetAttribute("FruitId") or child:GetAttribute("FruitID")
+                        if u696 == nil and child:FindFirstChild("FruitId") then
+                            u696 = child.FruitId.Value
+                        end
+                        if not (s2 and (t1[82][s2] and u696)) then
+                            continue
+                        end
+                        pcall(function()
+                            t1[10]:InvokeServer("SELL_FRUIT", u696, s1)
+                        end)
+                        u400 = true
+
+                        return
+                    end
+                end
+            end
+
+            v401(t1[5].Backpack)
+
+            if not u400 then
+                v401(t1[5].Character)
+            end
+
+            if u400 then
+                task.wait(t1[83])
+            else
+                task.wait(1)
+            end
+        end
+
+        t1[27].AutoSellRarityLoopRunning = false
+    end)
+end
+})
+v48:Section({
+	Title = "Sistem Sawit"
+})
+v48:Toggle({
+	Title = "Notif Sawit/Durian",
+	Flag = "Sawit_Notif",
+	Value = false,
+	Callback = function(p52)
+    _G.NotifReadySawit = p52
+
+    if p52 and t1[27].NotifReadySawitLoopRunning then
+        return
+    end
+
+    if not p52 then
+        return
+    end
+
+    local str = tostring(t1[5].UserId)
+
+    t1[27].NotifReadySawitLoopRunning = true
+    task.spawn(function()
+        while _G.NotifReadySawit do
+            local v402 = false
+            local v403 = false
+            local ActiveCrops = workspace:FindFirstChild("ActiveCrops")
+
+            if ActiveCrops then
+                local GetChildren = ActiveCrops.GetChildren
+
+                for _, v in ipairs(GetChildren(ActiveCrops)) do
+                    if string.find(v.Name, "Crop_" .. str) then
+                        local Phase = v:GetAttribute("Phase")
+
+                        if Phase == nil then
+                            local Phase4 = v:FindFirstChild("Phase")
+
+                            if Phase4 then
+                                Phase = Phase4.Value
+                            end
+                        end
+
+                        local PhaseModelName = v:GetAttribute("PhaseModelName")
+
+                        if PhaseModelName == nil then
+                            local PhaseModelName4 = v:FindFirstChild("PhaseModelName")
+
+                            if PhaseModelName4 then
+                                PhaseModelName = PhaseModelName4.Value
+                            end
+                        end
+
+                        if Phase and (PhaseModelName and tostring(Phase) == "3") then
+                            local v412 = tostring(PhaseModelName):lower()
+
+                            if string.find(v412, "sawit") then
+                                v402 = true
+                            end
+
+                            if string.find(v412, "durian") then
+                                v403 = true
+                            end
+                        end
+                    end
+                end
+            end
+
+            if v402 or v403 then
+                local v413 = if not (v402 and v403) then not v402 and "Durian" or "Sawit" else "Sawit & Durian"
+
+                t1[4]("PANEN TIBA", "Tanaman " .. v413 .. " kamu sudah siap dipanen!", 30)
+                task.wait(30)
+            else
+                task.wait(2)
+            end
+        end
+
+        t1[27].NotifReadySawitLoopRunning = false
+    end)
+end
+})
+v48:Button({
+	Title = "Sell Sawit GUI",
+	Desc = "Open NPC Menu Sawit/Durian",
+	Callback = function()
+    local SellCrop = game:GetService("ReplicatedStorage").Remotes.TutorialRemotes.SellCrop
+
+    if firesignal then
+        firesignal(SellCrop.OnClientEvent, nil, "OPEN_FRUIT_GUI")
+        t1[4]("SAWIT", "Membuka GUI Sawit...", 3)
+
+        return
+    end
+
+    t1[4]("ERROR", "Executor-mu tidak support 'firesignal'!", 5)
+end
+})
+local v49 = t1[3]:Tab({
+	Title = "CHICKEN",
+	Icon = "egg"
+})
+v49:Section({
+	Title = "Auto Chicken Services"
+})
+t1[38] = v49:Toggle({
+	Title = "Auto Give eat chicken",
+	Locked = v31,
+	Flag = "Chicken_Feed",
+	Value = false,
+	Callback = function(p53)
+    _G.AutoChicken = p53
+
+    if p53 and t1[27].AutoChickenLoopRunning then
+        return
+    end
+
+    if not p53 then
+        return
+    end
+
+    local v242 = string.lower(t1[5].Name)
+
+    t1[27].AutoChickenLoopRunning = true
+    task.spawn(function()
+        while _G.AutoChicken do
+            pcall(function()
+                if _G.IsSleeping then
+                    return
+                end
+
+                for _, child in ipairs(workspace:GetChildren()) do
+                    if string.find(string.lower(child.Name), "coopplot") and string.find(string.lower(child.Name), v242) then
+                        local SlotMarkers = child:FindFirstChild("SlotMarkers")
+
+                        if SlotMarkers then
+                            for _, child4 in ipairs(SlotMarkers:GetChildren()) do
+                                local ProximityPrompt = child4:FindFirstChildOfClass("ProximityPrompt")
+                                local v703 = t1[28](child4)
+
+                                if ProximityPrompt and v703 then
+                                    local v704 = string.lower(ProximityPrompt.ActionText or "")
+
+                                    if string.find(v704, "feed") or (string.find(v704, "beri") or string.find(v704, "makan") and (not string.find(v704, "eating") and not string.find(v704, "sedang"))) then
+                                        local Character = t1[5].Character
+                                        local v706 = Character and Character:FindFirstChild("HumanoidRootPart")
+                                        local v707 = t1[28](v706)
+
+                                        if v707 and (v707 - v703).Magnitude < t1[35] then
+                                            fireproximityprompt(ProximityPrompt)
+                                            task.wait(0.3)
+                                            t1[31]()
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(0.5)
+        end
+
+        t1[27].AutoChickenLoopRunning = false
+    end)
+end
+})
+t1[39] = v49:Toggle({
+	Title = "Auto Panen Telur (Dekati)",
+	Flag = "Chicken_Panen",
+	Value = false,
+	Callback = function(p54)
+    _G.AutoEgg = p54
+
+    if p54 and t1[27].AutoEggLoopRunning then
+        return
+    end
+
+    if not p54 then
+        return
+    end
+
+    local v244 = string.lower(t1[5].Name)
+
+    t1[27].AutoEggLoopRunning = true
+    task.spawn(function()
+        while _G.AutoEgg do
+            pcall(function()
+                if _G.IsSleeping then
+                    return
+                end
+
+                for _, child in ipairs(workspace:GetChildren()) do
+                    if string.find(string.lower(child.Name), "coopplot") and string.find(string.lower(child.Name), v244) then
+                        for _, child5 in ipairs(child:GetChildren()) do
+                            if string.find(child5.Name, "EggVisual") then
+                                local ProximityPrompt = child5:FindFirstChildOfClass("ProximityPrompt")
+                                local v713 = t1[28](child5)
+
+                                if ProximityPrompt and v713 then
+                                    local Character = t1[5].Character
+                                    local v715 = Character and Character:FindFirstChild("HumanoidRootPart")
+                                    local v716 = t1[28](v715)
+
+                                    if v716 and (v716 - v713).Magnitude < t1[35] then
+                                        fireproximityprompt(ProximityPrompt)
+                                    end
+                                end
+                            end
+                        end
+
+                        local SlotMarkers = child:FindFirstChild("SlotMarkers")
+
+                        if SlotMarkers then
+                            local GetChildren = SlotMarkers.GetChildren
+
+                            for _, v in ipairs(GetChildren(SlotMarkers)) do
+                                local ProximityPrompt = v:FindFirstChildOfClass("ProximityPrompt")
+                                local v722 = t1[28](v)
+
+                                if ProximityPrompt and v722 then
+                                    local v723 = string.lower(ProximityPrompt.ActionText or "")
+
+                                    if string.find(v723, "interact") or (string.find(v723, "panen") or string.find(v723, "ambil")) then
+                                        local Character = t1[5].Character
+                                        local v725 = Character and Character:FindFirstChild("HumanoidRootPart")
+                                        local v726 = t1[28](v725)
+
+                                        if v726 and (v726 - v722).Magnitude < t1[35] then
+                                            fireproximityprompt(ProximityPrompt)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(0.5)
+        end
+
+        t1[27].AutoEggLoopRunning = false
+    end)
+end
+})
+v49:Section({
+	Title = "Auto Sell Egg By Rarity"
+})
+t1[84] = {
+	Common = true
+}
+t1[85] = 3
+v49:Dropdown({
+	Title = "Pilih Rarity Telur",
+	Desc = "Bisa lebih dari 1 pilihan",
+	Flag = "Chicken_RarityTelur",
+	Multi = true,
+	Values = {
+		"Common",
+		"Uncommon",
+		"Rare",
+		"Epic",
+		"Super",
+		"Legendary",
+		"Mythic",
+		"Celestial"
+	},
+	Value = { "Common" },
+	Callback = function(p55)
+    t1[84] = t1[33](p55)
+end
+})
+v49:Input({
+	Title = "Interval Auto Sell Telur",
+	Desc = "Detik",
+	Flag = "Chicken_Interval",
+	Placeholder = "Min: 1 detik. Default: 3",
+	Callback = function(p56)
+    local num = tonumber(p56)
+
+    if num and num >= 1 then
+        t1[85] = num
+
+        return
+    end
+
+    t1[85] = 3
+end
+})
+v49:Toggle({
+	Title = "Auto Sell Selected Rarity Egg",
+	Locked = v31,
+	Flag = "Chicken_AutoSell",
+	Value = false,
+	Callback = function(p57)
+    _G.AutoSellEggRarity = p57
+
+    if p57 and t1[27].AutoSellEggLoopRunning then
+        return
+    end
+
+    if not p57 then
+        return
+    end
+
+    t1[27].AutoSellEggLoopRunning = true
+    task.spawn(function()
+        while _G.AutoSellEggRarity do
+            local u414 = false
+
+            local function v415(p58)
+                local v728 = u414
+
+                if not v728 then
+                    v728 = not p58
+                end
+
+                if v728 then
+                    return
+                end
+
+                for _, child in ipairs(p58:GetChildren()) do
+                    if not _G.AutoSellEggRarity then
+                        return
+                    end
+
+                    local v731 = string.lower(child.Name)
+
+                    if child:IsA("Tool") and string.find(v731, "telur") or string.find(v731, "egg") then
+                        local v732 = child:GetAttribute("Rarity") or child:GetAttribute("EggRarity")
+
+                        if not v732 then
+                            local v733 = string.lower(child.ToolTip or "")
+
+                            if string.find(v733, "common") or string.find(v733, "biasa") then
+                                v732 = "Common"
+                            elseif string.find(v733, "uncommon") or string.find(v733, "tidak biasa") then
+                                v732 = "Uncommon"
+                            elseif string.find(v733, "rare") or string.find(v733, "langka") then
+                                v732 = "Rare"
+                            elseif string.find(v733, "epic") or string.find(v733, "epik") then
+                                v732 = "Epic"
+                            elseif string.find(v733, "super") then
+                                v732 = "Super"
+                            elseif string.find(v733, "legendary") or string.find(v733, "legendaris") then
+                                v732 = "Legendary"
+                            elseif string.find(v733, "mythic") or string.find(v733, "mitos") then
+                                v732 = "Mythic"
+                            elseif string.find(v733, "celestial") or string.find(v733, "surgawi") then
+                                v732 = "Celestial"
+                            end
+                        end
+
+                        local v734 = child:GetAttribute("EggFruitId") or child:GetAttribute("EggId")
+
+                        if not (v732 and (t1[84][v732] and v734)) then
+                            continue
+                        end
+
+                        pcall(function()
+                            t1[10]:InvokeServer("SELL_EGG", v734, 1)
+                        end)
+                        u414 = true
+
+                        return
+                    end
+                end
+            end
+
+            v415(t1[5].Backpack)
+
+            if not u414 then
+                v415(t1[5].Character)
+            end
+
+            if u414 then
+                task.wait(t1[85])
+            else
+                task.wait(1)
+            end
+        end
+
+        t1[27].AutoSellEggLoopRunning = false
+    end)
+end
+})
+v49:Section({
+	Title = "Sell Egg GUI"
+})
+v49:Toggle({
+	Title = "Notif Telur Ready",
+	Flag = "Chicken_Notif",
+	Value = false,
+	Callback = function(p59)
+    _G.NotifEgg = p59
+
+    if p59 and t1[27].NotifEggLoopRunning then
+        return
+    end
+
+    if not p59 then
+        return
+    end
+
+    local v250 = string.lower(t1[5].Name)
+
+    t1[27].NotifEggLoopRunning = true
+    task.spawn(function()
+        while _G.NotifEgg do
+            local u416 = false
+            pcall(function()
+                local g741
+                local g748
+                local v742
+                for _, child in ipairs(workspace:GetChildren()) do
+                    if string.find(string.lower(child.Name), "coopplot") and string.find(string.lower(child.Name), v250) then
+                        local GetChildren = child.GetChildren
+                        local v738, v739, v740 = ipairs(GetChildren(child))
+
+                        repeat
+                            repeat
+                                if not g741 then
+                                    v740, v742 = v738(v739, v740)
+                                end
+
+                                if g741 or not v740 then
+                                    g741 = false
+
+                                    local SlotMarkers = child:FindFirstChild("SlotMarkers")
+
+                                    if SlotMarkers and not u416 then
+                                        for _, child6 in ipairs(SlotMarkers:GetChildren()) do
+                                            local ProximityPrompt = child6:FindFirstChildOfClass("ProximityPrompt")
+
+                                            if not ProximityPrompt then
+                                                continue
+                                            end
+
+                                            local v747 = string.lower(ProximityPrompt.ActionText or "")
+
+                                            if string.find(v747, "interact") or (string.find(v747, "panen") or string.find(v747, "ambil")) then
+                                                u416 = true
+                                                g748 = true
+                                            end
+
+                                            if g748 then
+                                                break
+                                            end
+                                        end
+                                    end
+
+                                    if not g748 then
+                                        g748 = true
+                                    end
+                                end
+
+                                if g748 then
+                                    break
+                                end
+
+                                if g748 then
+                                    break
+                                end
+                            until string.find(v742.Name, "EggVisual")
+
+                            if g748 then
+                                break
+                            end
+
+                            if g748 then
+                                break
+                            end
+
+                            u416 = true
+                            g741 = true
+                        until not g741
+                    end
+
+                    g748 = false
+
+                    if u416 then
+                        return
+                    end
+                end
+            end)
+            if u416 then
+                t1[4]("KANDANG AYAM", "Telur di kandangmu sudah siap diambil!", 15)
+                task.wait(15)
+            else
+                task.wait(2)
+            end
+        end
+
+        t1[27].NotifEggLoopRunning = false
+    end)
+end
+})
+v49:Button({
+	Title = "Sell Egg",
+	Desc = "Open Sell Egg NPC",
+	Callback = function()
+    local SellCrop = game:GetService("ReplicatedStorage").Remotes.TutorialRemotes.SellCrop
+
+    if firesignal then
+        firesignal(SellCrop.OnClientEvent, nil, "OPEN_EGG_GUI")
+        t1[4]("CHICKEN", "Membuka GUI Telur...", 3)
+
+        return
+    end
+
+    t1[4]("ERROR", "Executor-mu tidak support 'firesignal'!", 5)
+end
+})
+local v50 = t1[3]:Tab({
+	Title = "COW",
+	Icon = "box"
+})
+v50:Section({
+	Title = "Auto Cow Services"
+})
+t1[44] = v50:Toggle({
+	Title = "Auto INT Feed Cow",
+	Locked = v31,
+	Flag = "Cow_Feed",
+	Value = false,
+	Callback = function(p60)
+    _G.AutoCowFeed = p60
+
+    if p60 and t1[27].AutoCowFeedLoopRunning then
+        return
+    end
+
+    if not p60 then
+        return
+    end
+
+    local v253 = string.lower(t1[5].Name)
+
+    t1[27].AutoCowFeedLoopRunning = true
+    task.spawn(function()
+        while _G.AutoCowFeed do
+            pcall(function()
+                if _G.IsSleeping then
+                    return
+                end
+
+                for _, child in ipairs(workspace:GetChildren()) do
+                    local v751 = string.lower(child.Name)
+
+                    if string.find(v751, "barn_plot_") and string.find(v751, v253) then
+                        local SlotMarkers = child:FindFirstChild("SlotMarkers")
+
+                        if SlotMarkers then
+                            local GetChildren = SlotMarkers.GetChildren
+
+                            for _, v in ipairs(GetChildren(SlotMarkers)) do
+                                local ProximityPrompt = v:FindFirstChildOfClass("ProximityPrompt")
+                                local v757 = t1[28](v)
+
+                                if ProximityPrompt and v757 then
+                                    local v758 = string.lower(ProximityPrompt.ActionText or "")
+
+                                    if string.find(v758, "feed") or string.find(v758, "makan") and (not string.find(v758, "eating") and not string.find(v758, "sedang")) then
+                                        local Character = t1[5].Character
+                                        local v760 = Character and Character:FindFirstChild("HumanoidRootPart")
+                                        local v761 = t1[28](v760)
+
+                                        if v761 and (v761 - v757).Magnitude < t1[35] then
+                                            fireproximityprompt(ProximityPrompt)
+                                            task.wait(0.3)
+                                            t1[31]()
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(0.5)
+        end
+
+        t1[27].AutoCowFeedLoopRunning = false
+    end)
+end
+})
+t1[45] = v50:Toggle({
+	Title = "Auto INT Collect Milk",
+	Flag = "Cow_Collect",
+	Value = false,
+	Callback = function(p61)
+    _G.AutoCowMilk = p61
+
+    if p61 and t1[27].AutoCowMilkLoopRunning then
+        return
+    end
+
+    if not p61 then
+        return
+    end
+
+    local v255 = string.lower(t1[5].Name)
+
+    t1[27].AutoCowMilkLoopRunning = true
+    task.spawn(function()
+        while _G.AutoCowMilk do
+            pcall(function()
+                if _G.IsSleeping then
+                    return
+                end
+
+                for _, child in ipairs(workspace:GetChildren()) do
+                    local v764 = string.lower(child.Name)
+
+                    if string.find(v764, "barn_plot_") and string.find(v764, v255) then
+                        local GetChildren = child.GetChildren
+
+                        for _, v in ipairs(GetChildren(child)) do
+                            if string.find(v.Name, "MilkVisual") then
+                                local ProximityPrompt = v:FindFirstChildOfClass("ProximityPrompt")
+                                local v769 = t1[28](v)
+
+                                if ProximityPrompt and v769 then
+                                    local Character = t1[5].Character
+                                    local v771 = Character and Character:FindFirstChild("HumanoidRootPart")
+                                    local v772 = t1[28](v771)
+
+                                    if v772 and (v772 - v769).Magnitude < t1[35] then
+                                        fireproximityprompt(ProximityPrompt)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(0.5)
+        end
+
+        t1[27].AutoCowMilkLoopRunning = false
+    end)
+end
+})
+v50:Section({
+	Title = "Auto Sell Milk By Rarity"
+})
+t1[86] = {
+	Common = true
+}
+t1[87] = 3
+v50:Dropdown({
+	Title = "Pilih Rarity Susu",
+	Desc = "Bisa lebih dari 1 pilihan",
+	Flag = "Cow_RaritySusu",
+	Multi = true,
+	Values = {
+		"Common",
+		"Uncommon",
+		"Rare",
+		"Epic",
+		"Super",
+		"Legendary",
+		"Mythic",
+		"Celestial"
+	},
+	Value = { "Common" },
+	Callback = function(p62)
+    t1[86] = t1[33](p62)
+end
+})
+v50:Input({
+	Title = "Interval Auto Sell Susu",
+	Desc = "Detik",
+	Flag = "Cow_IntervalSell",
+	Placeholder = "Min: 1 detik. Default: 3",
+	Callback = function(p63)
+    local num = tonumber(p63)
+
+    if num and num >= 1 then
+        t1[87] = num
+
+        return
+    end
+
+    t1[87] = 3
+end
+})
+v50:Toggle({
+	Title = "Auto Sell Selected Rarity Milk",
+	Locked = v31,
+	Flag = "Cow_AutoSellMilk",
+	Value = false,
+	Callback = function(p64)
+    _G.AutoSellMilkRarity = p64
+
+    if p64 and t1[27].AutoSellMilkLoopRunning then
+        return
+    end
+
+    if not p64 then
+        return
+    end
+
+    t1[27].AutoSellMilkLoopRunning = true
+    task.spawn(function()
+        while _G.AutoSellMilkRarity do
+            local u417 = false
+
+            local function v418(p65)
+                if u417 or not p65 then
+                    return
+                end
+
+                for _, child in ipairs(p65:GetChildren()) do
+                    if not _G.AutoSellMilkRarity then
+                        return
+                    end
+
+                    local v776 = string.lower(child.Name)
+
+                    if child:IsA("Tool") and string.find(v776, "susu") or string.find(v776, "milk") then
+                        local MilkRarity = child:GetAttribute("MilkRarity")
+
+                        if not MilkRarity then
+                            local v778 = string.lower(child.ToolTip or "")
+
+                            if string.find(v778, "common") or string.find(v778, "biasa") then
+                                MilkRarity = "Common"
+                            elseif string.find(v778, "uncommon") or string.find(v778, "tidak biasa") then
+                                MilkRarity = "Uncommon"
+                            elseif string.find(v778, "rare") or string.find(v778, "langka") then
+                                MilkRarity = "Rare"
+                            elseif string.find(v778, "epic") or string.find(v778, "epik") then
+                                MilkRarity = "Epic"
+                            elseif string.find(v778, "super") then
+                                MilkRarity = "Super"
+                            elseif string.find(v778, "legendary") or string.find(v778, "legendaris") then
+                                MilkRarity = "Legendary"
+                            elseif string.find(v778, "mythic") or string.find(v778, "mitos") then
+                                MilkRarity = "Mythic"
+                            elseif string.find(v778, "celestial") or string.find(v778, "surgawi") then
+                                MilkRarity = "Celestial"
+                            end
+                        end
+
+                        local v779 = child:GetAttribute("MilkId") or child:GetAttribute("FruitId")
+
+                        if not (MilkRarity and (t1[86][MilkRarity] and v779)) then
+                            continue
+                        end
+
+                        pcall(function()
+                            t1[10]:InvokeServer("SELL_MILK", v779, 1)
+                        end)
+                        u417 = true
+
+                        return
+                    end
+                end
+            end
+
+            v418(t1[5].Backpack)
+
+            if not u417 then
+                v418(t1[5].Character)
+            end
+
+            if u417 then
+                task.wait(t1[87])
+            else
+                task.wait(1)
+            end
+        end
+
+        t1[27].AutoSellMilkLoopRunning = false
+    end)
+end
+})
+v50:Section({
+	Title = "Sell Milk GUI"
+})
+v50:Button({
+	Title = "Menu Sell Milk",
+	Desc = "Open Sell Milk NPC",
+	Callback = function()
+    local SellCrop = game:GetService("ReplicatedStorage").Remotes.TutorialRemotes.SellCrop
+
+    if firesignal then
+        firesignal(SellCrop.OnClientEvent, nil, "OPEN_MILK_GUI")
+        t1[4]("COW", "Membuka GUI Susu Sapi...", 3)
+
+        return
+    end
+
+    t1[4]("ERROR", "Executor-mu tidak support 'firesignal'!", 5)
+end
+})
+local v51 = t1[3]:Tab({
+	Title = "MISC",
+	Icon = "settings"
+})
+v51:Section({
+	Title = "Utility"
+})
+v51:Toggle({
+	Title = "Hide Identitas",
+	Flag = "Misc_HideID",
+	Value = false,
+	Callback = function(p66)
+    _G.HideIdentitas = p66
+
+    if p66 and t1[27].HideIdentitasLoopRunning then
+        return
+    end
+
+    if not p66 then
+        return
+    end
+
+    t1[27].HideIdentitasLoopRunning = true
+    task.spawn(function()
+        local Name = t1[5].Name
+        local DisplayName = t1[5].DisplayName
+
+        while _G.HideIdentitas do
+            pcall(function()
+                local PlayerGui = t1[5]:FindFirstChild("PlayerGui")
+                if PlayerGui then
+                    local PlayerHudGui = PlayerGui:FindFirstChild("PlayerHudGui")
+
+                    if PlayerHudGui then
+                        local PlayerHud = PlayerHudGui:FindFirstChild("PlayerHud")
+
+                        if PlayerHud then
+                            local NameLabel = PlayerHud:FindFirstChild("NameLabel")
+
+                            if NameLabel and NameLabel:IsA("TextLabel") then
+                                NameLabel.Text = "LANYLabs - https://discord.gg/3HX8WjQVHH"
+                            end
+                        end
+                    end
+
+                    local FarmGui = PlayerGui:FindFirstChild("FarmGui")
+
+                    if FarmGui then
+                        local PlayerHud = FarmGui:FindFirstChild("PlayerHud")
+
+                        if PlayerHud then
+                            local TextLabel = PlayerHud:FindFirstChild("TextLabel")
+
+                            if TextLabel and TextLabel:IsA("TextLabel") then
+                                if string.find(TextLabel.Text, DisplayName) then
+                                    TextLabel.Text = TextLabel.Text:gsub(DisplayName:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%1"), "Lany Labs")
+                                elseif string.find(TextLabel.Text, Name) then
+                                    TextLabel.Text = TextLabel.Text:gsub(Name:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%1"), "Lany Labs")
+                                end
+                            end
+                        end
+                    end
+                end
+                local Character = t1[5].Character
+                if Character then
+                    local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+
+                    if Humanoid and Humanoid.DisplayName ~= "Lany Labs" then
+                        Humanoid.DisplayName = "Lany Labs"
+                    end
+
+                    local Head = Character:FindFirstChild("Head")
+
+                    if Head then
+                        local OH_Level = Head:FindFirstChild("OH_Level")
+
+                        if OH_Level then
+                            if OH_Level:IsA("TextLabel") or OH_Level:IsA("TextButton") then
+                                OH_Level.Text = "https://discord.gg/3HX8WjQVHH"
+                            else
+                                local GetDescendants = OH_Level.GetDescendants
+
+                                for _, v in ipairs(GetDescendants(OH_Level)) do
+                                    if v:IsA("TextLabel") or v:IsA("TextButton") then
+                                        v.Text = "https://discord.gg/3HX8WjQVHH"
+                                    end
+                                end
+                            end
+                        end
+
+                        for _, descendant in ipairs(Head:GetDescendants()) do
+                            if descendant:IsA("TextLabel") or descendant:IsA("TextButton") then
+                                if string.find(descendant.Text, DisplayName) then
+                                    descendant.Text = descendant.Text:gsub(DisplayName:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%1"), "Lany Labs")
+                                elseif string.find(descendant.Text, Name) then
+                                    descendant.Text = descendant.Text:gsub(Name:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%1"), "Lany Labs")
+                                end
+                            end
+                        end
+                    end
+
+                    local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+
+                    if HumanoidRootPart then
+                        for _, descendant in ipairs(HumanoidRootPart:GetDescendants()) do
+                            if descendant:IsA("TextLabel") or descendant:IsA("TextButton") then
+                                if string.find(descendant.Text, DisplayName) then
+                                    descendant.Text = descendant.Text:gsub(DisplayName:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%1"), "Lany Labs")
+                                elseif string.find(descendant.Text, Name) then
+                                    descendant.Text = descendant.Text:gsub(Name:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%1"), "Lany Labs")
+                                end
+                            end
+                        end
+                    end
+                end
+                local v802 = string.lower(Name)
+                for v805, v806 in ipairs(workspace:GetChildren()) do
+
+                    local v807 = string.lower(v806.Name)
+
+                    if string.find(v807, "barn_plot_") and string.find(v807, v802) then
+                        for i = 1, 9 do
+                            local v809 = v806:FindFirstChild("Cow_" .. tostring(i))
+
+                            if v809 then
+                                local node_0 = v809:FindFirstChild("node_0")
+
+                                if node_0 then
+                                    local OH_Name = node_0:FindFirstChild("OH_Name")
+
+                                    if OH_Name then
+                                        local Label = OH_Name:FindFirstChild("Label")
+
+                                        if (Label and Label:IsA("TextLabel") or Label:IsA("TextButton")) and Label.Text ~= "Lany Labs" then
+                                            Label.Text = "Lany Labs"
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                for v815, v816 in ipairs(workspace:GetChildren()) do
+
+                    local v817 = string.lower(v816.Name)
+
+                    if string.find(v817, "coop_coopplot_") and string.find(v817, v802) then
+                        for i = 1, 12 do
+                            local v819 = v816:FindFirstChild("Chicken_" .. tostring(i))
+
+                            if v819 then
+                                local v820 = v819:FindFirstChild("Right Arm")
+
+                                if v820 then
+                                    local OH_Name = v820:FindFirstChild("OH_Name")
+
+                                    if OH_Name then
+                                        local Label = OH_Name:FindFirstChild("Label")
+
+                                        if (Label and Label:IsA("TextLabel") or Label:IsA("TextButton")) and Label.Text ~= "Lany Labs" then
+                                            Label.Text = "Lany Labs"
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                for v825, v826 in ipairs(workspace:GetChildren()) do
+
+                    local v827 = string.lower(v826.Name)
+
+                    if string.find(v827, "barn_plot_") and string.find(v827, v802) then
+                        local Label = v826:FindFirstChild("Label")
+
+                        if Label then
+                            local BarnLabel = Label:FindFirstChild("BarnLabel")
+
+                            if BarnLabel then
+                                local Main = BarnLabel:FindFirstChild("Main")
+
+                                if Main then
+                                    local PlayerName = Main:FindFirstChild("PlayerName")
+
+                                    if (PlayerName and PlayerName:IsA("TextLabel") or PlayerName:IsA("TextButton")) and PlayerName.Text ~= "Lany Labs" then
+                                        PlayerName.Text = "Lany Labs"
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                for v834, v835 in ipairs(workspace:GetChildren()) do
+
+                    local v836 = string.lower(v835.Name)
+
+                    if string.find(v836, "coop_coopplot_") and string.find(v836, v802) then
+                        local Label = v835:FindFirstChild("Label")
+
+                        if Label then
+                            local CoopLabel = Label:FindFirstChild("CoopLabel")
+
+                            if CoopLabel then
+                                local Main = CoopLabel:FindFirstChild("Main")
+
+                                if Main then
+                                    local PlayerName = Main:FindFirstChild("PlayerName")
+
+                                    if (PlayerName and PlayerName:IsA("TextLabel") or PlayerName:IsA("TextButton")) and PlayerName.Text ~= "Lany Labs" then
+                                        PlayerName.Text = "Lany Labs"
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                local PapanLahan = workspace:FindFirstChild("PapanLahan")
+                if PapanLahan then
+                    for i = 1, 32 do
+                        local v843 = PapanLahan:FindFirstChild("Label" .. tostring(i))
+
+                        if v843 then
+                            local LahanGui = v843:FindFirstChild("LahanGui")
+
+                            if LahanGui then
+                                local Frame = LahanGui:FindFirstChild("Frame")
+
+                                if Frame then
+                                    local TextLabel = Frame:FindFirstChild("TextLabel")
+
+                                    if (TextLabel and TextLabel:IsA("TextLabel") or TextLabel:IsA("TextButton")) and (string.find(TextLabel.Text, DisplayName) or string.find(TextLabel.Text, Name)) then
+                                        TextLabel.Text = TextLabel.Text:gsub(DisplayName:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%1"), "Lany Labs")
+                                        TextLabel.Text = TextLabel.Text:gsub(Name:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%1"), "Lany Labs")
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(0.5)
+        end
+
+        t1[27].HideIdentitasLoopRunning = false
+        pcall(function()
+            local Character = t1[5].Character
+
+            if Character then
+                local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+
+                if Humanoid then
+                    Humanoid.DisplayName = t1[5].DisplayName
+                end
+            end
+        end)
+    end)
+end
+})
+t1[40] = v51:Toggle({
+	Title = "Enable Anti-AFK",
+	Flag = "Misc_AntiAFK",
+	Value = false,
+	Callback = function(p67)
+    _G.AntiAFK = p67
+
+    if p67 then
+        t1[34]()
+        t1[4]("Anti-AFK", "Anti-AFK berhasil diaktifkan!", 3)
+
+        return
+    end
+
+    t1[4]("Anti-AFK", "Anti-AFK dimatikan!", 3)
+end
+})
+t1[88] = game:GetService("RunService")
+t1[89] = nil
+t1[46] = v51:Toggle({
+	Title = "Anti Lightning",
+	Desc = "Anti Mental Petir (Premium)",
+	Flag = "Misc_AutoHeal",
+	Locked = v31,
+	Value = false,
+	Callback = function(p68)
+    _G.AutoHeal = p68
+
+    if not p68 then
+        if t1[89] then
+            t1[89]:Disconnect()
+            t1[89] = nil
+        end
+
+        t1[27].AntiLightningLoopRunning = false
+        t1[4]("Anti Lightning", "Anti Lightning dimatikan.", 3)
+
+        return
+    end
+
+    t1[4]("Anti Lightning", "Anti Lightning aktif!", 3)
+
+    if t1[89] then
+        t1[89]:Disconnect()
+    end
+
+    t1[89] = t1[88].Heartbeat:Connect(function()
+        if not _G.AutoHeal then
+            t1[89]:Disconnect()
+            t1[89] = nil
+
+            return
+        end
+
+        pcall(function()
+            local Character = t1[5].Character
+
+            if Character then
+                local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+
+                if Humanoid and (Humanoid.Health > 0 and Humanoid.Health < Humanoid.MaxHealth) then
+                    Humanoid.Health = Humanoid.MaxHealth
+                end
+            end
+        end)
+    end)
+
+    if t1[27].AntiLightningLoopRunning then
+        return
+    end
+
+    t1[27].AntiLightningLoopRunning = true
+    task.spawn(function()
+        local LightningStrike = t1[6]:WaitForChild("LightningStrike")
+
+        while _G.AutoHeal do
+            pcall(function()
+                if getconnections then
+                    for _, v in ipairs(getconnections(LightningStrike.OnClientEvent)) do
+                        v:Disable()
+                    end
+                end
+            end)
+            task.wait(2)
+        end
+
+        t1[27].AntiLightningLoopRunning = false
+    end)
+end
+})
+v51:Section({
+	Title = "Auto Rejoin & Server Hop"
+})
+t1[90] = false
+t1[91] = game:GetService("TeleportService")
+
+local HttpService = game:GetService("HttpService")
+
+t1[92] = nil
+t1[92] = HttpService
+t1[93] = function()
+    local PlaceId = game.PlaceId
+    local u265 = PlaceId
+    local ok, result = pcall(function()
+        local v422 = t1[92]
+        local t13 = { game:HttpGet("https://games.roblox.com/v1/games/" .. tostring(u265) .. "/servers/Public?sortOrder=Asc&limit=100") }
+
+        return v422:JSONDecode(v2(t13))
+    end)
+    local v268 = not ok
+    if not v268 then
+        v268 = not result or not result.data
+    end
+    if v268 then
+        t1[4]("SERVER HOP", "Gagal ambil daftar server. Coba lagi...", 3)
+
+        return false
+    end
+    local t14 = {}
+    for _, v in ipairs(result.data) do
+        if v.id ~= game.JobId and v.playing < v.maxPlayers then
+            table.insert(t14, v.id)
+        end
+    end
+    if #t14 == 0 then
+        t1[4]("SERVER HOP", "Tidak ada server lain! Coba lagi nanti.", 3)
+
+        return false
+    end
+    local v272 = t14[math.random(1, #t14)]
+    t1[4]("SERVER HOP", "Pindah ke server lain...", 3)
+    pcall(function()
+        t1[91]:TeleportToPlaceInstance(u265, v272, t1[5])
+    end)
+
+    return true
+end
+v51:Button({
+	Title = "Server Hop Sekarang",
+	Desc = "Pindah ke server acak",
+	Callback = function()
+    t1[93]()
+end
+})
+v51:Button({
+	Title = "Rejoin This Server",
+	Desc = "Rejoin ke server saat ini (NOT WORK FOR PRIVATE SERVER)",
+	Callback = function()
+    t1[4]("REJOIN", "Proses rejoin ke server ini...", 3)
+    pcall(function()
+        t1[91]:TeleportToPlaceInstance(game.PlaceId, game.JobId, t1[5])
+    end)
+end
+})
+v51:Toggle({
+	Title = "Auto Rejoin (Jika Disconnect)",
+	Desc = "Otomatis reconnect jika kena Error 277 atau kick",
+	Locked = v31,
+	Flag = "Misc_AutoRejoin",
+	Value = false,
+	Callback = function(p69)
+    _G.AutoRejoin = p69
+
+    if p69 and t1[90] then
+        return
+    end
+
+    if not p69 then
+        return
+    end
+
+    t1[4]("AUTO REJOIN", "Auto Rejoin aktif! Script akan reconnect jika disconnect.", 4)
+
+    local PlaceId = game.PlaceId
+    local _, _ = pcall(function()
+        return t1[5].OnTeleport:Connect(function(p70)
+            if p70 == Enum.TeleportState.Failed then
+                task.wait(3)
+
+                if _G.AutoRejoin then
+                    pcall(function()
+                        t1[91]:Teleport(PlaceId, t1[5])
+                    end)
+                end
+            end
+        end)
+    end)
+
+    task.spawn(function()
+        while _G.AutoRejoin do
+            pcall(function()
+                local Network = game:GetService("Stats"):FindFirstChild("Network")
+
+                if Network then
+                    local v855 = Network:FindFirstChild("Data Receive (KB/s)")
+
+                    if v855 and v855.Value <= 0 then
+                        t1[4]("AUTO REJOIN", "Koneksi terputus! Mencoba rejoin...", 4)
+                        task.wait(3)
+
+                        if _G.AutoRejoin then
+                            pcall(function()
+                                t1[91]:Teleport(PlaceId, t1[5])
+                            end)
+                        end
+                    end
+                end
+            end)
+            task.wait(5)
+        end
+    end)
+end
+})
+v51:Section({
+	Title = "Discord Server"
+})
+v51:Button({
+	Title = "Join Discord Server",
+	Desc = "Official Discord Server Lany",
+	Callback = function()
+    if setclipboard then
+        pcall(function()
+            setclipboard("https://discord.gg/3HX8WjQVHH")
+        end)
+        t1[4]("Discord", "Link Discord berhasil disalin! Silakan Paste.", 5)
+
+        return
+    end
+
+    t1[4]("Error", "Executor kamu tidak mendukung fitur copy otomatis.", 3)
+end
+})
+local v53 = t1[3]:Tab({
+	Title = "CONFIG",
+	Icon = "file-text"
+})
+t1[94] = "default"
+t1[95] = t1[3].ConfigManager
+if t1[95] then
+    t1[95]:Init(t1[3])
+    v53:Input({
+		Title = "Config Name",
+		Placeholder = "Ketik nama config...",
+		Callback = function(p71)
+        if not p71 then
+            p71 = "default"
+        end
+
+        t1[94] = p71
+    end
+	})
+
+    local v54 = t1[95]:AllConfigs()
+    local v55 = t1[94]
+    local v56 = v53:Dropdown({
+		Title = "Pilih Config",
+		Values = v54,
+		Value = v55,
+		Callback = function(p72)
+        if not p72 then
+            p72 = "default"
+        end
+
+        t1[94] = p72
+    end
+	})
+    local Button = v53.Button
+    local color3_4 = Color3.fromHex("#462288")
+
+    Button(v53, {
+		Title = "Save Config",
+		Color = color3_4,
+		Icon = "save",
+		Callback = function()
+        if t1[95]:CreateConfig(t1[94]):Save() then
+            t1[4]("CONFIG", "Config berhasil disimpan: " .. t1[94], 3)
+            v56:Refresh(t1[95]:AllConfigs())
+
+            return
+        end
+
+        t1[4]("CONFIG", "Gagal menyimpan config!", 3)
+    end
+	})
+
+    local Button2 = v53.Button
+    local color3_5 = Color3.fromHex("#d9ff30")
+
+    Button2(v53, {
+		Title = "Load Config",
+		Color = color3_5,
+		Icon = "download",
+		Callback = function()
+        if t1[95]:CreateConfig(t1[94]):Load() then
+            t1[4]("CONFIG", "Config berhasil dimuat: " .. t1[94], 3)
+
+            return
+        end
+
+        t1[4]("CONFIG", "Gagal memuat config!", 3)
+    end
+	})
+
+    local fromHex = Color3.fromHex
+    local Button3 = v53.Button
+    local v63 = fromHex("#ff4830")
+
+    Button3(v53, {
+		Title = "Delete Config",
+		Color = v63,
+		Icon = "trash",
+		Callback = function()
+        if t1[95]:DeleteConfig(t1[94]) then
+            t1[4]("CONFIG", "Config berhasil dihapus: " .. t1[94], 3)
+            v56:Refresh(t1[95]:AllConfigs())
+        end
+    end
+	})
+    v53:Paragraph({
+		Title = "ð¡ Panduan Sistem Config & Auto Load",
+		Desc = [[1. Aktifkan fitur & atur pilihan script sesuai keinginanmu terlebih dahulu.
+2. Ketik nama di 'Config Name' lalu klik 'Save Config' untuk menyimpan.
+3. Untuk membuka config kembali, klik nama di 'Pilih Config' lalu klik 'Load Config'.
+4. (Opsional) Klik 'Set Auto Load' agar config otomatis ON.]]
+	})
+
+    local color3_6 = Color3.fromHex("#60ff30")
+
+    v53:Button({
+		Title = "Set Auto Load",
+		Color = color3_6,
+		Icon = "refresh-cw",
+		Callback = function()
+        if writefile then
+            pcall(function()
+                writefile("LanyLabs_AutoLoad.txt", t1[94])
+            end)
+            t1[4]("CONFIG", "Auto Load disetel ke: " .. t1[94], 3)
+
+            return
+        end
+
+        t1[4]("ERROR", "Executor tidak support writefile!", 3)
+    end
+	})
+    task.spawn(function()
+        task.wait(1)
+
+        if readfile and isfile then
+            local ok, result = pcall(function()
+                if isfile("LanyLabs_AutoLoad.txt") then
+                    return readfile("LanyLabs_AutoLoad.txt")
+                end
+
+                return nil
+            end)
+
+            if ok then
+                ok = result and result ~= ""
+            end
+
+            if ok and t1[95]:CreateConfig(result):Load() then
+                t1[4]("CONFIG", "Auto-Loaded config: " .. result, 5)
+
+                if v56 then
+                    v56:SetValue(result)
+                end
+            end
+        end
+    end)
+end
+local v65 = t1[3]:Tab({
+	Title = "WEBHOOK",
+	Icon = "send"
+})
+v65:Section({
+	Title = "Konfigurasi Discord Webhook"
+})
+v65:Paragraph({
+	Title = "ð¡ Discord Webhook Report",
+	Desc = "Kirim laporan ke Discord secara otomatis.\n\n1. Buat Webhook di Discord: Server Settings â Integrations â Webhooks â New Webhook â Copy URL\n2. Paste URL ke kolom di bawah\n3. Atur interval waktu pengiriman\n4. Aktifkan 'Auto Send Report'"
+})
+t1[96] = ""
+t1[97] = 30
+t1[98] = false
+v65:Input({
+	Title = "Discord Webhook URL",
+	Desc = "Paste URL webhook dari Discord",
+	Flag = "Webhook_URL",
+	Placeholder = "https://discord.com/api/webhooks/...",
+	Callback = function(p73)
+    if not p73 then
+        p73 = ""
+    end
+
+    t1[96] = p73
+end
+})
+v65:Dropdown({
+	Title = "Interval Kirim Laporan",
+	Desc = "Seberapa sering laporan dikirim",
+	Flag = "Webhook_Interval",
+	Values = {
+		"15 Menit",
+		"30 Menit",
+		"1 Jam",
+		"2 Jam"
+	},
+	Value = "30 Menit",
+	Callback = function(p74)
+    if p74 == "15 Menit" then
+        t1[97] = 15
+
+        return
+    end
+
+    if p74 == "30 Menit" then
+        t1[97] = 30
+
+        return
+    end
+
+    if p74 == "1 Jam" then
+        t1[97] = 60
+
+        return
+    end
+
+    if p74 == "2 Jam" then
+        t1[97] = 120
+    end
+end
+})
+t1[99] = nil
+t1[99] = function()
+    local Name = t1[5].Name
+    local DisplayName = t1[5].DisplayName
+    local v285 = os.date and os.date("!%Y-%m-%dT%H:%M:%SZ") or "N/A"
+    local t15 = {
+		username = Name,
+		displayName = DisplayName,
+		level = "?",
+		uang = "?",
+		panen = "?",
+		totalCrops = 0,
+		rareItemsText = "",
+		timestamp = v285
+	}
+
+    pcall(function()
+        local PlayerGui = t1[5]:FindFirstChild("PlayerGui")
+
+        if PlayerGui then
+            local v425 = PlayerGui:FindFirstChild("PlayerHudGui") and PlayerGui.PlayerHudGui:FindFirstChild("PlayerHud")
+
+            if v425 then
+                local CoinLabel = v425:FindFirstChild("CoinLabel")
+
+                if CoinLabel and CoinLabel:IsA("TextLabel") then
+                    t15.uang = CoinLabel.Text
+                end
+
+                local LevelLabel = v425:FindFirstChild("LevelLabel")
+
+                if LevelLabel and LevelLabel:IsA("TextLabel") then
+                    t15.level = LevelLabel.Text
+                end
+
+                local PanenLabel = v425:FindFirstChild("PanenLabel")
+
+                if PanenLabel and PanenLabel:IsA("TextLabel") then
+                    t15.panen = PanenLabel.Text
+                end
+            end
+        end
+    end)
+    pcall(function()
+        local str = tostring(t1[5].UserId)
+        local ActiveCrops = workspace:FindFirstChild("ActiveCrops")
+
+        if ActiveCrops then
+            local GetChildren = ActiveCrops.GetChildren
+
+            for _, v in ipairs(GetChildren(ActiveCrops)) do
+                if string.find(v.Name, "Crop_" .. str) then
+                    t15.totalCrops = t15.totalCrops + 1
+                end
+            end
+        end
+    end)
+    pcall(function()
+        local t16 = {}
+        for _, child in ipairs(t1[5].Backpack:GetChildren()) do
+            if child:IsA("Tool") then
+                local v437 = child:GetAttribute("FruitType") or "Item"
+                local v438 = child:GetAttribute("FruitRarity") or ""
+
+                if v438 == "Super" or (v438 == "Legendary" or (v438 == "Mythic" or v438 == "Celestial")) then
+                    local v439 = v438 .. " " .. v437
+
+                    t16[v439] = (t16[v439] or 0) + 1
+                end
+            end
+        end
+        local s3 = ""
+        for v443, v444 in pairs(t16) do
+
+            s3 ..= "â¢ " .. v443 .. ": " .. v444 .. "x\n"
+        end
+        if s3 == "" then
+            t15.rareItemsText = "â¢ *Tidak ada item Super/Legendary/Mythic/Celestial*"
+
+            return
+        end
+        t15.rareItemsText = s3
+    end)
+
+    return t15
+end
+t1[100] = function()
+    if t1[96] == "" or not string.find(t1[96], "discord.com/api/webhooks") then
+        t1[4]("WEBHOOK", "URL Webhook tidak valid! Isi dulu di kolom input.", 4)
+
+        return false
+    end
+
+    task.spawn(function()
+        local ok, result = pcall(function()
+            local v856 = t1[99]()
+            local HttpService2 = game:GetService("HttpService")
+            local v858 = string.format("ð¤ **Petani:** %s (@%s)\nâ­ **Level:** %s\nð° **Koin:** %s\nð¾ **Total Hasil Panen:** %s\n\nð **Best Item in Backpack (Super+):**\n%s", v856.displayName, v856.username, v856.level, v856.uang, v856.panen, v856.rareItemsText)
+            local JSONEncode = HttpService2.JSONEncode
+            local t17 = {
+				text = "LANY Labs | Auto Farm Report"
+			}
+            local t18 = {
+				title = "Laporan LANY Labs",
+				description = v858,
+				color = 3145728,
+				footer = t17
+			}
+            local v862 = JSONEncode(HttpService2, {
+				username = "LANY Labs - Sawah Indo",
+				avatar_url = "https://imgur.com/a/56VIiKU.png",
+				embeds = { t18 }
+			})
+            local _syn = syn
+
+            if _syn then
+                _syn = syn.request
+            end
+
+            if not _syn then
+                _syn = http_request and http_request or (http and http.request or request)
+            end
+
+            if _syn then
+                local v864 = t1[96]
+                local t19 = {
+					["Content-Type"] = "application/json"
+				}
+
+                _syn({
+					Url = v864,
+					Method = "POST",
+					Headers = t19,
+					Body = v862
+				})
+                t1[4]("WEBHOOK", "â Laporan berhasil dikirim ke Discord!", 3)
+
+                return
+            end
+
+            t1[4]("WEBHOOK", "Executor-mu tidak support HTTP request!", 5)
+        end)
+
+        if not ok then
+            t1[4]("WEBHOOK", "â Gagal mengambil data/mengirim: " .. tostring(result), 4)
+        end
+    end)
+
+    return true
+end
+v65:Section({
+	Title = "Kontrol Pengiriman"
+})
+v65:Button({
+	Title = "Kirim Laporan Sekarang",
+	Desc = "Kirim manual ke Discord",
+	Callback = function()
+    t1[100]()
+end
+})
+v65:Toggle({
+	Title = "Auto Send Report",
+	Desc = "Kirim laporan interval (set interval di atas)",
+	Flag = "Webhook_AutoSend",
+	Locked = v31,
+	Value = false,
+	Callback = function(p75)
+    _G.AutoWebhookSend = p75
+
+    if p75 and t1[98] then
+        return
+    end
+
+    if not p75 then
+        t1[4]("WEBHOOK", "Auto Report dimatikan.", 3)
+
+        return
+    end
+
+    if t1[96] == "" then
+        t1[4]("WEBHOOK", "Isi URL Webhook Discord dulu!", 4)
+        _G.AutoWebhookSend = false
+
+        return
+    end
+
+    t1[4]("WEBHOOK", "Auto Report aktif! Laporan dikirim setiap " .. t1[97] .. " menit.", 4)
+    task.spawn(function()
+        while _G.AutoWebhookSend do
+            t1[100]()
+
+            local v447 = t1[97] * 60
+            local n11 = 0
+
+            while n11 < v447 and _G.AutoWebhookSend do
+                task.wait(1)
+                n11 += 1
+            end
+        end
+    end)
+end
+})
+v65:Paragraph({
+	Title = "â¹\239\184\143 Warning!",
+	Desc = "â¢ Fitur ini memerlukan executor yang support HTTP Request (contoh: Synapse X, Fluxus, Wave, Potasium, etc)\nâ¢ Jika laporan tidak terkirim, pastikan URL webhook benar dan tidak expired."
+})
+local v66 = t1[3]
+local uDim = UDim.new(1, 0)
+local colorSequence = ColorSequence.new(Color3.fromHex("#eef2f3"), Color3.fromHex("#8e9eab"))
+
+v66:EditOpenButton({
+	Title = "LANY LABS",
+	Icon = "fingerprint",
+	CornerRadius = uDim,
+	StrokeThickness = 1.5,
+	Color = colorSequence,
+	OnlyMobile = false,
+	Enabled = true,
+	Draggable = true
+})
+game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
+    local v290 = not gameProcessed
+
+    if v290 then
+        v290 = input.KeyCode == Enum.KeyCode.K or input.KeyCode == Enum.KeyCode.Insert
+    end
+
+    if v290 then
+        t1[3]:Toggle()
+    end
+end)
+t1[4]("WELCOME", "Lany Labs server https://discord.gg/3HX8WjQVHH", 10)
