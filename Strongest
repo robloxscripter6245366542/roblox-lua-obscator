@@ -105,7 +105,7 @@ WindUI:AddTheme({
 
 local Window = WindUI:CreateWindow({
     Title = "Fire Hub",
-    Icon = "rbxassetid://110312595891409",
+    Icon = "flame",
     Author = "By QUANTUAM_LABS",
     Folder = "FireHub",
     Size = UDim2.fromOffset(580, 460), 
@@ -128,7 +128,7 @@ local Window = WindUI:CreateWindow({
 
 Window:EditOpenButton({
     Title = "Fire Hub",
-    Icon = "rbxassetid://98852755585971",
+    Icon = "flame",
     CornerRadius = UDim.new(0, 16),
     StrokeThickness = 2,
     Color = ColorSequence.new(Color3.fromHex("#FF3B3B"), Color3.fromHex("#7A0000")), -- Red Gradient
