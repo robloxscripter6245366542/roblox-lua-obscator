@@ -4320,7 +4320,7 @@ local ACHAOTICDATA = {
             ParryMethod = "Blatant",
             SlashesofFuryDetectionMaxParryCount = 36,
             SlashesofFuryDetectionParryDelay = 0.05,
-            SpammingRPS = 180,
+            SpammingRPS = 400,
             ParryCurveDirection = "Camera",
             FastBallProtection = false,
             LobbyAutoParryAccuracy = 80,
@@ -6236,7 +6236,7 @@ do
     SpammingSection:AddSlider({
         Name = "Target RPS",
         Min = 60,
-        Max = 640,
+        Max = 1000,
         Round = 1,
         Default = ACHAOTICDATA.Config.ParrySettings.SpammingRPS,
         Type = " rps",
