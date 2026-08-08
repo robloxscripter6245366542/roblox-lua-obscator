@@ -5197,12 +5197,15 @@ local function MainConnection()
                     FireParry()
                     ACHAOTICDATA.Parry[Ball].LastParry = parry_time
                     ACHAOTICDATA.Global.AutoParryParried = true
+                    -- Non-blocking re-enable: the ball's target-changed signal
+                    -- clears this the instant the ball is redirected; this delay
+                    -- is only the 1s safety fallback. Previously a blocking
+                    -- repeat/Wait() here stalled the whole parry loop, delaying
+                    -- every subsequent block.
+                    task.delay(1, function()
+                        ACHAOTICDATA.Global.AutoParryParried = false
+                    end)
                 end
-                local last_parrys = tick()
-                repeat
-                    RunService.PreSimulation:Wait()
-                until (tick() - last_parrys) >= 1 or not ACHAOTICDATA.Global.AutoParryParried
-                ACHAOTICDATA.Global.AutoParryParried = false
             end
         else
             ACHAOTICDATA.Global.AutoParryCurrentAccuracy = 0
@@ -5265,12 +5268,14 @@ local function MainConnection()
 
                     ACHAOTICDATA.Parry[Ball].LobbyLastParry = Parry_Time
                     ACHAOTICDATA.Parry[Ball].LobbyParried = true
+                    -- Non-blocking 1s safety reset (see AutoParry note above);
+                    -- guard in case the ball was removed before it fires.
+                    task.delay(1, function()
+                        if ACHAOTICDATA.Parry[Ball] then
+                            ACHAOTICDATA.Parry[Ball].LobbyParried = false
+                        end
+                    end)
                 end
-                local Last_Parrys = tick()
-                repeat
-                    RunService.PreSimulation:Wait()
-                until (tick() - Last_Parrys) >= 1 or not ACHAOTICDATA.Parry[Ball].LobbyParried
-                ACHAOTICDATA.Parry[Ball].LobbyParried = false
             end
         end
 
@@ -5360,12 +5365,11 @@ local function MainConnection()
                     end
                     FireParry()
                     TriggerBotParried = true
+                    -- Non-blocking 1s safety reset (see AutoParry note above).
+                    task.delay(1, function()
+                        TriggerBotParried = false
+                    end)
                 end
-                local TriggerBot_Last_Parrys = tick()
-                repeat
-                    RunService.PreSimulation:Wait()
-                until (tick() - TriggerBot_Last_Parrys) >= 1 or not TriggerBotParried
-                TriggerBotParried = false
             end
         end
         if #BallsList <= 0 then
