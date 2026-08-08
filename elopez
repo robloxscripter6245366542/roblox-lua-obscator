@@ -2,6 +2,50 @@ repeat
     task.wait()
 until game:IsLoaded()
 
+local function LeviathanBoot(stage)
+    print(("[Leviathan] %s"):format(stage))
+end
+
+LeviathanBoot("Checking environment")
+
+-- Non-destructive sandbox / environment-logger guard.
+-- If the script is loaded inside a fake/instrumented environment (an "env
+-- logger" that hooks core globals to record calls, or a host with no real
+-- `game`), it simply refuses to run. It does not attack or crash the host.
+local function EnvironmentIsInstrumented()
+    local flagged = false
+    pcall(function()
+        if typeof == nil or typeof(game) ~= "Instance" then
+            flagged = true
+            return
+        end
+        -- Standard-library functions are native C closures in every real
+        -- executor. An env logger that blanket-hooks functions (to record
+        -- their calls) turns them into plain Lua closures. We check a handful
+        -- that executors never reimplement in Lua -- and only abort when
+        -- several are hooked at once, so a single legitimate customization
+        -- (e.g. a wrapped print/warn console) is not mistaken for a logger.
+        if type(islclosure) == "function" then
+            local suspects = { table.insert, string.format, math.floor, task.wait, game.GetService }
+            local hooked = 0
+            for _, fn in ipairs(suspects) do
+                if type(fn) == "function" and islclosure(fn) then
+                    hooked += 1
+                end
+            end
+            if hooked >= 2 then
+                flagged = true
+            end
+        end
+    end)
+    return flagged
+end
+
+if EnvironmentIsInstrumented() then
+    print("[Leviathan] Environment check failed - instrumented / logger environment detected. Aborting.")
+    return
+end
+
 local IsSupported = true
 
 if not setfflag or 
@@ -4097,6 +4141,8 @@ if not IsSupported then
     return
 end
 
+LeviathanBoot("Bootstrapping")
+
 local ACHAOTICASSETS = {
     CurrentCamera = nil,
     ServerStatsItem = nil,
@@ -4284,6 +4330,99 @@ local ACHAOTICDATA = {
         }
     }
 }
+
+-- ===================== Config auto-save / auto-load =====================
+-- Persists the toggle/slider/setting state to a file so it is restored on the
+-- next run, and re-saves automatically whenever any setting changes. Every
+-- filesystem call is guarded so a missing API can never break the hub.
+local HttpService = cloneref(game:GetService("HttpService"))
+local LEVIATHAN_CONFIG_FOLDER = "Leviathan"
+local LEVIATHAN_CONFIG_FILE = "Leviathan/config.json"
+
+-- Keep only JSON-safe primitives (drops Instances, EnumItems, functions).
+local function LeviathanSanitizeConfig(tbl)
+    local out = {}
+    for k, v in pairs(tbl) do
+        local tk, tv = type(k), type(v)
+        if tk == "string" or tk == "number" then
+            if tv == "boolean" or tv == "number" or tv == "string" then
+                out[k] = v
+            elseif tv == "table" then
+                local child = LeviathanSanitizeConfig(v)
+                if next(child) ~= nil then
+                    out[k] = child
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- Only overwrite keys that already exist with a matching primitive type, so a
+-- tampered/outdated file can never inject junk or corrupt the config shape.
+local function LeviathanMergeConfig(dst, src)
+    for k, v in pairs(src) do
+        local cur = dst[k]
+        if type(v) == "table" and type(cur) == "table" then
+            LeviathanMergeConfig(cur, v)
+        elseif type(v) ~= "table" and type(cur) == type(v) then
+            dst[k] = v
+        end
+    end
+end
+
+local function LeviathanSaveConfig()
+    if type(writefile) ~= "function" then return end
+    pcall(function()
+        if type(makefolder) == "function" and type(isfolder) == "function" and not isfolder(LEVIATHAN_CONFIG_FOLDER) then
+            makefolder(LEVIATHAN_CONFIG_FOLDER)
+        end
+        writefile(LEVIATHAN_CONFIG_FILE, HttpService:JSONEncode(LeviathanSanitizeConfig(ACHAOTICDATA.Config)))
+    end)
+end
+
+local function LeviathanLoadConfig()
+    if type(readfile) ~= "function" or type(isfile) ~= "function" then return end
+    pcall(function()
+        if isfile(LEVIATHAN_CONFIG_FILE) then
+            local ok, decoded = pcall(function()
+                return HttpService:JSONDecode(readfile(LEVIATHAN_CONFIG_FILE))
+            end)
+            if ok and type(decoded) == "table" then
+                LeviathanMergeConfig(ACHAOTICDATA.Config, decoded)
+            end
+        end
+    end)
+end
+
+LeviathanBoot("Loading config")
+LeviathanLoadConfig()
+
+-- Auto-save: re-serialize once a second and only write when something actually
+-- changed, so toggling any option persists it automatically without blocking.
+do
+    local lastSnapshot = nil
+    local lastCheck = 0
+    NeverZen:Track(RunService.Heartbeat:Connect(function()
+        if type(writefile) ~= "function" then return end
+        local now = os.clock()
+        if now - lastCheck < 1 then return end
+        lastCheck = now
+        local ok, snapshot = pcall(function()
+            return HttpService:JSONEncode(LeviathanSanitizeConfig(ACHAOTICDATA.Config))
+        end)
+        if ok and snapshot and snapshot ~= lastSnapshot then
+            lastSnapshot = snapshot
+            pcall(function()
+                if type(makefolder) == "function" and type(isfolder) == "function" and not isfolder(LEVIATHAN_CONFIG_FOLDER) then
+                    makefolder(LEVIATHAN_CONFIG_FOLDER)
+                end
+                writefile(LEVIATHAN_CONFIG_FILE, snapshot)
+            end)
+        end
+    end))
+end
+-- ===================================================================
 
 local TriggerBotParried = false
 
@@ -7209,6 +7348,8 @@ ManualSpamParryUIService:Visible(ACHAOTICDATA.Config.ManualSpamParry.UI)
 TriggerBotUIService:Visible(ACHAOTICDATA.Config.TriggerBot.UI)
 ImmortalityUIService:Visible(Immortality.UI)
 
+LeviathanBoot("Bootstrap ready")
+
 NeverZen:Track(RunService.Heartbeat:Connect(LoopConnection))
 
 ClearCache = function()
@@ -7246,4 +7387,5 @@ NeverZen:Track(ACHAOTICDATA.Player.LocalPlayer.CharacterAdded:Connect(function()
     end)
 end))
 
+LeviathanBoot("Launch")
 NZNotification.new('Leviathan', 'Loaded.', 10)
