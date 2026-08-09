@@ -5160,7 +5160,13 @@ local function MainConnection()
                 local speed = velocity.Magnitude
                 local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
                 local speed_divisor = (2.4 + capped_speed_diff * 0.002) * ACHAOTICDATA.Config.ParrySettings.SpeedDivisorMultiplier
-                local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+                -- Latency lead: the ball travels speed * (network latency in
+                -- seconds) studs while our parry is in flight to the server, so
+                -- fire that much earlier and it registers right as the ball
+                -- arrives. ping here is Data Ping(ms)/10, so seconds = ping/100.
+                -- Bounded so extreme speed/ping can't trigger from across the map.
+                local latency_lead = math.min(speed * (ping / 100), 60)
+                local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5) + latency_lead
                 local curved = IsBall_Curved(Ball, ping * 10, GetCharacter())
 
                 ACHAOTICDATA.Global.AutoParryCurrentAccuracy = parry_accuracy
