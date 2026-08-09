@@ -97,6 +97,35 @@ function Model.isBallCurved(state, charPos, ballPos, vecVel, pingMs)
     return dot < dot_threshold
 end
 
+-- elopez AutoSpamParry: ClashBall classifier (target aimed at you/opponent AND
+-- travelling along the you<->opponent axis, not crossing it).
+function Model.clashBall(ballTarget, lpName, opponentName, rootPos, targetPos, vel, distToTarget)
+    if ballTarget == lpName or ballTarget == opponentName then
+        local isClash = true
+        local axis = targetPos - rootPos
+        if distToTarget > 6 and axis.Magnitude > 0 and vel.Magnitude > 0 then
+            if math.abs(vel.Unit:Dot(axis.Unit)) < 0.35 then
+                isClash = false
+            end
+        end
+        return isClash
+    end
+    return false
+end
+
+-- elopez spam accumulator: fire count over a frame given RPS.
+function Model.accumulatorFires(rps, seconds)
+    local dt = 1 / 60
+    local acc, fired, t = 0, 0, 0
+    while t < seconds - 1e-9 do
+        acc += dt
+        local n = math.floor(acc * rps)
+        if n > 0 then acc -= n / rps; fired += n end
+        t += dt
+    end
+    return fired
+end
+
 --------------------------------------------------------------------------------
 -- Scenario simulation: a ball closing straight on the player.
 --------------------------------------------------------------------------------
@@ -235,6 +264,56 @@ for _, speed in ipairs(speeds) do
     end
 end
 
+-- 3) CLASH DETECTION SWEEP: the ClashBall classifier must engage real clashes
+--    and reject passing balls, across speeds and geometries.
+local clashChecks = 0
+local you, opp = "You", "Opponent"
+for _, speed in ipairs(speeds) do
+    for _, dist in ipairs({ 8, 20, 45, 90 }) do
+        local root = Vector3.new(0, 0, 0)
+        local target = Vector3.new(dist, 0, 0)  -- opponent along +X
+
+        -- (a) Real clash ball: aimed at you, moving along the axis (toward you).
+        do
+            local vel = Vector3.new(-speed, 0, 0)
+            clashChecks += 1
+            if not Model.clashBall(you, you, opp, root, target, vel, dist) then
+                fail(string.format("CLASH-MISS speed=%d dist=%d: real clash ball rejected", speed, dist))
+            end
+        end
+        -- (b) Perpendicular crossing ball aimed at you: should be rejected as
+        --     "passing by" (only when far enough for the axis to be meaningful).
+        if dist > 6 then
+            local vel = Vector3.new(0, 0, -speed)
+            clashChecks += 1
+            if Model.clashBall(you, you, opp, root, target, vel, dist) then
+                fail(string.format("CLASH-FALSE speed=%d dist=%d: perpendicular passing ball accepted", speed, dist))
+            end
+        end
+        -- (c) Ball aimed at a third party: never our clash.
+        do
+            local vel = Vector3.new(-speed, 0, 0)
+            clashChecks += 1
+            if Model.clashBall("Stranger", you, opp, root, target, vel, dist) then
+                fail(string.format("CLASH-STRANGER speed=%d dist=%d: third-party ball accepted", speed, dist))
+            end
+        end
+    end
+end
+
+-- 4) ACCUMULATOR SWEEP: fired count must track RPS*seconds with no drift/loss.
+local accChecks = 0
+for _, rps in ipairs({ 60, 180, 400, 550, 800, 1000 }) do
+    for _, secs in ipairs({ 1, 3, 10 }) do
+        accChecks += 1
+        local fired = Model.accumulatorFires(rps, secs)
+        local expected = rps * secs
+        if math.abs(fired - expected) > 2 then
+            fail(string.format("ACCUMULATOR rps=%d secs=%d fired=%d expected=%d", rps, secs, fired, expected))
+        end
+    end
+end
+
 --------------------------------------------------------------------------------
 -- Harness self-check: feed KNOWN-BROKEN configs and confirm the checks fire,
 -- so a green run means something.
@@ -280,7 +359,8 @@ end
 --------------------------------------------------------------------------------
 -- Report
 --------------------------------------------------------------------------------
-print(string.format("Ran %d straight-ball scenarios + %d curve checks.", scenarios, curveChecks))
+print(string.format("Ran %d straight-ball scenarios + %d curve checks + %d clash checks + %d accumulator checks.",
+    scenarios, curveChecks, clashChecks, accChecks))
 print("Harness self-check (broken configs must be detectable): " .. (selfCheckOk and "OK" or "COMPROMISED"))
 if #failures == 0 and selfCheckOk then
     print("PASS — no misses, no skip-risk, no double-parries, no curve errors.")
