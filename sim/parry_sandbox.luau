@@ -46,17 +46,14 @@ local Model = {}
 
 -- elopez: parry_accuracy computation (ping_threshold + speed term + auto-accuracy
 -- multiplier + one-way latency lead).
-function Model.parryAccuracy(speed, dataPingMs, autoAccuracy, sliderMult)
+function Model.parryAccuracy(speed, dataPingMs, _autoAccuracy, sliderMult)
+    -- Original elopez formula (parry brain was reverted to the untouched
+    -- Snowyhub version): ping buffer + speed term, no latency lead.
     local ping = dataPingMs / 10
-    local accuracy_multiplier = sliderMult
-    if autoAccuracy then
-        local ping_factor = math.clamp(ping / 100, 0, 1)
-        local speed_factor = math.clamp(speed / 400, 0, 1)
-        accuracy_multiplier = accuracy_multiplier * math.clamp(1.0 + ping_factor * 0.6 + speed_factor * 0.5, 1.0, 2.0)
-    end
-    -- Time-to-arrival: fire distance = speed * lead-seconds (mirrors elopez).
-    local block_lead = 0.22 * accuracy_multiplier
-    return math.max(speed * block_lead, 12)
+    local ping_threshold = math.clamp(ping / 10, 5, 17)
+    local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
+    local speed_divisor = (2.4 + capped_speed_diff * 0.002) * sliderMult
+    return ping_threshold + math.max(speed / speed_divisor, 9.5)
 end
 
 local PARRY_COOLDOWN = 0.12 -- elopez: time_view >= 0.12 gate
