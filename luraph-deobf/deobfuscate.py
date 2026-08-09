@@ -177,6 +177,13 @@ def main():
     print(grepl(o, "[lift]")[0] if grepl(o, "[lift]") else o.strip()[:200])
     rep.append("```\n" + (grepl(o, "[lift]")[0] if grepl(o, "[lift]") else "") + "\n```")
 
+    # decompile pass: fold register chains into source-like expressions
+    decomp = os.path.join(out, "decompiled.lua")
+    rc, o = sh(["python3", os.path.join("devirt", "decompile.py"), full, "--map", opmap,
+                "--values", vals, "-o", decomp], args.timeout)
+    print(grepl(o, "[decompile]")[0] if grepl(o, "[decompile]") else o.strip()[:200])
+    rep.append("- decompiled (expression-folded, source-like): `decompiled.lua`")
+
     # ---- runnable ----
     sec("+ Runnable unpack")
     runnable = os.path.join(out, "unpacked_runnable.lua")

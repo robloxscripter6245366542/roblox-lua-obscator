@@ -35,6 +35,26 @@ behaviour · **4–5** disassemble + lift using *this build's* map · **+** emit
 (Prefer this over `pipeline.py`, which used the committed sigil map rather than
 regenerating one — wrong opcodes on any other build.)
 
+## How far "deobfuscation" can go (the honest ceiling)
+
+Luraph **virtualises** — it compiles the source to bytecode and destroys the
+original names/syntax. So the recoverable end-states are:
+
+| output | tool | runs? | reads like |
+|--------|------|-------|-----------|
+| unpacked | `unpack_runnable.py` | ✅ identical | VM interpreter as source + bytecode |
+| lifted | `devirt/lift.py` | ❌ analysis | register-per-line Lua |
+| **decompiled** | `devirt/decompile.py` | ❌ analysis | **folded expressions, source-like** |
+
+`decompile.py` is the closest to source: it folds single-use register chains
+into expressions (`e[15]=e[0]["game"]; e[15](x)` → `e[0]["game"](x)`) with real
+constants inlined, conservatively (only provably single-def/single-use,
+side-effect-free temps — verified to compile as Lua 5.4). It still uses
+invented names (`e[n]`); the author's original variable names are **gone for
+good** — no tool recovers them from a virtualised binary. That is the maximum
+"fully deobfuscated" achievable; a clean *runnable* copy is the `unpacked`
+output, not this.
+
 ## Runnable unpacking (`unpack_runnable.py`)
 
 Two distinct "deobfuscation" goals — pick the one you actually want:
