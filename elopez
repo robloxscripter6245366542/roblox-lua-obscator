@@ -5144,9 +5144,9 @@ local function MainConnection()
                     continue
                 end
 
-                Ball:GetAttributeChangedSignal('target'):Once(function()
-                    ACHAOTICDATA.Global.AutoParryParried = false
-                end)
+                -- (The persistent TargetConn above already resets
+                -- AutoParryParried on redirect; a per-frame :Once here leaked a
+                -- new connection every frame.)
 
                 if ACHAOTICDATA.Global.AutoParryParried then
                     continue
@@ -5347,10 +5347,6 @@ local function MainConnection()
             for _, Ball in pairs(BallsList) do
                 if not Ball then continue end
 
-                Ball:GetAttributeChangedSignal('target'):Once(function()
-                    TriggerBotParried = false
-                end)
-
                 if TriggerBotParried then continue end
 
                 local Ball_Target = Ball:GetAttribute('target')
@@ -5365,6 +5361,11 @@ local function MainConnection()
                     end
                     FireParry()
                     TriggerBotParried = true
+                    -- Reset when this ball is redirected (registered once per
+                    -- parry instead of every frame, which leaked connections).
+                    Ball:GetAttributeChangedSignal('target'):Once(function()
+                        TriggerBotParried = false
+                    end)
                     -- Non-blocking 1s safety reset (see AutoParry note above).
                     task.delay(1, function()
                         TriggerBotParried = false
