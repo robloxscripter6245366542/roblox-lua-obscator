@@ -5357,7 +5357,32 @@ local function MainConnection()
                 elseif ACHAOTICDATA.Config.AutoSpamParry.DetectionMode == "Distance" then
                     SpamVaildation = true
                 end
-                ACHAOTICDATA.Config.AutoSpamParry.Spamming =  DistToBall <= TargetCheck * 1.5 and DistToTarget <= TargetCheck and SpamVaildation
+
+                -- Clash validation: only treat this as a clash (and spam) when the
+                -- ball is actually part of a back-and-forth between you and the
+                -- opponent -- not a fast ball merely passing by.
+                --  * it must currently be aimed at you or the opponent, and
+                --  * it must be travelling roughly along the you<->opponent axis
+                --    (a clash), not cutting across it (just flying past).
+                local ClashBall = false
+                do
+                    local ball_target = Ball:GetAttribute('target')
+                    local lpName = tostring(ACHAOTICDATA.Player.LocalPlayer)
+                    if ball_target == lpName or ball_target == Closest_Entity.Name then
+                        ClashBall = true
+                        local axis = TargetPos - RootPos
+                        local vel = Zoomies.VectorVelocity
+                        -- Only meaningful when you're far enough apart for the axis
+                        -- direction to be stable.
+                        if DistToTarget > 6 and axis.Magnitude > 0 and vel.Magnitude > 0 then
+                            if math.abs(vel.Unit:Dot(axis.Unit)) < 0.35 then
+                                ClashBall = false -- crossing perpendicular => passing by, not a clash
+                            end
+                        end
+                    end
+                end
+
+                ACHAOTICDATA.Config.AutoSpamParry.Spamming =  DistToBall <= TargetCheck * 1.5 and DistToTarget <= TargetCheck and SpamVaildation and ClashBall
             end
         else
             ACHAOTICDATA.Config.AutoSpamParry.Spamming = false
