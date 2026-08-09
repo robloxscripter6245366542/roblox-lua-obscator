@@ -48,19 +48,15 @@ local Model = {}
 -- multiplier + one-way latency lead).
 function Model.parryAccuracy(speed, dataPingMs, autoAccuracy, sliderMult)
     local ping = dataPingMs / 10
-    local ping_threshold = math.clamp(ping / 10, 5, 17)
-    local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
-
     local accuracy_multiplier = sliderMult
     if autoAccuracy then
         local ping_factor = math.clamp(ping / 100, 0, 1)
         local speed_factor = math.clamp(speed / 400, 0, 1)
-        accuracy_multiplier = math.clamp(1.0 - ping_factor * 0.35 - speed_factor * 0.25, 0.45, 1.0)
+        accuracy_multiplier = accuracy_multiplier * math.clamp(1.0 + ping_factor * 0.6 + speed_factor * 0.5, 1.0, 2.0)
     end
-
-    local speed_divisor = (2.4 + capped_speed_diff * 0.002) * accuracy_multiplier
-    -- Block late/close: tightened + capped speed term (mirrors elopez).
-    return ping_threshold + math.clamp(speed / (speed_divisor * 2), 9.5, 45)
+    -- Time-to-arrival: fire distance = speed * lead-seconds (mirrors elopez).
+    local block_lead = 0.22 * accuracy_multiplier
+    return math.max(speed * block_lead, 12)
 end
 
 local PARRY_COOLDOWN = 0.12 -- elopez: time_view >= 0.12 gate

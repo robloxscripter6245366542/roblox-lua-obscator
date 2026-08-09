@@ -5155,29 +5155,27 @@ local function MainConnection()
                 local velocity = zoomies.VectorVelocity
                 local distance = (GetCharacter().PrimaryPart.Position - Ball.Position).Magnitude
                 local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue() / 10
-                local ping_threshold = math.clamp(ping / 10, 5, 17)
                 local speed = velocity.Magnitude
-                local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
-                -- Adaptive accuracy: when "Auto Accuracy" is on, the divisor
-                -- multiplier self-tunes from live ping and ball speed (parry
-                -- earlier as either rises) instead of the static slider value.
-                -- Bounded so it never becomes reckless. When off, behaves exactly
-                -- as before (uses the slider's SpeedDivisorMultiplier).
+                -- Time-to-arrival timing: parry a fixed LEAD TIME before the ball
+                -- reaches us, so the moment is consistent across ball speeds. A
+                -- fixed distance threshold fires far too late on fast balls (they
+                -- cross it in a blink -> "it blocks at 1 stud from you"); scaling
+                -- the fire distance with speed keeps the timing right for slow and
+                -- fast alike.
                 local accuracy_multiplier = ACHAOTICDATA.Config.ParrySettings.SpeedDivisorMultiplier
                 if ACHAOTICDATA.Config.ParrySettings.AutoParryAutoAccuracy then
+                    -- Auto: add lead as ping / ball speed rise (parry earlier when
+                    -- it matters), up to ~2x the base lead.
                     local ping_factor = math.clamp(ping / 100, 0, 1)
                     local speed_factor = math.clamp(speed / 400, 0, 1)
-                    accuracy_multiplier = math.clamp(1.0 - ping_factor * 0.35 - speed_factor * 0.25, 0.45, 1.0)
+                    accuracy_multiplier = accuracy_multiplier * math.clamp(1.0 + ping_factor * 0.6 + speed_factor * 0.5, 1.0, 2.0)
                 end
-                local speed_divisor = (2.4 + capped_speed_diff * 0.002) * accuracy_multiplier
-                -- Block LATE / close: fire when the ball is near enough that the
-                -- single parry lands in the hit window, instead of firing from far
-                -- out (which wastes the parry, and the anti-double-parry lock then
-                -- stops it re-firing when the ball actually arrives -> a miss).
-                -- The speed term is tightened and capped so even fast balls are
-                -- parried at a consistent close range. Lower the Accuracy slider to
-                -- block even later; raise it to block sooner.
-                local parry_accuracy = ping_threshold + math.clamp(speed / (speed_divisor * 2), 9.5, 45)
+                -- Seconds of lead before impact (Accuracy slider scales it). Fire
+                -- distance = speed * lead; a small floor keeps a sane distance for
+                -- very slow balls. Combined with retry-until-connect below, a
+                -- slightly-off lead still lands the parry.
+                local block_lead = 0.22 * accuracy_multiplier
+                local parry_accuracy = math.max(speed * block_lead, 12)
                 local curved = IsBall_Curved(Ball, ping * 10, GetCharacter())
 
                 ACHAOTICDATA.Global.AutoParryCurrentAccuracy = parry_accuracy
