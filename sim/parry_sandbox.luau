@@ -59,8 +59,8 @@ function Model.parryAccuracy(speed, dataPingMs, autoAccuracy, sliderMult)
     end
 
     local speed_divisor = (2.4 + capped_speed_diff * 0.002) * accuracy_multiplier
-    -- Original block timing (no latency lead).
-    return ping_threshold + math.max(speed / speed_divisor, 9.5)
+    -- Block late/close: tightened + capped speed term (mirrors elopez).
+    return ping_threshold + math.clamp(speed / (speed_divisor * 2), 9.5, 45)
 end
 
 local PARRY_COOLDOWN = 0.12 -- elopez: time_view >= 0.12 gate
