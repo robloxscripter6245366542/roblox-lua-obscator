@@ -5226,7 +5226,12 @@ local function MainConnection()
                     -- while the redirect is still in flight, without the old 1s
                     -- global lockout that caused misses.
                     ACHAOTICDATA.Parry[Ball].Parried = true
-                    task.delay(0.25, function()
+                    -- Whiff timeout scales with ping: a successful parry's redirect
+                    -- takes ~ping to replicate back, so wait at least that long
+                    -- before retrying, otherwise a fast/close clash double-fires at
+                    -- high ping. ping = Data Ping(ms)/10, so seconds = ping/100.
+                    local retry_timeout = math.max(0.25, ping / 100 + 0.1)
+                    task.delay(retry_timeout, function()
                         if ACHAOTICDATA.Parry[Ball] then
                             ACHAOTICDATA.Parry[Ball].Parried = false
                         end
@@ -5301,10 +5306,12 @@ local function MainConnection()
 
                     ACHAOTICDATA.Parry[Ball].LobbyLastParry = Parry_Time
                     -- Suppress re-fire until this ball redirects (success, cleared
-                    -- by TargetConn) or a short timeout (whiff -> retry). Stops the
-                    -- double-fire while the redirect is still replicating.
+                    -- by TargetConn) or a ping-scaled timeout (whiff -> retry).
+                    -- Scaling with ping stops the double-fire while the redirect is
+                    -- still replicating on a fast/close clash.
                     ACHAOTICDATA.Parry[Ball].LobbyParried = true
-                    task.delay(0.25, function()
+                    local lobby_retry_timeout = math.max(0.25, Stats.Network.ServerStatsItem['Data Ping']:GetValue() / 1000 + 0.1)
+                    task.delay(lobby_retry_timeout, function()
                         if ACHAOTICDATA.Parry[Ball] then
                             ACHAOTICDATA.Parry[Ball].LobbyParried = false
                         end
