@@ -5259,20 +5259,19 @@ local function MainConnection()
                     continue
                 end
 
-                if ACHAOTICDATA.Parry[Ball].LobbyParried then
-                    continue
-                end
+                -- No lockout: retry until the parry connects (same as AutoParry).
+                -- The per-ball 120ms cooldown below prevents tick-spam, and the
+                -- ball's target flipping on a successful parry stops it.
 
                 local Ball_Target = Ball:GetAttribute('target')
                 local Velocity = Zoomies.VectorVelocity
                 local Distance = (GetCharacter().PrimaryPart.Position - Ball.Position).Magnitude - 5
-                local Ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue()
-                local Ping_Threshold = math.clamp(Ping / 20, 5, 17)
                 local Speed = Velocity.Magnitude * 1.5
-                local cappedSpeedDiff = math.min(math.max(Speed - 9.5, 0), 650)
-                local speed_divisor_base = 2.4 + cappedSpeedDiff * 0.002
-                local speed_divisor = speed_divisor_base * ACHAOTICDATA.Config.ParrySettings.LobbySpeedDivisorMultiplier
-                local Parry_Accuracy = Ping_Threshold + math.max(Speed / speed_divisor, 9.5) + (Distance / 75)
+                -- Time-to-arrival timing (same model as AutoParry): fire distance
+                -- = speed * lead-seconds, consistent across ball speeds; the Lobby
+                -- Accuracy slider scales the lead.
+                local block_lead = 0.22 * ACHAOTICDATA.Config.ParrySettings.LobbySpeedDivisorMultiplier
+                local Parry_Accuracy = math.max(Speed * block_lead, 12)
                 local Curved = false --IsBall_Curved(Ball, Ping, GetCharacter())
 
                 local CurveVaildation = Curved and ACHAOTICDATA.Config.LobbyAutoParry.AntiCurveEnabled
@@ -5280,6 +5279,8 @@ local function MainConnection()
                 if Ball_Target == tostring(ACHAOTICDATA.Player.LocalPlayer) and Distance <= Parry_Accuracy and not CurveVaildation then
                     local Parry_Time = os.clock()
                     local Time_View = Parry_Time - (ACHAOTICDATA.Parry[Ball].LobbyLastParry)
+                    -- Retry cooldown: at most one parry per 120ms on this ball.
+                    if Time_View >= 0.12 then
                     if Time_View > 0.25 and ACHAOTICDATA.Config.LobbyAutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
                         PlayParry_Animation()
                     end
@@ -5295,6 +5296,7 @@ local function MainConnection()
                             ACHAOTICDATA.Parry[Ball].LobbyParried = false
                         end
                     end)
+                    end
                 end
             end
         end
