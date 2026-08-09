@@ -5144,13 +5144,12 @@ local function MainConnection()
                     continue
                 end
 
-                -- (The persistent TargetConn above already resets
-                -- AutoParryParried on redirect; a per-frame :Once here leaked a
-                -- new connection every frame.)
-
-                if ACHAOTICDATA.Global.AutoParryParried then
-                    continue
-                end
+                -- No global "already parried" lockout: a single mistimed parry
+                -- must NOT lock the ball out for up to a second (that made it fire
+                -- once and then get hit -- the "misses everything" bug). Re-evaluate
+                -- every frame; the per-ball 120ms cooldown below prevents tick-spam,
+                -- and the ball's `target` flipping on a SUCCESSFUL parry stops it.
+                -- Net: it retries until the parry actually connects (ball redirected).
 
                 local ball_target = Ball:GetAttribute('target')
                 local velocity = zoomies.VectorVelocity
