@@ -4320,7 +4320,7 @@ local ACHAOTICDATA = {
             ParryMethod = "Blatant",
             SlashesofFuryDetectionMaxParryCount = 36,
             SlashesofFuryDetectionParryDelay = 0.05,
-            SpammingRPS = 400,
+            SpammingRPS = 550,
             ParryCurveDirection = "Camera",
             FastBallProtection = false,
             LobbyAutoParryAccuracy = 80,
@@ -5349,7 +5349,11 @@ local function MainConnection()
 
                 local SpamVaildation = false
                 if ACHAOTICDATA.Config.AutoSpamParry.DetectionMode == "Speed" then
-                    SpamVaildation = ACHAOTICDATA.Global.Parries > 1
+                    -- Engage the clash on the first parry instead of the second,
+                    -- so spam starts a beat sooner. Still gated by the close
+                    -- DistToBall/DistToTarget checks below, so it only fires in a
+                    -- real clash setup.
+                    SpamVaildation = ACHAOTICDATA.Global.Parries > 0
                 elseif ACHAOTICDATA.Config.AutoSpamParry.DetectionMode == "Distance" then
                     SpamVaildation = true
                 end
