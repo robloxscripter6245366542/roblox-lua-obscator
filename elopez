@@ -5131,10 +5131,17 @@ local function MainConnection()
                         last_warping = 0,
                         curving = tick(),
                         LastParry = 0,
+                        Parried = false,
                         LobbyParried = false,
                         LobbyLastParry = os.clock(),
                         TargetConn = Ball:GetAttributeChangedSignal('target'):Connect(function()
                             ACHAOTICDATA.Global.AutoParryParried = false
+                            -- Ball redirected => our parry connected: stop retrying
+                            -- immediately (prevents the double-fire while the
+                            -- redirect was still replicating).
+                            if ACHAOTICDATA.Parry[Ball] then
+                                ACHAOTICDATA.Parry[Ball].Parried = false
+                            end
                         end)
                     }
                 end
@@ -5203,12 +5210,9 @@ local function MainConnection()
                     end
                 end
 
-                if ball_target == tostring(ACHAOTICDATA.Player.LocalPlayer) and distance <= parry_accuracy then
+                if ball_target == tostring(ACHAOTICDATA.Player.LocalPlayer) and distance <= parry_accuracy and not ACHAOTICDATA.Parry[Ball].Parried then
                     local parry_time = os.clock()
                     local time_view = parry_time - ACHAOTICDATA.Parry[Ball].LastParry
-                    -- Anti double-parry: never fire the same ball twice within
-                    -- 120ms. The non-blocking flag reset (on the ball's target
-                    -- change) could otherwise race and double-fire on one approach.
                     if time_view >= 0.12 then
                     if time_view > 0.25 and ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
                         PlayParry_Animation()
@@ -5216,11 +5220,17 @@ local function MainConnection()
                     FireParry()
                     ACHAOTICDATA.Parry[Ball].LastParry = parry_time
                     ACHAOTICDATA.Global.AutoParryParried = true
-                    -- Non-blocking re-enable: the ball's target-changed signal
-                    -- clears this the instant the ball is redirected; this delay
-                    -- is only the 1s safety fallback. Previously a blocking
-                    -- repeat/Wait() here stalled the whole parry loop, delaying
-                    -- every subsequent block.
+                    -- Fired once; suppress re-fire until this ball redirects
+                    -- (success, cleared instantly by TargetConn) or this short
+                    -- timeout (whiff -> retry). This is what stops the double-fire
+                    -- while the redirect is still in flight, without the old 1s
+                    -- global lockout that caused misses.
+                    ACHAOTICDATA.Parry[Ball].Parried = true
+                    task.delay(0.25, function()
+                        if ACHAOTICDATA.Parry[Ball] then
+                            ACHAOTICDATA.Parry[Ball].Parried = false
+                        end
+                    end)
                     task.delay(1, function()
                         ACHAOTICDATA.Global.AutoParryParried = false
                     end)
@@ -5249,17 +5259,20 @@ local function MainConnection()
                         LobbyParried = false,
                         LobbyLastParry = os.clock(),
                         TargetConn = Ball:GetAttributeChangedSignal('target'):Connect(function()
-                            ACHAOTICDATA.Parry[Ball].LobbyParried = false
+                            -- Redirected => parry connected: stop retrying now.
+                            if ACHAOTICDATA.Parry[Ball] then
+                                ACHAOTICDATA.Parry[Ball].LobbyParried = false
+                            end
                         end)
                     }
                 end
-                
+
                 local Zoomies = Ball:FindFirstChild('zoomies')
                 if not Zoomies then
                     continue
                 end
 
-                -- No lockout: retry until the parry connects (same as AutoParry).
+                -- Retry until the parry connects (same as AutoParry).
                 -- The per-ball 120ms cooldown below prevents tick-spam, and the
                 -- ball's target flipping on a successful parry stops it.
 
@@ -5276,10 +5289,9 @@ local function MainConnection()
 
                 local CurveVaildation = Curved and ACHAOTICDATA.Config.LobbyAutoParry.AntiCurveEnabled
 
-                if Ball_Target == tostring(ACHAOTICDATA.Player.LocalPlayer) and Distance <= Parry_Accuracy and not CurveVaildation then
+                if Ball_Target == tostring(ACHAOTICDATA.Player.LocalPlayer) and Distance <= Parry_Accuracy and not CurveVaildation and not ACHAOTICDATA.Parry[Ball].LobbyParried then
                     local Parry_Time = os.clock()
                     local Time_View = Parry_Time - (ACHAOTICDATA.Parry[Ball].LobbyLastParry)
-                    -- Retry cooldown: at most one parry per 120ms on this ball.
                     if Time_View >= 0.12 then
                     if Time_View > 0.25 and ACHAOTICDATA.Config.LobbyAutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
                         PlayParry_Animation()
@@ -5288,10 +5300,11 @@ local function MainConnection()
                     FireParry()
 
                     ACHAOTICDATA.Parry[Ball].LobbyLastParry = Parry_Time
+                    -- Suppress re-fire until this ball redirects (success, cleared
+                    -- by TargetConn) or a short timeout (whiff -> retry). Stops the
+                    -- double-fire while the redirect is still replicating.
                     ACHAOTICDATA.Parry[Ball].LobbyParried = true
-                    -- Non-blocking 1s safety reset (see AutoParry note above);
-                    -- guard in case the ball was removed before it fires.
-                    task.delay(1, function()
+                    task.delay(0.25, function()
                         if ACHAOTICDATA.Parry[Ball] then
                             ACHAOTICDATA.Parry[Ball].LobbyParried = false
                         end
