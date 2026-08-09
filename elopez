@@ -5176,7 +5176,12 @@ local function MainConnection()
                 -- fire that much earlier and it registers right as the ball
                 -- arrives. ping here is Data Ping(ms)/10, so seconds = ping/100.
                 -- Bounded so extreme speed/ping can't trigger from across the map.
-                local latency_lead = math.min(speed * (ping / 100), 60)
+                -- One-way latency lead (client->server). ping is Data Ping(ms)/10,
+                -- so round-trip seconds = ping/100 and one-way = ping/200. Only the
+                -- one-way trip matters for the parry reaching the server, so lead by
+                -- that (the old ping/100 double-counted and blocked too early).
+                -- Tightly capped so it can't fire from way out.
+                local latency_lead = math.min(speed * (ping / 200), 22)
                 local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5) + latency_lead
                 local curved = IsBall_Curved(Ball, ping * 10, GetCharacter())
 
@@ -5208,6 +5213,10 @@ local function MainConnection()
                 if ball_target == tostring(ACHAOTICDATA.Player.LocalPlayer) and distance <= parry_accuracy then
                     local parry_time = os.clock()
                     local time_view = parry_time - ACHAOTICDATA.Parry[Ball].LastParry
+                    -- Anti double-parry: never fire the same ball twice within
+                    -- 120ms. The non-blocking flag reset (on the ball's target
+                    -- change) could otherwise race and double-fire on one approach.
+                    if time_view >= 0.12 then
                     if time_view > 0.25 and ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
                         PlayParry_Animation()
                     end
@@ -5222,6 +5231,7 @@ local function MainConnection()
                     task.delay(1, function()
                         ACHAOTICDATA.Global.AutoParryParried = false
                     end)
+                    end
                 end
             end
         else
