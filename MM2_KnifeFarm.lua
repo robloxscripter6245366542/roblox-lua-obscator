@@ -30,6 +30,8 @@
   * Everything pcall-guarded; survives your own death.
   * Draggable dark "premium" GUI with on/off toggles (Enabled / Auto Farm /
     Skip Shielded). Drag it anywhere; the RightShift hotkey stays in sync.
+  * Auto-saves your toggle choices and the panel position to a config file
+    (executor file API) so they persist across executions.
 
  Requires being the murderer (you must have a knife) — a client script
  cannot assign itself the role, so if you have no knife it simply idles.
@@ -62,8 +64,34 @@ local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService       = game:GetService("HttpService")
 
 local lp = Players.LocalPlayer
+
+-- ── Config persistence ────────────────────────────────────────────────────
+-- Saves your toggle choices (and the panel position) to a file so they stick
+-- across executions. Needs the executor's file API; degrades to no-op without.
+local CONFIG_FILE = "MM2KnifeFarm_config.json"
+local saved = {}   -- { Enabled, AutoFarm, SkipShielded, Pos = {xs,xo,ys,yo} }
+
+local function fsAvailable()
+    return (writefile ~= nil) and (readfile ~= nil) and (isfile ~= nil)
+end
+local function saveConfig()
+    if not fsAvailable() then return end
+    pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(saved)) end)
+end
+local function loadConfig()
+    if not fsAvailable() then return end
+    pcall(function()
+        if isfile(CONFIG_FILE) then
+            local data = HttpService:JSONDecode(readfile(CONFIG_FILE))
+            if type(data) == "table" then
+                for k, v in pairs(data) do saved[k] = v end
+            end
+        end
+    end)
+end
 
 -- ── State ───────────────────────────────────────────────────────────────
 local enabled     = CONFIG.Enabled
@@ -74,6 +102,12 @@ local lastStatus  = nil
 local homeCFrame  = nil        -- where we were before diving in (for ReturnAfterKill)
 local connections = {}
 local function track(c) connections[#connections + 1] = c return c end
+
+-- Restore saved choices over the CONFIG defaults before anything reads them.
+loadConfig()
+if saved.Enabled      ~= nil then enabled                = saved.Enabled      end
+if saved.AutoFarm     ~= nil then CONFIG.AutoFarm         = saved.AutoFarm     end
+if saved.SkipShielded ~= nil then CONFIG.SkipForceField   = saved.SkipShielded end
 
 -- UI setters (assigned when the GUI is built) so the hotkey can sync the pills.
 local setMaster, setFarm
@@ -255,6 +289,11 @@ pcall(function()
         Position = UDim2.fromScale(0.5, 0.42), AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundColor3 = C.bg, BorderSizePixel = 0,
     }, gui)
+    -- restore the saved panel position, if any
+    if type(saved.Pos) == "table" and #saved.Pos == 4 then
+        local p = saved.Pos
+        main.Position = UDim2.new(p[1], p[2], p[3], p[4])
+    end
     new("UICorner", { CornerRadius = UDim.new(0, 14) }, main)
     new("UIStroke", { Color = C.stroke, Thickness = 1.5, Transparency = 0.15 }, main)
     new("UIGradient", {
@@ -330,9 +369,15 @@ pcall(function()
         return set
     end
 
-    setMaster = addToggle(1, "Enabled",      enabled,               function(s) enabled = s end)
-    setFarm   = addToggle(2, "Auto Farm",    CONFIG.AutoFarm,       function(s) CONFIG.AutoFarm = s end)
-                addToggle(3, "Skip Shielded", CONFIG.SkipForceField, function(s) CONFIG.SkipForceField = s end)
+    setMaster = addToggle(1, "Enabled", enabled, function(s)
+        enabled = s; saved.Enabled = s; saveConfig()
+    end)
+    setFarm   = addToggle(2, "Auto Farm", CONFIG.AutoFarm, function(s)
+        CONFIG.AutoFarm = s; saved.AutoFarm = s; saveConfig()
+    end)
+                addToggle(3, "Skip Shielded", CONFIG.SkipForceField, function(s)
+        CONFIG.SkipForceField = s; saved.SkipShielded = s; saveConfig()
+    end)
 
     -- dragging (mouse + touch), grabbed anywhere on the panel
     local dragging, dragStart, startPos
@@ -357,6 +402,11 @@ pcall(function()
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
+            if dragging then
+                local pos = main.Position   -- remember where the panel was left
+                saved.Pos = { pos.X.Scale, pos.X.Offset, pos.Y.Scale, pos.Y.Offset }
+                saveConfig()
+            end
             dragging = false
         end
     end)
@@ -367,6 +417,7 @@ track(UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == CONFIG.TOGGLE_KEY then
         enabled = not enabled
+        saved.Enabled = enabled; saveConfig()             -- persist the choice
         if setMaster then setMaster(enabled, false) end   -- keep the UI pill in sync
         warn("[MM2_KnifeFarm] " .. (enabled and "ENABLED" or "DISABLED"))
     elseif input.KeyCode == CONFIG.FARM_HOLD_KEY then
