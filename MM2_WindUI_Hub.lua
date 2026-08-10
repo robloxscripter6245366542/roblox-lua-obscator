@@ -24,6 +24,8 @@
   KNIFE
    * Auto Farm — teleport behind the nearest player and slash; switches on
      kill; skips ForceField players; auto-equip knife.
+   * Ranged throw (FlingKnife) — auto-throw the knife at the nearest player
+     (a kill everyone sees, no teleport); one-shot throw; DualWield toggle.
   PLAYER  — WalkSpeed, JumpPower, Infinite Jump, Noclip, Fly (+speed).
   VISUALS — player ESP (role-coloured highlight + name), Fullbright.
   MISC    — Anti-AFK, rejoin, config auto-save.
@@ -66,6 +68,10 @@ local Config = {
     SkipShield     = true,
     KnifeMatchGated= true,
     AutoEquipKnife = true,
+    -- knife throw (ranged — visible to everyone)
+    AutoThrow      = false,
+    ThrowRange     = 120,
+    ThrowInterval  = 0.6,
     -- player
     WalkEnabled    = false, WalkSpeed = 16,
     JumpEnabled    = false, JumpPower = 50,
@@ -169,6 +175,29 @@ local function findKnife()
                     local ks = t:FindFirstChild("KnifeServer")
                     local sl = ks and ks:FindFirstChild("SlashStart")
                     if sl then return t, sl, t.Parent == lp.Character end
+                end
+            end
+        end
+    end
+end
+-- knife with all its server remotes exposed (for throw / dual wield)
+local function findKnifeAll()
+    for _, container in ipairs({ lp.Character, lp:FindFirstChildOfClass("Backpack") }) do
+        if container then
+            for _, t in ipairs(container:GetChildren()) do
+                if t:IsA("Tool") then
+                    local ks = t:FindFirstChild("KnifeServer")
+                    if ks and ks:FindFirstChild("SlashStart") then
+                        return {
+                            tool     = t,
+                            handle   = t:FindFirstChild("Handle"),
+                            slash    = ks:FindFirstChild("SlashStart"),
+                            fling    = ks:FindFirstChild("FlingKnife"),
+                            gone     = ks:FindFirstChild("SetKnifeGoneTime"),
+                            dual     = ks:FindFirstChild("DualWield"),
+                            equipped = t.Parent == lp.Character,
+                        }
+                    end
                 end
             end
         end
@@ -387,6 +416,90 @@ track(RunService.Heartbeat:Connect(function()
         if os.clock() - lastSlash >= Config.SlashInterval then
             lastSlash = os.clock()
             slash:FireServer()
+        end
+    end)
+end))
+
+-- knife throw (ranged kill — visible to everyone) + dual wield
+KnifeTab:Section({ Title = "Knife Throw (ranged — everyone sees)" })
+
+local lastThrow = 0
+-- throw the knife at a world position, exactly like the stock KnifeClient:
+--   FlingKnife:FireServer(CFrame.new(hitPos), Handle.Position)  then  SetKnifeGoneTime()
+local function throwAt(k, pos)
+    if not (k and k.fling and k.equipped) then return false end
+    local from = (k.handle and k.handle.Position) or (myRoot() and myRoot().Position) or pos
+    pcall(function()
+        k.fling:FireServer(CFrame.new(pos), from)
+        if k.gone then k.gone:FireServer() end
+    end)
+    return true
+end
+
+KnifeTab:Toggle({
+    Title = "Auto Throw Knife", Desc = "Throw your knife at the nearest player — ranged, no teleport.",
+    Value = Config.AutoThrow,
+    Callback = function(v) Config.AutoThrow = v queueSave() end,
+})
+KnifeTab:Slider({
+    Title = "Throw Range (studs)",
+    Value = { Min = 20, Max = 400, Default = Config.ThrowRange },
+    Step = 10, Callback = function(v) Config.ThrowRange = v queueSave() end,
+})
+KnifeTab:Slider({
+    Title = "Throw Interval (ms)",
+    Value = { Min = 300, Max = 2000, Default = math.floor(Config.ThrowInterval * 1000) },
+    Step = 50, Callback = function(v) Config.ThrowInterval = v / 1000 queueSave() end,
+})
+KnifeTab:Button({
+    Title = "Throw At Nearest (once)",
+    Callback = function()
+        local k = findKnifeAll()
+        local root = myRoot()
+        if not (k and root) then return end
+        local best, bd
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp and p.Character and alive(p.Character) and not shielded(p.Character) then
+                local part = partOf(p.Character, "UpperTorso")
+                if part then
+                    local d = (part.Position - root.Position).Magnitude
+                    if not bd or d < bd then best, bd = part, d end
+                end
+            end
+        end
+        if best then throwAt(k, best.Position) end
+    end,
+})
+KnifeTab:Button({
+    Title = "Toggle Dual Wield", Desc = "Fire the DualWield remote (may need the gamepass to take effect).",
+    Callback = function()
+        local k = findKnifeAll()
+        if k and k.dual then pcall(function() k.dual:FireServer() end) end
+    end,
+})
+
+track(RunService.Heartbeat:Connect(function()
+    pcall(function()
+        if not Config.AutoThrow then return end
+        if Config.KnifeMatchGated and not matchActive() then return end
+        local k = findKnifeAll()
+        if not (k and k.fling and k.equipped) then return end
+        local root = myRoot()
+        if not root then return end
+        if os.clock() - lastThrow < Config.ThrowInterval then return end
+        local best, bd
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp and p.Character and alive(p.Character) and not shielded(p.Character) then
+                local part = partOf(p.Character, "UpperTorso")
+                if part then
+                    local d = (part.Position - root.Position).Magnitude
+                    if d <= Config.ThrowRange and (not bd or d < bd) then best, bd = part, d end
+                end
+            end
+        end
+        if best then
+            lastThrow = os.clock()
+            throwAt(k, best.Position)
         end
     end)
 end))
