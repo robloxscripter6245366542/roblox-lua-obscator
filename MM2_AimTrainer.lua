@@ -49,9 +49,14 @@ local CONFIG = {
 
     -- Silent aim / auto shoot (fire the real ShootStart remote at the target)
     SilentAim          = true,     -- redirect your shots to the locked target
-    AutoShoot          = false,    -- fire on your own, no click needed
+    AutoShoot          = true,     -- fire on your own, no click needed (auto-farm)
     AutoShootHoldKey   = Enum.UserInputType.MouseButton1,  -- while AutoShoot off: hold to silent-fire
     FireInterval       = 0.10,     -- min seconds between auto shots
+
+    -- Match gating: only auto-farm during a live round. MM2 broadcasts round
+    -- state on UpdateStatus ("Voting"/"Map Chosen"/"Loading"/"In Game"/"Clear")
+    -- and spawns the map under workspace.CurrentMap while a round is running.
+    MatchGated         = true,     -- pause auto-shoot until the match starts, resume each round
 
     -- Targeting
     FOV                = 140,      -- circle radius px; targets outside are ignored
@@ -70,6 +75,7 @@ local CONFIG = {
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local lp     = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -80,8 +86,31 @@ local holding     = false        -- AIM_KEY (camera) held
 local firingHeld  = false        -- AutoShootHoldKey held
 local lockedTo    = nil          -- sticky target Player
 local lastFire    = 0
+local lastStatus  = nil        -- most recent UpdateStatus string
 local connections = {}
 local function track(c) connections[#connections + 1] = c return c end
+
+-- ── Match state ──────────────────────────────────────────────────────────
+-- A round is live when the last broadcast status is "In Game", or (as a
+-- fallback if we joined mid-round and missed the event) a map Model exists
+-- under workspace.CurrentMap.
+local function matchActive()
+    if lastStatus == "In Game" then return true end
+    local map = workspace:FindFirstChild("CurrentMap")
+    return map ~= nil and map:FindFirstChildOfClass("Model") ~= nil
+end
+
+-- Listen for round-state broadcasts. First arg is the status string.
+pcall(function()
+    local ev = ReplicatedStorage:FindFirstChild("Events")
+    ev = ev and ev:FindFirstChild("RemoteEvents")
+    ev = ev and ev:FindFirstChild("UpdateStatus")
+    if ev then
+        track(ev.OnClientEvent:Connect(function(status)
+            if type(status) == "string" then lastStatus = status end
+        end))
+    end
+end)
 
 -- ── FOV circle (Drawing if the executor provides it) ─────────────────────
 local fovCircle
@@ -214,6 +243,11 @@ track(RunService.RenderStepped:Connect(function(dt)
 
     local wantCamera = CONFIG.CameraAssist and holding
     local wantShoot  = CONFIG.SilentAim and (CONFIG.AutoShoot or firingHeld)
+    -- pause the farm between rounds; a held manual fire still works.
+    if wantShoot and CONFIG.MatchGated and CONFIG.AutoShoot and not firingHeld
+       and not matchActive() then
+        wantShoot = false
+    end
     if not (wantCamera or wantShoot) then
         if not CONFIG.StickyTarget then lockedTo = nil end
         return

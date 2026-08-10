@@ -43,6 +43,22 @@ The murderer holds a `Tool` containing `KnifeServer` (with `SlashStart`,
 `FlingKnife`, `DualWield`, `SetKnifeGoneTime`). Presence of `KnifeServer`
 is a reliable role check to prefer / restrict targeting to the murderer.
 
+## Round / match state
+
+`ReplicatedStorage.Events.RemoteEvents.UpdateStatus` (server→client) drives the
+HUD status text. Observed status strings, in order:
+
+```
+"Voting"  ->  "Map Chosen"  ->  "Loading"  ->  "In Game"  ->  "Clear"
+```
+
+- `"In Game"` = a round is live (the handler also starts the round countdown).
+- The map spawns under `workspace.CurrentMap` (a Model child exists) while a
+  round runs — a reliable fallback if you join mid-round and miss the event.
+
+`MM2_AimTrainer.lua` uses this for `MatchGated`: auto-shoot only fires while a
+round is active and resumes automatically each new round.
+
 ## Other notable remotes
 
 - `ReplicatedStorage.Events.RemoteEvents.GunBeam` — server→client beam visual.
