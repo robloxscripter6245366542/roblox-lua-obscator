@@ -37,11 +37,45 @@ The stock client has a local debounce (`v_u_11` + `task.wait(0.01)`); calling
 the remote directly bypasses it, but the **server** still enforces ammo /
 cooldown, so rapid calls beyond the fire rate are simply dropped.
 
-## Murderer
+## Murderer / knife
 
 The murderer holds a `Tool` containing `KnifeServer` (with `SlashStart`,
 `FlingKnife`, `DualWield`, `SetKnifeGoneTime`). Presence of `KnifeServer`
 is a reliable role check to prefer / restrict targeting to the murderer.
+
+The tool name varies with skins (e.g. `Beachy`, `Turtles '26`), so detect it
+by the `KnifeServer.SlashStart` remote, not by the name "Knife".
+
+### Slash kill (authoritative)
+
+From `KnifeClient`, a melee slash is simply:
+
+```lua
+SlashStart:FireServer()   -- NO arguments
+```
+
+The **server** does the range / hit check and kills whoever is within knife
+reach. So a teleport-farm is: teleport behind a target → `SlashStart:FireServer()`.
+The client debounces slashes (`time() - last >= 1`), but the server is the real
+gate, so calling on a short interval is fine — excess calls are dropped.
+
+### Throw (FlingKnife)
+
+```lua
+FlingKnife:FireServer(CFrame.new(hitPosition), Knife.Handle.Position)
+SetKnifeGoneTime:FireServer()
+```
+
+Throws toward a CFrame — a ranged kill without teleporting, if preferred.
+
+### Spawn shield
+
+Classic Roblox spawn protection is a `ForceField` inside the target's
+character (`char:FindFirstChildOfClass("ForceField")`). While present the
+player can't be killed — skip them and return once it expires.
+
+`MM2_KnifeFarm.lua` uses all of the above: teleport behind the nearest
+non-shielded live player and fire `SlashStart`, switching on kill.
 
 ## Round / match state
 
