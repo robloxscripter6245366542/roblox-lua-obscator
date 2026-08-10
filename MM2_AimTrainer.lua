@@ -28,6 +28,9 @@
   * FOV circle, sticky lock, smoothing, optional velocity prediction.
   * Target selection    : prefer the Murderer, or restrict to Murderer only,
                          skip dead players and yourself.
+  * Auto-equip gun      : keeps the gun in your hand at all times and
+                         re-equips from the backpack after every respawn, so
+                         the farm never stalls unarmed.
   * Survives your death : re-resolves the gun and target every frame and
                          re-hooks on respawn.
 
@@ -58,6 +61,10 @@ local CONFIG = {
     -- and spawns the map under workspace.CurrentMap while a round is running.
     MatchGated         = true,     -- pause auto-shoot until the match starts, resume each round
 
+    -- Keep the gun out at all times so the farm never stalls unarmed. Re-equips
+    -- from the backpack whenever it isn't in your hand, including after respawn.
+    AutoEquipGun       = true,
+
     -- Targeting
     FOV                = 140,      -- circle radius px; targets outside are ignored
     ShowFOV            = true,
@@ -86,6 +93,7 @@ local holding     = false        -- AIM_KEY (camera) held
 local firingHeld  = false        -- AutoShootHoldKey held
 local lockedTo    = nil          -- sticky target Player
 local lastFire    = 0
+local lastEquip   = 0
 local lastStatus  = nil        -- most recent UpdateStatus string
 local connections = {}
 local function track(c) connections[#connections + 1] = c return c end
@@ -128,7 +136,8 @@ end)
 
 -- ── Role / gun detection (from the dump structure) ───────────────────────
 -- Find our gun tool by its GunServer.ShootStart remote, wherever the tool is.
-local function findGunFire()
+-- Returns: tool, ShootStart remote, isEquipped (tool is in the character).
+local function findGunTool()
     local char = lp.Character
     local bp   = lp:FindFirstChildOfClass("Backpack")
     for _, container in ipairs({ char, bp }) do
@@ -138,14 +147,24 @@ local function findGunFire()
                     local gs = tool:FindFirstChild("GunServer")
                     local shoot = gs and gs:FindFirstChild("ShootStart")
                     if shoot then
-                        -- second return: is it equipped (in character)?
-                        return shoot, tool.Parent == char
+                        return tool, shoot, tool.Parent == char
                     end
                 end
             end
         end
     end
-    return nil, false
+    return nil, nil, false
+end
+
+-- Keep the gun in hand: equip it from the backpack if it isn't already out.
+local function ensureGunEquipped()
+    local char = lp.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    if not (hum and hum.Health > 0) then return end
+    local tool, _, equipped = findGunTool()
+    if tool and not equipped then
+        pcall(function() hum:EquipTool(tool) end)
+    end
 end
 
 -- Murderer holds a tool containing KnifeServer.
@@ -241,6 +260,12 @@ track(RunService.RenderStepped:Connect(function(dt)
     end
     if not enabled then lockedTo = nil return end
 
+    -- keep the gun out at all times (throttled) so the farm is never unarmed
+    if CONFIG.AutoEquipGun and os.clock() - lastEquip >= 0.25 then
+        ensureGunEquipped()
+        lastEquip = os.clock()
+    end
+
     local wantCamera = CONFIG.CameraAssist and holding
     local wantShoot  = CONFIG.SilentAim and (CONFIG.AutoShoot or firingHeld)
     -- pause the farm between rounds; a held manual fire still works.
@@ -269,7 +294,7 @@ track(RunService.RenderStepped:Connect(function(dt)
     if wantShoot then
         local now = os.clock()
         if now - lastFire >= CONFIG.FireInterval then
-            local shoot, equipped = findGunFire()
+            local _, shoot, equipped = findGunTool()
             if shoot and equipped then
                 pcall(function() shoot:FireServer(point) end)
                 lastFire = now
@@ -303,8 +328,21 @@ track(UserInputService.InputEnded:Connect(function(input)
 end))
 
 -- ── Respawn: keep working after you die ──────────────────────────────────
-track(lp.CharacterAdded:Connect(function()
+track(lp.CharacterAdded:Connect(function(char)
     lockedTo = nil
+    -- re-equip the gun as soon as the fresh character is ready
+    if CONFIG.AutoEquipGun then
+        task.spawn(function()
+            char:WaitForChild("Humanoid", 10)
+            for _ = 1, 40 do            -- retry ~4s: backpack/tool stream in late
+                if not enabled then return end
+                ensureGunEquipped()
+                local _, _, equipped = findGunTool()
+                if equipped then return end
+                task.wait(0.1)
+            end
+        end)
+    end
 end))
 
 warn(("[MM2_AimTrainer] loaded — toggle=%s  camera=%s  silentAim=%s  auto=%s")
