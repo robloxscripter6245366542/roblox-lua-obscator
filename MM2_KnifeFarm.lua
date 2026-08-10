@@ -28,6 +28,8 @@
     resumes each new round.
   * Keeps the knife equipped and re-equips after you respawn.
   * Everything pcall-guarded; survives your own death.
+  * Draggable dark "premium" GUI with on/off toggles (Enabled / Auto Farm /
+    Skip Shielded). Drag it anywhere; the RightShift hotkey stays in sync.
 
  Requires being the murderer (you must have a knife) — a client script
  cannot assign itself the role, so if you have no knife it simply idles.
@@ -72,6 +74,9 @@ local lastStatus  = nil
 local homeCFrame  = nil        -- where we were before diving in (for ReturnAfterKill)
 local connections = {}
 local function track(c) connections[#connections + 1] = c return c end
+
+-- UI setters (assigned when the GUI is built) so the hotkey can sync the pills.
+local setMaster, setFarm
 
 -- ── Match state (UpdateStatus: In Game / Voting / ... ; CurrentMap fallback) ──
 local function matchActive()
@@ -211,11 +216,158 @@ track(RunService.Heartbeat:Connect(function()
     end
 end))
 
+-- ── GUI: draggable dark "premium" panel with on/off toggles ───────────────
+-- Palette
+local C = {
+    bg     = Color3.fromRGB(16, 16, 22),
+    bg2    = Color3.fromRGB(24, 24, 32),
+    stroke = Color3.fromRGB(120, 90, 255),
+    accent = Color3.fromRGB(130, 100, 255),
+    off    = Color3.fromRGB(52, 52, 64),
+    text   = Color3.fromRGB(236, 236, 246),
+    dim    = Color3.fromRGB(168, 168, 186),
+    knob   = Color3.fromRGB(244, 244, 252),
+}
+local function new(class, props, parent)
+    local o = Instance.new(class)
+    for k, v in pairs(props) do o[k] = v end
+    if parent then o.Parent = parent end
+    return o
+end
+
+pcall(function()
+    local TweenService = game:GetService("TweenService")
+
+    -- host the ScreenGui somewhere the game/anti-cheat won't wipe it
+    local host = game:GetService("CoreGui")
+    pcall(function() if gethui then host = gethui() end end)
+
+    local gui = new("ScreenGui", {
+        Name = "MM2KnifeFarmUI", ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true,
+    })
+    pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+    gui.Parent = host
+
+    local main = new("Frame", {
+        Name = "Main", Active = true,
+        Size = UDim2.fromOffset(248, 168),
+        Position = UDim2.fromScale(0.5, 0.42), AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = C.bg, BorderSizePixel = 0,
+    }, gui)
+    new("UICorner", { CornerRadius = UDim.new(0, 14) }, main)
+    new("UIStroke", { Color = C.stroke, Thickness = 1.5, Transparency = 0.15 }, main)
+    new("UIGradient", {
+        Rotation = 90,
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, C.bg2),
+            ColorSequenceKeypoint.new(1, C.bg),
+        }),
+    }, main)
+
+    -- title bar
+    local bar = new("Frame", {
+        Name = "Bar", Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1,
+    }, main)
+    new("TextLabel", {
+        Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(14, 0),
+        BackgroundTransparency = 1, Text = "MM2 KNIFE FARM",
+        Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = C.text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, bar)
+    new("Frame", {   -- accent underline
+        Size = UDim2.new(1, -28, 0, 2), Position = UDim2.fromOffset(14, 38),
+        BackgroundColor3 = C.accent, BorderSizePixel = 0,
+    }, main)
+
+    -- body with a vertical list of rows
+    local body = new("Frame", {
+        Size = UDim2.new(1, 0, 1, -50), Position = UDim2.fromOffset(0, 48),
+        BackgroundTransparency = 1,
+    }, main)
+    new("UIPadding", {
+        PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14),
+        PaddingTop = UDim.new(0, 2),
+    }, body)
+    new("UIListLayout", {
+        Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder,
+    }, body)
+
+    -- a labelled pill toggle; returns a setter set(state, fireCallback)
+    local function addToggle(order, label, initial, callback)
+        local row = new("Frame", {
+            LayoutOrder = order, Size = UDim2.new(1, 0, 0, 32), BackgroundTransparency = 1,
+        }, body)
+        new("TextLabel", {
+            Size = UDim2.new(1, -56, 1, 0), BackgroundTransparency = 1, Text = label,
+            Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = C.dim,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, row)
+        local pill = new("TextButton", {
+            Size = UDim2.fromOffset(46, 24), Position = UDim2.new(1, -46, 0.5, -12),
+            AutoButtonColor = false, Text = "",
+            BackgroundColor3 = initial and C.accent or C.off,
+        }, row)
+        new("UICorner", { CornerRadius = UDim.new(1, 0) }, pill)
+        local knob = new("Frame", {
+            Size = UDim2.fromOffset(18, 18),
+            Position = initial and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9),
+            BackgroundColor3 = C.knob, BorderSizePixel = 0,
+        }, pill)
+        new("UICorner", { CornerRadius = UDim.new(1, 0) }, knob)
+
+        local state = initial
+        local ti = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
+        local function set(s, fire)
+            state = s
+            TweenService:Create(pill, ti, { BackgroundColor3 = s and C.accent or C.off }):Play()
+            TweenService:Create(knob, ti, {
+                Position = s and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9),
+            }):Play()
+            if fire ~= false then callback(s) end
+        end
+        pill.MouseButton1Click:Connect(function() set(not state) end)
+        return set
+    end
+
+    setMaster = addToggle(1, "Enabled",      enabled,               function(s) enabled = s end)
+    setFarm   = addToggle(2, "Auto Farm",    CONFIG.AutoFarm,       function(s) CONFIG.AutoFarm = s end)
+                addToggle(3, "Skip Shielded", CONFIG.SkipForceField, function(s) CONFIG.SkipForceField = s end)
+
+    -- dragging (mouse + touch), grabbed anywhere on the panel
+    local dragging, dragStart, startPos
+    local function beginDrag(input)
+        dragging = true; dragStart = input.Position; startPos = main.Position
+    end
+    main.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            beginDrag(input)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch) then
+            local d = input.Position - dragStart
+            main.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + d.X,
+                startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+end)
+
 -- ── Input ───────────────────────────────────────────────────────────────
 track(UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == CONFIG.TOGGLE_KEY then
         enabled = not enabled
+        if setMaster then setMaster(enabled, false) end   -- keep the UI pill in sync
         warn("[MM2_KnifeFarm] " .. (enabled and "ENABLED" or "DISABLED"))
     elseif input.KeyCode == CONFIG.FARM_HOLD_KEY then
         farmHeld = true
