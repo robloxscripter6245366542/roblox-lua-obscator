@@ -1,46 +1,69 @@
 --!nocheck
 --[[
 ============================================================================
- MM2_AimTrainer.lua  —  Murder Mystery 2 aim-assist / aim trainer
+ MM2_AimTrainer.lua  —  Murder Mystery 2 aim assist / silent aim
 ============================================================================
- A hold-to-lock, FOV-based aim assist for practising sheriff aim in MM2.
+ Built against a full game dump of MM2 (PlaceId 129264514977232).
 
-  * Hold AIM_KEY -> the camera eases onto the best target inside the FOV.
-  * Sticky lock  -> stays on one target instead of jittering between them.
-  * FOV circle   -> only targets inside the on-screen circle are considered.
-  * Smoothing    -> frame-rate-independent ease-in (1.0 = instant snap).
-  * Prediction   -> optional velocity lead for moving targets.
-  * Priorities   -> optionally lock the Murderer first (detected by knife),
-                    skip downed/dead players, skip yourself.
-  * Target part  -> Head / Torso / HumanoidRootPart.
-  * Survives death: everything re-resolves per frame and re-hooks on respawn.
+ Real game structure used by this script
+ ---------------------------------------------------------------------------
+  * The sheriff/hero gun is a Tool in the character. Its name varies (it can
+    be a skin like "Sunny"), so we find it by looking for a child Tool that
+    contains  GunServer.ShootStart  — not by the name "Gun".
+      Character.<GunTool>.GunServer.ShootStart : RemoteEvent
+      Character.<GunTool>.GunServer.Lock       : RemoteEvent
+  * Firing is authoritative through the remote:
+      ShootStart:FireServer(hitPosition)     -- hitPosition is a Vector3
+    The stock client just passes the mouse hit; passing a target's torso
+    position instead is a "silent aim" — the shot lands there regardless of
+    where the camera points.
+  * The murderer holds a Tool containing  KnifeServer  (used to tell roles
+    apart so we can prefer / restrict to the murderer).
 
- Tuning lives entirely in the CONFIG table below. Press TOGGLE_KEY to
- enable/disable, hold AIM_KEY to lock.
+ Features
+ ---------------------------------------------------------------------------
+  * Camera aim-assist  : hold AIM_KEY to ease the camera onto the best target.
+  * Silent aim + auto  : fire ShootStart directly at the target (no camera
+                         movement needed) — toggle SilentAim / AutoShoot.
+  * FOV circle, sticky lock, smoothing, optional velocity prediction.
+  * Target selection    : prefer the Murderer, or restrict to Murderer only,
+                         skip dead players and yourself.
+  * Survives your death : re-resolves the gun and target every frame and
+                         re-hooks on respawn.
 
- Note: this only nudges YOUR camera — it never touches the shoot remote, so
- you still fire the shot yourself. Meant as a practice/training aid.
+ All tuning is in CONFIG. TOGGLE_KEY enables/disables the whole thing.
+ Nothing fires unless you have a gun equipped, so an innocent running this
+ does nothing.
 ============================================================================
 ]]
 
 -- ── Config ──────────────────────────────────────────────────────────────
 local CONFIG = {
-    Enabled           = true,
-    AIM_KEY           = Enum.UserInputType.MouseButton2, -- hold right-mouse to lock
-    TOGGLE_KEY        = Enum.KeyCode.RightShift,          -- toggle whole script
+    Enabled            = true,
+    TOGGLE_KEY         = Enum.KeyCode.RightShift,          -- toggle whole script
 
-    FOV               = 120,        -- circle radius in px (targets outside are ignored)
-    ShowFOV           = true,
-    Smoothing         = 0.35,       -- 0.05 (slow/smooth) .. 1.0 (instant snap)
-    TargetPart        = "Head",     -- "Head" / "Torso" / "HumanoidRootPart"
+    -- Camera aim-assist (hold to drag your camera onto the target)
+    CameraAssist       = true,
+    AIM_KEY            = Enum.UserInputType.MouseButton2,  -- hold right-mouse
+    Smoothing          = 0.35,     -- 0.05 slow .. 1.0 instant snap
 
-    StickyTarget      = true,       -- keep the same target while AIM_KEY held
-    Prediction        = false,      -- lead moving targets (MM2 guns are hitscan)
-    PredictionAmount  = 0.14,       -- seconds of lead when Prediction is on
+    -- Silent aim / auto shoot (fire the real ShootStart remote at the target)
+    SilentAim          = true,     -- redirect your shots to the locked target
+    AutoShoot          = false,    -- fire on your own, no click needed
+    AutoShootHoldKey   = Enum.UserInputType.MouseButton1,  -- while AutoShoot off: hold to silent-fire
+    FireInterval       = 0.10,     -- min seconds between auto shots
 
-    PrioritizeMurderer = true,      -- prefer the knife-holder when in FOV
-    IgnoreDead         = true,      -- skip players with Health <= 0
-    IgnoreSelf         = true,
+    -- Targeting
+    FOV                = 140,      -- circle radius px; targets outside are ignored
+    ShowFOV            = true,
+    ShootPart          = "Head",   -- "Head" / "UpperTorso" / "Torso" / "HumanoidRootPart"
+    StickyTarget       = true,
+    Prediction         = false,    -- MM2 guns are hitscan; leading usually misses
+    PredictionAmount   = 0.14,
+
+    PreferMurderer     = true,     -- prioritise the knife holder
+    MurdererOnly       = false,    -- only ever target the murderer
+    IgnoreDead         = true,
 }
 
 -- ── Services ────────────────────────────────────────────────────────────
@@ -53,32 +76,70 @@ local camera = workspace.CurrentCamera
 
 -- ── State ───────────────────────────────────────────────────────────────
 local enabled     = CONFIG.Enabled
-local aiming      = false
+local holding     = false        -- AIM_KEY (camera) held
+local firingHeld  = false        -- AutoShootHoldKey held
 local lockedTo    = nil          -- sticky target Player
+local lastFire    = 0
 local connections = {}
-
 local function track(c) connections[#connections + 1] = c return c end
 
--- ── FOV circle (Drawing if available, no-op otherwise) ───────────────────
+-- ── FOV circle (Drawing if the executor provides it) ─────────────────────
 local fovCircle
 pcall(function()
     if Drawing then
         fovCircle = Drawing.new("Circle")
-        fovCircle.Thickness   = 1.5
-        fovCircle.NumSides    = 64
-        fovCircle.Radius      = CONFIG.FOV
-        fovCircle.Filled      = false
-        fovCircle.Color       = Color3.fromRGB(255, 255, 255)
+        fovCircle.Thickness    = 1.5
+        fovCircle.NumSides     = 64
+        fovCircle.Filled       = false
+        fovCircle.Color        = Color3.fromRGB(255, 255, 255)
         fovCircle.Transparency = 1
-        fovCircle.Visible     = false
+        fovCircle.Visible      = false
     end
 end)
 
--- ── Helpers ─────────────────────────────────────────────────────────────
+-- ── Role / gun detection (from the dump structure) ───────────────────────
+-- Find our gun tool by its GunServer.ShootStart remote, wherever the tool is.
+local function findGunFire()
+    local char = lp.Character
+    local bp   = lp:FindFirstChildOfClass("Backpack")
+    for _, container in ipairs({ char, bp }) do
+        if container then
+            for _, tool in ipairs(container:GetChildren()) do
+                if tool:IsA("Tool") then
+                    local gs = tool:FindFirstChild("GunServer")
+                    local shoot = gs and gs:FindFirstChild("ShootStart")
+                    if shoot then
+                        -- second return: is it equipped (in character)?
+                        return shoot, tool.Parent == char
+                    end
+                end
+            end
+        end
+    end
+    return nil, false
+end
+
+-- Murderer holds a tool containing KnifeServer.
+local function isMurderer(player)
+    for _, container in ipairs({ player.Character, player:FindFirstChildOfClass("Backpack") }) do
+        if container then
+            for _, tool in ipairs(container:GetChildren()) do
+                if tool:IsA("Tool") and tool:FindFirstChild("KnifeServer") then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- ── Target helpers ───────────────────────────────────────────────────────
 local function getPart(char)
     if not char then return nil end
-    local part = char:FindFirstChild(CONFIG.TargetPart)
-    return part or char:FindFirstChild("HumanoidRootPart")
+    return char:FindFirstChild(CONFIG.ShootPart)
+        or char:FindFirstChild("Head")
+        or char:FindFirstChild("UpperTorso")
+        or char:FindFirstChild("HumanoidRootPart")
 end
 
 local function isAlive(char)
@@ -86,41 +147,31 @@ local function isAlive(char)
     return hum and hum.Health > 0
 end
 
--- MM2 murderer carries a "Knife" tool (in character while equipped, or backpack).
-local function isMurderer(player)
-    local char = player.Character
-    if char and char:FindFirstChild("Knife") then return true end
-    local bp = player:FindFirstChildOfClass("Backpack")
-    if bp and bp:FindFirstChild("Knife") then return true end
-    return false
-end
-
--- Screen distance from a world position to the crosshair, plus on-screen flag.
-local function screenInfo(worldPos)
-    local sp, onScreen = camera:WorldToViewportPoint(worldPos)
+local function screenDist(worldPos)
+    local sp = camera:WorldToViewportPoint(worldPos)
     if sp.Z <= 0 then return nil end
     local center = camera.ViewportSize / 2
-    local delta  = Vector2.new(sp.X, sp.Y) - center
-    return delta.Magnitude, onScreen
+    return (Vector2.new(sp.X, sp.Y) - center).Magnitude
 end
 
--- Pick the best candidate inside the FOV circle.
 local function selectTarget()
     local best, bestScore
     for _, p in ipairs(Players:GetPlayers()) do
-        if not (CONFIG.IgnoreSelf and p == lp) then
+        if p ~= lp then
             local char = p.Character
             local part = getPart(char)
             if part and (not CONFIG.IgnoreDead or isAlive(char)) then
-                local dist = screenInfo(part.Position)
-                if dist and dist <= CONFIG.FOV then
-                    -- lower score = better. Murderer gets a big bonus.
-                    local score = dist
-                    if CONFIG.PrioritizeMurderer and isMurderer(p) then
-                        score = score - 10000
-                    end
-                    if not bestScore or score < bestScore then
-                        best, bestScore = p, score
+                local murd = isMurderer(p)
+                if not CONFIG.MurdererOnly or murd then
+                    local dist = screenDist(part.Position)
+                    if dist and dist <= CONFIG.FOV then
+                        local score = dist
+                        if CONFIG.PreferMurderer and murd then
+                            score = score - 100000   -- always win ties
+                        end
+                        if not bestScore or score < bestScore then
+                            best, bestScore = p, score
+                        end
                     end
                 end
             end
@@ -129,74 +180,99 @@ local function selectTarget()
     return best
 end
 
--- Aim point for a target, with optional velocity lead.
-local function aimPoint(player)
+local function aimPos(player)
     local part = getPart(player.Character)
     if not part then return nil end
     local pos = part.Position
     if CONFIG.Prediction then
-        local vel = part.AssemblyLinearVelocity
-        pos = pos + vel * CONFIG.PredictionAmount
+        pos = pos + part.AssemblyLinearVelocity * CONFIG.PredictionAmount
     end
     return pos
 end
 
--- ── Aim loop ────────────────────────────────────────────────────────────
+-- Resolve the current target, honouring the sticky lock.
+local function resolveTarget()
+    local t = lockedTo
+    local valid = t and t.Character and getPart(t.Character)
+        and (not CONFIG.IgnoreDead or isAlive(t.Character))
+        and (not CONFIG.MurdererOnly or isMurderer(t))
+    if not (CONFIG.StickyTarget and valid) then
+        t = selectTarget()
+        lockedTo = t
+    end
+    return t
+end
+
+-- ── Main loop ────────────────────────────────────────────────────────────
 track(RunService.RenderStepped:Connect(function(dt)
     if fovCircle then
-        fovCircle.Radius  = CONFIG.FOV
-        fovCircle.Position = camera.ViewportSize / 2
-        fovCircle.Visible = enabled and CONFIG.ShowFOV
+        fovCircle.Radius   = CONFIG.FOV
+        fovCircle.Position  = camera.ViewportSize / 2
+        fovCircle.Visible  = enabled and CONFIG.ShowFOV
     end
+    if not enabled then lockedTo = nil return end
 
-    if not (enabled and aiming) then
-        lockedTo = nil
+    local wantCamera = CONFIG.CameraAssist and holding
+    local wantShoot  = CONFIG.SilentAim and (CONFIG.AutoShoot or firingHeld)
+    if not (wantCamera or wantShoot) then
+        if not CONFIG.StickyTarget then lockedTo = nil end
         return
     end
 
-    -- resolve target (sticky if still valid)
-    local target = lockedTo
-    local valid = target and target.Character and getPart(target.Character)
-        and (not CONFIG.IgnoreDead or isAlive(target.Character))
-    if not (CONFIG.StickyTarget and valid) then
-        target = selectTarget()
-        lockedTo = target
-    end
+    local target = resolveTarget()
     if not target then return end
-
-    local point = aimPoint(target)
+    local point = aimPos(target)
     if not point then return end
 
-    -- frame-rate-independent ease toward the target
-    local desired = CFrame.new(camera.CFrame.Position, point)
-    local alpha = 1 - (1 - math.clamp(CONFIG.Smoothing, 0.01, 1)) ^ (dt * 60)
-    camera.CFrame = camera.CFrame:Lerp(desired, alpha)
+    -- camera ease
+    if wantCamera then
+        local desired = CFrame.new(camera.CFrame.Position, point)
+        local alpha = 1 - (1 - math.clamp(CONFIG.Smoothing, 0.01, 1)) ^ (dt * 60)
+        camera.CFrame = camera.CFrame:Lerp(desired, alpha)
+    end
+
+    -- silent fire through the real remote
+    if wantShoot then
+        local now = os.clock()
+        if now - lastFire >= CONFIG.FireInterval then
+            local shoot, equipped = findGunFire()
+            if shoot and equipped then
+                pcall(function() shoot:FireServer(point) end)
+                lastFire = now
+            end
+        end
+    end
 end))
 
 -- ── Input ───────────────────────────────────────────────────────────────
+local function matches(input, want)
+    return input.UserInputType == want or input.KeyCode == want
+end
+
 track(UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == CONFIG.TOGGLE_KEY then
+    if input.KeyCode == CONFIG.TOGGLE_KEY and not gp then
         enabled = not enabled
         warn("[MM2_AimTrainer] " .. (enabled and "ENABLED" or "DISABLED"))
         return
     end
-    if input.UserInputType == CONFIG.AIM_KEY or input.KeyCode == CONFIG.AIM_KEY then
-        aiming = true
-    end
+    if gp then return end
+    if matches(input, CONFIG.AIM_KEY)          then holding    = true end
+    if matches(input, CONFIG.AutoShootHoldKey) then firingHeld = true end
 end))
 
 track(UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == CONFIG.AIM_KEY or input.KeyCode == CONFIG.AIM_KEY then
-        aiming = false
-        lockedTo = nil
+    if matches(input, CONFIG.AIM_KEY) then
+        holding = false
+        if not CONFIG.StickyTarget then lockedTo = nil end
     end
+    if matches(input, CONFIG.AutoShootHoldKey) then firingHeld = false end
 end))
 
 -- ── Respawn: keep working after you die ──────────────────────────────────
 track(lp.CharacterAdded:Connect(function()
-    lockedTo = nil        -- drop any stale lock on respawn
+    lockedTo = nil
 end))
 
-warn(("[MM2_AimTrainer] loaded — aimKey=%s toggle=%s FOV=%d")
-    :format(tostring(CONFIG.AIM_KEY), CONFIG.TOGGLE_KEY.Name, CONFIG.FOV))
+warn(("[MM2_AimTrainer] loaded — toggle=%s  camera=%s  silentAim=%s  auto=%s")
+    :format(CONFIG.TOGGLE_KEY.Name, tostring(CONFIG.CameraAssist),
+            tostring(CONFIG.SilentAim), tostring(CONFIG.AutoShoot)))
