@@ -20,7 +20,9 @@ The bot behaves completely differently depending on who is messaging:
 | Push to Slack / internal apps | ✅ | ❌ |
 | Read the contact directory | ✅ | ❌ |
 | Answer questions, show catalog | ✅ | ✅ |
-| Escalate to a human | ✅ | ✅ |
+| Search the knowledge base | ✅ | ✅ |
+| Escalate to the right colleague | ✅ | ✅ |
+| Answer escalated tickets | ✅ | ❌ |
 
 **This split is the security model, not a convenience.** A bot that will
 message anyone on instruction is dangerous if anyone can instruct it — a
@@ -30,38 +32,87 @@ party, so no amount of clever wording gets them there.
 
 Set `TEAM_NUMBERS` in `.env`. **If it's empty, nobody has send powers.**
 
-## What the team can ask for
+## When the bot doesn't know: it asks a colleague
+
+This is the core loop. A customer asks something the knowledge base doesn't
+cover, and instead of guessing or stalling:
+
+1. The agent searches the knowledge base. No good match.
+2. It opens a **ticket** and works out which department handles it.
+3. It **messages that colleague on WhatsApp** with the customer's question,
+   what they need, and the ticket id.
+4. It tells the customer their request is with the team.
+5. The colleague replies — *"reply to T-12345601 yes, USD settlement is
+   available on request"* — and the answer is **relayed straight into the
+   customer's own chat**, signed with their name. The ticket closes.
+
+Routing comes from `departments` in `contacts.json`:
+
+```json
+{ "name": "Mary Okonkwo", "number": "0808...", "departments": ["billing", "accounts"] }
+```
+
+Unknown department falls back to `general`, then to `ESCALATION_CHAT_ID`, so
+an escalation is never silently lost. If one colleague gets paged more than
+`MAX_ESCALATIONS_PER_HOUR`, the rest are batched into a periodic digest rather
+than burying them — a single confusing product change can make hundreds of
+customers ask the same thing at once.
+
+**The agent is told never to invent an answer.** Fees, settlement times,
+policies, anything about a specific account: if the knowledge base doesn't
+cover it, escalating is the correct move, not a failure. A wrong answer about
+money is far worse than "let me get someone who knows."
+
+## What the bot can do
+
+**For customers** — answer from the knowledge base, show catalog/price/location
+photos, capture their name and email, log a callback request, look up a
+transaction reference (if you connect a backend), and escalate to the right
+colleague.
+
+**For the team** — everything above, plus: send texts and photos to anyone by
+name, message several people at once, push to Slack or an internal service,
+list and answer open tickets, and check bot health with `/stats`.
 
 Natural language, not commands:
 
 - *"Send the price list to John"*
 - *"Send this to Mary"* (right after sending the bot a photo)
 - *"Tell the ops team the settlement run finished"*
-- *"Send the catalog to John, Mary and +2348012345678"*
 - *"Post this screenshot to Slack"*
-- *"Who's in the contacts list?"*
+- *"What tickets are open?"*
+- *"Reply to T-12345601: yes, that's supported"*
 
-Because ChatGPT drives a tool loop, multi-step requests work too: it will look
-up a contact, pick the right photo, send it, then report back — without a
-hand-written rule for each phrasing.
+## Built for volume
 
-## Safety rails
+- **Per-chat ordering.** Two messages from the same person are handled in
+  sequence, so they can't interleave and confuse the conversation history.
+- **Parallel across chats**, capped by `CONCURRENCY` — a thousand waiting
+  customers don't open a thousand simultaneous OpenAI calls.
+- **Per-chat queue depth limit**, so one flooding number can't consume the
+  worker pool.
+- **Deduplication** of redelivered message ids after a reconnect.
+- **Separate send budgets** for replies / internal pages / third-party
+  outreach. One shared limit would either block replies on a busy support day
+  or leave outreach unguarded.
+- Idle chats are released from memory, so a long-running bot doesn't grow an
+  entry per customer forever (there's a regression test for this).
 
-- **Confirmation before sending.** By default the bot *stages* an outbound
-  message, tells you exactly what goes to whom, and waits for you to reply
-  `YES`. Confirmations are handled in plain code, never re-interpreted by the
-  model — so "send it to Mary instead" is treated as a new instruction, not a
-  yes.
-- **Rate limit.** A hard ceiling of `MAX_SENDS_PER_HOUR` across all chats stops
-  a runaway loop from turning the company number into a spam cannon.
-- **Recipient cap** per instruction (`MAX_RECIPIENTS_PER_SEND`).
-- **Named app targets only.** `send_to_app` picks from webhooks you configured
-  by *name*; the model never supplies a URL, so it can't be talked into posting
-  company data to an arbitrary host.
-- **Audit log.** Every outbound message is appended to `logs/outbox.jsonl`.
-- **Path traversal blocked** on photo filenames.
-- Customer-facing prompt explicitly treats message content as data, never as
-  instructions.
+Measured on the queue layer: 2,000 messages across 500 chats, none dropped,
+none out of order.
+
+## Knowledge base
+
+`knowledge.json` holds the answers the agent is allowed to give — this is what
+grounds it. Copy `knowledge.example.json` (pre-filled with payments-company
+FAQs: fees, settlement, KYC, refunds, coverage) and edit.
+
+```json
+{ "question": "What are your fees?", "answer": "1.5% per transaction…", "tags": ["fees", "pricing"] }
+```
+
+Search is term-overlap with tag weighting — no embeddings, no extra service.
+Tags are how you catch synonyms ("charge", "cost", "rates" → fees).
 
 ## Setup
 
@@ -110,8 +161,12 @@ and read it from the console.
 npm test
 ```
 
-37 checks covering number normalization, contact resolution, the team/customer
-tool boundary, the confirmation flow, photo handling, and the safety limits.
+67 checks covering number normalization, contact resolution, the team/customer
+tool boundary, the confirmation flow, photo handling, knowledge-base search,
+the full escalation round-trip (customer stumps the bot → colleague is paged →
+their answer reaches the customer), queue ordering, flood shedding, and the
+safety limits.
+
 No API key or WhatsApp connection needed — the client is stubbed, so nothing
 leaves the machine.
 
@@ -134,7 +189,11 @@ Everything lives in `.env` (see `.env.example`) and `config.js`:
   to keyword auto-replies and still runs.
 - `TEAM_NUMBERS` — who gets send powers. **The security boundary.**
 - `REQUIRE_CONFIRMATION` — human `YES` before third-party sends (default on).
-- `MAX_SENDS_PER_HOUR`, `MAX_RECIPIENTS_PER_SEND` — abuse ceilings.
+- `MAX_REPLIES_PER_HOUR` / `MAX_INTERNAL_PER_HOUR` / `MAX_SENDS_PER_HOUR` —
+  separate budgets for replies, colleague pages, and third-party outreach.
+- `CONCURRENCY`, `MAX_QUEUE_PER_CHAT` — throughput and flood shedding.
+- `MAX_ESCALATIONS_PER_HOUR` — before a colleague's alerts become a digest.
+- `LOOKUP_API_URL` — connect a backend for transaction/order lookups.
 - `AI_FOR_CUSTOMERS` — set `false` to give customers the keyword bot instead.
 - `SLACK_WEBHOOK_URL`, `INTERNAL_WEBHOOK_URL` — connected app targets.
 - `catalog` in `config.js` — keyword → photo mappings.

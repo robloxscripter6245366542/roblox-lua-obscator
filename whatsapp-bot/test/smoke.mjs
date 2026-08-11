@@ -50,6 +50,7 @@ try {
   const contacts = await import("../src/contacts.js");
   const outbox = await import("../src/outbox.js");
   const tools = await import("../src/tools.js");
+  const tickets = await import("../src/tickets.js");
 
   // Capture sends instead of transmitting them.
   const sent = [];
@@ -258,6 +259,170 @@ try {
     assert.ok(tooMany.error);
     assert.match(tooMany.error, /Too many recipients/);
   });
+
+  console.log("\nknowledge base");
+  const kb = await import("../src/knowledge.js");
+  check("finds a relevant answer", () => {
+    const hits = kb.searchKnowledge("what are your fees?");
+    assert.ok(hits.length > 0, "expected a match");
+    assert.match(hits[0].answer, /1\.5%/);
+  });
+  check("matches on synonyms via tags", () => {
+    const hits = kb.searchKnowledge("how much do you charge");
+    assert.ok(hits.length > 0, "expected a match for 'charge'");
+  });
+  check("returns nothing for an unrelated question", () => {
+    const hits = kb.searchKnowledge("do you sell bicycles in Antarctica");
+    assert.equal(hits.length, 0);
+  });
+  check("exposes topics", () => assert.ok(kb.allTopics().length > 5));
+
+  console.log("\nescalation: agent doesn't know -> colleague is messaged");
+  const custCtx2 = {
+    chatId: "2349077777777@c.us",
+    role: "customer",
+    senderLabel: "Ada",
+    lastMedia: null,
+    currentMessage: "Can I settle directly to a US dollar account?",
+  };
+  const beforeEsc = sent.length;
+  const esc = await tools.runTool(
+    "escalate_to_team",
+    { department: "billing", summary: "Wants USD settlement", urgency: "normal" },
+    custCtx2
+  );
+  check("ticket is created", () => assert.ok(esc.ticketId, JSON.stringify(esc)));
+  check("routed to the billing owner", () => assert.equal(esc.owner, "Mary Okonkwo"));
+  check("colleague was actually messaged", () => {
+    assert.equal(esc.notified, true);
+    assert.equal(sent.length, beforeEsc + 1);
+    const note = sent[sent.length - 1];
+    assert.equal(note.chatId, "2348087654321@c.us");
+    assert.match(note.content, /Customer needs help/);
+    assert.match(note.content, /Wants USD settlement/);
+    assert.match(note.content, /USD? dollar account/i);
+  });
+  check("notification tells them how to answer", () =>
+    assert.match(sent[sent.length - 1].content, new RegExp(`reply to ${esc.ticketId}`, "i"))
+  );
+
+  console.log("\nescalation: colleague's answer is relayed to the customer");
+  const beforeRelay = sent.length;
+  const relayed = await tickets.replyToTicket(
+    esc.ticketId,
+    "Yes — USD settlement is available on request.",
+    "Mary Okonkwo"
+  );
+  check("relay reports success", () => assert.equal(relayed.ok, true));
+  check("customer receives the answer in their own chat", () => {
+    assert.equal(sent.length, beforeRelay + 1);
+    const reply = sent[sent.length - 1];
+    assert.equal(reply.chatId, custCtx2.chatId);
+    assert.match(reply.content, /USD settlement is available/);
+  });
+  check("reply is signed by the colleague", () =>
+    assert.match(sent[sent.length - 1].content, /Mary Okonkwo/)
+  );
+  check("ticket is closed after answering", () =>
+    assert.equal(tickets.getTicket(esc.ticketId), null)
+  );
+  check("replying to an unknown ticket errors", async () => {});
+  const badTicket = await tickets.replyToTicket("T-999999", "hi", "Someone");
+  check("unknown ticket is refused", () => assert.ok(badTicket.error));
+
+  console.log("\nescalation routing fallbacks");
+  check("unknown department falls back to general", () => {
+    const owner = tickets.routeToOwner("astrophysics");
+    assert.ok(!owner.error, JSON.stringify(owner));
+    assert.equal(owner.matched, "general");
+  });
+  check("known departments are discoverable", () => {
+    const depts = tickets.knownDepartments();
+    assert.ok(depts.includes("billing"), depts.join(","));
+  });
+
+  console.log("\ncustomer cannot choose who gets messaged");
+  const custTools2 = tools.toolsForRole("customer");
+  check("customer has escalate but not send_text", () => {
+    assert.ok(custTools2.names.includes("escalate_to_team"));
+    assert.ok(!custTools2.names.includes("send_text"));
+    assert.ok(!custTools2.names.includes("reply_to_customer"));
+  });
+  check("customer cannot list or close tickets", () => {
+    assert.ok(!custTools2.names.includes("list_open_tickets"));
+    assert.ok(!custTools2.names.includes("close_ticket"));
+  });
+  check("escalate takes no recipient argument at all", () => {
+    const schema = custTools2.schemas.find((s) => s.function.name === "escalate_to_team");
+    const props = Object.keys(schema.function.parameters.properties);
+    assert.deepEqual(props.sort(), ["department", "summary", "urgency"]);
+  });
+
+  console.log("\nsend budgets are separate");
+  check("replies and outreach have different ceilings", () => {
+    const b = outbox.budget();
+    assert.ok(b.reply.limit > b.outreach.limit,
+      `reply ${b.reply.limit} should exceed outreach ${b.outreach.limit}`);
+  });
+
+  console.log("\nqueue: ordering and concurrency");
+  const { createQueue, createDeduper } = await import("../src/queue.js");
+  const order = [];
+  const q = createQueue({ concurrency: 4, maxDepthPerChat: 3 });
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  await Promise.all([
+    q.enqueue("chatA", async () => { await sleep(20); order.push("A1"); }),
+    q.enqueue("chatA", async () => { await sleep(1); order.push("A2"); }),
+    q.enqueue("chatB", async () => { await sleep(1); order.push("B1"); }),
+  ]);
+  check("same chat runs in order despite differing durations", () => {
+    assert.ok(order.indexOf("A1") < order.indexOf("A2"),
+      `expected A1 before A2, got ${order.join(",")}`);
+  });
+  check("different chats run in parallel", () => {
+    assert.ok(order.includes("B1"));
+    assert.ok(order.indexOf("B1") < order.indexOf("A2"),
+      `B should not wait behind A: ${order.join(",")}`);
+  });
+
+  const flood = [];
+  for (let i = 0; i < 8; i++) {
+    flood.push(q.enqueue("flooder", async () => { await sleep(5); }).catch((e) => e.message));
+  }
+  const floodResults = await Promise.all(flood);
+  check("one chat cannot flood the worker pool", () =>
+    assert.ok(floodResults.some((r) => r === "chat_queue_full"),
+      "expected some messages to be shed")
+  );
+
+  check("a failing job does not break the chat's queue", async () => {});
+  const after = [];
+  await q.enqueue("chatC", async () => { throw new Error("boom"); }).catch(() => {});
+  await q.enqueue("chatC", async () => { after.push("ran"); });
+  check("later messages still process after a failure", () =>
+    assert.deepEqual(after, ["ran"])
+  );
+
+  // Regression: the chat->promise map must drain as chats go idle, or a
+  // long-running bot accumulates one entry per customer forever.
+  const leakQ = createQueue({ concurrency: 8, maxDepthPerChat: 50 });
+  await Promise.all(
+    Array.from({ length: 200 }, (_, i) =>
+      leakQ.enqueue(`leak${i}`, async () => { await sleep(1); })
+    )
+  );
+  await new Promise((r) => setImmediate(r));
+  check("idle chats are released (no unbounded memory growth)", () =>
+    assert.equal(leakQ.stats().chats, 0,
+      `${leakQ.stats().chats} chat chains leaked`)
+  );
+
+  console.log("\ndeduplication");
+  const dedupe = createDeduper();
+  check("first sighting is not a duplicate", () => assert.equal(dedupe("msg1"), false));
+  check("second sighting is a duplicate", () => assert.equal(dedupe("msg1"), true));
+  check("different id is not a duplicate", () => assert.equal(dedupe("msg2"), false));
+  check("missing id is never a duplicate", () => assert.equal(dedupe(undefined), false));
 
   console.log("\nagent module");
   const agent = await import("../src/agent.js");

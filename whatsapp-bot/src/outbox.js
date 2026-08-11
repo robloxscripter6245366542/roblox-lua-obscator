@@ -9,8 +9,7 @@ const auditFile = path.join(logDir, "outbox.jsonl");
 
 /**
  * Everything that leaves the bot goes through here, so there is exactly one
- * place enforcing the rate limit and writing the audit log. Tools never touch
- * the WhatsApp client directly.
+ * place enforcing limits and writing the audit log.
  */
 
 let client = null;
@@ -20,30 +19,50 @@ export function attachClient(c) {
 
 // ---------------------------------------------------------------- rate limit
 
-const sentTimestamps = [];
+/**
+ * Sends are budgeted separately by kind, because the risk profiles are
+ * completely different:
+ *
+ *   reply    — answering someone who just messaged us. Zero spam risk, and at
+ *              volume this is nearly all traffic. Generous ceiling, present
+ *              only to catch a runaway loop.
+ *   internal — paging a colleague (escalations, digests). Moderate.
+ *   outreach — messaging a third party on instruction. This is the one that
+ *              can turn the company number into a spam cannon. Strict.
+ *
+ * One shared budget would mean a busy support day silently blocks replies, or
+ * a loose limit leaves outreach unguarded. Neither is acceptable.
+ */
+const buckets = {
+  reply: { limit: () => config.maxRepliesPerHour, times: [] },
+  internal: { limit: () => config.maxInternalPerHour, times: [] },
+  outreach: { limit: () => config.maxSendsPerHour, times: [] },
+};
 
-function pruneWindow() {
+function prune(bucket) {
   const cutoff = Date.now() - 60 * 60 * 1000;
-  while (sentTimestamps.length && sentTimestamps[0] < cutoff) sentTimestamps.shift();
+  while (bucket.times.length && bucket.times[0] < cutoff) bucket.times.shift();
 }
 
-/**
- * Guard against a runaway agent loop or an abusive instruction turning the
- * company number into a spam cannon. Throws before anything is sent.
- */
-function enforceRateLimit(count = 1) {
-  pruneWindow();
-  if (sentTimestamps.length + count > config.maxSendsPerHour) {
+function enforce(kind, count = 1) {
+  const bucket = buckets[kind];
+  if (!bucket) throw new Error(`Unknown send bucket "${kind}".`);
+  prune(bucket);
+  const limit = bucket.limit();
+  if (bucket.times.length + count > limit) {
     throw new Error(
-      `Hourly send limit reached (${config.maxSendsPerHour}/hour). ` +
-        `Refusing to send. Raise MAX_SENDS_PER_HOUR if this is expected.`
+      `Hourly ${kind} limit reached (${limit}/hour). Refusing to send.`
     );
   }
 }
 
-export function remainingSends() {
-  pruneWindow();
-  return Math.max(0, config.maxSendsPerHour - sentTimestamps.length);
+export function budget() {
+  const out = {};
+  for (const [kind, bucket] of Object.entries(buckets)) {
+    prune(bucket);
+    out[kind] = { used: bucket.times.length, limit: bucket.limit() };
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- audit log
@@ -62,28 +81,47 @@ function audit(entry) {
 
 // ---------------------------------------------------------------- sending
 
-export async function sendText(chatId, body, meta = {}) {
+async function dispatch(kind, chatId, content, options, meta) {
   if (!client) throw new Error("WhatsApp client not ready yet.");
-  enforceRateLimit();
-  await client.sendMessage(chatId, body);
-  sentTimestamps.push(Date.now());
-  audit({ kind: "text", to: chatId, body: body.slice(0, 500), ...meta });
+  if (!chatId) throw new Error("No recipient chat id.");
+  enforce(kind);
+  await client.sendMessage(chatId, content, options);
+  buckets[kind].times.push(Date.now());
   return { ok: true, to: chatId };
 }
 
+/** Reply to someone who messaged us. */
+export async function sendReply(chatId, body, meta = {}) {
+  const res = await dispatch("reply", chatId, body, {}, meta);
+  audit({ kind: "reply", to: chatId, body: String(body).slice(0, 500), ...meta });
+  return res;
+}
+
+/** Page a colleague (escalation, digest, handoff). */
+export async function sendInternal(chatId, body, meta = {}) {
+  const res = await dispatch("internal", chatId, body, {}, meta);
+  audit({ kind: "internal", to: chatId, body: String(body).slice(0, 500), ...meta });
+  return res;
+}
+
+/** Message a third party on a team member's instruction. */
+export async function sendOutreach(chatId, body, meta = {}) {
+  const res = await dispatch("outreach", chatId, body, {}, meta);
+  audit({ kind: "outreach", to: chatId, body: String(body).slice(0, 500), ...meta });
+  return res;
+}
+
 export async function sendPhoto(chatId, media, caption, meta = {}) {
-  if (!client) throw new Error("WhatsApp client not ready yet.");
-  enforceRateLimit();
-  await client.sendMessage(chatId, media, caption ? { caption } : {});
-  sentTimestamps.push(Date.now());
+  const kind = meta.bucket || "outreach";
+  const res = await dispatch(kind, chatId, media, caption ? { caption } : {}, meta);
   audit({
-    kind: "photo",
+    kind: `${kind}_photo`,
     to: chatId,
     filename: media?.filename || meta.filename || null,
-    caption: (caption || "").slice(0, 500),
+    caption: String(caption || "").slice(0, 500),
     ...meta,
   });
-  return { ok: true, to: chatId };
+  return res;
 }
 
 // ------------------------------------------------- confirmation before send
@@ -91,10 +129,9 @@ export async function sendPhoto(chatId, media, caption, meta = {}) {
 /**
  * Staged actions awaiting a human "yes".
  *
- * Messaging a third party on the company's behalf is not undoable, so by
- * default the agent proposes and a person confirms. Confirmation is handled
- * deterministically in code — the pending action is executed as-is, never
- * re-interpreted by the model.
+ * Messaging a third party is not undoable, so by default the agent proposes
+ * and a person confirms. Confirmation is resolved deterministically in code —
+ * the staged action runs exactly as described, never re-interpreted.
  */
 const pending = new Map();
 
@@ -120,9 +157,9 @@ export function clearPending(chatId) {
 /**
  * Confirmations must be the WHOLE message, not a prefix of one.
  *
- * These are anchored at both ends on purpose: "send it to Mary instead" is a
- * new instruction that happens to start with "send", and treating it as a
- * "yes" would fire the previously staged message at the wrong person.
+ * Anchored at both ends on purpose: "send it to Mary instead" is a new
+ * instruction that happens to start with "send", and treating it as a "yes"
+ * would fire the staged message at the wrong person.
  */
 const AFFIRMATIVE =
   /^(y|yes|yeah|yep|ok|okay|k|confirm|confirmed|send|send it|go|go ahead|do it|sure|proceed|please do)[\s!.,👍✅🙏]*$/i;
@@ -137,20 +174,19 @@ export function isNegative(text) {
   return NEGATIVE.test(String(text || "").trim());
 }
 
-/**
- * Run a previously staged action. Returns a human-readable summary line.
- */
+/** Run a previously staged action. Returns a human-readable summary. */
 export async function executePending(action) {
   const results = [];
   for (const target of action.targets) {
     try {
       if (action.type === "photo") {
         await sendPhoto(target.chatId, action.media, action.caption, {
+          bucket: "outreach",
           via: "confirmed",
           requestedBy: action.requestedBy,
         });
       } else {
-        await sendText(target.chatId, action.body, {
+        await sendOutreach(target.chatId, action.body, {
           via: "confirmed",
           requestedBy: action.requestedBy,
         });

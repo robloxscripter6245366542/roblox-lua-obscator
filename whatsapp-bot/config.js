@@ -90,6 +90,27 @@ export const config = {
   // Max recipients in a single send instruction.
   maxRecipientsPerSend: Number(process.env.MAX_RECIPIENTS_PER_SEND) || 10,
 
+  // Throughput controls for handling many conversations at once.
+  concurrency: Number(process.env.CONCURRENCY) || 8,
+  maxQueuePerChat: Number(process.env.MAX_QUEUE_PER_CHAT) || 10,
+
+  // Separate send budgets by kind — see src/outbox.js for why one shared
+  // limit does not work.
+  maxRepliesPerHour: Number(process.env.MAX_REPLIES_PER_HOUR) || 2000,
+  maxInternalPerHour: Number(process.env.MAX_INTERNAL_PER_HOUR) || 200,
+
+  // How many times one colleague can be paged per hour before the rest are
+  // batched into a digest instead.
+  maxEscalationsPerHour: Number(process.env.MAX_ESCALATIONS_PER_HOUR) || 15,
+  digestIntervalMs: Number(process.env.DIGEST_INTERVAL_MS) || 15 * 60 * 1000,
+
+  // Sign relayed answers with the colleague's name.
+  signRelayedReplies: process.env.SIGN_RELAYED_REPLIES !== "false",
+
+  // Optional backend for check_reference (order/transaction lookups).
+  lookupApiUrl: process.env.LOOKUP_API_URL || "",
+  lookupApiKey: process.env.LOOKUP_API_KEY || "",
+
   /**
    * Connected external systems the bot can push to ("send this to Slack").
    *
