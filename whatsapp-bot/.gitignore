@@ -2,4 +2,9 @@ node_modules/
 .env
 .wwebjs_auth/
 .wwebjs_cache/
+logs/
 *.log
+
+# Real phone numbers — keep them out of git. Use contacts.example.json as a
+# template and create your own contacts.json locally.
+contacts.json

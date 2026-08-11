@@ -1,0 +1,20 @@
+[
+  {
+    "name": "John Adeyemi",
+    "aliases": ["john", "john a"],
+    "role": "Sales",
+    "number": "+2348012345678"
+  },
+  {
+    "name": "Mary Okonkwo",
+    "aliases": ["mary", "mary o"],
+    "role": "Support",
+    "number": "08087654321"
+  },
+  {
+    "name": "Ops Team",
+    "aliases": ["ops", "operations", "the ops group"],
+    "role": "Internal group",
+    "chatId": "120363000000000000@g.us"
+  }
+]
