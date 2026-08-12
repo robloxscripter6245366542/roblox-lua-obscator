@@ -83,10 +83,30 @@ L=../dynamic/luau
 python3 run_vm.py --vmdir peeled --luau $L --mode cf   --out cf.txt
 python3 semantics.py --vmdir peeled --luau $L --steps 14000 --out sem_big.txt >/dev/null
 python3 build_map.py --sem sem_big.txt --cf cf.txt --curated opcodes.json --out opcodes.full.json
-# 2) dump every instruction and lift to Lua
+# 2) capture concrete constants, dump every instruction, lift to Lua
+python3 capture_values.py --vmdir peeled --luau $L --out values.txt
 python3 run_vm.py --vmdir peeled --luau $L --mode fulldump --out full.txt
-python3 lift.py full.txt --map opcodes.full.json -o lifted.lua   # -> compiles as Lua 5.4
+python3 lift.py full.txt --map opcodes.full.json --values values.txt -o lifted.lua  # -> compiles as Lua 5.4
 ```
+
+### Runtime: the Luau CLI *or* Lune
+
+`--luau` just needs a Luau runtime that runs a `.luau` file passed as its first
+argument. Building the official CLI with `../dynamic/build_luau.sh` needs
+cmake + a C++ toolchain; if that is inconvenient, [Lune](https://lune-org.github.io/)
+works as a drop-in via a one-line shim (Lune provides `loadstring`, `getfenv`,
+`setfenv`, `buffer`, `bit32` and `string.pack`, which the harness needs):
+
+```bash
+cargo install lune                                   # or download a release
+printf '#!/bin/sh\nexec lune run "$@"\n' > luau-lune && chmod +x luau-lune
+python3 run_vm.py --vmdir peeled --luau ./luau-lune --mode disasm --out dis.txt
+```
+
+The full pipeline above was verified end-to-end on `sample_sigil.lua` under Lune
+0.10.5: 91 protos, 9,179 instructions, 97% known opcodes, 22,554 concrete
+constants inlined, and both structured and `--flat` output compile under
+`luac5.4`.
 
 ## What's confirmed on the sample
 

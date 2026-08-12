@@ -63,7 +63,20 @@ local __ops={opnames}
 local __lp,__lpc,__ldstreg,__lop
 local function vstr(x) local t=type(x)
   if t=="number" then return tostring(x)
-  elseif t=="string" then return string.format("%q", x)
+  elseif t=="string" then
+    -- Emit a string literal valid in Lua 5.1/5.4 and Luau alike.  `%q`
+    -- escaping varies between runtimes and produces literals luac5.4
+    -- rejects for binary constants, so quote every non-safe byte with a
+    -- zero-padded \ddd decimal escape (unambiguous under 5.4's greedy
+    -- 3-digit escape scan).
+    local o={{'"'}}
+    for i=1,#x do local by=string.byte(x,i)
+      if by==34 then o[#o+1]='\\"'
+      elseif by==92 then o[#o+1]='\\\\'
+      elseif by>=32 and by<=126 then o[#o+1]=string.char(by)
+      else o[#o+1]=string.format("\\%03d",by) end end
+    o[#o+1]='"'
+    return table.concat(o)
   elseif t=="boolean" then return tostring(x)
   else return nil end end
 local __N=0
