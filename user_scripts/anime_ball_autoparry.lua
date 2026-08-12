@@ -38,12 +38,11 @@ if getgenv then
     end
 end
 
--- Load WindUI from OUR OWN repo, pinned to a specific commit (not a live
--- third-party branch). This closes the only real exposure vector: the script
--- itself sends nothing out, but it does run whatever UI library it downloads,
--- so we self-host a vendored copy at an immutable commit. Nobody but us can
--- swap this code out from under you, and the exact bytes never change.
-local WINDUI_URL = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/ef387b14984464482b63eb50241f34a8dfce651f/assets/lunarhub.lua"
+-- Load the Leviathan UI shim (a WindUI-compatible adapter over our own
+-- NeverZen UI). This makes Anime Ball render in the SAME Leviathan window as
+-- the Blade Ball hub, titled "Leviathan — Anime Ball", instead of its own UI.
+-- The shim maps WindUI calls onto Leviathan and no-ops anything unmapped.
+local WINDUI_URL = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/user_scripts/leviathan_windui_shim.lua"
 local okWindUI, WindUI = pcall(function()
     return loadstring(game:HttpGet(WINDUI_URL))()
 end)
