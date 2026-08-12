@@ -131,7 +131,11 @@ def emit(pc, op, ops, entry, n):
     val = VALUES.get((CURPROTO, pc))   # concrete value this instr produced
 
     def reg(x):
-        return f"e[{x}]" if x is not None else "?"
+        # `UNK` is a declared placeholder for an operand register the trace did
+        # not resolve (e.g. a no-write op whose operand was nil in-window). It
+        # is valid Lua as both an l-value and an r-value, so the listing still
+        # compiles; a bare `?` did not.
+        return f"e[{x}]" if x is not None else "UNK"
 
     # a "K" that becomes the real literal when we observed it, else a placeholder
     konst = val if val is not None else (f"K({b})")
@@ -380,6 +384,7 @@ def main():
         f"{known} ({known*100//max(total,1)}%) with a known opcode.",
         f"-- {len(VALUES)} concrete values inlined from execution." if VALUES else "-- (no value capture; run capture_values.py + --values to inline constants)",
         "local regs = {}",
+        "local UNK = nil   -- placeholder for operand registers not resolved by the trace",
         "",
     ]
     gen = lift_proto if args.flat else structure_proto
