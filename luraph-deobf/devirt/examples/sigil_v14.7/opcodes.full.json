@@ -1,0 +1,1502 @@
+{
+ "2": {
+  "name": "ARITH",
+  "effect": "e[dst] = <numeric op on regs>",
+  "confidence": "med",
+  "dst": "b",
+  "wtype": "n",
+  "cf": {
+   "seq": 293208,
+   "jmp": 0
+  },
+  "example": "{'a': '26', 'b': '25', 'c': '25', 'd': 'nil'} => e[25]:n:388->n:372"
+ },
+ "5": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 91%)",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 11
+  },
+  "example": ""
+ },
+ "9": {
+  "name": "CALL",
+  "effect": "call e[a](...) (e[a] observed as a function)",
+  "confidence": "curated",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 28,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "10": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 947,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "12": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean",
+  "confidence": "high",
+  "dst": "b",
+  "wtype": "b",
+  "cf": {
+   "seq": 2,
+   "jmp": 0
+  },
+  "example": "{'a': '889', 'b': '28', 'c': '28', 'd': 'nil'} => e[28]:n:77->b:true"
+ },
+ "19": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 10,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "20": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 5,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "21": {
+  "name": "GETTABLE/CLOSURE",
+  "effect": "e[dst] = function (field/closure)",
+  "confidence": "med",
+  "dst": "b",
+  "wtype": "f",
+  "cf": {
+   "seq": 40170,
+   "jmp": 0
+  },
+  "example": "{'a': '0', 'b': '1', 'c': '0', 'd': 'nil'} => e[1]:None->t#6"
+ },
+ "22": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean",
+  "confidence": "high",
+  "dst": "b",
+  "wtype": "b",
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": "{'a': '26', 'b': '25', 'c': '25', 'd': 'nil'} => e[25]:n:3758096397->b:true"
+ },
+ "25": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean",
+  "confidence": "high",
+  "dst": "b",
+  "wtype": "b",
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": "{'a': '2385', 'b': '27', 'c': '2062', 'd': 'nil'} => e[27]:None->b:false"
+ },
+ "28": {
+  "name": "ARITH",
+  "effect": "e[dst] = <numeric op on regs>",
+  "confidence": "med",
+  "dst": "a",
+  "wtype": "n",
+  "cf": {
+   "seq": 290926,
+   "jmp": 0
+  },
+  "example": "{'a': '5', 'b': '1', 'c': '93', 'd': 'nil'} => e[5]:None->n:0"
+ },
+ "31": {
+  "name": "NEWTABLE",
+  "effect": "e[a] = {}",
+  "confidence": "curated",
+  "dst": "a",
+  "wtype": "t",
+  "cf": {
+   "seq": 381,
+   "jmp": 0
+  },
+  "example": "{'a': '32', 'b': '0', 'c': '0', 'd': 'nil'} => e[32]:None->t#3"
+ },
+ "32": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "33": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 12%)",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 313148,
+   "jmp": 46400
+  },
+  "example": ""
+ },
+ "34": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 99%)",
+  "confidence": "high",
+  "dst": "?",
+  "wtype": "n",
+  "cf": {
+   "seq": 1,
+   "jmp": 425
+  },
+  "example": "{'a': '0', 'b': '47', 'c': '14', 'd': 'nil'} => e[17]:n:8->n:23"
+ },
+ "35": {
+  "name": "DATAOP",
+  "effect": "flow-through data op (no register-delta sample)",
+  "confidence": "low",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 2274,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "37": {
+  "name": "LOADK_N",
+  "effect": "e[dst] = number constant",
+  "confidence": "high",
+  "dst": "b",
+  "wtype": "n",
+  "cf": {
+   "seq": 7,
+   "jmp": 0
+  },
+  "example": "{'a': '1810', 'b': '26', 'c': '1440', 'd': 'nil'} => e[26]:None->n:-2"
+ },
+ "41": {
+  "name": "CALL",
+  "effect": "call e[a](...) (e[a] observed as a function)",
+  "confidence": "curated",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 13,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "44": {
+  "name": "NEWTABLE",
+  "effect": "e[dst] = {}",
+  "confidence": "high",
+  "dst": "?",
+  "wtype": "t",
+  "cf": {
+   "seq": 24478,
+   "jmp": 0
+  },
+  "example": "{'a': '0', 'b': '1', 'c': '0', 'd': 'nil'} => e[1]:None->t#6"
+ },
+ "46": {
+  "name": "JMP/RETURN",
+  "effect": "always transfers control",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 0,
+   "jmp": 51
+  },
+  "example": ""
+ },
+ "47": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 6,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "48": {
+  "name": "NEWTABLE",
+  "effect": "e[b] = {}",
+  "confidence": "curated",
+  "dst": "b",
+  "wtype": "t",
+  "cf": {
+   "seq": 179,
+   "jmp": 0
+  },
+  "example": "{'a': '0', 'b': '33', 'c': '0', 'd': 'nil'} => e[33]:None->t#2"
+ },
+ "49": {
+  "name": "SETTABLE",
+  "effect": "e[a][K(b)] = e[c]",
+  "confidence": "curated",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1199,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "50": {
+  "name": "CALL",
+  "effect": "call e[a](...) with return discarded (void call)",
+  "confidence": "curated",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 519,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "52": {
+  "name": "MOVE",
+  "effect": "e[dst] = e[src]",
+  "confidence": "curated",
+  "dst": "?",
+  "wtype": "t",
+  "cf": {
+   "seq": 124,
+   "jmp": 0
+  },
+  "example": "{'a': '14', 'b': '14', 'c': '1973', 'd': 'nil'} => e[14]:t#6->f, e[15]:f->t#6"
+ },
+ "55": {
+  "name": "CALL",
+  "effect": "call e[a](...) (e[a] observed as a function)",
+  "confidence": "curated",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 13,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "58": {
+  "name": "DATAOP",
+  "effect": "flow-through data op (no register-delta sample)",
+  "confidence": "low",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "59": {
+  "name": "JMP/RETURN",
+  "effect": "always transfers control",
+  "confidence": "high",
+  "dst": "?",
+  "wtype": "f",
+  "cf": {
+   "seq": 0,
+   "jmp": 87
+  },
+  "example": "{'a': '3', 'b': '5', 'c': '0', 'd': 'nil'} => e[2]:f->t#28, e[8]:None->t#28"
+ },
+ "66": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 2,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "67": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 2,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "73": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 13,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "77": {
+  "name": "ARITH",
+  "effect": "e[dst] = <numeric op on regs>",
+  "confidence": "med",
+  "dst": "b",
+  "wtype": "n",
+  "cf": {
+   "seq": 169937,
+   "jmp": 0
+  },
+  "example": "{'a': '93', 'b': '3', 'c': '3', 'd': 'nil'} => e[3]:n:1->n:2"
+ },
+ "79": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 10,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "82": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 10,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "83": {
+  "name": "CALL",
+  "effect": "call e[a](...) (e[a] observed as a function)",
+  "confidence": "curated",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 13,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "86": {
+  "name": "ARITH",
+  "effect": "e[dst] = <numeric op on regs>",
+  "confidence": "med",
+  "dst": "c",
+  "wtype": "n",
+  "cf": {
+   "seq": 289789,
+   "jmp": 0
+  },
+  "example": "{'a': '93', 'b': '7', 'c': '1', 'd': 'nil'} => e[1]:n:32->n:16"
+ },
+ "88": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 57%)",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 24,
+   "jmp": 33
+  },
+  "example": ""
+ },
+ "92": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 0%)",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1428,
+   "jmp": 13
+  },
+  "example": ""
+ },
+ "93": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 50%)",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 2,
+   "jmp": 2
+  },
+  "example": ""
+ },
+ "98": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean",
+  "confidence": "high",
+  "dst": "a",
+  "wtype": "b",
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": "{'a': '17', 'b': '18', 'c': '17', 'd': 'nil'} => e[17]:n:4294967098->b:false"
+ },
+ "99": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 76%)",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 4895,
+   "jmp": 15850
+  },
+  "example": ""
+ },
+ "103": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 96%)",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 87,
+   "jmp": 2389
+  },
+  "example": ""
+ },
+ "105": {
+  "name": "GETTABLE",
+  "effect": "e[a] = e[obj][key]",
+  "confidence": "curated",
+  "dst": "a",
+  "wtype": "s",
+  "cf": {
+   "seq": 278,
+   "jmp": 0
+  },
+  "example": "{'a': '15', 'b': '15', 'c': '396', 'd': 'nil'} => e[15]:t#16->t#17"
+ },
+ "118": {
+  "name": "NEWTABLE",
+  "effect": "e[a] = {}",
+  "confidence": "curated",
+  "dst": "a",
+  "wtype": "t",
+  "cf": {
+   "seq": 187,
+   "jmp": 0
+  },
+  "example": "{'a': '34', 'b': '0', 'c': '0', 'd': 'nil'} => e[34]:None->t#8"
+ },
+ "121": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 23%)",
+  "confidence": "high",
+  "dst": "?",
+  "wtype": "n",
+  "cf": {
+   "seq": 4895,
+   "jmp": 1538
+  },
+  "example": "{'a': '1', 'b': '4', 'c': '5', 'd': 'nil'} => e[1]:f->n:32, e[2]:s:\"        \"->n:32"
+ },
+ "122": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "123": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean",
+  "confidence": "high",
+  "dst": "a",
+  "wtype": "b",
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": "{'a': '13', 'b': '13', 'c': '1072', 'd': 'nil'} => e[13]:n:704->b:false"
+ },
+ "124": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 10,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "128": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 2,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "131": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean",
+  "confidence": "high",
+  "dst": "b",
+  "wtype": "b",
+  "cf": {
+   "seq": 2,
+   "jmp": 0
+  },
+  "example": "{'a': '531', 'b': '24', 'c': '24', 'd': 'nil'} => e[24]:n:83->b:true"
+ },
+ "133": {
+  "name": "GETTABLE/CLOSURE",
+  "effect": "e[dst] = function (field/closure)",
+  "confidence": "med",
+  "dst": "?",
+  "wtype": "f",
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": "{'a': '0', 'b': '2', 'c': '13', 'd': 'nil'} => e[2]:None->t#4, e[3]:None->f"
+ },
+ "134": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 10,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "135": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 49%)",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 2573,
+   "jmp": 2571
+  },
+  "example": ""
+ },
+ "138": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 7,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "141": {
+  "name": "JMP/RETURN",
+  "effect": "always transfers control",
+  "confidence": "high",
+  "dst": "?",
+  "wtype": "f",
+  "cf": {
+   "seq": 0,
+   "jmp": 55
+  },
+  "example": "{'a': '0', 'b': '1', 'c': '0', 'd': 'nil'} => e[2]:t#28->n:36, e[4]:f->t#10"
+ },
+ "142": {
+  "name": "UNOP/arith?",
+  "effect": "e[a] = f(e[b]) numeric (len/mod/bit?)",
+  "confidence": "curated",
+  "dst": "a",
+  "wtype": "n",
+  "cf": {
+   "seq": 2373,
+   "jmp": 0
+  },
+  "example": "{'a': '25', 'b': '25', 'c': '1706', 'd': 'nil'} => e[25]:n:22959->n:14"
+ },
+ "143": {
+  "name": "SETTABLE",
+  "effect": "e[a][K(b)] = e[c]",
+  "confidence": "curated",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 2,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "144": {
+  "name": "ARITH",
+  "effect": "e[dst] = <numeric op on regs>",
+  "confidence": "med",
+  "dst": "b",
+  "wtype": "n",
+  "cf": {
+   "seq": 2,
+   "jmp": 0
+  },
+  "example": "{'a': '1370', 'b': '19', 'c': '19', 'd': 'nil'} => e[19]:n:12->n:433"
+ },
+ "145": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean",
+  "confidence": "high",
+  "dst": "a",
+  "wtype": "b",
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": "{'a': '24', 'b': '25', 'c': '24', 'd': 'nil'} => e[24]:n:218->b:true"
+ },
+ "147": {
+  "name": "CALL",
+  "effect": "call e[a](...) (e[a] observed as a function)",
+  "confidence": "curated",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 30,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "149": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "150": {
+  "name": "DATAOP",
+  "effect": "flow-through data op (no register-delta sample)",
+  "confidence": "low",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1137,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "151": {
+  "name": "GETTABLE/CLOSURE",
+  "effect": "e[dst] = function (field/closure)",
+  "confidence": "med",
+  "dst": "a",
+  "wtype": "f",
+  "cf": {
+   "seq": 174,
+   "jmp": 0
+  },
+  "example": "{'a': '8', 'b': '3', 'c': '8', 'd': 'nil'} => e[8]:s:\"gmatch\"->f"
+ },
+ "157": {
+  "name": "JMP/RETURN",
+  "effect": "always transfers control",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 0,
+   "jmp": 1
+  },
+  "example": ""
+ },
+ "159": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "164": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 80%)",
+  "confidence": "high",
+  "dst": "?",
+  "wtype": "f",
+  "cf": {
+   "seq": 1,
+   "jmp": 4
+  },
+  "example": "{'a': '7', 'b': '0', 'c': '0', 'd': 'nil'} => e[3]:n:93->f, e[4]:n:184->f"
+ },
+ "165": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean",
+  "confidence": "high",
+  "dst": "c",
+  "wtype": "b",
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": "{'a': '2122', 'b': '889', 'c': '18', 'd': '468'} => e[18]:None->b:true"
+ },
+ "168": {
+  "name": "GETGLOBAL/CALL",
+  "effect": "e[a] = _G[name] or call result (d is a global name string, e.g. \"Vector3\")",
+  "confidence": "curated",
+  "dst": "a",
+  "wtype": "t",
+  "cf": {
+   "seq": 46,
+   "jmp": 0
+  },
+  "example": "{'a': '15', 'b': '1474', 'c': '0', 'd': 'Vector3'} => e[15]:f->t#7"
+ },
+ "172": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean",
+  "confidence": "high",
+  "dst": "a",
+  "wtype": "b",
+  "cf": {
+   "seq": 2,
+   "jmp": 0
+  },
+  "example": "{'a': '17', 'b': '17', 'c': '272', 'd': 'nil'} => e[17]:n:248->b:false"
+ },
+ "173": {
+  "name": "LOADK_N",
+  "effect": "e[dst] = number constant",
+  "confidence": "high",
+  "dst": "c",
+  "wtype": "n",
+  "cf": {
+   "seq": 8,
+   "jmp": 0
+  },
+  "example": "{'a': '2262', 'b': '1953', 'c': '25', 'd': '505'} => e[25]:None->n:969"
+ },
+ "176": {
+  "name": "LOADK_S",
+  "effect": "e[dst] = string constant",
+  "confidence": "curated",
+  "dst": "?",
+  "wtype": "n",
+  "cf": {
+   "seq": 77,
+   "jmp": 0
+  },
+  "example": "{'a': '51', 'b': '179', 'c': '220', 'd': 'nil'} => e[27]:None->s:\"\ufffd\""
+ },
+ "179": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "182": {
+  "name": "NEWTABLE",
+  "effect": "e[a] = {}",
+  "confidence": "curated",
+  "dst": "a",
+  "wtype": "t",
+  "cf": {
+   "seq": 143,
+   "jmp": 0
+  },
+  "example": "{'a': '31', 'b': '0', 'c': '0', 'd': 'nil'} => e[31]:None->t#1"
+ },
+ "185": {
+  "name": "ARITH",
+  "effect": "e[dst] = <numeric op on regs>",
+  "confidence": "med",
+  "dst": "?",
+  "wtype": "n",
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": "{'a': '246', 'b': '20', 'c': '2', 'd': 'nil'} => e[15]:n:-265->n:-261"
+ },
+ "189": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 2,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "191": {
+  "name": "NEWTABLE",
+  "effect": "e[dst] = {}",
+  "confidence": "high",
+  "dst": "b",
+  "wtype": "t",
+  "cf": {
+   "seq": 143,
+   "jmp": 0
+  },
+  "example": "{'a': '32', 'b': '4', 'c': '0', 'd': 'nil'} => e[4]:None->t#47"
+ },
+ "192": {
+  "name": "LOADK_N",
+  "effect": "e[dst] = large number constant",
+  "confidence": "curated",
+  "dst": "b",
+  "wtype": "n",
+  "cf": {
+   "seq": 51,
+   "jmp": 20725
+  },
+  "example": "{'a': '0', 'b': '25', 'c': '0', 'd': 'nil'} => e[25]:f->n:3758096397"
+ },
+ "194": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "195": {
+  "name": "ARITH",
+  "effect": "e[dst] = <numeric op on regs>",
+  "confidence": "med",
+  "dst": "?",
+  "wtype": "n",
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": "{'a': '69', 'b': '188', 'c': '254', 'd': 'nil'} => e[16]:n:0->n:478"
+ },
+ "197": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 89%)",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 14684,
+   "jmp": 119853
+  },
+  "example": ""
+ },
+ "198": {
+  "name": "ARITH",
+  "effect": "e[dst] = <numeric op on regs>",
+  "confidence": "med",
+  "dst": "a",
+  "wtype": "n",
+  "cf": {
+   "seq": 47616,
+   "jmp": 0
+  },
+  "example": "{'a': '16', 'b': '16', 'c': '17', 'd': 'nil'} => e[16]:n:160->n:262"
+ },
+ "200": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "201": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 3,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "204": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 13,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "205": {
+  "name": "LOADK",
+  "effect": "e[a] = constant (number or string)",
+  "confidence": "curated",
+  "dst": "a",
+  "wtype": "n",
+  "cf": {
+   "seq": 79337,
+   "jmp": 0
+  },
+  "example": "{'a': '25', 'b': '2082', 'c': '0', 'd': '306'} => e[25]:b:false->n:306"
+ },
+ "206": {
+  "name": "GETINDEX?",
+  "effect": "reads a field into e[c] (function/value); mostly no visible reg change",
+  "confidence": "curated",
+  "dst": "c",
+  "wtype": "f",
+  "cf": {
+   "seq": 369,
+   "jmp": 0
+  },
+  "example": "{'a': '108', 'b': '0', 'c': '15', 'd': 'nil'} => e[15]:None->f"
+ },
+ "210": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean",
+  "confidence": "high",
+  "dst": "b",
+  "wtype": "b",
+  "cf": {
+   "seq": 8,
+   "jmp": 0
+  },
+  "example": "{'a': '0', 'b': '2', 'c': '2', 'd': 'nil'} => e[2]:n:492211299->b:false"
+ },
+ "216": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean",
+  "confidence": "curated",
+  "dst": "b",
+  "wtype": "b",
+  "cf": {
+   "seq": 2,
+   "jmp": 0
+  },
+  "example": "{'a': '2186', 'b': '25', 'c': '25', 'd': 'nil'} => e[25]:n:306->b:true"
+ },
+ "217": {
+  "name": "NEWTABLE",
+  "effect": "e[dst] = {}",
+  "confidence": "high",
+  "dst": "c",
+  "wtype": "t",
+  "cf": {
+   "seq": 3,
+   "jmp": 0
+  },
+  "example": "{'a': '2280', 'b': '0', 'c': '3', 'd': 'nil'} => e[3]:None->t#71"
+ },
+ "218": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 30,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "220": {
+  "name": "DATAOP",
+  "effect": "flow-through data op (no register-delta sample)",
+  "confidence": "low",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 8101,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "224": {
+  "name": "SETTABLE",
+  "effect": "e[a][K(b)] = e[c]",
+  "confidence": "curated",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "228": {
+  "name": "CALL?",
+  "effect": "call/close; clears a register range (consumed args/results)",
+  "confidence": "curated",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 308,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "235": {
+  "name": "LOADK_N",
+  "effect": "e[b] = number constant",
+  "confidence": "curated",
+  "dst": "b",
+  "wtype": "n",
+  "cf": {
+   "seq": 29,
+   "jmp": 2295
+  },
+  "example": "{'a': '0', 'b': '26', 'c': '4', 'd': 'nil'} => e[26]:f->n:222"
+ },
+ "237": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 26,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "242": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "243": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 10,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "245": {
+  "name": "DATAOP",
+  "effect": "flow-through data op (no register-delta sample)",
+  "confidence": "low",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "247": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 40%)",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 12,
+   "jmp": 8
+  },
+  "example": ""
+ },
+ "250": {
+  "name": "ARITH",
+  "effect": "e[dst] = <numeric op on regs>",
+  "confidence": "med",
+  "dst": "a",
+  "wtype": "n",
+  "cf": {
+   "seq": 9251,
+   "jmp": 0
+  },
+  "example": "{'a': '25', 'b': '25', 'c': '1406', 'd': 'nil'} => e[25]:n:969->n:609"
+ },
+ "252": {
+  "name": "DATAOP",
+  "effect": "flow-through data op (no register-delta sample)",
+  "confidence": "low",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 2274,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "258": {
+  "name": "DATAOP",
+  "effect": "flow-through data op (no register-delta sample)",
+  "confidence": "low",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 3553,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "259": {
+  "name": "DATAOP",
+  "effect": "flow-through data op (no register-delta sample)",
+  "confidence": "low",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 142,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "260": {
+  "name": "JMP/RETURN",
+  "effect": "always transfers control",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 0,
+   "jmp": 2
+  },
+  "example": ""
+ },
+ "264": {
+  "name": "LOADK_S",
+  "effect": "e[c+1] = string constant (constant-pair load)",
+  "confidence": "curated",
+  "dst": "c",
+  "wtype": "f",
+  "cf": {
+   "seq": 174,
+   "jmp": 0
+  },
+  "example": "{'a': '0', 'b': '13', 'c': '25', 'd': 'nil'} => e[25]:None->f, e[26]:None->s:\"  nc213<< H<=\""
+ },
+ "265": {
+  "name": "TEST/BRANCH",
+  "effect": "conditional jump (taken 50%)",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 3,
+   "jmp": 3
+  },
+  "example": ""
+ },
+ "267": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "269": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean",
+  "confidence": "high",
+  "dst": "b",
+  "wtype": "b",
+  "cf": {
+   "seq": 1280,
+   "jmp": 0
+  },
+  "example": "{'a': '21', 'b': '20', 'c': '20', 'd': 'nil'} => e[20]:n:311->b:true"
+ },
+ "272": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 94,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "273": {
+  "name": "CALL",
+  "effect": "call e[a](...) (e[a] observed as a function)",
+  "confidence": "curated",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 61,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "274": {
+  "name": "SETTABLE/CALL",
+  "effect": "no register write (table store or void call)",
+  "confidence": "med",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "280": {
+  "name": "ARITH",
+  "effect": "e[dst] = <numeric op on regs>",
+  "confidence": "med",
+  "dst": "?",
+  "wtype": "n",
+  "cf": {
+   "seq": 2,
+   "jmp": 0
+  },
+  "example": "{'a': '153', 'b': '11', 'c': '2122', 'd': 'nil'} => e[21]:n:23->n:-212"
+ },
+ "282": {
+  "name": "JMP/RETURN",
+  "effect": "always transfers control",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 0,
+   "jmp": 1
+  },
+  "example": ""
+ },
+ "283": {
+  "name": "ADD",
+  "effect": "e[a] = e[c] + d",
+  "confidence": "curated",
+  "dst": "a",
+  "wtype": "n",
+  "cf": {
+   "seq": 72,
+   "jmp": 0
+  },
+  "example": "{'a': '25', 'b': '1855', 'c': '25', 'd': '22809'} => e[25]:n:150->n:22959"
+ },
+ "285": {
+  "name": "NEWTABLE",
+  "effect": "e[dst] = {}",
+  "confidence": "high",
+  "dst": "c",
+  "wtype": "t",
+  "cf": {
+   "seq": 9,
+   "jmp": 0
+  },
+  "example": "{'a': '0', 'b': '0', 'c': '14', 'd': 'nil'} => e[14]:None->t#6"
+ },
+ "286": {
+  "name": "JMP",
+  "effect": "C = target; unconditional jump. Dominant opcode -> control flow is flattened at the bytecode level (every block ends in a JMP).",
+  "confidence": "curated",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 72,
+   "jmp": 1087790
+  },
+  "example": ""
+ },
+ "287": {
+  "name": "JMP/RETURN",
+  "effect": "always transfers control",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 0,
+   "jmp": 5
+  },
+  "example": ""
+ },
+ "288": {
+  "name": "JMP/RETURN",
+  "effect": "always transfers control",
+  "confidence": "high",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 0,
+   "jmp": 1308
+  },
+  "example": ""
+ },
+ "289": {
+  "name": "CALL",
+  "effect": "call e[a](...) (e[a] observed as a function)",
+  "confidence": "curated",
+  "dst": null,
+  "wtype": null,
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": ""
+ },
+ "290": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean",
+  "confidence": "high",
+  "dst": "a",
+  "wtype": "b",
+  "cf": {
+   "seq": 2,
+   "jmp": 0
+  },
+  "example": "{'a': '16', 'b': '338', 'c': '16', 'd': '193'} => e[16]:n:47->b:true"
+ },
+ "292": {
+  "name": "GETTABLE/CLOSURE?",
+  "effect": "e[c] = table/function",
+  "confidence": "curated",
+  "dst": "c",
+  "wtype": "n",
+  "cf": {
+   "seq": 49972,
+   "jmp": 0
+  },
+  "example": "{'a': '2', 'b': '0', 'c': '8', 'd': 'nil'} => e[8]:None->t#28"
+ },
+ "293": {
+  "name": "LOADK_N",
+  "effect": "e[c] = number constant",
+  "confidence": "curated",
+  "dst": "c",
+  "wtype": "n",
+  "cf": {
+   "seq": 89,
+   "jmp": 3
+  },
+  "example": "{'a': '0', 'b': '0', 'c': '25', 'd': 'nil'} => e[25]:f->n:223"
+ },
+ "294": {
+  "name": "JMP/RETURN",
+  "effect": "always transfers control",
+  "confidence": "high",
+  "dst": "?",
+  "wtype": "n",
+  "cf": {
+   "seq": 0,
+   "jmp": 30361
+  },
+  "example": "{'a': '0', 'b': '0', 'c': '4', 'd': 'nil'} => e[2]:n:69->t#10, e[3]:t#28->t#13"
+ },
+ "295": {
+  "name": "COMPARE",
+  "effect": "e[dst] = boolean (lt/le/eq)",
+  "confidence": "curated",
+  "dst": "a",
+  "wtype": "b",
+  "cf": {
+   "seq": 1,
+   "jmp": 0
+  },
+  "example": "{'a': '25', 'b': '274', 'c': '25', 'd': '267'} => e[25]:n:223->b:false"
+ },
+ "296": {
+  "name": "JMP/RETURN",
+  "effect": "always transfers control",
+  "confidence": "high",
+  "dst": "?",
+  "wtype": "n",
+  "cf": {
+   "seq": 0,
+   "jmp": 4585
+  },
+  "example": "{'a': '7', 'b': '0', 'c': '0', 'd': 'nil'} => e[2]:f->t#28, e[3]:f->n:93"
+ }
+}

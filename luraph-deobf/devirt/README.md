@@ -63,6 +63,14 @@ annotate.py + opcodes.json ->  annotated listing (mnemonics + effects)
   produces, keyed by (proto, pc), by observing the destination register after
   execution. Sidesteps reverse-engineering the constant-table indexing — we
   just watch what gets loaded. Feeds `lift.py --values`.
+- **`beautify_lua.py`** — token-based Lua/Luau re-indenter for the peeled VM
+  interpreter (the recovered `stage_0.lua` is one ~100 KB line). Purely
+  cosmetic: it guarantees the output tokenises to the *same* token stream as
+  the input, so semantics are provably unchanged. `python3 beautify_lua.py
+  peeled/stage_0.lua vm_interpreter.lua`.
+- **`examples/sigil_v14.7/`** — a complete worked run against
+  `../sample_sigil.lua`: the beautified VM engine, the devirtualised program,
+  the opcode map, and the captured runtime IOCs, with regeneration commands.
 - **`lift.py`** — the codegen. Consumes a full instruction dump
   (`run_vm.py --mode fulldump`, i.e. *every* instruction of every proto, not
   just executed ones) + `opcodes.full.json` and emits **register-level Lua**:
