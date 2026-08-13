@@ -35,9 +35,11 @@ def structure(source_path, lifter, *, runtime="lune", encrypted=False, timeout=1
     if not os.path.isfile(lifter):
         raise SystemExit(
             "medal luau-lifter binary not found: %s\n"
-            "build it once with:\n"
-            "  git clone https://github.com/shrimp-nz/medal && cd medal\n"
-            "  cargo +nightly build --release -p luau-lifter" % lifter
+            "build it once (Tovek is a maintained edition-2024 fork that builds\n"
+            "cleanly on a current nightly; upstream medal needs 2024-era patches):\n"
+            "  git clone https://github.com/Kiet1308/Tovek && cd Tovek\n"
+            "  cargo +nightly build --release -p luau-lifter\n"
+            "then pass --lifter target/release/luau-lifter (or set $MEDAL_LIFTER)" % lifter
         )
     bytecode = compile_source_to_bytecode(source_path, runtime=runtime, timeout=timeout)
     with tempfile.NamedTemporaryFile(suffix=".luac", delete=False) as fh:

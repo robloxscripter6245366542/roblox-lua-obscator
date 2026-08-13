@@ -63,6 +63,23 @@ annotate.py + opcodes.json ->  annotated listing (mnemonics + effects)
   produces, keyed by (proto, pc), by observing the destination register after
   execution. Sidesteps reverse-engineering the constant-table indexing — we
   just watch what gets loaded. Feeds `lift.py --values`.
+- **`structure.py`** — the **last mile**: local control-flow *structuring*, an
+  offline replacement for the lua.expert network post-pass. It compiles valid
+  Luau (e.g. luauvmp's `program.decompiled.luau`) to standard Luau bytecode with
+  Lune, then runs a **medal** `luau-lifter` on those bytes locally to fold the
+  flattened jump-chain back into idiomatic `if`/`while`/`for` — no upload. Build
+  the lifter once from a maintained fork (upstream medal needs 2024-era patches):
+
+  ```bash
+  git clone https://github.com/Kiet1308/Tovek && cd Tovek   # edition-2024 fork of medal
+  cargo +nightly build --release -p luau-lifter
+  ```
+  ```bash
+  python3 structure.py program.decompiled.luau -o program.structured.lua \
+      --lifter /path/to/Tovek/target/release/luau-lifter
+  ```
+  Verified: a flattened Luau state-machine round-trips back to nested
+  `if/while` + `+=`, and a normal loop recovers as `for i = 1, #t do … end`.
 - **`beautify_lua.py`** — token-based Lua/Luau re-indenter for the peeled VM
   interpreter (the recovered `stage_0.lua` is one ~100 KB line). Purely
   cosmetic: it guarantees the output tokenises to the *same* token stream as
