@@ -89,9 +89,14 @@ function WindUI:CreateWindow(o)
 
             function secWrap:Toggle(c)
                 c = c or {}
+                -- Pick the default without the `a and b or c` idiom, which would
+                -- drop an explicit `Value = false`.
+                local default = c.Value
+                if default == nil then default = c.Default end
+                if default == nil then default = false end
                 sec:AddToggle({
                     Name = c.Title or "Toggle",
-                    Default = c.Value ~= nil and c.Value or (c.Default or false),
+                    Default = default,
                     Callback = callback(c.Callback),
                 })
                 return tolerant({})
