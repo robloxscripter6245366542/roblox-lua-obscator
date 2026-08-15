@@ -43,11 +43,20 @@ local CONFIG = {
     WholeGame      = false,
     IncludeNil     = false,
 
-    MaxScriptBytes = 60000,      -- skip reading scripts whose bytecode is
-                                 -- bigger than this (the memory spikers)
+    MaxScriptBytes = 2000000,    -- skip reading scripts whose bytecode is
+                                 -- bigger than this (set huge to read ALL)
     BytecodeAsHex  = true,
     YieldEvery     = 2,          -- task.wait() after this many script reads
-    CopyRemotes    = true,       -- also copy the remote list to clipboard
+    CopyRemotes    = true,       -- copy the remote list to clipboard
+
+    -- CombinedFile streams EVERY script's code into one file (_ALL.txt) as
+    -- it goes, using appendfile so memory stays flat - this is the single
+    -- "whole game code" file. CopyCode then copies that whole file to the
+    -- clipboard IF it fits under ClipboardCap (clipboards can't hold tens of
+    -- MB; over the cap, use the file).
+    CombinedFile   = true,
+    CopyCode       = true,
+    ClipboardCap   = 6000000,
 }
 -- ──────────────────────────────────────────────────────────
 
@@ -64,6 +73,8 @@ local getsource_fn    = rawget(ENV, "getscriptsource")   or getscriptsource
 local getbytecode_fn  = rawget(ENV, "getscriptbytecode") or getscriptbytecode or dumpstring
 local setclipboard_fn = rawget(ENV, "setclipboard")      or setclipboard or toclipboard
 local writefile_fn    = rawget(ENV, "writefile")         or writefile
+local appendfile_fn   = rawget(ENV, "appendfile")        or appendfile
+local readfile_fn     = rawget(ENV, "readfile")          or readfile
 local makefolder_fn   = rawget(ENV, "makefolder")        or makefolder
 local isfolder_fn     = rawget(ENV, "isfolder")          or isfolder
 
@@ -221,10 +232,23 @@ local function run()
     end
     local rtext = table.concat(rlines, "\n")
     pcall(writefile_fn, CONFIG.OutputFolder .. "/_remotes.txt", rtext)
-    if CONFIG.CopyRemotes and setclipboard_fn then pcall(setclipboard_fn, rtext) end
+    -- Remotes go to clipboard only if we're not going to copy the code instead.
+    if CONFIG.CopyRemotes and setclipboard_fn and not (CONFIG.CopyCode and CONFIG.CombinedFile) then
+        pcall(setclipboard_fn, rtext)
+    end
 
-    -- ── Scripts (streamed, size-limited) ──
-    notify(("Dumping %d scripts (light mode)..."):format(#scripts))
+    -- ── Combined "whole game code" file, streamed with appendfile ──
+    local combinedPath = CONFIG.OutputFolder .. "/_ALL.txt"
+    local combinedBytes, combinedOK = 0, false
+    if CONFIG.CombinedFile and appendfile_fn then
+        combinedOK = pcall(writefile_fn, combinedPath,
+            ("-- Whole game code dump  |  %s (PlaceId %s)  |  %s\n\n")
+            :format(game.Name ~= "" and game.Name or "Game", tostring(game.PlaceId),
+                    os.date("!%Y-%m-%d %H:%M:%S UTC")))
+    end
+
+    -- ── Scripts (streamed to per-file + combined) ──
+    notify(("Dumping %d scripts..."):format(#scripts))
     table.sort(scripts, function(a, b) return fullPath(a) < fullPath(b) end)
     local index, got, skipped = {}, 0, 0
     for i, scr in ipairs(scripts) do
@@ -232,10 +256,14 @@ local function run()
         local cn = "Script"; pcall(function() cn = scr.ClassName end)
         local body, how = readScript(scr)
         if body then got = got + 1 else skipped = skipped + 1 end
-        pcall(writefile_fn, safePath(path),
-              ("-- %s  (%s)  [%s]\n\n%s"):format(path, cn, how, body or ("-- " .. how)))
+        local block = ("-- %s  (%s)  [%s]\n\n%s"):format(path, cn, how, body or ("-- " .. how))
+        pcall(writefile_fn, safePath(path), block)
+        if combinedOK then
+            local chunk = "\n------------------------------------------------------------\n" .. block .. "\n"
+            if pcall(appendfile_fn, combinedPath, chunk) then combinedBytes = combinedBytes + #chunk end
+        end
         index[#index + 1] = ("[%s] %s  (%s)"):format(how, path, cn)
-        body = nil
+        body, block = nil, nil
         if i % CONFIG.YieldEvery == 0 then task.wait() end
     end
 
@@ -243,6 +271,22 @@ local function run()
     index[#index + 1] = ("Remotes: %d | Scripts: %d (read %d, skipped %d)")
         :format(#remotes, #scripts, got, skipped)
     pcall(writefile_fn, CONFIG.OutputFolder .. "/_index.txt", table.concat(index, "\n"))
+
+    -- ── Copy the whole code to clipboard if it fits ──
+    if CONFIG.CopyCode and setclipboard_fn then
+        if combinedOK and combinedBytes <= CONFIG.ClipboardCap and readfile_fn then
+            local okR, all = pcall(readfile_fn, combinedPath)
+            if okR and type(all) == "string" then
+                if pcall(setclipboard_fn, (all:gsub("%z", "?"))) then
+                    notify(("Copied ALL game code to clipboard! (%d chars)"):format(#all))
+                end
+            end
+        elseif combinedOK and combinedBytes > CONFIG.ClipboardCap then
+            notify(("Code too big for clipboard (%d bytes) - it's all in %s/_ALL.txt"):format(combinedBytes, CONFIG.OutputFolder))
+        elseif CONFIG.CombinedFile and not appendfile_fn then
+            notify("No appendfile on this executor - per-script files hold the code; no combined copy.")
+        end
+    end
 
     notify(("Done. %d remotes, %d scripts -> /%s"):format(#remotes, #scripts, CONFIG.OutputFolder))
     print(("[MobileDumper] Done. Remotes: %d | Scripts: %d (read %d, skipped %d). See /%s/_index.txt")
