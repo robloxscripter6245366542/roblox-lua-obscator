@@ -35,6 +35,14 @@ local CONFIG = {
                        "StarterPlayer", "StarterGui", "StarterPack" },
     IncludeLocalPlayer = true,   -- also scan LocalPlayer PlayerScripts+PlayerGui
     IncludeBindables   = true,   -- list bindables too (they're cheap)
+
+    -- WholeGame = true walks the ENTIRE game instead of just the folders
+    -- above. Heavier - only sane because the light protections below
+    -- (size-skip, streaming, yielding) still apply, but on a weak device a
+    -- huge game can still lag/crash. IncludeNil adds nil-parented scripts.
+    WholeGame      = false,
+    IncludeNil     = false,
+
     MaxScriptBytes = 60000,      -- skip reading scripts whose bytecode is
                                  -- bigger than this (the memory spikers)
     BytecodeAsHex  = true,
@@ -45,6 +53,12 @@ local CONFIG = {
 
 local getgenv_fn      = getgenv or function() return _G end
 local ENV             = getgenv_fn()
+-- Override any CONFIG value at runtime without editing the file, e.g.:
+--   getgenv().MobileDumper_Config = { WholeGame = true }
+do
+    local ov = rawget(getgenv_fn(), "MobileDumper_Config")
+    if type(ov) == "table" then for k, v in pairs(ov) do CONFIG[k] = v end end
+end
 local decompile_fn    = rawget(ENV, "decompile")         or decompile
 local getsource_fn    = rawget(ENV, "getscriptsource")   or getscriptsource
 local getbytecode_fn  = rawget(ENV, "getscriptbytecode") or getscriptbytecode or dumpstring
@@ -136,8 +150,11 @@ local function safePath(path)
     return dir .. "/" .. (segs[#segs] or "s") .. ".txt"
 end
 
--- ── Gather the important roots ────────────────────────────
+-- ── Gather the roots to scan ──────────────────────────────
 local function roots()
+    -- Whole-game mode: just walk the entire game tree.
+    if CONFIG.WholeGame then return { game } end
+
     local out = {}
     for _, name in ipairs(CONFIG.Folders) do
         local ok, svc = pcall(function() return game:GetService(name) end)
@@ -158,28 +175,41 @@ end
 -- ── Run ───────────────────────────────────────────────────
 local function run()
     pcall(function() if isfolder_fn and not isfolder_fn(CONFIG.OutputFolder) then makefolder_fn(CONFIG.OutputFolder) end end)
-    notify("Scanning important folders...")
+    notify(CONFIG.WholeGame and "Scanning the WHOLE game..." or "Scanning important folders...")
 
     local scripts, remotes = {}, {}
-    local seen = {}
+    local seen, n = {}, 0
+    local function consider(o)
+        if not o or seen[o] then return end
+        seen[o] = true
+        n = n + 1
+        if n % 1500 == 0 then task.wait() end   -- yield while collecting big trees
+        local okc, cn = pcall(function() return o.ClassName end)
+        if not okc then return end
+        if REMOTE_CLASSES[cn] and (CONFIG.IncludeBindables or SERVER_REMOTE[cn]) then
+            remotes[#remotes + 1] = { obj = o, cn = cn }
+        end
+        local oks, isSrc = pcall(function() return o:IsA("LuaSourceContainer") end)
+        if oks and isSrc then scripts[#scripts + 1] = o end
+    end
+
     for _, root in ipairs(roots()) do
         local ok, desc = pcall(function() return root:GetDescendants() end)
-        if ok then
-            for _, o in ipairs(desc) do
-                if not seen[o] then
-                    seen[o] = true
-                    local okc, cn = pcall(function() return o.ClassName end)
-                    if okc then
-                        if REMOTE_CLASSES[cn] and (CONFIG.IncludeBindables or SERVER_REMOTE[cn]) then
-                            remotes[#remotes + 1] = { obj = o, cn = cn }
-                        end
-                        local oks, isSrc = pcall(function() return o:IsA("LuaSourceContainer") end)
-                        if oks and isSrc then scripts[#scripts + 1] = o end
-                    end
+        if ok then for _, o in ipairs(desc) do consider(o) end end
+        task.wait()
+    end
+
+    if CONFIG.IncludeNil then
+        local getnil_fn = rawget(ENV, "getnilinstances") or getnilinstances
+        if getnil_fn then
+            local okn, nils = pcall(getnil_fn)
+            if okn and type(nils) == "table" then
+                for _, o in ipairs(nils) do
+                    consider(o)
+                    pcall(function() for _, d in ipairs(o:GetDescendants()) do consider(d) end end)
                 end
             end
         end
-        task.wait()
     end
 
     -- ── Remotes (cheap) ──
