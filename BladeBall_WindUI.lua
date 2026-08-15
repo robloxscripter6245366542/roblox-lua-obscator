@@ -18,8 +18,9 @@
                      Remotes.SecondaryAbilityButtonPress (Remote)
         Movement   : Remotes.DashFired / DoubleJump
         Ball state : Remotes.BallAdded / BallExplode / BallRemoved
-                     ball parts carry a "zoomies" LinearVelocity and a
-                     "target" attribute holding the aimed player's name
+                     balls live in workspace.Balls; the true ball carries a
+                     "realBall" attribute and a "target" attribute holding
+                     the aimed player's name (verified against the dump)
         Matchmake  : Remotes.PlayRanked / JoinQueue / PlayTrainingMode
                      Remotes.ReturnToLobby
 
@@ -165,39 +166,34 @@ end
 
 -- ═══════════════════════════════════════════════════════════════════
 --  BALL TRACKER
---  Balls sit loose in the workspace; each has a "zoomies" LinearVelocity.
---  The ball aimed at us has attribute "target" == our name.
+--  Real Blade Ball mechanics (verified against the game dump):
+--    • balls live in workspace.Balls
+--    • the actual ball carries a "realBall" attribute (decoys/visuals do not)
+--    • the ball's "target" attribute holds the aimed player's name
+--    • velocity comes from the part (AssemblyLinearVelocity) or, more
+--      robustly, finite-difference of its position across frames
 -- ═══════════════════════════════════════════════════════════════════
-local BallTracker = { balls = {}, parries = 0 }
+local BallTracker = { parries = 0 }
 
-local function isBall(inst)
-    return inst
-        and inst:IsA("BasePart")
-        and inst:FindFirstChild("zoomies") ~= nil
+local function ballsFolder()
+    return Workspace:FindFirstChild("Balls")
 end
 
-function BallTracker.scan()
-    for _, inst in ipairs(Workspace:GetDescendants()) do
-        if isBall(inst) then BallTracker.balls[inst] = true end
+-- iterate the real ball(s) in play
+function BallTracker.realBalls()
+    local out = {}
+    local folder = ballsFolder()
+    if not folder then return out end
+    for _, ball in ipairs(folder:GetChildren()) do
+        if ball:IsA("BasePart") and ball:GetAttribute("realBall") then
+            out[#out + 1] = ball
+        end
     end
+    return out
 end
 
-Workspace.DescendantAdded:Connect(function(inst)
-    task.defer(function()
-        if isBall(inst) then BallTracker.balls[inst] = true end
-    end)
-end)
-Workspace.DescendantRemoving:Connect(function(inst)
-    BallTracker.balls[inst] = nil
-end)
-
-do
-    local be = getRemote("BallExplode")
-    if be and be:IsA("RemoteEvent") then
-        be.OnClientEvent:Connect(function(ball)
-            if typeof(ball) == "Instance" then BallTracker.balls[ball] = nil end
-        end)
-    end
+function BallTracker.count()
+    return #BallTracker.realBalls()
 end
 
 -- Per-ball position history for curve-aware prediction. Curved / homing
@@ -209,31 +205,38 @@ local HIT_RADIUS   = 4.0
 local PARRY_MARGIN = 0.05          -- tuned safety margin (seconds)
 local BallHistory  = setmetatable({}, { __mode = "k" })
 
-local function pushHistory(ball, pos, vel, now)
+-- push a sample and return derived velocity (finite difference).
+local function pushHistory(ball, pos, now)
     local h = BallHistory[ball]
     if not h then h = {} ; BallHistory[ball] = h end
+    local vel = ball.AssemblyLinearVelocity
+    local last = h[#h]
+    if last then
+        local dt = now - last.t
+        if dt > 1e-4 then
+            local dv = (pos - last.p) / dt
+            if dv.Magnitude > 1 then vel = dv end   -- prefer measured velocity
+        end
+    end
     h[#h + 1] = { t = now, p = pos, v = vel }
     while #h > 6 do table.remove(h, 1) end
-    return h
+    return h, vel
 end
 
 -- Predict seconds until the ball reaches the player, curve-aware.
 local function predictImpact(h, playerPos)
     local n = #h
     if n < 1 then return math.huge end
-    local last = h[n]
-    local p    = last.p
-    local v    = last.v
-    -- acceleration from the last three samples (finite second difference)
+    local p = h[n].p
+    local v = h[n].v
     local a = Vector3.zero
     if n >= 3 then
-        local p0, pm, p1 = h[n-2].p, h[n-1].p, h[n].p
         local dt = h[n].t - h[n-1].t
         if dt > 1e-4 then
-            a = (p1 - 2 * pm + p0) / (dt * dt)
+            a = (h[n].p - 2 * h[n-1].p + h[n-2].p) / (dt * dt)
         end
     end
-    local rel  = p - playerPos          -- ball relative to player
+    local rel   = p - playerPos
     local reach = HIT_RADIUS + Config.hitboxReach
     local t = 0.0
     while t < 3.0 do
@@ -250,32 +253,21 @@ function BallTracker.bestThreat(hrpPos)
     local myName = LocalPlayer.Name
     local now    = os.clock()
 
-    for ball in pairs(BallTracker.balls) do
-        if not (ball and ball.Parent) then
-            BallTracker.balls[ball] = nil
-            BallHistory[ball] = nil
-        else
-            local vp = ball:FindFirstChild("zoomies")
-            if vp and ball:GetAttribute("target") == myName then
-                local vel = vp.VectorVelocity
-                local h   = pushHistory(ball, ball.Position, vel, now)
-                local toMe = hrpPos - ball.Position
-                if vel.Magnitude > 1 and vel:Dot(toMe.Unit) > 0 then
-                    local tImpact = predictImpact(h, hrpPos)
-                    if tImpact < bestT then
-                        best, bestT, bestVel = ball, tImpact, vel
-                    end
+    for _, ball in ipairs(BallTracker.realBalls()) do
+        local target = ball:GetAttribute("target")
+        if target == nil or target == myName then      -- aimed at us (or untagged)
+            local pos     = ball.Position
+            local h, vel  = pushHistory(ball, pos, now)
+            local toMe    = hrpPos - pos
+            if vel.Magnitude > 1 and vel:Dot(toMe.Unit) > 0 then
+                local tImpact = predictImpact(h, hrpPos)
+                if tImpact < bestT then
+                    best, bestT, bestVel = ball, tImpact, vel
                 end
             end
         end
     end
     return best, bestT, bestVel
-end
-
-function BallTracker.count()
-    local n = 0
-    for _ in pairs(BallTracker.balls) do n += 1 end
-    return n
 end
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -528,7 +520,7 @@ RunService.RenderStepped:Connect(function()
 
     -- Ball boxes + tracers
     if Config.ballEsp or Config.ballTracers then
-        for ball in pairs(BallTracker.balls) do
+        for _, ball in ipairs(BallTracker.realBalls()) do
             if ball and ball.Parent then
                 if Config.ballEsp then
                     local box = ensureBallBox(ball)
@@ -586,11 +578,10 @@ RunService.RenderStepped:Connect(function()
 
     -- Prediction arc for the current threat
     if Config.predictionArc and threat then
-        local vp = threat:FindFirstChild("zoomies")
-        if vp then
+        do
             local dots = Esp.arcDots[threat]
             if not dots then dots = {} ; Esp.arcDots[threat] = dots end
-            local pos, v = threat.Position, vp.VectorVelocity
+            local pos, v = threat.Position, threat.AssemblyLinearVelocity
             for i = 1, 12 do
                 local d = dots[i]
                 if not d then
@@ -994,7 +985,6 @@ end)
 -- ═══════════════════════════════════════════════════════════════════
 --  BOOT
 -- ═══════════════════════════════════════════════════════════════════
-BallTracker.scan()
 applyCharacterMods()
 hookDeath()
 print("[Blade Ball • WindUI] full hub loaded — white glass theme.")
