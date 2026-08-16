@@ -2457,6 +2457,7 @@ do
                     Label.TextSize = 14.000
                     Label.TextTransparency = 0.250
                     Label.TextXAlignment = Enum.TextXAlignment.Left
+                    Label.TextTruncate = Enum.TextTruncate.AtEnd
 
                     con.Name = "con"
                     con.Parent = Slider
@@ -2516,16 +2517,32 @@ do
                         local scale = TextService:GetTextSize(test,LabelValue.TextSize,LabelValue.Font,Vector2.new(math.huge,math.huge));
                         local scalelab = TextService:GetTextSize(Label.Text,Label.TextSize,Label.Font,Vector2.new(math.huge,math.huge));
 
-                        -- Use dynamic sizing with minimums
-                        local valueWidth = math.max(scale.X + 10, 35) -- Minimum value width
-                        local labelWidth = scalelab.X + 10 -- Label width with padding
-                        
+                        local valueWidth = math.max(scale.X + 10, 35) -- value box, min width
+
+                        -- Total row width. Before the frame is laid out AbsoluteSize
+                        -- is 0, so fall back to a sane default and let the
+                        -- AbsoluteSize signal below re-run this once it's real.
+                        local total = Slider.AbsoluteSize.X
+                        if total <= 0 then total = 220 end
+
+                        -- Cap the label so a long title can NEVER eat the whole row:
+                        -- reserve the value box, the gaps and a minimum track, then
+                        -- give the label whatever's left (it truncates past that).
+                        local GAPS = 15
+                        local MIN_TRACK = 45
+                        local maxLabel = math.max(total - valueWidth - GAPS - MIN_TRACK, 0)
+                        local labelWidth = math.clamp(scalelab.X + 10, 0, maxLabel)
+
                         value.Size = UDim2.new(0, valueWidth, 0, 15)
+                        Label.Size = UDim2.new(0, labelWidth, 0.649999976, 0)
                         con.Position = UDim2.new(1, -(valueWidth + 8), 0.5, 0)
-                        con.Size = UDim2.new(1, -(labelWidth + valueWidth + 15), 0.200000003, 0) -- Updated calculation
+                        con.Size = UDim2.new(1, -(labelWidth + valueWidth + GAPS), 0.200000003, 0)
                     end
 
                     updateSIZE()
+                    -- Recompute once the frame actually has a size (and on any resize),
+                    -- so the track is measured against the real column width.
+                    NeverZen:Track(Slider:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateSIZE))
 
                     local function update(Input)
                         local SizeScale = math.clamp((((Input.Position.X) - con.AbsolutePosition.X) / con.AbsoluteSize.X), 0, 1);
