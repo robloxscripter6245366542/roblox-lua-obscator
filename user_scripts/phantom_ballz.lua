@@ -4894,56 +4894,6 @@ local red = Color3.fromRGB(255, 0, 0)
 local softRed = Color3.fromRGB(255, 60, 60)
 local green = Color3.fromRGB(60, 255, 120)
 local yellow = Color3.fromRGB(255, 200, 60)
-local clashColor = Color3.fromRGB(0, 200, 255) -- ring turns this the instant a real clash is detected
-
--- ── Clash analysis ───────────────────────────────────────────────────────────
--- A real clash is a ball that is FAST, CLOSE, and actually on a collision course
--- with the player. The naive gate (approaching = velocity·offset > 0, plus a
--- straight-line time-to-impact) treats a fast ball flying PAST the player as a
--- clash and parries it — a FALSE clash. This projects the player onto the ball's
--- forward path to get the perpendicular MISS distance: a wide miss at range means
--- the ball is going by, not clashing, so we do not parry. Point-blank balls are
--- never vetoed, so genuinely close hits still parry.
-local CLASH_MIN_SPEED = 5    -- studs/s; below this the ball isn't clashing
-local CLASH_MISS_TOL = 12    -- studs; perpendicular miss beyond this (past point-blank) = going by
-local CLASH_POINT_BLANK = 14 -- studs; inside this the ball is always a threat (never vetoed)
-local CLASH_TIME = 0.35      -- s; the ball must reach us within this window
-local RAD_MIN, RAD_MAX = 9, 90
-
-local function clashAnalyze(ballPos, vel, hrpPos, targeting)
-	local off = hrpPos - ballPos
-	local d = off.Magnitude
-	local spd = vel.Magnitude
-	local rad = math.clamp(spd * 0.32 + 6, RAD_MIN, RAD_MAX)
-	local parryRad = rad + 8
-
-	-- Project the player onto the ball's forward path.
-	local along, miss = 0, d
-	if spd > 1 then
-		local vhat = vel / spd
-		along = off:Dot(vhat)                                    -- distance along path to closest point
-		if along > 0 then
-			miss = math.sqrt(math.max(d * d - along * along, 0)) -- perpendicular miss distance
-		end
-	end
-
-	local approaching = along > 0                                -- closest point is AHEAD of the ball
-	local tImp = (approaching and spd > 1) and (along / spd) or 1e6
-
-	-- Going by: past point-blank range AND the path misses wide. A ball on a real
-	-- collision course has miss ~ 0 at any distance, so it is never vetoed; a fast
-	-- ball flying to the side (wide miss) is rejected instead of falsely clashed.
-	local goingBy = (d > CLASH_POINT_BLANK) and (miss > CLASH_MISS_TOL)
-
-	local inClash = targeting
-		and approaching
-		and spd > CLASH_MIN_SPEED
-		and d <= parryRad
-		and tImp <= CLASH_TIME
-		and not goingBy
-
-	return inClash, rad, parryRad, miss, tImp, d, spd
-end
 
 local simConn
 local spamConn
@@ -5205,6 +5155,8 @@ local function bind(ch)
 	local lastT
 	local vel = Vector3.zero
 	local tau = 0.05
+	local minR = 9
+	local maxR = 90
 	local cd = 0.3
 	local lastFire = 0
 	local flashT = 0
@@ -5266,18 +5218,36 @@ local function bind(ch)
 		end
 
 		local hrpPos = hrp.Position
-		local ok = tgtOn(ch)
-		-- Clash-aware decision: only parry when the ball is genuinely clashing
-		-- (fast, close, on a collision course), never when it's flying by.
-		local can, rad, _parryRad, _miss, _tImp, d, spd = clashAnalyze(bp, vel, hrpPos, ok)
+		local spd = vel.Magnitude
+		local rad = spd * 0.32 + 6
 
+		if rad < minR then
+			rad = minR
+		elseif rad > maxR then
+			rad = maxR
+		end
+
+		local parryRad = rad + 8
 		ring.Size = Vector3.new(rad * 2, rad * 2, rad * 2)
 		ring.CFrame = CFrame.new(hrpPos)
 
+		local off = hrpPos - bp
+		local d = off.Magnitude
+		local app = vel:Dot(off) > 0
+		local ok = tgtOn(ch)
+
+		local tImp = 1e6
+		if spd > 1 then
+			tImp = d / spd
+		end
+
+		-- Parry only when the ball is actually targeting us (GameBallTarget /
+		-- highlight) and inbound in range — the target gate is what keeps it from
+		-- firing on balls that are just passing by, not your clash.
+		local can = ok and app and spd > 5 and d <= parryRad and tImp <= 0.35
+
 		if cfg.spam then
 			ring.Color = red
-		elseif can then
-			ring.Color = clashColor       -- it KNOWS it's in a clash
 		elseif now - flashT <= 0.12 then
 			ring.Color = softRed
 		elseif not ok then
