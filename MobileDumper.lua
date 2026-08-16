@@ -43,6 +43,12 @@ local CONFIG = {
     WholeGame      = false,
     IncludeNil     = false,
 
+    -- Decompile is OFF by default. Decompiling tens of thousands of scripts
+    -- (Phantom Ball ~27k, TSB, etc.) crashes phones/tablets. With it off we
+    -- read source/bytecode instead - far cheaper, no decompiler crash. Turn
+    -- it on only on a strong PC executor with a small game.
+    Decompile      = false,
+
     MaxScriptBytes = 2000000,    -- skip reading scripts whose bytecode is
                                  -- bigger than this (set huge to read ALL)
     BytecodeAsHex  = true,
@@ -122,8 +128,10 @@ end
 
 -- Read a script cheaply: source if the executor has it, else bytecode,
 -- but NEVER read anything bigger than MaxScriptBytes (that's what lags).
+-- Decompiling is OFF by default: decompiling tens of thousands of scripts
+-- on a phone crashes the client. Bytecode/source reads are ~100x cheaper.
 local function readScript(scr)
-    if decompile_fn then
+    if CONFIG.Decompile and decompile_fn then
         local ok, src = pcall(decompile_fn, scr)
         if ok and type(src) == "string" and #src > 0 and #src <= CONFIG.MaxScriptBytes * 4 then
             return src, "decompile"
