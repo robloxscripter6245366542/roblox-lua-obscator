@@ -135,8 +135,33 @@ UDim2 = {
 	fromOffset = function(x, y) return UDim2.new(0, x, 0, y) end,
 }
 Vector2 = { new = function(x, y) return typed("Vector2", { X = x or 0, Y = y or 0 }) end }
-Vector3 = { new = function(x, y, z) return typed("Vector3", { X = x or 0, Y = y or 0, Z = z or 0 }) end, zero = nil }
-Vector3.zero = Vector3.new(0, 0, 0)
+-- Vector3 with real math, so the parry/clash decision can be exercised offline.
+local V3mt = {}
+V3mt.__typename = "Vector3"
+local function v3(x, y, z) return setmetatable({ X = x or 0, Y = y or 0, Z = z or 0 }, V3mt) end
+V3mt.__index = function(t, k)
+	if k == "Magnitude" then return math.sqrt(t.X * t.X + t.Y * t.Y + t.Z * t.Z) end
+	if k == "Unit" then
+		local m = math.sqrt(t.X * t.X + t.Y * t.Y + t.Z * t.Z)
+		if m == 0 then return v3(0, 0, 0) end
+		return v3(t.X / m, t.Y / m, t.Z / m)
+	end
+	if k == "Dot" then return function(self, o) return self.X * o.X + self.Y * o.Y + self.Z * o.Z end end
+	return nil
+end
+V3mt.__add = function(a, b) return v3(a.X + b.X, a.Y + b.Y, a.Z + b.Z) end
+V3mt.__sub = function(a, b) return v3(a.X - b.X, a.Y - b.Y, a.Z - b.Z) end
+V3mt.__mul = function(a, b)
+	if type(b) == "number" then return v3(a.X * b, a.Y * b, a.Z * b) end
+	if type(a) == "number" then return v3(b.X * a, b.Y * a, b.Z * a) end
+	return v3(a.X * b.X, a.Y * b.Y, a.Z * b.Z)
+end
+V3mt.__div = function(a, b)
+	if type(b) == "number" then return v3(a.X / b, a.Y / b, a.Z / b) end
+	return v3(a.X / b.X, a.Y / b.Y, a.Z / b.Z)
+end
+V3mt.__unm = function(a) return v3(-a.X, -a.Y, -a.Z) end
+Vector3 = { new = v3, zero = v3(0, 0, 0) }
 CFrame = setmetatable({ new = function() return typed("CFrame", {}) end, Angles = function() return typed("CFrame", {}) end },
 	{ __index = function() return function() return typed("CFrame", {}) end end })
 TweenInfo = { new = function(...) return typed("TweenInfo", { args = { ... } }) end }
