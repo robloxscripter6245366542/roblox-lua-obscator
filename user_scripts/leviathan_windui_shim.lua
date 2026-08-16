@@ -59,9 +59,6 @@ function WindUI:CreateWindow(o)
         ShowProfile = false,
     })
 
-    -- Alternate sections between the two Leviathan columns for a balanced layout.
-    local sectionCount = 0
-
     local windowWrap
     windowWrap = tolerant({
         ConfigManager = tolerant({
@@ -80,10 +77,15 @@ function WindUI:CreateWindow(o)
         local tab = win:AddTab({ Name = t.Title or "Tab", Icon = t.Icon })
         local tabWrap = tolerant({})
 
+        -- Alternate this tab's sections between the two Leviathan columns,
+        -- starting fresh at the left column for EACH tab (a shared counter made
+        -- some tabs start on the right, leaving a lopsided/empty column).
+        local tabSectionCount = 0
+
         function tabWrap:Section(s)
             s = s or {}
-            sectionCount += 1
-            local pos = (sectionCount % 2 == 1) and "left" or "right"
+            tabSectionCount += 1
+            local pos = (tabSectionCount % 2 == 1) and "left" or "right"
             local sec = tab:AddSection({ Name = s.Title or "Section", Position = pos })
             local secWrap = tolerant({})
 
@@ -130,7 +132,8 @@ function WindUI:CreateWindow(o)
                 local title = tostring(c.Title or "")
                 local function compose(desc)
                     desc = tostring(desc or "")
-                    if title ~= "" and desc ~= "" then return title .. "  —  " .. desc end
+                    -- Title on its own line above the (often multi-line) body.
+                    if title ~= "" and desc ~= "" then return title .. "\n" .. desc end
                     return title ~= "" and title or desc
                 end
                 local label = sec:AddLabel(compose(c.Desc or c.Content))

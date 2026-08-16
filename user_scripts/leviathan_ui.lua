@@ -2224,6 +2224,12 @@ do
                     Label.BorderColor3 = Color3.fromRGB(0, 0, 0)
                     Label.BorderSizePixel = 0
                     Label.Size = UDim2.new(1, -10, 0, 20)
+                    -- Grow with the text so multi-line status blocks (the Anime
+                    -- Ball hub uses \n-heavy Paragraphs) render fully instead of
+                    -- being clipped to a single 20px line.
+                    Label.AutomaticSize = Enum.AutomaticSize.Y
+                    Label.TextWrapped = true
+                    Label.TextYAlignment = Enum.TextYAlignment.Top
                     Label.ZIndex = 5
                     Label.Font = Enum.Font.GothamBold
                     Label.Text = name
