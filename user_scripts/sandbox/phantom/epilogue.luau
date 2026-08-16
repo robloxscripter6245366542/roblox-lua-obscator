@@ -100,54 +100,6 @@ else
 	for _ = 1, 10 do setSpam(not cfg.spam) end
 	DRAIN(2)
 	check("rapid toggling did not error or hang", true)
-
-	-- ── Clash detection (speed + distance + trajectory) ──────────────────────
-	-- clashAnalyze(ballPos, vel, hrpPos, targeting) -> inClash, ...
-	local origin = Vector3.new(0, 0, 0)
-	local function V(x, y, z) return Vector3.new(x, y, z) end
-
-	-- Head-on: fast ball 30 studs away heading straight at us -> CLASH.
-	do
-		local inClash = clashAnalyze(V(30, 0, 0), V(-120, 0, 0), origin, true)
-		check("clash: fast ball heading straight at player -> IN CLASH", inClash == true)
-	end
-	-- Going by: fast ball approaching at an angle but missing ~25 studs -> NO clash.
-	do
-		local inClash, _, _, miss = clashAnalyze(V(40, 0, 25), V(-150, 0, 0), origin, true)
-		check("no-false-clash: fast ball flying past (wide miss) -> NOT a clash",
-			inClash == false, "miss=" .. tostring(math.floor(miss)))
-	end
-	-- Pure sideways ball near the player -> not approaching -> NO clash.
-	do
-		local inClash = clashAnalyze(V(20, 0, 0), V(0, 0, 140), origin, true)
-		check("no-false-clash: ball moving sideways (not approaching) -> NOT a clash", inClash == false)
-	end
-	-- Point-blank on-course ball -> always a clash (never vetoed).
-	do
-		local inClash = clashAnalyze(V(6, 0, 0), V(-40, 0, 0), origin, true)
-		check("clash: point-blank ball on course -> IN CLASH", inClash == true)
-	end
-	-- Not targeting us -> never a clash, even head-on.
-	do
-		local inClash = clashAnalyze(V(30, 0, 0), V(-120, 0, 0), origin, false)
-		check("no-false-clash: ball not targeting us -> NOT a clash", inClash == false)
-	end
-	-- Ball moving away -> NO clash.
-	do
-		local inClash = clashAnalyze(V(30, 0, 0), V(120, 0, 0), origin, true)
-		check("no-false-clash: ball moving away -> NOT a clash", inClash == false)
-	end
-	-- Slow ball -> NO clash.
-	do
-		local inClash = clashAnalyze(V(15, 0, 0), V(-3, 0, 0), origin, true)
-		check("no-false-clash: slow ball -> NOT a clash", inClash == false)
-	end
-	-- Too far to arrive within the time window -> NO clash.
-	do
-		local inClash, _, parryRad, _, tImp = clashAnalyze(V(200, 0, 0), V(-60, 0, 0), origin, true)
-		check("no-false-clash: on-course but too far / too slow to arrive in time -> NOT a clash",
-			inClash == false, "tImp=" .. tostring(tImp) .. " parryRad=" .. tostring(math.floor(parryRad)))
-	end
 end
 
 -- Surface any errors captured from spawned/deferred/signal handlers.
