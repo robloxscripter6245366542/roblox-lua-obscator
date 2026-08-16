@@ -5058,7 +5058,7 @@ local function updIcons()
 	syncIcon = true
 
 	if mob.spam then
-		mob.spam:setLabel(cfg.spam and "Spam: ON" or "Spam: OFF")
+		mob.spam:setLabel(cfg.spam and "Autoparry: ON" or "Autoparry: OFF")
 		if cfg.spam then
 			mob.spam:select("Sync", mob.spam)
 		else
@@ -5342,11 +5342,11 @@ do
 		local sec = tab:AddSection({ Name = "Controls", Position = "left" })
 		local info = tab:AddSection({ Name = "Status", Position = "right" })
 
-		local statusLabel = info:AddLabel("Auto Parry: ON")
-		local labelText = { spam = "Spam: OFF", vis = "Visualizer: ON", fx = "FX Clean: ON" }
+		local statusLabel = info:AddLabel("Autoparry: OFF")
+		local labelText = { spam = "Autoparry: OFF", vis = "Visualizer: ON", fx = "FX Clean: ON" }
 		local function refreshStatus()
 			pcall(function()
-				statusLabel:SetValue(("Auto Parry: ON\n%s\n%s\n%s"):format(labelText.spam, labelText.vis, labelText.fx))
+				statusLabel:SetValue(("%s\n%s\n%s"):format(labelText.spam, labelText.vis, labelText.fx))
 			end)
 		end
 
@@ -5384,7 +5384,7 @@ do
 
 		mob = {
 			root = { destroy = function() pcall(function() NeverZen:Unload() end) end },
-			spam = makeControl("spam", "Auto Spam", wSpam, function(v) setSpam(v) end),
+			spam = makeControl("spam", "Autoparry", wSpam, function(v) setSpam(v) end),
 			vis  = makeControl("vis",  "Visualizer", wVis, function(v) setVis(v) end),
 			fx   = makeControl("fx",   "FX Clean",   wFx,  function(v) setFx(v) end),
 		}
