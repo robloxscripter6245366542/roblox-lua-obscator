@@ -34,6 +34,60 @@ local function callback(fn)
     end
 end
 
+-- ── Config auto-save ───────────────────────────────────────────────────────
+-- Persist toggle/slider values and restore them on the next run, so options
+-- survive a rejoin. Saves within ~0.5s of ANY change (flip a toggle -> saved).
+-- Keyed by tab/section/control so keys are stable across runs. Every filesystem
+-- call is existence-checked + pcall'd, so an executor without writefile just
+-- silently runs without persistence instead of erroring.
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+local CONFIG_FOLDER = "Leviathan"
+local CONFIG_FILE = "Leviathan/AnimeBall_config.json"
+
+local savedValues = (function()
+    if type(readfile) == "function" and type(isfile) == "function" then
+        local ok, decoded = pcall(function()
+            if isfile(CONFIG_FILE) then return HttpService:JSONDecode(readfile(CONFIG_FILE)) end
+        end)
+        if ok and type(decoded) == "table" then return decoded end
+    end
+    return {}
+end)()
+
+local liveValues = {}
+local dirty = false
+
+if type(writefile) == "function" then
+    task.spawn(function()
+        while true do
+            task.wait(0.5)
+            if dirty then
+                dirty = false
+                pcall(function()
+                    if type(makefolder) == "function" and type(isfolder) == "function" and not isfolder(CONFIG_FOLDER) then
+                        makefolder(CONFIG_FOLDER)
+                    end
+                    writefile(CONFIG_FILE, HttpService:JSONEncode(liveValues))
+                end)
+            end
+        end
+    end)
+end
+
+-- Seed a control from the saved config (falling back to the script's default),
+-- and start tracking its live value.
+local function trackValue(key, requested)
+    local v = savedValues[key]
+    if v == nil then v = requested end
+    liveValues[key] = v
+    return v
+end
+local function updateValue(key, v)
+    liveValues[key] = v
+    dirty = true
+end
+
 local WindUI = tolerant({})
 
 function WindUI:Notify(o)
@@ -74,7 +128,8 @@ function WindUI:CreateWindow(o)
 
     function windowWrap:Tab(t)
         t = t or {}
-        local tab = win:AddTab({ Name = t.Title or "Tab", Icon = t.Icon })
+        local tabTitle = t.Title or "Tab"
+        local tab = win:AddTab({ Name = tabTitle, Icon = t.Icon })
         local tabWrap = tolerant({})
 
         -- Alternate this tab's sections between the two Leviathan columns,
@@ -84,23 +139,38 @@ function WindUI:CreateWindow(o)
 
         function tabWrap:Section(s)
             s = s or {}
+            local secTitle = s.Title or "Section"
             tabSectionCount += 1
             local pos = (tabSectionCount % 2 == 1) and "left" or "right"
-            local sec = tab:AddSection({ Name = s.Title or "Section", Position = pos })
+            local sec = tab:AddSection({ Name = secTitle, Position = pos })
             local secWrap = tolerant({})
+
+            local function keyFor(title) return tabTitle .. "\0" .. secTitle .. "\0" .. tostring(title) end
 
             function secWrap:Toggle(c)
                 c = c or {}
-                -- Pick the default without the `a and b or c` idiom, which would
-                -- drop an explicit `Value = false`.
-                local default = c.Value
-                if default == nil then default = c.Default end
-                if default == nil then default = false end
+                -- Pick the requested default without the `a and b or c` idiom,
+                -- which would drop an explicit `Value = false`.
+                local requested = c.Value
+                if requested == nil then requested = c.Default end
+                if requested == nil then requested = false end
+                -- Restore the saved value (if any) and start tracking it.
+                local key = keyFor(c.Title or "Toggle")
+                local default = trackValue(key, requested)
+                if type(default) ~= "boolean" then default = default and true or false end
                 sec:AddToggle({
                     Name = c.Title or "Toggle",
                     Default = default,
-                    Callback = callback(c.Callback),
+                    Callback = function(v)
+                        updateValue(key, v)                       -- auto-save on change
+                        task.spawn(function() pcall(c.Callback or function() end, v) end)
+                    end,
                 })
+                -- Apply the restored state to the feature (AddToggle sets the visual
+                -- but never fires the callback), so a saved-ON toggle re-enables.
+                if type(c.Callback) == "function" then
+                    task.spawn(function() pcall(c.Callback, default) end)
+                end
                 return tolerant({})
             end
 
@@ -110,14 +180,24 @@ function WindUI:CreateWindow(o)
                 local round = 0
                 local step = c.Step or v.Step
                 if type(step) == "number" and step > 0 and step < 1 then round = 2 end
+                local requested = v.Default or c.Default or (v.Min or c.Min or 0)
+                local key = keyFor(c.Title or "Slider")
+                local default = trackValue(key, requested)
+                if type(default) ~= "number" then default = requested end
                 sec:AddSlider({
                     Name = c.Title or "Slider",
                     Min = v.Min or c.Min or 0,
                     Max = v.Max or c.Max or 100,
-                    Default = v.Default or c.Default or (v.Min or c.Min or 0),
+                    Default = default,
                     Round = round,
-                    Callback = callback(c.Callback),
+                    Callback = function(val)
+                        updateValue(key, val)                     -- auto-save on change
+                        task.spawn(function() pcall(c.Callback or function() end, val) end)
+                    end,
                 })
+                if type(c.Callback) == "function" then
+                    task.spawn(function() pcall(c.Callback, default) end)
+                end
                 return tolerant({})
             end
 
