@@ -6616,8 +6616,42 @@ do
         ManualSpamParryUIService:SetColor(ACHAOTICDATA.Config.ManualSpamParry.Spamming)
     end
 
-    UI.SpamUI.SpamButton.MouseButton1Click:Connect(ToggleSpam)
-    MakeDraggable(UI.SpamUI.Handler, UI.SpamUI.Handler, 0.2)
+    -- Unified drag + tap for the on-screen SPAM button. The button fills the
+    -- handler, so the old setup (MouseButton1Click to toggle + a tween-based
+    -- MakeDraggable to move) had two bugs: dragging fired the click and toggled
+    -- spam by accident, and the per-move tween made the button trail the pointer
+    -- while its clickable hitbox stayed behind ("moves but the hitbox is where it
+    -- was"). Move the handler DIRECTLY here (no tween, so visual + hitbox stay
+    -- together) and toggle only on a tap that didn't move.
+    do
+        local dragging, moved, startPointer, startPos
+        UI.SpamUI.SpamButton.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                moved = false
+                startPointer = input.Position
+                startPos = UI.SpamUI.Handler.Position
+            end
+        end)
+        NeverZen:Track(UserInputService.InputChanged:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                local delta = input.Position - startPointer
+                if delta.Magnitude > 8 then moved = true end
+                UI.SpamUI.Handler.Position = UDim2.new(
+                    startPos.X.Scale, startPos.X.Offset + delta.X,
+                    startPos.Y.Scale, startPos.Y.Offset + delta.Y
+                )
+            end
+        end))
+        NeverZen:Track(UserInputService.InputEnded:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+                dragging = false
+                if not moved then
+                    ToggleSpam()
+                end
+            end
+        end))
+    end
 end
 
 do 
@@ -7533,6 +7567,7 @@ do
 end
 
 ManualSpamParryUIService:Visible(ACHAOTICDATA.Config.ManualSpamParry.UI)
+ManualSpamParryUIService:SetColor(ACHAOTICDATA.Config.ManualSpamParry.Spamming)
 TriggerBotUIService:Visible(ACHAOTICDATA.Config.TriggerBot.UI)
 ImmortalityUIService:Visible(Immortality.UI)
 
