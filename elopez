@@ -6184,6 +6184,49 @@ do
         Position = "right"
     })
 
+    -- Build a live list of every sword so Model / Animation / FX are pickable
+    -- from a dropdown instead of typed. Each field takes a sword NAME, so one
+    -- list serves all three. Enumerate the ReplicatedInstances "Swords" container
+    -- and keep only entries GetSword recognises; fall back to a text input if the
+    -- enumeration finds nothing (e.g. a game update moved things).
+    local SwordList = (function()
+        local names, seen = {}, {}
+        local function add(n)
+            if type(n) == "string" and n ~= "" and not seen[n] then
+                seen[n] = true
+                names[#names + 1] = n
+            end
+        end
+        pcall(function()
+            for _, child in ipairs(ACHAOTICASSETS.swordInstancesInstance:GetChildren()) do
+                local n = child.Name
+                local ok, data = pcall(function()
+                    return ACHAOTICASSETS.swordInstances:GetSword(n)
+                end)
+                if ok and type(data) == "table" then add(n) end
+            end
+        end)
+        table.sort(names)
+        return names
+    end)()
+
+    local function addSwordPicker(name, setter)
+        if #SwordList > 0 then
+            skinChangerSection:AddDropdown({
+                Name = name,
+                Default = SwordList[1],
+                Values = SwordList,
+                Callback = function(value) setter(value) end,
+            })
+        else
+            skinChangerSection:AddInput({
+                Name = name,
+                Default = "",
+                Callback = function(value) setter(value) end,
+            })
+        end
+    end
+
     skinChangerSection:AddToggle({
         Name = 'Enabled',
         Default = SkinChanger.Enabled,
@@ -6211,16 +6254,12 @@ do
         end,
     })
 
-    skinChangerSection:AddInput({
-        Name = "Model",
-        Default = "",
-        Callback = function(value)
-            SkinChanger.Targets.SwordModel.ModelName = value
-            if SkinChanger.Enabled and SkinChanger.Targets.SwordModel.Enabled then
-                SkinChanger.System.functions.updateSword(SkinChanger.Targets.SwordModel.ModelName)
-            end
-        end,
-    })
+    addSwordPicker("Model", function(value)
+        SkinChanger.Targets.SwordModel.ModelName = value
+        if SkinChanger.Enabled and SkinChanger.Targets.SwordModel.Enabled then
+            SkinChanger.System.functions.updateSword(SkinChanger.Targets.SwordModel.ModelName)
+        end
+    end)
 
     skinChangerSection:AddDivider({
         Color = Color3.fromRGB(50, 50, 50),
@@ -6238,16 +6277,12 @@ do
         end,
     })
 
-    skinChangerSection:AddInput({
-        Name = "Animation",
-        Default = "",
-        Callback = function(value)
-            SkinChanger.Targets.SwordAnimation.AnimationName = value
-            if SkinChanger.Enabled and SkinChanger.Targets.SwordAnimation.Enabled then
-                SkinChanger.System.functions.updateSword(SkinChanger.Targets.SwordModel.ModelName)
-            end
-        end,
-    })
+    addSwordPicker("Animation", function(value)
+        SkinChanger.Targets.SwordAnimation.AnimationName = value
+        if SkinChanger.Enabled and SkinChanger.Targets.SwordAnimation.Enabled then
+            SkinChanger.System.functions.updateSword(SkinChanger.Targets.SwordModel.ModelName)
+        end
+    end)
 
     skinChangerSection:AddDivider({
         Color = Color3.fromRGB(50, 50, 50),
@@ -6262,16 +6297,12 @@ do
         end,
     })
 
-    skinChangerSection:AddInput({
-        Name = "FX",
-        Default = "",
-        Callback = function(value)
-            SkinChanger.Targets.SwordFX.FXName = value
-            if SkinChanger.Enabled and SkinChanger.Targets.SwordFX.Enabled then
-                SkinChanger.System.functions.updateSword(SkinChanger.Targets.SwordModel.ModelName)
-            end
-        end,
-    })
+    addSwordPicker("FX", function(value)
+        SkinChanger.Targets.SwordFX.FXName = value
+        if SkinChanger.Enabled and SkinChanger.Targets.SwordFX.Enabled then
+            SkinChanger.System.functions.updateSword(SkinChanger.Targets.SwordModel.ModelName)
+        end
+    end)
 
     skinChangerSection:AddDivider({
         Color = Color3.fromRGB(50, 50, 50),
