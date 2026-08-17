@@ -4778,16 +4778,36 @@ end))
 
 do 
     SkinChanger.System.functions.setSword = function()
+        local char = GetCharacter()
+        if not char then return end
+        -- Flip the FIRST boolean upvalue of EquipSwordTo to false so it builds the
+        -- sword locally instead of deferring to the server. The old code hardcoded
+        -- upvalue index 3 — once a game update shifted that, the flag wasn't the
+        -- boolean any more, the equip did nothing, and the skin never showed. Scan
+        -- for the boolean instead (this is what the working Eagle Hub X does).
         pcall(function()
-            debug.setupvalue(SkinChanger.System.OriginalEquipSwordTo,3,false)
+            local f = SkinChanger.System.OriginalEquipSwordTo
+            if type(f) == "function" and type(debug) == "table" and type(debug.getupvalues) == "function" then
+                local ups = debug.getupvalues(f)
+                for i = 1, #ups do
+                    if type(ups[i]) == "boolean" then
+                        pcall(function() debug.setupvalue(f, i, false) end)
+                        break
+                    end
+                end
+            end
         end)
-        
+
         if SkinChanger.Targets.SwordModel.Enabled and SkinChanger.Targets.SwordModel.ModelName ~= "" then
-            ACHAOTICASSETS.swordInstances:EquipSwordTo(GetCharacter(), SkinChanger.Targets.SwordModel.ModelName)
+            pcall(function()
+                ACHAOTICASSETS.swordInstances:EquipSwordTo(char, SkinChanger.Targets.SwordModel.ModelName)
+            end)
         end
-        
+
         if SkinChanger.Targets.SwordAnimation.Enabled and SkinChanger.Targets.SwordAnimation.AnimationName ~= "" and ACHAOTICASSETS.SwordController then
-            ACHAOTICASSETS.SwordController:SetSword(SkinChanger.Targets.SwordAnimation.AnimationName)
+            pcall(function()
+                ACHAOTICASSETS.SwordController:SetSword(SkinChanger.Targets.SwordAnimation.AnimationName)
+            end)
         end
     end
 
@@ -4801,8 +4821,28 @@ do
             SkinChanger.System.SlashName = SkinChanger.System.functions.getSlashName(SkinChanger.Targets.SwordFX.FXName)
         end
         SkinChanger.System.functions.setSword()
-    end 
+    end
 end
+
+-- Keep the chosen sword applied. The game re-equips the real sword on respawn
+-- and via FireSwordInfo, so a one-time apply never sticks — re-apply whenever it
+-- has drifted (mirrors the working Eagle Hub X enforcement). Cheap 1s poll,
+-- only active while the model changer is on.
+task.spawn(function()
+    while task.wait(1) do
+        if SkinChanger.Enabled and SkinChanger.Targets.SwordModel.Enabled and SkinChanger.Targets.SwordModel.ModelName ~= "" then
+            local char = GetCharacter()
+            if char then
+                local desired = SkinChanger.Targets.SwordModel.ModelName
+                pcall(function()
+                    if char:GetAttribute("CurrentlyEquippedSword") ~= desired or not char:FindFirstChild(desired) then
+                        SkinChanger.System.functions.setSword()
+                    end
+                end)
+            end
+        end
+    end
+end)
 
 local function GetParry_Data(curveDirection, IsInLobbyTrainning)
     local PlayerPositions = {}
