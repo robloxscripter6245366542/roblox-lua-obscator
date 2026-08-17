@@ -6184,13 +6184,15 @@ do
         Position = "right"
     })
 
-    -- Build a live list of every sword so Model / Animation / FX are pickable
-    -- from a dropdown instead of typed. Each field takes a sword NAME, so one
-    -- list serves all three. The swords live in the replicated "Swords"
-    -- collection (name -> data), exactly what the game iterates itself; enumerate
-    -- that, with rarity + child-scan fallbacks, and fall back to a text input if
-    -- everything comes up empty (e.g. a game update moved things).
-    local SwordList = (function()
+    -- Model / Animation / FX are pickable from a dropdown of every sword instead
+    -- of typed. Each field takes a sword NAME, so one list serves all three. The
+    -- swords live in the replicated "Swords" collection (name -> data), but on the
+    -- client that collection often finishes replicating AFTER this UI is built —
+    -- which is why the list showed up empty. So: enumerate what's there now, build
+    -- the dropdowns anyway, and keep polling in the background; the moment the
+    -- collection is populated we push it into every dropdown via SetValues (they
+    -- rebuild their items from Values each time they're opened).
+    local function collectSwords()
         local names, seen = {}, {}
         local function add(n)
             if type(n) == "string" and n ~= "" and not seen[n] then
@@ -6198,13 +6200,11 @@ do
                 names[#names + 1] = n
             end
         end
-        -- Primary: the sword collection registry (GetCollection() -> {name = data}).
         pcall(function()
             for name in ACHAOTICASSETS.swordInstances:GetCollection() do
                 add(tostring(name))
             end
         end)
-        -- Fallback: GetListByRarity() -> {rarity = {name = data}}.
         if #names == 0 then
             pcall(function()
                 for _, swords in ACHAOTICASSETS.swordInstances:GetListByRarity() do
@@ -6212,7 +6212,6 @@ do
                 end
             end)
         end
-        -- Fallback: children of the Swords container, validated via GetSword.
         if #names == 0 then
             pcall(function()
                 for _, child in ipairs(ACHAOTICASSETS.swordInstancesInstance:GetChildren()) do
@@ -6226,23 +6225,37 @@ do
         end
         table.sort(names)
         return names
-    end)()
+    end
+
+    local SwordList = collectSwords()
+    local swordDropdowns = {}
 
     local function addSwordPicker(name, setter)
-        if #SwordList > 0 then
-            skinChangerSection:AddDropdown({
-                Name = name,
-                Default = SwordList[1],
-                Values = SwordList,
-                Callback = function(value) setter(value) end,
-            })
-        else
-            skinChangerSection:AddInput({
-                Name = name,
-                Default = "",
-                Callback = function(value) setter(value) end,
-            })
-        end
+        local dd = skinChangerSection:AddDropdown({
+            Name = name,
+            Default = SwordList[1] or "",
+            Values = SwordList,
+            Callback = function(value) setter(value) end,
+        })
+        swordDropdowns[#swordDropdowns + 1] = dd
+        return dd
+    end
+
+    -- Fill the dropdowns once the sword collection replicates (poll ~20s).
+    if #SwordList == 0 then
+        task.spawn(function()
+            for _ = 1, 40 do
+                task.wait(0.5)
+                local list = collectSwords()
+                if #list > 0 then
+                    SwordList = list
+                    for _, dd in ipairs(swordDropdowns) do
+                        pcall(function() dd:SetValues(list) end)
+                    end
+                    break
+                end
+            end
+        end)
     end
 
     skinChangerSection:AddToggle({
