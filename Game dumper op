@@ -1,0 +1,1112 @@
+--[[
+	WARNING: Heads up! This script has not been verified by ScriptBlox. Use at your own risk!
+]]
+local CFG = {
+    MAX_DEPTH      = 12,
+    VERIFY         = true,
+    RF_TIMEOUT     = 2,
+    VERIFY_RF      = true,
+    VERIFY_RF_MAX  = 30,
+    VERIFY_RV_PAIR = false,
+    SAMPLE_VALUES   = true,
+    SAMPLE_INTERVAL = 3,
+    SAMPLE_COUNT    = 4,
+    SAMPLE_SERVICES = {"Workspace", "ReplicatedStorage"},
+}
+
+local OUTPUT        = {}
+local REGISTRY      = {}
+local VALUE_TARGETS = {}
+
+local VULN_GROUPS = {
+    WRITABLE_VALUE    = {label="WRITABLE_VALUE     - Value writable from client",         items={}, detail=true,  threshold=1},
+    CALLABLE_RF       = {label="CALLABLE_RF        - RemoteFunction responds to invoke",  items={}, detail=true,  threshold=1},
+    API_SURFACE       = {label="API_SURFACE        - exposed Remote API",                 items={}, detail=true,  threshold=1},
+    NAKED_REMOTE      = {label="NAKED_REMOTE       - Remote at root without structure",   items={}, detail=true,  threshold=1},
+    REMOTE_VALUE_PAIR = {label="REMOTE_VALUE_PAIR  - Remote writes to Value directly",    items={}, detail=true,  threshold=1},
+    READABLE_MODULE   = {label="READABLE_MODULE    - ModuleScript loadable from client",  items={}, detail=false, threshold=5},
+    ANTICHEAT         = {label="ANTICHEAT          - AC system",                  items={}, detail=true,  threshold=1},
+    SURFACE_SUMMARY   = {label="SURFACE_SUMMARY    - vulns statistics",          items={}, detail=true,  threshold=1},
+}
+
+local VULN_ORDER = {
+    "WRITABLE_VALUE","CALLABLE_RF","API_SURFACE",
+    "NAKED_REMOTE","REMOTE_VALUE_PAIR",
+    "READABLE_MODULE","ANTICHEAT","SURFACE_SUMMARY",
+}
+
+local SERVICES = {
+    "Workspace","Players","ReplicatedStorage","ReplicatedFirst",
+    "ServerStorage","ServerScriptService","StarterGui",
+    "StarterPack","StarterPlayer","Lighting","SoundService","Teams","Chat",
+}
+
+local function ulen(s)
+    local n, i = 0, 1
+    while i <= #s do
+        local b = s:byte(i)
+        if     b >= 240 then i = i + 4
+        elseif b >= 224 then i = i + 3
+        elseif b >= 192 then i = i + 2
+        else              i = i + 1
+        end
+        n = n + 1
+    end
+    return n
+end
+
+-- truncate to at most maxCP codepoints, respecting UTF-8 boundaries
+local function utrunc(s, maxCP)
+    local n, i = 0, 1
+    while i <= #s and n < maxCP do
+        local b = s:byte(i)
+        if     b >= 240 then i = i + 4
+        elseif b >= 224 then i = i + 3
+        elseif b >= 192 then i = i + 2
+        else              i = i + 1
+        end
+        n = n + 1
+    end
+    return s:sub(1, i - 1)
+end
+
+local B = 70
+local function bTop() return "╔"..string.rep("═",B).."╗" end
+local function bBot() return "╚"..string.rep("═",B).."╝" end
+local function bMid() return "╠"..string.rep("═",B).."╣" end
+local function bLine(text)
+    local s = "  "..(text or "")
+    -- keep the box intact: content wider than B is clipped with an ellipsis
+    if ulen(s) > B then s = utrunc(s, B - 1).."…" end
+    local pad = math.max(0, B - ulen(s))
+    return "║"..s..string.rep(" ",pad).."║"
+end
+local function bEmpty() return "║"..string.rep(" ",B).."║" end
+local function out(line) table.insert(OUTPUT, line or "") end
+
+-- legend
+local function writeLegend()
+    out(bTop())
+    out(bLine("GAME DUMPER"))
+    out(bMid())
+    out(bEmpty())
+    out(bLine("OBJECT TREE:"))
+    out(bLine("  ├── / └──  [ClassName] Name  — object"))
+    out(bLine("  │  ┊ @KEY = val [type]        — attribute of the object above"))
+    out(bLine("  ‹pos:X,Y,Z›      BasePart position"))
+    out(bLine("  ‹PP:Name›        model PrimaryPart"))
+    out(bLine("  ‹= value›        Value object's value"))
+    out(bLine("  ‹Script›         script type"))
+    out(bLine("  ‹RemoteEvent›    RemoteEvent"))
+    out(bLine("  ‹RemoteFunction› RemoteFunction"))
+    out(bEmpty())
+    out(bLine("VALUE MONITOR:"))
+    out(bLine("  [STATIC]                  did not change during observation"))
+    out(bLine("  [DYNAMIC: RISING a→b]     value was increasing"))
+    out(bLine("  [DYNAMIC: FALLING a→b]    value was decreasing"))
+    out(bLine("  [DYNAMIC: FLUCTUATING]    changed without clear trend"))
+    out(bEmpty())
+    out(bLine("PRIORITY LEVELS:"))
+    out(bLine("  [P1] CRITICAL  test passed - confirmed working"))
+    out(bLine("  [P2] LIKELY    structural indicators - prob working"))
+    out(bLine("  [P3] POSSIBLE  pattern found - requires manual verification"))
+    out(bLine("  [--] FALSE+    test failed - not working"))
+    out(bEmpty())
+    out(bLine("FINDING TYPES:"))
+    out(bEmpty())
+    out(bLine("  WRITABLE_VALUE"))
+    out(bLine("    Value object in Workspace/ReplicatedStorage"))
+    out(bLine("    CRITICAL - server did not reset value after client write"))
+    out(bLine("    FALSE+   - server restored original value (serverside)"))
+    out(bEmpty())
+    out(bLine("  CALLABLE_RF"))
+    out(bLine("    RemoteFunction responded to InvokeServer()"))
+    out(bLine("    CRITICAL - handler exists and accepts the call"))
+    out(bEmpty())
+    out(bLine("  API_SURFACE"))
+    out(bLine("    Folder in ReplicatedStorage where 70%+ children are Remotes"))
+    out(bLine("    Each Remote here is a separate entry point to the server"))
+    out(bEmpty())
+    out(bLine("  NAKED_REMOTE"))
+    out(bLine("    Remote directly in the root of ReplicatedStorage"))
+    out(bEmpty())
+    out(bLine("  REMOTE_VALUE_PAIR"))
+    out(bLine("    Remote and Value with similar names in the same folder"))
+    out(bLine("    CRITICAL - value changed after calling the Remote"))
+    out(bEmpty())
+    out(bLine("  READABLE_MODULE"))
+    out(bLine("    ModuleScript in ReplicatedStorage"))
+    out(bLine("    CRITICAL - require() executed successfully"))
+    out(bEmpty())
+    out(bLine("  ANTICHEAT"))
+    out(bLine("    [AC:NAME]     name matches known AC patterns"))
+    out(bLine("    [AC:CHILDREN] child objects contain AC patterns"))
+    out(bLine("                  (works even if the script has a random name)"))
+    out(bLine("    [AC:REMOTE]   Remote used for reporting/flagging"))
+    out(bLine("    [AC:ISOLATED] single Remote with no neighboring Remotes"))
+    out(bLine("    [AC:FOLDER]   protection system folder"))
+    out(bLine("    [AC:VALUE]    violation/ban flag Value"))
+    out(bEmpty())
+    out(bBot())
+    out("")
+end
+
+-- obj metadata
+local function getMeta(obj)
+    local parts = {}
+    local cls = obj.ClassName
+    if cls == "RemoteEvent"      then table.insert(parts, "RemoteEvent")      end
+    if cls == "RemoteFunction"   then table.insert(parts, "RemoteFunction")   end
+    if cls == "BindableEvent"    then table.insert(parts, "BindableEvent")    end
+    if cls == "BindableFunction" then table.insert(parts, "BindableFunction") end
+    if obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("ModuleScript") then
+        table.insert(parts, cls)
+    end
+    if obj:IsA("BasePart") then
+        local p = obj.Position
+        table.insert(parts, string.format("pos:%.0f,%.0f,%.0f", p.X, p.Y, p.Z))
+    end
+    if obj:IsA("IntValue") or obj:IsA("NumberValue")
+    or obj:IsA("StringValue") or obj:IsA("BoolValue") then
+        local ok, v = pcall(function() return obj.Value end)
+        if ok then
+            local vs = tostring(v)
+            if #vs > 40 then vs = vs:sub(1,40).."…" end
+            table.insert(parts, "= "..vs)
+        end
+    end
+    if obj:IsA("Model") then
+        local pp = obj.PrimaryPart
+        table.insert(parts, "PP:"..(pp and pp.Name or "nil"))
+    end
+    if #parts == 0 then return "" end
+    return "  ‹"..table.concat(parts, " | ").."›"
+end
+
+-- attributes
+local function dumpAttributes(obj, attrPfx)
+    local ok, attrs = pcall(function() return obj:GetAttributes() end)
+    if not ok then return end
+    local list = {}
+    for k, v in pairs(attrs) do table.insert(list, {k, v, typeof(v)}) end
+    if #list == 0 then return end
+    table.sort(list, function(a,b) return a[1] < b[1] end)
+    for _, t in ipairs(list) do
+        local vs = tostring(t[2])
+        if #vs > 60 then vs = vs:sub(1,60).."…" end
+        out(attrPfx.."┊ @"..t[1].." = "..vs.."  ["..t[3].."]")
+    end
+end
+
+-- recursive dump
+local BORING_VALUES = {
+    idle=true,walk=true,run=true,jump=true,climb=true,
+    fall=true,sit=true,toolnone=true,Weight=true,
+    ScaleDampeningPercent=true,AvatarPartScaleType=true,
+    Animation1=true,Animation2=true,
+}
+
+local function dump(obj, depth, prefix, isLast, path, service)
+    if depth > CFG.MAX_DEPTH then
+        out(prefix.."└── ... [MAX DEPTH]")
+        return
+    end
+    local connector = isLast and "└── " or "├── "
+    local childPfx  = prefix..(isLast and "    " or "│   ")
+    local attrPfx   = prefix..(isLast and "   "  or "│  ")
+    local fullPath  = path.."/"..obj.Name
+    local cls       = obj.ClassName
+
+    out(prefix..connector.."["..cls.."] "..obj.Name..getMeta(obj))
+    local lineIdx = #OUTPUT
+
+    if CFG.SAMPLE_VALUES then
+        local svcSet = {}
+        for _, s in ipairs(CFG.SAMPLE_SERVICES) do svcSet[s] = true end
+        if svcSet[service]
+        and (cls=="IntValue" or cls=="NumberValue"
+          or cls=="StringValue" or cls=="BoolValue")
+        and not BORING_VALUES[obj.Name]
+        and obj.Parent then
+            table.insert(VALUE_TARGETS, {
+                lineIdx=lineIdx, obj=obj,
+                name=obj.Name, path=fullPath,
+                service=service, samples={},
+            })
+        end
+    end
+
+    dumpAttributes(obj, attrPfx)
+    table.insert(REGISTRY, {
+        name=obj.Name, class=cls, path=fullPath,
+        parent=path, service=service, depth=depth, obj=obj,
+    })
+
+    local ok, children = pcall(function() return obj:GetChildren() end)
+    if not ok then return end
+    for i, child in ipairs(children) do
+        dump(child, depth+1, childPfx, i==#children, fullPath, service)
+    end
+end
+
+-- value monitor
+local function runValueMonitorInline()
+    if not CFG.SAMPLE_VALUES or #VALUE_TARGETS == 0 then return end
+    print(string.format("[DUMP] Monitoring %d Value objects (%dx%ds)...",
+        #VALUE_TARGETS, CFG.SAMPLE_COUNT, CFG.SAMPLE_INTERVAL))
+
+    for i = 1, CFG.SAMPLE_COUNT do
+        for _, t in ipairs(VALUE_TARGETS) do
+            if t.obj and t.obj.Parent then
+                local ok, v = pcall(function() return t.obj.Value end)
+                if ok then table.insert(t.samples, tostring(v)) end
+            end
+        end
+        if i < CFG.SAMPLE_COUNT then
+            print(string.format("[DUMP] Sample %d/%d...", i, CFG.SAMPLE_COUNT))
+            task.wait(CFG.SAMPLE_INTERVAL)
+        end
+    end
+
+    for _, t in ipairs(VALUE_TARGETS) do
+        if #t.samples >= 2 then
+            local seen2, unique = {}, {}
+            for _, s in ipairs(t.samples) do
+                if not seen2[s] then seen2[s]=true; table.insert(unique,s) end
+            end
+            local first, last = t.samples[1], t.samples[#t.samples]
+            local tag = ""
+            if #unique > 1 then
+                local trend = "FLUCTUATING"
+                local n1, n2 = tonumber(first), tonumber(last)
+                if n1 and n2 then
+                    if     n2 > n1 then trend = "RISING"
+                    elseif n2 < n1 then trend = "FALLING"
+                    end
+                end
+                tag = string.format("  [DYNAMIC: %s  %s→%s]", trend, first, last)
+            else
+                tag = "  [STATIC]"
+            end
+            if OUTPUT[t.lineIdx] then
+                OUTPUT[t.lineIdx] = OUTPUT[t.lineIdx]..tag
+            end
+        end
+    end
+end
+
+-- analysis utilities
+local function isValueClass(cls)
+    return cls=="IntValue" or cls=="NumberValue" or cls=="StringValue"
+        or cls=="BoolValue" or cls=="ObjectValue"
+        or cls=="Color3Value" or cls=="Vector3Value" or cls=="CFrameValue"
+end
+
+local function isRemoteClass(cls)
+    return cls=="RemoteEvent" or cls=="RemoteFunction"
+        or cls=="BindableEvent" or cls=="BindableFunction"
+end
+
+local PLAYER_NAMES_CACHE = nil
+local function getPlayerNames()
+    if PLAYER_NAMES_CACHE then return PLAYER_NAMES_CACHE end
+    PLAYER_NAMES_CACHE = {}
+    local ok, players = pcall(function()
+        return game:GetService("Players"):GetPlayers()
+    end)
+    if ok then
+        for _, p in ipairs(players) do PLAYER_NAMES_CACHE[p.Name] = true end
+    end
+    return PLAYER_NAMES_CACHE
+end
+
+local function isInPlayerChar(path, service)
+    if service ~= "Workspace" then return false end
+    local names = getPlayerNames()
+    local root = path:match("^[^/]+/([^/]+)")
+    return root ~= nil and names[root] == true
+end
+
+local function nameSimilarStrict(a, b)
+    a = a:lower():gsub("[^%a%d]","")
+    b = b:lower():gsub("[^%a%d]","")
+    if #a < 4 or #b < 4 then return false end
+    if a == b then return true end
+    if a:find("^"..b) or b:find("^"..a) then return true end
+    local common = 0
+    for i = 1, math.min(#a,#b) do
+        if a:sub(i,i) == b:sub(i,i) then
+            common = common + 1
+        else
+            break
+        end
+    end
+    return common >= 5
+end
+
+local function addItem(groupId, item)
+    if VULN_GROUPS[groupId] then
+        table.insert(VULN_GROUPS[groupId].items, item)
+    end
+end
+
+--  anticheat detection
+
+local AC_NAME_PATTERNS = {
+    "anticheat","anti_cheat","acheat","hackdetect","exploitdetect",
+    "cheatdetect","securitycheck","securitymanager","securityhandler",
+    "speedcheck","flycheck","noclipcheck","teleportcheck",
+    "walkspeedcheck","positioncheck","movementcheck",
+    "validator","sanitizer","serverguard","watchdog",
+    "integritycheck","trustcheck","playerguard",
+    "kickhandler","banhandler","autoban","autokick",
+    "moderationsystem","punishsystem","cheatprevention",
+    "exploitprevention","antifly","antinoclip","antispeed",
+    "antiteleport","antijump","exploitguard","hackguard",
+}
+
+-- child value names that indicate the parent is an AC script
+-- even if the parent itself has a random/obfuscated name
+local AC_CHILD_VALUE_PATTERNS = {
+    "flagged","isflagged","violation","violations","strike","strikes",
+    "isbanned","banned","iskicked","warned","warnings",
+    "suspicious","issuspicious","cheatdetected","hackdetected",
+    "exploitdetected","trustlevel","trustscore","reputation",
+    "anticheatflag","securityflag","violationcount",
+}
+
+local AC_REMOTE_PATTERNS = {
+    "report","flag","flagplayer","reportplayer","reportcheat",
+    "reportexploit","flagcheat","flagexploit","detectcheat",
+    "oncheatdetected","exploitdetected","hackdetected",
+    "kickplayer","banplayer","punishplayer","warnplayer",
+    "securityevent","cheatevent","violationevent",
+    "anticheatfire","guardfire","shadowban",
+}
+
+local AC_VALUE_PATTERNS = {
+    "ishacking","ischeating","flagged","violation","violations",
+    "cheatdetected","exploitdetected","suspicious","banned",
+    "kicked","warned","strike","trustlevel","trustscore",
+    "reputation","securityflag","anticheatflag",
+}
+
+local AC_FOLDER_PATTERNS = {
+    "anticheat","security","protection","guard","checks",
+    "validators","detection","moderation","cheatprevention",
+    "exploitprevention","antiexploit","securefolder",
+}
+
+local function matchesAny(name, patterns)
+    local low = name:lower():gsub("[^%a%d_]","")
+    for _, p in ipairs(patterns) do
+        if low == p or low:find(p, 1, true) then return true, p end
+    end
+    return false, nil
+end
+
+local function checkAnticheat(rec, byParent)
+    local name = rec.name
+    local cls  = rec.class
+    local path = rec.path
+    local svc  = rec.service
+
+    -- AC:NAME - name matches known AC patterns
+    if cls=="Script" or cls=="LocalScript"
+    or cls=="ModuleScript" or cls=="Folder" or cls=="Model" then
+        local matched, pattern = matchesAny(name, AC_NAME_PATTERNS)
+        if matched then
+            local state = "n/a"
+            if rec.obj and rec.obj.Parent and
+            (cls=="Script" or cls=="LocalScript" or cls=="ModuleScript") then
+                local ok, dis = pcall(function() return rec.obj.Disabled end)
+                if ok then state = dis and "inactive" or "active" end
+            end
+            addItem("ANTICHEAT", {
+                subtype = "AC:NAME",
+                name=name, cls=cls, svc=svc, path=path,
+                detail  = string.format(
+                    "name matches pattern '%s'  |  state: %s",
+                    pattern, state),
+                status="POSSIBLE", note=""
+            })
+            return
+        end
+    end
+
+    -- AC:CHILDREN - child values contain AC patterns
+    if cls=="Script" or cls=="LocalScript" or cls=="ModuleScript" then
+        local children = byParent[path] or {}
+        local acChildren = {}
+        for _, child in ipairs(children) do
+            if isValueClass(child.class) then
+                local matched2, pattern2 = matchesAny(child.name, AC_CHILD_VALUE_PATTERNS)
+                if matched2 then
+                    table.insert(acChildren, child.name.."("..pattern2..")")
+                end
+            end
+        end
+        if #acChildren > 0 then
+            addItem("ANTICHEAT", {
+                subtype = "AC:CHILDREN",
+                name=name, cls=cls, svc=svc, path=path,
+                detail  = string.format(
+                    "script contains Values with AC patterns: %s",
+                    table.concat(acChildren, ", ")),
+                status="LIKELY",
+                note="child objects indicate AC regardless of the script's name"
+            })
+            return
+        end
+    end
+
+    -- AC:REMOTE - Remote used for reporting/flagging
+    if cls=="RemoteEvent" or cls=="BindableEvent" or cls=="RemoteFunction" then
+        local matched, pattern = matchesAny(name, AC_REMOTE_PATTERNS)
+        if matched then
+            addItem("ANTICHEAT", {
+                subtype = "AC:REMOTE",
+                name=name, cls=cls, svc=svc, path=path,
+                detail  = string.format("report/flag Remote  |  pattern='%s'", pattern),
+                status="POSSIBLE",
+                note="this Remote is used to send a violation signal to the server"
+            })
+            return
+        end
+    end
+
+    -- AC:ISOLATED - single RemoteEvent with no neighboring Remotes
+    -- gameplay Remotes usually live in groups
+    -- alone Remote often serves only as an internal ac signal
+    if cls=="RemoteEvent" then
+        local siblings = byParent[rec.parent] or {}
+        local remoteCount = 0
+        for _, sib in ipairs(siblings) do
+            if isRemoteClass(sib.class) then
+                remoteCount = remoteCount + 1
+            end
+        end
+        if remoteCount == 1 and rec.depth >= 1 then
+            addItem("ANTICHEAT", {
+                subtype = "AC:ISOLATED",
+                name=name, cls=cls, svc=svc, path=path,
+                detail  = "only Remote in its folder with no neighbors",
+                status="POSSIBLE",
+                note="isolated Remotes are often used exclusively for internal AC signals"
+            })
+            return
+        end
+    end
+
+    -- AC:VALUE - violation/ban flag value
+    if isValueClass(cls) then
+        local matched, pattern = matchesAny(name, AC_VALUE_PATTERNS)
+        if matched then
+            local ok, val = pcall(function() return rec.obj.Value end)
+            addItem("ANTICHEAT", {
+                subtype = "AC:VALUE",
+                name=name, cls=cls, svc=svc, path=path,
+                detail  = string.format(
+                    "violation flag Value  |  pattern='%s'  |  current value: %s",
+                    pattern, ok and tostring(val) or "?"),
+                status="POSSIBLE",
+                note="resetting or changing this flag may bypass a block"
+            })
+            return
+        end
+    end
+
+    -- AC:FOLDER - AC system folder
+    if cls=="Folder" or cls=="Model" then
+        local matched, pattern = matchesAny(name, AC_FOLDER_PATTERNS)
+        if matched then
+            local children = byParent[path] or {}
+            local scripts = 0
+            for _, child in ipairs(children) do
+                if child.class=="Script" or child.class=="LocalScript"
+                or child.class=="ModuleScript" then
+                    scripts = scripts + 1
+                end
+            end
+            addItem("ANTICHEAT", {
+                subtype = "AC:FOLDER",
+                name=name, cls=cls, svc=svc, path=path,
+                detail  = string.format(
+                    "protection system folder  |  pattern='%s'  |  scripts inside: %d",
+                    pattern, scripts),
+                status="POSSIBLE",
+                note="inspect the contents"
+            })
+            return
+        end
+    end
+end
+
+-- structural analysis
+local function runStructuralAnalysis()
+    local byParent = {}
+    local stats = {re=0, rf=0, ls=0, ss=0, me=0, ac=0}
+
+    for _, rec in ipairs(REGISTRY) do
+        if not byParent[rec.parent] then byParent[rec.parent] = {} end
+        table.insert(byParent[rec.parent], rec)
+    end
+
+    local seen = {}
+    local function isNew(key)
+        if seen[key] then return false end
+        seen[key] = true
+        return true
+    end
+
+    getPlayerNames()
+
+    for _, rec in ipairs(REGISTRY) do
+        local cls  = rec.class
+        local svc  = rec.service
+        local path = rec.path
+        local name = rec.name
+        local obj  = rec.obj
+        local inChar = isInPlayerChar(path, svc)
+
+        -- WRITABLE_VALUE
+        if isValueClass(cls)
+        and (svc=="Workspace" or svc=="ReplicatedStorage")
+        and rec.depth <= 3
+        and not inChar
+        and obj and obj.Parent
+        and isNew("WV|"..path) then
+            addItem("WRITABLE_VALUE", {
+                name=name, cls=cls, path=path, obj=obj,
+                status="UNVERIFIED", note=""
+            })
+        end
+
+        -- CALLABLE_RF
+        if cls=="RemoteFunction" then
+            stats.rf = stats.rf + 1
+            if isNew("RF|"..path) then
+                addItem("CALLABLE_RF", {
+                    name=name, path=path, obj=obj,
+                    status="UNVERIFIED", note=""
+                })
+            end
+        end
+
+        -- NAKED_REMOTE
+        if isRemoteClass(cls)
+        and rec.depth == 0
+        and svc=="ReplicatedStorage"
+        and isNew("NR|"..path) then
+            addItem("NAKED_REMOTE", {
+                name=name, cls=cls, path=path, obj=obj,
+                status="LIKELY",
+                note="direct child of ReplicatedStorage - no structure"
+            })
+        end
+
+        -- READABLE_MODULE
+        if cls=="ModuleScript"
+        and svc=="ReplicatedStorage"
+        and rec.depth <= 1
+        and isNew("ME|"..path) then
+            stats.me = stats.me + 1
+            addItem("READABLE_MODULE", {
+                name=name, path=path, obj=obj,
+                status="UNVERIFIED", note=""
+            })
+        end
+
+        -- ANTICHEAT
+        if isNew("AC|"..path) then
+            checkAnticheat(rec, byParent)
+        end
+
+        if cls=="RemoteEvent" then stats.re = stats.re + 1 end
+        if cls=="Script"      then stats.ss = stats.ss + 1 end
+        if cls=="LocalScript" then stats.ls = stats.ls + 1 end
+    end
+
+    -- API_SURFACE
+    local checkedFolders = {}
+    for parentPath, children in pairs(byParent) do
+        if not checkedFolders[parentPath] then
+            checkedFolders[parentPath] = true
+            local inRS = parentPath:find("^ReplicatedStorage") ~= nil
+            if inRS then
+                local total, remotes = #children, 0
+                local names = {}
+                for _, rec in ipairs(children) do
+                    if isRemoteClass(rec.class) then
+                        remotes = remotes + 1
+                        table.insert(names, "["..rec.class.."] "..rec.name)
+                    end
+                end
+                if remotes >= 3 and total > 0 and remotes/total >= 0.7
+                and isNew("AS|"..parentPath) then
+                    local sample = table.concat(names, "\n")
+                    addItem("API_SURFACE", {
+                        path=parentPath, remotes=remotes, total=total,
+                        sample=sample, status="LIKELY",
+                        note="each Remote here is a separate entry point to the server"
+                    })
+                end
+            end
+        end
+    end
+
+    -- REMOTE_VALUE_PAIR
+    local pairDone = {}
+    for parentPath, children in pairs(byParent) do
+        local inRS = parentPath:find("^ReplicatedStorage") ~= nil
+        if inRS then
+            local remotes, values = {}, {}
+            for _, rec in ipairs(children) do
+                if rec.class=="RemoteEvent" or rec.class=="RemoteFunction" then
+                    table.insert(remotes, rec)
+                end
+                if isValueClass(rec.class) then
+                    table.insert(values, rec)
+                end
+            end
+            for _, rem in ipairs(remotes) do
+                for _, val in ipairs(values) do
+                    local key = rem.path.."|"..val.path
+                    if not pairDone[key] and nameSimilarStrict(rem.name, val.name) then
+                        pairDone[key] = true
+                        addItem("REMOTE_VALUE_PAIR", {
+                            path=parentPath,
+                            remCls=rem.class, remName=rem.name, remObj=rem.obj,
+                            valCls=val.class, valName=val.name, valObj=val.obj,
+                            status="LIKELY",
+                            note="names match - Remote likely sets Value directly"
+                        })
+                    end
+                end
+            end
+        end
+    end
+
+    -- SURFACE_SUMMARY
+    local ratio = stats.ss > 0
+        and string.format("%.1f:1", stats.ls/stats.ss) or "inf"
+    local risk = "low"
+    if stats.re + stats.rf > 30 then risk = "medium" end
+    if stats.re + stats.rf > 80 then risk = "high"   end
+    if stats.me > 50            then risk = "high"   end
+
+    local acByType = {NAME=0, CHILDREN=0, REMOTE=0, ISOLATED=0, VALUE=0, FOLDER=0}
+    for _, item in ipairs(VULN_GROUPS["ANTICHEAT"].items) do
+        local t = item.subtype:gsub("AC:","")
+        if acByType[t] then acByType[t] = acByType[t] + 1 end
+    end
+
+    addItem("SURFACE_SUMMARY", {
+        path = "—",
+        text = string.format(
+            "  RemoteEvent:              %d\n"..
+            "  RemoteFunction:           %d\n"..
+            "  ModuleScript (readable):  %d\n"..
+            "  LocalScript:              %d\n"..
+            "  Script (serverside):      %d\n"..
+            "  LS/SS ratio:              %s\n"..
+            "  Risk level:               %s\n"..
+            "\n"..
+            "  Anticheat:\n"..
+            "    AC:NAME      %d  - by script/folder name\n"..
+            "    AC:CHILDREN  %d  - by child Values (obfuscation)\n"..
+            "    AC:REMOTE    %d  - report/flag Remote\n"..
+            "    AC:ISOLATED  %d  - isolated Remote\n"..
+            "    AC:VALUE     %d  - violation flag Value\n"..
+            "    AC:FOLDER    %d  - protection system folder",
+            stats.re, stats.rf, stats.me, stats.ls, stats.ss, ratio, risk,
+            acByType.NAME, acByType.CHILDREN, acByType.REMOTE,
+            acByType.ISOLATED, acByType.VALUE, acByType.FOLDER),
+        status="POSSIBLE", note="informational statistics"
+    })
+end
+
+--  verification
+local function invokeRF(rf, timeout)
+    local done, callOk, result = false, false, nil
+    task.spawn(function()
+        callOk, result = pcall(function() return rf:InvokeServer() end)
+        done = true
+    end)
+    local t = 0
+    while not done and t < timeout do task.wait(0.1); t = t + 0.1 end
+    if not done then return "TIMEOUT", nil end
+    return callOk and "OK" or "ERROR", tostring(result or ""):sub(1,100)
+end
+
+local function runVerification()
+    local total = 0
+    for _, g in pairs(VULN_GROUPS) do total = total + #g.items end
+    print(string.format("[DUMP] Verifying %d objects...", total))
+
+    local done  = 0
+    local rfCnt = 0
+
+    for _, id in ipairs(VULN_ORDER) do
+        local g = VULN_GROUPS[id]
+        if g then
+            for _, item in ipairs(g.items) do
+
+                if id == "WRITABLE_VALUE" then
+                    local obj = item.obj
+                    if obj and obj.Parent then
+                        local ok, original = pcall(function() return obj.Value end)
+                        if not ok then
+                            item.status = "FALSE+"
+                            item.note   = "could not read value"
+                        else
+                            local testVal
+                            local n = tonumber(original)
+                            if n then
+                                testVal = n + 99999
+                            elseif typeof(original) == "boolean" then
+                                testVal = not original
+                            else
+                                testVal = tostring(original).."_TEST"
+                            end
+
+                            local writeOk = pcall(function() obj.Value = testVal end)
+                            if not writeOk then
+                                item.status = "FALSE+"
+                                item.note   = "write blocked"
+                            else
+                                task.wait(2)
+                                local _, afterWait = pcall(function() return obj.Value end)
+                                local afterStr  = tostring(afterWait)
+                                local testStr   = tostring(testVal)
+                                local originStr = tostring(original)
+
+                                pcall(function() obj.Value = original end)
+
+                                if afterStr == testStr then
+                                    item.status = "CRITICAL"
+                                    item.note   = string.format(
+                                        "server did not reset value after 2s (%s→%s) - likely trusts client",
+                                        originStr, testStr)
+                                elseif afterStr == originStr then
+                                    item.status = "FALSE+"
+                                    item.note   = string.format(
+                                        "server restored original (%s→%s→%s) - serverside value",
+                                        originStr, testStr, originStr)
+                                else
+                                    item.status = "LIKELY"
+                                    item.note   = string.format(
+                                        "server set a third value (%s→%s→%s) - reacts to change",
+                                        originStr, testStr, afterStr)
+                                end
+                            end
+                        end
+                    else
+                        item.status = "FALSE+"
+                        item.note   = "object unavailable"
+                    end
+
+                elseif id == "CALLABLE_RF" then
+                    local obj = item.obj
+                    if obj and obj.Parent then
+                        if rfCnt >= CFG.VERIFY_RF_MAX then
+                            item.status = "LIKELY"
+                            item.note   = "RF limit ("..CFG.VERIFY_RF_MAX..") reached"
+                        elseif CFG.VERIFY_RF then
+                            rfCnt = rfCnt + 1
+                            local state, res = invokeRF(obj, CFG.RF_TIMEOUT)
+                            if state == "OK" then
+                                item.status = "CRITICAL"
+                                item.note   = "returned: "..tostring(res)
+                            elseif state == "ERROR" then
+                                if res:find("attempt") or res:find("expected")
+                                or res:find("bad arg") or res:find("nil value") then
+                                    item.status = "CRITICAL"
+                                    item.note   = "handler exists, argument error: "..res
+                                elseif res:find("unauthori") or res:find("denied")
+                                or res:find("not allow") or res:find("forbidden") then
+                                    item.status = "FALSE+"
+                                    item.note   = "explicitly rejected: "..res
+                                else
+                                    item.status = "LIKELY"
+                                    item.note   = "responded with error: "..res
+                                end
+                            else
+                                item.status = "FALSE+"
+                                item.note   = "no response within "..CFG.RF_TIMEOUT.."s"
+                            end
+                        else
+                            item.status = "LIKELY"
+                            item.note   = "VERIFY_RF disabled"
+                        end
+                    else
+                        item.status = "FALSE+"
+                        item.note   = "object unavailable"
+                    end
+
+                elseif id == "READABLE_MODULE" then
+                    local obj = item.obj
+                    if obj and obj.Parent then
+                        local done2, callOk2, result2 = false, false, nil
+                        task.spawn(function()
+                            callOk2, result2 = pcall(require, obj)
+                            done2 = true
+                        end)
+                        local t2 = 0
+                        while not done2 and t2 < 2 do
+                            task.wait(0.1); t2 = t2 + 0.1
+                        end
+                        if not done2 then
+                            item.status = "FALSE+"
+                            item.note   = "require() hung"
+                        elseif callOk2 then
+                            item.status = "CRITICAL"
+                            item.note   = "require() succeeded, type: "..typeof(result2)
+                        else
+                            local err = tostring(result2 or ""):sub(1,80)
+                            if err:find("cannot be required") or err:find("protected") then
+                                item.status = "FALSE+"
+                                item.note   = "protected: "..err
+                            else
+                                item.status = "LIKELY"
+                                item.note   = "loaded with error: "..err
+                            end
+                        end
+                    else
+                        item.status = "FALSE+"
+                        item.note   = "object unavailable"
+                    end
+
+                elseif id == "REMOTE_VALUE_PAIR" then
+                    if CFG.VERIFY_RV_PAIR then
+                        local remObj = item.remObj
+                        local valObj = item.valObj
+                        if remObj and remObj.Parent and valObj and valObj.Parent then
+                            local _, before = pcall(function() return valObj.Value end)
+                            pcall(function()
+                                if remObj.ClassName == "RemoteEvent" then
+                                    remObj:FireServer()
+                                else
+                                    task.spawn(function()
+                                        pcall(function() remObj:InvokeServer() end)
+                                    end)
+                                end
+                            end)
+                            task.wait(1.0)
+                            local _, after = pcall(function() return valObj.Value end)
+                            if tostring(after) ~= tostring(before) then
+                                item.status = "CRITICAL"
+                                item.note   = string.format("value changed: %s → %s",
+                                    tostring(before):sub(1,30), tostring(after):sub(1,30))
+                            else
+                                item.status = "LIKELY"
+                                item.note   = "value did not change"
+                            end
+                        else
+                            item.status = "LIKELY"
+                            item.note   = "objects unavailable"
+                        end
+                    end
+                end
+
+                done = done + 1
+                if done % 10 == 0 then
+                    print(string.format("[DUMP] Verified %d/%d...", done, total))
+                end
+            end
+        end
+    end
+end
+
+-- findings output
+local function statusTag(status)
+    if status == "CRITICAL" then return "[P1] CRITICAL"
+    elseif status == "LIKELY" then return "[P2] LIKELY  "
+    elseif status == "FALSE+" then return "[--] FALSE+  "
+    else                           return "[P3] POSSIBLE"
+    end
+end
+
+local function writeVulns()
+    local sc = {CRITICAL=0, LIKELY=0, POSSIBLE=0, ["FALSE+"]=0}
+    local total = 0
+    for _, g in pairs(VULN_GROUPS) do
+        for _, item in ipairs(g.items) do
+            total = total + 1
+            if sc[item.status] then sc[item.status] = sc[item.status] + 1 end
+        end
+    end
+
+    out("")
+    out(bTop())
+    out(bLine("STRUCTURAL ANALYSIS"))
+    out(bLine(string.format(
+        "P1(CRITICAL)=%d  P2(LIKELY)=%d  P3(POSSIBLE)=%d  FALSE+=%d  Total=%d",
+        sc.CRITICAL, sc.LIKELY, sc.POSSIBLE, sc["FALSE+"], total)))
+    out(bBot())
+    out("")
+
+    out("  !! WARNING !!")
+    out("")
+    out("  This script uses structural and behavioral analysis to identify")
+    out("  potential vulns and weak spots in the game.")
+    out("  Results are based on patterns and automated tests - this is not a")
+    out("  guarantee that a finding is exploitable or will produce the desired result.")
+    out("  It is recommended to manually verify each finding if needed.")
+    out("")
+    out("  [P1] CRITICAL means the automated test passed, but does not guarantee")
+    out("  the intended effect in the context of this specific game")
+    out("  [P3] POSSIBLE findings should be prioritized for manual review")
+    out("")
+    out(string.rep("-", 72))
+    out("")
+
+    for _, id in ipairs(VULN_ORDER) do
+        local g = VULN_GROUPS[id]
+        if g then
+            local real, fp = {}, {}
+            for _, item in ipairs(g.items) do
+                if item.status == "FALSE+" then
+                    table.insert(fp, item)
+                else
+                    table.insert(real, item)
+                end
+            end
+
+            out("── "..g.label
+                .."  ("..#real.." findings"
+                ..(#fp > 0 and " / "..#fp.." FALSE+" or "")..")")
+
+            if #real == 0 then
+                out("   (none found or all FALSE+)")
+            else
+                local useDetail = g.detail or (#real <= g.threshold)
+
+                if useDetail then
+                    for _, item in ipairs(real) do
+                        out("")
+                        if id == "API_SURFACE" then
+                            out("   "..statusTag(item.status).."  "..item.path)
+                            out(string.format("   Remotes: %d of %d (%.0f%%)",
+                                item.remotes, item.total,
+                                item.remotes/item.total*100))
+                            out("   List:")
+                            for line in (item.sample.."\n"):gmatch("([^\n]*)\n") do
+                                if line ~= "" then out("     "..line) end
+                            end
+                        elseif id == "REMOTE_VALUE_PAIR" then
+                            out("   "..statusTag(item.status).."  "..item.path)
+                            out("   Remote: ["..item.remCls.."] "..item.remName)
+                            out("   Value:  ["..item.valCls.."] "..item.valName)
+                        elseif id == "SURFACE_SUMMARY" then
+                            out("   "..statusTag(item.status))
+                            out(item.text)
+                        elseif id == "ANTICHEAT" then
+                            out("   "..statusTag(item.status)
+                                .."  ["..item.subtype.."]  "
+                                ..item.name.."  ["..item.cls.."]"
+                                .."  svc="..item.svc)
+                            out("   "..item.detail)
+                            out("   └─ "..item.path)
+                        else
+                            out("   "..statusTag(item.status)
+                                .."  "..(item.name or ""))
+                            out("   └─ "..item.path)
+                        end
+                        if item.note and item.note ~= "" then
+                            out("   test: "..item.note)
+                        end
+                    end
+                else
+                    local order = {CRITICAL=1, LIKELY=2, POSSIBLE=3}
+                    table.sort(real, function(a,b)
+                        return (order[a.status] or 9) < (order[b.status] or 9)
+                    end)
+                    out("")
+                    for _, item in ipairs(real) do
+                        local tag = item.status=="CRITICAL" and "[P1]"
+                                 or item.status=="LIKELY"   and "[P2]" or "[P3]"
+                        out(string.format("   %s  %-35s  %s",
+                            tag, item.name or "", item.path))
+                        if item.note and item.note ~= "" then
+                            out("         test: "..item.note)
+                        end
+                    end
+                end
+
+                if #fp > 0 then
+                    out("")
+                    out("   -- FALSE+ ("..#fp.." items):")
+                    for _, item in ipairs(fp) do
+                        out("   [--]  "..(item.name or "?").."  →  "..item.path)
+                    end
+                end
+            end
+
+            out("")
+        end
+    end
+end
+
+-- main
+writeLegend()
+
+out(bTop())
+out(bLine(string.format("GAME DUMP |  PlaceId: %s  |  GameId: %s",
+    tostring(game.PlaceId), tostring(game.GameId))))
+out(bLine("Name: "..tostring(game.Name):sub(1,66)))
+out(bBot())
+out("")
+
+for _, svcName in ipairs(SERVICES) do
+    local ok, svc = pcall(function() return game:GetService(svcName) end)
+    out("┌────────────────────────────────────────────────────────")
+    out("│  SERVICE: "..svcName)
+    out("└────────────────────────────────────────────────────────")
+    if ok and svc then
+        local ok2, children = pcall(function() return svc:GetChildren() end)
+        if ok2 then
+            for i, child in ipairs(children) do
+                dump(child, 0, "", i==#children, svcName, svcName)
+            end
+        end
+    else
+        out("  [UNAVAILABLE]")
+    end
+    out("")
+end
+
+print("[DUMP] Monitoring values...")
+runValueMonitorInline()
+
+print("[DUMP] Structural analysis...")
+runStructuralAnalysis()
+
+print("[DUMP] Verifying findings...")
+runVerification()
+
+writeVulns()
+
+out("")
+out(string.format("Total lines: %d  |  Objects: %d", #OUTPUT, #REGISTRY))
+
+-- save
+local content = "\239\187\191"..table.concat(OUTPUT, "\n")
+local saved = false
+if writefile then
+    local fname = "dump_"..tostring(game.PlaceId)..".txt"
+    pcall(function()
+        writefile(fname, content)
+        saved = true
+        print("[DUMP] Saved → "..fname)
+    end)
+end
+if not saved then
+    if setclipboard then
+        setclipboard(content)
+        print("[DUMP] Copied to clipboard")
+    else
+        for i = 1, #content, 3000 do print(content:sub(i, i+2999)) end
+    end
+end
+print(string.format("[DUMP] Done! Lines: %d | Objects: %d", #OUTPUT, #REGISTRY))
