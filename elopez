@@ -4177,25 +4177,59 @@ local ParryDATA = {
     ParryIndex = 0.500,
 }
        
+-- Locate the sleitnick "net" folder without hardcoding the package version.
+-- Blade Ball has shipped it as sleitnick_net@0.1.0 and may bump that string on
+-- any update, so match on the prefix instead of an exact version.
+local function FindNetFolder()
+    local ok, packages = pcall(function() return ReplicatedStorage:FindFirstChild("Packages") end)
+    if not ok or not packages then return nil end
+    local index = packages:FindFirstChild("_Index")
+    if not index then return nil end
+    -- Prefer an exact known version, then any sleitnick_net@* package.
+    local exact = index:FindFirstChild("sleitnick_net@0.1.0")
+    if exact and exact:FindFirstChild("net") then return exact.net end
+    for _, pkg in ipairs(index:GetChildren()) do
+        if type(pkg.Name) == "string" and string.find(pkg.Name, "sleitnick_net@", 1, true) then
+            local net = pkg:FindFirstChild("net")
+            if net then return net end
+        end
+    end
+    return nil
+end
+
 local function AttemptFunctionFetch()
     local ParryDATACache = {
         ParryFunction = nil,
         ParryRemote = nil,
     }
+    -- Bail cleanly if the executor lacks the reflection globals this scan needs,
+    -- instead of erroring out of the whole hub.
+    if type(getgc) ~= "function" or type(islclosure) ~= "function"
+        or type(debug) ~= "table" or type(debug.getupvalues) ~= "function" then
+        return ParryDATACache
+    end
+    local netFolder = FindNetFolder()
     for index, value in pairs(getgc(true)) do
         if type(value) == "function" and islclosure(value) then
-            local upvalues = debug.getupvalues(value)
-            if #upvalues == 9 and (typeof(upvalues[1]) == "Instance" and typeof(upvalues[5]) == "table" and typeof(upvalues[8]) == "string") then
+            local ok, upvalues = pcall(debug.getupvalues, value)
+            if ok and type(upvalues) == "table" and #upvalues == 9
+                and (typeof(upvalues[1]) == "Instance" and typeof(upvalues[5]) == "table" and typeof(upvalues[8]) == "string") then
                 ParryDATACache.ParryFunction = value
             end
         elseif type(value) == "table" then
             local value4, value5 = rawget(value, 2), rawget(value, 3)
-            if not ParryDATACache.ParryRemote and type(value4) == "function" and type(value5) == "string" and type(rawget(value, 0)) == "table" then
+            if not ParryDATACache.ParryRemote and netFolder and type(value4) == "function" and type(value5) == "string" and type(rawget(value, 0)) == "table" then
                 if string.len(value5) >= 36 and string.sub(value5, 9, 9) == "-" then
-                    local PRPackages = ReplicatedStorage.Packages
-                    local PRREName = "RE/" .. value4(string.gsub(value5, "-", ""), value5)
-                    local PRInstance = PRPackages._Index["sleitnick_net@0.1.0"].net:FindFirstChild(PRREName)
-                    ParryDATACache.ParryRemote = PRInstance
+                    -- Deriving + looking up the remote is signature-fragile, so keep
+                    -- it in a pcall: a mismatch must not abort the whole GC walk (it
+                    -- would drop a ParryFunction found later in the same pass).
+                    local ok, PRInstance = pcall(function()
+                        local PRREName = "RE/" .. value4(string.gsub(value5, "-", ""), value5)
+                        return netFolder:FindFirstChild(PRREName)
+                    end)
+                    if ok and PRInstance then
+                        ParryDATACache.ParryRemote = PRInstance
+                    end
                 end
             end
         end
