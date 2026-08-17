@@ -4824,25 +4824,18 @@ do
     end
 end
 
--- Keep the chosen sword applied. The game re-equips the real sword on respawn
--- and via FireSwordInfo, so a one-time apply never sticks — re-apply whenever it
--- has drifted (mirrors the working Eagle Hub X enforcement). Cheap 1s poll,
--- only active while the model changer is on.
-task.spawn(function()
-    while task.wait(1) do
-        if SkinChanger.Enabled and SkinChanger.Targets.SwordModel.Enabled and SkinChanger.Targets.SwordModel.ModelName ~= "" then
-            local char = GetCharacter()
-            if char then
-                local desired = SkinChanger.Targets.SwordModel.ModelName
-                pcall(function()
-                    if char:GetAttribute("CurrentlyEquippedSword") ~= desired or not char:FindFirstChild(desired) then
-                        SkinChanger.System.functions.setSword()
-                    end
-                end)
-            end
-        end
+-- Re-equip the sword mesh once per respawn (event-driven, not polled). The
+-- SetSword hook already substitutes our sword on the game's own re-renders so it
+-- can't revert, which means we no longer rebuild the sword every second — that
+-- per-second rebuild was what dropped frames. This just applies once on a fresh
+-- character, after a short delay so the rig has loaded.
+NeverZen:Track(ACHAOTICDATA.Player.LocalPlayer.CharacterAdded:Connect(function()
+    if SkinChanger.Enabled and SkinChanger.Targets.SwordModel.Enabled and SkinChanger.Targets.SwordModel.ModelName ~= "" then
+        task.delay(1, function()
+            pcall(function() SkinChanger.System.functions.setSword() end)
+        end)
     end
-end)
+end))
 
 local function GetParry_Data(curveDirection, IsInLobbyTrainning)
     local PlayerPositions = {}
@@ -7342,8 +7335,17 @@ do
         if controller and type(controller.SetSword) == "function" then
             local OriginalSetSword = controller.SetSword
             controller.SetSword = function(self, anim)
-                if SkinChanger.Enabled and SkinChanger.Targets.SwordAnimation.Enabled and SkinChanger.Targets.SwordAnimation.AnimationName and SkinChanger.Targets.SwordAnimation.AnimationName ~= "" then
-                    anim = SkinChanger.Targets.SwordAnimation.AnimationName
+                -- SetSword is what the game re-runs on every sword event (respawn,
+                -- FireSwordInfo, accessory, attribute change). Substitute our sword
+                -- name HERE so the game can never revert the skin — this is what
+                -- keeps it applied, so no per-frame re-apply (and its frame drops)
+                -- is needed. Prefer the explicit Animation target, else the Model.
+                if SkinChanger.Enabled then
+                    if SkinChanger.Targets.SwordAnimation.Enabled and SkinChanger.Targets.SwordAnimation.AnimationName and SkinChanger.Targets.SwordAnimation.AnimationName ~= "" then
+                        anim = SkinChanger.Targets.SwordAnimation.AnimationName
+                    elseif SkinChanger.Targets.SwordModel.Enabled and SkinChanger.Targets.SwordModel.ModelName and SkinChanger.Targets.SwordModel.ModelName ~= "" then
+                        anim = SkinChanger.Targets.SwordModel.ModelName
+                    end
                 end
                 return OriginalSetSword(self, anim)
             end
