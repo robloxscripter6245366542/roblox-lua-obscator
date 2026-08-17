@@ -63,6 +63,12 @@ local CONFIG = {
     CombinedFile   = true,
     CopyCode       = true,
     ClipboardCap   = 6000000,
+
+    -- PerScriptFiles = false: don't write one file per script (writing tens
+    -- of thousands of files in nested folders is what makes huge games look
+    -- frozen on a phone). Everything goes into the single _ALL.txt instead.
+    -- Auto-forced ON only if the executor has no appendfile.
+    PerScriptFiles = false,
 }
 -- ──────────────────────────────────────────────────────────
 
@@ -255,8 +261,15 @@ local function run()
                     os.date("!%Y-%m-%d %H:%M:%S UTC")))
     end
 
-    -- ── Scripts (streamed to per-file + combined) ──
-    notify(("Dumping %d scripts..."):format(#scripts))
+    -- Writing tens of thousands of individual files (each in nested folders)
+    -- is what makes huge games look frozen ("does nothing") on a phone. So
+    -- per-script files are OFF by default: we stream everything into the one
+    -- combined _ALL.txt instead. If the executor lacks appendfile we have no
+    -- combined target, so we fall back to per-script files.
+    local perFile = CONFIG.PerScriptFiles or not combinedOK
+
+    -- ── Scripts (streamed) ──
+    notify(("Dumping %d scripts%s..."):format(#scripts, perFile and " (per-file)" or " -> _ALL.txt"))
     table.sort(scripts, function(a, b) return fullPath(a) < fullPath(b) end)
     local index, got, skipped = {}, 0, 0
     for i, scr in ipairs(scripts) do
@@ -265,7 +278,7 @@ local function run()
         local body, how = readScript(scr)
         if body then got = got + 1 else skipped = skipped + 1 end
         local block = ("-- %s  (%s)  [%s]\n\n%s"):format(path, cn, how, body or ("-- " .. how))
-        pcall(writefile_fn, safePath(path), block)
+        if perFile then pcall(writefile_fn, safePath(path), block) end
         if combinedOK then
             local chunk = "\n------------------------------------------------------------\n" .. block .. "\n"
             if pcall(appendfile_fn, combinedPath, chunk) then combinedBytes = combinedBytes + #chunk end
@@ -273,6 +286,8 @@ local function run()
         index[#index + 1] = ("[%s] %s  (%s)"):format(how, path, cn)
         body, block = nil, nil
         if i % CONFIG.YieldEvery == 0 then task.wait() end
+        -- Progress ping so a long run never looks frozen.
+        if i % 2000 == 0 then notify(("Dumping... %d/%d"):format(i, #scripts)) end
     end
 
     index[#index + 1] = ""
