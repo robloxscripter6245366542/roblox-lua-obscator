@@ -5054,7 +5054,12 @@ local FireParry = function()
         if Character.Parent ~= Workspace.Alive and not (ACHAOTICASSETS.DebugFlags.LobbyParry or (LocalPlayer:GetAttribute("LobbyParry") or IsInLobbyTrainning)) then
             IsBlockLegit = false
         end
-        if Character:GetAttribute("DoNotParry") or Character:GetAttribute("ChargingAdrenaline") and LocalPlayer.Upgrades["Qi-Charge"].Value < 2 then
+        -- Read Qi-Charge defensively: a missing Upgrades table used to nil-index
+        -- and throw here, silently failing the parry for that frame. Default high
+        -- (>=2) so unreadable data never spuriously blocks a parry.
+        local qiCharge = 2
+        pcall(function() qiCharge = LocalPlayer.Upgrades["Qi-Charge"].Value end)
+        if Character:GetAttribute("DoNotParry") or (Character:GetAttribute("ChargingAdrenaline") and qiCharge < 2) then
             IsBlockLegit = false
         end
         if LocalPlayer:GetAttribute("LobbyParry") and LocalPlayer:GetAttribute("InLobbyParryCooldown") then
@@ -5068,8 +5073,12 @@ local FireParry = function()
             ExecuteRemoteFireServer(ParryData)
         end
     elseif ParryMethod == "Legit" then
-        local BlockButton = ACHAOTICDATA.Player.LocalPlayer.PlayerGui.Hotbar.Block
-        firesignal(BlockButton.Activated)
+        -- Guard the Hotbar.Block GUI chain: if it isn't present this used to throw
+        -- and abort the parry frame.
+        pcall(function()
+            local BlockButton = ACHAOTICDATA.Player.LocalPlayer.PlayerGui.Hotbar.Block
+            firesignal(BlockButton.Activated)
+        end)
     end
 
     if ACHAOTICDATA.Global.Parries <= 7 then
