@@ -4528,15 +4528,15 @@ local SkinChanger = {
     Enabled = false,
     Targets = {
         SwordModel = {
-            Enabled = false,
+            Enabled = true,
             ModelName = ""
         },
         SwordAnimation = {
-            Enabled = false,
+            Enabled = true,
             AnimationName = ""
         },
         SwordFX = {
-            Enabled = false,
+            Enabled = true,
             FXName = ""
         }
     },
@@ -6260,31 +6260,32 @@ do
         return names
     end
 
-    local SwordList = collectSwords()
-    local swordDropdowns = {}
-
-    local function addSwordPicker(name, setter)
-        local dd = skinChangerSection:AddDropdown({
-            Name = name,
-            Default = SwordList[1] or "",
-            Values = SwordList,
-            Callback = function(value) setter(value) end,
-        })
-        swordDropdowns[#swordDropdowns + 1] = dd
-        return dd
+    local masterList = collectSwords()
+    local swordDd
+    local currentQuery = ""
+    local function filtered()
+        if currentQuery == "" then return masterList end
+        local q = currentQuery:lower()
+        local out = {}
+        for _, n in ipairs(masterList) do
+            if tostring(n):lower():find(q, 1, true) then out[#out + 1] = n end
+        end
+        return out
+    end
+    local function refreshValues()
+        if swordDd then pcall(function() swordDd:SetValues(filtered()) end) end
     end
 
-    -- Fill the dropdowns once the sword collection replicates (poll ~20s).
-    if #SwordList == 0 then
+    -- Fill the list once the sword collection replicates (poll ~20s), keeping any
+    -- active search filter applied.
+    if #masterList == 0 then
         task.spawn(function()
             for _ = 1, 40 do
                 task.wait(0.5)
                 local list = collectSwords()
                 if #list > 0 then
-                    SwordList = list
-                    for _, dd in ipairs(swordDropdowns) do
-                        pcall(function() dd:SetValues(list) end)
-                    end
+                    masterList = list
+                    refreshValues()
                     break
                 end
             end
@@ -6307,6 +6308,40 @@ do
         Height = 2
     })
 
+    -- Type to filter the sword list; the dropdown shows the matches next open.
+    skinChangerSection:AddInput({
+        Name = "Search",
+        Default = "",
+        Callback = function(text)
+            currentQuery = tostring(text or "")
+            refreshValues()
+        end,
+    })
+
+    -- One picker for the whole skin: choosing a sword applies its MODEL, its
+    -- ANIMATIONS and its FX together (all three share the sword name), so equipping
+    -- a sword automatically brings its anims + fx. A single updateSword per pick —
+    -- no separate per-target rebuilds, which is what made it stutter.
+    swordDd = skinChangerSection:AddDropdown({
+        Name = "Sword",
+        Default = masterList[1] or "",
+        Values = masterList,
+        Callback = function(value)
+            SkinChanger.Targets.SwordModel.ModelName = value
+            SkinChanger.Targets.SwordAnimation.AnimationName = value
+            SkinChanger.Targets.SwordFX.FXName = value
+            if SkinChanger.Enabled then
+                SkinChanger.System.functions.updateSword(value)
+            end
+        end,
+    })
+
+    skinChangerSection:AddDivider({
+        Color = Color3.fromRGB(50, 50, 50),
+        Height = 1
+    })
+
+    -- Optional fine control — all on by default so the sword's anims + fx follow.
     skinChangerSection:AddToggle({
         Name = 'Change Model',
         Default = SkinChanger.Targets.SwordModel.Enabled,
@@ -6316,18 +6351,6 @@ do
                 SkinChanger.System.functions.updateSword(SkinChanger.Targets.SwordModel.ModelName)
             end
         end,
-    })
-
-    addSwordPicker("Model", function(value)
-        SkinChanger.Targets.SwordModel.ModelName = value
-        if SkinChanger.Enabled and SkinChanger.Targets.SwordModel.Enabled then
-            SkinChanger.System.functions.updateSword(SkinChanger.Targets.SwordModel.ModelName)
-        end
-    end)
-
-    skinChangerSection:AddDivider({
-        Color = Color3.fromRGB(50, 50, 50),
-        Height = 1
     })
 
     skinChangerSection:AddToggle({
@@ -6341,32 +6364,16 @@ do
         end,
     })
 
-    addSwordPicker("Animation", function(value)
-        SkinChanger.Targets.SwordAnimation.AnimationName = value
-        if SkinChanger.Enabled and SkinChanger.Targets.SwordAnimation.Enabled then
-            SkinChanger.System.functions.updateSword(SkinChanger.Targets.SwordModel.ModelName)
-        end
-    end)
-
-    skinChangerSection:AddDivider({
-        Color = Color3.fromRGB(50, 50, 50),
-        Height = 1
-    })
-
     skinChangerSection:AddToggle({
         Name = 'Change FX',
         Default = SkinChanger.Targets.SwordFX.Enabled,
         Callback = function(value)
             SkinChanger.Targets.SwordFX.Enabled = value
+            if SkinChanger.Enabled then
+                SkinChanger.System.functions.updateSword(SkinChanger.Targets.SwordModel.ModelName)
+            end
         end,
     })
-
-    addSwordPicker("FX", function(value)
-        SkinChanger.Targets.SwordFX.FXName = value
-        if SkinChanger.Enabled and SkinChanger.Targets.SwordFX.Enabled then
-            SkinChanger.System.functions.updateSword(SkinChanger.Targets.SwordModel.ModelName)
-        end
-    end)
 
     skinChangerSection:AddDivider({
         Color = Color3.fromRGB(50, 50, 50),
