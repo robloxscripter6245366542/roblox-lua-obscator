@@ -6186,9 +6186,10 @@ do
 
     -- Build a live list of every sword so Model / Animation / FX are pickable
     -- from a dropdown instead of typed. Each field takes a sword NAME, so one
-    -- list serves all three. Enumerate the ReplicatedInstances "Swords" container
-    -- and keep only entries GetSword recognises; fall back to a text input if the
-    -- enumeration finds nothing (e.g. a game update moved things).
+    -- list serves all three. The swords live in the replicated "Swords"
+    -- collection (name -> data), exactly what the game iterates itself; enumerate
+    -- that, with rarity + child-scan fallbacks, and fall back to a text input if
+    -- everything comes up empty (e.g. a game update moved things).
     local SwordList = (function()
         local names, seen = {}, {}
         local function add(n)
@@ -6197,15 +6198,32 @@ do
                 names[#names + 1] = n
             end
         end
+        -- Primary: the sword collection registry (GetCollection() -> {name = data}).
         pcall(function()
-            for _, child in ipairs(ACHAOTICASSETS.swordInstancesInstance:GetChildren()) do
-                local n = child.Name
-                local ok, data = pcall(function()
-                    return ACHAOTICASSETS.swordInstances:GetSword(n)
-                end)
-                if ok and type(data) == "table" then add(n) end
+            for name in ACHAOTICASSETS.swordInstances:GetCollection() do
+                add(tostring(name))
             end
         end)
+        -- Fallback: GetListByRarity() -> {rarity = {name = data}}.
+        if #names == 0 then
+            pcall(function()
+                for _, swords in ACHAOTICASSETS.swordInstances:GetListByRarity() do
+                    for name in swords do add(tostring(name)) end
+                end
+            end)
+        end
+        -- Fallback: children of the Swords container, validated via GetSword.
+        if #names == 0 then
+            pcall(function()
+                for _, child in ipairs(ACHAOTICASSETS.swordInstancesInstance:GetChildren()) do
+                    local n = child.Name
+                    local ok, data = pcall(function()
+                        return ACHAOTICASSETS.swordInstances:GetSword(n)
+                    end)
+                    if ok and type(data) == "table" then add(n) end
+                end
+            end)
+        end
         table.sort(names)
         return names
     end)()
