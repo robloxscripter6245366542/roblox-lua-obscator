@@ -6616,36 +6616,42 @@ do
         ManualSpamParryUIService:SetColor(ACHAOTICDATA.Config.ManualSpamParry.Spamming)
     end
 
-    -- Toggle only on a genuine TAP, not when the button is dragged. The button
-    -- fills the draggable handler, so MouseButton1Click used to fire on the
-    -- release of a drag and flip spam by accident every time you moved it.
+    -- Unified drag + tap for the on-screen SPAM button. The button fills the
+    -- handler, so the old setup (MouseButton1Click to toggle + a tween-based
+    -- MakeDraggable to move) had two bugs: dragging fired the click and toggled
+    -- spam by accident, and the per-move tween made the button trail the pointer
+    -- while its clickable hitbox stayed behind ("moves but the hitbox is where it
+    -- was"). Move the handler DIRECTLY here (no tween, so visual + hitbox stay
+    -- together) and toggle only on a tap that didn't move.
     do
-        local pressPos, moved, moveConn
+        local dragging, moved, startPointer, startPos
         UI.SpamUI.SpamButton.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                pressPos = input.Position
+                dragging = true
                 moved = false
-                if moveConn then moveConn:Disconnect() end
-                moveConn = UserInputService.InputChanged:Connect(function(m)
-                    if pressPos and (m.UserInputType == Enum.UserInputType.MouseMovement or m.UserInputType == Enum.UserInputType.Touch) then
-                        if (m.Position - pressPos).Magnitude > 8 then
-                            moved = true
-                        end
-                    end
-                end)
+                startPointer = input.Position
+                startPos = UI.SpamUI.Handler.Position
             end
         end)
-        UI.SpamUI.SpamButton.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                if moveConn then moveConn:Disconnect() moveConn = nil end
-                if pressPos and not moved then
+        NeverZen:Track(UserInputService.InputChanged:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                local delta = input.Position - startPointer
+                if delta.Magnitude > 8 then moved = true end
+                UI.SpamUI.Handler.Position = UDim2.new(
+                    startPos.X.Scale, startPos.X.Offset + delta.X,
+                    startPos.Y.Scale, startPos.Y.Offset + delta.Y
+                )
+            end
+        end))
+        NeverZen:Track(UserInputService.InputEnded:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+                dragging = false
+                if not moved then
                     ToggleSpam()
                 end
-                pressPos = nil
             end
-        end)
+        end))
     end
-    MakeDraggable(UI.SpamUI.Handler, UI.SpamUI.Handler, 0.2)
 end
 
 do 
