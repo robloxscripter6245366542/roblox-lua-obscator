@@ -4268,17 +4268,33 @@ end
 ACHAOTICASSETS.SwordController = nil
 ACHAOTICASSETS.Runtime = Workspace:WaitForChild("Runtime")
 
-do
+pcall(function()
+    if type(getconnections) ~= "function" then return end
     for _, connection in pairs(getconnections(ReplicatedStorage.Remotes.FireSwordInfo.OnClientEvent)) do
-        if connection.Function and islclosure(connection.Function) then
-            local upvalues = debug.getupvalues(connection.Function)
+        local fn = connection.Function
+        if fn and islclosure and islclosure(fn) then
+            local upvalues = debug.getupvalues(fn)
+            -- Original signature: exactly one table upvalue.
             if #upvalues == 1 and type(upvalues[1]) == "table" then
                 ACHAOTICASSETS.SwordController = upvalues[1]
                 break
             end
+            -- Fallback: any table upvalue that exposes a SetSword method. Survives
+            -- a changed upvalue count after a game update, so the animation changer
+            -- keeps resolving instead of silently going nil.
+            for _, uv in pairs(upvalues) do
+                if type(uv) == "table" then
+                    local ok, m = pcall(function() return uv.SetSword end)
+                    if ok and type(m) == "function" then
+                        ACHAOTICASSETS.SwordController = uv
+                        break
+                    end
+                end
+            end
+            if ACHAOTICASSETS.SwordController then break end
         end
     end
-end
+end)
 
 local ACHAOTICDATA = {
     Player = {
@@ -7171,28 +7187,38 @@ do
     end))
 end
 
-do 
-    do
-        do
-            local OriginalSetSword = ACHAOTICASSETS.SwordController.SetSword
-            ACHAOTICASSETS.SwordController.SetSword = function(self, anim)
+do
+    -- Sword ANIMATION hook — only if the controller was resolved and exposes
+    -- SetSword. A missing/renamed controller must NOT abort the model/FX hooks
+    -- below (the original code indexed a nil controller here and killed the whole
+    -- skin changer).
+    pcall(function()
+        local controller = ACHAOTICASSETS.SwordController
+        if controller and type(controller.SetSword) == "function" then
+            local OriginalSetSword = controller.SetSword
+            controller.SetSword = function(self, anim)
                 if SkinChanger.Enabled and SkinChanger.Targets.SwordAnimation.Enabled and SkinChanger.Targets.SwordAnimation.AnimationName and SkinChanger.Targets.SwordAnimation.AnimationName ~= "" then
                     anim = SkinChanger.Targets.SwordAnimation.AnimationName
                 end
                 return OriginalSetSword(self, anim)
             end
         end
-        do 
-            local OriginalEquipSwordTo = ACHAOTICASSETS.swordInstances.EquipSwordTo
+    end)
+    -- Sword MODEL hook — independent of the controller, so the model changer
+    -- works even when the animation controller could not be found.
+    pcall(function()
+        local swords = ACHAOTICASSETS.swordInstances
+        if swords and type(swords.EquipSwordTo) == "function" then
+            local OriginalEquipSwordTo = swords.EquipSwordTo
             SkinChanger.System.OriginalEquipSwordTo = OriginalEquipSwordTo
-            ACHAOTICASSETS.swordInstances.EquipSwordTo = function(self, char, swordName)
+            swords.EquipSwordTo = function(self, char, swordName)
                 if SkinChanger.Enabled and SkinChanger.Targets.SwordModel.Enabled and SkinChanger.Targets.SwordModel.ModelName and SkinChanger.Targets.SwordModel.ModelName ~= "" and char == GetCharacter() then
                     swordName = SkinChanger.Targets.SwordModel.ModelName
                 end
                 return OriginalEquipSwordTo(self, char, swordName)
             end
         end
-    end
+    end)
 
     NeverZen:Track(ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(...)
         if not SkinChanger.System.playParryFunc then
