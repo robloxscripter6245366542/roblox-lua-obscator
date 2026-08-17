@@ -1101,12 +1101,14 @@ if writefile then
         print("[DUMP] Saved → "..fname)
     end)
 end
-if not saved then
-    if setclipboard then
-        setclipboard(content)
-        print("[DUMP] Copied to clipboard")
-    else
-        for i = 1, #content, 3000 do print(content:sub(i, i+2999)) end
-    end
+-- always copy to clipboard when available, in addition to the file
+local copied = false
+if setclipboard then
+    copied = pcall(setclipboard, content)
+    if copied then print("[DUMP] Copied to clipboard") end
+end
+if not saved and not copied then
+    -- last resort: dump to console in chunks
+    for i = 1, #content, 3000 do print(content:sub(i, i+2999)) end
 end
 print(string.format("[DUMP] Done! Lines: %d | Objects: %d", #OUTPUT, #REGISTRY))
