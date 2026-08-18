@@ -4337,7 +4337,12 @@ local ACHAOTICDATA = {
             -- Multiplier applied to the ball-distance hitbox (was a hardcoded
             -- 1.5). Exposed as a slider so the parry range can be widened for
             -- high ping / fast balls or tightened for precision, live in-game.
-            HitboxMultiplier = 1.5
+            HitboxMultiplier = 1.5,
+            -- Precision gate: only spam when the ball is actually aimed at you
+            -- (the real replicated "target" attribute equals the local player),
+            -- the same signal the lobby parry and trigger bot use. Off by default
+            -- so the range-based behaviour is unchanged unless you opt in.
+            TargetOnly = false
         },
         ManualSpamParry = {
             Spamming = false,
@@ -5540,7 +5545,16 @@ local function MainConnection()
                 elseif ACHAOTICDATA.Config.AutoSpamParry.DetectionMode == "Distance" then
                     SpamVaildation = true
                 end
-                ACHAOTICDATA.Config.AutoSpamParry.Spamming =  DistToBall <= BallReach and DistToTarget <= TargetCheck and SpamVaildation
+
+                -- Optional precision gate: only spam when this ball is actually
+                -- targeting us (real replicated "target" attribute). Keeps spam off
+                -- balls that are just passing by / aimed at someone else.
+                local TargetValidation = true
+                if ACHAOTICDATA.Config.AutoSpamParry.TargetOnly then
+                    TargetValidation = Ball:GetAttribute('target') == tostring(ACHAOTICDATA.Player.LocalPlayer)
+                end
+
+                ACHAOTICDATA.Config.AutoSpamParry.Spamming =  DistToBall <= BallReach and DistToTarget <= TargetCheck and SpamVaildation and TargetValidation
             end
         else
             ACHAOTICDATA.Config.AutoSpamParry.Spamming = false
@@ -6052,6 +6066,14 @@ do
             end,
         })
 
+        AutoSpamParrySection:AddToggle({
+            Name = 'Target Only (precision)',
+            Default = ACHAOTICDATA.Config.AutoSpamParry.TargetOnly,
+            Callback = function(value)
+                ACHAOTICDATA.Config.AutoSpamParry.TargetOnly = value
+            end,
+        })
+
         AutoSpamParrySection:AddDivider({
             Color = Color3.fromRGB(50, 50, 50),
             Height = 1
@@ -6065,6 +6087,7 @@ do
         UI.GameDataDist = AutoSpamParrySection:AddLabel("Dist to Ball: 0")
         UI.GameDataReach = AutoSpamParrySection:AddLabel("Reach Time: 0 ms")
         UI.GameDataPing = AutoSpamParrySection:AddLabel("Ping: 0 ms")
+        UI.GameDataTarget = AutoSpamParrySection:AddLabel("Aimed at You: -")
     end
     
     do
@@ -7720,11 +7743,14 @@ local function RefreshVM(deltaTime)
                 UI.GameDataDist:SetValue(string.format("Dist to Ball: %d", math.floor(dist)))
                 UI.GameDataReach:SetValue(string.format("Reach Time: %d ms", math.floor(reachMs)))
                 UI.GameDataPing:SetValue(string.format("Ping: %d ms", math.floor(ping)))
+                local aimed = ball:GetAttribute('target') == tostring(ACHAOTICDATA.Player.LocalPlayer)
+                UI.GameDataTarget:SetValue("Aimed at You: " .. (aimed and "YES" or "no"))
             else
                 UI.GameDataSpeed:SetValue("Ball Speed: 0")
                 UI.GameDataHitbox:SetValue("Hitbox Range: 0")
                 UI.GameDataDist:SetValue("Dist to Ball: 0")
                 UI.GameDataReach:SetValue("Reach Time: 0 ms")
+                UI.GameDataTarget:SetValue("Aimed at You: -")
                 UI.GameDataPing:SetValue(string.format("Ping: %d ms", math.floor(ACHAOTICASSETS.ServerStatsItem["Data Ping"]:GetValue())))
             end
         end)
