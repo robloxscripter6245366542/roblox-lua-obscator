@@ -4339,7 +4339,8 @@ local ACHAOTICDATA = {
             Spamming = false,
             UI = false,
             Keybind = nil,
-            AnimationFix = false
+            AnimationFix = false,
+            SpamRPS = 550
         },
         TriggerBot = {
             Enabled = false,
@@ -5973,6 +5974,18 @@ do
             Default = ACHAOTICDATA.Config.ManualSpamParry.AnimationFix,
             Callback = function(value)
                 ACHAOTICDATA.Config.ManualSpamParry.AnimationFix = value
+            end,
+        })
+
+        ManualSpamParrySection:AddSlider({
+            Name = "Spam Rate",
+            Min = 60,
+            Max = 1000,
+            Round = 1,
+            Default = ACHAOTICDATA.Config.ManualSpamParry.SpamRPS,
+            Type = " rps",
+            Callback = function(value)
+                ACHAOTICDATA.Config.ManualSpamParry.SpamRPS = value
             end,
         })
     end
@@ -7619,7 +7632,12 @@ end
 do
     local timeAccumulator = 0
     NeverZen:Track(RunService.RenderStepped:Connect(function(deltaTime)
+        -- Manual Spam has its own rate; use it while manual spam is active,
+        -- otherwise fall back to the shared Target RPS (auto spam).
         local TargetSpeed = ACHAOTICDATA.Config.ParrySettings.SpammingRPS
+        if ACHAOTICDATA.Config.ManualSpamParry.Spamming then
+            TargetSpeed = ACHAOTICDATA.Config.ManualSpamParry.SpamRPS
+        end
         timeAccumulator += deltaTime
         UI.SpamAccumulatorLabel:SetValue(string.format("Accumulator: %.3f", timeAccumulator))
         local packetsToFire = math.floor(timeAccumulator * TargetSpeed)
