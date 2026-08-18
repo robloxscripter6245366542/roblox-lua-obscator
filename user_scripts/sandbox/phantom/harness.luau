@@ -345,7 +345,8 @@ UIS.TouchEnabled = false
 WORKSPACE = makeInstance("Workspace")
 rawset(WORKSPACE, "DescendantAdded", Signal())
 WORKSPACE.CurrentCamera = makeInstance("Camera")
-rawset(WORKSPACE, "QueryDescendants", function() return {} end)
+-- GetDescendants is the real Roblox API (there is no QueryDescendants); the
+-- generic instance metatable already handles it, so no override is needed here.
 workspace = WORKSPACE
 
 LOCALPLAYER = makeInstance("Player")
