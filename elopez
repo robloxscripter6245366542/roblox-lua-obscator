@@ -7609,11 +7609,14 @@ end
 
 -- Anti-block-break for the spam loop, fully automatic (no tuning). Hammering the
 -- parry while the block is broken (the character's "Stunned" attribute) or still
--- on its post-parry cooldown is what over-drains the block, breaks the shield and
--- leaves spam doing nothing. So after each parry we back off for the block's
--- cooldown, and the backoff SELF-ADAPTS: if the block ever breaks anyway we widen
--- it a touch (so it can't break again) and slowly narrow it back when it's stable.
--- Net: toggle spam at any rate and hold it forever — the shield never breaks.
+-- on its cooldown is what over-drains the block, breaks the shield and leaves
+-- spam doing nothing. So after EVERY fire (see RequestSpamParry) we back off for
+-- the block's cooldown, which caps the effective press rate no matter how high
+-- the spam rate is set. The backoff also SELF-ADAPTS: if the block ever breaks
+-- anyway we widen it a touch (so it can't break again) and it only ever grows,
+-- so once it stops breaking it stays that way — no re-probing, no periodic
+-- breaks. Net: toggle spam at any rate and hold it forever — the shield never
+-- breaks.
 local SpamReadyAt = 0
 local SpamBackoff = 0.45            -- seconds after each parry; safe for a normal
                                    -- block cooldown, and only ever GROWS (never
@@ -7657,6 +7660,13 @@ local RequestSpamParry = function()
     if ACHAOTICDATA.Config.AutoSpamParry.Spamming or ACHAOTICDATA.Config.ManualSpamParry.Spamming then
         if not SpamCanFire() then return end
         FireParry()
+        -- Rate-limit EVERY fire to the block's safe cadence, not just landed
+        -- parries. During a clash the ParrySuccessAll confirmation lags behind
+        -- the spam, so relying on it alone let the loop press the block many
+        -- times per cooldown and over-drain it (shield/hitbox break). Setting
+        -- the backoff here means the block is never pressed faster than it can
+        -- recover, at any spam rate, whether Auto or Manual spam is driving it.
+        SpamReadyAt = os.clock() + SpamBackoff
         if ((ACHAOTICDATA.Config.AutoSpamParry.AnimationFix and ACHAOTICDATA.Config.AutoSpamParry.Spamming) or (ACHAOTICDATA.Config.ManualSpamParry.AnimationFix and ACHAOTICDATA.Config.ManualSpamParry.Spamming)) and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
             SpamParry_Animation()
         end

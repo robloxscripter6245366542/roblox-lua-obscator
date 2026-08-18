@@ -41,6 +41,11 @@ local function run(rate, blockCD)
 
     local function fire()
         if not canFire() then return end
+        -- Per-fire rate limit: EVERY fire arms the backoff (mirrors the shipped
+        -- RequestSpamParry, which sets SpamReadyAt right after FireParry). This
+        -- is what caps the press rate during a clash, before any landed-parry
+        -- confirmation comes back.
+        backoffUntil = now + backoff
         if now < blockReadyAt then
             stam = stam - OVER_DRAIN
             if stam <= 0 then stunned = true; stunUntil = now + STUN; breaks = breaks + 1 end
@@ -48,7 +53,6 @@ local function run(rate, blockCD)
             parries = parries + 1
             stam = math.min(100, stam - PARRY_DRAIN)
             blockReadyAt = now + blockCD
-            backoffUntil = now + backoff
         end
     end
 
