@@ -4323,6 +4323,8 @@ local ACHAOTICDATA = {
             Hits = 0,
             Misses = 0,
             CleanStreak = 0,
+            ServerConfirmed = 0,   -- running count of server-confirmed parries
+            DesyncGap = 0,         -- client landed parries not yet server-confirmed
         },
     },
     Config = {
@@ -4366,11 +4368,13 @@ local ACHAOTICDATA = {
             -- encrypted-clone decoys (fake balls). On by default: it only ever
             -- removes wasted/incorrect fires, never adds them.
             SmartFilter = true,
-            -- Self-tuning (experimental, opt-in): watch the game's own parry
-            -- confirmation (ServerParryCount) vs whiff (NoobParryHappened) signals
-            -- and nudge an ADDITIVE bonus onto the hitbox range + impact lead when
-            -- you miss, relaxing it back when you're landing cleanly. Never
-            -- overwrites your slider values — it only adds a bounded offset.
+            -- Self-tuning (experimental, opt-in): learn from all three of the
+            -- game's own parry signals — ParrySuccess (landed) as the hit,
+            -- NoobParryHappened (whiff) as the miss, and the ServerParryCount
+            -- attribute as the server-confirmed truth used to catch desync. Nudges
+            -- an ADDITIVE bonus onto the hitbox range + impact lead when you miss,
+            -- relaxing it back when you're landing cleanly. Never overwrites your
+            -- slider values — it only adds a bounded offset.
             AutoTune = false
         },
         ManualSpamParry = {
@@ -6227,6 +6231,7 @@ do
         UI.GameDataTarget = AutoSpamParrySection:AddLabel("Aimed at You: -")
         UI.GameDataCombo = AutoSpamParrySection:AddLabel("Combo: 0")
         UI.GameDataHitRate = AutoSpamParrySection:AddLabel("Hit Rate: - (tune +0.00)")
+        UI.GameDataConfirmed = AutoSpamParrySection:AddLabel("Server Confirmed: 0  Desync: 0")
     end
     
     do
@@ -7719,15 +7724,21 @@ do
     end))
 end
 
--- Self-tuning feedback: learn from the game's own parry outcome signals.
---  • HIT  = the server-authoritative "ServerParryCount" character attribute
---           incrementing (the server confirms each landed parry this way).
---  • MISS = a whiff (NoobParryHappened, the game's parry-cooldown-reset).
+-- Self-tuning feedback: learn from ALL THREE of the game's own parry signals.
+--  • HIT   = ParrySuccess.OnClientEvent — the game's own "your parry landed"
+--            event. Immediate and local, so the loop reacts the instant a parry
+--            registers (no waiting on attribute replication).
+--  • MISS  = NoobParryHappened — a whiff / parry-cooldown-reset.
+--  • TRUTH = the ServerParryCount attribute — the server's own confirmed tally.
+--            Used to RECONCILE: when the client thinks it landed parries the
+--            server never confirms (a desync), the gap is fed back as misses so
+--            the tuner widens the window to fix it. Not a second hit source, so
+--            a parry is never double-counted.
 -- When Auto-Tune is on we GROW an additive hitbox/lead bonus on each miss (so a
 -- run of misses widens the window until it lands) and gently RELAX it after a
--- clean streak, all bounded. When Auto-Tune is off we still keep the rolling
--- hit/miss counters so the live hit-rate readout works. Never touches the user
--- sliders — only the bonus offsets in Global.AutoTune.
+-- clean streak, all bounded. Counters keep running even when Auto-Tune is off so
+-- the live hit-rate / confirmed readout works. Never touches the user sliders —
+-- only the bonus offsets in Global.AutoTune.
 do
     local AT = ACHAOTICDATA.Global.AutoTune
     local HITBOX_STEP, HITBOX_MAX = 0.1, 1.0
@@ -7742,8 +7753,15 @@ do
         end
     end
 
+    local function grow()
+        AT.CleanStreak = 0
+        AT.HitboxBonus = math.min(AT.HitboxBonus + HITBOX_STEP, HITBOX_MAX)
+        AT.LeadBonus = math.min(AT.LeadBonus + LEAD_STEP, LEAD_MAX)
+    end
+
     local function registerHit()
         AT.Hits += 1
+        AT.DesyncGap += 1          -- landed client-side; awaiting server confirm
         decay()
         if ACHAOTICDATA.Config.AutoSpamParry.AutoTune then
             AT.CleanStreak += 1
@@ -7759,34 +7777,58 @@ do
         AT.Misses += 1
         decay()
         if ACHAOTICDATA.Config.AutoSpamParry.AutoTune then
-            AT.CleanStreak = 0
-            AT.HitboxBonus = math.min(AT.HitboxBonus + HITBOX_STEP, HITBOX_MAX)
-            AT.LeadBonus = math.min(AT.LeadBonus + LEAD_STEP, LEAD_MAX)
+            grow()
         end
     end
 
-    -- Authoritative HIT signal: watch the local character's ServerParryCount and
-    -- count each increment as a confirmed parry. Rebinds per character (it resets
-    -- to 0 on respawn), so a delta is only ever counted within one life.
+    -- HIT: the game's own local "parry landed" event.
+    NeverZen:Track(ReplicatedStorage.Remotes.ParrySuccess.OnClientEvent:Connect(function()
+        registerHit()
+    end))
+
+    -- MISS.
+    NeverZen:Track(ReplicatedStorage.Remotes.NoobParryHappened.OnClientEvent:Connect(registerMiss))
+
+    -- TRUTH / reconciliation: each server-confirmed parry clears one pending
+    -- client hit from the desync gap. If the gap keeps growing (client landing
+    -- parries the server rejects), treat the shortfall as a miss so the tuner
+    -- widens the window to close the desync. Rebinds per character (resets on
+    -- respawn).
     local function bindServerParryCount(char)
         if not char then return end
         local last = char:GetAttribute("ServerParryCount") or 0
+        AT.DesyncGap = 0
         NeverZen:Track(char:GetAttributeChangedSignal("ServerParryCount"):Connect(function()
             local nowv = char:GetAttribute("ServerParryCount") or 0
             local delta = nowv - last
             last = nowv
             if delta > 0 then
-                for _ = 1, math.min(delta, 10) do
-                    registerHit()
-                end
+                AT.ServerConfirmed += delta
+                AT.DesyncGap = math.max(AT.DesyncGap - delta, 0)
             end
         end))
     end
     bindServerParryCount(GetCharacter())
     NeverZen:Track(ACHAOTICDATA.Player.LocalPlayer.CharacterAdded:Connect(bindServerParryCount))
 
-    -- MISS signal.
-    NeverZen:Track(ReplicatedStorage.Remotes.NoobParryHappened.OnClientEvent:Connect(registerMiss))
+    -- Periodically reconcile the desync gap. Checked at most a couple times a
+    -- second (not per-frame) and only when the gap is well past what normal
+    -- confirmation latency explains, so a real desync — client landing parries
+    -- the server keeps rejecting — feeds back as a miss and widens the window,
+    -- while ordinary in-flight latency does not.
+    do
+        local acc = 0
+        NeverZen:Track(RunService.Heartbeat:Connect(function(dt)
+            if not ACHAOTICDATA.Config.AutoSpamParry.AutoTune then return end
+            acc += dt
+            if acc < 0.5 then return end
+            acc = 0
+            if AT.DesyncGap >= 6 then
+                AT.DesyncGap = math.max(AT.DesyncGap - 2, 0)
+                registerMiss()
+            end
+        end))
+    end
 end
 
 do 
@@ -7971,6 +8013,7 @@ local function RefreshVM(deltaTime)
             local total = AT.Hits + AT.Misses
             local rateTxt = total > 0 and string.format("%d%%", math.floor(AT.Hits / total * 100 + 0.5)) or "-"
             UI.GameDataHitRate:SetValue(string.format("Hit Rate: %s (tune +%.2f)", rateTxt, AT.HitboxBonus))
+            UI.GameDataConfirmed:SetValue(string.format("Server Confirmed: %d  Desync: %d", math.floor(AT.ServerConfirmed), math.floor(AT.DesyncGap)))
         end)
     end
 
