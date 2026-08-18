@@ -7720,8 +7720,9 @@ do
 end
 
 -- Self-tuning feedback: learn from the game's own parry outcome signals.
---  • a confirmed local parry (ParrySuccessAll addressed to us) = a HIT
---  • a whiff (NoobParryHappened, the game's parry-cooldown-reset) = a MISS
+--  • HIT  = the server-authoritative "ServerParryCount" character attribute
+--           incrementing (the server confirms each landed parry this way).
+--  • MISS = a whiff (NoobParryHappened, the game's parry-cooldown-reset).
 -- When Auto-Tune is on we GROW an additive hitbox/lead bonus on each miss (so a
 -- run of misses widens the window until it lands) and gently RELAX it after a
 -- clean streak, all bounded. When Auto-Tune is off we still keep the rolling
@@ -7741,9 +7742,7 @@ do
         end
     end
 
-    NeverZen:Track(ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(...)
-        local args = { ... }
-        if tostring(args[4]) ~= ACHAOTICDATA.Player.LocalPlayer.Name then return end
+    local function registerHit()
         AT.Hits += 1
         decay()
         if ACHAOTICDATA.Config.AutoSpamParry.AutoTune then
@@ -7754,9 +7753,9 @@ do
                 AT.LeadBonus = math.max(AT.LeadBonus - LEAD_STEP * 0.5, 0)
             end
         end
-    end))
+    end
 
-    NeverZen:Track(ReplicatedStorage.Remotes.NoobParryHappened.OnClientEvent:Connect(function(...)
+    local function registerMiss()
         AT.Misses += 1
         decay()
         if ACHAOTICDATA.Config.AutoSpamParry.AutoTune then
@@ -7764,7 +7763,30 @@ do
             AT.HitboxBonus = math.min(AT.HitboxBonus + HITBOX_STEP, HITBOX_MAX)
             AT.LeadBonus = math.min(AT.LeadBonus + LEAD_STEP, LEAD_MAX)
         end
-    end))
+    end
+
+    -- Authoritative HIT signal: watch the local character's ServerParryCount and
+    -- count each increment as a confirmed parry. Rebinds per character (it resets
+    -- to 0 on respawn), so a delta is only ever counted within one life.
+    local function bindServerParryCount(char)
+        if not char then return end
+        local last = char:GetAttribute("ServerParryCount") or 0
+        NeverZen:Track(char:GetAttributeChangedSignal("ServerParryCount"):Connect(function()
+            local nowv = char:GetAttribute("ServerParryCount") or 0
+            local delta = nowv - last
+            last = nowv
+            if delta > 0 then
+                for _ = 1, math.min(delta, 10) do
+                    registerHit()
+                end
+            end
+        end))
+    end
+    bindServerParryCount(GetCharacter())
+    NeverZen:Track(ACHAOTICDATA.Player.LocalPlayer.CharacterAdded:Connect(bindServerParryCount))
+
+    -- MISS signal.
+    NeverZen:Track(ReplicatedStorage.Remotes.NoobParryHappened.OnClientEvent:Connect(registerMiss))
 end
 
 do 
