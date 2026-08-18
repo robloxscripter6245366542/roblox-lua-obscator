@@ -4340,7 +4340,7 @@ local ACHAOTICDATA = {
             UI = false,
             Keybind = nil,
             AnimationFix = false,
-            SpamRPS = 550,
+            SpamRPS = 1000,
             AntiBreakDelay = 0.35
         },
         TriggerBot = {
@@ -5981,7 +5981,7 @@ do
         ManualSpamParrySection:AddSlider({
             Name = "Spam Rate",
             Min = 60,
-            Max = 1000,
+            Max = 2000,
             Round = 1,
             Default = ACHAOTICDATA.Config.ManualSpamParry.SpamRPS,
             Type = " rps",
