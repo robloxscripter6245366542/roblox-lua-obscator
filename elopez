@@ -4342,7 +4342,16 @@ local ACHAOTICDATA = {
             -- (the real replicated "target" attribute equals the local player),
             -- the same signal the lobby parry and trigger bot use. Off by default
             -- so the range-based behaviour is unchanged unless you opt in.
-            TargetOnly = false
+            TargetOnly = false,
+            -- Time-to-impact prediction: fire timed to the ball's ARRIVAL (its
+            -- inbound closing speed) rather than raw distance, leading by ping +
+            -- ImpactLead seconds. Off by default.
+            TimeToImpact = false,
+            ImpactLead = 0.06,
+            -- Curve assist: widen the effective reach for a ball whose velocity
+            -- direction is bending, so a curving ball still gets parried as its
+            -- path swings in. Off by default.
+            CurveAssist = false
         },
         ManualSpamParry = {
             Spamming = false,
@@ -5242,6 +5251,10 @@ local function GetLinear_Interpolation(a, b, time_volume)
     return a + (b - a) * time_volume
 end
 
+-- Per-ball last velocity direction, used by the opt-in Curve Assist to measure
+-- how fast the ball's heading is bending frame-to-frame. Cleared on ball removal.
+local SpamCurveState = {}
+
 -- Dynamic hitbox radius from the REAL ball speed + ping, factored out of the
 -- parry compute so the on-screen Game Data readout shows the exact same number
 -- the parry uses. Behaviour is byte-identical to the old inline block.
@@ -5537,6 +5550,33 @@ local function MainConnection()
                 local HitboxMult = ACHAOTICDATA.Config.AutoSpamParry.HitboxMultiplier or 1.5
                 local BallReach = TargetCheck * HitboxMult
 
+                -- Closing speed = the ball's velocity projected onto the direction
+                -- toward us; >0 means it's actually inbound. Time-to-impact is the
+                -- straight-line arrival time from that closing speed.
+                local Velocity = Zoomies.VectorVelocity
+                local toSelf = RootPos - BallPos
+                local dirToSelf = toSelf.Magnitude > 0 and toSelf.Unit or Vector3.zero
+                local Closing = Velocity:Dot(dirToSelf)
+                local TimeToImpact = Closing > 0 and (DistToBall / Closing) or math.huge
+
+                -- Curve assist (opt-in): measure how fast the heading is bending
+                -- frame-to-frame; a curving ball gets a wider reach so it still
+                -- lands as the path swings in.
+                local Curving = false
+                if ACHAOTICDATA.Config.AutoSpamParry.CurveAssist and Velocity.Magnitude > 0 then
+                    local unit = Velocity.Unit
+                    local st = SpamCurveState[Ball]
+                    if st and st.dir then
+                        if (unit - st.dir).Magnitude > 0.05 then
+                            Curving = true
+                        end
+                    end
+                    SpamCurveState[Ball] = { dir = unit }
+                    if Curving then
+                        BallReach = BallReach * 1.35
+                    end
+                end
+
                 ACHAOTICDATA.Global.AutoSpamParryCurrentAccuracy = BallReach
 
                 local SpamVaildation = false
@@ -5554,7 +5594,16 @@ local function MainConnection()
                     TargetValidation = Ball:GetAttribute('target') == tostring(ACHAOTICDATA.Player.LocalPlayer)
                 end
 
-                ACHAOTICDATA.Config.AutoSpamParry.Spamming =  DistToBall <= BallReach and DistToTarget <= TargetCheck and SpamVaildation and TargetValidation
+                -- Optional time-to-impact gate: fire only once the ball's arrival
+                -- is within ping + lead, so the parry lands as it hits rather than
+                -- on raw proximity.
+                local ImpactValidation = true
+                if ACHAOTICDATA.Config.AutoSpamParry.TimeToImpact then
+                    local Lead = (Ping / 1000) + (ACHAOTICDATA.Config.AutoSpamParry.ImpactLead or 0.06)
+                    ImpactValidation = Closing > 0 and TimeToImpact <= Lead
+                end
+
+                ACHAOTICDATA.Config.AutoSpamParry.Spamming =  DistToBall <= BallReach and DistToTarget <= TargetCheck and SpamVaildation and TargetValidation and ImpactValidation
             end
         else
             ACHAOTICDATA.Config.AutoSpamParry.Spamming = false
@@ -5607,6 +5656,7 @@ NeverZen:Track(ACHAOTICDATA.Balls.ChildRemoved:Connect(function(Child)
         if hit and hit.Parent then hit:Destroy() end
         Visuals.HitEffectService.BallEffects[Child] = nil
     end
+    SpamCurveState[Child] = nil
     ACHAOTICDATA.Global.Parries = 0
     ACHAOTICDATA.Config.Animation.SpamAnimationParries = 0
     ACHAOTICDATA.Config.AutoSpamParry.Spamming = false
@@ -6071,6 +6121,34 @@ do
             Default = ACHAOTICDATA.Config.AutoSpamParry.TargetOnly,
             Callback = function(value)
                 ACHAOTICDATA.Config.AutoSpamParry.TargetOnly = value
+            end,
+        })
+
+        AutoSpamParrySection:AddToggle({
+            Name = 'Time to Impact',
+            Default = ACHAOTICDATA.Config.AutoSpamParry.TimeToImpact,
+            Callback = function(value)
+                ACHAOTICDATA.Config.AutoSpamParry.TimeToImpact = value
+            end,
+        })
+
+        AutoSpamParrySection:AddSlider({
+            Name = "Impact Lead",
+            Min = 0.02,
+            Max = 0.2,
+            Round = 2,
+            Default = ACHAOTICDATA.Config.AutoSpamParry.ImpactLead,
+            Type = "s",
+            Callback = function(value)
+                ACHAOTICDATA.Config.AutoSpamParry.ImpactLead = value
+            end,
+        })
+
+        AutoSpamParrySection:AddToggle({
+            Name = 'Curve Assist',
+            Default = ACHAOTICDATA.Config.AutoSpamParry.CurveAssist,
+            Callback = function(value)
+                ACHAOTICDATA.Config.AutoSpamParry.CurveAssist = value
             end,
         })
 
