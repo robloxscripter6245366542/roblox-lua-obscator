@@ -4315,6 +4315,15 @@ local ACHAOTICDATA = {
         lastParryTime = 0,
         AutoParryCurrentAccuracy = 0,
         AutoSpamParryCurrentAccuracy = 0,
+        -- Self-tuning runtime state (additive bonuses layered on top of the user
+        -- sliders, plus rolling hit/miss counters for the live hit-rate readout).
+        AutoTune = {
+            HitboxBonus = 0,
+            LeadBonus = 0,
+            Hits = 0,
+            Misses = 0,
+            CleanStreak = 0,
+        },
     },
     Config = {
         AutoParry = {
@@ -4351,7 +4360,18 @@ local ACHAOTICDATA = {
             -- Curve assist: widen the effective reach for a ball whose velocity
             -- direction is bending, so a curving ball still gets parried as its
             -- path swings in. Off by default.
-            CurveAssist = false
+            CurveAssist = false,
+            -- Smart ball-state filter: skip balls that can't or shouldn't be
+            -- parried — Frozen balls (unparryable right now) and doppelganger /
+            -- encrypted-clone decoys (fake balls). On by default: it only ever
+            -- removes wasted/incorrect fires, never adds them.
+            SmartFilter = true,
+            -- Self-tuning (experimental, opt-in): watch the game's own parry
+            -- confirmation (ServerParryCount) vs whiff (NoobParryHappened) signals
+            -- and nudge an ADDITIVE bonus onto the hitbox range + impact lead when
+            -- you miss, relaxing it back when you're landing cleanly. Never
+            -- overwrites your slider values — it only adds a bounded offset.
+            AutoTune = false
         },
         ManualSpamParry = {
             Spamming = false,
@@ -5516,9 +5536,21 @@ local function MainConnection()
         if ACHAOTICDATA.Config.AutoSpamParry.Enabled then
             for _, Ball in pairs(BallsList) do
                 local Zoomies = Ball:FindFirstChild('zoomies')
-                if not Zoomies then 
-                    ACHAOTICDATA.Config.AutoSpamParry.Spamming = false 
-                    return 
+                if not Zoomies then
+                    ACHAOTICDATA.Config.AutoSpamParry.Spamming = false
+                    return
+                end
+
+                -- Smart ball-state filter: skip a ball that can't/shouldn't be
+                -- parried — Frozen (unparryable right now) or a doppelganger /
+                -- encrypted-clone decoy (a fake ball). Only ever removes wasted or
+                -- wrong fires; never fires on something we otherwise wouldn't.
+                if ACHAOTICDATA.Config.AutoSpamParry.SmartFilter then
+                    if Ball:GetAttribute("Frozen")
+                        or Ball:GetAttribute("IsDoppelganger")
+                        or Ball:GetAttribute("IsEncryptedClone") then
+                        continue
+                    end
                 end
 
                 local Closest_Entity, Closest_Distance = GetClosest_Player()
@@ -5547,7 +5579,10 @@ local function MainConnection()
                 local DistToTarget = (RootPos - TargetPos).Magnitude
 
                 -- Adjustable parry range (default 1.5, matching the old constant).
-                local HitboxMult = ACHAOTICDATA.Config.AutoSpamParry.HitboxMultiplier or 1.5
+                -- Self-tuning layers an ADDITIVE bonus on top of your slider value
+                -- (0 when Auto-Tune is off), never overwriting it.
+                local HitboxMult = (ACHAOTICDATA.Config.AutoSpamParry.HitboxMultiplier or 1.5)
+                    + (ACHAOTICDATA.Config.AutoSpamParry.AutoTune and ACHAOTICDATA.Global.AutoTune.HitboxBonus or 0)
                 local BallReach = TargetCheck * HitboxMult
 
                 -- Closing speed = the ball's velocity projected onto the direction
@@ -5599,7 +5634,8 @@ local function MainConnection()
                 -- on raw proximity.
                 local ImpactValidation = true
                 if ACHAOTICDATA.Config.AutoSpamParry.TimeToImpact then
-                    local Lead = (Ping / 1000) + (ACHAOTICDATA.Config.AutoSpamParry.ImpactLead or 0.06)
+                    local LeadBonus = ACHAOTICDATA.Config.AutoSpamParry.AutoTune and ACHAOTICDATA.Global.AutoTune.LeadBonus or 0
+                    local Lead = (Ping / 1000) + (ACHAOTICDATA.Config.AutoSpamParry.ImpactLead or 0.06) + LeadBonus
                     ImpactValidation = Closing > 0 and TimeToImpact <= Lead
                 end
 
@@ -6152,6 +6188,29 @@ do
             end,
         })
 
+        AutoSpamParrySection:AddToggle({
+            Name = 'Smart Filter (skip frozen/fake)',
+            Default = ACHAOTICDATA.Config.AutoSpamParry.SmartFilter,
+            Callback = function(value)
+                ACHAOTICDATA.Config.AutoSpamParry.SmartFilter = value
+            end,
+        })
+
+        AutoSpamParrySection:AddToggle({
+            Name = 'Auto-Tune (self-learning)',
+            Default = ACHAOTICDATA.Config.AutoSpamParry.AutoTune,
+            Callback = function(value)
+                ACHAOTICDATA.Config.AutoSpamParry.AutoTune = value
+                if not value then
+                    -- Turning it off clears the learned offsets so you're back to
+                    -- exactly your slider values.
+                    ACHAOTICDATA.Global.AutoTune.HitboxBonus = 0
+                    ACHAOTICDATA.Global.AutoTune.LeadBonus = 0
+                    ACHAOTICDATA.Global.AutoTune.CleanStreak = 0
+                end
+            end,
+        })
+
         AutoSpamParrySection:AddDivider({
             Color = Color3.fromRGB(50, 50, 50),
             Height = 1
@@ -6166,6 +6225,8 @@ do
         UI.GameDataReach = AutoSpamParrySection:AddLabel("Reach Time: 0 ms")
         UI.GameDataPing = AutoSpamParrySection:AddLabel("Ping: 0 ms")
         UI.GameDataTarget = AutoSpamParrySection:AddLabel("Aimed at You: -")
+        UI.GameDataCombo = AutoSpamParrySection:AddLabel("Combo: 0")
+        UI.GameDataHitRate = AutoSpamParrySection:AddLabel("Hit Rate: - (tune +0.00)")
     end
     
     do
@@ -7658,6 +7719,54 @@ do
     end))
 end
 
+-- Self-tuning feedback: learn from the game's own parry outcome signals.
+--  • a confirmed local parry (ParrySuccessAll addressed to us) = a HIT
+--  • a whiff (NoobParryHappened, the game's parry-cooldown-reset) = a MISS
+-- When Auto-Tune is on we GROW an additive hitbox/lead bonus on each miss (so a
+-- run of misses widens the window until it lands) and gently RELAX it after a
+-- clean streak, all bounded. When Auto-Tune is off we still keep the rolling
+-- hit/miss counters so the live hit-rate readout works. Never touches the user
+-- sliders — only the bonus offsets in Global.AutoTune.
+do
+    local AT = ACHAOTICDATA.Global.AutoTune
+    local HITBOX_STEP, HITBOX_MAX = 0.1, 1.0
+    local LEAD_STEP, LEAD_MAX = 0.02, 0.1
+    local RELAX_AFTER = 8
+
+    local function decay()
+        -- Keep the counters "recent" so the hit-rate reflects the current server.
+        if AT.Hits + AT.Misses > 200 then
+            AT.Hits = math.floor(AT.Hits / 2)
+            AT.Misses = math.floor(AT.Misses / 2)
+        end
+    end
+
+    NeverZen:Track(ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(...)
+        local args = { ... }
+        if tostring(args[4]) ~= ACHAOTICDATA.Player.LocalPlayer.Name then return end
+        AT.Hits += 1
+        decay()
+        if ACHAOTICDATA.Config.AutoSpamParry.AutoTune then
+            AT.CleanStreak += 1
+            if AT.CleanStreak >= RELAX_AFTER then
+                AT.CleanStreak = 0
+                AT.HitboxBonus = math.max(AT.HitboxBonus - HITBOX_STEP * 0.5, 0)
+                AT.LeadBonus = math.max(AT.LeadBonus - LEAD_STEP * 0.5, 0)
+            end
+        end
+    end))
+
+    NeverZen:Track(ReplicatedStorage.Remotes.NoobParryHappened.OnClientEvent:Connect(function(...)
+        AT.Misses += 1
+        decay()
+        if ACHAOTICDATA.Config.AutoSpamParry.AutoTune then
+            AT.CleanStreak = 0
+            AT.HitboxBonus = math.min(AT.HitboxBonus + HITBOX_STEP, HITBOX_MAX)
+            AT.LeadBonus = math.min(AT.LeadBonus + LEAD_STEP, LEAD_MAX)
+        end
+    end))
+end
+
 do 
     NeverZen:Track(ReplicatedStorage.Remotes.DeathBall.OnClientEvent:Connect(function(_, value)
         ACHAOTICDATA.Config.ParrySettings.Detections.DeathSlashBall.Flag = value
@@ -7812,7 +7921,8 @@ local function RefreshVM(deltaTime)
                 local vel = (zoom and zoom.VectorVelocity) or ball.AssemblyLinearVelocity
                 local speed = vel.Magnitude
                 local ping = ACHAOTICASSETS.ServerStatsItem["Data Ping"]:GetValue()
-                local mult = ACHAOTICDATA.Config.AutoSpamParry.HitboxMultiplier or 1.5
+                local mult = (ACHAOTICDATA.Config.AutoSpamParry.HitboxMultiplier or 1.5)
+                    + (ACHAOTICDATA.Config.AutoSpamParry.AutoTune and ACHAOTICDATA.Global.AutoTune.HitboxBonus or 0)
                 local reach = GetHitboxRadius(speed, ping) * mult
                 local dist = (root.Position - ball.Position).Magnitude
                 local reachMs = speed > 0 and (dist / speed) * 1000 or 0
@@ -7823,14 +7933,22 @@ local function RefreshVM(deltaTime)
                 UI.GameDataPing:SetValue(string.format("Ping: %d ms", math.floor(ping)))
                 local aimed = ball:GetAttribute('target') == tostring(ACHAOTICDATA.Player.LocalPlayer)
                 UI.GameDataTarget:SetValue("Aimed at You: " .. (aimed and "YES" or "no"))
+                UI.GameDataCombo:SetValue(string.format("Combo: %d", math.floor(ball:GetAttribute("ComboCounter") or 0)))
             else
                 UI.GameDataSpeed:SetValue("Ball Speed: 0")
                 UI.GameDataHitbox:SetValue("Hitbox Range: 0")
                 UI.GameDataDist:SetValue("Dist to Ball: 0")
                 UI.GameDataReach:SetValue("Reach Time: 0 ms")
                 UI.GameDataTarget:SetValue("Aimed at You: -")
+                UI.GameDataCombo:SetValue("Combo: 0")
                 UI.GameDataPing:SetValue(string.format("Ping: %d ms", math.floor(ACHAOTICASSETS.ServerStatsItem["Data Ping"]:GetValue())))
             end
+            -- Hit-rate + current self-tune offset (works whether or not a ball is
+            -- present, and whether or not Auto-Tune is on).
+            local AT = ACHAOTICDATA.Global.AutoTune
+            local total = AT.Hits + AT.Misses
+            local rateTxt = total > 0 and string.format("%d%%", math.floor(AT.Hits / total * 100 + 0.5)) or "-"
+            UI.GameDataHitRate:SetValue(string.format("Hit Rate: %s (tune +%.2f)", rateTxt, AT.HitboxBonus))
         end)
     end
 
