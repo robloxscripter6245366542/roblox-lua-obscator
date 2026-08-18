@@ -4340,7 +4340,8 @@ local ACHAOTICDATA = {
             UI = false,
             Keybind = nil,
             AnimationFix = false,
-            SpamRPS = 550
+            SpamRPS = 550,
+            AntiBreakDelay = 0.35
         },
         TriggerBot = {
             Enabled = false,
@@ -5988,6 +5989,21 @@ do
                 ACHAOTICDATA.Config.ManualSpamParry.SpamRPS = value
             end,
         })
+
+        -- Pause after each parry so the block isn't over-parried into a break.
+        -- Raise this until spam stops breaking your shield; lower it for faster
+        -- clash re-parries. 0 = off (old behaviour).
+        ManualSpamParrySection:AddSlider({
+            Name = "Anti-Break Delay",
+            Min = 0,
+            Max = 1,
+            Round = 2,
+            Default = ACHAOTICDATA.Config.ManualSpamParry.AntiBreakDelay,
+            Type = "s",
+            Callback = function(value)
+                ACHAOTICDATA.Config.ManualSpamParry.AntiBreakDelay = value
+            end,
+        })
     end
 
     do
@@ -7595,7 +7611,10 @@ local SpamReadyAt = 0
 NeverZen:Track(ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(...)
     local args = { ... }
     if tostring(args[4]) == ACHAOTICDATA.Player.LocalPlayer.Name then
-        SpamReadyAt = os.clock() + 0.15
+        -- Back off for the block's cooldown after a parry so it isn't over-parried
+        -- into a break. Must be >= the game's real block cooldown to fully prevent
+        -- breaks, so it's tunable (Manual Spam > Anti-Break Delay).
+        SpamReadyAt = os.clock() + (ACHAOTICDATA.Config.ManualSpamParry.AntiBreakDelay or 0.35)
     end
 end))
 local function SpamCanFire()
