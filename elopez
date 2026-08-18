@@ -7573,6 +7573,25 @@ local function RefreshVM(deltaTime)
     end
 end
 
+-- Anti-block-break for the spam loop. Hammering the parry while the block is
+-- broken (the character's "Stunned" attribute) or still on its short post-parry
+-- cooldown is what over-drains the block, breaks the shield, and leaves spam
+-- doing nothing. So: never fire while stunned (let it recover), and back off for
+-- a brief window right after a successful parry so the block isn't over-parried.
+local SpamReadyAt = 0
+NeverZen:Track(ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(...)
+    local args = { ... }
+    if tostring(args[4]) == ACHAOTICDATA.Player.LocalPlayer.Name then
+        SpamReadyAt = os.clock() + 0.15
+    end
+end))
+local function SpamCanFire()
+    if os.clock() < SpamReadyAt then return false end
+    local char = GetCharacter()
+    if char and char:GetAttribute("Stunned") then return false end
+    return true
+end
+
 local RequestSpamParry = function()
     do
         Debug.Spamming.RepeatedAmount += 1
@@ -7583,7 +7602,8 @@ local RequestSpamParry = function()
             Debug.Spamming.RepeatedAmount = 0
         end
     end
-    if ACHAOTICDATA.Config.AutoSpamParry.Spamming or ACHAOTICDATA.Config.ManualSpamParry.Spamming then  
+    if ACHAOTICDATA.Config.AutoSpamParry.Spamming or ACHAOTICDATA.Config.ManualSpamParry.Spamming then
+        if not SpamCanFire() then return end
         FireParry()
         if ((ACHAOTICDATA.Config.AutoSpamParry.AnimationFix and ACHAOTICDATA.Config.AutoSpamParry.Spamming) or (ACHAOTICDATA.Config.ManualSpamParry.AnimationFix and ACHAOTICDATA.Config.ManualSpamParry.Spamming)) and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
             SpamParry_Animation()
