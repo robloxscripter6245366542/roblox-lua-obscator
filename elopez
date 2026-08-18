@@ -4333,7 +4333,11 @@ local ACHAOTICDATA = {
             DetectionMode = "Speed",
             AnimationFix = false,
             Spamming = false,
-            Threshold = 3
+            Threshold = 3,
+            -- Multiplier applied to the ball-distance hitbox (was a hardcoded
+            -- 1.5). Exposed as a slider so the parry range can be widened for
+            -- high ping / fast balls or tightened for precision, live in-game.
+            HitboxMultiplier = 1.5
         },
         ManualSpamParry = {
             Spamming = false,
@@ -5233,6 +5237,29 @@ local function GetLinear_Interpolation(a, b, time_volume)
     return a + (b - a) * time_volume
 end
 
+-- Dynamic hitbox radius from the REAL ball speed + ping, factored out of the
+-- parry compute so the on-screen Game Data readout shows the exact same number
+-- the parry uses. Behaviour is byte-identical to the old inline block.
+local function GetHitboxRadius(BallSpeed, Ping)
+    local PingFactor = Ping / 500
+    if Ping <= 0 or Ping >= 130 then
+        if Ping <= 131 or Ping >= 160 then
+            if Ping <= 161 or Ping >= 225 then
+                if Ping > 226 and Ping < 500 then
+                    return math.clamp(math.floor(math.max(BallSpeed / 4 + PingFactor, 32.5)), 32.5, 80)
+                end
+            else
+                return math.clamp(math.floor(math.max(BallSpeed / 4.25 + PingFactor, 29.5)), 29.5, 70)
+            end
+        else
+            return math.clamp(math.floor(math.max(BallSpeed / 4.65 + PingFactor, 27.25)), 27.25, 70)
+        end
+    else
+        return math.clamp(math.floor(math.max(BallSpeed / 5 + PingFactor, 26)), 26, 70)
+    end
+    return 30.3
+end
+
 local function IsBall_Curved(Ball, Ping, char)
     if not Ball then
         return false
@@ -5490,34 +5517,22 @@ local function MainConnection()
                 end
                 
                 local Ping = ACHAOTICASSETS.ServerStatsItem["Data Ping"]:GetValue()
-                local PingFactor = Ping / 500
                 local BallSpeed = Zoomies.VectorVelocity.Magnitude
-                
-                local TargetCheck = 30.3
-                if Ping <= 0 or Ping >= 130 then
-                    if Ping <= 131 or Ping >= 160 then
-                        if Ping <= 161 or Ping >= 225 then
-                            if Ping > 226 and Ping < 500 then
-                                TargetCheck = math.clamp(math.floor(math.max(BallSpeed / 4 + PingFactor, 32.5)), 32.5, 80)
-                            end
-                        else
-                            TargetCheck = math.clamp(math.floor(math.max(BallSpeed / 4.25 + PingFactor, 29.5)), 29.5, 70)
-                        end
-                    else
-                        TargetCheck = math.clamp(math.floor(math.max(BallSpeed / 4.65 + PingFactor, 27.25)), 27.25, 70)
-                    end
-                else
-                    TargetCheck = math.clamp(math.floor(math.max(BallSpeed / 5 + PingFactor, 26)), 26, 70)
-                end
-                
+
+                local TargetCheck = GetHitboxRadius(BallSpeed, Ping)
+
                 local RootPos = Root.Position
                 local BallPos = Ball.Position
                 local TargetPos = Closest_Entity.PrimaryPart.Position
-                
+
                 local DistToBall = (RootPos - BallPos).Magnitude
                 local DistToTarget = (RootPos - TargetPos).Magnitude
-                
-                ACHAOTICDATA.Global.AutoSpamParryCurrentAccuracy = TargetCheck * 1.5
+
+                -- Adjustable parry range (default 1.5, matching the old constant).
+                local HitboxMult = ACHAOTICDATA.Config.AutoSpamParry.HitboxMultiplier or 1.5
+                local BallReach = TargetCheck * HitboxMult
+
+                ACHAOTICDATA.Global.AutoSpamParryCurrentAccuracy = BallReach
 
                 local SpamVaildation = false
                 if ACHAOTICDATA.Config.AutoSpamParry.DetectionMode == "Speed" then
@@ -5525,7 +5540,7 @@ local function MainConnection()
                 elseif ACHAOTICDATA.Config.AutoSpamParry.DetectionMode == "Distance" then
                     SpamVaildation = true
                 end
-                ACHAOTICDATA.Config.AutoSpamParry.Spamming =  DistToBall <= TargetCheck * 1.5 and DistToTarget <= TargetCheck and SpamVaildation
+                ACHAOTICDATA.Config.AutoSpamParry.Spamming =  DistToBall <= BallReach and DistToTarget <= TargetCheck and SpamVaildation
             end
         else
             ACHAOTICDATA.Config.AutoSpamParry.Spamming = false
@@ -6024,7 +6039,33 @@ do
                 ACHAOTICDATA.Config.AutoSpamParry.AnimationFix = value
             end,
         })
-    end 
+
+        AutoSpamParrySection:AddSlider({
+            Name = "Hitbox Range",
+            Min = 1,
+            Max = 3,
+            Round = 2,
+            Default = ACHAOTICDATA.Config.AutoSpamParry.HitboxMultiplier,
+            Type = "x",
+            Callback = function(value)
+                ACHAOTICDATA.Config.AutoSpamParry.HitboxMultiplier = value
+            end,
+        })
+
+        AutoSpamParrySection:AddDivider({
+            Color = Color3.fromRGB(50, 50, 50),
+            Height = 1
+        })
+
+        -- Live Game Data readout: the REAL fetched values the parry uses, so you
+        -- can see the ball velocity, computed hitbox radius, distance and reach
+        -- time as they update. Refreshed each frame in the stats loop.
+        UI.GameDataSpeed = AutoSpamParrySection:AddLabel("Ball Speed: 0")
+        UI.GameDataHitbox = AutoSpamParrySection:AddLabel("Hitbox Range: 0")
+        UI.GameDataDist = AutoSpamParrySection:AddLabel("Dist to Ball: 0")
+        UI.GameDataReach = AutoSpamParrySection:AddLabel("Reach Time: 0 ms")
+        UI.GameDataPing = AutoSpamParrySection:AddLabel("Ping: 0 ms")
+    end
     
     do
         UI.ManualSpamParryToggle = ManualSpamParrySection:AddToggle({
@@ -7655,6 +7696,38 @@ local function RefreshVM(deltaTime)
         end
         UI.BallStats.SpeedValue.Text = tostring(math.floor(BallSpeed))
         UI.BallStats.PeakSpeedValue.Text = tostring(math.floor(UI.BallStats.PeakSpeed))
+    end
+
+    -- Live Game Data readout: sample the REAL ball each frame (independent of
+    -- whether auto spam is currently firing) and show the exact values the parry
+    -- reasons about — velocity, dynamic hitbox radius, distance and reach time.
+    if UI.GameDataSpeed then
+        pcall(function()
+            local ball = Get_Balls()[1]
+            local char = GetCharacter()
+            local root = char and char.PrimaryPart
+            if ball and root then
+                local zoom = ball:FindFirstChild("zoomies")
+                local vel = (zoom and zoom.VectorVelocity) or ball.AssemblyLinearVelocity
+                local speed = vel.Magnitude
+                local ping = ACHAOTICASSETS.ServerStatsItem["Data Ping"]:GetValue()
+                local mult = ACHAOTICDATA.Config.AutoSpamParry.HitboxMultiplier or 1.5
+                local reach = GetHitboxRadius(speed, ping) * mult
+                local dist = (root.Position - ball.Position).Magnitude
+                local reachMs = speed > 0 and (dist / speed) * 1000 or 0
+                UI.GameDataSpeed:SetValue(string.format("Ball Speed: %d", math.floor(speed)))
+                UI.GameDataHitbox:SetValue(string.format("Hitbox Range: %.1f", reach))
+                UI.GameDataDist:SetValue(string.format("Dist to Ball: %d", math.floor(dist)))
+                UI.GameDataReach:SetValue(string.format("Reach Time: %d ms", math.floor(reachMs)))
+                UI.GameDataPing:SetValue(string.format("Ping: %d ms", math.floor(ping)))
+            else
+                UI.GameDataSpeed:SetValue("Ball Speed: 0")
+                UI.GameDataHitbox:SetValue("Hitbox Range: 0")
+                UI.GameDataDist:SetValue("Dist to Ball: 0")
+                UI.GameDataReach:SetValue("Reach Time: 0 ms")
+                UI.GameDataPing:SetValue(string.format("Ping: %d ms", math.floor(ACHAOTICASSETS.ServerStatsItem["Data Ping"]:GetValue())))
+            end
+        end)
     end
 
     if ACHAOTICDATA.Config.ClientStats.Enabled then
