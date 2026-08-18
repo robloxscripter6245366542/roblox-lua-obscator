@@ -1,83 +1,77 @@
 --!nocheck
 -- ============================================================================
---  Blade Ball spam anti-break — offline simulation
+--  Blade Ball spam gate — offline simulation
 --
---  Models the block-break mechanic and runs the REAL gate logic from elopez
---  through it. The shipped gate is AUTOMATIC + self-adapting: after each parry it
---  backs off for the block cooldown, widens the backoff if the block ever breaks,
---  and slowly narrows it when stable. This sim confirms it converges to 0% broken
---  for ANY block cooldown (i.e. "toggle forever, never breaks") with no tuning.
---  Pure logic, no Roblox — numbers are estimates, the CONVERGENCE is the point.
+--  Models the block/guard mechanic and runs the REAL shipped gate through it.
+--  The shipped gate is deliberately simple: fire at the FULL configured rate,
+--  and the only thing that ever holds fire is the block ACTUALLY being broken
+--  (the character's "Stunned" attribute). While Stunned we pause; the instant it
+--  clears we resume. No artificial rate cap — so spam actually spams.
+--
+--  The failure players actually hit is a shield that STAYS broken: once the
+--  guard is stunned (a heavy hit / clash you couldn't parry in time),
+--  CONTINUING to hammer the parry re-arms the stun every frame, so it never
+--  recovers. Stopping the feed while broken is what lets it heal. This sim
+--  drives a periodic external break event through both gates and measures how
+--  long the shield sits broken:
+--    • "none"    — old behaviour: keep firing, stun gets re-armed -> stuck.
+--    • "stunned" — shipped: hold fire while broken -> heals in one STUN window.
+--
+--  NOTE ON RATE: firing at the full rate is safe *here* because a clean parry
+--  is what consumes an incoming ball. What this sim does NOT claim is that raw
+--  idle hammering with no ball can never trigger a break — if the guard has a
+--  stamina cost, a high enough idle rate can, and the only cures are a lower
+--  rate or firing only on real balls. The gate's job is the STUCK case above.
+--  Pure logic, no Roblox — the SHAPE (stuck vs self-healing) is the point.
 -- ============================================================================
 
-local STUN = 1.5
-local OVER_DRAIN = 22
-local PARRY_DRAIN = 4
-local REGEN = 60
+local STUN = 1.2            -- broken window once a break lands
+local BREAK_EVERY = 6       -- an unavoidable external break arrives this often
 local DT = 1 / 60
-local DURATION = 40                 -- long run so adaptation can settle
+local DURATION = 48
 
-local SPAM_BACKOFF_MAX = 0.80
-
-local function run(rate, blockCD)
-    local now, acc, stam = 0, 0, 100
-    local stunned, stunUntil, blockReadyAt, backoffUntil = false, 0, 0, 0
-    -- adaptive state (mirrors elopez)
-    local backoff, wasStunned = 0.45, false
-    local parries, brokenTime, breaks = 0, 0, 0
+local function run(rate, gate)
+    local now, acc = 0, 0
+    local stunned, stunUntil, nextBreak = false, 0, BREAK_EVERY
+    local brokenTime = 0
 
     local function canFire()
-        if stunned then
-            if not wasStunned then
-                wasStunned = true
-                backoff = math.min(backoff + 0.1, SPAM_BACKOFF_MAX)
-            end
-            return false
-        end
-        wasStunned = false
-        if now < backoffUntil then return false end
+        if gate == "stunned" and stunned then return false end
         return true
     end
 
     local function fire()
         if not canFire() then return end
-        -- Per-fire rate limit: EVERY fire arms the backoff (mirrors the shipped
-        -- RequestSpamParry, which sets SpamReadyAt right after FireParry). This
-        -- is what caps the press rate during a clash, before any landed-parry
-        -- confirmation comes back.
-        backoffUntil = now + backoff
-        if now < blockReadyAt then
-            stam = stam - OVER_DRAIN
-            if stam <= 0 then stunned = true; stunUntil = now + STUN; breaks = breaks + 1 end
-        else
-            parries = parries + 1
-            stam = math.min(100, stam - PARRY_DRAIN)
-            blockReadyAt = now + blockCD
+        if stunned then
+            stunUntil = now + STUN   -- feeding a broken guard re-arms the stun
         end
     end
 
-    -- track broken time only in the SECOND half, after adaptation settles
     for _ = 1, math.floor(DURATION / DT) do
         now = now + DT
+        if now >= nextBreak then      -- external break we didn't stop in time
+            stunned = true
+            stunUntil = now + STUN
+            nextBreak = now + BREAK_EVERY
+        end
         if stunned then
-            if now > DURATION / 2 then brokenTime = brokenTime + DT end
-            if now >= stunUntil then stunned = false; stam = 100 end
-        else
-            stam = math.min(100, stam + REGEN * DT)
+            brokenTime = brokenTime + DT
+            if now >= stunUntil then stunned = false end
         end
         acc = acc + DT
         local n = math.floor(acc * rate)
         if n > 0 then acc = acc - n / rate; for _ = 1, n do fire() end end
     end
-    return math.floor(brokenTime / (DURATION / 2) * 100 + 0.5), parries, breaks, backoff
+    return math.floor(brokenTime / DURATION * 100 + 0.5)
 end
 
-print("Adaptive anti-break — steady-state broken% over a 40s hold at 1000 rps")
-print(("%-9s | %-12s %-10s %-10s %s"):format("blockCD", "broken%(2nd half)", "parries", "breaks", "settled backoff"))
-print(("-"):rep(66))
-for _, cd in ipairs({ 0.15, 0.25, 0.35, 0.45, 0.60, 0.75 }) do
-    local broken, parries, breaks, bo = run(1000, cd)
-    print(("%-9.2f | %-14d%% %-10d %-10d %.2fs"):format(cd, broken, parries, breaks, bo))
-end
-print(("-"):rep(66))
-print("steady-state broken% should be 0 for every cooldown = never breaks once settled")
+print("Stuck-shield test — periodic external break, 1000 rps, broken% (lower=better)")
+print(("%-14s %-14s"):format("gate: none", "gate: stunned"))
+print(("-"):rep(30))
+local none = run(1000, "none")
+local stun = run(1000, "stunned")
+print(("%-14s %-14s"):format(none .. "%", stun .. "%"))
+print(("-"):rep(30))
+print("Without the gate the shield is hammered stuck (~always broken).")
+print("The shipped Stunned gate lets each break heal in one STUN window,")
+print("while still firing at the full spam rate the rest of the time.")

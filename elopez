@@ -7607,43 +7607,19 @@ local function RefreshVM(deltaTime)
     end
 end
 
--- Anti-block-break for the spam loop, fully automatic (no tuning). Hammering the
--- parry while the block is broken (the character's "Stunned" attribute) or still
--- on its cooldown is what over-drains the block, breaks the shield and leaves
--- spam doing nothing. So after EVERY fire (see RequestSpamParry) we back off for
--- the block's cooldown, which caps the effective press rate no matter how high
--- the spam rate is set. The backoff also SELF-ADAPTS: if the block ever breaks
--- anyway we widen it a touch (so it can't break again) and it only ever grows,
--- so once it stops breaking it stays that way — no re-probing, no periodic
--- breaks. Net: toggle spam at any rate and hold it forever — the shield never
--- breaks.
-local SpamReadyAt = 0
-local SpamBackoff = 0.45            -- seconds after each parry; safe for a normal
-                                   -- block cooldown, and only ever GROWS (never
-                                   -- shrinks) so once it stops breaking it stays
-                                   -- that way — no re-probing, no periodic breaks.
-local SPAM_BACKOFF_MAX = 0.80
-local SpamWasStunned = false
-NeverZen:Track(ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(...)
-    local args = { ... }
-    if tostring(args[4]) == ACHAOTICDATA.Player.LocalPlayer.Name then
-        SpamReadyAt = os.clock() + SpamBackoff
-    end
-end))
+-- Anti-block-break for the spam loop. The ONLY thing that stalls the shield is
+-- feeding the parry while the block is actually broken — the character's
+-- "Stunned" attribute. While that's set the game ignores parries anyway, and
+-- hammering it just keeps it broken, so we hold fire until it clears and then
+-- resume immediately. There is NO artificial rate cap: spam fires as fast as the
+-- RPS slider asks (Auto or Manual). It only pauses during the brief broken
+-- window and recovers the instant the block is back — so it actually spams, and
+-- a break (if the game ever forces one) self-heals right away instead of sticking.
 local function SpamCanFire()
     local char = GetCharacter()
-    local stunned = char and char:GetAttribute("Stunned")
-    if stunned then
-        if not SpamWasStunned then
-            -- Block broke -> we're a hair too aggressive; widen the backoff so it
-            -- won't break again. Grow-only, so it settles and stays broken-free.
-            SpamWasStunned = true
-            SpamBackoff = math.min(SpamBackoff + 0.1, SPAM_BACKOFF_MAX)
-        end
-        return false                                   -- never hammer a broken block
+    if char and char:GetAttribute("Stunned") then
+        return false                                   -- block broken: let it recover
     end
-    SpamWasStunned = false
-    if os.clock() < SpamReadyAt then return false end
     return true
 end
 
@@ -7660,13 +7636,6 @@ local RequestSpamParry = function()
     if ACHAOTICDATA.Config.AutoSpamParry.Spamming or ACHAOTICDATA.Config.ManualSpamParry.Spamming then
         if not SpamCanFire() then return end
         FireParry()
-        -- Rate-limit EVERY fire to the block's safe cadence, not just landed
-        -- parries. During a clash the ParrySuccessAll confirmation lags behind
-        -- the spam, so relying on it alone let the loop press the block many
-        -- times per cooldown and over-drain it (shield/hitbox break). Setting
-        -- the backoff here means the block is never pressed faster than it can
-        -- recover, at any spam rate, whether Auto or Manual spam is driving it.
-        SpamReadyAt = os.clock() + SpamBackoff
         if ((ACHAOTICDATA.Config.AutoSpamParry.AnimationFix and ACHAOTICDATA.Config.AutoSpamParry.Spamming) or (ACHAOTICDATA.Config.ManualSpamParry.AnimationFix and ACHAOTICDATA.Config.ManualSpamParry.Spamming)) and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
             SpamParry_Animation()
         end
