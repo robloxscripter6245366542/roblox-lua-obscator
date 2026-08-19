@@ -3346,7 +3346,11 @@ do
 
                                 x:Play()
 
-                                x.Completed:Connect(function()
+                                -- :Once, not :Connect — a fresh Completed handler
+                                -- was being connected on every checkmark animation
+                                -- and never disconnected, slowly leaking connections
+                                -- each time a dropdown option was toggled.
+                                x.Completed:Once(function()
                                     Icon.Rotation = 0
                                 end)
                             end;
@@ -4542,6 +4546,9 @@ end
 -- ===================================================================
 
 local TriggerBotParried = false
+-- Per-ball "target changed" hooks for the trigger bot, connected ONCE per ball
+-- (not every frame — that leaked a connection per frame). Cleared on ball removal.
+local TriggerBotHooks = {}
 
 local Visuals = {
     VisualisersEnabled = false,
@@ -5350,10 +5357,10 @@ local function MainConnection()
                     continue
                 end
 
-                Ball:GetAttributeChangedSignal('target'):Once(function()
-                    ACHAOTICDATA.Global.AutoParryParried = false
-                end)
-
+                -- (The per-ball TargetConn created above already resets
+                -- AutoParryParried when this ball's target changes. The extra
+                -- :Once that used to be connected here every frame was redundant
+                -- and leaked a connection per frame per ball — removed.)
                 if ACHAOTICDATA.Global.AutoParryParried then
                     continue
                 end
@@ -5481,11 +5488,15 @@ local function MainConnection()
         end
 
         if ACHAOTICDATA.Config.AutoSpamParry.Enabled then
+            -- Accumulate across ALL balls: spam if ANY qualifying ball warrants
+            -- it. The decision used to be written per-ball (last ball won), so a
+            -- second/farther ball could cancel spam for a close one, and a fully
+            -- filtered list left the flag stale. OR it instead, commit once after.
+            local ShouldSpam = false
             for _, Ball in pairs(BallsList) do
                 local Zoomies = Ball:FindFirstChild('zoomies')
                 if not Zoomies then
-                    ACHAOTICDATA.Config.AutoSpamParry.Spamming = false
-                    return
+                    continue
                 end
 
                 -- Smart ball-state filter: skip a ball that can't/shouldn't be
@@ -5586,8 +5597,11 @@ local function MainConnection()
                     ImpactValidation = Closing > 0 and TimeToImpact <= Lead
                 end
 
-                ACHAOTICDATA.Config.AutoSpamParry.Spamming =  DistToBall <= BallReach and DistToTarget <= TargetCheck and SpamVaildation and TargetValidation and ImpactValidation
+                if DistToBall <= BallReach and DistToTarget <= TargetCheck and SpamVaildation and TargetValidation and ImpactValidation then
+                    ShouldSpam = true
+                end
             end
+            ACHAOTICDATA.Config.AutoSpamParry.Spamming = ShouldSpam
         else
             ACHAOTICDATA.Config.AutoSpamParry.Spamming = false
             ACHAOTICDATA.Global.AutoSpamParryCurrentAccuracy = 0
@@ -5597,14 +5611,22 @@ local function MainConnection()
             for _, Ball in pairs(BallsList) do
                 if not Ball then continue end
 
-                Ball:GetAttributeChangedSignal('target'):Once(function()
-                    TriggerBotParried = false
-                end)
+                -- Reset the parried flag when THIS ball's target changes. Connect
+                -- once per ball and remember it, instead of adding a fresh :Once
+                -- every frame (which leaked hundreds of connections per ball).
+                if not TriggerBotHooks[Ball] then
+                    TriggerBotHooks[Ball] = Ball:GetAttributeChangedSignal('target'):Connect(function()
+                        TriggerBotParried = false
+                    end)
+                end
 
                 if TriggerBotParried then continue end
 
                 local Ball_Target = Ball:GetAttribute('target')
-                local Singularity_Cape = ACHAOTICDATA.Player.LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape')
+                local char = GetCharacter()
+                local root = char and char.PrimaryPart
+                if not root then continue end
+                local Singularity_Cape = root:FindFirstChild('SingularityCape')
 
                 if Singularity_Cape then continue end
                 if ACHAOTICDATA.Config.TriggerBot.InfinityDetection and ACHAOTICDATA.Config.ParrySettings.Detections.InfinityBall.Flag then continue end
@@ -5640,6 +5662,10 @@ NeverZen:Track(ACHAOTICDATA.Balls.ChildRemoved:Connect(function(Child)
         Visuals.HitEffectService.BallEffects[Child] = nil
     end
     SpamCurveState[Child] = nil
+    if TriggerBotHooks[Child] then
+        TriggerBotHooks[Child]:Disconnect()
+        TriggerBotHooks[Child] = nil
+    end
     ACHAOTICDATA.Global.Parries = 0
     ACHAOTICDATA.Config.Animation.SpamAnimationParries = 0
     ACHAOTICDATA.Config.AutoSpamParry.Spamming = false
