@@ -5511,6 +5511,25 @@ local function MainConnection()
                     end
                 end
 
+                -- Advanced detection: one smart mode that layers the real game
+                -- signals (aimed-at-you + inbound + predicted impact + curve) and
+                -- honours the game's special-ball flags, instead of the crude
+                -- Speed/Distance triggers. Individual toggles still work on their
+                -- own; Advanced just forces the good ones on together.
+                local AdvancedMode = ACHAOTICDATA.Config.AutoSpamParry.DetectionMode == "Advanced"
+                if AdvancedMode then
+                    -- During an Infinity / Death-Slash / Time-Hole event (flagged
+                    -- by the game's own remotes) those balls need dedicated timing,
+                    -- not blind spam — skip them when their detection is enabled,
+                    -- same as the lobby parry.
+                    local D = ACHAOTICDATA.Config.ParrySettings.Detections
+                    if (D.InfinityBall.Enabled and D.InfinityBall.Flag)
+                        or (D.DeathSlashBall.Enabled and D.DeathSlashBall.Flag)
+                        or (D.TimeHole.Enabled and D.TimeHole.Flag) then
+                        continue
+                    end
+                end
+
                 local Closest_Entity, Closest_Distance = GetClosest_Player()
                 local Root = GetCharacter() and GetCharacter().PrimaryPart
                 
@@ -5556,7 +5575,7 @@ local function MainConnection()
                 -- frame-to-frame; a curving ball gets a wider reach so it still
                 -- lands as the path swings in.
                 local Curving = false
-                if ACHAOTICDATA.Config.AutoSpamParry.CurveAssist and Velocity.Magnitude > 0 then
+                if (ACHAOTICDATA.Config.AutoSpamParry.CurveAssist or AdvancedMode) and Velocity.Magnitude > 0 then
                     local unit = Velocity.Unit
                     local st = SpamCurveState[Ball]
                     if st and st.dir then
@@ -5577,21 +5596,22 @@ local function MainConnection()
                     SpamVaildation = ACHAOTICDATA.Global.Parries > 1
                 elseif ACHAOTICDATA.Config.AutoSpamParry.DetectionMode == "Distance" then
                     SpamVaildation = true
+                elseif AdvancedMode then
+                    -- Base pass; the aimed/inbound/impact gates below do the work.
+                    SpamVaildation = true
                 end
 
-                -- Optional precision gate: only spam when this ball is actually
-                -- targeting us (real replicated "target" attribute). Keeps spam off
-                -- balls that are just passing by / aimed at someone else.
+                -- Precision gate: only spam when this ball is actually targeting us
+                -- (real replicated "target" attribute). Forced on in Advanced mode.
                 local TargetValidation = true
-                if ACHAOTICDATA.Config.AutoSpamParry.TargetOnly then
+                if ACHAOTICDATA.Config.AutoSpamParry.TargetOnly or AdvancedMode then
                     TargetValidation = Ball:GetAttribute('target') == tostring(ACHAOTICDATA.Player.LocalPlayer)
                 end
 
-                -- Optional time-to-impact gate: fire only once the ball's arrival
-                -- is within ping + lead, so the parry lands as it hits rather than
-                -- on raw proximity.
+                -- Time-to-impact gate: fire only once the ball's arrival is within
+                -- ping + lead, so the parry lands as it hits. Forced on in Advanced.
                 local ImpactValidation = true
-                if ACHAOTICDATA.Config.AutoSpamParry.TimeToImpact then
+                if ACHAOTICDATA.Config.AutoSpamParry.TimeToImpact or AdvancedMode then
                     local LeadBonus = ACHAOTICDATA.Config.AutoSpamParry.AutoTune and ACHAOTICDATA.Global.AutoTune.LeadBonus or 0
                     local Lead = (Ping / 1000) + (ACHAOTICDATA.Config.AutoSpamParry.ImpactLead or 0.06) + LeadBonus
                     ImpactValidation = Closing > 0 and TimeToImpact <= Lead
@@ -6099,7 +6119,7 @@ do
         AutoSpamParrySection:AddDropdown({
             Name = "Detection Mode",
             Default = ACHAOTICDATA.Config.AutoSpamParry.DetectionMode,
-            Values = {"Distance", "Speed"},
+            Values = {"Distance", "Speed", "Advanced"},
             Callback = function(value)
                 ACHAOTICDATA.Config.AutoSpamParry.DetectionMode = value
             end,
