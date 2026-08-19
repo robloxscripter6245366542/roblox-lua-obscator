@@ -4441,7 +4441,7 @@ local ACHAOTICDATA = {
             ParryMethod = "Blatant",
             SlashesofFuryDetectionMaxParryCount = 36,
             SlashesofFuryDetectionParryDelay = 0.05,
-            SpammingRPS = 550,
+            SpammingRPS = 1000,
             ParryCurveDirection = "Camera",
             FastBallProtection = false,
             LobbyAutoParryAccuracy = 80,
@@ -6133,6 +6133,22 @@ do
             end,
         })
 
+        -- Auto-spam fire rate, right here where it's discoverable (it's the same
+        -- ParrySettings.SpammingRPS as the Settings > Target RPS slider). Default
+        -- is now 1000 to match manual spam — it used to default to 550, which is
+        -- why auto spam felt about half as fast.
+        AutoSpamParrySection:AddSlider({
+            Name = "Spam Rate",
+            Min = 60,
+            Max = 2000,
+            Round = 0,
+            Default = ACHAOTICDATA.Config.ParrySettings.SpammingRPS,
+            Type = " rps",
+            Callback = function(value)
+                ACHAOTICDATA.Config.ParrySettings.SpammingRPS = value
+            end,
+        })
+
         AutoSpamParrySection:AddSlider({
             Name = "Hitbox Range",
             Min = 1,
@@ -6705,8 +6721,8 @@ do
     SpammingSection:AddSlider({
         Name = "Target RPS",
         Min = 60,
-        Max = 1000,
-        Round = 1,
+        Max = 2000,
+        Round = 0,
         Default = ACHAOTICDATA.Config.ParrySettings.SpammingRPS,
         Type = " rps",
         Callback = function(value)
