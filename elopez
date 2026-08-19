@@ -65,6 +65,13 @@ local NeverZen = {
     Version = '8.5'
 };
 
+-- Executor compatibility: cloneref is a nice-to-have (hides the real service
+-- reference from detectors) but not every executor provides it. Fall back to an
+-- identity function so the hub runs everywhere — the services below then use the
+-- real reference, which works exactly the same. Prefer the loader's resolved
+-- helpers when present so we share the right ones for this executor.
+local cloneref = cloneref or (getgenv and getgenv().cloneref) or function(o) return o end
+
 local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
 local Players = cloneref(game:GetService("Players"))
 local Stats = cloneref(game:GetService("Stats"))

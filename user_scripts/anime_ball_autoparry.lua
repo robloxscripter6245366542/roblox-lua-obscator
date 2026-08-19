@@ -43,8 +43,29 @@ end
 -- the Blade Ball hub, titled "Leviathan — Anime Ball", instead of its own UI.
 -- The shim maps WindUI calls onto Leviathan and no-ops anything unmapped.
 local WINDUI_URL = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/user_scripts/leviathan_windui_shim.lua"
+-- Executor-agnostic fetch + loadstring: reuse the helpers the universal loader
+-- resolved for this executor when present, otherwise fall back through every
+-- common HttpGet / request entry point so this works on any executor.
+local _genv = (getgenv and getgenv()) or {}
+local function _httpGet(url)
+    if type(_genv.LeviathanHttpGet) == "function" then
+        local b = _genv.LeviathanHttpGet(url)
+        if type(b) == "string" and #b > 0 then return b end
+    end
+    local ok, body = pcall(function() return game:HttpGet(url, true) end)
+    if ok and type(body) == "string" and #body > 0 then return body end
+    local req = (syn and syn.request) or (http and http.request) or http_request or request
+        or (fluxus and fluxus.request) or _genv.request
+    if req then
+        local okr, r = pcall(req, { Url = url, Method = "GET" })
+        if okr and r and type(r.Body) == "string" then return r.Body end
+    end
+    return nil
+end
+local _loadstring = loadstring or _genv.loadstring
 local okWindUI, WindUI = pcall(function()
-    return loadstring(game:HttpGet(WINDUI_URL))()
+    local src = _httpGet(WINDUI_URL)
+    return src and _loadstring(src)()
 end)
 if not okWindUI or type(WindUI) ~= "table" then
     return warn("[AnimeBall] UI library failed to load: " .. tostring(WindUI))
