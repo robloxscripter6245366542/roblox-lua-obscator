@@ -8093,10 +8093,14 @@ local function SpamCanFire()
     if char and char:GetAttribute("Stunned") then
         return false                                   -- block broken: let it recover
     end
-    -- Match Block Window: while the game's block is still active (ParryTime hasn't
-    -- elapsed since the last parry), hold fire — re-parrying mid-window is wasted
-    -- and over-drains the block. We re-fire only once it's near expiry.
-    if ACHAOTICDATA.Config.AutoSpamParry.MatchBlockWindow and os.clock() < SpamBlockUntil then
+    -- Match Block Window: pace re-parries to the real block window (ParryTime) so
+    -- an IDLE hold doesn't over-fire and drain the block. Critically, this only
+    -- applies when NO ball is actually incoming — during a real clash the auto-
+    -- spam detector has flagged a near ball, and then we must fire on time to
+    -- block it, never hold. (Holding through a clash was why it "didn't block".)
+    if ACHAOTICDATA.Config.AutoSpamParry.MatchBlockWindow
+        and not ACHAOTICDATA.Config.AutoSpamParry.Spamming
+        and os.clock() < SpamBlockUntil then
         return false
     end
     return true
