@@ -77,6 +77,15 @@ local CONFIG = {
     Upload         = true,
     UploadUrl      = "https://0x0.st",
     UploadCap      = 25000000,   -- ~25 MB max to upload
+
+    -- Batch = N processes only N NEW scripts per run, then stops and tells
+    -- you to run again for the next batch. With Resume, progress is saved to
+    -- disk so each rerun continues where the last stopped and skips any
+    -- single script that hard-crashed. This is how you decompile a 27k-script
+    -- game on a phone: run it, run it again, again... a few times.
+    -- 0 = no batching (do everything in one run).
+    Batch          = 0,
+    Resume         = true,
 }
 -- ──────────────────────────────────────────────────────────
 
@@ -95,6 +104,7 @@ local setclipboard_fn = rawget(ENV, "setclipboard")      or setclipboard or tocl
 local writefile_fn    = rawget(ENV, "writefile")         or writefile
 local appendfile_fn   = rawget(ENV, "appendfile")        or appendfile
 local readfile_fn     = rawget(ENV, "readfile")          or readfile
+local isfile_fn       = rawget(ENV, "isfile")            or isfile
 local makefolder_fn   = rawget(ENV, "makefolder")        or makefolder
 local isfolder_fn     = rawget(ENV, "isfolder")          or isfolder
 local http_request_fn = (syn and syn.request) or (http and http.request)
@@ -288,85 +298,124 @@ local function run()
         pcall(setclipboard_fn, rtext)
     end
 
-    -- ── Combined "whole game code" file, streamed with appendfile ──
+    table.sort(scripts, function(a, b) return fullPath(a) < fullPath(b) end)
+
+    -- ── Resume state (for batching across runs) ──
+    -- _progress.txt = every script already dumped; _current.txt = the one we
+    -- were on when a native crash killed the client (so the next run skips it).
+    local progressPath = CONFIG.OutputFolder .. "/_progress.txt"
+    local currentPath  = CONFIG.OutputFolder .. "/_current.txt"
     local combinedPath = CONFIG.OutputFolder .. "/_ALL.txt"
-    local combinedBytes, combinedOK = 0, false
-    if CONFIG.CombinedFile and appendfile_fn then
-        combinedOK = pcall(writefile_fn, combinedPath,
-            ("-- Whole game code dump  |  %s (PlaceId %s)  |  %s\n\n")
-            :format(game.Name ~= "" and game.Name or "Game", tostring(game.PlaceId),
-                    os.date("!%Y-%m-%d %H:%M:%S UTC")))
+    local doneSet, doneCount, resuming = {}, 0, false
+    if CONFIG.Resume and readfile_fn then
+        pcall(function()
+            if isfile_fn and isfile_fn(progressPath) then
+                for line in (readfile_fn(progressPath) .. "\n"):gmatch("(.-)\n") do
+                    if line ~= "" and not doneSet[line] then doneSet[line] = true; doneCount = doneCount + 1 end
+                end
+            end
+        end)
+        pcall(function()
+            if isfile_fn and isfile_fn(currentPath) then
+                local c = readfile_fn(currentPath)
+                if c and c ~= "" then doneSet[c] = true; doneCount = doneCount + 1
+                    warn("[MobileDumper] Skipping script that crashed last run: " .. c) end
+            end
+        end)
+        resuming = doneCount > 0
     end
 
-    -- Writing tens of thousands of individual files (each in nested folders)
-    -- is what makes huge games look frozen ("does nothing") on a phone. So
-    -- per-script files are OFF by default: we stream everything into the one
-    -- combined _ALL.txt instead. If the executor lacks appendfile we have no
-    -- combined target, so we fall back to per-script files.
+    -- Combined file: on a FRESH run write the header; on a resume keep the
+    -- existing _ALL.txt and append to it.
+    local combinedOK = false
+    if CONFIG.CombinedFile and appendfile_fn then
+        if resuming and isfile_fn and isfile_fn(combinedPath) then
+            combinedOK = true
+        else
+            combinedOK = pcall(writefile_fn, combinedPath,
+                ("-- Whole game code dump  |  %s (PlaceId %s)  |  %s\n\n")
+                :format(game.Name ~= "" and game.Name or "Game", tostring(game.PlaceId),
+                        os.date("!%Y-%m-%d %H:%M:%S UTC")))
+        end
+    end
     local perFile = CONFIG.PerScriptFiles or not combinedOK
 
-    -- ── Scripts (streamed) ──
-    notify(("Dumping %d scripts%s..."):format(#scripts, perFile and " (per-file)" or " -> _ALL.txt"))
-    table.sort(scripts, function(a, b) return fullPath(a) < fullPath(b) end)
-    local index, got, skipped = {}, 0, 0
+    local function markCurrent(p) if CONFIG.Resume and writefile_fn then pcall(writefile_fn, currentPath, p) end end
+    local function clearCurrent() if CONFIG.Resume and writefile_fn then pcall(writefile_fn, currentPath, "") end end
+    local function markDone(p) if CONFIG.Resume and appendfile_fn then pcall(appendfile_fn, progressPath, p .. "\n") end end
+
+    -- ── Scripts (streamed, resumable, batched) ──
+    local batch = tonumber(CONFIG.Batch) or 0
+    notify(("Dumping %d scripts%s%s..."):format(#scripts,
+        resuming and (" (resuming, %d done)"):format(doneCount) or "",
+        batch > 0 and (" [batch %d]"):format(batch) or ""))
+    local got, skipped, thisRun, batchHit = 0, 0, 0, false
     for i, scr in ipairs(scripts) do
         local path = fullPath(scr)
-        local cn = "Script"; pcall(function() cn = scr.ClassName end)
-        local body, how = readScript(scr)
-        if body then got = got + 1 else skipped = skipped + 1 end
-        local block = ("-- %s  (%s)  [%s]\n\n%s"):format(path, cn, how, body or ("-- " .. how))
-        if perFile then pcall(writefile_fn, safePath(path), block) end
-        if combinedOK then
-            local chunk = "\n------------------------------------------------------------\n" .. block .. "\n"
-            if pcall(appendfile_fn, combinedPath, chunk) then combinedBytes = combinedBytes + #chunk end
+        if doneSet[path] then
+            -- already dumped in a previous run
+        elseif batch > 0 and thisRun >= batch then
+            batchHit = true
+            break                      -- stop; leave the rest for the next run
+        else
+            local cn = "Script"; pcall(function() cn = scr.ClassName end)
+            markCurrent(path)          -- record BEFORE the risky read/decompile
+            local body, how = readScript(scr)
+            clearCurrent()             -- survived it
+            if body then got = got + 1 else skipped = skipped + 1 end
+            local block = ("-- %s  (%s)  [%s]\n\n%s"):format(path, cn, how, body or ("-- " .. how))
+            if perFile then pcall(writefile_fn, safePath(path), block) end
+            if combinedOK then
+                pcall(appendfile_fn, combinedPath,
+                      "\n------------------------------------------------------------\n" .. block .. "\n")
+            end
+            markDone(path)
+            thisRun = thisRun + 1
+            body, block = nil, nil
+            if thisRun % CONFIG.YieldEvery == 0 then task.wait() end
+            if thisRun % 2000 == 0 then notify(("Dumping... %d this run (%d/%d total)"):format(thisRun, doneCount + thisRun, #scripts)) end
         end
-        index[#index + 1] = ("[%s] %s  (%s)"):format(how, path, cn)
-        body, block = nil, nil
-        if i % CONFIG.YieldEvery == 0 then task.wait() end
-        -- Progress ping so a long run never looks frozen.
-        if i % 2000 == 0 then notify(("Dumping... %d/%d"):format(i, #scripts)) end
     end
 
-    index[#index + 1] = ""
-    index[#index + 1] = ("Remotes: %d | Scripts: %d (read %d, skipped %d)")
-        :format(#remotes, #scripts, got, skipped)
-    pcall(writefile_fn, CONFIG.OutputFolder .. "/_index.txt", table.concat(index, "\n"))
+    local totalDone = doneCount + thisRun
+    pcall(writefile_fn, CONFIG.OutputFolder .. "/_index.txt",
+        ("Remotes: %d | Scripts total: %d | done: %d | this run: %d (read %d, skipped %d)%s")
+        :format(#remotes, #scripts, totalDone, thisRun, got, skipped,
+                batchHit and " | BATCH LIMIT HIT - run again for the next batch" or ""))
 
-    -- ── Copy the whole code to clipboard if it fits ──
-    if CONFIG.CopyCode and setclipboard_fn then
-        if combinedOK and combinedBytes <= CONFIG.ClipboardCap and readfile_fn then
-            local okR, all = pcall(readfile_fn, combinedPath)
-            if okR and type(all) == "string" then
+    -- ── Copy / upload the code, but ONLY once the whole game is done ──
+    -- (mid-batch there's no point copying a partial dump; run again first.)
+    if batchHit then
+        notify(("Batch done: %d/%d dumped. RUN IT AGAIN for the next %d."):format(totalDone, #scripts, batch))
+    elseif CONFIG.CopyCode and setclipboard_fn and combinedOK and readfile_fn then
+        -- Read the finished file ONCE and decide from its length.
+        local okR, all = pcall(readfile_fn, combinedPath)
+        if okR and type(all) == "string" then
+            if #all <= CONFIG.ClipboardCap then
                 if pcall(setclipboard_fn, (all:gsub("%z", "?"))) then
                     notify(("Copied ALL game code to clipboard! (%d chars)"):format(#all))
                 end
-            end
-        elseif combinedOK and combinedBytes > CONFIG.ClipboardCap then
-            -- Too big to copy: upload it and hand back a RAW LINK instead.
-            if CONFIG.Upload and readfile_fn and combinedBytes <= CONFIG.UploadCap then
-                notify(("Code too big to copy (%d bytes) - uploading for a raw link..."):format(combinedBytes))
-                local okR, all = pcall(readfile_fn, combinedPath)
-                if okR and type(all) == "string" then
-                    local url, uerr = uploadPaste(all)
-                    if url then
-                        pcall(setclipboard_fn, url)
-                        notify("Raw code link copied to clipboard: " .. url)
-                        print("[MobileDumper] Raw code link: " .. url)
-                    else
-                        notify("Upload failed (" .. tostring(uerr) .. ") - it's all in " .. CONFIG.OutputFolder .. "/_ALL.txt")
-                    end
+            elseif CONFIG.Upload and #all <= CONFIG.UploadCap then
+                notify(("Code too big to copy (%d bytes) - uploading for a raw link..."):format(#all))
+                local url, uerr = uploadPaste(all)
+                if url then
+                    pcall(setclipboard_fn, url)
+                    notify("Raw code link copied to clipboard: " .. url)
+                    print("[MobileDumper] Raw code link: " .. url)
+                else
+                    notify("Upload failed (" .. tostring(uerr) .. ") - it's all in " .. CONFIG.OutputFolder .. "/_ALL.txt")
                 end
             else
-                notify(("Code too big for clipboard/upload (%d bytes) - it's all in %s/_ALL.txt"):format(combinedBytes, CONFIG.OutputFolder))
+                notify(("Code too big for clipboard/upload (%d bytes) - it's all in %s/_ALL.txt"):format(#all, CONFIG.OutputFolder))
             end
-        elseif CONFIG.CombinedFile and not appendfile_fn then
-            notify("No appendfile on this executor - per-script files hold the code; no combined copy.")
         end
+    elseif not batchHit and CONFIG.CombinedFile and not appendfile_fn then
+        notify("No appendfile on this executor - per-script files hold the code.")
     end
 
-    notify(("Done. %d remotes, %d scripts -> /%s"):format(#remotes, #scripts, CONFIG.OutputFolder))
-    print(("[MobileDumper] Done. Remotes: %d | Scripts: %d (read %d, skipped %d). See /%s/_index.txt")
-        :format(#remotes, #scripts, got, skipped, CONFIG.OutputFolder))
+    notify(("Done this run. %d remotes, %d/%d scripts total -> /%s"):format(#remotes, totalDone, #scripts, CONFIG.OutputFolder))
+    print(("[MobileDumper] Done. Remotes: %d | this run: %d | total: %d/%d. See /%s/_index.txt")
+        :format(#remotes, thisRun, totalDone, #scripts, CONFIG.OutputFolder))
 end
 
 local ok, err = pcall(run)
