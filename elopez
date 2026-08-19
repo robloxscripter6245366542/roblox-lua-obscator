@@ -4347,12 +4347,7 @@ local ACHAOTICDATA = {
         LobbyAutoParry = {
             Enabled = false,
             AntiCurveEnabled = true,
-            AnimationFix = false,
-            -- Match Block Window: pace the lobby parry's post-parry cooldown to the
-            -- game's REAL block window (the character's "ParryTime" attribute)
-            -- instead of the fixed 1-second wait, so it re-parries exactly as the
-            -- block expires. Best with Animation Fix on (that's what sets it).
-            MatchBlockWindow = false
+            AnimationFix = false
         },
         AutoSpamParry = {
             Enabled = false,
@@ -4379,13 +4374,6 @@ local ACHAOTICDATA = {
             -- direction is bending, so a curving ball still gets parried as its
             -- path swings in. Off by default.
             CurveAssist = false,
-            -- Match Block Window: pace parries to the game's REAL block window —
-            -- the character's "ParryTime" attribute (your block/parry active-window
-            -- length). Re-fire just before the window expires so the block is
-            -- continuously up, never over-fired (which breaks it), never gapped.
-            -- Precise (fires ~once per window), not high-rps; best with Animation
-            -- Fix on, since ParryTime is set by the parry animation. Off by default.
-            MatchBlockWindow = false,
             -- Smart ball-state filter: skip balls that can't or shouldn't be
             -- parried — Frozen balls (unparryable right now) and doppelganger /
             -- encrypted-clone decoys (fake balls). On by default: it only ever
@@ -5504,19 +5492,10 @@ local function MainConnection()
                     ACHAOTICDATA.Parry[Ball].LobbyLastParry = Parry_Time
                     ACHAOTICDATA.Parry[Ball].LobbyParried = true
                 end
-                -- Post-parry block window: normally a fixed 1s cooldown, but when
-                -- Match Block Window is on, use the game's real ParryTime (the block
-                -- active-window length) so it re-parries right as the block expires.
-                local BlockWindow = 1
-                if ACHAOTICDATA.Config.LobbyAutoParry.MatchBlockWindow then
-                    local mchar = GetCharacter()
-                    local pt = (mchar and mchar:GetAttribute("ParryTime")) or 0
-                    if pt > 0 then BlockWindow = pt end
-                end
                 local Last_Parrys = tick()
                 repeat
                     RunService.PreSimulation:Wait()
-                until (tick() - Last_Parrys) >= BlockWindow or not ACHAOTICDATA.Parry[Ball].LobbyParried
+                until (tick() - Last_Parrys) >= 1 or not ACHAOTICDATA.Parry[Ball].LobbyParried
                 ACHAOTICDATA.Parry[Ball].LobbyParried = false
             end
         end
@@ -6143,14 +6122,6 @@ do
                 ACHAOTICDATA.Config.LobbyAutoParry.AnimationFix = value
             end,
         })
-
-        LobbyAutoParrySection:AddToggle({
-            Name = 'Match Block Window (ParryTime)',
-            Default = ACHAOTICDATA.Config.LobbyAutoParry.MatchBlockWindow,
-            Callback = function(value)
-                ACHAOTICDATA.Config.LobbyAutoParry.MatchBlockWindow = value
-            end,
-        })
     end
     
     do
@@ -6240,14 +6211,6 @@ do
             Default = ACHAOTICDATA.Config.AutoSpamParry.CurveAssist,
             Callback = function(value)
                 ACHAOTICDATA.Config.AutoSpamParry.CurveAssist = value
-            end,
-        })
-
-        AutoSpamParrySection:AddToggle({
-            Name = 'Match Block Window (ParryTime)',
-            Default = ACHAOTICDATA.Config.AutoSpamParry.MatchBlockWindow,
-            Callback = function(value)
-                ACHAOTICDATA.Config.AutoSpamParry.MatchBlockWindow = value
             end,
         })
 
@@ -8102,23 +8065,10 @@ end
 -- RPS slider asks (Auto or Manual). It only pauses during the brief broken
 -- window and recovers the instant the block is back — so it actually spams, and
 -- a break (if the game ever forces one) self-heals right away instead of sticking.
--- End (os.clock) of the current block window when Match Block Window is on.
-local SpamBlockUntil = 0
-
 local function SpamCanFire()
     local char = GetCharacter()
     if char and char:GetAttribute("Stunned") then
         return false                                   -- block broken: let it recover
-    end
-    -- Match Block Window: pace re-parries to the real block window (ParryTime) so
-    -- an IDLE hold doesn't over-fire and drain the block. Critically, this only
-    -- applies when NO ball is actually incoming — during a real clash the auto-
-    -- spam detector has flagged a near ball, and then we must fire on time to
-    -- block it, never hold. (Holding through a clash was why it "didn't block".)
-    if ACHAOTICDATA.Config.AutoSpamParry.MatchBlockWindow
-        and not ACHAOTICDATA.Config.AutoSpamParry.Spamming
-        and os.clock() < SpamBlockUntil then
-        return false
     end
     return true
 end
@@ -8136,16 +8086,6 @@ local RequestSpamParry = function()
     if ACHAOTICDATA.Config.AutoSpamParry.Spamming or ACHAOTICDATA.Config.ManualSpamParry.Spamming then
         if not SpamCanFire() then return end
         FireParry()
-        -- Arm the next fire to the real block window: after a parry the game keeps
-        -- the block up for ParryTime seconds; re-fire at ~90% of that so it re-
-        -- blocks just as the window ends. Falls back to a safe 0.4s if the game
-        -- hasn't set ParryTime yet (e.g. Animation Fix off).
-        if ACHAOTICDATA.Config.AutoSpamParry.MatchBlockWindow then
-            local char = GetCharacter()
-            local pt = (char and char:GetAttribute("ParryTime")) or 0
-            if pt <= 0 then pt = 0.4 end
-            SpamBlockUntil = os.clock() + pt * 0.9
-        end
         if ((ACHAOTICDATA.Config.AutoSpamParry.AnimationFix and ACHAOTICDATA.Config.AutoSpamParry.Spamming) or (ACHAOTICDATA.Config.ManualSpamParry.AnimationFix and ACHAOTICDATA.Config.ManualSpamParry.Spamming)) and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
             SpamParry_Animation()
         end
