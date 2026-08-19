@@ -4581,20 +4581,10 @@ local SkinChanger = {
         SwordFX = {
             Enabled = true,
             FXName = ""
-        },
-        -- Server equip: ask the game to actually equip the sold sword on the
-        -- server so EVERY player sees it (the game replicates the equipped sword
-        -- through the server-set "CurrentlyEquippedSword" player attribute). The
-        -- server validates ownership, so this only replicates swords you OWN;
-        -- for anything else it silently no-ops and the local-only visual applies.
-        -- Off by default because it's a real server action, not a local visual.
-        ServerEquip = {
-            Enabled = false
         }
     },
     System = {
         SlashName = "SlashEffect",
-        EquipSwordRemote = nil,
         parrySuccessAllConnection = nil,
         parrySuccessClientConnection = nil,
         playParryFunc = nil,
@@ -4869,55 +4859,6 @@ do
         return (swordData and swordData.SlashName) or "SlashEffect"
     end
 
-    -- Resolve the game's real server-side equip remote (RF/RequestEquipSword)
-    -- version-agnostically: the sleitnick_net package name/version can change, so
-    -- scan for a RemoteFunction whose name ends in "RequestEquipSword" rather than
-    -- hardcoding the _Index path. Cached once found.
-    SkinChanger.System.functions.resolveEquipRemote = function()
-        local cached = SkinChanger.System.EquipSwordRemote
-        if typeof(cached) == "Instance" and cached.Parent then
-            return cached
-        end
-        local remote
-        pcall(function()
-            local net = ReplicatedStorage:FindFirstChild("Packages")
-            net = net and net:FindFirstChild("_Index")
-            if net then
-                for _, pkg in ipairs(net:GetChildren()) do
-                    if pkg.Name:lower():find("sleitnick_net") then
-                        local netFolder = pkg:FindFirstChild("net")
-                        local r = netFolder and netFolder:FindFirstChild("RF/RequestEquipSword")
-                        if r then remote = r break end
-                    end
-                end
-            end
-            if not remote then
-                for _, d in ipairs(ReplicatedStorage:GetDescendants()) do
-                    if d:IsA("RemoteFunction") and d.Name:find("RequestEquipSword") then
-                        remote = d
-                        break
-                    end
-                end
-            end
-        end)
-        SkinChanger.System.EquipSwordRemote = remote
-        return remote
-    end
-
-    -- Equip the sword on the SERVER so other players see it. Only takes effect
-    -- for swords you actually own (server-validated); otherwise it no-ops. Wrapped
-    -- so a rejected/absent remote can never break the local sword change.
-    SkinChanger.System.functions.serverEquip = function(swordName)
-        if not (swordName and swordName ~= "") then return end
-        local remote = SkinChanger.System.functions.resolveEquipRemote()
-        if not remote then return end
-        task.spawn(function()
-            pcall(function()
-                remote:InvokeServer(swordName)
-            end)
-        end)
-    end
-
     local SwordBurstGen = 0
     -- Apply the sword quickly AND reliably: setSword right now (instant), then a
     -- few fast retries over a short window — on some frames the sword controller /
@@ -4942,11 +4883,6 @@ do
             SkinChanger.System.SlashName = SkinChanger.System.functions.getSlashName(SkinChanger.Targets.SwordFX.FXName)
         end
         SkinChanger.System.functions.applyBurst()
-        -- When Server Equip is on, also ask the server to equip the model so
-        -- other players see it (owned swords only; no-ops otherwise).
-        if SkinChanger.Targets.ServerEquip.Enabled and SkinChanger.Targets.SwordModel.ModelName ~= "" then
-            SkinChanger.System.functions.serverEquip(SkinChanger.Targets.SwordModel.ModelName)
-        end
     end
 end
 
@@ -6273,7 +6209,7 @@ do
             Name = "Spam Rate",
             Min = 60,
             Max = 2000,
-            Round = 1,
+            Round = 0,
             Default = ACHAOTICDATA.Config.ManualSpamParry.SpamRPS,
             Type = " rps",
             Callback = function(value)
@@ -6681,19 +6617,6 @@ do
         end,
     })
 
-    -- Server Equip: replicate the sword to everyone via the game's real equip
-    -- remote. Owned swords only (server-validated); others stay local-only.
-    skinChangerSection:AddToggle({
-        Name = 'Server Equip (others see)',
-        Default = SkinChanger.Targets.ServerEquip.Enabled,
-        Callback = function(value)
-            SkinChanger.Targets.ServerEquip.Enabled = value
-            if value and SkinChanger.Enabled then
-                SkinChanger.System.functions.serverEquip(SkinChanger.Targets.SwordModel.ModelName)
-            end
-        end,
-    })
-
     skinChangerSection:AddDivider({
         Color = Color3.fromRGB(50, 50, 50),
         Height = 2
@@ -6984,14 +6907,14 @@ do
     -- together) and toggle only on a tap that didn't move.
     do
         local dragging, moved, startPointer, startPos
-        UI.SpamUI.SpamButton.InputBegan:Connect(function(input)
+        NeverZen:Track(UI.SpamUI.SpamButton.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 dragging = true
                 moved = false
                 startPointer = input.Position
                 startPos = UI.SpamUI.Handler.Position
             end
-        end)
+        end))
         NeverZen:Track(UserInputService.InputChanged:Connect(function(input)
             if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
                 local delta = input.Position - startPointer
@@ -7593,6 +7516,10 @@ NeverZen:Track(UserInputService.InputBegan:Connect(function(input, gameProcessed
     if input.KeyCode == ACHAOTICDATA.Config.ManualSpamParry.Keybind then
         ACHAOTICDATA.Config.ManualSpamParry.Spamming = not ACHAOTICDATA.Config.ManualSpamParry.Spamming
         UI.ManualSpamParryToggle:SetValue(ACHAOTICDATA.Config.ManualSpamParry.Spamming)
+        -- Keep the on-screen SPAM button in sync too (the menu toggle and the
+        -- button tap both do this; the keybind used to skip it, leaving the
+        -- button stuck showing the wrong state).
+        ManualSpamParryUIService:SetColor(ACHAOTICDATA.Config.ManualSpamParry.Spamming)
     end
     if input.KeyCode == ACHAOTICDATA.Config.TriggerBot.Keybind then
         ACHAOTICDATA.Config.TriggerBot.Enabled = not ACHAOTICDATA.Config.TriggerBot.Enabled
@@ -8093,8 +8020,14 @@ do
         if ACHAOTICDATA.Config.ManualSpamParry.Spamming then
             TargetSpeed = ACHAOTICDATA.Config.ManualSpamParry.SpamRPS
         end
+        -- Clamp the frame delta so a stutter/alt-tab hitch can't dump a huge burst
+        -- of parries in one frame (deltaTime * rps could be hundreds after a 0.5s
+        -- hang, lagging the client and hammering the block). Normal frames
+        -- (~0.016s) are unaffected; only a spike is bounded.
+        if deltaTime > 0.05 then deltaTime = 0.05 end
         timeAccumulator += deltaTime
         UI.SpamAccumulatorLabel:SetValue(string.format("Accumulator: %.3f", timeAccumulator))
+        if TargetSpeed <= 0 then return end
         local packetsToFire = math.floor(timeAccumulator * TargetSpeed)
         if packetsToFire > 0 then
             timeAccumulator -= (packetsToFire / TargetSpeed)
