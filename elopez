@@ -4561,6 +4561,10 @@ local TriggerBotParried = false
 -- Per-ball "target changed" hooks for the trigger bot, connected ONCE per ball
 -- (not every frame — that leaked a connection per frame). Cleared on ball removal.
 local TriggerBotHooks = {}
+-- Same pattern for the normal Auto Parry: reset AutoParryParried the instant a
+-- ball's target changes so the post-parry wait releases and it re-parries a new
+-- incoming ball right away (this is what the removed per-frame :Once used to do).
+local AutoParryHooks = {}
 
 local Visuals = {
     VisualisersEnabled = false,
@@ -5369,10 +5373,19 @@ local function MainConnection()
                     continue
                 end
 
-                -- (The per-ball TargetConn created above already resets
-                -- AutoParryParried when this ball's target changes. The extra
-                -- :Once that used to be connected here every frame was redundant
-                -- and leaked a connection per frame per ball — removed.)
+                -- Reset AutoParryParried the instant THIS ball's target changes, so
+                -- the post-parry wait releases and a new incoming ball is parried
+                -- right away. Connected once per ball (no per-frame leak), and it
+                -- works regardless of which loop first created this ball's Parry
+                -- table — the shared TargetConn only resets it when Auto Parry
+                -- created the table, which is why relying on it alone dropped
+                -- blocks after the first parry.
+                if not AutoParryHooks[Ball] then
+                    AutoParryHooks[Ball] = Ball:GetAttributeChangedSignal('target'):Connect(function()
+                        ACHAOTICDATA.Global.AutoParryParried = false
+                    end)
+                end
+
                 if ACHAOTICDATA.Global.AutoParryParried then
                     continue
                 end
@@ -5706,6 +5719,10 @@ NeverZen:Track(ACHAOTICDATA.Balls.ChildRemoved:Connect(function(Child)
     if TriggerBotHooks[Child] then
         TriggerBotHooks[Child]:Disconnect()
         TriggerBotHooks[Child] = nil
+    end
+    if AutoParryHooks[Child] then
+        AutoParryHooks[Child]:Disconnect()
+        AutoParryHooks[Child] = nil
     end
     ACHAOTICDATA.Global.Parries = 0
     ACHAOTICDATA.Config.Animation.SpamAnimationParries = 0
