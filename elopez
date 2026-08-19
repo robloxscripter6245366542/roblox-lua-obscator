@@ -5346,7 +5346,12 @@ local function MainConnection()
                         velHistory = {},
                         lerp_radians = 0,
                         last_warping = 0,
-                        curving = tick(),
+                        -- Start "far in the past" (like last_warping), NOT tick():
+                        -- the curve check does `tick() - curving < reach_time/1.5`,
+                        -- so seeding it with tick() flagged EVERY fresh ball as
+                        -- curved for its first ~0.3s and, with Anti-Curve on, made
+                        -- the normal Auto Parry skip real incoming balls entirely.
+                        curving = 0,
                         LastParry = 0,
                         LobbyParried = false,
                         LobbyLastParry = os.clock(),
@@ -5447,7 +5452,12 @@ local function MainConnection()
                         velHistory = {},
                         lerp_radians = 0,
                         last_warping = 0,
-                        curving = tick(),
+                        -- Start "far in the past" (like last_warping), NOT tick():
+                        -- the curve check does `tick() - curving < reach_time/1.5`,
+                        -- so seeding it with tick() flagged EVERY fresh ball as
+                        -- curved for its first ~0.3s and, with Anti-Curve on, made
+                        -- the normal Auto Parry skip real incoming balls entirely.
+                        curving = 0,
                         LastParry = os.clock(),
                         LobbyParried = false,
                         LobbyLastParry = os.clock(),
