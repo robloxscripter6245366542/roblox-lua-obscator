@@ -4347,7 +4347,12 @@ local ACHAOTICDATA = {
         LobbyAutoParry = {
             Enabled = false,
             AntiCurveEnabled = true,
-            AnimationFix = false
+            AnimationFix = false,
+            -- Match Block Window: pace the lobby parry's post-parry cooldown to the
+            -- game's REAL block window (the character's "ParryTime" attribute)
+            -- instead of the fixed 1-second wait, so it re-parries exactly as the
+            -- block expires. Best with Animation Fix on (that's what sets it).
+            MatchBlockWindow = false
         },
         AutoSpamParry = {
             Enabled = false,
@@ -5486,10 +5491,19 @@ local function MainConnection()
                     ACHAOTICDATA.Parry[Ball].LobbyLastParry = Parry_Time
                     ACHAOTICDATA.Parry[Ball].LobbyParried = true
                 end
+                -- Post-parry block window: normally a fixed 1s cooldown, but when
+                -- Match Block Window is on, use the game's real ParryTime (the block
+                -- active-window length) so it re-parries right as the block expires.
+                local BlockWindow = 1
+                if ACHAOTICDATA.Config.LobbyAutoParry.MatchBlockWindow then
+                    local mchar = GetCharacter()
+                    local pt = (mchar and mchar:GetAttribute("ParryTime")) or 0
+                    if pt > 0 then BlockWindow = pt end
+                end
                 local Last_Parrys = tick()
                 repeat
                     RunService.PreSimulation:Wait()
-                until (tick() - Last_Parrys) >= 1 or not ACHAOTICDATA.Parry[Ball].LobbyParried
+                until (tick() - Last_Parrys) >= BlockWindow or not ACHAOTICDATA.Parry[Ball].LobbyParried
                 ACHAOTICDATA.Parry[Ball].LobbyParried = false
             end
         end
@@ -6110,6 +6124,14 @@ do
             Default = ACHAOTICDATA.Config.LobbyAutoParry.AnimationFix,
             Callback = function(value)
                 ACHAOTICDATA.Config.LobbyAutoParry.AnimationFix = value
+            end,
+        })
+
+        LobbyAutoParrySection:AddToggle({
+            Name = 'Match Block Window (ParryTime)',
+            Default = ACHAOTICDATA.Config.LobbyAutoParry.MatchBlockWindow,
+            Callback = function(value)
+                ACHAOTICDATA.Config.LobbyAutoParry.MatchBlockWindow = value
             end,
         })
     end
