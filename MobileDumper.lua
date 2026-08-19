@@ -69,6 +69,14 @@ local CONFIG = {
     -- frozen on a phone). Everything goes into the single _ALL.txt instead.
     -- Auto-forced ON only if the executor has no appendfile.
     PerScriptFiles = false,
+
+    -- Upload: when the code is too big for the clipboard, POST it to a paste
+    -- host and copy a RAW LINK instead. 0x0.st returns a direct raw URL and
+    -- needs no API key. Skipped if the dump is bigger than UploadCap (the
+    -- whole thing has to fit in memory to POST it).
+    Upload         = true,
+    UploadUrl      = "https://0x0.st",
+    UploadCap      = 25000000,   -- ~25 MB max to upload
 }
 -- ──────────────────────────────────────────────────────────
 
@@ -89,6 +97,35 @@ local appendfile_fn   = rawget(ENV, "appendfile")        or appendfile
 local readfile_fn     = rawget(ENV, "readfile")          or readfile
 local makefolder_fn   = rawget(ENV, "makefolder")        or makefolder
 local isfolder_fn     = rawget(ENV, "isfolder")          or isfolder
+local http_request_fn = (syn and syn.request) or (http and http.request)
+                        or rawget(ENV, "http_request") or http_request
+                        or (fluxus and fluxus.request) or request
+
+-- Upload text to a paste host and return a raw link. Uses a multipart POST
+-- to 0x0.st, whose response body IS the direct raw URL. All pcall-guarded.
+local function uploadPaste(text)
+    if not http_request_fn then return nil, "no http request function on this executor" end
+    local boundary = "----MobileDump" .. tostring(math.random(100000, 999999))
+    local body = table.concat({
+        "--" .. boundary,
+        'Content-Disposition: form-data; name="file"; filename="dump.txt"',
+        "Content-Type: text/plain", "", text,
+        "--" .. boundary .. "--", "",
+    }, "\r\n")
+    local ok, res = pcall(http_request_fn, {
+        Url = CONFIG.UploadUrl, Method = "POST",
+        Headers = { ["Content-Type"] = "multipart/form-data; boundary=" .. boundary },
+        Body = body,
+    })
+    if not ok then return nil, tostring(res) end
+    local b = res and (res.Body or res.body)
+    if type(b) == "string" then
+        local url = b:match("(https?://%S+)")
+        if url then return url end
+        return nil, "unexpected response: " .. b:sub(1, 120)
+    end
+    return nil, "no response body"
+end
 
 if not writefile_fn then
     pcall(function() StarterGui:SetCore("SendNotification",
@@ -305,7 +342,23 @@ local function run()
                 end
             end
         elseif combinedOK and combinedBytes > CONFIG.ClipboardCap then
-            notify(("Code too big for clipboard (%d bytes) - it's all in %s/_ALL.txt"):format(combinedBytes, CONFIG.OutputFolder))
+            -- Too big to copy: upload it and hand back a RAW LINK instead.
+            if CONFIG.Upload and readfile_fn and combinedBytes <= CONFIG.UploadCap then
+                notify(("Code too big to copy (%d bytes) - uploading for a raw link..."):format(combinedBytes))
+                local okR, all = pcall(readfile_fn, combinedPath)
+                if okR and type(all) == "string" then
+                    local url, uerr = uploadPaste(all)
+                    if url then
+                        pcall(setclipboard_fn, url)
+                        notify("Raw code link copied to clipboard: " .. url)
+                        print("[MobileDumper] Raw code link: " .. url)
+                    else
+                        notify("Upload failed (" .. tostring(uerr) .. ") - it's all in " .. CONFIG.OutputFolder .. "/_ALL.txt")
+                    end
+                end
+            else
+                notify(("Code too big for clipboard/upload (%d bytes) - it's all in %s/_ALL.txt"):format(combinedBytes, CONFIG.OutputFolder))
+            end
         elseif CONFIG.CombinedFile and not appendfile_fn then
             notify("No appendfile on this executor - per-script files hold the code; no combined copy.")
         end
