@@ -5431,7 +5431,14 @@ local function MainConnection()
 
                 local ball_target = Ball:GetAttribute('target')
                 local velocity = zoomies.VectorVelocity
-                local distance = (GetCharacter().PrimaryPart.Position - Ball.Position).Magnitude
+                local to_self = GetCharacter().PrimaryPart.Position - Ball.Position
+                local distance = to_self.Magnitude
+                -- Closing speed: the ball's velocity projected toward us. >0 means
+                -- it's actually coming AT you (a live clash); <=0 means it's already
+                -- moving away — e.g. right after you deflect it. Gating the parry on
+                -- this makes it STOP instantly when the clash ends instead of firing
+                -- at a ball that's leaving ("block for nothing").
+                local closing = distance > 0 and velocity:Dot(to_self.Unit) or 0
                 local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue() / 10
                 local ping_threshold = math.clamp(ping / 10, 5, 17)
                 local speed = velocity.Magnitude
@@ -5481,7 +5488,12 @@ local function MainConnection()
                 if mine and distance > parry_accuracy then
                     ACHAOTICDATA.Global.APStatus = string.format("aim you, out of range d=%d > acc=%d", math.floor(distance), math.floor(parry_accuracy))
                 end
-                if mine and distance <= parry_accuracy then
+                if mine and closing <= 0 then
+                    -- Aimed at us but moving away — clash is over / just deflected.
+                    -- Do not parry: this is the "stop the instant the clash ends".
+                    ACHAOTICDATA.Global.APStatus = "aim you but leaving (clash over)"
+                end
+                if mine and distance <= parry_accuracy and closing > 0 then
                     -- Short per-ball cooldown instead of a global flag + a yielding
                     -- `repeat until 1s` wait. That old wait froze the whole loop for
                     -- up to a second after every parry (and stacked concurrent
