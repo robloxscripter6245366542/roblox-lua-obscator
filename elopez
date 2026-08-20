@@ -4702,6 +4702,19 @@ local function GetCharacter()
     return ACHAOTICDATA.Player.LocalPlayer.Character
 end
 
+-- Whether a ball's "target" attribute refers to the local player. The attribute
+-- is not always the plain Name — depending on the game version it can be the
+-- DisplayName or the UserId (and can be a number, not a string). The old
+-- `target == tostring(LocalPlayer)` only matched the Name, so on any version that
+-- used a different form the parry thought no ball was targeting you and never
+-- fired. Normalise to a string and accept Name / DisplayName / UserId.
+local function BallTargetsMe(t)
+    if t == nil then return false end
+    local lp = ACHAOTICDATA.Player.LocalPlayer
+    local ts = tostring(t)
+    return ts == lp.Name or ts == lp.DisplayName or ts == tostring(lp.UserId)
+end
+
 local function GetHumanoid()
     local character = GetCharacter()
     return character and character:FindFirstChildOfClass("Humanoid")
@@ -5437,7 +5450,13 @@ local function MainConnection()
                     end
                 end
 
-                local mine = ball_target == tostring(ACHAOTICDATA.Player.LocalPlayer)
+                local mine = BallTargetsMe(ball_target)
+                if not mine then
+                    -- Reveal the raw target vs our identity, so a lingering format
+                    -- mismatch is visible instead of a silent "no target".
+                    ACHAOTICDATA.Global.APStatus = string.format("ball target=%s | you=%s/%s",
+                        tostring(ball_target), ACHAOTICDATA.Player.LocalPlayer.Name, tostring(ACHAOTICDATA.Player.LocalPlayer.UserId))
+                end
                 if mine and distance > parry_accuracy then
                     ACHAOTICDATA.Global.APStatus = string.format("aim you, out of range d=%d > acc=%d", math.floor(distance), math.floor(parry_accuracy))
                 end
@@ -5515,7 +5534,7 @@ local function MainConnection()
 
                 local CurveVaildation = Curved and ACHAOTICDATA.Config.LobbyAutoParry.AntiCurveEnabled
 
-                if Ball_Target == tostring(ACHAOTICDATA.Player.LocalPlayer) and Distance <= Parry_Accuracy and not CurveVaildation then
+                if BallTargetsMe(Ball_Target) and Distance <= Parry_Accuracy and not CurveVaildation then
                     local Parry_Time = os.clock()
                     local Time_View = Parry_Time - (ACHAOTICDATA.Parry[Ball].LobbyLastParry)
                     if Time_View > 0.25 and ACHAOTICDATA.Config.LobbyAutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
@@ -5653,7 +5672,7 @@ local function MainConnection()
                 -- (real replicated "target" attribute). Forced on in Advanced mode.
                 local TargetValidation = true
                 if ACHAOTICDATA.Config.AutoSpamParry.TargetOnly or AdvancedMode then
-                    TargetValidation = Ball:GetAttribute('target') == tostring(ACHAOTICDATA.Player.LocalPlayer)
+                    TargetValidation = BallTargetsMe(Ball:GetAttribute('target'))
                 end
 
                 -- Time-to-impact gate: fire only once the ball's arrival is within
@@ -5699,7 +5718,7 @@ local function MainConnection()
                 if Singularity_Cape then continue end
                 if ACHAOTICDATA.Config.TriggerBot.InfinityDetection and ACHAOTICDATA.Config.ParrySettings.Detections.InfinityBall.Flag then continue end
 
-                if Ball_Target == tostring(ACHAOTICDATA.Player.LocalPlayer) then
+                if BallTargetsMe(Ball_Target) then
                     if ACHAOTICDATA.Config.TriggerBot.AnimationFix then
                         PlayParry_Animation()
                     end
@@ -6007,6 +6026,25 @@ do
 
         -- Live debug readout: shows exactly why Auto Parry is / isn't firing.
         UI.AutoParryDebug = AutoParrySection:AddLabel("Status: idle")
+
+        -- Copy the current status to the clipboard (handy on mobile, where the
+        -- status line is hard to read/type back). Executor-agnostic clipboard fn.
+        AutoParrySection:AddButton({
+            Name = "Copy Debug",
+            Callback = function()
+                local cb = setclipboard or toclipboard or set_clipboard
+                    or (getgenv and getgenv().setclipboard)
+                if cb then
+                    pcall(cb, string.format("Leviathan AutoParry debug\nStatus: %s\nYou: %s / %s",
+                        tostring(ACHAOTICDATA.Global.APStatus),
+                        ACHAOTICDATA.Player.LocalPlayer.Name,
+                        tostring(ACHAOTICDATA.Player.LocalPlayer.UserId)))
+                    NZNotification.new('Leviathan ', 'Copied AutoParry debug to clipboard.', 4)
+                else
+                    NZNotification.new('Leviathan ', 'No clipboard function on this executor.', 4)
+                end
+            end,
+        })
 
         AutoParrySection:AddSlider({
             Name = "Accuracy",
@@ -8046,7 +8084,7 @@ local function RefreshVM(deltaTime)
                 UI.GameDataDist:SetValue(string.format("Dist to Ball: %d", math.floor(dist)))
                 UI.GameDataReach:SetValue(string.format("Reach Time: %d ms", math.floor(reachMs)))
                 UI.GameDataPing:SetValue(string.format("Ping: %d ms", math.floor(ping)))
-                local aimed = ball:GetAttribute('target') == tostring(ACHAOTICDATA.Player.LocalPlayer)
+                local aimed = BallTargetsMe(ball:GetAttribute('target'))
                 UI.GameDataTarget:SetValue("Aimed at You: " .. (aimed and "YES" or "no"))
                 UI.GameDataCombo:SetValue(string.format("Combo: %d", math.floor(ball:GetAttribute("ComboCounter") or 0)))
             else
