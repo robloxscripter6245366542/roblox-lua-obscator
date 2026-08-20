@@ -4326,6 +4326,10 @@ local ACHAOTICDATA = {
         lastParryTime = 0,
         AutoParryCurrentAccuracy = 0,
         AutoSpamParryCurrentAccuracy = 0,
+        -- Live one-line status of the normal Auto Parry, for the debug readout so
+        -- we can see WHY it isn't firing (disabled, gated by spam/triggerbot, no
+        -- targeting ball, out of range, or actually firing).
+        APStatus = "idle",
         -- Self-tuning runtime state (additive bonuses layered on top of the user
         -- sliders, plus rolling hit/miss counters for the live hit-rate readout).
         AutoTune = {
@@ -5335,6 +5339,18 @@ local function MainConnection()
     local IsSpamming = ACHAOTICDATA.Config.AutoSpamParry.Spamming or ACHAOTICDATA.Config.ManualSpamParry.Spamming 
     do
         local BallsList = Get_Balls()
+        -- Debug status: explain why the normal Auto Parry is / isn't acting.
+        if not ACHAOTICDATA.Config.AutoParry.Enabled then
+            ACHAOTICDATA.Global.APStatus = "off: AutoParry disabled"
+        elseif IsSpamming then
+            ACHAOTICDATA.Global.APStatus = "off: Spam active (disable Auto Spam)"
+        elseif ACHAOTICDATA.Config.TriggerBot.Enabled then
+            ACHAOTICDATA.Global.APStatus = "off: TriggerBot on"
+        elseif #BallsList == 0 then
+            ACHAOTICDATA.Global.APStatus = "on: no balls"
+        else
+            ACHAOTICDATA.Global.APStatus = "on: no ball targeting you"
+        end
         if ACHAOTICDATA.Config.AutoParry.Enabled and not IsSpamming and not ACHAOTICDATA.Config.TriggerBot.Enabled then
             for _, Ball in pairs(BallsList) do
                 if not Ball then
@@ -5421,7 +5437,11 @@ local function MainConnection()
                     end
                 end
 
-                if ball_target == tostring(ACHAOTICDATA.Player.LocalPlayer) and distance <= parry_accuracy then
+                local mine = ball_target == tostring(ACHAOTICDATA.Player.LocalPlayer)
+                if mine and distance > parry_accuracy then
+                    ACHAOTICDATA.Global.APStatus = string.format("aim you, out of range d=%d > acc=%d", math.floor(distance), math.floor(parry_accuracy))
+                end
+                if mine and distance <= parry_accuracy then
                     -- Short per-ball cooldown instead of a global flag + a yielding
                     -- `repeat until 1s` wait. That old wait froze the whole loop for
                     -- up to a second after every parry (and stacked concurrent
@@ -5436,6 +5456,7 @@ local function MainConnection()
                         end
                         FireParry()
                         ACHAOTICDATA.Parry[Ball].LastParry = parry_time
+                        ACHAOTICDATA.Global.APStatus = string.format("FIRING d=%d acc=%d", math.floor(distance), math.floor(parry_accuracy))
                     end
                 end
             end
@@ -5983,6 +6004,9 @@ do
                 ACHAOTICDATA.Config.AutoParry.Enabled = value
             end,
         })
+
+        -- Live debug readout: shows exactly why Auto Parry is / isn't firing.
+        UI.AutoParryDebug = AutoParrySection:AddLabel("Status: idle")
 
         AutoParrySection:AddSlider({
             Name = "Accuracy",
@@ -8042,6 +8066,10 @@ local function RefreshVM(deltaTime)
             UI.GameDataHitRate:SetValue(string.format("Hit Rate: %s (tune +%.2f)", rateTxt, AT.HitboxBonus))
             UI.GameDataConfirmed:SetValue(string.format("Server Confirmed: %d  Desync: %d", math.floor(AT.ServerConfirmed), math.floor(AT.DesyncGap)))
         end)
+    end
+
+    if UI.AutoParryDebug then
+        UI.AutoParryDebug:SetValue("Status: " .. tostring(ACHAOTICDATA.Global.APStatus))
     end
 
     if ACHAOTICDATA.Config.ClientStats.Enabled then
