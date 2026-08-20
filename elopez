@@ -5379,10 +5379,6 @@ local function MainConnection()
                     end)
                 end
 
-                if ACHAOTICDATA.Global.AutoParryParried then
-                    continue
-                end
-
                 local ball_target = Ball:GetAttribute('target')
                 local velocity = zoomies.VectorVelocity
                 local distance = (GetCharacter().PrimaryPart.Position - Ball.Position).Magnitude
@@ -5426,20 +5422,22 @@ local function MainConnection()
                 end
 
                 if ball_target == tostring(ACHAOTICDATA.Player.LocalPlayer) and distance <= parry_accuracy then
+                    -- Short per-ball cooldown instead of a global flag + a yielding
+                    -- `repeat until 1s` wait. That old wait froze the whole loop for
+                    -- up to a second after every parry (and stacked concurrent
+                    -- MainConnection threads on the shared flag), so fast follow-up
+                    -- balls were missed — "no block". This just rate-limits parrying
+                    -- the SAME ball, never yields, and re-parries new balls every
+                    -- frame.
                     local parry_time = os.clock()
-                    local time_view = parry_time - ACHAOTICDATA.Parry[Ball].LastParry
-                    if time_view > 0.25 and ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
-                        PlayParry_Animation()
+                    if parry_time - ACHAOTICDATA.Parry[Ball].LastParry >= 0.12 then
+                        if ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
+                            PlayParry_Animation()
+                        end
+                        FireParry()
+                        ACHAOTICDATA.Parry[Ball].LastParry = parry_time
                     end
-                    FireParry()
-                    ACHAOTICDATA.Parry[Ball].LastParry = parry_time
-                    ACHAOTICDATA.Global.AutoParryParried = true
                 end
-                local last_parrys = tick()
-                repeat
-                    RunService.PreSimulation:Wait()
-                until (tick() - last_parrys) >= 1 or not ACHAOTICDATA.Global.AutoParryParried
-                ACHAOTICDATA.Global.AutoParryParried = false
             end
         else
             ACHAOTICDATA.Global.AutoParryCurrentAccuracy = 0
