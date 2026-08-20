@@ -5490,25 +5490,27 @@ local function MainConnection()
                 end
                 if mine and closing <= 0 then
                     -- Aimed at us but moving away — clash is over / just deflected.
-                    -- Do not parry: this is the "stop the instant the clash ends".
+                    -- Re-arm so the NEXT time this ball comes at us it can parry
+                    -- again, and don't parry now (stop the instant the clash ends).
+                    ACHAOTICDATA.Parry[Ball].parriedApproach = false
                     ACHAOTICDATA.Global.APStatus = "aim you but leaving (clash over)"
                 end
                 if mine and distance <= parry_accuracy and closing > 0 then
-                    -- Short per-ball cooldown instead of a global flag + a yielding
-                    -- `repeat until 1s` wait. That old wait froze the whole loop for
-                    -- up to a second after every parry (and stacked concurrent
-                    -- MainConnection threads on the shared flag), so fast follow-up
-                    -- balls were missed — "no block". This just rate-limits parrying
-                    -- the SAME ball, never yields, and re-parries new balls every
-                    -- frame.
-                    local parry_time = os.clock()
-                    if parry_time - ACHAOTICDATA.Parry[Ball].LastParry >= 0.12 then
+                    -- Fire exactly ONCE per incoming approach. The old per-frame /
+                    -- 0.12s cooldown re-fired several times while a ball stayed in
+                    -- range (double/triple block, wasted guard). Now we parry on the
+                    -- approach, set a flag, and only re-arm once the ball leaves
+                    -- (closing <= 0, above). One clash = one parry.
+                    if not ACHAOTICDATA.Parry[Ball].parriedApproach then
                         if ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
                             PlayParry_Animation()
                         end
                         FireParry()
-                        ACHAOTICDATA.Parry[Ball].LastParry = parry_time
+                        ACHAOTICDATA.Parry[Ball].parriedApproach = true
+                        ACHAOTICDATA.Parry[Ball].LastParry = os.clock()
                         ACHAOTICDATA.Global.APStatus = string.format("FIRING d=%d acc=%d", math.floor(distance), math.floor(parry_accuracy))
+                    else
+                        ACHAOTICDATA.Global.APStatus = "parried this approach (waiting for next)"
                     end
                 end
             end
