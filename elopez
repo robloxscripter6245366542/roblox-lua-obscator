@@ -5222,9 +5222,24 @@ local FireParry = function()
     end
 end
 
+-- Re-resolve the Balls folder if the cached reference went stale. Blade Ball can
+-- replace workspace.Balls between rounds; the reference captured at load then
+-- points at a destroyed folder whose GetChildren() is always empty — which shows
+-- up as "no balls" and no parry. Always fetch the live folder.
+local function GetBallsFolder()
+    if ACHAOTICDATA.Balls and ACHAOTICDATA.Balls.Parent then
+        return ACHAOTICDATA.Balls
+    end
+    local f = Workspace:FindFirstChild("Balls")
+    if f then ACHAOTICDATA.Balls = f end
+    return f
+end
+
 local function Get_Balls()
     local BallInstances = {}
-    for _, Instance in pairs(ACHAOTICDATA.Balls:GetChildren()) do
+    local folder = GetBallsFolder()
+    if not folder then return BallInstances end
+    for _, Instance in pairs(folder:GetChildren()) do
         if Instance:GetAttribute("realBall") then
             table.insert(BallInstances, Instance)
         end
@@ -5360,7 +5375,13 @@ local function MainConnection()
         elseif ACHAOTICDATA.Config.TriggerBot.Enabled then
             ACHAOTICDATA.Global.APStatus = "off: TriggerBot on"
         elseif #BallsList == 0 then
-            ACHAOTICDATA.Global.APStatus = "on: no balls"
+            -- Distinguish "folder empty / missing" from "balls present but none
+            -- tagged realBall", so we know whether it's a stale-folder or a
+            -- tag-filter problem.
+            local folder = GetBallsFolder()
+            local total = folder and #folder:GetChildren() or -1
+            ACHAOTICDATA.Global.APStatus = string.format("on: 0 realBall (folder=%s children=%d)",
+                folder and folder.Name or "MISSING", total)
         else
             ACHAOTICDATA.Global.APStatus = "on: no ball targeting you"
         end
