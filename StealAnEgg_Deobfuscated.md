@@ -50,10 +50,18 @@ Helper functions are not called by name; they live in dispatch tables keyed by t
 cleartext strings in the pool. The dominant one is `Fw`:
 
 ```lua
-Fw[acj[1521]]()          -- Fw["<helperName>"]()  → e.g. get players / children
+Fw[acj[1521]]()          -- Fw["getAreaEggs"]()   (acj[1521] = "getAreaEggs")
 Fw[acj[1062.]](x)        -- a typeof/validity helper
-acj[2108](Fw[acj[465.]]) -- task.spawn(Fw["runAuto…"])   ← the scheduler pattern
+acj[2108](Fw[acj[465.]]) -- pcall(Fw["runAuto…"])  ← the runner-dispatch pattern
 ```
+
+> **Constant pool fully resolved.** The `acj` table splits cleanly into **2,149
+> entries** (1,246 strings, 685 numbers, 182 functions, 36 inline exprs). Sample
+> resolutions: `acj[818]=0`, `acj[893]=1`, `acj[622]=16777213` (2²⁴−3, the
+> opaque-predicate modulus), `acj[2108]=pcall`, `acj[1804]="clock"` (→
+> `os.clock()`), `acj[1521]="getAreaEggs"`. The complete de-indirected program —
+> every constant substituted back, helpers reading as `Fw["realName"](...)` — is
+> in `stealanegg.deindirected.lua`.
 
 This is why the constant pool literally lists the program's entire API surface:
 `runAutoSteal`, `pickStealTarget`, `runAutoSellPets`, `runAutoFusePets`,
@@ -288,4 +296,6 @@ applies this to the program's architecture and its main automation loops.
 
 *Artifacts in this change: `StealAnEgg_Deobfuscated.md` (this file),
 `StealAnEgg_constants.txt` (recovered literal pool),
-`StealAnEgg_reconstructed.lua` (readable behavioral reconstruction).*
+`stealanegg.deindirected.lua` (full source with all 2,149 constants resolved;
+control flow still flattened — the ground-truth reference),
+`StealAnEgg_reconstructed.lua` (clean, readable rewrite built from the decoded logic).*
