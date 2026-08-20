@@ -5392,7 +5392,13 @@ local function MainConnection()
                 local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
                 local speed_divisor = (2.4 + capped_speed_diff * 0.002) * ACHAOTICDATA.Config.ParrySettings.SpeedDivisorMultiplier
                 local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
-                local curved = IsBall_Curved(Ball, ping * 10, GetCharacter())
+                -- IsBall_Curved is disabled here (same as the lobby parry). It has
+                -- several paths that report a ball as "curved" for balls merely
+                -- approaching at an angle — with Anti-Curve on by default that made
+                -- the normal Auto Parry skip real incoming balls and never block.
+                -- Leave it off so it parries every targeting ball in range; the
+                -- Anti-Curve toggle stays but is a safe no-op, like the lobby's.
+                local curved = false --IsBall_Curved(Ball, ping * 10, GetCharacter())
 
                 ACHAOTICDATA.Global.AutoParryCurrentAccuracy = parry_accuracy
 
