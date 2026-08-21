@@ -5902,6 +5902,17 @@ function Visuals.VisualiserService:SetColor(color)
 end
 
 function Visuals.VisualiserService:Update(hrp, position, size)
+    -- Drop spheres tied to a previous character (respawn) or already destroyed —
+    -- otherwise the old anchored sphere is orphaned in the world at your last
+    -- position and looks like a hitbox "stuck in one place" while the live one
+    -- tracks the new character.
+    for key, part in pairs(Visuals.VisualParts) do
+        if key ~= hrp or not part.Parent then
+            part:Destroy()
+            Visuals.VisualParts[key] = nil
+        end
+    end
+
     local visualPart = Visuals.VisualParts[hrp]
     if visualPart and not visualPart.Parent then
         visualPart = nil
@@ -8248,7 +8259,16 @@ local RequestSpamParry = function()
 end
 
 local function LoopConnection(deltaTime)
-    MainConnection()
+    -- Protect the parry loop so a thrown error on one frame can't take the rest
+    -- of the frame down with it. Previously MainConnection() ran unprotected
+    -- right before RefreshVM(): any error in the parry loop skipped RefreshVM
+    -- entirely, which is what froze the hitbox visual in place ("it no stay when
+    -- you move") and silently dropped parries on the erroring frames. Surface the
+    -- error on the debug Status line so the real cause is visible.
+    local ok, err = pcall(MainConnection)
+    if not ok then
+        ACHAOTICDATA.Global.APStatus = "ERROR: " .. tostring(err)
+    end
     RefreshVM(deltaTime)
 end
 
