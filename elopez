@@ -5378,7 +5378,18 @@ local function GetClosest_Player()
 end        
 
 local function MainConnection()
-    if not GetCharacter() or not GetCharacter().PrimaryPart then
+    local Char = GetCharacter()
+    if not Char or not Char.PrimaryPart then
+        return
+    end
+    -- Stop the parry loop when we're dead. A corpse still has a PrimaryPart for a
+    -- moment (and can linger in workspace.Dead), so PrimaryPart alone isn't
+    -- "alive" — without this the parry keeps firing after you die ("when I die it
+    -- blocks on"). Humanoid health is the unambiguous signal and doesn't touch
+    -- lobby play (you're alive there, health > 0).
+    local Hum = Char:FindFirstChildOfClass("Humanoid")
+    if not Hum or Hum.Health <= 0 then
+        ACHAOTICDATA.Global.APStatus = "off: dead"
         return
     end
     local IsSpamming = ACHAOTICDATA.Config.AutoSpamParry.Spamming or ACHAOTICDATA.Config.ManualSpamParry.Spamming 
@@ -8120,14 +8131,22 @@ local function RefreshVM(deltaTime)
     ACHAOTICDATA.Config.Animation.AnimationSpammingMode = ACHAOTICDATA.Config.Animation.SpamAnimationParries > 1
     
     if Visuals.VisualisersEnabled then
-        if GetCharacter() and GetCharacter():FindFirstChild("HumanoidRootPart") then
-            local char = GetCharacter()
-            local hrp = char.HumanoidRootPart
+        local char = GetCharacter()
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local alive = hrp and hum and hum.Health > 0
+        if alive then
             local isclashing = ACHAOTICDATA.Config.AutoSpamParry.Spamming or ACHAOTICDATA.Config.ManualSpamParry.Spamming
             local color = isclashing and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(255, 255, 255)
             local size = (isclashing and 40 + ACHAOTICDATA.Config.ParrySettings.VisualiserParries or math.clamp(ACHAOTICDATA.Global.AutoParryCurrentAccuracy, 10, 220))
             Visuals.VisualiserService:SetColor(color)
             Visuals.VisualiserService:Update(char, hrp.Position, size)
+        else
+            -- Dead / no live character: remove every sphere so one isn't left
+            -- stuck at the spot where you died and then appearing "somewhere
+            -- different" when you respawn. A fresh sphere is made on the new
+            -- character the first frame it's alive again.
+            Visuals.VisualiserService:ClearAll()
         end
     end
 
@@ -8240,7 +8259,11 @@ end
 local SpamStunHoldUntil = 0
 local function SpamCanFire()
     local char = GetCharacter()
-    if char and char:GetAttribute("Stunned") then
+    if not char then return false end
+    -- Dead: don't keep hammering the parry on a corpse ("when I die it blocks on").
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+    if char:GetAttribute("Stunned") then
         SpamStunHoldUntil = os.clock() + 0.12          -- broken now: hold, and keep holding briefly after it clears
         return false
     end
