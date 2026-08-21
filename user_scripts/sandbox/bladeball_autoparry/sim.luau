@@ -387,6 +387,101 @@ do
         "steady=" .. tostring(steady) .. " ramping=" .. tostring(ramping))
 end
 
+-- ===========================================================================
+--  REGRESSIONS FOR THE BUGS REPORTED IN-GAME (each named after the complaint,
+--  mirroring the exact shipped helper, so they can never silently come back).
+-- ===========================================================================
+
+-- BallTargetsMe: elopez L4711. Target can be Name / DisplayName / UserId (number).
+local function ballTargetsMe(t, lp)
+    if t == nil then return false end
+    local ts = tostring(t)
+    return ts == lp.name or ts == lp.displayName or ts == tostring(lp.userId)
+end
+
+-- "It says not targeting me when it target me" -> match Name / DisplayName / UserId.
+do
+    local me = { name = "r3chel01", displayName = "Rachel", userId = 12345 }
+    local okName = ballTargetsMe("r3chel01", me)
+    local okDisplay = ballTargetsMe("Rachel", me)
+    local okId = ballTargetsMe(12345, me)          -- numeric target
+    local notOpp = ballTargetsMe("someoneElse", me) == false
+    local notNil = ballTargetsMe(nil, me) == false
+    check("target matches Name/DisplayName/UserId (not-targeting-me bug)",
+        okName and okDisplay and okId and notOpp and notNil, "")
+end
+
+-- "Make it when it's in a clash the clash stops... not still block for nothing":
+-- fire once on the approach, then the ball deflects (closing goes negative) and
+-- it must STOP — no extra blocks while the ball is leaving.
+do
+    -- last = -1 mirrors a fresh ball (real game: LastParry 0 vs a large os.clock()
+    -- => sinceLast huge => fires immediately; the sim's clock starts at 0).
+    local state = { parried = false, last = -1 }
+    local now, fires = 0, 0
+    -- approach: mine, inbound, in range
+    for _ = 1, 8 do
+        now = now + DT
+        if (autoParryStep(state, now, true, 12, 200, 200, 60, 1)) then fires = fires + 1 end
+    end
+    -- deflected: still mine and close, but now moving AWAY (closing < 0) for 30 frames
+    for _ = 1, 30 do
+        now = now + DT
+        if (autoParryStep(state, now, true, 14, 200, -200, 60, 1)) then fires = fires + 1 end
+    end
+    check("stops the instant the clash ends (no block for nothing)", fires == 1, "fires=" .. fires)
+end
+
+-- Skin model apply guard: elopez setSword (build once per char+skin).
+local function makeSkinApplier()
+    local appliedChar, appliedName, builds = nil, nil, 0
+    return {
+        apply = function(char, name)
+            if appliedChar ~= char or appliedName ~= name then
+                builds = builds + 1
+                appliedChar, appliedName = char, name
+            end
+        end,
+        reset = function() appliedChar, appliedName = nil, nil end,   -- updateSword clears guard
+        builds = function() return builds end,
+    }
+end
+
+-- "My sword stuck into the sword": the apply burst runs setSword 5x and it also
+-- re-runs on respawn — without the guard each call stacked another model. The
+-- guard must build ONCE per character+skin (not once per call).
+do
+    local sk = makeSkinApplier()
+    local char = {}
+    for _ = 1, 5 do sk.apply(char, "Prismatic Odachi") end   -- 5x burst, same char+skin
+    check("skin builds once per burst (stuck-sword bug)", sk.builds() == 1, "builds=" .. sk.builds())
+    -- respawn (new char) rebuilds once; picking a new skin (reset) rebuilds once
+    sk.apply({}, "Prismatic Odachi")
+    sk.reset(); sk.apply(char, "Oni Ghost")
+    check("skin rebuilds once on respawn / new pick", sk.builds() == 3, "builds=" .. sk.builds())
+end
+
+-- Skin persistence: elopez LeviathanSkinSnapshot / LeviathanRestoreSkin.
+local function skinSnapshot(sc)
+    return { Enabled = sc.enabled, ModelName = sc.model, FXName = sc.fx, AnimName = sc.anim }
+end
+local function skinRestore(sc, snap)
+    if type(snap.Enabled) == "boolean" then sc.enabled = snap.Enabled end
+    if type(snap.ModelName) == "string" then sc.model = snap.ModelName end
+    if type(snap.FXName) == "string" then sc.fx = snap.FXName end
+    if type(snap.AnimName) == "string" then sc.anim = snap.AnimName end
+end
+
+-- "Save your options and re-apply" on rejoin: snapshot survives a round-trip
+-- into a fresh (default) SkinChanger.
+do
+    local saved = skinSnapshot({ enabled = true, model = "Riftflare Katana", fx = "SlashEffect", anim = "Riftflare Katana" })
+    local fresh = { enabled = false, model = "", fx = "", anim = "" }   -- defaults after a rejoin
+    skinRestore(fresh, saved)
+    check("skin selections persist across rejoin",
+        fresh.enabled == true and fresh.model == "Riftflare Katana" and fresh.anim == "Riftflare Katana", "")
+end
+
 -- ---------------------------------------------------------------------------
 --  Report
 -- ---------------------------------------------------------------------------
