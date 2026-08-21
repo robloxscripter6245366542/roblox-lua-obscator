@@ -4755,6 +4755,27 @@ local function GetCharacter()
     return ACHAOTICDATA.Player.LocalPlayer.Character
 end
 
+-- Are we actually dead? Blade Ball marks death by moving your character into
+-- workspace.Dead — the decompiled game Parry gates on Character.Parent ==
+-- workspace.Alive, NOT Humanoid.Health (it's a one-hit game, so Health is not the
+-- alive signal). An earlier Health-based guard false-read LIVE players as dead and
+-- shut off Auto Parry, both spams, and the hitbox visual. Treat as dead ONLY when
+-- positively in the Dead folder and not lobby-eligible, so a live player is never
+-- blocked; never guess dead from a missing folder.
+local function PlayerIsDead()
+    local char = GetCharacter()
+    if not char then return true end
+    local deadFolder = workspace:FindFirstChild("Dead")
+    if not (deadFolder and char.Parent == deadFolder) then
+        return false
+    end
+    local lp = ACHAOTICDATA.Player.LocalPlayer
+    if lp:GetAttribute("LobbyParry") or lp:GetAttribute("LobbyTraining") then
+        return false
+    end
+    return true
+end
+
 -- Whether a ball's "target" attribute refers to the local player. The attribute
 -- is not always the plain Name — depending on the game version it can be the
 -- DisplayName or the UserId (and can be a number, not a string). The old
@@ -5460,13 +5481,10 @@ local function MainConnection()
     if not Char or not Char.PrimaryPart then
         return
     end
-    -- Stop the parry loop when we're dead. A corpse still has a PrimaryPart for a
-    -- moment (and can linger in workspace.Dead), so PrimaryPart alone isn't
-    -- "alive" — without this the parry keeps firing after you die ("when I die it
-    -- blocks on"). Humanoid health is the unambiguous signal and doesn't touch
-    -- lobby play (you're alive there, health > 0).
-    local Hum = Char:FindFirstChildOfClass("Humanoid")
-    if not Hum or Hum.Health <= 0 then
+    -- Stop the parry loop only when the game has actually moved us to
+    -- workspace.Dead (its own death signal) — NOT on Humanoid.Health, which in
+    -- this one-hit game false-read live players as dead and broke everything.
+    if PlayerIsDead() then
         ACHAOTICDATA.Global.APStatus = "off: dead"
         return
     end
@@ -8361,8 +8379,9 @@ local function RefreshVM(deltaTime)
     if Visuals.VisualisersEnabled then
         local char = GetCharacter()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        local alive = hrp and hum and hum.Health > 0
+        -- Alive = has a root part and not in the game's Dead folder (NOT
+        -- Humanoid.Health, which false-read live players and hid the hitbox).
+        local alive = hrp and not PlayerIsDead()
         if alive then
             local isclashing = ACHAOTICDATA.Config.AutoSpamParry.Spamming or ACHAOTICDATA.Config.ManualSpamParry.Spamming
             local color = isclashing and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(255, 255, 255)
@@ -8522,8 +8541,8 @@ local function SpamCanFire()
     local char = GetCharacter()
     if not char then return false end
     -- Dead: don't keep hammering the parry on a corpse ("when I die it blocks on").
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.Health <= 0 then return false end
+    -- Uses the game's Dead-folder signal, NOT Humanoid.Health (one-hit game).
+    if PlayerIsDead() then return false end
     if char:GetAttribute("Stunned") then
         SpamStunHoldUntil = os.clock() + 0.12          -- broken now: hold, and keep holding briefly after it clears
         return false
