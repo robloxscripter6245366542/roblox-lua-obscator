@@ -8540,12 +8540,17 @@ end
 -- Is a real ball actually coming at us right now? Cached ~30ms so calling it per
 -- spam packet (up to thousands/sec) costs one ball sweep per few frames, not per
 -- packet.
-local SpamThreatCache, SpamThreatAt = false, 0
-local function SpamHasInboundThreat()
+-- What state are we in for spam? "clash" = a ball is right on top of you
+-- (contact range) — the contested state you win by out-clicking, and where fast
+-- firing is SAFE because each parry lands on the ball. "inbound" = a ball is
+-- coming at you but not yet contact. "idle" = nothing — where hammering would
+-- just drain and break the shield. Cached ~30ms so it's cheap per packet.
+local SpamTierCache, SpamTierAt = "idle", 0
+local function SpamThreatTier()
     local nowc = os.clock()
-    if nowc - SpamThreatAt < 0.03 then return SpamThreatCache end
-    SpamThreatAt = nowc
-    local result = false
+    if nowc - SpamTierAt < 0.03 then return SpamTierCache end
+    SpamTierAt = nowc
+    local tier = "idle"
     local char = GetCharacter()
     local root = char and char.PrimaryPart
     if root then
@@ -8555,18 +8560,20 @@ local function SpamHasInboundThreat()
                 local toSelf = root.Position - ball.Position
                 local dist = toSelf.Magnitude
                 if dist > 0 then
+                    if dist <= 16 then
+                        tier = "clash"          -- on top of you = a clash to win
+                        break                   -- clash is the top tier, stop looking
+                    end
                     local closing = z.VectorVelocity:Dot(toSelf.Unit)
-                    -- coming AT us, and either aimed at us or already close (a clash)
                     if closing > 0 and (BallTargetsMe(ball:GetAttribute('target')) or dist < 70) then
-                        result = true
-                        break
+                        tier = "inbound"        -- coming at you; keep scanning for a closer clash
                     end
                 end
             end
         end
     end
-    SpamThreatCache = result
-    return result
+    SpamTierCache = tier
+    return tier
 end
 
 local SpamStunHoldUntil = 0
@@ -8584,16 +8591,18 @@ local function SpamCanFire()
     if os.clock() < SpamStunHoldUntil then
         return false                                   -- just recovered: let it settle so the burst can't instantly re-break it
     end
-    -- Stamina-safe rate cap. The game's block has a real cooldown window (dump
-    -- proto-12: 0.5s active / 1.3s total); parrying far faster than that just
-    -- drains the shield and BREAKS it — "the main game hitbox broke after nonstop
-    -- spamming" — no matter how high the RPS slider is set (the excess never
-    -- reaches the server as extra blocks anyway). So cap the ACTUAL fire rate to
-    -- what the block can sustain: a fast ~22/s while a ball is inbound (far more
-    -- than enough to block and to out-click a clash) and a gentle ~9/s when idle.
-    -- The RPS slider still expresses intent; this stops it self-destructing the
-    -- block. During Stunned we already hold (above) so a forced break still heals.
-    local minGap = SpamHasInboundThreat() and 0.045 or 0.11
+    -- Tiered, stamina-safe rate. Fire fast where it WINS and is safe, slow where
+    -- it would only drain and break the block:
+    --   • clash (ball on top of you)  -> ~50/s, like manual spam, to out-click and
+    --     always win the clash — safe because every parry lands on the ball.
+    --   • inbound (ball coming at you) -> ~28/s, plenty to block it on arrival.
+    --   • idle (nothing)               -> ~9/s, so hammering can't break the shield.
+    -- Auto and Manual both run through this, so they now behave the same. During
+    -- Stunned we already hold (above) so a forced break still heals.
+    local tier = SpamThreatTier()
+    -- clash 0.01s is below a frame, so it fires EVERY frame — full manual-spam
+    -- rate (= your FPS) to win the clash. inbound ~30/s to block. idle ~9/s.
+    local minGap = (tier == "clash" and 0.01) or (tier == "inbound" and 0.03) or 0.11
     if os.clock() - SpamIdleLastFire < minGap then
         return false
     end

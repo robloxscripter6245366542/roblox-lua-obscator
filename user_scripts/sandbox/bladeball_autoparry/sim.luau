@@ -81,9 +81,9 @@ local function advancedShouldSpam(o)
     return o.distToBall <= o.ballReach and proximityOK and o.aimed and impact
 end
 
--- Spam gate: elopez SpamCanFire. env = { alive, stunned, inbound }. The stamina
--- guard throttles idle firing (no inbound ball) to ~9/s so hammering can't break
--- the shield; a real clash (inbound) fires at full rate.
+-- Spam gate: elopez SpamCanFire. env = { alive, stunned, tier }. Tiered rate:
+-- clash ~50/s (win it), inbound ~28/s (block it), idle ~9/s (no shield break).
+-- (env.inbound=true is accepted as a shorthand for the "inbound" tier.)
 local function makeSpamGate()
     local SpamStunHoldUntil = 0
     local idleLast = 0
@@ -94,9 +94,8 @@ local function makeSpamGate()
             return false
         end
         if now < SpamStunHoldUntil then return false end
-        -- stamina-safe rate cap: ~22/s while a ball is inbound, ~9/s idle, so the
-        -- block can never be hammered into breaking.
-        local gap = env.inbound and 0.045 or 0.11
+        local tier = env.tier or (env.inbound and "inbound") or "idle"
+        local gap = (tier == "clash" and 0.01) or (tier == "inbound" and 0.03) or 0.11
         if now - idleLast < gap then return false end
         idleLast = now
         return true
@@ -309,14 +308,20 @@ end
 
 -- 8. Steady rate: alive, not stunned -> ~TargetRPS packets/sec.
 do
-    local gate = makeSpamGate()
-    local acc = makeSpamAccumulator()
-    local now, fired = 0, 0
-    for _ = 1, 60 do                                    -- 1 second at 60 fps
-        now += DT
-        acc(DT, 1000, function() if gate(now, { alive = true, stunned = false, inbound = true }) then fired = fired + 1 end end)
+    local function rateOf(tier)
+        local gate = makeSpamGate()
+        local acc = makeSpamAccumulator()
+        local now, fired = 0, 0
+        for _ = 1, 60 do                                -- 1 second at 60 fps
+            now += DT
+            acc(DT, 2000, function() if gate(now, { alive = true, stunned = false, tier = tier }) then fired = fired + 1 end end)
+        end
+        return fired
     end
-    check("spam rate capped to stamina-safe ~22/s (block can't self-break)", approx(fired, 22, 8), "got " .. fired)
+    local clash, inbound, idle = rateOf("clash"), rateOf("inbound"), rateOf("idle")
+    check("tiered spam rate: clash ~60/s > inbound ~30/s > idle ~9/s",
+        clash >= 45 and approx(inbound, 30, 8) and idle <= 12,
+        string.format("clash=%d inbound=%d idle=%d", clash, inbound, idle))
 end
 
 -- 9. Dead -> zero packets even at full rate.
@@ -413,12 +418,12 @@ do
     local acc2 = makeSpamAccumulator()
     now = 0
     local clashFired = 0
-    for _ = 1, 60 do   -- 1s with a ball inbound (clash) at 2000 rps
+    for _ = 1, 60 do   -- 1s in a real clash (ball on top of you) at 2000 rps
         now = now + DT
-        acc2(DT, 2000, function() if gate2(now, { alive = true, stunned = false, inbound = true }) then clashFired = clashFired + 1 end end, true)
+        acc2(DT, 2000, function() if gate2(now, { alive = true, stunned = false, tier = "clash" }) then clashFired = clashFired + 1 end end, true)
     end
-    check("idle throttled (~9/s) & clash capped (~22/s) so the block can't break",
-        idleFired <= 12 and clashFired >= 15 and clashFired <= 30, "idle=" .. idleFired .. " clash=" .. clashFired)
+    check("idle throttled (~9/s) but a real clash fires fast (~50/s) to win",
+        idleFired <= 12 and clashFired >= 45, "idle=" .. idleFired .. " clash=" .. clashFired)
 end
 
 -- "Manual spam when you turn it off keeps on going for so long": once toggled
