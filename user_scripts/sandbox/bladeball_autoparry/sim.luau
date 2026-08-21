@@ -65,11 +65,19 @@ local function autoParryStep(state, now, mine, distance, speed, closing, ping_ms
     local timeToImpact = closing > 0 and (reachDist / closing) or math.huge
     local impactWindow = ping_seconds + 0.11
     local atImpact = inRange and timeToImpact <= impactWindow
+    -- Contact-range clash (dist <= 16, still closing): rapid re-parry to win the
+    -- tug-of-war, bypassing once-per-approach. Safe (every parry lands on the ball
+    -- right here) and only while closing, so it stops when the clash ends.
+    local inClash = mine and incoming and distance <= 16
     local clearlyGone = (not mine) or (distance > acc * 1.35)
     local sinceLast = now - (state.last or 0)
 
     local fired = false
-    if mine and atImpact and incoming and not state.parried and sinceLast >= 0.2 then
+    if inClash and sinceLast >= 0.01 then
+        fired = true
+        state.parried = true
+        state.last = now
+    elseif mine and atImpact and incoming and not state.parried and sinceLast >= 0.2 then
         fired = true
         state.parried = true
         state.last = now
@@ -172,7 +180,7 @@ do
     local fires = driveBall(function()
         if phase == "in" then
             dist = dist - speed * DT
-            if dist <= 12 then phase = "out" end
+            if dist <= 40 then phase = "out" end      -- parried at range -> deflects (never reaches contact)
             return true, dist, speed, speed          -- mine, closing in
         else
             dist = dist + speed * DT
@@ -192,7 +200,7 @@ do
     local fires = driveBall(function()
         if phase == "in" then
             dist = dist - speed * DT
-            if dist <= 12 then phase = "out" end
+            if dist <= 40 then phase = "out" end       -- parried at range -> deflects back
             return true, dist, speed, speed
         else
             dist = dist + speed * DT
@@ -216,7 +224,7 @@ do
     local fires = driveBall(function(now, f)
         if phase == "in" then
             dist = dist - 200 * DT
-            if dist <= 12 then phase = "wobble" end
+            if dist <= 40 then phase = "wobble" end     -- parried at range -> settles into a near-you wobble
             return true, dist, 200, 200
         elseif phase == "wobble" then
             wob = wob + 1
@@ -231,6 +239,27 @@ do
     end, 60, 60 * 4)
     -- exactly the one approach block; nothing during the wobble
     check("post-clash wobble -> no extra blocks", fires == 1, "got " .. fires)
+end
+
+-- 3b. ACTIVE clash: a ball parked at contact range (dist <= 16) coming at you is
+--     the tug-of-war you win by out-clicking. Auto Parry must RAPID-fire here, not
+--     do one "normal" block and hold ("it just blocks normal and not clash"). Then
+--     the moment the ball leaves (closing < 0) it must STOP (no post-clash tail).
+do
+    local state = { parried = false, last = -1 }
+    local now, clashFires, tailFires = 0, 0, 0
+    -- 1s of the ball sitting on top of you, still closing = an active clash.
+    for _ = 1, 60 do
+        now = now + DT
+        if (autoParryStep(state, now, true, 14, 300, 300, 60, 1)) then clashFires = clashFires + 1 end
+    end
+    -- ball deflects and leaves: 30 frames closing away, still near -> must stop.
+    for _ = 1, 30 do
+        now = now + DT
+        if (autoParryStep(state, now, true, 15, 300, -300, 60, 1)) then tailFires = tailFires + 1 end
+    end
+    check("active clash rapid-fires to win, then stops when it leaves",
+        clashFires >= 45 and tailFires == 0, "clash=" .. clashFires .. " tail=" .. tailFires)
 end
 
 -- 4a. Ball that never comes inbound (always leaving): zero blocks.
@@ -278,8 +307,8 @@ do
     local dMine, dOther, now, fMine, fOther = 300, 300, 0, 0, 0
     for _ = 1, 240 do
         now += DT
-        dMine = math.max(dMine - 200 * DT, 8)
-        dOther = math.max(dOther - 200 * DT, 8)
+        dMine = math.max(dMine - 200 * DT, 20)          -- settle in-range but outside contact (no clash path)
+        dOther = math.max(dOther - 200 * DT, 20)
         if (autoParryStep(sMine, now, true, dMine, 200, 200, 60, 1)) then fMine = fMine + 1 end
         if (autoParryStep(sOther, now, false, dOther, 200, 200, 60, 1)) then fOther = fOther + 1 end
     end
@@ -294,7 +323,7 @@ do
     local dist = 300
     for f = 1, 120 do
         now += DT
-        dist = math.max(dist - 200 * DT, 8)
+        dist = math.max(dist - 200 * DT, 20)            -- in-range but outside contact (no clash path)
         local mine = not (f == 40)                      -- one glitch frame: target flickers away
         if (autoParryStep(state, now, mine, dist, 200, 200, 60, 1)) then fires = fires + 1 end
     end
@@ -486,10 +515,10 @@ do
     -- => sinceLast huge => fires immediately; the sim's clock starts at 0).
     local state = { parried = false, last = -1 }
     local now, fires = 0, 0
-    -- approach: mine, inbound, in range
+    -- approach: mine, inbound, parried at RANGE (dist 40, outside contact) = one block
     for _ = 1, 8 do
         now = now + DT
-        if (autoParryStep(state, now, true, 12, 200, 200, 60, 1)) then fires = fires + 1 end
+        if (autoParryStep(state, now, true, 40, 200, 200, 60, 1)) then fires = fires + 1 end
     end
     -- deflected: still mine and close, but now moving AWAY (closing < 0) for 30 frames
     for _ = 1, 30 do
