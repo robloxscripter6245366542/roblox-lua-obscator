@@ -4930,9 +4930,21 @@ do
         end)
 
         if SkinChanger.Targets.SwordModel.Enabled and SkinChanger.Targets.SwordModel.ModelName ~= "" then
-            pcall(function()
-                ACHAOTICASSETS.swordInstances:EquipSwordTo(char, SkinChanger.Targets.SwordModel.ModelName)
-            end)
+            -- Build the skin model at most ONCE per character + skin. The apply
+            -- burst calls setSword 5x, and it also runs on every respawn/config
+            -- load — each local build adds another sword, so those stacked up and
+            -- clipped into each other ("my sword stuck into the sword" once a skin
+            -- was picked). Only build when the char or the chosen model actually
+            -- changed; the animation/FX below just re-assert (they replace, not
+            -- stack), so they can still run every time.
+            if SkinChanger.System.appliedModelChar ~= char
+                or SkinChanger.System.appliedModelName ~= SkinChanger.Targets.SwordModel.ModelName then
+                pcall(function()
+                    ACHAOTICASSETS.swordInstances:EquipSwordTo(char, SkinChanger.Targets.SwordModel.ModelName)
+                end)
+                SkinChanger.System.appliedModelChar = char
+                SkinChanger.System.appliedModelName = SkinChanger.Targets.SwordModel.ModelName
+            end
         end
 
         if SkinChanger.Targets.SwordAnimation.Enabled and SkinChanger.Targets.SwordAnimation.AnimationName ~= "" and ACHAOTICASSETS.SwordController then
@@ -4970,6 +4982,11 @@ do
         if SkinChanger.Targets.SwordFX.Enabled and SkinChanger.Targets.SwordFX.FXName ~= "" then
             SkinChanger.System.SlashName = SkinChanger.System.functions.getSlashName(SkinChanger.Targets.SwordFX.FXName)
         end
+        -- A deliberate change (new skin picked, toggled) should rebuild the model
+        -- once — clear the "already applied" guard so the next setSword rebuilds
+        -- for the new selection instead of being skipped.
+        SkinChanger.System.appliedModelChar = nil
+        SkinChanger.System.appliedModelName = nil
         SkinChanger.System.functions.applyBurst()
     end
 end
