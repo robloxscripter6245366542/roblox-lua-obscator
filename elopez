@@ -5439,12 +5439,25 @@ local function MainConnection()
                 -- this makes it STOP instantly when the clash ends instead of firing
                 -- at a ball that's leaving ("block for nothing").
                 local closing = distance > 0 and velocity:Dot(to_self.Unit) or 0
-                local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue() / 10
-                local ping_threshold = math.clamp(ping / 10, 5, 17)
+                local raw_ping_ms = Stats.Network.ServerStatsItem['Data Ping']:GetValue()
+                local ping = raw_ping_ms / 10  -- kept for the (disabled) curve check below
+                -- Reaction/tick buffer. The old clamp(ping/10, 5, 17) divided the
+                -- ping down twice, so for ANY ping under ~500ms this pinned to the
+                -- floor of 5 and never grew with latency — the fire radius stayed
+                -- fixed no matter your ms. Scale it with the real ping in ms instead.
+                local ping_threshold = math.clamp(5 + raw_ping_ms * 0.03, 5, 24)
                 local speed = velocity.Magnitude
                 local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
                 local speed_divisor = (2.4 + capped_speed_diff * 0.002) * ACHAOTICDATA.Config.ParrySettings.SpeedDivisorMultiplier
-                local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+                -- High-ping lead. During your latency the ball travels
+                -- speed * ping_seconds studs before your FireParry even reaches the
+                -- server, so a fixed radius fires too LATE at high ms and whiffs.
+                -- Add that travel distance to the fire radius so the parry leads the
+                -- ball by your ping and lands on time. Clamped so a lag spike or a
+                -- very fast ball can't blow the radius up across the whole map.
+                local ping_seconds = math.clamp(raw_ping_ms / 1000, 0, 0.45)
+                local ping_lead = math.min(speed * ping_seconds, 70)
+                local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5) + ping_lead
                 -- IsBall_Curved is disabled here (same as the lobby parry). It has
                 -- several paths that report a ball as "curved" for balls merely
                 -- approaching at an angle — with Anti-Curve on by default that made
