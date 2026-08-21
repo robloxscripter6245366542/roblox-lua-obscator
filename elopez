@@ -5377,6 +5377,9 @@ local function GetClosest_Player()
     return closestPlayer, closestDistance
 end        
 
+-- Throttle for the dead-ball state sweep below.
+local LastBallStatePrune = 0
+
 local function MainConnection()
     local Char = GetCharacter()
     if not Char or not Char.PrimaryPart then
@@ -5392,7 +5395,34 @@ local function MainConnection()
         ACHAOTICDATA.Global.APStatus = "off: dead"
         return
     end
-    local IsSpamming = ACHAOTICDATA.Config.AutoSpamParry.Spamming or ACHAOTICDATA.Config.ManualSpamParry.Spamming 
+
+    -- Prune per-ball state for balls that no longer exist. The ChildRemoved
+    -- cleanup is bound to the Balls folder captured at load, but Blade Ball
+    -- SWAPS workspace.Balls between rounds (which is why Get_Balls re-resolves
+    -- it) — after a swap that handler fires on the dead folder, so state for
+    -- balls removed from the NEW folder is never cleaned and ACHAOTICDATA.Parry /
+    -- AutoParryHooks grow every round (a slow leak + stale signal connections).
+    -- Sweep destroyed balls here as a folder-independent safety net. Throttled to
+    -- once per second; the table stays small once pruned, so it's cheap.
+    if os.clock() - LastBallStatePrune >= 1 then
+        LastBallStatePrune = os.clock()
+        for ball, data in pairs(ACHAOTICDATA.Parry) do
+            if typeof(ball) == "Instance" and not ball.Parent then
+                if data and data.TargetConn then
+                    pcall(function() data.TargetConn:Disconnect() end)
+                end
+                ACHAOTICDATA.Parry[ball] = nil
+            end
+        end
+        for ball, conn in pairs(AutoParryHooks) do
+            if typeof(ball) == "Instance" and not ball.Parent then
+                pcall(function() conn:Disconnect() end)
+                AutoParryHooks[ball] = nil
+            end
+        end
+    end
+
+    local IsSpamming = ACHAOTICDATA.Config.AutoSpamParry.Spamming or ACHAOTICDATA.Config.ManualSpamParry.Spamming
     do
         local BallsList = Get_Balls()
         -- Debug status: explain why the normal Auto Parry is / isn't acting.
