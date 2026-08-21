@@ -81,9 +81,12 @@ local function advancedShouldSpam(o)
     return o.distToBall <= o.ballReach and proximityOK and o.aimed and impact
 end
 
--- Spam gate: elopez L8261-8275. env = { alive, stunned }.
+-- Spam gate: elopez SpamCanFire. env = { alive, stunned, inbound }. The stamina
+-- guard throttles idle firing (no inbound ball) to ~9/s so hammering can't break
+-- the shield; a real clash (inbound) fires at full rate.
 local function makeSpamGate()
     local SpamStunHoldUntil = 0
+    local idleLast = 0
     return function(now, env)
         if not env.alive then return false end          -- dead / no character
         if env.stunned then
@@ -91,6 +94,10 @@ local function makeSpamGate()
             return false
         end
         if now < SpamStunHoldUntil then return false end
+        if not env.inbound then                          -- stamina guard: idle throttle
+            if now - idleLast < 0.11 then return false end
+        end
+        idleLast = now
         return true
     end
 end
@@ -306,7 +313,7 @@ do
     local now, fired = 0, 0
     for _ = 1, 60 do                                    -- 1 second at 60 fps
         now += DT
-        acc(DT, 1000, function() if gate(now, { alive = true, stunned = false }) then fired = fired + 1 end end)
+        acc(DT, 1000, function() if gate(now, { alive = true, stunned = false, inbound = true }) then fired = fired + 1 end end)
     end
     check("spam 1000 rps -> ~1000/s", approx(fired, 1000, 30), "got " .. fired)
 end
@@ -318,7 +325,7 @@ do
     local now, fired = 0, 0
     for _ = 1, 60 do
         now += DT
-        acc(DT, 2000, function() if gate(now, { alive = false, stunned = false }) then fired = fired + 1 end end)
+        acc(DT, 2000, function() if gate(now, { alive = false, stunned = false, inbound = true }) then fired = fired + 1 end end)
     end
     check("spam while dead -> 0", fired == 0, "got " .. fired)
 end
@@ -348,7 +355,7 @@ do
                 if now >= stunUntil then stunnedNow = false end
             end
             -- fire attempt
-            local canFire = useGate and gate(now, { alive = true, stunned = stunnedNow }) or (not useGate)
+            local canFire = useGate and gate(now, { alive = true, stunned = stunnedNow, inbound = true }) or (not useGate)
             if canFire and stunnedNow then
                 stunUntil = now + STUN                   -- feeding a broken guard re-arms the stun
             end
@@ -388,6 +395,29 @@ do
     local ramping = advancedShouldSpam(setmetatable({ timeToImpact = 0.14, accel = 40 }, { __index = base }))
     check("advanced spam accel-lead catches a ramping ball", steady == false and ramping == true,
         "steady=" .. tostring(steady) .. " ramping=" .. tostring(ramping))
+end
+
+-- "Hitbox/block breaking during spam at 1k+ rps": hammering with NO inbound ball
+-- must throttle to a safe idle cadence (so it can't drain/break the shield), yet
+-- fire at the FULL rate the moment a ball is inbound (a real clash).
+do
+    local gate = makeSpamGate()
+    local acc = makeSpamAccumulator()
+    local now, idleFired = 0, 0
+    for _ = 1, 60 do   -- 1s idle at 2000 rps target, nothing inbound
+        now = now + DT
+        acc(DT, 2000, function() if gate(now, { alive = true, stunned = false, inbound = false }) then idleFired = idleFired + 1 end end, true)
+    end
+    local gate2 = makeSpamGate()
+    local acc2 = makeSpamAccumulator()
+    now = 0
+    local clashFired = 0
+    for _ = 1, 60 do   -- 1s with a ball inbound (clash) at 2000 rps
+        now = now + DT
+        acc2(DT, 2000, function() if gate2(now, { alive = true, stunned = false, inbound = true }) then clashFired = clashFired + 1 end end, true)
+    end
+    check("idle spam throttled (no shield break); full rate in a clash",
+        idleFired <= 12 and clashFired >= 1800, "idle=" .. idleFired .. " clash=" .. clashFired)
 end
 
 -- "Manual spam when you turn it off keeps on going for so long": once toggled

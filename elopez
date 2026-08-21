@@ -8484,7 +8484,40 @@ end
 -- reaches us ping-ms late, so by the time we see it we've already fired dozens
 -- more that re-arm the stun, and it sticks broken. Holding fire for a beat AFTER
 -- Stunned clears lets the block actually recover before we hammer it again.
+-- Is a real ball actually coming at us right now? Cached ~30ms so calling it per
+-- spam packet (up to thousands/sec) costs one ball sweep per few frames, not per
+-- packet.
+local SpamThreatCache, SpamThreatAt = false, 0
+local function SpamHasInboundThreat()
+    local nowc = os.clock()
+    if nowc - SpamThreatAt < 0.03 then return SpamThreatCache end
+    SpamThreatAt = nowc
+    local result = false
+    local char = GetCharacter()
+    local root = char and char.PrimaryPart
+    if root then
+        for _, ball in pairs(Get_Balls()) do
+            local z = ball:FindFirstChild('zoomies')
+            if z then
+                local toSelf = root.Position - ball.Position
+                local dist = toSelf.Magnitude
+                if dist > 0 then
+                    local closing = z.VectorVelocity:Dot(toSelf.Unit)
+                    -- coming AT us, and either aimed at us or already close (a clash)
+                    if closing > 0 and (BallTargetsMe(ball:GetAttribute('target')) or dist < 70) then
+                        result = true
+                        break
+                    end
+                end
+            end
+        end
+    end
+    SpamThreatCache = result
+    return result
+end
+
 local SpamStunHoldUntil = 0
+local SpamIdleLastFire = 0
 local function SpamCanFire()
     local char = GetCharacter()
     if not char then return false end
@@ -8498,6 +8531,18 @@ local function SpamCanFire()
     if os.clock() < SpamStunHoldUntil then
         return false                                   -- just recovered: let it settle so the burst can't instantly re-break it
     end
+    -- Stamina guard: hammering the parry with NO ball to parry drains the shield
+    -- and BREAKS the block ("hitbox breaking" during spam) — this happens even at
+    -- 1000 rps, and worse in the thousands. When nothing is inbound, throttle to a
+    -- safe idle cadence (~9/s). During a real clash (a ball is coming at you) fire
+    -- at the FULL rate, because there each parry is consumed and doesn't burn the
+    -- shield. Full spam when it matters; no self-break when it doesn't.
+    if not SpamHasInboundThreat() then
+        if os.clock() - SpamIdleLastFire < 0.11 then
+            return false
+        end
+    end
+    SpamIdleLastFire = os.clock()
     return true
 end
 
