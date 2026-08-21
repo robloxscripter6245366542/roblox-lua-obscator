@@ -5501,7 +5501,12 @@ local function MainConnection()
                 -- the return volley never fires ("try to clash, it no clash").
                 -- Also, a contested clash can leave the ball nearly frozen right on
                 -- top of you (velocity ~0, so it never reads as "incoming").
-                local frozenClash = inRange and speed < 15 and distance <= parry_accuracy * 0.9
+                -- Gate this on an ABSOLUTE near-contact distance, not a fraction of
+                -- parry_accuracy: the fire radius now grows with ping (up to ~200
+                -- studs), and keying the mash off it made any slow ball far away
+                -- trigger a continuous mash — "spam for nothing when you're not in a
+                -- clash". A real clash sits on top of you, so require near contact.
+                local frozenClash = speed < 15 and distance <= 14
 
                 if mine and frozenClash then
                     -- CLASH: ball is contested on top of you and barely moving.
