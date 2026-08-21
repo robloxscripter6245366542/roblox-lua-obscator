@@ -95,10 +95,13 @@ local function makeSpamGate()
     end
 end
 
--- Spam accumulator: elopez L8310-8337. Calls onFire() for each packet.
+-- Spam accumulator: elopez L8538-8561. Calls onFire() for each packet.
+-- `active` false = nothing spamming: zero the accumulator and bail (no backlog,
+-- instant stop on toggle-off).
 local function makeSpamAccumulator()
     local timeAccumulator = 0
-    return function(deltaTime, targetRPS, onFire)
+    return function(deltaTime, targetRPS, onFire, active)
+        if active == false then timeAccumulator = 0; return end
         if deltaTime > 0.05 then deltaTime = 0.05 end    -- hitch clamp
         timeAccumulator += deltaTime
         if targetRPS <= 0 then return end
@@ -385,6 +388,23 @@ do
     local ramping = advancedShouldSpam(setmetatable({ timeToImpact = 0.14, accel = 40 }, { __index = base }))
     check("advanced spam accel-lead catches a ramping ball", steady == false and ramping == true,
         "steady=" .. tostring(steady) .. " ramping=" .. tostring(ramping))
+end
+
+-- "Manual spam when you turn it off keeps on going for so long": once toggled
+-- off (active=false) the accumulator zeroes and NOTHING fires, even right after a
+-- frame hitch that would otherwise have queued a burst.
+do
+    local acc = makeSpamAccumulator()
+    local fired = 0
+    -- spam ON with a big hitch (would queue a backlog), then immediately OFF
+    acc(0.05, 2000, function() fired = fired + 1 end, true)  -- active frame (burst allowed, bounded)
+    local firedWhileOn = fired
+    fired = 0
+    for _ = 1, 30 do                                          -- half a second after toggle-off
+        acc(1 / 60, 2000, function() fired = fired + 1 end, false)
+    end
+    check("manual spam stops instantly on toggle-off (no backlog)",
+        firedWhileOn > 0 and fired == 0, "afterOff=" .. fired)
 end
 
 -- ===========================================================================

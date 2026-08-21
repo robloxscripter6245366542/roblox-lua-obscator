@@ -8537,6 +8537,17 @@ end
 do
     local timeAccumulator = 0
     NeverZen:Track(RunService.RenderStepped:Connect(function(deltaTime)
+        -- Nothing spamming: zero the accumulator and bail. Previously the loop
+        -- kept accumulating time (and running the fire loop as a no-op) even while
+        -- idle, so a backlog built up during a hitch could dump a queued burst the
+        -- instant spam was toggled on, and — the reported bug — manual spam that
+        -- was turned off could keep firing from that backlog "for so long" before
+        -- it drained. Idle = instant stop, no backlog, fresh start when re-enabled.
+        if not (ACHAOTICDATA.Config.AutoSpamParry.Spamming or ACHAOTICDATA.Config.ManualSpamParry.Spamming) then
+            timeAccumulator = 0
+            UI.SpamAccumulatorLabel:SetValue("Accumulator: 0.000")
+            return
+        end
         -- Manual Spam has its own rate; use it while manual spam is active,
         -- otherwise fall back to the shared Target RPS (auto spam).
         local TargetSpeed = ACHAOTICDATA.Config.ParrySettings.SpammingRPS
