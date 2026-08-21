@@ -4357,7 +4357,7 @@ local ACHAOTICDATA = {
         AutoSpamParry = {
             Enabled = false,
             Keybind = nil,
-            DetectionMode = "Speed",
+            DetectionMode = "Advanced",
             AnimationFix = false,
             Spamming = false,
             Threshold = 3,
@@ -5846,15 +5846,19 @@ local function MainConnection()
                 -- frame-to-frame; a curving ball gets a wider reach so it still
                 -- lands as the path swings in.
                 local Curving = false
+                local Accel = 0   -- studs/frame the ball is speeding up (rally accel)
                 if (ACHAOTICDATA.Config.AutoSpamParry.CurveAssist or AdvancedMode) and Velocity.Magnitude > 0 then
                     local unit = Velocity.Unit
                     local st = SpamCurveState[Ball]
-                    if st and st.dir then
-                        if (unit - st.dir).Magnitude > 0.05 then
+                    if st then
+                        if st.dir and (unit - st.dir).Magnitude > 0.05 then
                             Curving = true
                         end
+                        if st.lastSpeed then
+                            Accel = BallSpeed - st.lastSpeed
+                        end
                     end
-                    SpamCurveState[Ball] = { dir = unit }
+                    SpamCurveState[Ball] = { dir = unit, lastSpeed = BallSpeed }
                     if Curving then
                         BallReach = BallReach * 1.35
                     end
@@ -5884,11 +5888,21 @@ local function MainConnection()
                 local ImpactValidation = true
                 if ACHAOTICDATA.Config.AutoSpamParry.TimeToImpact or AdvancedMode then
                     local LeadBonus = ACHAOTICDATA.Config.AutoSpamParry.AutoTune and ACHAOTICDATA.Global.AutoTune.LeadBonus or 0
-                    local Lead = (Ping / 1000) + (ACHAOTICDATA.Config.AutoSpamParry.ImpactLead or 0.06) + LeadBonus
+                    -- Acceleration-aware lead: a ball speeding up through a rally
+                    -- arrives sooner than its current speed implies, so extend the
+                    -- lead a touch when it's accelerating (capped) so Advanced still
+                    -- catches fast-ramping balls.
+                    local AccelLead = math.clamp(Accel * 0.002, 0, 0.05)
+                    local Lead = (Ping / 1000) + (ACHAOTICDATA.Config.AutoSpamParry.ImpactLead or 0.06) + LeadBonus + AccelLead
                     ImpactValidation = Closing > 0 and TimeToImpact <= Lead
                 end
 
-                if DistToBall <= BallReach and DistToTarget <= TargetCheck and SpamVaildation and TargetValidation and ImpactValidation then
+                -- Proximity gate (nearest player within a hitbox) is a legacy duel
+                -- heuristic that wrongly suppresses spam on a long-range ball aimed
+                -- at you. In Advanced the aimed + inbound + impact gates are the real
+                -- signal, so don't require a player to be next to you there.
+                local ProximityOK = AdvancedMode or (DistToTarget <= TargetCheck)
+                if DistToBall <= BallReach and ProximityOK and SpamVaildation and TargetValidation and ImpactValidation then
                     ShouldSpam = true
                 end
             end

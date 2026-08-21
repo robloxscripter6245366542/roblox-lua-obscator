@@ -71,6 +71,16 @@ local function autoParryStep(state, now, mine, distance, speed, closing, ping_ms
     return fired, acc
 end
 
+-- Advanced Auto Spam detection decision: elopez ~L5865-5896 (the gates this
+-- sandbox exercises). Returns whether ShouldSpam is set for one ball.
+local function advancedShouldSpam(o)
+    local proximityOK = o.advanced or (o.distToTarget <= o.targetCheck)
+    local accelLead = math.clamp((o.accel or 0) * 0.002, 0, 0.05)
+    local lead = (o.ping_ms / 1000) + (o.impactLead or 0.06) + accelLead
+    local impact = o.closing > 0 and o.timeToImpact <= lead
+    return o.distToBall <= o.ballReach and proximityOK and o.aimed and impact
+end
+
 -- Spam gate: elopez L8261-8275. env = { alive, stunned }.
 local function makeSpamGate()
     local SpamStunHoldUntil = 0
@@ -348,6 +358,33 @@ do
     -- land near it, while an ungated feed re-arms the stun and stays mostly broken.
     check("block-break self-heals with gate", gated < 0.25 and none > 0.5,
         string.format("none=%.0f%% broken, gated=%.0f%% broken", none * 100, gated * 100))
+end
+
+-- 12. Advanced spam: a long-range ball aimed at you, inbound and within impact
+--     lead, should spam even with NO player nearby (proximity gate off in
+--     Advanced) — but the legacy Distance mode's proximity gate suppresses it.
+do
+    local base = {
+        distToBall = 40, ballReach = 60, distToTarget = 500, targetCheck = 25,
+        aimed = true, closing = 300, timeToImpact = 0.1, ping_ms = 80, impactLead = 0.06, accel = 0,
+    }
+    local adv = advancedShouldSpam(setmetatable({ advanced = true }, { __index = base }))
+    local legacy = advancedShouldSpam(setmetatable({ advanced = false }, { __index = base }))
+    check("advanced spam ignores duel-proximity on long-range aimed ball",
+        adv == true and legacy == false, "adv=" .. tostring(adv) .. " legacy=" .. tostring(legacy))
+end
+
+-- 13. Advanced spam accel-lead: a ball just outside the lead window catches once
+--     it's accelerating hard.
+do
+    local base = {
+        distToBall = 40, ballReach = 60, distToTarget = 10, targetCheck = 25,
+        aimed = true, closing = 300, ping_ms = 60, impactLead = 0.06, advanced = true,
+    }
+    local steady = advancedShouldSpam(setmetatable({ timeToImpact = 0.14, accel = 0 }, { __index = base }))
+    local ramping = advancedShouldSpam(setmetatable({ timeToImpact = 0.14, accel = 40 }, { __index = base }))
+    check("advanced spam accel-lead catches a ramping ball", steady == false and ramping == true,
+        "steady=" .. tostring(steady) .. " ramping=" .. tostring(ramping))
 end
 
 -- ---------------------------------------------------------------------------
