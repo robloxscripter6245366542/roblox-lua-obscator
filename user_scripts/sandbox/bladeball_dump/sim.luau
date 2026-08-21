@@ -56,9 +56,16 @@ end
 local function decideFire(state, now, mine, distance, speed, closing, ping_ms)
     local acc = parryAccuracy(speed, ping_ms, true)
     local inRange, incoming = distance <= acc, closing > 0
+    -- Time-to-arrival gate (elopez): fire ~0.11s + ping from contact, not the
+    -- instant the ball crossed the radius. The packet then travels one-way ping
+    -- and the 0.5s shield opens right as the ball reaches us.
+    local ping_seconds = math.clamp(ping_ms / 1000, 0, 0.45)
+    local reachDist = math.max(distance - 12, 0)
+    local timeToImpact = closing > 0 and (reachDist / closing) or math.huge
+    local atImpact = inRange and timeToImpact <= (ping_seconds + 0.11)
     local clearlyGone = (not mine) or (distance > acc * 1.35)
     local sinceLast = now - (state.last or 0)
-    if mine and inRange and incoming and not state.parried and sinceLast >= 0.2 then
+    if mine and atImpact and incoming and not state.parried and sinceLast >= 0.2 then
         state.parried = true; state.last = now
         return true
     elseif clearlyGone then
@@ -101,7 +108,8 @@ end
 -- Run one approach: ball flies in, the hub decides when to fire, the packet
 -- lands one-way-ping later, and we check the SERVER truth. Returns "deflected"
 -- (ServerParryCount bumped), "missed", or "rejected".
-local function runApproach(pingMs, speed, char)
+local function runApproach(pingMs, speed, char, fireFn)
+    fireFn = fireFn or decideFire
     local oneWay = (pingMs / 1000) / 2
     local now = 0
     local serverDist = 400                 -- server-truth distance
@@ -117,7 +125,7 @@ local function runApproach(pingMs, speed, char)
         local seenDist = serverDist + speed * oneWay
         local closing = speed  -- inbound
         -- hub decision on the STALE view
-        if decideFire(state, now, true, seenDist, speed, closing, pingMs) then
+        if fireFn(state, now, true, seenDist, speed, closing, pingMs) then
             if not pending then pending = { arriveAt = now + oneWay } end
         end
         -- server processes an arrived parry: the dump opens an ACTIVE shield for
@@ -257,6 +265,33 @@ do
     check("stamina guard prevents the idle-spam shield break",
         brokeNoGuard == true and brokeWithGuard == false,
         "no-guard broke=" .. tostring(brokeNoGuard) .. "  with-guard broke=" .. tostring(brokeWithGuard))
+end
+
+-- 9. "It blocks too early and MISSES." A slow ball at high ping: the old gate
+--    fired the instant the ball crossed the ping-widened radius, so far out that
+--    the 0.5s shield expired BEFORE the ball arrived -> server sees no shield ->
+--    miss. The shipped time-to-impact gate fires ~0.11s+ping from contact, so the
+--    shield is live exactly when the ball lands. Same server truth, both run.
+do
+    -- old behaviour: fire on pure distance (distance <= acc), no arrival timing.
+    local function decideFirePureDistance(state, now, mine, distance, speed, closing, ping_ms)
+        local acc = parryAccuracy(speed, ping_ms, true)
+        local inRange, incoming = distance <= acc, closing > 0
+        local clearlyGone = (not mine) or (distance > acc * 1.35)
+        local sinceLast = now - (state.last or 0)
+        if mine and inRange and incoming and not state.parried and sinceLast >= 0.2 then
+            state.parried = true; state.last = now
+            return true
+        elseif clearlyGone then
+            state.parried = false
+        end
+        return false
+    end
+    local oldOutcome = runApproach(300, 70, newChar(), decideFirePureDistance)
+    local newOutcome = runApproach(300, 70, newChar())   -- shipped timed gate
+    check("timed gate lands a slow high-ping ball the early gate missed",
+        oldOutcome == "missed" and newOutcome == "deflected",
+        "early-gate=" .. oldOutcome .. "  timed-gate=" .. newOutcome)
 end
 
 -- ---------------------------------------------------------------------------
