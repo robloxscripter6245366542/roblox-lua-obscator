@@ -5513,35 +5513,19 @@ local function MainConnection()
                 local incoming = closing > 0
                 -- A real clash/rally bounces the ball between you and the
                 -- opponent. While it's flying to THEM the ball's target attribute
-                -- is the opponent (mine == false) — so any re-arm that is gated on
-                -- `mine` never runs, the once-per-approach flag stays stuck, and
-                -- the return volley never fires ("try to clash, it no clash").
-                -- Also, a contested clash can leave the ball nearly frozen right on
-                -- top of you (velocity ~0, so it never reads as "incoming").
-                -- Gate this on an ABSOLUTE near-contact distance, not a fraction of
-                -- parry_accuracy: the fire radius now grows with ping (up to ~200
-                -- studs), and keying the mash off it made any slow ball far away
-                -- trigger a continuous mash — "spam for nothing when you're not in a
-                -- clash". A real clash sits on top of you, so require near contact.
-                local frozenClash = speed < 15 and distance <= 14
-
-                if mine and frozenClash then
-                    -- CLASH: ball is contested on top of you and barely moving.
-                    -- Mash the parry (rapid re-fire) to win the clash, and keep the
-                    -- approach flag cleared so normal firing resumes after.
-                    local now = os.clock()
-                    if now - (ACHAOTICDATA.Parry[Ball].LastParry or 0) >= 0.045 then
-                        if ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
-                            PlayParry_Animation()
-                        end
-                        FireParry()
-                        ACHAOTICDATA.Parry[Ball].LastParry = now
-                    end
-                    ACHAOTICDATA.Parry[Ball].parriedApproach = false
-                    ACHAOTICDATA.Global.APStatus = string.format("CLASH MASH d=%d spd=%d", math.floor(distance), math.floor(speed))
-                elseif mine and inRange and incoming then
-                    -- Normal incoming ball: fire exactly ONCE per approach so a
-                    -- ball that lingers in range doesn't double/triple block.
+                -- is the opponent (mine == false) — so the re-arm must NOT be gated
+                -- on `mine`, or the once-per-approach flag stays stuck and the
+                -- return volley never fires ("try to clash, it no clash"). Re-arming
+                -- whenever the ball isn't a live target for us (the else branch
+                -- below) is what makes each return volley fire once so a rally/clash
+                -- sustains, AND stops the instant the clash truly ends. We only ever
+                -- fire on a genuinely incoming ball; a ball that just sits nearby
+                -- slow after a clash is NOT inbound, so it no longer gets blocked at
+                -- ("still blocking weirdly when the clash stopped").
+                if mine and inRange and incoming then
+                    -- Normal incoming ball (this also covers each return volley of a
+                    -- clash): fire exactly ONCE per approach so a ball that lingers
+                    -- in range doesn't double/triple block.
                     if not ACHAOTICDATA.Parry[Ball].parriedApproach then
                         if ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
                             PlayParry_Animation()
