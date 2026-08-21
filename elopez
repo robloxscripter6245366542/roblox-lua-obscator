@@ -4465,6 +4465,15 @@ local HttpService = cloneref(game:GetService("HttpService"))
 local LEVIATHAN_CONFIG_FOLDER = "Leviathan"
 local LEVIATHAN_CONFIG_FILE = "Leviathan/config.json"
 
+-- The sword skin / FX / animation picks live in a separate table (SkinChanger,
+-- defined later), so they were never part of ACHAOTICDATA.Config and never saved
+-- — you lost your skin every rejoin. These forward-declared hooks let the config
+-- save/load carry the skin selections too; they're assigned once SkinChanger
+-- exists, and the saved snapshot is re-applied after the sword hooks are ready.
+local LeviathanSkinSnapshot   -- () -> table of the current skin selections
+local LeviathanRestoreSkin    -- (snap) -> restore selection fields
+local LeviathanPendingSkin = nil  -- snapshot read from disk, applied when the sword system is ready
+
 -- Keep only JSON-safe primitives (drops Instances, EnumItems, functions).
 local function LeviathanSanitizeConfig(tbl)
     local out = {}
@@ -4482,6 +4491,18 @@ local function LeviathanSanitizeConfig(tbl)
         end
     end
     return out
+end
+
+-- Build the on-disk object: the sanitized Config plus the skin selections under a
+-- reserved "_skin" key. LeviathanMergeConfig ignores keys Config doesn't have, so
+-- "_skin" rides along in the same file without touching the Config shape on load.
+local function LeviathanBuildSaveObject()
+    local obj = LeviathanSanitizeConfig(ACHAOTICDATA.Config)
+    if LeviathanSkinSnapshot then
+        local ok, snap = pcall(LeviathanSkinSnapshot)
+        if ok and type(snap) == "table" then obj._skin = snap end
+    end
+    return obj
 end
 
 -- Only overwrite keys that already exist with a matching primitive type, so a
@@ -4503,7 +4524,7 @@ local function LeviathanSaveConfig()
         if type(makefolder) == "function" and type(isfolder) == "function" and not isfolder(LEVIATHAN_CONFIG_FOLDER) then
             makefolder(LEVIATHAN_CONFIG_FOLDER)
         end
-        writefile(LEVIATHAN_CONFIG_FILE, HttpService:JSONEncode(LeviathanSanitizeConfig(ACHAOTICDATA.Config)))
+        writefile(LEVIATHAN_CONFIG_FILE, HttpService:JSONEncode(LeviathanBuildSaveObject()))
     end)
 end
 
@@ -4515,6 +4536,7 @@ local function LeviathanLoadConfig()
                 return HttpService:JSONDecode(readfile(LEVIATHAN_CONFIG_FILE))
             end)
             if ok and type(decoded) == "table" then
+                if type(decoded._skin) == "table" then LeviathanPendingSkin = decoded._skin end
                 LeviathanMergeConfig(ACHAOTICDATA.Config, decoded)
             end
         end
@@ -4535,7 +4557,7 @@ do
         if now - lastCheck < 1 then return end
         lastCheck = now
         local ok, snapshot = pcall(function()
-            return HttpService:JSONEncode(LeviathanSanitizeConfig(ACHAOTICDATA.Config))
+            return HttpService:JSONEncode(LeviathanBuildSaveObject())
         end)
         if ok and snapshot and snapshot ~= lastSnapshot then
             lastSnapshot = snapshot
@@ -4616,6 +4638,36 @@ local SkinChanger = {
         functions = {}
     }
 }
+
+-- Skin persistence (assigns the forward-declared hooks up top). Snapshot the
+-- selection fields for saving, and restore them from a loaded snapshot. Data only
+-- — the actual apply happens once the sword hooks are installed (end of bootstrap)
+-- and again on every respawn via CharacterAdded.
+LeviathanSkinSnapshot = function()
+    local T = SkinChanger.Targets
+    return {
+        Enabled = SkinChanger.Enabled,
+        ModelEnabled = T.SwordModel.Enabled, ModelName = T.SwordModel.ModelName,
+        AnimEnabled = T.SwordAnimation.Enabled, AnimName = T.SwordAnimation.AnimationName,
+        FXEnabled = T.SwordFX.Enabled, FXName = T.SwordFX.FXName,
+    }
+end
+LeviathanRestoreSkin = function(snap)
+    if type(snap) ~= "table" then return end
+    local T = SkinChanger.Targets
+    if type(snap.Enabled) == "boolean" then SkinChanger.Enabled = snap.Enabled end
+    if type(snap.ModelEnabled) == "boolean" then T.SwordModel.Enabled = snap.ModelEnabled end
+    if type(snap.ModelName) == "string" then T.SwordModel.ModelName = snap.ModelName end
+    if type(snap.AnimEnabled) == "boolean" then T.SwordAnimation.Enabled = snap.AnimEnabled end
+    if type(snap.AnimName) == "string" then T.SwordAnimation.AnimationName = snap.AnimName end
+    if type(snap.FXEnabled) == "boolean" then T.SwordFX.Enabled = snap.FXEnabled end
+    if type(snap.FXName) == "string" then T.SwordFX.FXName = snap.FXName end
+end
+-- Restore the saved selections now (before the UI builds, so the dropdowns show
+-- them). Applying the skin waits until the sword hooks exist.
+if LeviathanPendingSkin then
+    pcall(function() LeviathanRestoreSkin(LeviathanPendingSkin) end)
+end
 
 local Optimization = {
     NoRenderEnabled = false,
@@ -8014,6 +8066,16 @@ do
             end
         end
     end)
+
+    -- Now that the sword hooks are installed, apply the skin selections restored
+    -- from the saved config, so a returning player keeps their sword skin / FX /
+    -- animation without re-picking. From here CharacterAdded re-applies on each
+    -- respawn and the SetSword hook keeps it substituted.
+    if LeviathanPendingSkin and SkinChanger.Enabled then
+        task.spawn(function()
+            pcall(function() SkinChanger.System.functions.updateSword() end)
+        end)
+    end
 
     NeverZen:Track(ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(...)
         if not SkinChanger.System.playParryFunc then
