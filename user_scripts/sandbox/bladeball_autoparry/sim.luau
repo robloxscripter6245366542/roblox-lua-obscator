@@ -95,7 +95,8 @@ local function makeSpamGate()
         end
         if now < SpamStunHoldUntil then return false end
         local tier = env.tier or (env.inbound and "inbound") or "idle"
-        local gap = (tier == "clash" and 0.01) or (tier == "inbound" and 0.03) or 0.11
+        if tier == "idle" then return false end          -- no ball: don't block for nothing
+        local gap = (tier == "clash" and 0.01) or 0.03
         if now - idleLast < gap then return false end
         idleLast = now
         return true
@@ -319,8 +320,8 @@ do
         return fired
     end
     local clash, inbound, idle = rateOf("clash"), rateOf("inbound"), rateOf("idle")
-    check("tiered spam rate: clash ~60/s > inbound ~30/s > idle ~9/s",
-        clash >= 45 and approx(inbound, 30, 8) and idle <= 12,
+    check("tiered spam: clash ~60/s > inbound ~30/s > idle 0 (no block for nothing)",
+        clash >= 45 and approx(inbound, 30, 8) and idle == 0,
         string.format("clash=%d inbound=%d idle=%d", clash, inbound, idle))
 end
 
@@ -422,8 +423,8 @@ do
         now = now + DT
         acc2(DT, 2000, function() if gate2(now, { alive = true, stunned = false, tier = "clash" }) then clashFired = clashFired + 1 end end, true)
     end
-    check("idle throttled (~9/s) but a real clash fires fast (~50/s) to win",
-        idleFired <= 12 and clashFired >= 45, "idle=" .. idleFired .. " clash=" .. clashFired)
+    check("idle fires 0 (no block for nothing); a real clash fires fast to win",
+        idleFired == 0 and clashFired >= 45, "idle=" .. idleFired .. " clash=" .. clashFired)
 end
 
 -- "Manual spam when you turn it off keeps on going for so long": once toggled

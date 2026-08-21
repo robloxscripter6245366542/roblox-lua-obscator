@@ -8591,18 +8591,20 @@ local function SpamCanFire()
     if os.clock() < SpamStunHoldUntil then
         return false                                   -- just recovered: let it settle so the burst can't instantly re-break it
     end
-    -- Tiered, stamina-safe rate. Fire fast where it WINS and is safe, slow where
-    -- it would only drain and break the block:
-    --   • clash (ball on top of you)  -> ~50/s, like manual spam, to out-click and
-    --     always win the clash — safe because every parry lands on the ball.
-    --   • inbound (ball coming at you) -> ~28/s, plenty to block it on arrival.
-    --   • idle (nothing)               -> ~9/s, so hammering can't break the shield.
-    -- Auto and Manual both run through this, so they now behave the same. During
-    -- Stunned we already hold (above) so a forced break still heals.
+    -- Only fire when there's an actual ball to parry, tiered by how close:
+    --   • idle (no ball near)          -> DON'T fire. Firing at nothing just
+    --     blocked "for no reason" and is the ONLY thing that could drain and break
+    --     the shield — so not firing here fixes the spurious block AND removes the
+    --     break entirely (nothing to hammer).
+    --   • clash (ball on top of you)   -> every frame (= your FPS), full manual-spam
+    --     rate, to out-click and always win. Safe: each parry lands on the ball.
+    --   • inbound (ball coming at you)  -> ~30/s, plenty to block it on arrival.
+    -- Auto and Manual both run through this, so they behave the same.
     local tier = SpamThreatTier()
-    -- clash 0.01s is below a frame, so it fires EVERY frame — full manual-spam
-    -- rate (= your FPS) to win the clash. inbound ~30/s to block. idle ~9/s.
-    local minGap = (tier == "clash" and 0.01) or (tier == "inbound" and 0.03) or 0.11
+    if tier == "idle" then
+        return false
+    end
+    local minGap = (tier == "clash" and 0.01) or 0.03
     if os.clock() - SpamIdleLastFire < minGap then
         return false
     end
