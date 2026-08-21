@@ -5660,6 +5660,17 @@ local function MainConnection()
                 local mine = BallTargetsMe(ball_target)
                 local inRange = distance <= parry_accuracy
                 local incoming = closing > 0
+                -- Time the parry to the ball's ARRIVAL, not raw distance. Firing the
+                -- moment the ball crossed the (ping-widened) radius fired too EARLY on
+                -- slower balls: the block's ~0.5s window expired before the ball got
+                -- here, and once-per-approach never retried, so it MISSED. Instead
+                -- fire when the ball is about 0.11s + your ping from CONTACT, so the
+                -- parry lands as it hits. Distance still bounds it (inRange) so we
+                -- never fire at something absurdly far.
+                local reachDist = math.max(distance - 12, 0)   -- to contact (~12 studs)
+                local timeToImpact = closing > 0 and (reachDist / closing) or math.huge
+                local impactWindow = ping_seconds + 0.11
+                local atImpact = inRange and timeToImpact <= impactWindow
                 -- Fire ONCE when a ball comes at us, then HOLD until it has clearly
                 -- left before it can fire again. The re-arm uses a wider distance than
                 -- the fire range (hysteresis) because right after a clash the ball
@@ -5675,14 +5686,14 @@ local function MainConnection()
                 local clearlyGone = (not mine) or (distance > parry_accuracy * 1.35)
                 local sinceLast = os.clock() - (ACHAOTICDATA.Parry[Ball].LastParry or 0)
 
-                if mine and inRange and incoming and not ACHAOTICDATA.Parry[Ball].parriedApproach and sinceLast >= 0.2 then
+                if mine and atImpact and incoming and not ACHAOTICDATA.Parry[Ball].parriedApproach and sinceLast >= 0.2 then
                     if ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
                         PlayParry_Animation()
                     end
                     FireParry()
                     ACHAOTICDATA.Parry[Ball].parriedApproach = true
                     ACHAOTICDATA.Parry[Ball].LastParry = os.clock()
-                    ACHAOTICDATA.Global.APStatus = string.format("FIRING d=%d acc=%d", math.floor(distance), math.floor(parry_accuracy))
+                    ACHAOTICDATA.Global.APStatus = string.format("FIRING d=%d acc=%d tti=%.2f", math.floor(distance), math.floor(parry_accuracy), timeToImpact)
                 elseif clearlyGone then
                     -- Ball has clearly left (not ours / well out of range): re-arm for
                     -- its next approach. This is what makes each rally volley fire.

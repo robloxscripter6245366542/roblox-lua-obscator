@@ -49,17 +49,27 @@ local function parryAccuracy(speed, ping_ms, speedDivMult, autoAcc)
     return ping_threshold + math.max(speed / speed_divisor, 9.5) + ping_lead
 end
 
--- Auto Parry per-ball decision: elopez L5522-5577.
+-- Auto Parry per-ball decision: elopez L5660-5717.
 -- state = { parried=false, last=0 }. Returns (fired, acc).
 local function autoParryStep(state, now, mine, distance, speed, closing, ping_ms, speedDivMult)
     local acc = parryAccuracy(speed, ping_ms, speedDivMult)
     local inRange = distance <= acc
     local incoming = closing > 0
+    -- Time the parry to ARRIVAL, not raw distance. Firing the moment the ball
+    -- crossed the radius fired too EARLY on slow balls (the ~0.5s block window
+    -- expired before the ball got here, once-per-approach never retried -> MISS).
+    -- Fire when the ball is ~0.11s + ping from contact so the parry lands as it
+    -- hits. inRange still bounds it so we never fire at something absurdly far.
+    local ping_seconds = math.clamp(ping_ms / 1000, 0, 0.45)
+    local reachDist = math.max(distance - 12, 0)
+    local timeToImpact = closing > 0 and (reachDist / closing) or math.huge
+    local impactWindow = ping_seconds + 0.11
+    local atImpact = inRange and timeToImpact <= impactWindow
     local clearlyGone = (not mine) or (distance > acc * 1.35)
     local sinceLast = now - (state.last or 0)
 
     local fired = false
-    if mine and inRange and incoming and not state.parried and sinceLast >= 0.2 then
+    if mine and atImpact and incoming and not state.parried and sinceLast >= 0.2 then
         fired = true
         state.parried = true
         state.last = now
