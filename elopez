@@ -5479,28 +5479,34 @@ local function MainConnection()
                 end
 
                 local mine = BallTargetsMe(ball_target)
-                if not mine then
-                    -- Reveal the raw target vs our identity, so a lingering format
-                    -- mismatch is visible instead of a silent "no target".
-                    ACHAOTICDATA.Global.APStatus = string.format("ball target=%s | you=%s/%s",
-                        tostring(ball_target), ACHAOTICDATA.Player.LocalPlayer.Name, tostring(ACHAOTICDATA.Player.LocalPlayer.UserId))
-                end
-                if mine and distance > parry_accuracy then
-                    ACHAOTICDATA.Global.APStatus = string.format("aim you, out of range d=%d > acc=%d", math.floor(distance), math.floor(parry_accuracy))
-                end
-                if mine and closing <= 0 then
-                    -- Aimed at us but moving away — clash is over / just deflected.
-                    -- Re-arm so the NEXT time this ball comes at us it can parry
-                    -- again, and don't parry now (stop the instant the clash ends).
+                local inRange = distance <= parry_accuracy
+                local incoming = closing > 0
+                -- A real clash/rally bounces the ball between you and the
+                -- opponent. While it's flying to THEM the ball's target attribute
+                -- is the opponent (mine == false) — so any re-arm that is gated on
+                -- `mine` never runs, the once-per-approach flag stays stuck, and
+                -- the return volley never fires ("try to clash, it no clash").
+                -- Also, a contested clash can leave the ball nearly frozen right on
+                -- top of you (velocity ~0, so it never reads as "incoming").
+                local frozenClash = inRange and speed < 15 and distance <= parry_accuracy * 0.9
+
+                if mine and frozenClash then
+                    -- CLASH: ball is contested on top of you and barely moving.
+                    -- Mash the parry (rapid re-fire) to win the clash, and keep the
+                    -- approach flag cleared so normal firing resumes after.
+                    local now = os.clock()
+                    if now - (ACHAOTICDATA.Parry[Ball].LastParry or 0) >= 0.045 then
+                        if ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
+                            PlayParry_Animation()
+                        end
+                        FireParry()
+                        ACHAOTICDATA.Parry[Ball].LastParry = now
+                    end
                     ACHAOTICDATA.Parry[Ball].parriedApproach = false
-                    ACHAOTICDATA.Global.APStatus = "aim you but leaving (clash over)"
-                end
-                if mine and distance <= parry_accuracy and closing > 0 then
-                    -- Fire exactly ONCE per incoming approach. The old per-frame /
-                    -- 0.12s cooldown re-fired several times while a ball stayed in
-                    -- range (double/triple block, wasted guard). Now we parry on the
-                    -- approach, set a flag, and only re-arm once the ball leaves
-                    -- (closing <= 0, above). One clash = one parry.
+                    ACHAOTICDATA.Global.APStatus = string.format("CLASH MASH d=%d spd=%d", math.floor(distance), math.floor(speed))
+                elseif mine and inRange and incoming then
+                    -- Normal incoming ball: fire exactly ONCE per approach so a
+                    -- ball that lingers in range doesn't double/triple block.
                     if not ACHAOTICDATA.Parry[Ball].parriedApproach then
                         if ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
                             PlayParry_Animation()
@@ -5511,6 +5517,22 @@ local function MainConnection()
                         ACHAOTICDATA.Global.APStatus = string.format("FIRING d=%d acc=%d", math.floor(distance), math.floor(parry_accuracy))
                     else
                         ACHAOTICDATA.Global.APStatus = "parried this approach (waiting for next)"
+                    end
+                else
+                    -- Not a live target for us right now: the ball isn't ours (it's
+                    -- headed at the opponent during their half of the rally), it's
+                    -- out of range, or it's leaving after a deflect. Re-arm so the
+                    -- NEXT time it comes at us it fires again. Doing this
+                    -- unconditionally (not gated on `mine`) is what keeps a rally
+                    -- going and still stops the instant a clash truly ends.
+                    ACHAOTICDATA.Parry[Ball].parriedApproach = false
+                    if not mine then
+                        ACHAOTICDATA.Global.APStatus = string.format("ball target=%s | you=%s/%s",
+                            tostring(ball_target), ACHAOTICDATA.Player.LocalPlayer.Name, tostring(ACHAOTICDATA.Player.LocalPlayer.UserId))
+                    elseif not inRange then
+                        ACHAOTICDATA.Global.APStatus = string.format("aim you, out of range d=%d > acc=%d", math.floor(distance), math.floor(parry_accuracy))
+                    else
+                        ACHAOTICDATA.Global.APStatus = "aim you but leaving (clash over)"
                     end
                 end
             end
