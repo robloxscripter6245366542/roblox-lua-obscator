@@ -219,6 +219,46 @@ do
         landed .. "/" .. total .. " deflected")
 end
 
+-- 8. THE HITBOX-BREAK PROOF. Model the shield stamina that breaks the block when
+--    you hammer the parry with no ball to consume it (the "hitbox breaking" during
+--    spam). Fire idle spam at 2000 rps for 3s, WITHOUT the stamina guard (fire
+--    every packet) vs WITH it (throttle to ~9/s while nothing is inbound), and
+--    measure whether the shield ever breaks.
+do
+    -- Stamina: 0..100, regenerates; an idle parry (no ball) costs stamina; hitting
+    -- 0 breaks the block (Stunned). A parry landing on a ball costs nothing.
+    local MAX, REGEN_PER_S, IDLE_COST = 100, 60, 3
+    local function runSpam(useGuard)
+        local stamina, broke = MAX, false
+        local idleLast = -1
+        local acc = 0
+        local now = 0
+        for _ = 1, math.floor(3 / DT) do
+            now = now + DT
+            stamina = math.min(stamina + REGEN_PER_S * DT, MAX)
+            acc = acc + DT
+            local packets = math.floor(acc * 2000)      -- 2000 rps
+            if packets > 0 then acc = acc - packets / 2000 end
+            for _ = 1, packets do
+                -- the stamina guard: while nothing inbound, throttle to ~9/s
+                local fire = true
+                if useGuard and (now - idleLast) < 0.11 then fire = false end
+                if fire then
+                    idleLast = now
+                    stamina = stamina - IDLE_COST        -- idle parry burns stamina
+                    if stamina <= 0 then broke = true end
+                end
+            end
+        end
+        return broke
+    end
+    local brokeNoGuard = runSpam(false)
+    local brokeWithGuard = runSpam(true)
+    check("stamina guard prevents the idle-spam shield break",
+        brokeNoGuard == true and brokeWithGuard == false,
+        "no-guard broke=" .. tostring(brokeNoGuard) .. "  with-guard broke=" .. tostring(brokeWithGuard))
+end
+
 -- ---------------------------------------------------------------------------
 print("Blade Ball DUMP-grounded sandbox (real server parry gates)")
 print(("="):rep(60))
