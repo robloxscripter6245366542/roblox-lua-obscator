@@ -4591,6 +4591,10 @@ local Visuals = {
     VisualParts = {}
 }
 
+-- Last seen position per ball, for the hit-effect movement check (so a stuck ball
+-- with stale velocity doesn't keep flashing). Cleared on ball removal.
+local HitEffectLastPos = {}
+
 function Visuals.VisualiserService:ClearAll()
     for _, part in pairs(Visuals.VisualParts) do
         if part and part.Parent then
@@ -5979,6 +5983,7 @@ NeverZen:Track(ACHAOTICDATA.Balls.ChildRemoved:Connect(function(Child)
         ACHAOTICDATA.Parry[Child].TargetConn:Disconnect()
         ACHAOTICDATA.Parry[Child] = nil
     end
+    HitEffectLastPos[Child] = nil
     if Visuals.HitEffectService.BallEffects[Child] then
         local hit = Visuals.HitEffectService.BallEffects[Child]
         if hit and hit.Parent then hit:Destroy() end
@@ -6004,6 +6009,7 @@ NeverZen:Track(Workspace:WaitForChild("TrainingBalls").ChildRemoved:Connect(func
         ACHAOTICDATA.Parry[Child].TargetConn:Disconnect()
         ACHAOTICDATA.Parry[Child] = nil
     end
+    HitEffectLastPos[Child] = nil
     if Visuals.HitEffectService.BallEffects[Child] then
         local hit = Visuals.HitEffectService.BallEffects[Child]
         if hit and hit.Parent then hit:Destroy() end
@@ -8373,15 +8379,18 @@ NeverZen:Track(ReplicatedStorage.Remotes.ParrySuccess.OnClientEvent:Connect(func
     
     if Visuals.HitEffectEnabled then
         for _, Ball in pairs(Get_Balls()) do
-            -- Only flash a genuinely MOVING real ball. A stuck / frozen / decoy
-            -- ball was getting a continuous per-frame emit, leaving a bright effect
-            -- frozen in the air (the "stuck flash in the sky"). Skip those and
-            -- destroy any effect already left on them.
-            local z = Ball:FindFirstChild('zoomies')
-            local moving = z and z.VectorVelocity.Magnitude > 15
+            -- Only flash a ball that ACTUALLY moved this frame, measured by POSITION
+            -- delta (not VectorVelocity — a stuck ball can report a stale non-zero
+            -- velocity, which kept it flashing and left a bright effect frozen in the
+            -- air, "the stuck flash"). A stuck / frozen / decoy ball gets its effect
+            -- destroyed instead of a fresh emit.
             local decoy = Ball:GetAttribute("Frozen") or Ball:GetAttribute("IsDoppelganger") or Ball:GetAttribute("IsEncryptedClone")
-            if moving and not decoy then
-                Visuals.HitEffectService:Emit(Ball, Ball.Position)
+            local pos = Ball.Position
+            local last = HitEffectLastPos[Ball]
+            local moved = last and (pos - last).Magnitude > 0.5
+            HitEffectLastPos[Ball] = pos
+            if moved and not decoy then
+                Visuals.HitEffectService:Emit(Ball, pos)
             elseif Visuals.HitEffectService.BallEffects[Ball] then
                 local hit = Visuals.HitEffectService.BallEffects[Ball]
                 if hit and hit.Parent then hit:Destroy() end
