@@ -6105,6 +6105,15 @@ function Visuals.VisualiserService:Update(hrp, position, size)
     TweenService:Create(visualPart, TweenInfo.new(0.2), {Size = Vector3.new(size, size, size)}):Play()
 end
 
+-- Destroy every hit-effect attachment. Called on death so a flash can't be left
+-- stuck in the world after you die mid-spam.
+function Visuals.HitEffectService:ClearAll()
+    for ball, hit in pairs(Visuals.HitEffectService.BallEffects) do
+        if hit and hit.Parent then hit:Destroy() end
+        Visuals.HitEffectService.BallEffects[ball] = nil
+    end
+end
+
 function Visuals.HitEffectService:Emit(ball, position)
     if not Visuals.HitEffectService.BallEffects[ball] then
         local HitEffect = Instance.new("Attachment")
@@ -8364,7 +8373,20 @@ NeverZen:Track(ReplicatedStorage.Remotes.ParrySuccess.OnClientEvent:Connect(func
     
     if Visuals.HitEffectEnabled then
         for _, Ball in pairs(Get_Balls()) do
-            Visuals.HitEffectService:Emit(Ball, Ball.Position)
+            -- Only flash a genuinely MOVING real ball. A stuck / frozen / decoy
+            -- ball was getting a continuous per-frame emit, leaving a bright effect
+            -- frozen in the air (the "stuck flash in the sky"). Skip those and
+            -- destroy any effect already left on them.
+            local z = Ball:FindFirstChild('zoomies')
+            local moving = z and z.VectorVelocity.Magnitude > 15
+            local decoy = Ball:GetAttribute("Frozen") or Ball:GetAttribute("IsDoppelganger") or Ball:GetAttribute("IsEncryptedClone")
+            if moving and not decoy then
+                Visuals.HitEffectService:Emit(Ball, Ball.Position)
+            elseif Visuals.HitEffectService.BallEffects[Ball] then
+                local hit = Visuals.HitEffectService.BallEffects[Ball]
+                if hit and hit.Parent then hit:Destroy() end
+                Visuals.HitEffectService.BallEffects[Ball] = nil
+            end
         end
     end
 end))
@@ -8394,6 +8416,9 @@ local function RefreshVM(deltaTime)
             -- different" when you respawn. A fresh sphere is made on the new
             -- character the first frame it's alive again.
             Visuals.VisualiserService:ClearAll()
+            -- Also clear hit-effect flashes so one can't stay stuck in the air
+            -- after you die mid-spam.
+            Visuals.HitEffectService:ClearAll()
         end
     end
 
@@ -8550,16 +8575,18 @@ local function SpamCanFire()
     if os.clock() < SpamStunHoldUntil then
         return false                                   -- just recovered: let it settle so the burst can't instantly re-break it
     end
-    -- Stamina guard: hammering the parry with NO ball to parry drains the shield
-    -- and BREAKS the block ("hitbox breaking" during spam) — this happens even at
-    -- 1000 rps, and worse in the thousands. When nothing is inbound, throttle to a
-    -- safe idle cadence (~9/s). During a real clash (a ball is coming at you) fire
-    -- at the FULL rate, because there each parry is consumed and doesn't burn the
-    -- shield. Full spam when it matters; no self-break when it doesn't.
-    if not SpamHasInboundThreat() then
-        if os.clock() - SpamIdleLastFire < 0.11 then
-            return false
-        end
+    -- Stamina-safe rate cap. The game's block has a real cooldown window (dump
+    -- proto-12: 0.5s active / 1.3s total); parrying far faster than that just
+    -- drains the shield and BREAKS it — "the main game hitbox broke after nonstop
+    -- spamming" — no matter how high the RPS slider is set (the excess never
+    -- reaches the server as extra blocks anyway). So cap the ACTUAL fire rate to
+    -- what the block can sustain: a fast ~22/s while a ball is inbound (far more
+    -- than enough to block and to out-click a clash) and a gentle ~9/s when idle.
+    -- The RPS slider still expresses intent; this stops it self-destructing the
+    -- block. During Stunned we already hold (above) so a forced break still heals.
+    local minGap = SpamHasInboundThreat() and 0.045 or 0.11
+    if os.clock() - SpamIdleLastFire < minGap then
+        return false
     end
     SpamIdleLastFire = os.clock()
     return true
