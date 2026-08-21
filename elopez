@@ -4340,6 +4340,7 @@ local ACHAOTICDATA = {
             CleanStreak = 0,
             ServerConfirmed = 0,   -- running count of server-confirmed parries
             DesyncGap = 0,         -- client landed parries not yet server-confirmed
+            TotalFires = 0,        -- monotonic count of parry attempts sent (for the in-game Self-Test)
         },
     },
     Config = {
@@ -5237,6 +5238,11 @@ local FireParry = function()
             end
         end)
     end
+
+    -- Monotonic attempt counter for the in-game Self-Test (fired vs. server-
+    -- confirmed = the real "does my block land" measure the offline sandbox
+    -- can't provide).
+    ACHAOTICDATA.Global.AutoTune.TotalFires = (ACHAOTICDATA.Global.AutoTune.TotalFires or 0) + 1
 end
 
 -- Re-resolve the Balls folder if the cached reference went stale. Blade Ball can
@@ -6156,22 +6162,97 @@ do
         -- Live debug readout: shows exactly why Auto Parry is / isn't firing.
         UI.AutoParryDebug = AutoParrySection:AddLabel("Status: idle")
 
-        -- Copy the current status to the clipboard (handy on mobile, where the
-        -- status line is hard to read/type back). Executor-agnostic clipboard fn.
+        -- Executor-agnostic clipboard writer (mobile-friendly: the status line is
+        -- hard to read/type back on a phone).
+        local function Leviathan_Clipboard(text)
+            local cb = setclipboard or toclipboard or set_clipboard
+                or (getgenv and getgenv().setclipboard)
+            if cb then
+                pcall(cb, text)
+                return true
+            end
+            return false
+        end
+
+        -- Gather a full live snapshot of everything the parry reasons about, so a
+        -- bug report is one tap instead of squinting at the status line.
+        local function Leviathan_Snapshot()
+            local AT = ACHAOTICDATA.Global.AutoTune
+            local ping, fps = -1, -1
+            pcall(function() ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue() end)
+            pcall(function() fps = math.floor(1 / RunService.RenderStepped:Wait()) end)
+            local ballCount = -1
+            pcall(function() ballCount = #Get_Balls() end)
+            local char = GetCharacter()
+            local hp = -1
+            pcall(function() hp = char:FindFirstChildOfClass("Humanoid").Health end)
+            local cfg = ACHAOTICDATA.Config
+            return table.concat({
+                "=== Leviathan Blade Ball diagnostic ===",
+                string.format("You: %s / %s", ACHAOTICDATA.Player.LocalPlayer.Name, tostring(ACHAOTICDATA.Player.LocalPlayer.UserId)),
+                string.format("Status: %s", tostring(ACHAOTICDATA.Global.APStatus)),
+                string.format("Ping: %dms   FPS: %d   HP: %s", math.floor(ping), math.floor(fps), tostring(hp)),
+                string.format("Real balls: %d", ballCount),
+                string.format("Fires: %d   ServerConfirmed: %d   Desync: %d", AT.TotalFires or 0, math.floor(AT.ServerConfirmed), math.floor(AT.DesyncGap)),
+                string.format("AutoParry: %s   AutoSpam: %s   TriggerBot: %s",
+                    tostring(cfg.AutoParry.Enabled), tostring(cfg.AutoSpamParry.Spamming or cfg.ManualSpamParry.Spamming), tostring(cfg.TriggerBot.Enabled)),
+                string.format("Method: %s   SafeMode: %s   RPS: %d   AccMult: %.2f",
+                    tostring(cfg.ParrySettings.ParryMethod), tostring(cfg.ParrySettings.SafeMode),
+                    cfg.ParrySettings.SpammingRPS, cfg.ParrySettings.SpeedDivisorMultiplier),
+            }, "\n")
+        end
+
         AutoParrySection:AddButton({
             Name = "Copy Debug",
             Callback = function()
-                local cb = setclipboard or toclipboard or set_clipboard
-                    or (getgenv and getgenv().setclipboard)
-                if cb then
-                    pcall(cb, string.format("Leviathan AutoParry debug\nStatus: %s\nYou: %s / %s",
-                        tostring(ACHAOTICDATA.Global.APStatus),
-                        ACHAOTICDATA.Player.LocalPlayer.Name,
-                        tostring(ACHAOTICDATA.Player.LocalPlayer.UserId)))
-                    NZNotification.new('Leviathan ', 'Copied AutoParry debug to clipboard.', 4)
+                if Leviathan_Clipboard(Leviathan_Snapshot()) then
+                    NZNotification.new('Leviathan ', 'Copied full diagnostic to clipboard.', 4)
                 else
                     NZNotification.new('Leviathan ', 'No clipboard function on this executor.', 4)
                 end
+            end,
+        })
+
+        -- Real in-game verification the offline sandbox can't do: over 10 seconds
+        -- of live play, count how many parry attempts the SERVER actually confirmed
+        -- (ServerParryCount / ParrySuccess). That's the true "does my block land"
+        -- number. Copies the result so it can be pasted straight back to us.
+        AutoParrySection:AddButton({
+            Name = "Run Self-Test (10s)",
+            Callback = function()
+                local AT = ACHAOTICDATA.Global.AutoTune
+                local fires0, confirmed0 = AT.TotalFires or 0, AT.ServerConfirmed
+                local pingSum, pingN = 0, 0
+                local sampling = true
+                task.spawn(function()
+                    while sampling do
+                        pcall(function()
+                            pingSum = pingSum + Stats.Network.ServerStatsItem['Data Ping']:GetValue()
+                            pingN = pingN + 1
+                        end)
+                        task.wait(0.25)
+                    end
+                end)
+                NZNotification.new('Leviathan ', 'Self-Test running — play for 10s...', 4)
+                task.delay(10, function()
+                    sampling = false
+                    local firesD = (AT.TotalFires or 0) - fires0
+                    local confirmedD = AT.ServerConfirmed - confirmed0
+                    local landPct = firesD > 0 and math.floor(confirmedD / firesD * 100) or 0
+                    local avgPing = pingN > 0 and math.floor(pingSum / pingN) or -1
+                    local report = table.concat({
+                        "=== Leviathan Self-Test (10s) ===",
+                        string.format("Parry attempts: %d", firesD),
+                        string.format("Server confirmed: %d", confirmedD),
+                        string.format("Block landing rate: %d%%", landPct),
+                        string.format("Avg ping: %dms   Desync now: %d", avgPing, math.floor(AT.DesyncGap)),
+                        firesD == 0 and "No parries fired — no ball targeted you in the window." or
+                            (landPct >= 80 and "Healthy: blocks are landing." or
+                             "Low landing — paste this back so I can tune timing/ping lead."),
+                    }, "\n")
+                    Leviathan_Clipboard(report)
+                    NZNotification.new('Leviathan ', string.format('Self-Test: %d/%d landed (%d%%). Copied.', confirmedD, firesD, landPct), 8)
+                end)
             end,
         })
 
