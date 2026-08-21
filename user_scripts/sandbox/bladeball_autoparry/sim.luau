@@ -65,10 +65,12 @@ local function autoParryStep(state, now, mine, distance, speed, closing, ping_ms
     local timeToImpact = closing > 0 and (reachDist / closing) or math.huge
     local impactWindow = ping_seconds + 0.11
     local atImpact = inRange and timeToImpact <= impactWindow
-    -- Contact-range clash (dist <= 16, still closing): rapid re-parry to win the
-    -- tug-of-war, bypassing once-per-approach. Safe (every parry lands on the ball
-    -- right here) and only while closing, so it stops when the clash ends.
-    local inClash = mine and incoming and distance <= 16
+    -- CONTESTED clash: a ball already parried this approach that is STILL at contact
+    -- and STILL closing (your block didn't deflect it) -> rapid re-parry to win the
+    -- tug-of-war. Requiring state.parried keeps a NORMAL ball to a single block (it
+    -- deflects after the first parry so it never re-enters this), so no burst "for
+    -- no reason". Safe (every parry lands on the ball) and stops when it leaves.
+    local inClash = mine and incoming and distance <= 16 and state.parried
     local clearlyGone = (not mine) or (distance > acc * 1.35)
     local sinceLast = now - (state.last or 0)
 
@@ -97,6 +99,24 @@ local function advancedShouldSpam(o)
     local lead = (o.ping_ms / 1000) + (o.impactLead or 0.06) + accelLead
     local impact = o.closing > 0 and o.timeToImpact <= lead
     return o.distToBall <= o.ballReach and proximityOK and o.aimed and impact
+end
+
+-- Spam threat tier: elopez SpamThreatTier. balls = list of {dist, closing, mine}.
+-- A ball only counts if it is actually ENGAGING you (aimed at you, or moving at
+-- you) — a ball merely near you but aimed at the opponent and drifting away is
+-- NOT a threat and must yield "idle" (no spam for nothing).
+local function threatTier(balls)
+    local tier = "idle"
+    for _, b in ipairs(balls) do
+        if b.dist > 0 then
+            if b.dist <= 16 and (b.mine or b.closing > 0) then
+                return "clash"                              -- contact + engaging
+            elseif b.closing > 0 and b.mine then
+                tier = "inbound"                            -- closing AND aimed at you
+            end
+        end
+    end
+    return tier
 end
 
 -- Spam gate: elopez SpamCanFire. env = { alive, stunned, tier }. Tiered rate:
@@ -156,14 +176,16 @@ local function approx(a, b, tol) return math.abs(a - b) <= tol end
 -- traj(now, frame) -> mine, distance, speed, closing   (nil distance => skip)
 local function driveBall(traj, ping_ms, frames)
     local state = { parried = false, last = 0 }
-    local now, fires, firstDist = 0, 0, nil
+    local now, fires, firstDist, firedLast = 0, 0, nil, false
     for f = 1, frames do
         now += DT
-        local mine, distance, speed, closing = traj(now, f)
+        local mine, distance, speed, closing = traj(now, f, firedLast)
+        firedLast = false
         if distance ~= nil then
             local fired = autoParryStep(state, now, mine, distance, speed, closing, ping_ms, 1)
             if fired then
                 fires += 1
+                firedLast = true
                 if not firstDist then firstDist = distance end
             end
         end
@@ -345,6 +367,48 @@ end
 -- ---------------------------------------------------------------------------
 --  AUTO SPAM SCENARIOS
 -- ---------------------------------------------------------------------------
+
+-- 7c. SPAM THREAT TIER — "spamming for no reason". The tier must be idle unless a
+--     ball is actually engaging you, so the spam doesn't hammer at balls that are
+--     just nearby.
+do
+    -- a ball at contact but aimed at the opponent and drifting AWAY: NOT a clash.
+    local nearNotEngaging = threatTier({ { dist = 10, closing = -200, mine = false } })
+    -- a ball within 70 studs closing but aimed at the OPPONENT (flying past you): not inbound.
+    local passingThrough = threatTier({ { dist = 50, closing = 200, mine = false } })
+    -- a ball at contact aimed at you: clash.
+    local realClash = threatTier({ { dist = 12, closing = 200, mine = true } })
+    -- a ball closing and aimed at you at range: inbound.
+    local realInbound = threatTier({ { dist = 50, closing = 200, mine = true } })
+    -- a ball at contact still physically closing (target attribute lagging): clash.
+    local contactClosing = threatTier({ { dist = 14, closing = 200, mine = false } })
+    check("spam tier ignores balls that aren't engaging you (no spam for nothing)",
+        nearNotEngaging == "idle" and passingThrough == "idle"
+            and realClash == "clash" and realInbound == "inbound" and contactClosing == "clash",
+        string.format("near=%s passing=%s clash=%s inbound=%s contact=%s",
+            nearNotEngaging, passingThrough, realClash, realInbound, contactClosing))
+end
+
+-- 7d. NORMAL ball is ONE block, never a contact burst. A ball is parried at range
+--     (atImpact) and deflects; by the time it's near you it's leaving, so the clash
+--     bypass (which needs an already-parried ball STILL closing) never engages.
+do
+    local speed = 250
+    local dist, phase, deflected = 300, "in", false
+    local fires = driveBall(function(now, f, firedLast)
+        if firedLast then deflected = true end            -- the parry deflected it
+        if phase == "in" and not deflected then
+            dist = dist - speed * DT
+            return true, dist, speed, speed               -- inbound until parried
+        else
+            phase = "out"
+            dist = dist + speed * DT
+            return (dist < 100), dist, speed, -speed       -- deflected: leaving
+        end
+    end, 60, 240)
+    check("normal ball -> exactly one block (no contact burst for no reason)",
+        fires == 1, "got " .. fires)
+end
 
 -- 8. Steady rate: alive, not stunned -> ~TargetRPS packets/sec.
 do
