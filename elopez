@@ -5154,16 +5154,33 @@ local ParryRemote = nil; do
     end)
 end
 
-local function Parry()
+-- Player-position payload cache. At high spam RPS (e.g. 2000) Parry() is called
+-- dozens of times per frame; rebuilding this table by iterating workspace.Alive
+-- every single call is wasted work that lags/freezes the client, since the
+-- positions don't meaningfully change within a few ms. Rebuild at most once per
+-- ~8ms and reuse the table for every packet in between.
+local CachedPlayerPositions, CachedPositionsAt = nil, 0
+local function GetPlayerPositions()
+    local nowc = os.clock()
+    if CachedPlayerPositions and (nowc - CachedPositionsAt) < 0.008 then
+        return CachedPlayerPositions
+    end
     local PlayerPositions = {}
     for _, char in next, workspace.Alive:GetChildren() do
         if char:FindFirstChild('HumanoidRootPart') then
             PlayerPositions[char.Name] = char.HumanoidRootPart.Position
         end
     end
+    CachedPlayerPositions = PlayerPositions
+    CachedPositionsAt = nowc
+    return PlayerPositions
+end
+
+local function Parry()
+    if not ParryRemote then return end
+    local PlayerPositions = GetPlayerPositions()
     local CameraCenter = Camera.ViewportSize / 2
     local CameraData = {CameraCenter.X, CameraCenter.Y}
-    if not ParryRemote then return end
     ParryRemote:FireServer(Hash1, Hash2, Hash3(), 0.025, Camera.CFrame, PlayerPositions, CameraData, false)
 end
 local ExecuteRemoteFireServer = function(ParryData)
@@ -5902,6 +5919,17 @@ function Visuals.VisualiserService:SetColor(color)
 end
 
 function Visuals.VisualiserService:Update(hrp, position, size)
+    -- Drop spheres tied to a previous character (respawn) or already destroyed —
+    -- otherwise the old anchored sphere is orphaned in the world at your last
+    -- position and looks like a hitbox "stuck in one place" while the live one
+    -- tracks the new character.
+    for key, part in pairs(Visuals.VisualParts) do
+        if key ~= hrp or not part.Parent then
+            part:Destroy()
+            Visuals.VisualParts[key] = nil
+        end
+    end
+
     local visualPart = Visuals.VisualParts[hrp]
     if visualPart and not visualPart.Parent then
         visualPart = nil
@@ -8220,10 +8248,20 @@ end
 -- RPS slider asks (Auto or Manual). It only pauses during the brief broken
 -- window and recovers the instant the block is back — so it actually spams, and
 -- a break (if the game ever forces one) self-heals right away instead of sticking.
+-- Short settle window after a break clears. At very high RPS (2000) the burst
+-- would re-break the shield the instant it heals — the Stunned attribute only
+-- reaches us ping-ms late, so by the time we see it we've already fired dozens
+-- more that re-arm the stun, and it sticks broken. Holding fire for a beat AFTER
+-- Stunned clears lets the block actually recover before we hammer it again.
+local SpamStunHoldUntil = 0
 local function SpamCanFire()
     local char = GetCharacter()
     if char and char:GetAttribute("Stunned") then
-        return false                                   -- block broken: let it recover
+        SpamStunHoldUntil = os.clock() + 0.12          -- broken now: hold, and keep holding briefly after it clears
+        return false
+    end
+    if os.clock() < SpamStunHoldUntil then
+        return false                                   -- just recovered: let it settle so the burst can't instantly re-break it
     end
     return true
 end
@@ -8248,7 +8286,16 @@ local RequestSpamParry = function()
 end
 
 local function LoopConnection(deltaTime)
-    MainConnection()
+    -- Protect the parry loop so a thrown error on one frame can't take the rest
+    -- of the frame down with it. Previously MainConnection() ran unprotected
+    -- right before RefreshVM(): any error in the parry loop skipped RefreshVM
+    -- entirely, which is what froze the hitbox visual in place ("it no stay when
+    -- you move") and silently dropped parries on the erroring frames. Surface the
+    -- error on the debug Status line so the real cause is visible.
+    local ok, err = pcall(MainConnection)
+    if not ok then
+        ACHAOTICDATA.Global.APStatus = "ERROR: " .. tostring(err)
+    end
     RefreshVM(deltaTime)
 end
 
