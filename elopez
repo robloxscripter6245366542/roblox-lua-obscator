@@ -5537,7 +5537,17 @@ local function MainConnection()
                     -- Normal incoming ball (this also covers each return volley of a
                     -- clash): fire exactly ONCE per approach so a ball that lingers
                     -- in range doesn't double/triple block.
-                    if not ACHAOTICDATA.Parry[Ball].parriedApproach then
+                    --
+                    -- Cooldown floor: the re-arm below fires whenever the ball stops
+                    -- being a live target for even ONE frame. During a single
+                    -- approach the ball's target/range/direction can flicker for a
+                    -- frame, which re-armed the flag and let the SAME ball fire again
+                    -- and again ("keeps on blocking then stops at one"). Require a
+                    -- minimum gap since this ball's last parry so a flicker can't
+                    -- re-fire it; a genuine return volley is far more than 0.2s apart,
+                    -- so rallies are unaffected.
+                    local sinceLast = os.clock() - (ACHAOTICDATA.Parry[Ball].LastParry or 0)
+                    if not ACHAOTICDATA.Parry[Ball].parriedApproach and sinceLast >= 0.2 then
                         if ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
                             PlayParry_Animation()
                         end
