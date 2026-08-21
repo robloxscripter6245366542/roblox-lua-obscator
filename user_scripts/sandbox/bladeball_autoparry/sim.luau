@@ -32,9 +32,15 @@ local DT = 1 / 60
 --  SHIPPED LOGIC — copied verbatim from elopez (keep in sync).
 -- ---------------------------------------------------------------------------
 
--- parry_accuracy: elopez L5470-5488
-local function parryAccuracy(speed, ping_ms, speedDivMult)
+-- Auto Accuracy multiplier: elopez L5515-ish. Lower = bigger radius = earlier.
+local function autoAccuracyMult(ping_ms)
+    return math.clamp(0.95 - ping_ms * 0.0006, 0.72, 0.98)
+end
+
+-- parry_accuracy: elopez L5470-5488. autoAcc=true uses the adaptive multiplier.
+local function parryAccuracy(speed, ping_ms, speedDivMult, autoAcc)
     speedDivMult = speedDivMult or 1
+    if autoAcc then speedDivMult = autoAccuracyMult(ping_ms) end
     local ping_threshold = math.clamp(5 + ping_ms * 0.03, 5, 24)
     local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
     local speed_divisor = (2.4 + capped_speed_diff * 0.002) * speedDivMult
@@ -262,6 +268,18 @@ do
         if (autoParryStep(state, now, mine, dist, 200, 200, 60, 1)) then fires = fires + 1 end
     end
     check("1-frame target flicker -> still one block", fires == 1, "got " .. fires)
+end
+
+-- 7b. Auto Accuracy widens the radius (fires earlier) and still scales with ping,
+--     without ever collapsing the radius to nothing.
+do
+    local speed = 300
+    local accFixed = parryAccuracy(speed, 200, 1.1, false)
+    local accAuto = parryAccuracy(speed, 200, 1.1, true)
+    local accAutoLo = parryAccuracy(speed, 30, 1.1, true)
+    check("auto-accuracy fires earlier than fixed + scales w/ ping",
+        accAuto > accFixed and accAuto > accAutoLo,
+        string.format("fixed@200=%.0f auto@200=%.0f auto@30=%.0f", accFixed, accAuto, accAutoLo))
 end
 
 -- ---------------------------------------------------------------------------

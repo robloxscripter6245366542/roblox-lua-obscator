@@ -4442,7 +4442,7 @@ local ACHAOTICDATA = {
             },
             SpeedDivisorMultiplier = 1.1,
             AutoParryAccuracy = 80,
-            AutoParryAutoAccuracy = false,
+            AutoParryAutoAccuracy = true,   -- on by default: adaptive radius for the highest landing rate
             ParryMethod = "Blatant",
             SlashesofFuryDetectionMaxParryCount = 36,
             SlashesofFuryDetectionParryDelay = 0.05,
@@ -5512,7 +5512,18 @@ local function MainConnection()
                 local ping_threshold = math.clamp(5 + raw_ping_ms * 0.03, 5, 24)
                 local speed = velocity.Magnitude
                 local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
-                local speed_divisor = (2.4 + capped_speed_diff * 0.002) * ACHAOTICDATA.Config.ParrySettings.SpeedDivisorMultiplier
+                -- Auto Accuracy: pick the radius multiplier for the highest landing
+                -- rate instead of a fixed slider. Lower multiplier = bigger radius =
+                -- fires EARLIER, which is what high ping needs; scale it down as ping
+                -- rises, bounded so it never fires so early the server rejects it.
+                -- Safe to widen because once-per-approach + hysteresis mean a bigger
+                -- radius fires earlier, NOT more often. (Was a dead toggle — the flag
+                -- was set by the UI but never read.)
+                local speedDivMult = ACHAOTICDATA.Config.ParrySettings.SpeedDivisorMultiplier
+                if ACHAOTICDATA.Config.ParrySettings.AutoParryAutoAccuracy then
+                    speedDivMult = math.clamp(0.95 - raw_ping_ms * 0.0006, 0.72, 0.98)
+                end
+                local speed_divisor = (2.4 + capped_speed_diff * 0.002) * speedDivMult
                 -- High-ping lead. During your latency the ball travels
                 -- speed * ping_seconds studs before your FireParry even reaches the
                 -- server, so a fixed radius fires too LATE at high ms and whiffs.
@@ -6236,22 +6247,34 @@ do
                 NZNotification.new('Leviathan ', 'Self-Test running — play for 10s...', 4)
                 task.delay(10, function()
                     sampling = false
+                    -- Count only the fires made DURING the window as the denominator.
                     local firesD = (AT.TotalFires or 0) - fires0
-                    local confirmedD = AT.ServerConfirmed - confirmed0
-                    local landPct = firesD > 0 and math.floor(confirmedD / firesD * 100) or 0
-                    local avgPing = pingN > 0 and math.floor(pingSum / pingN) or -1
-                    local report = table.concat({
-                        "=== Leviathan Self-Test (10s) ===",
-                        string.format("Parry attempts: %d", firesD),
-                        string.format("Server confirmed: %d", confirmedD),
-                        string.format("Block landing rate: %d%%", landPct),
-                        string.format("Avg ping: %dms   Desync now: %d", avgPing, math.floor(AT.DesyncGap)),
-                        firesD == 0 and "No parries fired — no ball targeted you in the window." or
-                            (landPct >= 80 and "Healthy: blocks are landing." or
-                             "Low landing — paste this back so I can tune timing/ping lead."),
-                    }, "\n")
-                    Leviathan_Clipboard(report)
-                    NZNotification.new('Leviathan ', string.format('Self-Test: %d/%d landed (%d%%). Copied.', confirmedD, firesD, landPct), 8)
+                    -- Grace period: a parry fired near the end of the window confirms
+                    -- ~a ping later (that's what "Desync now" was), so scoring
+                    -- immediately undercounts. Wait for in-flight parries to land
+                    -- before computing the rate.
+                    task.delay(1.5, function()
+                        -- Cap at firesD so a stray confirm from a grace-period fire
+                        -- can't push it over 100%.
+                        local confirmedD = math.min(AT.ServerConfirmed - confirmed0, firesD)
+                        local landPct = firesD > 0 and math.floor(confirmedD / firesD * 100) or 0
+                        local avgPing = pingN > 0 and math.floor(pingSum / pingN) or -1
+                        local missed = firesD - confirmedD
+                        local report = table.concat({
+                            "=== Leviathan Self-Test (10s) ===",
+                            string.format("Parry attempts: %d", firesD),
+                            string.format("Server confirmed: %d (incl. in-flight)", confirmedD),
+                            string.format("Block landing rate: %d%%", landPct),
+                            string.format("Unconfirmed: %d", missed),
+                            string.format("Avg ping: %dms", avgPing),
+                            firesD == 0 and "No parries fired — no ball targeted you in the window." or
+                                (landPct >= 90 and "Excellent: essentially every landable ball blocked." or
+                                 landPct >= 80 and "Healthy. Remaining few are balls the opponent parried first (can't confirm for you)." or
+                                 "Low landing — paste this back so I can tune timing/ping lead."),
+                        }, "\n")
+                        Leviathan_Clipboard(report)
+                        NZNotification.new('Leviathan ', string.format('Self-Test: %d/%d landed (%d%%). Copied.', confirmedD, firesD, landPct), 8)
+                    end)
                 end)
             end,
         })
