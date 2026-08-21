@@ -94,9 +94,10 @@ local function makeSpamGate()
             return false
         end
         if now < SpamStunHoldUntil then return false end
-        if not env.inbound then                          -- stamina guard: idle throttle
-            if now - idleLast < 0.11 then return false end
-        end
+        -- stamina-safe rate cap: ~22/s while a ball is inbound, ~9/s idle, so the
+        -- block can never be hammered into breaking.
+        local gap = env.inbound and 0.045 or 0.11
+        if now - idleLast < gap then return false end
         idleLast = now
         return true
     end
@@ -315,7 +316,7 @@ do
         now += DT
         acc(DT, 1000, function() if gate(now, { alive = true, stunned = false, inbound = true }) then fired = fired + 1 end end)
     end
-    check("spam 1000 rps -> ~1000/s", approx(fired, 1000, 30), "got " .. fired)
+    check("spam rate capped to stamina-safe ~22/s (block can't self-break)", approx(fired, 22, 8), "got " .. fired)
 end
 
 -- 9. Dead -> zero packets even at full rate.
@@ -416,8 +417,8 @@ do
         now = now + DT
         acc2(DT, 2000, function() if gate2(now, { alive = true, stunned = false, inbound = true }) then clashFired = clashFired + 1 end end, true)
     end
-    check("idle spam throttled (no shield break); full rate in a clash",
-        idleFired <= 12 and clashFired >= 1800, "idle=" .. idleFired .. " clash=" .. clashFired)
+    check("idle throttled (~9/s) & clash capped (~22/s) so the block can't break",
+        idleFired <= 12 and clashFired >= 15 and clashFired <= 30, "idle=" .. idleFired .. " clash=" .. clashFired)
 end
 
 -- "Manual spam when you turn it off keeps on going for so long": once toggled

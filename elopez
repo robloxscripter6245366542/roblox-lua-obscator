@@ -8550,16 +8550,18 @@ local function SpamCanFire()
     if os.clock() < SpamStunHoldUntil then
         return false                                   -- just recovered: let it settle so the burst can't instantly re-break it
     end
-    -- Stamina guard: hammering the parry with NO ball to parry drains the shield
-    -- and BREAKS the block ("hitbox breaking" during spam) — this happens even at
-    -- 1000 rps, and worse in the thousands. When nothing is inbound, throttle to a
-    -- safe idle cadence (~9/s). During a real clash (a ball is coming at you) fire
-    -- at the FULL rate, because there each parry is consumed and doesn't burn the
-    -- shield. Full spam when it matters; no self-break when it doesn't.
-    if not SpamHasInboundThreat() then
-        if os.clock() - SpamIdleLastFire < 0.11 then
-            return false
-        end
+    -- Stamina-safe rate cap. The game's block has a real cooldown window (dump
+    -- proto-12: 0.5s active / 1.3s total); parrying far faster than that just
+    -- drains the shield and BREAKS it — "the main game hitbox broke after nonstop
+    -- spamming" — no matter how high the RPS slider is set (the excess never
+    -- reaches the server as extra blocks anyway). So cap the ACTUAL fire rate to
+    -- what the block can sustain: a fast ~22/s while a ball is inbound (far more
+    -- than enough to block and to out-click a clash) and a gentle ~9/s when idle.
+    -- The RPS slider still expresses intent; this stops it self-destructing the
+    -- block. During Stunned we already hold (above) so a forced break still heals.
+    local minGap = SpamHasInboundThreat() and 0.045 or 0.11
+    if os.clock() - SpamIdleLastFire < minGap then
+        return false
     end
     SpamIdleLastFire = os.clock()
     return true
