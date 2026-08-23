@@ -108,10 +108,10 @@ end
 local function threatTier(balls)
     local tier = "idle"
     for _, b in ipairs(balls) do
-        if b.dist > 0 then
-            if b.dist <= 16 and (b.mine or b.closing > 0) then
-                return "clash"                              -- contact + engaging
-            elseif b.closing > 0 and b.mine then
+        if b.dist > 0 and b.mine then                       -- only balls aimed at YOU count
+            if b.dist <= 16 then
+                return "clash"                              -- contact + aimed at you
+            elseif b.closing > 0 then
                 tier = "inbound"                            -- closing AND aimed at you
             end
         end
@@ -134,8 +134,8 @@ local function makeSpamGate()
         if now < SpamStunHoldUntil then return false end
         local tier = env.tier or (env.inbound and "inbound") or "idle"
         if tier == "idle" then return false end          -- no ball: don't block for nothing
-        local gap = (tier == "clash" and 0.01) or 0.03
-        if now - idleLast < gap then return false end
+        if tier == "clash" then idleLast = now; return true end  -- full rate: out-click the escalating clash
+        if now - idleLast < 0.03 then return false end   -- inbound: modest cadence
         idleLast = now
         return true
     end
@@ -380,13 +380,13 @@ do
     local realClash = threatTier({ { dist = 12, closing = 200, mine = true } })
     -- a ball closing and aimed at you at range: inbound.
     local realInbound = threatTier({ { dist = 50, closing = 200, mine = true } })
-    -- a ball at contact still physically closing (target attribute lagging): clash.
-    local contactClosing = threatTier({ { dist = 14, closing = 200, mine = false } })
-    check("spam tier ignores balls that aren't engaging you (no spam for nothing)",
+    -- a ball at contact but aimed at the OPPONENT (its turn in the clash): NOT yours.
+    local contactNotMine = threatTier({ { dist = 14, closing = 200, mine = false } })
+    check("spam tier ignores balls that aren't aimed at you (no block for no reason)",
         nearNotEngaging == "idle" and passingThrough == "idle"
-            and realClash == "clash" and realInbound == "inbound" and contactClosing == "clash",
-        string.format("near=%s passing=%s clash=%s inbound=%s contact=%s",
-            nearNotEngaging, passingThrough, realClash, realInbound, contactClosing))
+            and realClash == "clash" and realInbound == "inbound" and contactNotMine == "idle",
+        string.format("near=%s passing=%s clash=%s inbound=%s contactNotMine=%s",
+            nearNotEngaging, passingThrough, realClash, realInbound, contactNotMine))
 end
 
 -- 7d. NORMAL ball is ONE block, never a contact burst. A ball is parried at range
@@ -423,8 +423,8 @@ do
         return fired
     end
     local clash, inbound, idle = rateOf("clash"), rateOf("inbound"), rateOf("idle")
-    check("tiered spam: clash ~60/s > inbound ~30/s > idle 0 (no block for nothing)",
-        clash >= 45 and approx(inbound, 30, 8) and idle == 0,
+    check("tiered spam: clash = full RPS >> inbound ~30/s > idle 0 (no block for nothing)",
+        clash >= 1500 and approx(inbound, 30, 8) and idle == 0,
         string.format("clash=%d inbound=%d idle=%d", clash, inbound, idle))
 end
 
@@ -526,8 +526,8 @@ do
         now = now + DT
         acc2(DT, 2000, function() if gate2(now, { alive = true, stunned = false, tier = "clash" }) then clashFired = clashFired + 1 end end, true)
     end
-    check("idle fires 0 (no block for nothing); a real clash fires fast to win",
-        idleFired == 0 and clashFired >= 45, "idle=" .. idleFired .. " clash=" .. clashFired)
+    check("idle fires 0 (no block for nothing); a real clash fires at FULL rate to win",
+        idleFired == 0 and clashFired >= 1500, "idle=" .. idleFired .. " clash=" .. clashFired)
 end
 
 -- "Manual spam when you turn it off keeps on going for so long": once toggled

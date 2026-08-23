@@ -8596,17 +8596,21 @@ local function SpamThreatTier()
                 local toSelf = root.Position - ball.Position
                 local dist = toSelf.Magnitude
                 if dist > 0 then
-                    local closing = z.VectorVelocity:Dot(toSelf.Unit)
+                    -- A ball only counts as a threat if it's actually aimed at YOU.
+                    -- During a clash the ball's target alternates each parry: it's
+                    -- "you" on your turn (coming to hit you = fire) and the opponent
+                    -- on theirs (leaving = don't fire). A ball NEAR you but targeting
+                    -- the opponent is NOT your clash and must not make the spam fire
+                    -- ("block/spam for no reason when close"). Requiring targetsMe is
+                    -- what limits the fire to your half of the clash.
                     local targetsMe = BallTargetsMe(ball:GetAttribute('target'))
-                    -- A ball only counts as a threat if it's actually engaging YOU:
-                    -- aimed at you, or physically moving toward you. A ball merely
-                    -- NEAR you but targeting the opponent and drifting away is NOT a
-                    -- clash and must NOT make the spam fire ("spamming for no reason").
-                    if dist <= 16 and (targetsMe or closing > 0) then
-                        tier = "clash"          -- on top of you AND engaging = a clash to win
-                        break                   -- clash is the top tier, stop looking
-                    elseif closing > 0 and targetsMe then
-                        tier = "inbound"        -- coming at you and aimed at you; keep scanning for a closer clash
+                    if targetsMe then
+                        if dist <= 16 then
+                            tier = "clash"          -- on top of you AND aimed at you = a clash to win
+                            break                   -- clash is the top tier, stop looking
+                        elseif z.VectorVelocity:Dot(toSelf.Unit) > 0 then
+                            tier = "inbound"        -- aimed at you and closing; keep scanning for a closer clash
+                        end
                     end
                 end
             end
@@ -8636,16 +8640,24 @@ local function SpamCanFire()
     --     blocked "for no reason" and is the ONLY thing that could drain and break
     --     the shield — so not firing here fixes the spurious block AND removes the
     --     break entirely (nothing to hammer).
-    --   • clash (ball on top of you)   -> every frame (= your FPS), full manual-spam
-    --     rate, to out-click and always win. Safe: each parry lands on the ball.
+    --   • clash (ball on top of you)   -> FULL Target-RPS, NO throttle. A clash is
+    --     won by out-clicking and it ESCALATES — every parry in a clash speeds the
+    --     ball up, so any per-packet gap here means the ball outruns your fire rate
+    --     and you lose. Firing every packet lets the accumulator deliver the whole
+    --     slider RPS (hundreds–thousands/s) so you keep up as it speeds up. Safe to
+    --     hammer because the ball is right on top of you — each parry lands on it,
+    --     nothing to drain the shield.
     --   • inbound (ball coming at you)  -> ~30/s, plenty to block it on arrival.
     -- Auto and Manual both run through this, so they behave the same.
     local tier = SpamThreatTier()
     if tier == "idle" then
         return false
     end
-    local minGap = (tier == "clash" and 0.01) or 0.03
-    if os.clock() - SpamIdleLastFire < minGap then
+    if tier == "clash" then
+        SpamIdleLastFire = os.clock()
+        return true                                    -- full rate: out-click the escalating clash
+    end
+    if os.clock() - SpamIdleLastFire < 0.03 then       -- inbound: modest cadence
         return false
     end
     SpamIdleLastFire = os.clock()
