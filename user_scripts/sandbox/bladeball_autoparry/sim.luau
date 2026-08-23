@@ -65,21 +65,16 @@ local function autoParryStep(state, now, mine, distance, speed, closing, ping_ms
     local timeToImpact = closing > 0 and (reachDist / closing) or math.huge
     local impactWindow = ping_seconds + 0.11
     local atImpact = inRange and timeToImpact <= impactWindow
-    -- CONTESTED clash: a ball already parried this approach that is STILL at contact
-    -- and STILL closing (your block didn't deflect it) -> rapid re-parry to win the
-    -- tug-of-war. Requiring state.parried keeps a NORMAL ball to a single block (it
-    -- deflects after the first parry so it never re-enters this), so no burst "for
-    -- no reason". Safe (every parry lands on the ball) and stops when it leaves.
-    local inClash = mine and incoming and distance <= 16 and state.parried
+    -- Auto Parry does exactly ONE clean block per approach — no contact rapid-fire.
+    -- (A contact bypass double-blocked every normal ball, since after the block the
+    -- ball keeps closing into contact for a beat before deflecting, and the repeat
+    -- fires restarted the parry window so it failed at high ping.) Clashes are owned
+    -- by Auto Spam's full-rate clash tier, not Auto Parry.
     local clearlyGone = (not mine) or (distance > acc * 1.35)
     local sinceLast = now - (state.last or 0)
 
     local fired = false
-    if inClash and sinceLast >= 0.01 then
-        fired = true
-        state.parried = true
-        state.last = now
-    elseif mine and atImpact and incoming and not state.parried and sinceLast >= 0.2 then
+    if mine and atImpact and incoming and not state.parried and sinceLast >= 0.2 then
         fired = true
         state.parried = true
         state.last = now
@@ -263,25 +258,24 @@ do
     check("post-clash wobble -> no extra blocks", fires == 1, "got " .. fires)
 end
 
--- 3b. ACTIVE clash: a ball parked at contact range (dist <= 16) coming at you is
---     the tug-of-war you win by out-clicking. Auto Parry must RAPID-fire here, not
---     do one "normal" block and hold ("it just blocks normal and not clash"). Then
---     the moment the ball leaves (closing < 0) it must STOP (no post-clash tail).
+-- 3b. NO DOUBLE BLOCK. Model the REAL approach: Auto Parry blocks at range
+--     (atImpact ~40+ studs), but the ball keeps physically closing INTO contact
+--     (dist <= 16) for several frames before it deflects. Auto Parry must fire
+--     exactly ONCE across the whole approach — not a second time once the ball
+--     reaches contact ("why does it double block", and the repeat fires are what
+--     broke the block at high ping). Rapid clash is Auto Spam's job, not this.
 do
     local state = { parried = false, last = -1 }
-    local now, clashFires, tailFires = 0, 0, 0
-    -- 1s of the ball sitting on top of you, still closing = an active clash.
-    for _ = 1, 60 do
+    local now, fires = 0, 0
+    local dist = 300
+    -- ball flies all the way in to contact, still closing the entire time.
+    for _ = 1, 120 do
         now = now + DT
-        if (autoParryStep(state, now, true, 14, 300, 300, 60, 1)) then clashFires = clashFires + 1 end
+        dist = math.max(dist - 300 * DT, 8)               -- keeps closing to contact (<=16)
+        if (autoParryStep(state, now, true, dist, 300, 300, 250, 1)) then fires = fires + 1 end
     end
-    -- ball deflects and leaves: 30 frames closing away, still near -> must stop.
-    for _ = 1, 30 do
-        now = now + DT
-        if (autoParryStep(state, now, true, 15, 300, -300, 60, 1)) then tailFires = tailFires + 1 end
-    end
-    check("active clash rapid-fires to win, then stops when it leaves",
-        clashFires >= 45 and tailFires == 0, "clash=" .. clashFires .. " tail=" .. tailFires)
+    check("no double block: one block even as the ball closes into contact (high ping)",
+        fires == 1, "fires=" .. fires)
 end
 
 -- 4a. Ball that never comes inbound (always leaving): zero blocks.
