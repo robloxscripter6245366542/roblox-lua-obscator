@@ -5,13 +5,13 @@
 --  Xeno, Solara, Codex, Wave, Fluxus, Synapse X, KRNL, or any
 --  executor:
 --
---    loadstring(game:HttpGet("https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/claude/bug-fixes-improvements-1rvkk9/JJS_Loader.lua"))()
+--    loadstring(game:HttpGet("https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/JJS_Loader.lua"))()
 --
 --  This loader fetches and runs the latest JJS_Release.lua hub, so the
 --  link never changes even when the hub is updated.
 -- ============================================================
 
-local URL = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/claude/bug-fixes-improvements-1rvkk9/JJS_Release.lua"
+local URL = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/JJS_Release.lua"
 
 local ok, body = pcall(function() return game:HttpGet(URL, true) end)
 if not ok or not body then
