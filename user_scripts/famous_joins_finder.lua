@@ -205,36 +205,45 @@ local rows = {}        -- current UI rows
 local lastResults = {} -- last scan's joinable famous players
 
 --// ── Build candidate pool ─────────────────────────────────
+-- Returns { ids = {...}, curated = { [id]=true } }.
+-- "curated" ids are your hand-picked famous people; they always count as
+-- famous regardless of whether the followers API answers.
 local function collectCandidates()
-    local seen, ids = {}, {}
-    local function add(id)
+    local seen, ids, curated = {}, {}, {}
+    local function add(id, isCurated)
         id = tonumber(id)
-        if id and not seen[id] and id ~= LocalPlayer.UserId then
-            seen[id] = true
-            ids[#ids + 1] = id
+        if id and id ~= LocalPlayer.UserId then
+            if not seen[id] then
+                seen[id] = true
+                ids[#ids + 1] = id
+            end
+            if isCurated then curated[id] = true end
         end
     end
 
-    for _, id in ipairs(CONFIG.FamousList) do add(id) end
+    for _, id in ipairs(CONFIG.FamousList) do add(id, true) end
 
     -- Resolve the curated famous usernames to userIds (main source of names).
     if CONFIG.FamousUsernames and #CONFIG.FamousUsernames > 0 then
-        for _, id in ipairs(resolveUsernames(CONFIG.FamousUsernames)) do add(id) end
+        for _, id in ipairs(resolveUsernames(CONFIG.FamousUsernames)) do add(id, true) end
     end
 
     if CONFIG.ScanServer then
         for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer then add(plr.UserId) end
+            if plr ~= LocalPlayer then add(plr.UserId, false) end
         end
     end
 
     if CONFIG.ScanFriends then
-        for _, f in ipairs(getFriends(LocalPlayer.UserId)) do add(f.id) end
+        for _, f in ipairs(getFriends(LocalPlayer.UserId)) do add(f.id, false) end
     end
 
     -- Cap the pool.
-    while #ids > CONFIG.MaxCandidates do table.remove(ids) end
-    return ids
+    while #ids > CONFIG.MaxCandidates do
+        curated[ids[#ids]] = nil
+        table.remove(ids)
+    end
+    return { ids = ids, curated = curated }
 end
 
 --// ── GUI ──────────────────────────────────────────────────
@@ -499,41 +508,54 @@ local function makeRow(entry, index)
     Name.TextTruncate = Enum.TextTruncate.AtEnd
     Name.Parent = Row
 
+    local followerTxt = entry.followers and (fmtNum(entry.followers) .. " followers") or "famous"
+    local statusTxt, statusColor
+    if entry.state == "joinable" then
+        statusTxt, statusColor = "JOINS ON ✓", COLORS.good
+    elseif entry.state == "off" then
+        statusTxt, statusColor = "in game · JOINS OFF", Color3.fromRGB(230, 170, 90)
+    else
+        statusTxt, statusColor = "offline", Color3.fromRGB(150, 150, 160)
+    end
+
     local Sub = Instance.new("TextLabel")
     Sub.BackgroundTransparency = 1
     Sub.Position = UDim2.new(0, 56, 0, 26)
     Sub.Size = UDim2.new(1, -136, 0, 18)
     Sub.Font = Enum.Font.Gotham
-    Sub.Text = "@" .. (entry.name or "?") .. "  •  " .. fmtNum(entry.followers) .. " followers"
-    Sub.TextColor3 = COLORS.subtext
+    Sub.Text = followerTxt .. "  •  " .. statusTxt
+    Sub.TextColor3 = statusColor
     Sub.TextSize = 12
     Sub.TextXAlignment = Enum.TextXAlignment.Left
     Sub.TextTruncate = Enum.TextTruncate.AtEnd
     Sub.Parent = Row
 
-    local JoinBtn = Instance.new("TextButton")
-    JoinBtn.Size = UDim2.new(0, 66, 0, 30)
-    JoinBtn.Position = UDim2.new(1, -74, 0.5, -15)
-    JoinBtn.BackgroundColor3 = COLORS.good
-    JoinBtn.Text = "Join"
-    JoinBtn.TextColor3 = Color3.fromRGB(15, 30, 20)
-    JoinBtn.Font = Enum.Font.GothamBold
-    JoinBtn.TextSize = 13
-    JoinBtn.Parent = Row
-    Instance.new("UICorner", JoinBtn).CornerRadius = UDim.new(0, 6)
+    -- Only joinable rows get a live Join button.
+    if entry.state == "joinable" then
+        local JoinBtn = Instance.new("TextButton")
+        JoinBtn.Size = UDim2.new(0, 66, 0, 30)
+        JoinBtn.Position = UDim2.new(1, -74, 0.5, -15)
+        JoinBtn.BackgroundColor3 = COLORS.good
+        JoinBtn.Text = "Join"
+        JoinBtn.TextColor3 = Color3.fromRGB(15, 30, 20)
+        JoinBtn.Font = Enum.Font.GothamBold
+        JoinBtn.TextSize = 13
+        JoinBtn.Parent = Row
+        Instance.new("UICorner", JoinBtn).CornerRadius = UDim.new(0, 6)
 
-    JoinBtn.MouseButton1Click:Connect(function()
-        JoinBtn.Text = "..."
-        local ok, err = pcall(function()
-            TeleportService:TeleportToPlayerInstance(entry.placeId, entry.gameId, LocalPlayer)
+        JoinBtn.MouseButton1Click:Connect(function()
+            JoinBtn.Text = "..."
+            local ok, err = pcall(function()
+                TeleportService:TeleportToPlayerInstance(entry.placeId, entry.gameId, LocalPlayer)
+            end)
+            if not ok then
+                JoinBtn.Text = "Failed"
+                notify("Join failed", tostring(err))
+                task.wait(1.5)
+                JoinBtn.Text = "Join"
+            end
         end)
-        if not ok then
-            JoinBtn.Text = "Failed"
-            notify("Join failed", tostring(err))
-            task.wait(1.5)
-            JoinBtn.Text = "Join"
-        end
-    end)
+    end
 
     rows[#rows + 1] = Row
 end
@@ -672,63 +694,75 @@ local function runScan()
     StatusLabel.Text = "Collecting candidates..."
 
     task.spawn(function()
-        local candidates = collectCandidates()
-        StatusLabel.Text = "Checking followers for " .. #candidates .. " players..."
+        local pool = collectCandidates()
+        local candidates, curated = pool.ids, pool.curated
+        StatusLabel.Text = "Checking " .. #candidates .. " players..."
 
-        -- Filter to famous (high follower) users first.
+        -- Decide who's famous. Curated names are always famous (even if the
+        -- followers API is blocked / fails). Non-curated candidates (friends,
+        -- server) must clear the follower threshold to qualify.
         local famous = {}
         for _, id in ipairs(candidates) do
-            local fc = getFollowerCount(id)
-            if fc and fc >= CONFIG.MinFollowers then
+            local fc = getFollowerCount(id)  -- may be nil if the API is blocked
+            if curated[id] or (fc and fc >= CONFIG.MinFollowers) then
                 famous[#famous + 1] = { id = id, followers = fc }
             end
-            task.wait(0.03) -- gentle on the web API
+            task.wait(0.02) -- gentle on the web API
         end
 
         if #famous == 0 then
             clearRows()
             lastResults = {}
-            StatusLabel.Text = "No famous players found in candidate pool."
+            StatusLabel.Text = "No famous players resolved. Check your executor's HTTP support."
             RefreshBtn.Text = "⟳ Refresh"
             scanning = false
             return
         end
 
-        -- Presence: only those with joins ON (public, joinable game) survive.
+        -- Look up presence + names for everyone famous.
         local ids = {}
         for _, f in ipairs(famous) do ids[#ids + 1] = f.id end
         StatusLabel.Text = "Checking who has joins ON..."
         local presences = getPresences(ids)
         local infos = getUserInfos(ids)
 
-        local joinable = {}
+        -- Build an entry for EVERY famous player, tagged with their state, so
+        -- the list is never empty. Joinable ones get a Join button.
+        local entries, joinableCount = {}, 0
         for _, f in ipairs(famous) do
             local p = presences[f.id]
-            -- InGame (2) AND a gameId returned => joins are ON and server is joinable.
+            local info = infos[f.id] or {}
+            local state, gameId, placeId
             if p and p.userPresenceType == 2 and p.gameId and p.placeId then
-                local info = infos[f.id] or {}
-                joinable[#joinable + 1] = {
-                    id          = f.id,
-                    followers   = f.followers,
-                    name        = info.name,
-                    displayName = info.displayName,
-                    gameId      = p.gameId,
-                    placeId     = p.placeId,
-                    lastLocation = p.lastLocation,
-                }
+                state = "joinable"; gameId = p.gameId; placeId = p.placeId
+                joinableCount = joinableCount + 1
+            elseif p and p.userPresenceType == 2 then
+                state = "off"        -- in a game but presence hides the server
+            else
+                state = "offline"    -- not in an experience
             end
+            entries[#entries + 1] = {
+                id = f.id, followers = f.followers,
+                name = info.name, displayName = info.displayName,
+                state = state, gameId = gameId, placeId = placeId,
+            }
         end
 
-        -- Sort by followers, descending (biggest names first).
-        table.sort(joinable, function(a, b) return a.followers > b.followers end)
+        -- Sort: joinable first, then in-game-but-off, then offline;
+        -- within each group by followers (biggest names first).
+        local rank = { joinable = 1, off = 2, offline = 3 }
+        table.sort(entries, function(a, b)
+            if rank[a.state] ~= rank[b.state] then return rank[a.state] < rank[b.state] end
+            return (a.followers or 0) > (b.followers or 0)
+        end)
 
         clearRows()
-        for i, entry in ipairs(joinable) do makeRow(entry, i) end
-        lastResults = joinable
+        for i, entry in ipairs(entries) do makeRow(entry, i) end
+        lastResults = entries
 
         StatusLabel.Text = string.format(
-            "%d famous player(s) with joins ON  (of %d famous, %d scanned)",
-            #joinable, #famous, #candidates)
+            "%d joinable now  •  %d famous listed  •  %d scanned",
+            joinableCount, #entries, #candidates)
         RefreshBtn.Text = "⟳ Refresh"
         scanning = false
     end)
