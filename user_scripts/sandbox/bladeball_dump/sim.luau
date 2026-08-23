@@ -294,6 +294,23 @@ do
         "early-gate=" .. oldOutcome .. "  timed-gate=" .. newOutcome)
 end
 
+-- 10. HIGH-PING SURVIVAL. "Why it no survive on high ping": a single clean timed
+--     block must still deflect the ball at very high latency across a range of
+--     speeds — the parry leads the ball by your ping and the 0.5s shield covers
+--     arrival. (No double-fire here restarting the window; one block, server truth.)
+do
+    local total, landed = 0, 0
+    for _, ping in ipairs({ 300, 380, 450 }) do
+        for _, spd in ipairs({ 150, 260, 380 }) do
+            local c = newChar()
+            total = total + 1
+            if runApproach(ping, spd, c) == "deflected" then landed = landed + 1 end
+        end
+    end
+    check("high-ping: one timed block still survives across speeds", landed == total,
+        landed .. "/" .. total .. " deflected")
+end
+
 -- ---------------------------------------------------------------------------
 print("Blade Ball DUMP-grounded sandbox (real server parry gates)")
 print(("="):rep(60))

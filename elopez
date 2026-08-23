@@ -5671,18 +5671,16 @@ local function MainConnection()
                 local timeToImpact = closing > 0 and (reachDist / closing) or math.huge
                 local impactWindow = ping_seconds + 0.11
                 local atImpact = inRange and timeToImpact <= impactWindow
-                -- A CONTESTED clash: a ball you ALREADY parried this approach that is
-                -- STILL at contact range and STILL coming at you — i.e. your block
-                -- didn't deflect it (the opponent is parrying too / it's too fast),
-                -- so it's the tug-of-war you win by out-clicking. Only here do we
-                -- rapid-fire (like the spam clash tier). Requiring parriedApproach is
-                -- what keeps a NORMAL ball to a single block: a normal ball is
-                -- deflected by that first parry (closing goes negative before / at
-                -- contact) so it never satisfies this and never gets a burst ("block
-                -- for no reason"). Safe to hammer because every parry lands on the
-                -- ball right here, and it stops the instant the ball finally leaves.
-                local inClash = mine and incoming and distance <= 16
-                    and ACHAOTICDATA.Parry[Ball].parriedApproach
+                -- Auto Parry does exactly ONE clean block per approach. It does NOT
+                -- rapid-fire a clash: after the block at range the ball keeps
+                -- physically travelling into contact (dist <= 16) still closing for a
+                -- beat before it deflects, so a contact rapid-fire fired a SECOND time
+                -- on every normal ball ("why does it double block") and, worse, those
+                -- back-to-back fires restarted the parry window so the block never
+                -- completed at high ping ("why it no survive on high ping"). Clashes
+                -- are owned by Auto Spam, which now fires the full slider RPS at a
+                -- contact ball aimed at you — the right tool for out-clicking. Here we
+                -- keep one timed block and hold.
                 -- Fire ONCE when a ball comes at us, then HOLD until it has clearly
                 -- left before it can fire again. The re-arm uses a wider distance than
                 -- the fire range (hysteresis) because right after a clash the ball
@@ -5698,20 +5696,7 @@ local function MainConnection()
                 local clearlyGone = (not mine) or (distance > parry_accuracy * 1.35)
                 local sinceLast = os.clock() - (ACHAOTICDATA.Parry[Ball].LastParry or 0)
 
-                if inClash and sinceLast >= 0.01 then
-                    -- Active clash: rapid re-parry to out-click and win, at the same
-                    -- ~frame-rate cadence as the spam clash tier (0.01s floor just
-                    -- caps it to your FPS). Bypasses once-per-approach so it keeps
-                    -- clashing; parriedApproach stays true so when the ball finally
-                    -- leaves, the hysteresis re-arm still applies (no post-clash tail).
-                    if ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
-                        PlayParry_Animation()
-                    end
-                    FireParry()
-                    ACHAOTICDATA.Parry[Ball].parriedApproach = true
-                    ACHAOTICDATA.Parry[Ball].LastParry = os.clock()
-                    ACHAOTICDATA.Global.APStatus = string.format("CLASH d=%d (rapid)", math.floor(distance))
-                elseif mine and atImpact and incoming and not ACHAOTICDATA.Parry[Ball].parriedApproach and sinceLast >= 0.2 then
+                if mine and atImpact and incoming and not ACHAOTICDATA.Parry[Ball].parriedApproach and sinceLast >= 0.2 then
                     if ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
                         PlayParry_Animation()
                     end
