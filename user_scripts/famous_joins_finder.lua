@@ -49,13 +49,31 @@ local CONFIG = {
     ScanServer     = true,    -- include players in your current server as candidates
     MaxCandidates  = 180,     -- hard cap so we never hammer the web API
 
-    -- Curated famous userIds (editable). The follower check still applies,
-    -- so junk IDs here are harmless. Add the devs / celebs you care about.
+    -- Curated famous *usernames* (editable). These are resolved to userIds
+    -- live at scan time, so the IDs are always correct even if a name changes.
+    -- A username that doesn't resolve is simply skipped (harmless). This is
+    -- the main source of famous people, since YouTubers/devs usually aren't
+    -- your friends or in your server. Add / remove whoever you like.
+    FamousUsernames = {
+        -- Roblox devs / staff
+        "Roblox", "builderman", "Shedletsky",
+        -- Well-known Roblox YouTubers
+        "mrflimflam",   -- Flamingo / Albert
+        "DenisDaily",
+        "KreekCraft",
+        "Tofuu",
+        "pokediger1",   -- Poke
+        "Linkmon99",    -- famous richest player
+        "Russoplays",
+        "SabrinaBrite",
+    },
+
+    -- Optional raw famous userIds (editable), added on top of the usernames
+    -- above. The follower check still applies, so junk IDs here are harmless.
     FamousList = {
-        1,        -- Roblox
-        156,      -- builderman
-        261,      -- Shedletsky (Telamon)
-        13268404, -- example dev slot – replace with your own
+        1,    -- Roblox
+        156,  -- builderman
+        261,  -- Shedletsky (Telamon)
     },
 }
 -- ──────────────────────────────────────────────────────────
@@ -130,6 +148,23 @@ local function resolveUsername(username)
     return nil
 end
 
+-- Batch resolve usernames -> array of userIds (unresolved names are skipped).
+local function resolveUsernames(usernames)
+    local ids = {}
+    for i = 1, #usernames, 100 do
+        local batch = {}
+        for j = i, math.min(i + 99, #usernames) do batch[#batch + 1] = usernames[j] end
+        local data = apiRequest("POST", "https://users.roblox.com/v1/usernames/users",
+            { usernames = batch, excludeBannedUsers = false })
+        if data and data.data then
+            for _, u in ipairs(data.data) do
+                if u.id then ids[#ids + 1] = u.id end
+            end
+        end
+    end
+    return ids
+end
+
 -- Batch presence lookup. Returns map userId -> presence entry.
 -- presence.userPresenceType: 0 Offline, 1 Online (website), 2 InGame, 3 InStudio
 local function getPresences(userIds)
@@ -181,6 +216,11 @@ local function collectCandidates()
     end
 
     for _, id in ipairs(CONFIG.FamousList) do add(id) end
+
+    -- Resolve the curated famous usernames to userIds (main source of names).
+    if CONFIG.FamousUsernames and #CONFIG.FamousUsernames > 0 then
+        for _, id in ipairs(resolveUsernames(CONFIG.FamousUsernames)) do add(id) end
+    end
 
     if CONFIG.ScanServer then
         for _, plr in ipairs(Players:GetPlayers()) do
@@ -418,6 +458,24 @@ local function fmtNum(n)
     return tostring(n)
 end
 
+-- Circular avatar headshot. Uses the built-in rbxthumb protocol, so no HTTP
+-- image fetch is needed and it works on any client.
+local function makeAvatar(parent, userId)
+    local img = Instance.new("ImageLabel")
+    img.Size = UDim2.new(0, 40, 0, 40)
+    img.Position = UDim2.new(0, 8, 0.5, -20)
+    img.BackgroundColor3 = Color3.fromRGB(18, 19, 26)
+    img.BorderSizePixel = 0
+    img.Image = "rbxthumb://type=AvatarHeadShot&id=" .. userId .. "&w=150&h=150"
+    img.Parent = parent
+    Instance.new("UICorner", img).CornerRadius = UDim.new(1, 0)  -- circle
+    local s = Instance.new("UIStroke", img)
+    s.Color = COLORS.accent
+    s.Thickness = 1
+    s.Transparency = 0.5
+    return img
+end
+
 local function makeRow(entry, index)
     local Row = Instance.new("Frame")
     Row.Size = UDim2.new(1, -8, 0, 52)
@@ -427,10 +485,12 @@ local function makeRow(entry, index)
     Row.Parent = List
     Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 6)
 
+    makeAvatar(Row, entry.id)
+
     local Name = Instance.new("TextLabel")
     Name.BackgroundTransparency = 1
-    Name.Position = UDim2.new(0, 10, 0, 6)
-    Name.Size = UDim2.new(1, -90, 0, 20)
+    Name.Position = UDim2.new(0, 56, 0, 6)
+    Name.Size = UDim2.new(1, -136, 0, 20)
     Name.Font = Enum.Font.GothamSemibold
     Name.Text = (entry.displayName or entry.name or ("User " .. entry.id))
     Name.TextColor3 = COLORS.text
@@ -441,8 +501,8 @@ local function makeRow(entry, index)
 
     local Sub = Instance.new("TextLabel")
     Sub.BackgroundTransparency = 1
-    Sub.Position = UDim2.new(0, 10, 0, 26)
-    Sub.Size = UDim2.new(1, -90, 0, 18)
+    Sub.Position = UDim2.new(0, 56, 0, 26)
+    Sub.Size = UDim2.new(1, -136, 0, 18)
     Sub.Font = Enum.Font.Gotham
     Sub.Text = "@" .. (entry.name or "?") .. "  •  " .. fmtNum(entry.followers) .. " followers"
     Sub.TextColor3 = COLORS.subtext
@@ -501,10 +561,12 @@ local function makeSearchRow(info, state, presence, followers)
     st.Color = COLORS.accent
     st.Thickness = 1.5
 
+    makeAvatar(Row, info.id)
+
     local Name = Instance.new("TextLabel")
     Name.BackgroundTransparency = 1
-    Name.Position = UDim2.new(0, 10, 0, 6)
-    Name.Size = UDim2.new(1, -90, 0, 20)
+    Name.Position = UDim2.new(0, 56, 0, 6)
+    Name.Size = UDim2.new(1, -136, 0, 20)
     Name.Font = Enum.Font.GothamSemibold
     Name.Text = "🔍 " .. (info.displayName or info.name or ("User " .. info.id))
     Name.TextColor3 = COLORS.text
@@ -515,8 +577,8 @@ local function makeSearchRow(info, state, presence, followers)
 
     local Sub = Instance.new("TextLabel")
     Sub.BackgroundTransparency = 1
-    Sub.Position = UDim2.new(0, 10, 0, 26)
-    Sub.Size = UDim2.new(1, -90, 0, 18)
+    Sub.Position = UDim2.new(0, 56, 0, 26)
+    Sub.Size = UDim2.new(1, -136, 0, 18)
     Sub.Font = Enum.Font.Gotham
     Sub.TextColor3 = COLORS.subtext
     Sub.TextSize = 12
