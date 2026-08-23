@@ -310,10 +310,13 @@ List.Position = UDim2.new(0, 10, 0, 102)
 List.Size = UDim2.new(1, -20, 1, -112)
 List.BackgroundColor3 = Color3.fromRGB(18, 19, 26)
 List.BorderSizePixel = 0
-List.ScrollBarThickness = 5
+List.ScrollBarThickness = 7
 List.ScrollBarImageColor3 = COLORS.accent
+List.ScrollingDirection = Enum.ScrollingDirection.Y
+List.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
+List.ScrollingEnabled = true
 List.CanvasSize = UDim2.new(0, 0, 0, 0)
-List.AutomaticCanvasSize = Enum.AutomaticSize.Y
+List.AutomaticCanvasSize = Enum.AutomaticSize.Y  -- modern clients
 List.Parent = Main
 Instance.new("UICorner", List).CornerRadius = UDim.new(0, 8)
 
@@ -323,8 +326,16 @@ ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ListLayout.Parent = List
 local ListPad = Instance.new("UIPadding", List)
 ListPad.PaddingTop = UDim.new(0, 4)
+ListPad.PaddingBottom = UDim.new(0, 4)
 ListPad.PaddingLeft = UDim.new(0, 4)
 ListPad.PaddingRight = UDim.new(0, 4)
+
+-- Fallback for executors/clients that don't honor AutomaticCanvasSize:
+-- keep the scroll canvas sized to the actual content height so the list
+-- always scrolls when it overflows.
+ListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    List.CanvasSize = UDim2.new(0, 0, 0, ListLayout.AbsoluteContentSize.Y + 8)
+end)
 
 --// ── Draggable ────────────────────────────────────────────
 do
