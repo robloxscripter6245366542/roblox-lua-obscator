@@ -119,6 +119,17 @@ local function getFriends(userId)
     return out
 end
 
+-- Resolve a username -> { id, name, displayName } (nil if not found).
+local function resolveUsername(username)
+    local data = apiRequest("POST", "https://users.roblox.com/v1/usernames/users",
+        { usernames = { username }, excludeBannedUsers = false })
+    if data and data.data and data.data[1] and data.data[1].id then
+        local u = data.data[1]
+        return { id = u.id, name = u.name, displayName = u.displayName }
+    end
+    return nil
+end
+
 -- Batch presence lookup. Returns map userId -> presence entry.
 -- presence.userPresenceType: 0 Offline, 1 Online (website), 2 InGame, 3 InStudio
 local function getPresences(userIds)
@@ -214,8 +225,8 @@ ScreenGui.Parent = parentGui
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.new(0, 360, 0, 420)
-Main.Position = UDim2.new(0.5, -180, 0.5, -210)
+Main.Size = UDim2.new(0, 360, 0, 470)
+Main.Position = UDim2.new(0.5, -180, 0.5, -235)
 Main.BackgroundColor3 = COLORS.bg
 Main.BorderSizePixel = 0
 Main.Parent = ScreenGui
@@ -303,11 +314,41 @@ FollowerBtn.TextSize = 13
 FollowerBtn.Parent = Main
 Instance.new("UICorner", FollowerBtn).CornerRadius = UDim.new(0, 6)
 
+-- Search row: look up a specific YouTuber / dev by username and see if their joins are ON.
+local SearchBox = Instance.new("TextBox")
+SearchBox.Size = UDim2.new(1, -104, 0, 28)
+SearchBox.Position = UDim2.new(0, 12, 0, 100)
+SearchBox.BackgroundColor3 = Color3.fromRGB(18, 19, 26)
+SearchBox.Text = ""
+SearchBox.PlaceholderText = "Search a YouTuber / dev username..."
+SearchBox.PlaceholderColor3 = COLORS.subtext
+SearchBox.TextColor3 = COLORS.text
+SearchBox.Font = Enum.Font.Gotham
+SearchBox.TextSize = 13
+SearchBox.TextXAlignment = Enum.TextXAlignment.Left
+SearchBox.ClearTextOnFocus = false
+SearchBox.Parent = Main
+Instance.new("UICorner", SearchBox).CornerRadius = UDim.new(0, 6)
+local SearchPad = Instance.new("UIPadding", SearchBox)
+SearchPad.PaddingLeft = UDim.new(0, 8)
+SearchPad.PaddingRight = UDim.new(0, 8)
+
+local SearchBtn = Instance.new("TextButton")
+SearchBtn.Size = UDim2.new(0, 84, 0, 28)
+SearchBtn.Position = UDim2.new(1, -92, 0, 100)
+SearchBtn.BackgroundColor3 = COLORS.accent
+SearchBtn.Text = "🔍 Search"
+SearchBtn.TextColor3 = COLORS.text
+SearchBtn.Font = Enum.Font.GothamSemibold
+SearchBtn.TextSize = 13
+SearchBtn.Parent = Main
+Instance.new("UICorner", SearchBtn).CornerRadius = UDim.new(0, 6)
+
 -- Scrolling list
 local List = Instance.new("ScrollingFrame")
 List.Name = "List"
-List.Position = UDim2.new(0, 10, 0, 102)
-List.Size = UDim2.new(1, -20, 1, -112)
+List.Position = UDim2.new(0, 10, 0, 136)
+List.Size = UDim2.new(1, -20, 1, -146)
 List.BackgroundColor3 = Color3.fromRGB(18, 19, 26)
 List.BorderSizePixel = 0
 List.ScrollBarThickness = 7
@@ -437,6 +478,130 @@ local function makeRow(entry, index)
     rows[#rows + 1] = Row
 end
 
+--// ── Search a specific user ───────────────────────────────
+local searchRow          -- the single pinned row for the last search
+local searching = false
+
+local function clearSearchRow()
+    if searchRow then searchRow:Destroy() searchRow = nil end
+end
+
+-- Build the pinned search row. `state` is "joinable" | "off" | "offline".
+local function makeSearchRow(info, state, presence, followers)
+    clearSearchRow()
+
+    local Row = Instance.new("Frame")
+    Row.Size = UDim2.new(1, -8, 0, 52)
+    Row.BackgroundColor3 = Color3.fromRGB(30, 40, 60)
+    Row.BorderSizePixel = 0
+    Row.LayoutOrder = -1  -- pin to the top of the list
+    Row.Parent = List
+    Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 6)
+    local st = Instance.new("UIStroke", Row)
+    st.Color = COLORS.accent
+    st.Thickness = 1.5
+
+    local Name = Instance.new("TextLabel")
+    Name.BackgroundTransparency = 1
+    Name.Position = UDim2.new(0, 10, 0, 6)
+    Name.Size = UDim2.new(1, -90, 0, 20)
+    Name.Font = Enum.Font.GothamSemibold
+    Name.Text = "🔍 " .. (info.displayName or info.name or ("User " .. info.id))
+    Name.TextColor3 = COLORS.text
+    Name.TextSize = 14
+    Name.TextXAlignment = Enum.TextXAlignment.Left
+    Name.TextTruncate = Enum.TextTruncate.AtEnd
+    Name.Parent = Row
+
+    local Sub = Instance.new("TextLabel")
+    Sub.BackgroundTransparency = 1
+    Sub.Position = UDim2.new(0, 10, 0, 26)
+    Sub.Size = UDim2.new(1, -90, 0, 18)
+    Sub.Font = Enum.Font.Gotham
+    Sub.TextColor3 = COLORS.subtext
+    Sub.TextSize = 12
+    Sub.TextXAlignment = Enum.TextXAlignment.Left
+    Sub.TextTruncate = Enum.TextTruncate.AtEnd
+    Sub.Parent = Row
+
+    local followerTxt = followers and (fmtNum(followers) .. " followers  •  ") or ""
+
+    if state == "joinable" then
+        Sub.Text = "@" .. (info.name or "?") .. "  •  " .. followerTxt .. "JOINS ON ✓"
+        Sub.TextColor3 = COLORS.good
+
+        local JoinBtn = Instance.new("TextButton")
+        JoinBtn.Size = UDim2.new(0, 66, 0, 30)
+        JoinBtn.Position = UDim2.new(1, -74, 0.5, -15)
+        JoinBtn.BackgroundColor3 = COLORS.good
+        JoinBtn.Text = "Join"
+        JoinBtn.TextColor3 = Color3.fromRGB(15, 30, 20)
+        JoinBtn.Font = Enum.Font.GothamBold
+        JoinBtn.TextSize = 13
+        JoinBtn.Parent = Row
+        Instance.new("UICorner", JoinBtn).CornerRadius = UDim.new(0, 6)
+        JoinBtn.MouseButton1Click:Connect(function()
+            JoinBtn.Text = "..."
+            local ok, err = pcall(function()
+                TeleportService:TeleportToPlayerInstance(presence.placeId, presence.gameId, LocalPlayer)
+            end)
+            if not ok then
+                JoinBtn.Text = "Failed"
+                notify("Join failed", tostring(err))
+                task.wait(1.5)
+                JoinBtn.Text = "Join"
+            end
+        end)
+    elseif state == "off" then
+        Sub.Text = "@" .. (info.name or "?") .. "  •  " .. followerTxt .. "in game, but JOINS OFF ✕"
+        Sub.TextColor3 = Color3.fromRGB(230, 170, 90)
+    else -- offline
+        Sub.Text = "@" .. (info.name or "?") .. "  •  " .. followerTxt .. "not in a game right now"
+        Sub.TextColor3 = COLORS.subtext
+    end
+
+    searchRow = Row
+    List.CanvasPosition = Vector2.new(0, 0)  -- scroll to top so the pinned row is visible
+end
+
+local function doSearch()
+    local q = (SearchBox.Text or ""):match("^%s*(.-)%s*$")  -- trim
+    if q == "" then return end
+    if searching then return end
+    searching = true
+    SearchBtn.Text = "..."
+    StatusLabel.Text = 'Looking up "' .. q .. '"...'
+
+    task.spawn(function()
+        local info = resolveUsername(q)
+        if not info then
+            clearSearchRow()
+            StatusLabel.Text = 'No Roblox user named "' .. q .. '".'
+            SearchBtn.Text = "🔍 Search"
+            searching = false
+            return
+        end
+
+        local presences = getPresences({ info.id })
+        local p = presences[info.id]
+        local followers = getFollowerCount(info.id)
+
+        if p and p.userPresenceType == 2 and p.gameId and p.placeId then
+            makeSearchRow(info, "joinable", p, followers)
+            StatusLabel.Text = (info.displayName or info.name) .. " has JOINS ON — tap Join."
+        elseif p and p.userPresenceType == 2 then
+            -- In a game but presence hides the server -> joins are off.
+            makeSearchRow(info, "off", nil, followers)
+            StatusLabel.Text = (info.displayName or info.name) .. " is in a game but has joins OFF."
+        else
+            makeSearchRow(info, "offline", nil, followers)
+            StatusLabel.Text = (info.displayName or info.name) .. " isn't in a joinable game right now."
+        end
+        SearchBtn.Text = "🔍 Search"
+        searching = false
+    end)
+end
+
 --// ── The scan ─────────────────────────────────────────────
 local function runScan()
     if scanning then return end
@@ -510,6 +675,11 @@ end
 --// ── Button wiring ────────────────────────────────────────
 CloseBtn.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
 RefreshBtn.MouseButton1Click:Connect(runScan)
+
+SearchBtn.MouseButton1Click:Connect(doSearch)
+SearchBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then doSearch() end
+end)
 
 AutoBtn.MouseButton1Click:Connect(function()
     CONFIG.AutoRefresh = not CONFIG.AutoRefresh
