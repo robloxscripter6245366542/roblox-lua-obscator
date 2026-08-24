@@ -147,14 +147,24 @@ scratch/register space (~0.46 bits/byte), not plaintext bytecode. So static
 recovery stops at the encrypted buffer (see `../v15.md`); the *dynamic* trace
 is where the instruction stream becomes observable.
 
+## v15 opcode map — `../devirt/v15_opcodes.py`
+
+Feed this harness's `<out>.hist.txt` into `../devirt/v15_opcodes.py` to build
+the opcode map: it statically classifies all 145 handlers (arity, library
+slots, `next_handler_id` successors, category) and marks which the trace
+exercised. On the sample: **145 defined, 0 unclassified, 68 exercised, 77
+never hit** (the remaining opcodes). Committed output:
+`../devirt/v15_opcode_map.md` + `../devirt/v15_opcodes.json`.
+
 ## What still needs the opcode lifter
 
-Constant-pool + behaviour are now recovered (v14.7); the v15 handler trace is
-recovered. Full *source* reconstruction still needs devirtualising the
-bytecode — for v14.7, mapping the custom opcodes in the ~53 KB dispatch `o`; for
-v15, mapping the threaded handler-transition trace (`next_handler_id`) back to
-opcodes per ISA. See `../devirt.md` and `../v15.md`. That's the last mile and
-it's a manual per-version lift; everything up to it is automated here.
+Constant-pool + behaviour are recovered (v14.7); the v15 handler trace and a
+fully-classified handler map are recovered. Full *source* reconstruction still
+needs (a) samples that exercise the remaining 77 v15 handlers and (b) assigning
+each handler an exact Lua operation + codegen — for v14.7 the analogous step is
+mapping the opcodes in the ~53 KB dispatch `o`. See `../devirt.md` and
+`../v15.md`. That's the last mile and it's a manual per-version lift;
+everything up to it is automated here.
 
 ## Files
 - `run.py` — generate + execute the harness; `--strings` dumps the pool.
