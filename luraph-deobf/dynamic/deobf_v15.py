@@ -260,7 +260,17 @@ env.getmetatable = realG.getmetatable ; env.setmetatable = realG.setmetatable
 env.ipairs = realG.ipairs ; env.pairs = realG.pairs
 env._VERSION = realG._VERSION
 env.debug = realG.debug            -- REAL Luau debug -> satisfies the v15 gate
-env.buffer = realG.buffer ; env.bit32 = realG.bit32
+env.buffer = realG.buffer
+-- bit32: optionally a heartbeat on bxor (the decrypt primitive) so a long run
+-- shows whether the VM is progressing (counter climbs) or stuck (plateaus).
+if __HEARTBEAT__ > 0 then
+    local rb = realG.bit32 ; local bp = {} ; for k,v in pairs(rb) do bp[k]=v end
+    local n, real, every = 0, rb.bxor, __HEARTBEAT__
+    bp.bxor = function(...) n=n+1; if n % every == 0 then print("[[HB]] bxor="..n) end; return real(...) end
+    env.bit32 = bp
+else
+    env.bit32 = realG.bit32
+end
 env.utf8 = realG.utf8 ; env.coroutine = realG.coroutine ; env.math = realG.math
 
 -- string/table: real, but optionally tap the materialised program strings.
@@ -338,11 +348,12 @@ print("[[LOG]] done")
 '''
 
 
-def build(sample_src, logstr, wait_budget, max_reads):
+def build(sample_src, logstr, wait_budget, max_reads, heartbeat=0):
     pre = (PRELUDE
            .replace("__LOGSTR__", "true" if logstr else "false")
            .replace("__WAITBUDGET__", str(wait_budget))
-           .replace("__MAXREADS__", str(max_reads)))
+           .replace("__MAXREADS__", str(max_reads))
+           .replace("__HEARTBEAT__", str(heartbeat)))
     assert ']====]' not in sample_src, "sample uses a level-4 long bracket; bump the level"
     return pre + sample_src + RUNNER
 
@@ -356,12 +367,14 @@ def main():
     ap.add_argument("--max-reads", type=int, default=8000000,
                     help="buffer.readu8 cap (bounds infinite payload loops)")
     ap.add_argument("--no-strings", action="store_true", help="don't log program strings")
+    ap.add_argument("--heartbeat", type=int, default=0,
+                    help="print a bxor progress heartbeat every N calls (0=off)")
     ap.add_argument("--harness", default="harness_deobf_v15.luau")
     ap.add_argument("--out", default=None, help="prefix: writes <out>.behavior.txt")
     args = ap.parse_args()
 
     src = open(args.sample, encoding="utf-8", errors="replace").read()
-    harness = build(src, not args.no_strings, args.wait_budget, args.max_reads)
+    harness = build(src, not args.no_strings, args.wait_budget, args.max_reads, args.heartbeat)
     open(args.harness, "w", encoding="utf-8").write(harness)
     print(f"[deobf_v15] wrote {args.harness} ({len(harness)} bytes); running under "
           f"{args.luau} (network/disk stubbed, timeout {args.timeout}s)\n")
