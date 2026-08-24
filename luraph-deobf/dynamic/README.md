@@ -113,7 +113,51 @@ still needs devirtualising the bytecode (mapping the custom opcodes in the
 last mile and it's a manual per-version lift; everything up to it is
 automated here.
 
+## v15 — `run_v15.py` (VM trace harness)
+
+v15 has no separate VM-source + bytecode to boot: the whole program is one
+`return setmetatable({…}, {}):XA()(...)` where the table's fields are ~155
+threaded "continuation" handlers (each returns `next_handler_id, regs…`) and
+the driver (`XA` → the `while true` loop in one handler) fetches handlers out
+of the table into locals before calling them. `run_v15.py` exploits exactly
+that: it reuses `run.py`'s stubbed env, then **wraps `setmetatable`** so that
+when the big handler table is created, every VM handler field is replaced with
+a tracer *before* the driver reads it — cached std-lib primitives
+(`buffer`/`bit32`/`string`/…) are identity-checked and left real so the hot
+decrypt loop keeps full speed.
+
+```bash
+python3 run_v15.py ../sample_v15.lua --luau ./luau --out v15_trace
+#   v15_trace.hist.txt   per-handler call histogram
+#   v15_trace.seq.txt    handler-transition trace = executed opcode stream
+#   v15_trace.writebuf.bin  most-written buffer (VM scratch/registers)
+```
+
+**Verified on `../sample_v15.lua` (Luraph v15.0):** the VM boots and runs to
+completion (erroring only at a stubbed service, i.e. after the VM ran). The
+histogram is dominated by a 5-handler cycle (`Mu Nu Lu ou hu`, ~33 K calls
+each) and `XA` fires exactly once (the bootstrap). The sequence trace shows a
+tight repeat `ou->23 Lu->37 Nu->13 Mu->8 hu->29 …` — the per-instruction
+decode/dispatch loop, and effectively the executed opcode stream.
+
+**What this proves (dynamically):** v15 decrypts the bytecode **lazily, per
+read** (`bit32.bxor` in the `readu8` path). There is no monolithic decrypted
+buffer to dump — the `writeu8` reconstruction yields the VM's low-entropy
+scratch/register space (~0.46 bits/byte), not plaintext bytecode. So static
+recovery stops at the encrypted buffer (see `../v15.md`); the *dynamic* trace
+is where the instruction stream becomes observable.
+
+## What still needs the opcode lifter
+
+Constant-pool + behaviour are now recovered (v14.7); the v15 handler trace is
+recovered. Full *source* reconstruction still needs devirtualising the
+bytecode — for v14.7, mapping the custom opcodes in the ~53 KB dispatch `o`; for
+v15, mapping the threaded handler-transition trace (`next_handler_id`) back to
+opcodes per ISA. See `../devirt.md` and `../v15.md`. That's the last mile and
+it's a manual per-version lift; everything up to it is automated here.
+
 ## Files
 - `run.py` — generate + execute the harness; `--strings` dumps the pool.
+- `run_v15.py` — v15 VM trace harness (handler histogram + dispatch trace).
 - `build_luau.sh` — build the Luau CLI this needs.
 - `sample_constants.txt` — the 165-entry pool recovered from the sample.
