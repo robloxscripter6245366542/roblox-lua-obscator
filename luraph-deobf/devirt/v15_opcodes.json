@@ -1,0 +1,2351 @@
+{
+ "sample": "sample_v15.lua",
+ "total": 145,
+ "exercised": [
+  "53",
+  "A",
+  "Au",
+  "D",
+  "F",
+  "GA",
+  "Gu",
+  "H",
+  "I",
+  "J",
+  "Ju",
+  "K",
+  "KA",
+  "Ku",
+  "L",
+  "Lu",
+  "M",
+  "MA",
+  "Mu",
+  "N",
+  "NA",
+  "Nu",
+  "O",
+  "P",
+  "Q",
+  "R",
+  "S",
+  "Su",
+  "U",
+  "Uu",
+  "V",
+  "WA",
+  "X",
+  "XA",
+  "Y",
+  "YA",
+  "Yu",
+  "Z",
+  "au",
+  "bu",
+  "c",
+  "d",
+  "f",
+  "fu",
+  "h",
+  "hA",
+  "hu",
+  "i",
+  "j",
+  "ju",
+  "k",
+  "ku",
+  "m",
+  "n",
+  "o",
+  "ou",
+  "p",
+  "ru",
+  "s",
+  "t",
+  "tA",
+  "u",
+  "wA",
+  "wu",
+  "x",
+  "xA",
+  "y",
+  "z"
+ ],
+ "never_exercised": [
+  "113",
+  "28",
+  "46",
+  "75",
+  "AA",
+  "B",
+  "BA",
+  "Bu",
+  "C",
+  "CA",
+  "Cu",
+  "DA",
+  "E",
+  "EA",
+  "Eu",
+  "FA",
+  "Fu",
+  "G",
+  "HA",
+  "Hu",
+  "Iu",
+  "JA",
+  "LA",
+  "OA",
+  "Pu",
+  "QA",
+  "Qu",
+  "Ru",
+  "SA",
+  "TA",
+  "Tu",
+  "UA",
+  "VA",
+  "Vu",
+  "Xu",
+  "ZA",
+  "Zu",
+  "_A",
+  "aA",
+  "b",
+  "bA",
+  "cA",
+  "cu",
+  "dA",
+  "du",
+  "e",
+  "eA",
+  "fA",
+  "g",
+  "gu",
+  "iA",
+  "iu",
+  "jA",
+  "kA",
+  "l",
+  "lA",
+  "mu",
+  "nA",
+  "nu",
+  "oA",
+  "pA",
+  "pu",
+  "q",
+  "qA",
+  "r",
+  "rA",
+  "sA",
+  "su",
+  "tu",
+  "uu",
+  "v",
+  "vA",
+  "vu",
+  "w",
+  "xu",
+  "yA",
+  "zu"
+ ],
+ "unclassified": [],
+ "handlers": {
+  "s": {
+   "arity": 11,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    19,
+    51
+   ],
+   "calls": 20532
+  },
+  "Fu": {
+   "arity": 9,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    13
+   ],
+   "calls": null
+  },
+  "tA": {
+   "arity": 12,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    17,
+    72,
+    110,
+    128
+   ],
+   "calls": 6
+  },
+  "X": {
+   "arity": 12,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    64,
+    93,
+    162
+   ],
+   "calls": 480
+  },
+  "Zu": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BITWISE",
+   "libs": [
+    "Vector2.new",
+    "Vector3.new",
+    "bit32.bxor",
+    "buffer.readf32",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    159
+   ],
+   "calls": null
+  },
+  "bA": {
+   "arity": 11,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu32",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    34,
+    64,
+    112,
+    159,
+    226
+   ],
+   "calls": null
+  },
+  "cu": {
+   "arity": 10,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.readu8",
+    "table.create"
+   ],
+   "successors": [
+    32,
+    71,
+    177,
+    193,
+    196
+   ],
+   "calls": null
+  },
+  "FA": {
+   "arity": 9,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    165,
+    187,
+    226
+   ],
+   "calls": null
+  },
+  "_A": {
+   "arity": 15,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    13,
+    37,
+    128,
+    154
+   ],
+   "calls": null
+  },
+  "YA": {
+   "arity": 11,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.tostring"
+   ],
+   "successors": [
+    27,
+    147,
+    222
+   ],
+   "calls": 6
+  },
+  "D": {
+   "arity": 8,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.readu8",
+    "table.create"
+   ],
+   "successors": [
+    65,
+    159
+   ],
+   "calls": 2
+  },
+  "H": {
+   "arity": 9,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    140
+   ],
+   "calls": 1
+  },
+  "rA": {
+   "arity": 12,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    13,
+    67,
+    91
+   ],
+   "calls": null
+  },
+  "BA": {
+   "arity": 12,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    68,
+    86,
+    173,
+    238
+   ],
+   "calls": null
+  },
+  "NA": {
+   "arity": 11,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.readu8",
+    "table.create"
+   ],
+   "successors": [
+    128,
+    159
+   ],
+   "calls": 6
+  },
+  "Iu": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|STRING|TABLE/CONST|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8",
+    "string.sub"
+   ],
+   "successors": [
+    39,
+    96
+   ],
+   "calls": null
+  },
+  "i": {
+   "arity": 9,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    113,
+    140
+   ],
+   "calls": 2
+  },
+  "uu": {
+   "arity": 11,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    60,
+    121,
+    147,
+    232
+   ],
+   "calls": null
+  },
+  "gu": {
+   "arity": 14,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    32,
+    98,
+    224
+   ],
+   "calls": null
+  },
+  "e": {
+   "arity": 2,
+   "category": "CALL/OTHER",
+   "libs": [],
+   "successors": [],
+   "calls": null
+  },
+  "bu": {
+   "arity": 11,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.create",
+    "buffer.readu8"
+   ],
+   "successors": [
+    100,
+    185,
+    228
+   ],
+   "calls": 5
+  },
+  "Qu": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    49,
+    113
+   ],
+   "calls": null
+  },
+  "G": {
+   "arity": 12,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.readu8",
+    "table.create"
+   ],
+   "successors": [
+    79,
+    89,
+    160
+   ],
+   "calls": null
+  },
+  "E": {
+   "arity": 9,
+   "category": "BRANCH",
+   "libs": [],
+   "successors": [
+    3,
+    66
+   ],
+   "calls": null
+  },
+  "28": {
+   "arity": 6,
+   "category": "CALL/OTHER",
+   "libs": [
+    "M"
+   ],
+   "successors": [],
+   "calls": null
+  },
+  "QA": {
+   "arity": 10,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.create",
+    "buffer.fill",
+    "buffer.readu8"
+   ],
+   "successors": [
+    159,
+    181
+   ],
+   "calls": null
+  },
+  "Vu": {
+   "arity": 8,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    224
+   ],
+   "calls": null
+  },
+  "K": {
+   "arity": 3,
+   "category": "TABLE/CONST",
+   "libs": [],
+   "successors": [],
+   "calls": 1
+  },
+  "o": {
+   "arity": 10,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    56,
+    133,
+    140,
+    157
+   ],
+   "calls": 4277
+  },
+  "vu": {
+   "arity": 9,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    138,
+    159
+   ],
+   "calls": null
+  },
+  "nA": {
+   "arity": 15,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readi16",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    41,
+    159,
+    219
+   ],
+   "calls": null
+  },
+  "oA": {
+   "arity": 6,
+   "category": "FETCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [],
+   "calls": null
+  },
+  "nu": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    36,
+    49
+   ],
+   "calls": null
+  },
+  "J": {
+   "arity": 14,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    101,
+    166
+   ],
+   "calls": 4275
+  },
+  "V": {
+   "arity": 9,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    18,
+    81,
+    89
+   ],
+   "calls": 3695
+  },
+  "d": {
+   "arity": 10,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    17,
+    113,
+    142
+   ],
+   "calls": 2
+  },
+  "B": {
+   "arity": 13,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    42,
+    64
+   ],
+   "calls": null
+  },
+  "Eu": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readf32",
+    "buffer.readu8",
+    "buffer.writeu8",
+    "vector.create"
+   ],
+   "successors": [
+    2,
+    39,
+    99,
+    122,
+    159
+   ],
+   "calls": null
+  },
+  "P": {
+   "arity": 10,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    34
+   ],
+   "calls": 2
+  },
+  "vA": {
+   "arity": 15,
+   "category": "FETCH|STORE/DECRYPT|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    93,
+    138,
+    193,
+    228
+   ],
+   "calls": null
+  },
+  "EA": {
+   "arity": 12,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    198
+   ],
+   "calls": null
+  },
+  "pu": {
+   "arity": 14,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.create",
+    "buffer.readstring",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    73,
+    101,
+    159
+   ],
+   "calls": null
+  },
+  "xA": {
+   "arity": 7,
+   "category": "CALL/OTHER|BRANCH",
+   "libs": [],
+   "successors": [
+    147,
+    159,
+    193
+   ],
+   "calls": 6
+  },
+  "Au": {
+   "arity": 1,
+   "category": "RESUME",
+   "libs": [],
+   "successors": [
+    146
+   ],
+   "calls": 6
+  },
+  "R": {
+   "arity": 11,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    21,
+    73,
+    93,
+    143
+   ],
+   "calls": 3
+  },
+  "Pu": {
+   "arity": 11,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    41,
+    201
+   ],
+   "calls": null
+  },
+  "n": {
+   "arity": 10,
+   "category": "TABLE/CONST|BRANCH",
+   "libs": [
+    "table.create"
+   ],
+   "successors": [
+    34,
+    101,
+    133
+   ],
+   "calls": 1160
+  },
+  "b": {
+   "arity": 8,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    3
+   ],
+   "calls": null
+  },
+  "r": {
+   "arity": 8,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8",
+    "setmetatable"
+   ],
+   "successors": [
+    127
+   ],
+   "calls": null
+  },
+  "Y": {
+   "arity": 12,
+   "category": "BRANCH",
+   "libs": [
+    "H",
+    "M"
+   ],
+   "successors": [
+    3,
+    18,
+    33,
+    81,
+    162,
+    167
+   ],
+   "calls": 1
+  },
+  "iA": {
+   "arity": 14,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    53,
+    133,
+    150,
+    168
+   ],
+   "calls": null
+  },
+  "yA": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|STRING|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readf64",
+    "buffer.readu8",
+    "buffer.writeu8",
+    "string.sub"
+   ],
+   "successors": [
+    159,
+    238
+   ],
+   "calls": null
+  },
+  "ou": {
+   "arity": 12,
+   "category": "FETCH|STRING|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.fromstring",
+    "buffer.readu8",
+    "string.gsub",
+    "string.sub"
+   ],
+   "successors": [
+    14,
+    23,
+    37
+   ],
+   "calls": 32932
+  },
+  "113": {
+   "arity": 4,
+   "category": "CALL/OTHER",
+   "libs": [
+    "M"
+   ],
+   "successors": [],
+   "calls": null
+  },
+  "XA": {
+   "arity": 2,
+   "category": "CALL/OTHER",
+   "libs": [],
+   "successors": [],
+   "calls": 1
+  },
+  "z": {
+   "arity": 11,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.fill",
+    "buffer.readu8"
+   ],
+   "successors": [
+    8,
+    41
+   ],
+   "calls": 4276
+  },
+  "dA": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    121,
+    195
+   ],
+   "calls": null
+  },
+  "tu": {
+   "arity": 4,
+   "category": "CALL/OTHER",
+   "libs": [
+    "coroutine.yield"
+   ],
+   "successors": [],
+   "calls": null
+  },
+  "MA": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    49,
+    144,
+    194
+   ],
+   "calls": 6
+  },
+  "TA": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    19,
+    233
+   ],
+   "calls": null
+  },
+  "ru": {
+   "arity": 7,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    0,
+    1,
+    24
+   ],
+   "calls": 2
+  },
+  "Ru": {
+   "arity": 8,
+   "category": "TABLE/CONST|BRANCH",
+   "libs": [
+    "table.create"
+   ],
+   "successors": [
+    31,
+    108,
+    167,
+    228
+   ],
+   "calls": null
+  },
+  "L": {
+   "arity": 10,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.readu8",
+    "table.create"
+   ],
+   "successors": [
+    69
+   ],
+   "calls": 4275
+  },
+  "SA": {
+   "arity": 8,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    41,
+    193
+   ],
+   "calls": null
+  },
+  "w": {
+   "arity": 10,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    55,
+    93
+   ],
+   "calls": null
+  },
+  "f": {
+   "arity": 10,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    64,
+    133,
+    157
+   ],
+   "calls": 3788
+  },
+  "46": {
+   "arity": 9,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|STRING|TABLE/CONST|BRANCH",
+   "libs": [
+    "M",
+    "bit32.band",
+    "bit32.bnot",
+    "bit32.bor",
+    "bit32.bxor",
+    "bit32.lshift",
+    "bit32.rshift",
+    "buffer.copy",
+    "buffer.create",
+    "buffer.len",
+    "buffer.readf32",
+    "buffer.readi32",
+    "buffer.readu16",
+    "buffer.readu32",
+    "buffer.readu8",
+    "buffer.tostring",
+    "buffer.writeu32",
+    "buffer.writeu8",
+    "coroutine.wrap",
+    "error",
+    "getfenv",
+    "next",
+    "pcall",
+    "q",
+    "select",
+    "setfenv",
+    "setmetatable",
+    "string.match",
+    "string.rep",
+    "table.create",
+    "table.move",
+    "table.pack",
+    "type",
+    "unpack",
+    "vector.create"
+   ],
+   "successors": [
+    0,
+    1,
+    2,
+    3,
+    5,
+    6,
+    7,
+    8,
+    10,
+    11,
+    13,
+    14,
+    16,
+    18,
+    19,
+    22,
+    23,
+    25,
+    26,
+    27,
+    28,
+    29,
+    32,
+    33,
+    34,
+    36,
+    37,
+    41,
+    42,
+    43,
+    46,
+    49,
+    50,
+    51,
+    55,
+    56,
+    57,
+    61,
+    64,
+    66,
+    69,
+    71,
+    73,
+    75,
+    78,
+    79,
+    81,
+    83,
+    85,
+    88,
+    89,
+    93,
+    94,
+    95,
+    98,
+    100,
+    104,
+    108,
+    109,
+    112,
+    113,
+    114,
+    115,
+    117,
+    121,
+    122,
+    124,
+    127,
+    128,
+    133,
+    135,
+    136,
+    137,
+    140,
+    143,
+    144,
+    147,
+    149,
+    153,
+    155,
+    158,
+    159,
+    160,
+    162,
+    165,
+    167,
+    168,
+    172,
+    181,
+    185,
+    186,
+    190,
+    191,
+    195,
+    204,
+    212,
+    218,
+    219,
+    222,
+    224,
+    226,
+    228,
+    231,
+    232,
+    238
+   ],
+   "calls": null
+  },
+  "53": {
+   "arity": 6,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|STRING|TABLE/CONST|BRANCH",
+   "libs": [
+    "M",
+    "bit32.band",
+    "bit32.bnot",
+    "bit32.bor",
+    "bit32.bxor",
+    "bit32.lshift",
+    "bit32.rshift",
+    "buffer.copy",
+    "buffer.create",
+    "buffer.len",
+    "buffer.readf32",
+    "buffer.readi32",
+    "buffer.readu16",
+    "buffer.readu32",
+    "buffer.readu8",
+    "buffer.tostring",
+    "buffer.writeu32",
+    "buffer.writeu8",
+    "coroutine.wrap",
+    "error",
+    "getfenv",
+    "next",
+    "q",
+    "select",
+    "setfenv",
+    "setmetatable",
+    "string.match",
+    "string.rep",
+    "table.create",
+    "table.move",
+    "table.pack",
+    "type",
+    "unpack",
+    "vector.create"
+   ],
+   "successors": [
+    0,
+    1,
+    2,
+    3,
+    5,
+    6,
+    7,
+    8,
+    10,
+    11,
+    13,
+    14,
+    16,
+    18,
+    19,
+    22,
+    23,
+    25,
+    26,
+    27,
+    28,
+    29,
+    32,
+    33,
+    34,
+    36,
+    37,
+    41,
+    42,
+    43,
+    46,
+    49,
+    50,
+    51,
+    55,
+    56,
+    57,
+    61,
+    64,
+    66,
+    69,
+    71,
+    73,
+    75,
+    78,
+    79,
+    81,
+    83,
+    85,
+    88,
+    89,
+    93,
+    94,
+    95,
+    98,
+    100,
+    104,
+    108,
+    109,
+    112,
+    113,
+    114,
+    115,
+    117,
+    121,
+    122,
+    124,
+    127,
+    128,
+    133,
+    135,
+    136,
+    137,
+    140,
+    143,
+    144,
+    147,
+    149,
+    153,
+    155,
+    158,
+    159,
+    160,
+    162,
+    165,
+    167,
+    168,
+    172,
+    181,
+    185,
+    186,
+    190,
+    191,
+    195,
+    204,
+    212,
+    218,
+    219,
+    222,
+    224,
+    226,
+    228,
+    231,
+    232,
+    238
+   ],
+   "calls": 1
+  },
+  "ju": {
+   "arity": 8,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    5,
+    14,
+    19,
+    26
+   ],
+   "calls": 397
+  },
+  "m": {
+   "arity": 10,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    100,
+    143,
+    155,
+    160
+   ],
+   "calls": 4275
+  },
+  "du": {
+   "arity": 9,
+   "category": "FETCH|BITWISE|BRANCH",
+   "libs": [
+    "bit32.band",
+    "bit32.rshift",
+    "buffer.readu8"
+   ],
+   "successors": [
+    71,
+    238
+   ],
+   "calls": null
+  },
+  "CA": {
+   "arity": 7,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    83,
+    122,
+    219,
+    232
+   ],
+   "calls": null
+  },
+  "C": {
+   "arity": 8,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    89,
+    135
+   ],
+   "calls": null
+  },
+  "k": {
+   "arity": 11,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    18,
+    64,
+    113
+   ],
+   "calls": 1746
+  },
+  "WA": {
+   "arity": 7,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    159
+   ],
+   "calls": 1
+  },
+  "lA": {
+   "arity": 14,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    56,
+    57,
+    88,
+    162
+   ],
+   "calls": null
+  },
+  "Su": {
+   "arity": 9,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    6,
+    124,
+    159,
+    238
+   ],
+   "calls": 2341
+  },
+  "au": {
+   "arity": 8,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    112
+   ],
+   "calls": 1
+  },
+  "LA": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    50,
+    55,
+    172
+   ],
+   "calls": null
+  },
+  "S": {
+   "arity": 10,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    112
+   ],
+   "calls": 4275
+  },
+  "fA": {
+   "arity": 10,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    121,
+    168,
+    181
+   ],
+   "calls": null
+  },
+  "j": {
+   "arity": 10,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    11,
+    46,
+    69,
+    112,
+    114,
+    140
+   ],
+   "calls": 24807
+  },
+  "kA": {
+   "arity": 8,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    66,
+    104,
+    159
+   ],
+   "calls": null
+  },
+  "wA": {
+   "arity": 11,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.tostring"
+   ],
+   "successors": [
+    19,
+    185,
+    195
+   ],
+   "calls": 1
+  },
+  "hu": {
+   "arity": 11,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    5,
+    16,
+    29
+   ],
+   "calls": 32932
+  },
+  "Tu": {
+   "arity": 8,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    112,
+    133,
+    135
+   ],
+   "calls": null
+  },
+  "t": {
+   "arity": 12,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    135
+   ],
+   "calls": 11
+  },
+  "KA": {
+   "arity": 8,
+   "category": "BRANCH",
+   "libs": [],
+   "successors": [
+    1,
+    2
+   ],
+   "calls": 6
+  },
+  "Xu": {
+   "arity": 7,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    158,
+    159,
+    190
+   ],
+   "calls": null
+  },
+  "pA": {
+   "arity": 11,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    0,
+    94
+   ],
+   "calls": null
+  },
+  "xu": {
+   "arity": 6,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    128,
+    159
+   ],
+   "calls": null
+  },
+  "g": {
+   "arity": 10,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.readu32"
+   ],
+   "successors": [
+    66,
+    79,
+    85
+   ],
+   "calls": null
+  },
+  "Hu": {
+   "arity": 10,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|STRING|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.writeu8",
+    "string.rep"
+   ],
+   "successors": [
+    159,
+    219
+   ],
+   "calls": null
+  },
+  "F": {
+   "arity": 10,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    22,
+    34,
+    42,
+    137,
+    160,
+    165
+   ],
+   "calls": 11664
+  },
+  "wu": {
+   "arity": 3,
+   "category": "BITWISE",
+   "libs": [
+    "bit32.band",
+    "bit32.lshift",
+    "bit32.rshift"
+   ],
+   "successors": [],
+   "calls": 374
+  },
+  "y": {
+   "arity": 9,
+   "category": "BRANCH",
+   "libs": [
+    "setmetatable"
+   ],
+   "successors": [
+    55,
+    127
+   ],
+   "calls": 1
+  },
+  "fu": {
+   "arity": 2,
+   "category": "ARITH",
+   "libs": [],
+   "successors": [],
+   "calls": 282
+  },
+  "AA": {
+   "arity": 8,
+   "category": "FETCH|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8"
+   ],
+   "successors": [
+    19,
+    33
+   ],
+   "calls": null
+  },
+  "I": {
+   "arity": 12,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.create",
+    "buffer.readu32",
+    "buffer.readu8"
+   ],
+   "successors": [
+    19,
+    51,
+    78,
+    136,
+    143
+   ],
+   "calls": 3
+  },
+  "Ku": {
+   "arity": 1,
+   "category": "RESUME",
+   "libs": [],
+   "successors": [
+    27
+   ],
+   "calls": 1
+  },
+  "Cu": {
+   "arity": 6,
+   "category": "BRANCH",
+   "libs": [],
+   "successors": [
+    159,
+    185,
+    224
+   ],
+   "calls": null
+  },
+  "qA": {
+   "arity": 14,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.create",
+    "buffer.readu16",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    43,
+    159
+   ],
+   "calls": null
+  },
+  "cA": {
+   "arity": 7,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    32,
+    168
+   ],
+   "calls": null
+  },
+  "N": {
+   "arity": 10,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    18,
+    55
+   ],
+   "calls": 2
+  },
+  "l": {
+   "arity": 2,
+   "category": "CALL/OTHER",
+   "libs": [],
+   "successors": [],
+   "calls": null
+  },
+  "M": {
+   "arity": 9,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    3,
+    127
+   ],
+   "calls": 10
+  },
+  "su": {
+   "arity": 7,
+   "category": "BRANCH",
+   "libs": [],
+   "successors": [
+    10,
+    153,
+    224
+   ],
+   "calls": null
+  },
+  "p": {
+   "arity": 9,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    1,
+    2
+   ],
+   "calls": 2
+  },
+  "U": {
+   "arity": 2,
+   "category": "RESUME",
+   "libs": [
+    "M"
+   ],
+   "successors": [
+    36
+   ],
+   "calls": 1
+  },
+  "h": {
+   "arity": 10,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    34,
+    113,
+    160
+   ],
+   "calls": 4275
+  },
+  "eA": {
+   "arity": 11,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    51,
+    115
+   ],
+   "calls": null
+  },
+  "Bu": {
+   "arity": 14,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readi32",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    100,
+    122,
+    159
+   ],
+   "calls": null
+  },
+  "Ju": {
+   "arity": 9,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    1,
+    2
+   ],
+   "calls": 382
+  },
+  "iu": {
+   "arity": 4,
+   "category": "STRING",
+   "libs": [
+    "error",
+    "string.match",
+    "type"
+   ],
+   "successors": [],
+   "calls": null
+  },
+  "JA": {
+   "arity": 14,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu32",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    159,
+    219
+   ],
+   "calls": null
+  },
+  "UA": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    109,
+    168,
+    231
+   ],
+   "calls": null
+  },
+  "u": {
+   "arity": 11,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    66,
+    93,
+    98,
+    117
+   ],
+   "calls": 1
+  },
+  "OA": {
+   "arity": 9,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    73,
+    128,
+    226,
+    228
+   ],
+   "calls": null
+  },
+  "c": {
+   "arity": 11,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    55,
+    81
+   ],
+   "calls": 1
+  },
+  "zu": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BRANCH",
+   "libs": [
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    128,
+    186
+   ],
+   "calls": null
+  },
+  "Gu": {
+   "arity": 7,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.copy",
+    "buffer.create",
+    "buffer.readu8"
+   ],
+   "successors": [
+    2,
+    5,
+    18
+   ],
+   "calls": 1
+  },
+  "GA": {
+   "arity": 6,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [],
+   "calls": 12
+  },
+  "q": {
+   "arity": 2,
+   "category": "STORE-NIL",
+   "libs": [],
+   "successors": [],
+   "calls": null
+  },
+  "O": {
+   "arity": 10,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8",
+    "setmetatable"
+   ],
+   "successors": [
+    85,
+    127
+   ],
+   "calls": 1
+  },
+  "Nu": {
+   "arity": 10,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    0,
+    10,
+    13,
+    19
+   ],
+   "calls": 33246
+  },
+  "jA": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    75,
+    135,
+    147,
+    218
+   ],
+   "calls": null
+  },
+  "A": {
+   "arity": 11,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.readu32",
+    "buffer.readu8",
+    "table.create"
+   ],
+   "successors": [
+    42,
+    117,
+    137,
+    159
+   ],
+   "calls": 4277
+  },
+  "HA": {
+   "arity": 10,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    3,
+    212
+   ],
+   "calls": null
+  },
+  "v": {
+   "arity": 11,
+   "category": "BRANCH",
+   "libs": [],
+   "successors": [
+    42,
+    61,
+    73,
+    149
+   ],
+   "calls": null
+  },
+  "hA": {
+   "arity": 12,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.tostring"
+   ],
+   "successors": [
+    109,
+    128,
+    159,
+    185
+   ],
+   "calls": 6
+  },
+  "DA": {
+   "arity": 6,
+   "category": "CALL/OTHER|BRANCH",
+   "libs": [],
+   "successors": [
+    13,
+    167
+   ],
+   "calls": null
+  },
+  "Yu": {
+   "arity": 13,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readf32",
+    "buffer.readu8",
+    "buffer.writeu8",
+    "vector.create"
+   ],
+   "successors": [
+    27,
+    41,
+    159
+   ],
+   "calls": 2341
+  },
+  "ku": {
+   "arity": 7,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    7,
+    25
+   ],
+   "calls": 711
+  },
+  "Uu": {
+   "arity": 8,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.readu8",
+    "table.create"
+   ],
+   "successors": [
+    26,
+    28,
+    32
+   ],
+   "calls": 1
+  },
+  "Mu": {
+   "arity": 11,
+   "category": "FETCH|TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.readu32",
+    "buffer.readu8",
+    "q"
+   ],
+   "successors": [
+    5,
+    8,
+    23,
+    33
+   ],
+   "calls": 33363
+  },
+  "VA": {
+   "arity": 8,
+   "category": "BRANCH",
+   "libs": [],
+   "successors": [
+    23,
+    108,
+    222
+   ],
+   "calls": null
+  },
+  "mu": {
+   "arity": 11,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.create",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    95,
+    191,
+    204
+   ],
+   "calls": null
+  },
+  "75": {
+   "arity": 3,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|TABLE/CONST|BRANCH",
+   "libs": [
+    "bit32.band",
+    "bit32.bor",
+    "bit32.bxor",
+    "bit32.lshift",
+    "buffer.create",
+    "buffer.len",
+    "buffer.readu32",
+    "buffer.readu8",
+    "buffer.writeu32",
+    "buffer.writeu8"
+   ],
+   "successors": [],
+   "calls": null
+  },
+  "x": {
+   "arity": 10,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    27,
+    81,
+    135,
+    144
+   ],
+   "calls": 4275
+  },
+  "Q": {
+   "arity": 7,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    66,
+    73
+   ],
+   "calls": 6492
+  },
+  "Z": {
+   "arity": 12,
+   "category": "FETCH|BRANCH",
+   "libs": [
+    "buffer.readu8"
+   ],
+   "successors": [
+    73,
+    89,
+    143
+   ],
+   "calls": 13
+  },
+  "aA": {
+   "arity": 14,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    7,
+    32
+   ],
+   "calls": null
+  },
+  "Lu": {
+   "arity": 8,
+   "category": "FETCH|STORE/DECRYPT|BRANCH",
+   "libs": [
+    "buffer.readu8",
+    "buffer.writeu32"
+   ],
+   "successors": [
+    14,
+    19,
+    37
+   ],
+   "calls": 33026
+  },
+  "ZA": {
+   "arity": 14,
+   "category": "FETCH|STORE/DECRYPT|BITWISE|BRANCH",
+   "libs": [
+    "bit32.bxor",
+    "buffer.readf32",
+    "buffer.readu8",
+    "buffer.writeu8"
+   ],
+   "successors": [
+    73,
+    121,
+    159
+   ],
+   "calls": null
+  },
+  "sA": {
+   "arity": 8,
+   "category": "TABLE/CONST|BRANCH",
+   "libs": [
+    "buffer.copy",
+    "buffer.create",
+    "table.create"
+   ],
+   "successors": [
+    33,
+    49,
+    73,
+    159
+   ],
+   "calls": null
+  }
+ }
+}

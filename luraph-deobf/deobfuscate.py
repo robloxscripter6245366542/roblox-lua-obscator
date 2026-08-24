@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 # ============================================================
-#  deobfuscate.py  --  staged Luraph v14.7 deobfuscator
+#  deobfuscate.py  --  staged Luraph deobfuscator (v13 / v14.x / v15)
+#
+#  The static + dynamic stages below were empirically derived from a
+#  v14.7 sample. They are also the right entry point for v15, but v15 is a
+#  ground-up rewrite ("hybrid-architecture" pipeline, dual OPAL/ONYX VMs,
+#  key-bound bytecode via LPH_PRECHECK) so the byte-level constants are NOT
+#  assumed to carry over — the fingerprint stage detects v15 and the report
+#  says exactly which stages are trustworthy on it. See v15.md.
 #
 #  Implements the methodology as explicit, ordered stages, regenerating
 #  everything build-specific per sample (Luraph randomises opcode numbers,
@@ -62,8 +69,37 @@ def grepl(text, *needles):
     return [l for l in text.splitlines() if any(n in l for n in needles)]
 
 
+def fingerprint(src):
+    """Version + VM-type + packing fingerprint.
+
+    Returns a dict: {version, major, vm, streams, headers, notes}. Everything
+    is read statically from the obfuscated output — no runtime.
+    """
+    m = re.search(r"Luraph Obfuscator v([0-9]+)(\.[0-9.]+)?", src)
+    version = ("v" + m.group(1) + (m.group(2) or "")) if m else "unknown"
+    major = int(m.group(1)) if m else None
+    # LPH packed streams. v14.x headers are `LPH` + 5 chars (e.g. LPH%V);
+    # v15 may use a different container, so match the LPH prefix loosely.
+    headers = re.findall(r"\[=*\[(LPH[^\r\n]{0,6})", src)
+    # v15 ships two VMs, OPAL (default) and ONYX; the attribute system
+    # (LPH_ATTRIBUTES / VM(...) / PRESET(...) / TRANSFORM(...)) is a v15 tell.
+    vm = None
+    for name in ("ONYX", "OPAL"):
+        if re.search(r"\b" + name + r"\b", src):
+            vm = name
+            break
+    v15_markers = [t for t in ("LPH_ATTRIBUTES", "LPH_PRECHECK", "LPH_REWRITE",
+                               "LPH_ENCBUF", "LPH_STACKALLOC", "TRANSFORM(")
+                   if t in src]
+    if major is None and (vm or v15_markers):
+        major = 15
+    return {"version": version, "major": major, "vm": vm,
+            "streams": headers, "markers": v15_markers}
+
+
 def main():
-    ap = argparse.ArgumentParser(description="staged Luraph v14.7 deobfuscator")
+    ap = argparse.ArgumentParser(
+        description="staged Luraph deobfuscator (v13/v14.x/v15)")
     ap.add_argument("sample")
     ap.add_argument("-o", "--outdir", default="deobf_out")
     ap.add_argument("--luau", default=None)
@@ -85,13 +121,24 @@ def main():
 
     # ---- 0. FINGERPRINT ----
     sec("0. Fingerprint")
-    ver = re.search(r"Luraph Obfuscator v[0-9.]+", src)
-    ver = ver.group(0) if ver else "unknown"
-    lph = re.findall(r"\[=*\[LPH.{5}", src)
-    fp = [f"version: {ver}", f"LPH streams: {len(lph)}"] + [f"  {h}" for h in lph[:6]]
-    if "v14.7" not in ver:
-        fp.append("WARNING: this tool targets v14.7; other versions differ "
-                  "(e.g. v14.6 uses a non-LZMA inner codec).")
+    fpd = fingerprint(src)
+    major = fpd["major"]
+    fp = [f"version: {fpd['version']}", f"LPH streams: {len(fpd['streams'])}"]
+    fp += [f"  {h}" for h in fpd["streams"][:6]]
+    if fpd["vm"]:
+        fp.append(f"VM type: {fpd['vm']} (v15 ships OPAL=default / ONYX=security)")
+    if fpd["markers"]:
+        fp.append("v15 macro artifacts seen: " + ", ".join(fpd["markers"]))
+    if major is not None and major >= 15:
+        fp.append("DETECTED v15 — ground-up rewrite. Byte-level constants below "
+                  "were derived from v14.7 and are NOT assumed to hold; peel may "
+                  "not decode a v15 container, and LPH_PRECHECK can bind the "
+                  "bytecode to a runtime key (so static peeling can legitimately "
+                  "fail by design). Dual OPAL/ONYX ISA -> the opcode map is now "
+                  "per-VM-type. See v15.md.")
+    elif fpd["version"] != "unknown" and "v14.7" not in fpd["version"]:
+        fp.append("NOTE: this tool's constants were measured on v14.7; other "
+                  "v14.x builds differ (e.g. v14.6 uses a non-LZMA inner codec).")
     for l in fp:
         print(l); rep.append("- " + l)
 
@@ -106,7 +153,15 @@ def main():
     bc = os.path.join(peeldir, "stage_1.bin")
     have = os.path.exists(vm_src) and os.path.exists(bc)
     if not have:
-        rep.append("peel did not yield VM source + bytecode; aborting.")
+        if major is not None and major >= 15:
+            rep.append("peel did not yield VM source + bytecode. On v15 this is "
+                       "expected when the container/codec changed or LPH_PRECHECK "
+                       "key-encrypted the bytecode: the outer layer is no longer "
+                       "guaranteed keyless. This needs either the v15 loader's own "
+                       "decode chain or a runtime capture (dynamic/), not a static "
+                       "peel. See v15.md.")
+        else:
+            rep.append("peel did not yield VM source + bytecode; aborting.")
         _write(out, rep); return 1
 
     # ---- 2. ANTI-TAMPER ----

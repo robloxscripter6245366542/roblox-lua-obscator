@@ -127,12 +127,27 @@ def entropy(data):
 
 
 def guess_drop(body):
-    """The header length D. Luraph v14.x uses D=5 ('LPH%V','LPH>&', ...).
+    """Auto-detect the header length D that the loader strips before base-85.
 
-    We confirm by checking the byte after decode for structure, but default
-    to 5 which matches every v14.x sample observed.
+    v14.x uses D=5 ('LPH%V', 'LPH>&', ...). Rather than hardcode that (v15 is
+    a rewrite and may header differently), try the plausible candidates and
+    keep the one whose base-85 decode actually LZMA-decompresses; fall back to
+    the one that yields the most structured bytes. Defaults to 5.
     """
-    return 5
+    best_struct, best_score = 5, -1.0
+    for d in (5, 4, 6, 3, 7):
+        data, _ = a85_decode(body, d)
+        if not data:
+            continue
+        dec, _ = lzma_raw_decompress(data)
+        if dec is not None:
+            # A clean LZMA decode is a strong signal — take the first one.
+            return d
+        # No LZMA: score by low entropy / bytecode-magic as a fallback.
+        score = (8.0 - entropy(data[:4096])) + (4.0 if data.startswith(LUA_MAGIC) else 0.0)
+        if score > best_score:
+            best_score, best_struct = score, d
+    return best_struct
 
 
 def classify(data):
@@ -144,6 +159,44 @@ def classify(data):
     if ent > 7.5:
         return f"encrypted/compressed stream (entropy {ent:.2f})"
     return f"plain-ish data (entropy {ent:.2f})"
+
+
+def extract_v15_submap(src):
+    """v15 pre-base-85 substitution dictionary.
+
+    v14.x used a single 'z' -> '!!!!!' zero-run shorthand. v15 generalises
+    this to a per-build table literal mapping single characters to (usually
+    5-char) expansions, e.g. `IA={[" "]="Wgv\\9",["("]=";5{w;", ...}`, applied
+    with string.gsub before the base-85 pass. The variable name is randomised,
+    so match on the shape: a run of ["<1 char>"]="<expansion>" pairs.
+
+    Returns {char: expansion} (may be empty).
+    """
+    def unescape(s):
+        try:
+            return s.encode("utf-8", "surrogatepass").decode("unicode_escape")
+        except Exception:
+            return s
+    best = {}
+    for tbl in re.finditer(r"\{((?:\s*\[\"(?:\\.|[^\"\\])\"\]=\"(?:\\.|[^\"\\])+\","
+                           r"?)+)\}", src):
+        pairs = re.findall(r'\["((?:\\.|[^"\\]))"\]="((?:\\.|[^"\\])+?)"', tbl.group(1))
+        m = {}
+        for k, v in pairs:
+            k, v = unescape(k), unescape(v)
+            if len(k) == 1:
+                m[k] = v
+        # Keep the largest such table; the real substitution map dominates.
+        if len(m) > len(best):
+            best = m
+    return best
+
+
+def a85_decode_v15(body, submap, drop):
+    """v15 decode: apply the char-substitution map, then the base-85 pass."""
+    for k, v in submap.items():
+        body = body.replace(k, v)
+    return a85_decode(body, drop)
 
 
 def main():
@@ -172,6 +225,8 @@ def main():
 
     os.makedirs(args.outdir, exist_ok=True)
     print(f"[peel] {args.input}: {len(packed)} packed stream(s) found\n")
+
+    v15_submap = extract_v15_submap(src)
 
     for idx, (lvl, hdr, body) in enumerate(packed):
         drop = args.drop if args.drop is not None else guess_drop(body)
@@ -203,16 +258,51 @@ def main():
                 print()
                 continue
 
+        # v15 path: apply the per-build substitution map, re-base-85, and
+        # report the recovered (still runtime-encrypted) VM buffer honestly.
+        if not args.no_lzma and entropy(data) > 7.5 and v15_submap:
+            v15data, _ = a85_decode_v15(body, v15_submap, drop)
+            v15path = os.path.join(args.outdir, f"stage_{idx}.v15buf.bin")
+            with open(v15path, "wb") as f:
+                f.write(v15data)
+            print(f"             v15: applied {len(v15_submap)}-entry substitution "
+                  f"map + base-85 -> {len(v15data)} bytes")
+            print(f"             -> {v15path}")
+            print(f"             classify: {classify(v15data)}")
+            print("             note: v15 has NO LZMA layer. This buffer is the "
+                  "VM bytecode XOR-stream-encrypted at rest (bit32.bxor in the")
+            print("                   readu8 path) and decrypted lazily during "
+                  "execution, so it stays high-entropy statically. Recover it")
+            print("                   at runtime (dynamic/) — see v15.md.")
+            if leftover:
+                print(f"             (a85 leftover {len(leftover)} chars: {leftover!r})")
+            print(f"             (raw base-85 stage -> {outpath})")
+            print()
+            continue
+
         kind = classify(data)
         print(f"             {kind}")
+        if not args.no_lzma and entropy(data) > 7.5:
+            # High entropy that did NOT LZMA-decode: either a different codec
+            # or genuine key-encryption. On v15, LPH_PRECHECK binds the
+            # bytecode to a runtime-derived key, so a static peel is expected
+            # to fail here — this is by design, not a bug in the unpacker.
+            print("             note: base-85 layer removed, but the inner stream "
+                  "did not LZMA-decode.")
+            print("                   v15 can key-encrypt the bytecode "
+                  "(LPH_PRECHECK) or use a new codec -> capture at runtime "
+                  "instead (dynamic/). See v15.md.")
         if leftover:
             print(f"             (leftover {len(leftover)} chars: {leftover!r})")
         print(f"             -> {outpath}")
         print()
 
-    print("[peel] done. Base-85 + LZMA layers removed statically (no key).\n"
-          "       *.lua  = recovered Lua source (read it directly)\n"
-          "       *.bin  = VM bytecode program -> see devirt.md for lifting\n"
+    print("[peel] done.\n"
+          "       v13/v14.x: base-85 + LZMA removed statically (no key) ->\n"
+          "         *.lua = recovered Lua source; *.bin = VM bytecode (see devirt.md).\n"
+          "       v15: base-85 (+ per-build substitution map) removed ->\n"
+          "         *.v15buf.bin = VM buffer, still XOR-encrypted at runtime\n"
+          "         (no LZMA layer); recover it dynamically -> see v15.md.\n"
           "       Use strings.py for a quick IOC pass over any stage.")
     return 0
 

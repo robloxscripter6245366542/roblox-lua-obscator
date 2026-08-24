@@ -1,4 +1,8 @@
 luau
 luau-src/
 harness.luau
+harness_v15.luau
+*.writebuf.bin
+*.hist.txt
+*.seq.txt
 *.out

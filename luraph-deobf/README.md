@@ -6,6 +6,14 @@ Obfuscator v14.7` family). Built as reference material for this repo's
 obfuscator work: *knowing exactly where an obfuscator leaks is how you
 build one that doesn't.*
 
+> **v15 (Aug 2026) is a ground-up rewrite** — dual OPAL/ONYX VMs, a new
+> `LPH_ATTRIBUTES` macro system, MBA rewriting (`LPH_REWRITE`), and
+> **`LPH_PRECHECK`, which key-encrypts the bytecode with a runtime value** and
+> so breaks the "always keyless / fully static" property below. The
+> fingerprint stage now detects v15 and reports which stages still apply; the
+> byte-level format is auto-probed rather than assumed. Full analysis and the
+> "needs a real sample" checklist: **[`v15.md`](v15.md)**.
+
 It is a **reverse-engineering / security-research** tool. Use it on samples
 you are authorised to analyse (your own builds, malware triage, CTF, or
 studying a technique). It is not a "steal someone's paid script" button —
@@ -83,6 +91,15 @@ weak and which tool addresses it.
 > both fully reversible offline. So the whole thing unpacks *statically* to
 > the **VM interpreter source** + the **bytecode** — no runtime needed.
 > See `devirt.md`.
+>
+> **v15 caveat (measured on a real v15.0 sample):** this holds for v13/v14.x
+> only. v15 drops the LZMA layer entirely — the `[=[LPH…]=]` stream is a
+> per-build **char-substitution map + base-85** → `buffer.fromstring`, and the
+> resulting VM buffer is **XOR-stream-encrypted at rest, decrypted byte-by-byte
+> at runtime** (`bit32.bxor` in the `readu8` path). So a static peel recovers
+> the *buffer* but not readable bytecode — recovery moves to the runtime path
+> (`dynamic/`). `LPH_PRECHECK` can further bind that key to platform values
+> (e.g. `game.PlaceId`). See [`v15.md`](v15.md) and `sample_v15.lua`.
 
 | #  | Weakness | Why it leaks | Tool |
 |----|----------|--------------|------|
@@ -93,7 +110,7 @@ weak and which tool addresses it.
 | **W5** | **Anti-tamper is a value-poison, not a wall.** The integrity block only flips `D` (`D=5` → `D=20.0`) if a check fails; supply the right `D` or patch the check and it's inert. | Detectable, patchable, side-effect-free. | `peel.py -D`, manual patch |
 | **W6** | **External effects are in the clear.** URLs, key endpoints, HWID/whitelist calls all hit real APIs eventually. | Log `HttpGet`/`request`/IO in the sandbox → full behavioural profile without reading a line of VM code. | `sandbox.lua` |
 | **W7** | **`debug.*` is often still reachable** in executor contexts. | `debug.sethook` gives a call/line trace of the dispatch loop. | `sandbox.lua` (`TraceCalls`) |
-| **W8** | **Toolchain fingerprinting.** `LPH%V` header + `Luraph v14.7` comment pin the exact version, so version-specific templates apply. | — | `peel.py` (header report) |
+| **W8** | **Toolchain fingerprinting.** `LPH%V` header + `Luraph v14.7` comment pin the exact version, so version-specific templates apply. On v15, `LPH_ATTRIBUTES`/`VM(OPAL\|ONYX)` artifacts and the version comment fingerprint the rewrite + which ISA a function uses. | — | `deobfuscate.py` (`fingerprint()`), `peel.py` (header report) |
 
 **What stays hard (be honest):** W1–W8 recover the *encoding*, the
 *decompressed VM source*, the *bytecode*, and the *behaviour*. They do
@@ -104,6 +121,13 @@ tagged encoding. Lifting it back to Lua ("devirtualisation") is still a
 manual project — but it is no longer *blind*, because the interpreter is now
 in front of you as source. `devirt.md` lays out the roadmap and where the
 dispatch core lives.
+
+**v15 raises this bar further:** two ISAs (OPAL/ONYX) mean the opcode map is
+per-VM-type as well as per-build, arithmetic may be MBA-rewritten
+(`LPH_REWRITE`), and functions can be inlined/unrolled or AST-obfuscated while
+*non*-virtualized (`TRANSFORM`). The lift roadmap still applies per ISA; see
+[`v15.md`](v15.md) for the delta and what a real v15 sample is needed to pin
+down.
 
 ---
 
@@ -191,6 +215,12 @@ data — the `LPH` header filter drops them.
   an attacker eventually reads it; the real cost is the VM lift, so invest
   there (per-build opcode shuffling, handler merging) not in the packing.
 - Bind any integrity check into the decode key so tampering corrupts the
-  payload *cryptographically*, not via a patchable `if` (W5).
+  payload *cryptographically*, not via a patchable `if` (W5). **v15 does
+  exactly this** with `LPH_PRECHECK` (the check's return value keys the
+  bytecode) — this is the single most important upgrade to copy, because it
+  converts our biggest static leak into a runtime-only recovery.
 - Decode program strings per-use, not into one recoverable constant table
-  (W3).
+  (W3). v15's per-macro user keys on `LPH_ENCSTR/ENCNUM/ENCBUF` push in this
+  direction.
+- Ship more than one ISA and pick per function (v15 OPAL/ONYX): it multiplies
+  the per-build, now per-VM-type, cost of the opcode-map lift.
