@@ -3,6 +3,12 @@
 ]]
 local CFG = {
     MAX_DEPTH      = 12,
+    -- READ_ONLY: when true the script only MAPS the game (tree, remotes,
+    -- values, modules) and never modifies anything - no writing to Values,
+    -- no FireServer/InvokeServer, no require(). Ideal for understanding a
+    -- game's structure when writing your own scripts. Set to false only for
+    -- authorized testing of a game you own/control.
+    READ_ONLY      = true,
     VERIFY         = true,
     RF_TIMEOUT     = 2,
     VERIFY_RF      = true,
@@ -740,6 +746,21 @@ local function invokeRF(rf, timeout)
 end
 
 local function runVerification()
+    -- READ-ONLY: never write Values or fire/invoke Remotes. Findings keep
+    -- their structural status (POSSIBLE/LIKELY) and are simply not probed.
+    if CFG.READ_ONLY then
+        print("[DUMP] READ-ONLY mode: skipping active tests (no writes / no remote calls)")
+        for _, id in ipairs({"WRITABLE_VALUE","CALLABLE_RF","READABLE_MODULE","REMOTE_VALUE_PAIR"}) do
+            local g = VULN_GROUPS[id]
+            if g then
+                for _, item in ipairs(g.items) do
+                    item.note = "read-only mode - structural finding, not actively tested"
+                end
+            end
+        end
+        return
+    end
+
     local total = 0
     for _, g in pairs(VULN_GROUPS) do total = total + #g.items end
     print(string.format("[DUMP] Verifying %d objects...", total))
