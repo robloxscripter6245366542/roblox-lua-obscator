@@ -92,10 +92,14 @@ weak and which tool addresses it.
 > the **VM interpreter source** + the **bytecode** — no runtime needed.
 > See `devirt.md`.
 >
-> **v15 caveat:** this holds for v13/v14.x. In v15 the `LPH_PRECHECK` macro
-> can bind the bytecode's decryption to a runtime-derived key (e.g.
-> `game.PlaceId`), so a static peel legitimately *fails* on such builds and
-> recovery moves to the runtime path (`dynamic/`). See [`v15.md`](v15.md).
+> **v15 caveat (measured on a real v15.0 sample):** this holds for v13/v14.x
+> only. v15 drops the LZMA layer entirely — the `[=[LPH…]=]` stream is a
+> per-build **char-substitution map + base-85** → `buffer.fromstring`, and the
+> resulting VM buffer is **XOR-stream-encrypted at rest, decrypted byte-by-byte
+> at runtime** (`bit32.bxor` in the `readu8` path). So a static peel recovers
+> the *buffer* but not readable bytecode — recovery moves to the runtime path
+> (`dynamic/`). `LPH_PRECHECK` can further bind that key to platform values
+> (e.g. `game.PlaceId`). See [`v15.md`](v15.md) and `sample_v15.lua`.
 
 | #  | Weakness | Why it leaks | Tool |
 |----|----------|--------------|------|
