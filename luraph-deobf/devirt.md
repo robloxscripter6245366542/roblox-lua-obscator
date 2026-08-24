@@ -4,6 +4,13 @@ This is the "go deeper" writeup: what the static unpacker (`peel.py`)
 recovers, the big finding that makes it possible, and the roadmap for the
 one hard step that's left.
 
+> **Scope:** everything below was measured on the v14.7 sample and is exact
+> for v13/v14.x. **v15 is a rewrite** with two ISAs (OPAL/ONYX), MBA rewriting,
+> and optional key-bound bytecode (`LPH_PRECHECK`) — the "keyless / fully
+> static" property here does not universally hold there. See
+> [`v15.md`](v15.md) for the v15 delta before applying these steps to a v15
+> build.
+
 ## TL;DR — the big finding
 
 **Luraph's outer protection uses no cryptographic key.** The two packed

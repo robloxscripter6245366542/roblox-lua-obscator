@@ -127,12 +127,27 @@ def entropy(data):
 
 
 def guess_drop(body):
-    """The header length D. Luraph v14.x uses D=5 ('LPH%V','LPH>&', ...).
+    """Auto-detect the header length D that the loader strips before base-85.
 
-    We confirm by checking the byte after decode for structure, but default
-    to 5 which matches every v14.x sample observed.
+    v14.x uses D=5 ('LPH%V', 'LPH>&', ...). Rather than hardcode that (v15 is
+    a rewrite and may header differently), try the plausible candidates and
+    keep the one whose base-85 decode actually LZMA-decompresses; fall back to
+    the one that yields the most structured bytes. Defaults to 5.
     """
-    return 5
+    best_struct, best_score = 5, -1.0
+    for d in (5, 4, 6, 3, 7):
+        data, _ = a85_decode(body, d)
+        if not data:
+            continue
+        dec, _ = lzma_raw_decompress(data)
+        if dec is not None:
+            # A clean LZMA decode is a strong signal — take the first one.
+            return d
+        # No LZMA: score by low entropy / bytecode-magic as a fallback.
+        score = (8.0 - entropy(data[:4096])) + (4.0 if data.startswith(LUA_MAGIC) else 0.0)
+        if score > best_score:
+            best_score, best_struct = score, d
+    return best_struct
 
 
 def classify(data):
@@ -205,6 +220,16 @@ def main():
 
         kind = classify(data)
         print(f"             {kind}")
+        if not args.no_lzma and entropy(data) > 7.5:
+            # High entropy that did NOT LZMA-decode: either a different codec
+            # or genuine key-encryption. On v15, LPH_PRECHECK binds the
+            # bytecode to a runtime-derived key, so a static peel is expected
+            # to fail here — this is by design, not a bug in the unpacker.
+            print("             note: base-85 layer removed, but the inner stream "
+                  "did not LZMA-decode.")
+            print("                   v15 can key-encrypt the bytecode "
+                  "(LPH_PRECHECK) or use a new codec -> capture at runtime "
+                  "instead (dynamic/). See v15.md.")
         if leftover:
             print(f"             (leftover {len(leftover)} chars: {leftover!r})")
         print(f"             -> {outpath}")
