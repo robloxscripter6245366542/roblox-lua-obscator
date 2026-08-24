@@ -1069,6 +1069,46 @@ local function writeVulns()
     end
 end
 
+-- remotes & paths index (read-only inventory of the game's API surface)
+local function writeRemotesIndex()
+    local remotes = {}
+    for _, rec in ipairs(REGISTRY) do
+        if isRemoteClass(rec.class) then
+            table.insert(remotes, rec)
+        end
+    end
+    if #remotes == 0 then return end
+
+    -- stable order: by service, then by path
+    table.sort(remotes, function(a, b)
+        if a.service ~= b.service then return a.service < b.service end
+        return a.path < b.path
+    end)
+
+    out("")
+    out(bTop())
+    out(bLine("REMOTES & PATHS INDEX"))
+    out(bLine(string.format("%d remotes found  |  read-only inventory of the API surface", #remotes)))
+    out(bMid())
+    out(bEmpty())
+    out(bLine("  RemoteEvent      client -> server one-way signal (FireServer)"))
+    out(bLine("  RemoteFunction   client -> server request that returns a value"))
+    out(bLine("  BindableEvent/Function  in-experience only (not a network boundary)"))
+    out(bLine("  Remotes in an API_SURFACE folder are grouped server entry points"))
+    out(bBot())
+    out("")
+
+    local lastSvc = nil
+    for _, rec in ipairs(remotes) do
+        if rec.service ~= lastSvc then
+            lastSvc = rec.service
+            out("── SERVICE: "..rec.service)
+        end
+        out(string.format("   [%s]  %s", rec.class, rec.path))
+    end
+    out("")
+end
+
 -- main
 writeLegend()
 
@@ -1107,6 +1147,8 @@ print("[DUMP] Verifying findings...")
 runVerification()
 
 writeVulns()
+
+writeRemotesIndex()
 
 out("")
 out(string.format("Total lines: %d  |  Objects: %d", #OUTPUT, #REGISTRY))
