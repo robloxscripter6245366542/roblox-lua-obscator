@@ -131,7 +131,11 @@ def emit(pc, op, ops, entry, n):
     val = VALUES.get((CURPROTO, pc))   # concrete value this instr produced
 
     def reg(x):
-        return f"e[{x}]" if x is not None else "?"
+        # `UNK` is a declared placeholder for an operand register the trace did
+        # not resolve (e.g. a no-write op whose operand was nil in-window). It
+        # is valid Lua as both an l-value and an r-value, so the listing still
+        # compiles; a bare `?` did not.
+        return f"e[{x}]" if x is not None else "UNK"
 
     # a "K" that becomes the real literal when we observed it, else a placeholder
     konst = val if val is not None else (f"K({b})")
@@ -300,12 +304,21 @@ def structure_proto(pid, instrs, opmap):
             cond = f"e[{a}]" if a is not None else "cond"
             back = blk["target"] in pos and pos[blk["target"]] <= i
             note = "  -- back-edge (loop)" if back else ""
-            if blk["fall"] == nextblk:
-                blines.append(f"  if {cond} then goto L_{blk['target']} end{note}")
-                referenced.add(blk["target"])
+
+            def _jmp(tgt):
+                # A None successor means the trace had no known continuation
+                # here (end of the observed path); return instead of emitting
+                # an undefined `goto L_None`.
+                if tgt is None:
+                    return "do return end"
+                referenced.add(tgt)
+                return f"goto L_{tgt}"
+
+            taken = _jmp(blk["target"])
+            if blk["fall"] == nextblk and blk["target"] is not None:
+                blines.append(f"  if {cond} then {taken} end{note}")
             else:
-                blines.append(f"  if {cond} then goto L_{blk['target']} else goto L_{blk['fall']} end{note}")
-                referenced.add(blk["target"]); referenced.add(blk["fall"])
+                blines.append(f"  if {cond} then {taken} else {_jmp(blk['fall'])} end{note}")
         elif blk["kind"] == "return":
             blines.append("  " + emit(lpc, lop, lops, opmap.get(str(lop)), n))
         else:  # fall
@@ -371,6 +384,7 @@ def main():
         f"{known} ({known*100//max(total,1)}%) with a known opcode.",
         f"-- {len(VALUES)} concrete values inlined from execution." if VALUES else "-- (no value capture; run capture_values.py + --values to inline constants)",
         "local regs = {}",
+        "local UNK = nil   -- placeholder for operand registers not resolved by the trace",
         "",
     ]
     gen = lift_proto if args.flat else structure_proto

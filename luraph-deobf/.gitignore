@@ -4,3 +4,16 @@ trace.txt
 dis.txt
 deobf_out/
 __pycache__/
+
+# vendored luauvmp build/run artifacts
+*.pyc
+*.egg-info/
+build/
+dist/
+*.deobf.lua
+*.disasm.txt
+*.strings.txt
+*.bytecode.bin
+*.normalised.lua
+*.handlers.txt
+*.spec.json

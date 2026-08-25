@@ -63,6 +63,31 @@ annotate.py + opcodes.json ->  annotated listing (mnemonics + effects)
   produces, keyed by (proto, pc), by observing the destination register after
   execution. Sidesteps reverse-engineering the constant-table indexing — we
   just watch what gets loaded. Feeds `lift.py --values`.
+- **`structure.py`** — the **last mile**: local control-flow *structuring*, an
+  offline replacement for the lua.expert network post-pass. It compiles valid
+  Luau (e.g. luauvmp's `program.decompiled.luau`) to standard Luau bytecode with
+  Lune, then runs a **medal** `luau-lifter` on those bytes locally to fold the
+  flattened jump-chain back into idiomatic `if`/`while`/`for` — no upload. Build
+  the lifter once from a maintained fork (upstream medal needs 2024-era patches):
+
+  ```bash
+  git clone https://github.com/Kiet1308/Tovek && cd Tovek   # edition-2024 fork of medal
+  cargo +nightly build --release -p luau-lifter
+  ```
+  ```bash
+  python3 structure.py program.decompiled.luau -o program.structured.lua \
+      --lifter /path/to/Tovek/target/release/luau-lifter
+  ```
+  Verified: a flattened Luau state-machine round-trips back to nested
+  `if/while` + `+=`, and a normal loop recovers as `for i = 1, #t do … end`.
+- **`beautify_lua.py`** — token-based Lua/Luau re-indenter for the peeled VM
+  interpreter (the recovered `stage_0.lua` is one ~100 KB line). Purely
+  cosmetic: it guarantees the output tokenises to the *same* token stream as
+  the input, so semantics are provably unchanged. `python3 beautify_lua.py
+  peeled/stage_0.lua vm_interpreter.lua`.
+- **`examples/sigil_v14.7/`** — a complete worked run against
+  `../sample_sigil.lua`: the beautified VM engine, the devirtualised program,
+  the opcode map, and the captured runtime IOCs, with regeneration commands.
 - **`lift.py`** — the codegen. Consumes a full instruction dump
   (`run_vm.py --mode fulldump`, i.e. *every* instruction of every proto, not
   just executed ones) + `opcodes.full.json` and emits **register-level Lua**:
@@ -83,10 +108,30 @@ L=../dynamic/luau
 python3 run_vm.py --vmdir peeled --luau $L --mode cf   --out cf.txt
 python3 semantics.py --vmdir peeled --luau $L --steps 14000 --out sem_big.txt >/dev/null
 python3 build_map.py --sem sem_big.txt --cf cf.txt --curated opcodes.json --out opcodes.full.json
-# 2) dump every instruction and lift to Lua
+# 2) capture concrete constants, dump every instruction, lift to Lua
+python3 capture_values.py --vmdir peeled --luau $L --out values.txt
 python3 run_vm.py --vmdir peeled --luau $L --mode fulldump --out full.txt
-python3 lift.py full.txt --map opcodes.full.json -o lifted.lua   # -> compiles as Lua 5.4
+python3 lift.py full.txt --map opcodes.full.json --values values.txt -o lifted.lua  # -> compiles as Lua 5.4
 ```
+
+### Runtime: the Luau CLI *or* Lune
+
+`--luau` just needs a Luau runtime that runs a `.luau` file passed as its first
+argument. Building the official CLI with `../dynamic/build_luau.sh` needs
+cmake + a C++ toolchain; if that is inconvenient, [Lune](https://lune-org.github.io/)
+works as a drop-in via a one-line shim (Lune provides `loadstring`, `getfenv`,
+`setfenv`, `buffer`, `bit32` and `string.pack`, which the harness needs):
+
+```bash
+cargo install lune                                   # or download a release
+printf '#!/bin/sh\nexec lune run "$@"\n' > luau-lune && chmod +x luau-lune
+python3 run_vm.py --vmdir peeled --luau ./luau-lune --mode disasm --out dis.txt
+```
+
+The full pipeline above was verified end-to-end on `sample_sigil.lua` under Lune
+0.10.5: 91 protos, 9,179 instructions, 97% known opcodes, 22,554 concrete
+constants inlined, and both structured and `--flat` output compile under
+`luac5.4`.
 
 ## What's confirmed on the sample
 

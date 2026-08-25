@@ -21,6 +21,46 @@ and, importantly, it *can't* be: see the honest-scope note at the bottom.
 
 ---
 
+## Finished: the full devirtualisation pipeline (`luauvmp`)
+
+The historical "last mile" — lifting the recovered VM bytecode all the way
+back to Luau source — is now **implemented and integrated** as the vendored
+[`luauvmp`](./luauvmp) package (from
+[binxgtl/luau-vmp-deobf](https://github.com/binxgtl/luau-vmp-deobf), MIT; see
+[`LICENSE.luauvmp`](./LICENSE.luauvmp)). It derives opcode semantics from the
+interpreter embedded in *each sample*, so it does not assume stable opcode
+numbers or helper slots, and it completes the pipeline end-to-end with a
+fail-closed quality gate (`compile_checked`, `fallback_instructions == 0`,
+`unresolved_dispatcher_conditionals == 0`).
+
+```bash
+cd luraph-deobf
+python3 -m pip install -e .            # installs deps (zstandard) + `luauvmp` CLI
+python3 -m pytest -q                   # 337 passing
+
+# one command, full pipeline (needs Lune on PATH for the sandbox stages)
+python3 -m luauvmp luraph-full protected.lua -o recovered
+
+# fully-local static stages (no execution, no Lune, no network):
+python3 -m luauvmp luraph-diagnose protected.lua          # classify the loader
+python3 -m luauvmp luraph protected.lua -o stage1         # -> stage1.vm.lua + stage1.bytecode.bin
+python3 -m luauvmp luraph-corpus samples/ -o corpus.json --strict
+```
+
+Verified on this folder's `sample_sigil.lua` (a Luraph v14.7 build): the static
+`luraph` unpack recovers the **99,942 B** VM interpreter source and the
+**2,363,120 B** bytecode, and `luraph-diagnose` classifies it as
+`two-stream-legacy` with 2 valid `LPH` streams. The full pipeline reference,
+outputs, safety model, and per-stage detail live in
+[`luauvmp`'s README-equivalent](./LURAPH_FULL.md) and [`docs/`](./docs).
+
+The staged Python scripts documented below (`peel.py`, `deobfuscate.py`,
+`unpack_runnable.py`, `strings.py`, `sandbox.lua`, `devirt/`) remain as the
+readable reference implementation of the methodology; `luauvmp` is the finished
+production pipeline that carries it through to compile-checked Luau.
+
+---
+
 ## Staged deobfuscator (`deobfuscate.py`) — start here
 
 One entry point that runs the full methodology as explicit, ordered stages and
@@ -112,15 +152,18 @@ weak and which tool addresses it.
 | **W7** | **`debug.*` is often still reachable** in executor contexts. | `debug.sethook` gives a call/line trace of the dispatch loop. | `sandbox.lua` (`TraceCalls`) |
 | **W8** | **Toolchain fingerprinting.** `LPH%V` header + `Luraph v14.7` comment pin the exact version, so version-specific templates apply. On v15, `LPH_ATTRIBUTES`/`VM(OPAL\|ONYX)` artifacts and the version comment fingerprint the rewrite + which ISA a function uses. | — | `deobfuscate.py` (`fingerprint()`), `peel.py` (header report) |
 
-**What stays hard (be honest):** W1–W8 recover the *encoding*, the
-*decompressed VM source*, the *bytecode*, and the *behaviour*. They do
-**not** by themselves reproduce the original program as clean source. The
-genuinely strong part of Luraph v14.x is the **virtualised control flow**:
-the interpreter is control-flow-flattened and the bytecode is a custom
-tagged encoding. Lifting it back to Lua ("devirtualisation") is still a
-manual project — but it is no longer *blind*, because the interpreter is now
-in front of you as source. `devirt.md` lays out the roadmap and where the
-dispatch core lives.
+**What used to stay hard (now finished):** W1–W8 recover the *encoding*, the
+*decompressed VM source*, the *bytecode*, and the *behaviour*. The genuinely
+strong part of Luraph v14.x is the **virtualised control flow**: the
+interpreter is control-flow-flattened and the bytecode is a custom tagged
+encoding. Lifting it back to Lua ("devirtualisation") *was* the remaining
+manual project — the `devirt/` scripts and `devirt.md` document that roadmap.
+It is now carried through automatically by the vendored `luauvmp` pipeline
+(see the "Finished" section above): it derives the per-build opcode semantics
+from the embedded interpreter, lifts the complete prototype tree, and emits
+compile-checked structural Luau behind a fail-closed quality gate. Original
+names, comments and formatting still cannot be recovered from bytecode-only
+programs — that is information the obfuscator discards, not a gap in the tool.
 
 **v15 raises this bar further:** two ISAs (OPAL/ONYX) mean the opcode map is
 per-VM-type as well as per-build, arithmetic may be MBA-rewritten
