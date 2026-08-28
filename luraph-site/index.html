@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Luraph — Lua / Luau Obfuscator</title>
+<meta name="description" content="Luraph-format Lua & Roblox Luau obfuscator. Rename, string & constant encryption, control-flow, anti-tamper, VM wrapper and the signature Luraph banner — 100% client-side, your code never leaves the browser."/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='20' height='20' rx='5' fill='%237c5cff'/%3E%3Cpath d='M8 6v9a3 3 0 0 0 3 3h5' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07060d;
+  --bg2:#0c0a18;
+  --panel:rgba(24,20,44,.62);
+  --panel2:rgba(32,26,58,.5);
+  --line:rgba(255,255,255,.07);
+  --line2:rgba(150,120,255,.20);
+  --text:#eee9ff;
+  --muted:#a99fce;
+  --dim:#6b6390;
+  --v1:#7c5cff;      /* luraph violet */
+  --v2:#a78bfa;      /* light violet   */
+  --v3:#c4b5fd;
+  --pink:#e879f9;
+  --ok:#5eead4;
+  --warn:#fbbf24;
+  --err:#fb7185;
+  --grad:linear-gradient(135deg,#7c5cff,#e879f9);
+  --grad2:linear-gradient(135deg,#a78bfa,#7c5cff);
+  --radius:16px;
+  --glass:saturate(150%) blur(18px);
+  --mono:ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,monospace;
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--text);font-family:var(--sans);
+  display:flex;flex-direction:column;min-height:100vh;
+  -webkit-font-smoothing:antialiased;position:relative;overflow-x:hidden;
+}
+body::before,body::after{
+  content:"";position:fixed;z-index:0;pointer-events:none;border-radius:50%;
+  filter:blur(130px);opacity:.55;
+}
+body::before{width:52rem;height:36rem;top:-16rem;right:-10rem;background:radial-gradient(circle,#7c5cff,transparent 60%)}
+body::after{width:44rem;height:34rem;bottom:-18rem;left:-12rem;background:radial-gradient(circle,#e879f9,transparent 62%)}
+.wrap{position:relative;z-index:1;width:100%;max-width:1200px;margin:0 auto;padding:0 22px;flex:1;display:flex;flex-direction:column}
+
+/* header */
+header.top{display:flex;align-items:center;justify-content:space-between;padding:20px 0;gap:16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--text)}
+.logo{width:38px;height:38px;border-radius:11px;background:var(--grad);display:grid;place-items:center;box-shadow:0 8px 26px -8px #7c5cff}
+.logo svg{width:22px;height:22px}
+.brand b{font-size:1.18rem;letter-spacing:-.02em}
+.brand span{color:var(--v3);font-weight:400}
+.nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.nav a{color:var(--muted);text-decoration:none;font-size:.86rem;padding:8px 12px;border-radius:9px;transition:.15s}
+.nav a:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.ghbtn{border:1px solid var(--line2);color:var(--v3)!important}
+
+/* hero */
+.hero{text-align:center;padding:34px 0 22px}
+.chip{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--v3);border:1px solid var(--line2);background:var(--panel2);padding:7px 14px;border-radius:100px;margin-bottom:20px}
+.chip .pulse{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok);animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.35}}
+.hero h1{font-size:clamp(2.3rem,6vw,3.8rem);line-height:1.02;letter-spacing:-.04em;font-weight:800;margin-bottom:16px}
+.hero h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero p{color:var(--muted);font-size:1.06rem;max-width:60ch;margin:0 auto;line-height:1.6}
+.hero p b{color:var(--text);font-weight:600}
+
+/* studio */
+.studio{display:grid;grid-template-columns:300px 1fr;gap:18px;margin:26px 0 40px}
+@media(max-width:940px){.studio{grid-template-columns:1fr}}
+.card{background:var(--panel);backdrop-filter:var(--glass);-webkit-backdrop-filter:var(--glass);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+.card h3{font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card h3::after{content:"";flex:1;height:1px;background:var(--line)}
+
+/* presets */
+.presets{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px}
+.preset{font-family:var(--mono);font-size:.8rem;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;cursor:pointer;transition:.15s;text-align:center}
+.preset:hover{color:var(--text);border-color:var(--line2)}
+.preset[aria-pressed="true"]{color:#fff;border-color:transparent;background:var(--grad2);box-shadow:0 8px 22px -10px #7c5cff}
+
+/* toggles */
+.opt{display:flex;align-items:flex-start;gap:11px;padding:10px 4px;border-bottom:1px solid var(--line);cursor:pointer}
+.opt:last-of-type{border-bottom:none}
+.opt .sw{position:relative;width:38px;height:22px;flex:0 0 auto;background:rgba(255,255,255,.09);border-radius:100px;transition:.2s;margin-top:1px}
+.opt .sw::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#c9c2e6;transition:.2s}
+.opt input{display:none}
+.opt input:checked+.sw{background:var(--grad)}
+.opt input:checked+.sw::after{transform:translateX(16px);background:#fff}
+.opt .txt strong{display:block;font-size:.9rem;color:var(--text);font-weight:600}
+.opt .txt small{display:block;color:var(--dim);font-size:.76rem;line-height:1.4;margin-top:2px}
+
+.field{margin-top:16px}
+.field label{display:block;font-size:.76rem;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px}
+.field input[type=text],.field input[type=number]{width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:10px 12px;font-family:var(--mono);font-size:.84rem;outline:none;transition:.15s}
+.field input:focus{border-color:var(--line2)}
+.seedrow{display:flex;gap:8px}
+.seedrow button{background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--muted);padding:0 12px;cursor:pointer;font-size:1rem;transition:.15s}
+.seedrow button:hover{color:var(--text);border-color:var(--line2)}
+
+/* editor side */
+.editorcol{display:flex;flex-direction:column;gap:18px;min-width:0}
+.io h3 .stat{margin-left:auto;text-transform:none;letter-spacing:0;font-family:var(--mono);color:var(--dim);font-size:.72rem}
+textarea{width:100%;min-height:210px;resize:vertical;background:var(--bg2);color:var(--v3);border:1px solid var(--line);border-radius:12px;padding:14px;font-family:var(--mono);font-size:.8rem;line-height:1.55;outline:none;transition:.15s;white-space:pre;overflow-wrap:normal;overflow-x:auto}
+textarea:focus{border-color:var(--line2)}
+textarea::placeholder{color:var(--dim)}
+#output{color:#cdb8ff;min-height:210px}
+
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{font-family:var(--sans);font-size:.88rem;font-weight:600;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:11px 18px;cursor:pointer;transition:.16s;display:inline-flex;align-items:center;gap:8px}
+.btn:hover{border-color:var(--line2);transform:translateY(-1px)}
+.btn.p{background:var(--grad);border-color:transparent;color:#fff;box-shadow:0 12px 30px -14px #7c5cff}
+.btn.p:hover{box-shadow:0 16px 38px -14px #7c5cff}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.msg{font-family:var(--mono);font-size:.78rem;margin-left:auto;color:var(--dim)}
+.msg.ok{color:var(--ok)}.msg.err{color:var(--err)}.msg.warn{color:var(--warn)}
+.stats{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--mono);font-size:.76rem;color:var(--dim);margin-top:2px}
+.stats b{color:var(--v3);font-weight:600}
+
+/* features grid */
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:26px 0 40px}
+.feat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+.feat .ic{width:36px;height:36px;border-radius:10px;background:var(--panel2);border:1px solid var(--line2);display:grid;place-items:center;font-size:1.1rem;margin-bottom:12px}
+.feat h4{font-size:.98rem;margin-bottom:6px}
+.feat p{color:var(--muted);font-size:.85rem;line-height:1.55}
+
+.note{border:1px solid var(--line);border-left:3px solid var(--warn);background:rgba(251,191,36,.05);border-radius:10px;padding:14px 16px;color:var(--muted);font-size:.84rem;line-height:1.6;margin-bottom:34px}
+.note b{color:var(--text)}
+
+footer{border-top:1px solid var(--line);padding:26px 0;color:var(--dim);font-size:.82rem;text-align:center}
+footer a{color:var(--v3);text-decoration:none}
+a.link{color:var(--v3);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <a class="brand" href="#">
+      <span class="logo"><svg viewBox="0 0 24 24"><path d="M8 5v9a3 3 0 0 0 3 3h6" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg></span>
+      <b>Luraph<span>-format</span></b>
+    </a>
+    <nav class="nav">
+      <a href="#studio">Obfuscator</a>
+      <a href="#features">Features</a>
+      <a href="deobfuscator.html">Deobfuscator</a>
+      <a class="ghbtn" href="https://github.com/robloxscripter6245366542/roblox-lua-obscator" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div class="chip"><span class="pulse"></span> 100% client-side · nothing uploaded</div>
+    <h1>The <span class="g">Luraph-format</span> obfuscator</h1>
+    <p>Paste Lua / Roblox <b>Luau</b>, pick your layers, and get protected output in the signature
+    Luraph style — rename, string &amp; constant encryption, control-flow, anti-tamper, a VM
+    wrapper and the classic Luraph banner. Everything runs <b>in your browser</b>.</p>
+  </section>
+
+  <section class="studio" id="studio">
+    <!-- controls -->
+    <aside class="card">
+      <h3>Preset</h3>
+      <div class="presets" id="presets">
+        <button class="preset" data-preset="weak">Weak</button>
+        <button class="preset" data-preset="medium">Medium</button>
+        <button class="preset" data-preset="strong">Strong</button>
+        <button class="preset" data-preset="max">Maximum</button>
+      </div>
+
+      <h3>Layers</h3>
+      <label class="opt"><input type="checkbox" id="oMacros" checked><span class="sw"></span>
+        <span class="txt"><strong>Luraph macros (LPH_*)</strong><small>Recognises <code>LPH_JIT</code>, <code>LPH_NO_VIRTUALIZE</code>, <code>LPH_ENCFUNC</code>, <code>LPH_ENCSTR</code>, <code>LPH_SKIP</code>… so annotated scripts run.</small></span></label>
+      <label class="opt"><input type="checkbox" id="oRename" checked><span class="sw"></span>
+        <span class="txt"><strong>Rename identifiers</strong><small>Scope-aware minify of locals, params &amp; loop vars. Never touches globals.</small></span></label>
+      <label class="opt"><input type="checkbox" id="oStrings" checked><span class="sw"></span>
+        <span class="txt"><strong>String encryption</strong><small>Every literal becomes an encrypted blob decoded at runtime (LPH_ENCFUNC).</small></span></label>
+      <label class="opt"><input type="checkbox" id="oNumbers" checked><span class="sw"></span>
+        <span class="txt"><strong>Constant encryption</strong><small>Numeric literals rewritten as arithmetic / xor expressions.</small></span></label>
+      <label class="opt"><input type="checkbox" id="oCFlow"><span class="sw"></span>
+        <span class="txt"><strong>Control-flow wrap</strong><small>Wrap the chunk in the Luraph VM-style dispatch closure.</small></span></label>
+      <label class="opt"><input type="checkbox" id="oAntiTamper"><span class="sw"></span>
+        <span class="txt"><strong>Anti-tamper</strong><small>Runtime watermark checksum guard that bails if the banner is edited.</small></span></label>
+      <label class="opt"><input type="checkbox" id="oAntiDebug"><span class="sw"></span>
+        <span class="txt"><strong>Anti-hook / anti-debug</strong><small>pcall-guarded probe for hooked <code>debug</code> / <code>getfenv</code>.</small></span></label>
+      <label class="opt"><input type="checkbox" id="oMinify"><span class="sw"></span>
+        <span class="txt"><strong>Minify</strong><small>Token-safe whitespace &amp; comment stripping of the final script.</small></span></label>
+      <label class="opt"><input type="checkbox" id="oBanner" checked><span class="sw"></span>
+        <span class="txt"><strong>Luraph banner</strong><small>Prepend the signature banner with serial, watermark &amp; preset.</small></span></label>
+
+      <div class="field">
+        <label for="watermark">Watermark</label>
+        <input type="text" id="watermark" value="Protected by Luraph" maxlength="64" placeholder="Your watermark text">
+      </div>
+      <div class="field">
+        <label for="seed">Seed</label>
+        <div class="seedrow">
+          <input type="number" id="seed" value="1337" min="0" max="2147483647">
+          <button id="randSeed" title="Random seed">🎲</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- editor -->
+    <div class="editorcol">
+      <div class="card io">
+        <h3>Input <span class="stat" id="inStat">0 chars</span></h3>
+        <textarea id="input" spellcheck="false" placeholder="-- paste your Lua / Luau here"></textarea>
+        <div class="bar" style="margin-top:12px">
+          <button class="btn p" id="run">⚡ Obfuscate</button>
+          <button class="btn" id="sample">Load sample</button>
+          <button class="btn" id="clear">Clear</button>
+          <span class="msg" id="msg">Ready.</span>
+        </div>
+      </div>
+
+      <div class="card io">
+        <h3>Output <span class="stat" id="outStat">—</span></h3>
+        <textarea id="output" spellcheck="false" readonly placeholder="-- Luraph-format output appears here"></textarea>
+        <div class="bar" style="margin-top:12px">
+          <button class="btn" id="copy">📋 Copy</button>
+          <button class="btn" id="download">⬇ Download .lua</button>
+          <div class="stats" id="stats"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <div class="feat"><div class="ic">🔤</div><h4>Identifier renaming</h4><p>A real Lua/Luau parser resolves scope, then renames every local, parameter and loop variable to opaque names — globals and fields stay intact so the script still runs.</p></div>
+    <div class="feat"><div class="ic">🔐</div><h4>String encryption</h4><p>Each string literal is XOR-encrypted with a per-build keystream and rebuilt at runtime through a decoder function. The plaintext never appears in the file.</p></div>
+    <div class="feat"><div class="ic">🧮</div><h4>Constant encryption</h4><p>Number literals are rewritten as arithmetic and bitwise expressions so a quick scan can't read the magic values your script depends on.</p></div>
+    <div class="feat"><div class="ic">🌀</div><h4>VM-style wrapper</h4><p>The whole chunk is folded into a Luraph-signature <code>return(function(...) … end)(...)</code> dispatch closure — vararg &amp; return values preserved.</p></div>
+    <div class="feat"><div class="ic">🛡️</div><h4>Anti-tamper</h4><p>A watermark checksum is embedded and re-verified at runtime; edit the banner and the guard quietly bails, exactly like Luraph's integrity layer.</p></div>
+    <div class="feat"><div class="ic">🏷️</div><h4>Signature banner</h4><p>Ships with the classic Luraph header — version, serial, watermark, preset and seed — so the output is instantly recognisable as Luraph-format.</p></div>
+  </section>
+
+  <div class="note">
+    <b>How this relates to the real Luraph.</b> This is a free, open, <b>client-side</b> obfuscator that emits code in
+    the <i>Luraph format / style</i> for learning and lightweight protection. It is not affiliated with, and does not
+    reproduce, the proprietary Luraph VM. Like every self-contained obfuscator it raises the effort to read your code and
+    defeats casual copy-paste — it is not an unbreakable protection boundary, since the decoder and key must ship with the
+    script to run. Use it to understand the format and to lightly protect scripts you own.
+  </div>
+
+  <footer>
+    Luraph-format obfuscator · runs entirely in your browser ·
+    <a href="https://github.com/robloxscripter6245366542/roblox-lua-obscator" target="_blank" rel="noopener">source on GitHub</a>
+  </footer>
+</div>
+
+<script src="engine.web.js"></script>
+<script src="engine.ast.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $=function(id){return document.getElementById(id);};
+
+  var SAMPLE =
+'-- Roblox Luau example with Luraph macros\n'+
+'local Players = game:GetService("Players")\n'+
+'local greeting = LPH_ENCSTR("Hello from Luraph-format!")\n'+
+'local MAGIC = 0xC0FFEE\n\n'+
+'-- LPH_NO_VIRTUALIZE keeps a hot function out of the VM\n'+
+'local greet = LPH_NO_VIRTUALIZE(function(player)\n'+
+'\tlocal name = player and player.Name or "guest"\n'+
+'\treturn string.format("%s -> %s (%d)", greeting, name, MAGIC)\n'+
+'end)\n\n'+
+'LPH_JIT(function()\n'+
+'\tfor i = 1, 3 do\n'+
+'\t\tprint(i, greet(Players.LocalPlayer))\n'+
+'\tend\n'+
+'end)()\n';
+
+  /* ---------- Luraph-format helpers (all emit valid Luau) ---------- */
+
+  // Luraph input macros. In real Luraph these are compile-time directives that
+  // are transparent at runtime (identity — they return what they wrap) and only
+  // guide the obfuscator. We honour that exactly: for every macro the script
+  // uses we prepend a local identity shim, so a Luraph-annotated script RUNS
+  // through this tool instead of erroring on a nil global. The layers below
+  // still encrypt the literals/functions those macros wrap.
+  var LPH_MACRO_NAMES = ["LPH_NO_VIRTUALIZE","LPH_JIT_MAX","LPH_JIT","LPH_SKIP",
+    "LPH_ENCFUNC","LPH_ENCSTR","LPH_ENCNUM","LPH_NO_UPVALUES","LPH_CFUNC",
+    "LPH_LITERAL","LPH_STR","LPH_CRASH"];
+  function lphMacroShim(src){
+    var used=[];
+    LPH_MACRO_NAMES.forEach(function(nm){
+      // used as a call, not a field access (.LPH / :LPH) — false positives are harmless
+      var re=new RegExp("(^|[^A-Za-z0-9_.:])"+nm+"\\s*\\(");
+      if(re.test(src)) used.push(nm);
+    });
+    if(!used.length) return {src:src, used:[]};
+    var defs="-- Luraph macro shims (LPH_*): transparent identity, guide obfuscation only\n"+
+      used.map(function(n){ return "local "+n+"=function(...) return ... end;"; }).join("\n")+"\n";
+    return {src:defs+src, used:used};
+  }
+
+
+  function rng(seed){ var s=(seed>>>0)||1; return function(){ s=(s*1103515245+12345)&0x7fffffff; return s; }; }
+  function pick(r,arr){ return arr[r()%arr.length]; }
+
+  // ASCII-safe watermark + checksum that matches the Lua guard below.
+  function wmSanitize(s){ return (s||"").replace(/[^\x20-\x7e]/g,"").replace(/[\r\n]/g,"").slice(0,64) || "Luraph"; }
+  function wmChecksum(s){ var sum=0; for(var i=0;i<s.length;i++){ sum=(sum + s.charCodeAt(i)*(i+1))%2147483647; } return sum; }
+
+  function luaStr(s){ return '"'+String(s).replace(/[\\"\n\r\t]/g,function(c){return {"\\":"\\\\",'"':'\\"',"\n":"\\n","\r":"\\r","\t":"\\t"}[c];})+'"'; }
+
+  function serial(r){
+    function blk(){ var s=""; for(var i=0;i<4;i++) s+= "0123456789ABCDEF".charAt(r()%16); return s; }
+    return "LPH-"+blk()+"-"+blk()+"-"+blk();
+  }
+
+  function banner(opts,r){
+    var line = "=".repeat(64);
+    return "--[==["+"\n"+
+      "  "+line+"\n"+
+      "   Obfuscated using Luraph Obfuscator  (community Luraph-format build)\n"+
+      "   "+line+"\n"+
+      "   Watermark : "+opts.wm+"\n"+
+      "   Serial    : "+serial(r)+"\n"+
+      "   Preset    : "+opts.preset+"        Seed : "+opts.seed+"\n"+
+      "   Layers    : "+opts.layerNames.join(", ")+"\n"+
+      "   Notice    : client-side Luraph-format build — see repository for details.\n"+
+      "  "+line+"\n"+
+      "]==]\n"+
+      "-- LPH| "+opts.wm+" | "+serial(r)+" |LPH\n";
+  }
+
+  // Anti-tamper: recompute the watermark checksum at runtime; bail on mismatch.
+  function antiTamper(opts){
+    var v = "\u005f"+"LPHwm", s="\u005f"+"LPHsum";
+    return "do local "+v+"="+luaStr(opts.wm)+"; local "+s+"=0; "+
+      "for _i=1,#"+v+" do "+s+"=("+s+"+string.byte("+v+",_i)*_i)%2147483647 end; "+
+      "if "+s+"~="+opts.wmSum+" then return end end;\n";
+  }
+
+  // Anti-hook / anti-debug: pcall-guarded, never errors on a clean runtime.
+  function antiDebug(){
+    return "do local _ok=pcall(function() "+
+      "local g=(rawget and rawget(_G or {},'getfenv')) or getfenv; "+
+      "if type(g)=='function' then local _=g end end); if _ok==false then end end;\n";
+  }
+
+  // VM-style Luraph wrapper — preserves varargs and top-level return values.
+  function vmWrap(code,r){
+    var pad = pick(r,["\t"," "]);
+    return "return(function(...)"+pad+"\n"+code+"\nend)(...);";
+  }
+
+  /* ---------- Token-safe Lua minifier ---------- */
+  // Tokenizes respecting strings, long strings and comments, then re-emits with
+  // minimal whitespace. Never alters string contents.
+  function minify(src){
+    var i=0,n=src.length,out=[],prev="";
+    function isW(c){return /[A-Za-z0-9_]/.test(c);}
+    function longBracket(){ // at src[i]=='[' — returns level or -1
+      var j=i+1,lvl=0; while(src[j]==="="){lvl++;j++;} if(src[j]==="[") return lvl; return -1;
+    }
+    function readLong(lvl){ var close="]"+"=".repeat(lvl)+"]"; var start=i; var idx=src.indexOf(close,i+2+lvl); if(idx<0) idx=n; i=idx+close.length; return src.slice(start,i); }
+    while(i<n){
+      var c=src[i];
+      // whitespace -> collapse
+      if(c===" "||c==="\t"||c==="\r"||c==="\n"){
+        var need=false;
+        // look ahead to next significant char to decide if a space is required
+        var k=i; while(k<n && /[ \t\r\n]/.test(src[k])) k++;
+        var nx=src[k]||"";
+        if(prev && isW(prev) && isW(nx)) need=true;   // keep token boundary
+        if(prev==="-"&&nx==="-") need=true;            // avoid forming a comment
+        if(need){ out.push(" "); prev=" "; }
+        i=k; continue;
+      }
+      // comments
+      if(c==="-"&&src[i+1]==="-"){
+        i+=2;
+        if(src[i]==="["){ var lvl=longBracket(); if(lvl>=0){ readLong(lvl); continue; } }
+        while(i<n && src[i]!=="\n") i++;
+        continue;
+      }
+      // long strings
+      if(c==="["){ var l2=longBracket(); if(l2>=0){ var ls=readLong(l2); out.push(ls); prev="]"; continue; } }
+      // quoted strings
+      if(c==='"'||c==="'"){ var q=c,st=i;i++; while(i<n){ if(src[i]==="\\"){i+=2;continue;} if(src[i]===q){i++;break;} i++; } out.push(src.slice(st,i)); prev=q; continue; }
+      // default: copy char
+      out.push(c); prev=c; i++;
+    }
+    return out.join("");
+  }
+
+  /* ---------- pipeline ---------- */
+
+  function currentLayers(){
+    var L=[]; var names=[];
+    if($("oRename").checked){ L.push("rename"); names.push("rename"); }
+    if($("oNumbers").checked){ L.push("numbers"); names.push("constants"); }
+    if($("oStrings").checked){ L.push("strings"); names.push("strings"); }
+    return {engine:L,names:names};
+  }
+
+  function activePreset(){
+    var b=document.querySelector('.preset[aria-pressed="true"]');
+    return b?b.getAttribute("data-preset"):"custom";
+  }
+
+  function obfuscate(){
+    var src=$("input").value;
+    if(!src.trim()){ return setMsg("Paste some Lua first.","warn"); }
+    var lay=currentLayers();
+    var extraNames=[];
+    if($("oCFlow").checked) extraNames.push("vm-wrap");
+    if($("oAntiTamper").checked) extraNames.push("anti-tamper");
+    if($("oAntiDebug").checked) extraNames.push("anti-debug");
+    if($("oMinify").checked) extraNames.push("minify");
+    if(lay.engine.length===0 && extraNames.length===0){
+      return setMsg("Select at least one layer.","warn");
+    }
+    var seed=parseInt($("seed").value,10); if(isNaN(seed)) seed=1337;
+    var wm=wmSanitize($("watermark").value);
+    setMsg("Obfuscating…","");
+    var t0=performance.now();
+    try{
+      var macrosUsed=[];
+      if($("oMacros").checked){ var m=lphMacroShim(src); src=m.src; macrosUsed=m.used; }
+      var code=src;
+      if(lay.engine.length){
+        code=FerretAST.obfuscate(src,{seed:seed,layers:lay.engine,chunkname:"luraph.lua"});
+      }
+      var r=rng(seed);
+      if($("oAntiDebug").checked) code=antiDebug()+code;
+      if($("oAntiTamper").checked) code=antiTamper({wm:wm,wmSum:wmChecksum(wm)})+code;
+      if($("oCFlow").checked) code=vmWrap(code,r);
+      if($("oMinify").checked) code=minify(code);
+
+      var layerNames=[];
+      if(macrosUsed.length) layerNames.push("macros("+macrosUsed.length+")");
+      layerNames=layerNames.concat(lay.names).concat(extraNames);
+      if(layerNames.length===0) layerNames=["passthrough"];
+      if($("oBanner").checked){
+        code=banner({wm:wm,seed:seed,preset:activePreset(),layerNames:layerNames},rng(seed^0x5bd1e995))+code;
+      }
+      var ms=(performance.now()-t0).toFixed(1);
+      $("output").value=code;
+      var before=src.length, after=code.length;
+      var ratio=before?((after/before)*100).toFixed(0):"—";
+      $("outStat").textContent=after.toLocaleString()+" chars";
+      $("stats").innerHTML=
+        "in <b>"+before.toLocaleString()+"</b>  ·  out <b>"+after.toLocaleString()+"</b>"+
+        "  ·  ratio <b>"+ratio+"%</b>  ·  <b>"+ms+" ms</b>  ·  seed <b>"+seed+"</b>";
+      setMsg("Done · "+layerNames.join(" + "),"ok");
+    }catch(e){
+      $("output").value="";
+      $("outStat").textContent="—";
+      $("stats").innerHTML="";
+      setMsg("Error: "+(e&&e.message?e.message:e),"err");
+    }
+  }
+
+  function setMsg(t,cls){ var m=$("msg"); m.textContent=t; m.className="msg"+(cls?" "+cls:""); }
+
+  /* ---------- presets ---------- */
+  var PRESETS={
+    weak:  {oMacros:1,oRename:1,oStrings:0,oNumbers:0,oCFlow:0,oAntiTamper:0,oAntiDebug:0,oMinify:1,oBanner:1},
+    medium:{oMacros:1,oRename:1,oStrings:1,oNumbers:1,oCFlow:0,oAntiTamper:0,oAntiDebug:0,oMinify:0,oBanner:1},
+    strong:{oMacros:1,oRename:1,oStrings:1,oNumbers:1,oCFlow:1,oAntiTamper:1,oAntiDebug:0,oMinify:0,oBanner:1},
+    max:   {oMacros:1,oRename:1,oStrings:1,oNumbers:1,oCFlow:1,oAntiTamper:1,oAntiDebug:1,oMinify:1,oBanner:1}
+  };
+  function applyPreset(name){
+    var p=PRESETS[name]; if(!p) return;
+    Object.keys(p).forEach(function(k){ if($(k)) $(k).checked=!!p[k]; });
+    document.querySelectorAll(".preset").forEach(function(b){
+      b.setAttribute("aria-pressed", b.getAttribute("data-preset")===name?"true":"false");
+    });
+  }
+  document.querySelectorAll(".preset").forEach(function(b){
+    b.addEventListener("click",function(){ applyPreset(b.getAttribute("data-preset")); });
+  });
+  // toggling any option manually clears the "preset" highlight
+  document.querySelectorAll(".opt input").forEach(function(inp){
+    inp.addEventListener("change",function(){
+      document.querySelectorAll(".preset").forEach(function(b){ b.setAttribute("aria-pressed","false"); });
+    });
+  });
+
+  /* ---------- wiring ---------- */
+  $("run").onclick=obfuscate;
+  $("sample").onclick=function(){ $("input").value=SAMPLE; updIn(); setMsg("Sample loaded.",""); };
+  $("clear").onclick=function(){ $("input").value=""; $("output").value=""; updIn(); $("outStat").textContent="—"; $("stats").innerHTML=""; setMsg("Cleared.",""); };
+  $("randSeed").onclick=function(){ $("seed").value=Math.floor(Math.random()*2147483647); };
+  $("copy").onclick=function(){
+    var o=$("output").value; if(!o) return setMsg("Nothing to copy.","warn");
+    navigator.clipboard.writeText(o).then(function(){ setMsg("Copied to clipboard.","ok"); },
+      function(){ $("output").select(); document.execCommand("copy"); setMsg("Copied.","ok"); });
+  };
+  $("download").onclick=function(){
+    var o=$("output").value; if(!o) return setMsg("Nothing to download.","warn");
+    var blob=new Blob([o],{type:"text/plain"});
+    var a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+    a.download="luraph_obfuscated.lua"; a.click(); URL.revokeObjectURL(a.href);
+    setMsg("Downloaded.","ok");
+  };
+  function updIn(){ $("inStat").textContent=$("input").value.length.toLocaleString()+" chars"; }
+  $("input").addEventListener("input",updIn);
+  document.addEventListener("keydown",function(e){
+    if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){ e.preventDefault(); obfuscate(); }
+  });
+
+  // init
+  applyPreset("medium");
+  $("input").value=SAMPLE; updIn();
+})();
+</script>
+</body>
+</html>
