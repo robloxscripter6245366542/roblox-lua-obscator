@@ -311,7 +311,7 @@ local function GetFiles()
     for _, file in ipairs(files) do
         if file:sub(-4) == ".lua" then
             local name = file:gsub("\\", "/"):match("([^/]+)%.lua$")
-            if name then table.insert(out, name) end
+            if name and name ~= "__autosave" then table.insert(out, name) end
         end
     end
     return out
@@ -361,6 +361,39 @@ local function LoadFile(fileName)
     if ok and type(data) == "table" then
         restore(Config, data)
     end
+end
+
+-- ── Auto-save: remember every choice automatically ──────────────────
+-- A hidden per-game file that mirrors your current settings. It is loaded
+-- now (before the UI is built, so every control shows your saved value)
+-- and re-written a couple times a second whenever something changes.
+local AUTOSAVE_NAME = "__autosave"
+local function autoPath()
+    return string.format("%s/%s.lua", placeFolder(), AUTOSAVE_NAME)
+end
+
+if canUseFiles then
+    pcall(function()
+        local p = autoPath()
+        if isfile(p) then
+            local data = HttpService:JSONDecode(readfile(p))
+            if type(data) == "table" then restore(Config, data) end
+        end
+    end)
+end
+
+local function startAutoSave()
+    if not canUseFiles then return end
+    task.spawn(function()
+        local last
+        while true do
+            task.wait(2)
+            local ok, json = pcall(function() return HttpService:JSONEncode(sanitize(Config)) end)
+            if ok and json ~= last then
+                if pcall(writefile, autoPath(), json) then last = json end
+            end
+        end
+    end)
 end
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -590,9 +623,34 @@ VisualTab:Toggle({
     Callback = function(v) Config.FOVFilled = v; if fov_circle then fov_circle.Filled = v end end,
 })
 VisualTab:Toggle({
-    Title = "FOV Rainbow", Value = Config.FOVRainbow,
+    Title = "FOV Rainbow", Desc = "Overrides the color below while on.",
+    Value = Config.FOVRainbow,
     Callback = function(v) Config.FOVRainbow = v end,
 })
+-- Color picker (method name varies across WindUI builds; try both, guarded).
+do
+    local applied = false
+    for _, method in ipairs({ "Colorpicker", "ColorPicker" }) do
+        if not applied and type(VisualTab[method]) == "function" then
+            local ok = pcall(function()
+                VisualTab[method](VisualTab, {
+                    Title = "FOV / Marker Color",
+                    Desc  = "Used when Rainbow is off.",
+                    Default = Config.FOVColor,
+                    Value   = Config.FOVColor,
+                    Callback = function(c)
+                        if typeof(c) == "Color3" then
+                            Config.FOVColor = c
+                            if fov_circle then fov_circle.Color = c end
+                            if mouse_box then mouse_box.Color = c end
+                        end
+                    end,
+                })
+            end)
+            if ok then applied = true end
+        end
+    end
+end
 VisualTab:Section({ Title = "Target Marker" })
 ui.showTarget = VisualTab:Toggle({
     Title = "Show Target Marker", Value = Config.ShowTargetMarker,
@@ -604,7 +662,14 @@ if not hasDrawing then
 end
 
 -- ── CONFIGS ─────────────────────────────────────────────────────────
-ConfigTab:Section({ Title = "Save" })
+ConfigTab:Section({ Title = "Auto-Save" })
+ConfigTab:Paragraph({
+    Title = "Your choices are saved automatically",
+    Desc  = canUseFiles
+        and "Every setting (including the FOV color) is remembered per game and restored the next time you run the script — no button needed. Use named configs below only if you want multiple presets."
+        or  "Your executor has no file access, so settings can't persist between runs.",
+})
+ConfigTab:Section({ Title = "Named Presets" })
 ConfigTab:Input({
     Title = "Config Name", Placeholder = "e.g. my-config",
     Callback = function(text) if type(text) == "string" and #text > 0 then FileToSave = text end end,
@@ -731,6 +796,12 @@ do
     ui.lockBtn, ui.lockLabel = makeButton(8,   Color3.fromRGB(241, 78, 54), "LOCK: OFF",
         function() setCameraLock(not Config.CameraLock) end)
 end
+
+-- Reflect any auto-loaded state on the floating buttons, then begin
+-- persisting every change from here on.
+refreshFloat(Config.Enabled)
+refreshLock(Config.CameraLock)
+startAutoSave()
 
 -- ═══════════════════════════════════════════════════════════════════
 --  RENDER LOOP  (target cache + FOV + marker)
