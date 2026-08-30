@@ -1,30 +1,38 @@
 --[[
-    Universal Silent Aim  •  WindUI Mobile Edition
+    Universal Silent Aim  •  WindUI  •  ADVANCED Mobile Edition
     ===================================================================
-    A clean, bug-fixed rewrite of the classic "Universal Silent Aim"
-    (originally Averiias / Stefanuk12 / xaxa on LinoriaLib) rebuilt on
-    the WindUI library and designed MOBILE-FIRST:
+    The most advanced universal silent aim on WindUI, built mobile-first.
 
-        • Touch-friendly WindUI window (auto floating open button)
-        • A draggable on-screen "AIM" button so you can toggle silent
-          aim with a thumb — no keyboard required
-        • FOV circle + target marker sized for phone screens
-        • Config save / load per game
-        • Every logic bug from the original source fixed
+    Core
+      • __namecall + __index hooks (Raycast, FindPartOnRay family,
+        Mouse.Hit / Mouse.Target) with strict typeof validation
+      • Per-frame target cache — one selection per frame feeds every ray,
+        so there is zero flicker and no wasted work in the hook path
+
+    Targeting
+      • Selection modes: Cursor FOV · Screen Center · Closest Distance ·
+        Lowest Health
+      • Sticky target (hold a target until it dies or leaves range)
+      • Team check · wall/visibility check · alive check · max distance
+      • Player whitelist (never target friends)
+
+    Aim assist
+      • Velocity prediction (lead moving targets) with ping compensation
+      • Adjustable hit chance
+      • Triggerbot (auto-fire when a valid target sits in the FOV)
+
+    Visuals
+      • FOV circle: center or cursor, filled, rainbow, custom sides
+      • On-screen target marker
+      • Full ESP: box · name · distance · health bar · tracer
+
+    Quality of life
+      • Per-game config save / load
+      • Draggable on-screen AIM + ESP buttons (pure touch, no keyboard)
+      • Everything guarded so thin mobile executors degrade gracefully
 
     UI : WindUI  (https://github.com/Footagesus/WindUI)
-
-    Bugs fixed vs. the original "Fix all bugs universal":
-      1.  getgenv().SilentAimSettings = Settings   (Settings was nil)
-      2.  Random.new().NextNumber(Random.new(),..) (double RNG, wrong call)
-      3.  assert(FileName or FileName == "string") (broken type check)  x2
-      4.  string.len(x) ~= ""                       (number vs string)
-      5.  if FileToSave ~= "" or FileToSave ~= nil  (always-true tautology)
-      6.  getClosestPlayer() called 3x per frame    (jitter + wasted cost)
-      7.  FOV radius conflated with target distance (Options.Radius reuse)
-      8.  Drawing objects visible before enabled
-      9.  Stale config file list never refreshed
-      10. Keyboard-only RightAlt toggle unusable on mobile
+    Credits : Averiias, Stefanuk12, xaxa (original silent-aim concept)
 --]]
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -34,8 +42,6 @@ if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
--- Executor shims (kept as no-ops so the script never hard-errors on a
--- thin executor). protectgui is optional on most executors.
 local protectgui = (syn and syn.protect_gui) or protectgui or function() end
 getgenv().protectgui = protectgui
 
@@ -47,6 +53,7 @@ local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local HttpService      = game:GetService("HttpService")
 local Workspace        = game:GetService("Workspace")
+local Stats            = game:FindService("Stats")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera      = Workspace.CurrentCamera
@@ -55,62 +62,78 @@ local Camera      = Workspace.CurrentCamera
 --  CONFIG  (single source of truth — mutated live by the UI)
 -- ═══════════════════════════════════════════════════════════════════
 local Config = {
+    -- master
     Enabled              = false,
 
+    -- targeting
+    TargetMode           = "Cursor FOV",   -- Cursor FOV | Screen Center | Closest Distance | Lowest Health
+    TargetPart           = "HumanoidRootPart", -- Head | HumanoidRootPart | Random
+    StickyTarget         = false,
     TeamCheck            = false,
     VisibleCheck         = false,
-    TargetPart           = "HumanoidRootPart",   -- Head | HumanoidRootPart | Random
-    SilentAimMethod      = "Raycast",            -- see Methods list below
+    MaxDistance          = 2000,           -- studs; 0 = unlimited
+    SilentAimMethod      = "Raycast",
 
+    -- fov
     FOVRadius            = 130,
     FOVVisible           = false,
-    ShowSilentAimTarget  = false,
+    FOVFollowMouse       = false,          -- false = locked to screen center (mobile-friendly)
+    FOVFilled            = false,
+    FOVRainbow           = false,
+    FOVSides             = 60,
+    FOVColor             = Color3.fromRGB(54, 57, 241),
 
-    MouseHitPrediction   = false,
-    MouseHitPredictionAmount = 0.165,
+    -- aim assist
     HitChance            = 100,
+    Prediction           = false,
+    PredictionAmount     = 0.16,
+    PingCompensation     = false,
+
+    -- triggerbot
+    Triggerbot           = false,
+    TriggerbotDelay      = 0.05,
+
+    -- marker
+    ShowTargetMarker     = false,
+
+    -- esp
+    ESPEnabled           = false,
+    ESPBox               = true,
+    ESPName              = true,
+    ESPDistance          = true,
+    ESPHealth            = true,
+    ESPTracer            = false,
+    ESPColor             = Color3.fromRGB(54, 57, 241),
+
+    -- whitelist (list of player names, never targeted)
+    Whitelist            = {},
 }
--- FIX #1: expose the real table (the original assigned an undefined `Settings`).
 getgenv().SilentAimSettings = Config
 
 local MainFileName = "UniversalSilentAim"
 local FileToSave   = ""
-
 local ValidTargetParts = { "Head", "HumanoidRootPart" }
 
 -- ═══════════════════════════════════════════════════════════════════
 --  EXECUTOR CAPABILITY SHIMS
 -- ═══════════════════════════════════════════════════════════════════
-local hookmetamethod   = hookmetamethod
-local getnamecallmethod= getnamecallmethod
-local newcclosure      = newcclosure or function(f) return f end
-local checkcaller      = checkcaller or function() return false end
-local unpack           = table.unpack or unpack
-
-local hasDrawing = (typeof(Drawing) == "table" or typeof(Drawing) == "userdata") and true or false
+local hookmetamethod    = hookmetamethod
+local getnamecallmethod = getnamecallmethod
+local newcclosure       = newcclosure or function(f) return f end
+local checkcaller       = checkcaller or function() return false end
+local unpack            = table.unpack or unpack
+local hasHooks          = (type(hookmetamethod) == "function" and type(getnamecallmethod) == "function") and true or false
+local hasDrawing        = (typeof(Drawing) == "table" or typeof(Drawing) == "userdata") and true or false
 
 -- ═══════════════════════════════════════════════════════════════════
---  DRAWINGS  (FOV circle + target marker) — hidden until enabled
+--  RUNTIME STATE
 -- ═══════════════════════════════════════════════════════════════════
-local mouse_box, fov_circle
-if hasDrawing then
-    mouse_box            = Drawing.new("Square")
-    mouse_box.Visible    = false            -- FIX #8: start hidden
-    mouse_box.ZIndex     = 999
-    mouse_box.Color      = Color3.fromRGB(54, 57, 241)
-    mouse_box.Thickness  = 2
-    mouse_box.Size       = Vector2.new(14, 14)
-    mouse_box.Filled     = false
-
-    fov_circle           = Drawing.new("Circle")
-    fov_circle.Thickness  = 1
-    fov_circle.NumSides   = 100
-    fov_circle.Radius     = Config.FOVRadius
-    fov_circle.Filled     = false
-    fov_circle.Visible    = false
-    fov_circle.Transparency = 1
-    fov_circle.Color      = Color3.fromRGB(54, 57, 241)
-end
+local Runtime = {
+    currentPlayer = nil,   -- Player object of the cached target
+    currentPart   = nil,   -- BasePart aimed at this frame
+    lastTrigger   = 0,     -- os.clock() of last triggerbot fire
+    rainbowHue    = 0,
+}
 
 -- ═══════════════════════════════════════════════════════════════════
 --  RAY METHOD ARGUMENT EXPECTATIONS
@@ -123,9 +146,8 @@ local ExpectedArguments = {
 }
 
 -- ═══════════════════════════════════════════════════════════════════
---  HELPERS
+--  SMALL HELPERS
 -- ═══════════════════════════════════════════════════════════════════
--- FIX #2: one reusable RNG, correct method call form.
 local rng = Random.new()
 local function CalculateChance(percentage)
     percentage = math.clamp(math.floor(tonumber(percentage) or 0), 0, 100)
@@ -138,21 +160,55 @@ local function getMousePosition()
     return UserInputService:GetMouseLocation()
 end
 
-local function getPositionOnScreen(worldVector)
-    -- WorldToScreenPoint accounts for the GUI inset (topbar), matching
-    -- UserInputService:GetMouseLocation() so cursor-distance is accurate.
-    local screen, onScreen = Camera:WorldToScreenPoint(worldVector)
-    return Vector2.new(screen.X, screen.Y), onScreen
+local function getViewportCenter()
+    local v = Camera.ViewportSize
+    return Vector2.new(v.X / 2, v.Y / 2)
 end
 
-local function getDirection(origin, position)
-    return (position - origin).Unit * 1000
+-- WorldToScreenPoint accounts for the GUI inset (matches GetMouseLocation).
+local function worldToScreen(worldVector)
+    local screen, onScreen = Camera:WorldToScreenPoint(worldVector)
+    return Vector2.new(screen.X, screen.Y), onScreen, screen.Z
+end
+
+local function getPing()
+    if not Stats then return 0 end
+    local ok, ms = pcall(function()
+        return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+    end)
+    if ok and type(ms) == "number" then return ms / 1000 end -- seconds
+    return 0
+end
+
+local function isWhitelisted(name)
+    for _, n in ipairs(Config.Whitelist) do
+        if n == name then return true end
+    end
+    return false
+end
+
+local function resolveTargetPart(character)
+    if Config.TargetPart == "Random" then
+        return character:FindFirstChild(ValidTargetParts[math.random(1, #ValidTargetParts)])
+    end
+    return character:FindFirstChild(Config.TargetPart)
+        or character:FindFirstChild("HumanoidRootPart")
+end
+
+-- Lead a moving part by its velocity (+ optional ping compensation).
+local function getAimPosition(part)
+    if not Config.Prediction then return part.Position end
+    local lead = Config.PredictionAmount
+    if Config.PingCompensation then lead = lead + getPing() end
+    return part.Position + (part.AssemblyLinearVelocity * lead)
+end
+
+local function getDirectionTo(origin, part)
+    return (getAimPosition(part) - origin).Unit * 1000
 end
 
 local function ValidateArguments(Args, RayMethod)
-    if #Args < RayMethod.ArgCountRequired then
-        return false
-    end
+    if #Args < RayMethod.ArgCountRequired then return false end
     local matches = 0
     for pos, argument in ipairs(Args) do
         if typeof(argument) == RayMethod.Args[pos] then
@@ -162,63 +218,89 @@ local function ValidateArguments(Args, RayMethod)
     return matches >= RayMethod.ArgCountRequired
 end
 
-local function IsPlayerVisible(playerCharacter, localCharacter)
+local function isVisible(playerCharacter, localCharacter)
     if not (playerCharacter and localCharacter) then return false end
-    local root = playerCharacter:FindFirstChild(Config.TargetPart)
-        or playerCharacter:FindFirstChild("HumanoidRootPart")
+    local root = playerCharacter:FindFirstChild("HumanoidRootPart")
+        or playerCharacter:FindFirstChild("Head")
     if not root then return false end
-    local ignore = { localCharacter, playerCharacter }
     local ok, obscuring = pcall(function()
-        return Camera:GetPartsObscuringTarget({ root.Position }, ignore)
+        return Camera:GetPartsObscuringTarget({ root.Position }, { localCharacter, playerCharacter })
     end)
     if not ok then return true end
     return #obscuring == 0
 end
 
--- Resolve the configured target part on a character (handles "Random").
-local function resolveTargetPart(character)
-    if Config.TargetPart == "Random" then
-        return character:FindFirstChild(ValidTargetParts[math.random(1, #ValidTargetParts)])
-    end
-    return character:FindFirstChild(Config.TargetPart)
-end
-
--- FIX #7: FOV radius is used purely as the selection cone; the closest
--- player *inside that cone* to the cursor is chosen.
-local function getClosestPlayer()
-    local mousePos = getMousePosition()
+-- ═══════════════════════════════════════════════════════════════════
+--  TARGET ACQUISITION
+-- ═══════════════════════════════════════════════════════════════════
+-- Returns the Player passing every filter; scoring depends on TargetMode.
+local function acquireTarget()
     local localCharacter = LocalPlayer.Character
-    local closest, closestDist
+    local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+    local anchor = (Config.TargetMode == "Screen Center") and getViewportCenter() or getMousePosition()
 
+    -- Sticky: keep the current target while it stays valid.
+    if Config.StickyTarget and Runtime.currentPlayer then
+        local p = Runtime.currentPlayer
+        local char = p.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if p.Parent and char and hum and hrp and hum.Health > 0 then
+            local _, onScreen = worldToScreen(hrp.Position)
+            local stillClose = true
+            if Config.TargetMode == "Cursor FOV" or Config.TargetMode == "Screen Center" then
+                local sp = worldToScreen(hrp.Position)
+                stillClose = onScreen and (anchor - sp).Magnitude <= Config.FOVRadius
+            elseif Config.MaxDistance > 0 and localRoot then
+                stillClose = (localRoot.Position - hrp.Position).Magnitude <= Config.MaxDistance
+            end
+            if stillClose then
+                return p
+            end
+        end
+    end
+
+    local best, bestScore
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
+        if isWhitelisted(player.Name) then continue end
         if Config.TeamCheck and player.Team == LocalPlayer.Team then continue end
 
         local character = player.Character
         if not character then continue end
-
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         local hrp = character:FindFirstChild("HumanoidRootPart")
         if not humanoid or not hrp or humanoid.Health <= 0 then continue end
 
-        if Config.VisibleCheck and not IsPlayerVisible(character, localCharacter) then continue end
+        if Config.MaxDistance > 0 and localRoot
+        and (localRoot.Position - hrp.Position).Magnitude > Config.MaxDistance then continue end
 
-        local screenPos, onScreen = getPositionOnScreen(hrp.Position)
-        if not onScreen then continue end
+        if Config.VisibleCheck and not isVisible(character, localCharacter) then continue end
 
-        local dist = (mousePos - screenPos).Magnitude
-        if dist <= Config.FOVRadius and (not closestDist or dist < closestDist) then
-            local part = resolveTargetPart(character)
-            if part then
-                closest, closestDist = part, dist
-            end
+        local screenPos, onScreen = worldToScreen(hrp.Position)
+
+        local score
+        if Config.TargetMode == "Closest Distance" then
+            if not localRoot then continue end
+            score = (localRoot.Position - hrp.Position).Magnitude
+        elseif Config.TargetMode == "Lowest Health" then
+            score = humanoid.Health
+        else -- Cursor FOV / Screen Center
+            if not onScreen then continue end
+            local d = (anchor - screenPos).Magnitude
+            if d > Config.FOVRadius then continue end
+            score = d
+        end
+
+        if score and (not bestScore or score < bestScore) then
+            best, bestScore = player, score
         end
     end
-    return closest
+    return best
 end
 
 -- ═══════════════════════════════════════════════════════════════════
---  CONFIG FILE HANDLING  (guarded — thin executors may lack file API)
+--  CONFIG FILE HANDLING  (guarded)
 -- ═══════════════════════════════════════════════════════════════════
 local canUseFiles = (isfolder and makefolder and writefile and readfile and listfiles and isfile) and true or false
 
@@ -233,7 +315,6 @@ if canUseFiles then
     end)
 end
 
--- FIX #9: list files fresh on every call so new saves appear immediately.
 local function GetFiles()
     local out = {}
     if not canUseFiles then return out end
@@ -241,20 +322,46 @@ local function GetFiles()
     if not ok or type(files) ~= "table" then return out end
     for _, file in ipairs(files) do
         if file:sub(-4) == ".lua" then
-            -- strip the directory prefix; keep only the base name
-            local name = file:gsub("\\", "/")
-            name = name:match("([^/]+)%.lua$")
+            local name = file:gsub("\\", "/"):match("([^/]+)%.lua$")
             if name then table.insert(out, name) end
         end
     end
     return out
 end
 
--- FIX #3: real type checks (original: assert(FileName or FileName == "string")).
+-- JSON can't hold Color3 (userdata); convert to a tagged table and back,
+-- and drop anything not JSON-safe.
+local function sanitize(t)
+    local out = {}
+    for k, v in pairs(t) do
+        local ty = typeof(v)
+        if ty == "Color3" then
+            out[k] = { __c3 = true, R = v.R, G = v.G, B = v.B }
+        elseif ty == "table" then
+            out[k] = sanitize(v)
+        elseif ty == "number" or ty == "string" or ty == "boolean" then
+            out[k] = v
+        end
+    end
+    return out
+end
+
+local function restore(dst, src)
+    for k, v in pairs(src) do
+        if type(v) == "table" and v.__c3 then
+            if dst[k] ~= nil then dst[k] = Color3.new(v.R, v.G, v.B) end
+        elseif type(v) == "table" then
+            dst[k] = v          -- arrays like Whitelist
+        elseif dst[k] ~= nil then
+            dst[k] = v
+        end
+    end
+end
+
 local function UpdateFile(fileName)
     assert(type(fileName) == "string" and fileName ~= "", "invalid config name")
     if not canUseFiles then return end
-    writefile(string.format("%s/%s.lua", placeFolder(), fileName), HttpService:JSONEncode(Config))
+    writefile(string.format("%s/%s.lua", placeFolder(), fileName), HttpService:JSONEncode(sanitize(Config)))
 end
 
 local function LoadFile(fileName)
@@ -264,13 +371,166 @@ local function LoadFile(fileName)
     if not isfile(path) then return end
     local ok, data = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
     if ok and type(data) == "table" then
-        for index, value in pairs(data) do
-            if Config[index] ~= nil then
-                Config[index] = value
-            end
+        restore(Config, data)
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+--  DRAWINGS  (FOV circle + target marker)
+-- ═══════════════════════════════════════════════════════════════════
+local fov_circle, mouse_box
+if hasDrawing then
+    fov_circle              = Drawing.new("Circle")
+    fov_circle.Thickness    = 1.5
+    fov_circle.NumSides     = Config.FOVSides
+    fov_circle.Radius       = Config.FOVRadius
+    fov_circle.Filled       = false
+    fov_circle.Visible      = false
+    fov_circle.Transparency = 1
+    fov_circle.Color        = Config.FOVColor
+
+    mouse_box               = Drawing.new("Square")
+    mouse_box.Visible       = false
+    mouse_box.Color         = Config.FOVColor
+    mouse_box.Thickness     = 2
+    mouse_box.Size          = Vector2.new(14, 14)
+    mouse_box.Filled        = false
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+--  ESP  (per-player drawing objects)
+-- ═══════════════════════════════════════════════════════════════════
+local ESP = {}  -- [player] = { box, name, dist, healthBg, healthFg, tracer }
+
+local function newEspObjects()
+    if not hasDrawing then return nil end
+    local o = {}
+    o.box = Drawing.new("Square");  o.box.Thickness = 1; o.box.Filled = false; o.box.Visible = false
+    o.name = Drawing.new("Text");   o.name.Size = 13; o.name.Center = true; o.name.Outline = true; o.name.Visible = false
+    o.dist = Drawing.new("Text");   o.dist.Size = 12; o.dist.Center = true; o.dist.Outline = true; o.dist.Visible = false
+    o.healthBg = Drawing.new("Square"); o.healthBg.Thickness = 1; o.healthBg.Filled = true; o.healthBg.Color = Color3.new(0,0,0); o.healthBg.Visible = false
+    o.healthFg = Drawing.new("Square"); o.healthFg.Thickness = 1; o.healthFg.Filled = true; o.healthFg.Visible = false
+    o.tracer = Drawing.new("Line");  o.tracer.Thickness = 1; o.tracer.Visible = false
+    return o
+end
+
+local function hideEsp(o)
+    if not o then return end
+    o.box.Visible = false
+    o.name.Visible = false
+    o.dist.Visible = false
+    o.healthBg.Visible = false
+    o.healthFg.Visible = false
+    o.tracer.Visible = false
+end
+
+local function removeEsp(player)
+    local o = ESP[player]
+    if not o then return end
+    for _, d in pairs(o) do pcall(function() d:Remove() end) end
+    ESP[player] = nil
+end
+
+-- Project a character's bounding box to screen; returns top-left, size, onScreen.
+local function boxFromCharacter(character)
+    local cf, size
+    local ok = pcall(function() cf, size = character:GetBoundingBox() end)
+    if not ok or not cf then return nil end
+    local corners = {
+        Vector3.new( size.X,  size.Y,  size.Z), Vector3.new(-size.X,  size.Y,  size.Z),
+        Vector3.new( size.X, -size.Y,  size.Z), Vector3.new(-size.X, -size.Y,  size.Z),
+        Vector3.new( size.X,  size.Y, -size.Z), Vector3.new(-size.X,  size.Y, -size.Z),
+        Vector3.new( size.X, -size.Y, -size.Z), Vector3.new(-size.X, -size.Y, -size.Z),
+    }
+    local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+    local anyOn = false
+    for _, c in ipairs(corners) do
+        local sp, on = worldToScreen((cf * CFrame.new(c * 0.5)).Position)
+        if on then anyOn = true end
+        minX = math.min(minX, sp.X); minY = math.min(minY, sp.Y)
+        maxX = math.max(maxX, sp.X); maxY = math.max(maxY, sp.Y)
+    end
+    if not anyOn then return nil end
+    return Vector2.new(minX, minY), Vector2.new(maxX - minX, maxY - minY)
+end
+
+local function updateEsp()
+    if not hasDrawing then return end
+    local localCharacter = LocalPlayer.Character
+    local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local o = ESP[player]
+        if not Config.ESPEnabled then
+            if o then hideEsp(o) end
+            continue
+        end
+        if not o then o = newEspObjects(); ESP[player] = o end
+        if not o then continue end
+
+        local character = player.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+        if not character or not humanoid or not hrp or humanoid.Health <= 0 then
+            hideEsp(o); continue
+        end
+
+        local topLeft, size = boxFromCharacter(character)
+        if not topLeft then hideEsp(o); continue end
+
+        local col = Config.ESPColor
+
+        -- box
+        o.box.Visible = Config.ESPBox
+        if Config.ESPBox then
+            o.box.Position = topLeft; o.box.Size = size; o.box.Color = col
+        end
+
+        -- name
+        o.name.Visible = Config.ESPName
+        if Config.ESPName then
+            o.name.Text = player.Name
+            o.name.Position = Vector2.new(topLeft.X + size.X / 2, topLeft.Y - 16)
+            o.name.Color = col
+        end
+
+        -- distance
+        o.dist.Visible = Config.ESPDistance and localRoot ~= nil
+        if o.dist.Visible then
+            local d = math.floor((localRoot.Position - hrp.Position).Magnitude)
+            o.dist.Text = string.format("%dm", d)
+            o.dist.Position = Vector2.new(topLeft.X + size.X / 2, topLeft.Y + size.Y + 2)
+            o.dist.Color = col
+        end
+
+        -- health bar (left side, green→red)
+        local showHp = Config.ESPHealth
+        o.healthBg.Visible = showHp
+        o.healthFg.Visible = showHp
+        if showHp then
+            local frac = math.clamp(humanoid.Health / math.max(humanoid.MaxHealth, 1), 0, 1)
+            local barX = topLeft.X - 5
+            o.healthBg.Position = Vector2.new(barX, topLeft.Y)
+            o.healthBg.Size     = Vector2.new(3, size.Y)
+            local h = size.Y * frac
+            o.healthFg.Position = Vector2.new(barX, topLeft.Y + (size.Y - h))
+            o.healthFg.Size     = Vector2.new(3, h)
+            o.healthFg.Color    = Color3.fromRGB(math.floor(255 * (1 - frac)), math.floor(255 * frac), 40)
+        end
+
+        -- tracer (from bottom center of screen)
+        o.tracer.Visible = Config.ESPTracer
+        if Config.ESPTracer then
+            local v = Camera.ViewportSize
+            o.tracer.From = Vector2.new(v.X / 2, v.Y)
+            o.tracer.To   = Vector2.new(topLeft.X + size.X / 2, topLeft.Y + size.Y)
+            o.tracer.Color = col
         end
     end
 end
+
+Players.PlayerRemoving:Connect(removeEsp)
 
 -- ═══════════════════════════════════════════════════════════════════
 --  UI  —  WindUI  (mobile-first)
@@ -282,160 +542,228 @@ local WindUI = loadstring(game:HttpGet(
 WindUI:AddTheme({
     Name        = "SilentBlue",
     Accent      = "#3639f1",
-    Dialog      = "#111111",
+    Dialog      = "#0f0f14",
     Outline     = "#3639f1",
     Text        = "#ffffff",
     Placeholder = "#c8c8c8",
-    Background  = "#0b0b0b",
-    Button      = "#1a1a1a",
+    Background  = "#0b0b0f",
+    Button      = "#1a1a22",
     Icon        = "#3639f1",
 })
-WindUI:SetTheme("SilentBlue")
+pcall(function() WindUI:SetTheme("SilentBlue") end)
 
 local Window = WindUI:CreateWindow({
     Title        = "Universal Silent Aim",
     Icon         = "target",
-    Author       = "Mobile Edition",
+    Author       = "Advanced • Mobile",
     Folder       = MainFileName,
-    Size         = UDim2.fromOffset(430, 340),   -- compact for phone screens
+    Size         = UDim2.fromOffset(440, 360),
     Transparent  = true,
     Theme        = "SilentBlue",
-    SideBarWidth = 140,
+    SideBarWidth = 150,
 })
 pcall(function() Window:SetTransparent(true) end)
 
 WindUI:Notify({
     Title    = "Universal Silent Aim",
-    Content  = "Mobile edition loaded. Tap the floating AIM button or enable below.",
+    Content  = "Advanced mobile edition loaded. Tap the floating AIM button or enable below.",
     Duration = 6,
     Icon     = "check",
 })
 
--- keep UI element handles so buttons/keys can sync their display state
 local ui = {}
 
-local AimTab    = Window:Tab({ Title = "Silent Aim", Icon = "target" })
-local VisualTab = Window:Tab({ Title = "Visuals",    Icon = "eye" })
-local ConfigTab = Window:Tab({ Title = "Configs",    Icon = "save" })
-local InfoTab   = Window:Tab({ Title = "Info",       Icon = "info" })
+local AimTab     = Window:Tab({ Title = "Silent Aim", Icon = "target" })
+local TargetTab  = Window:Tab({ Title = "Targeting",  Icon = "crosshair" })
+local TriggerTab = Window:Tab({ Title = "Triggerbot", Icon = "zap" })
+local VisualTab  = Window:Tab({ Title = "Visuals",    Icon = "eye" })
+local ESPTab     = Window:Tab({ Title = "ESP",        Icon = "users" })
+local ConfigTab  = Window:Tab({ Title = "Configs",    Icon = "save" })
+local InfoTab    = Window:Tab({ Title = "Info",       Icon = "info" })
 
--- ── SILENT AIM ──────────────────────────────────────────────────────
-AimTab:Section({ Title = "Main" })
+-- ── master toggle + mobile button sync ─────────────────────────────
+local function refreshFloat(btn, label, on)
+    if not btn then return end
+    btn.BackgroundColor3 = on and Color3.fromRGB(54, 57, 241) or Color3.fromRGB(40, 40, 40)
+    label.Text = on and (label:GetAttribute("onText") or "ON") or (label:GetAttribute("offText") or "OFF")
+end
 
 local function setEnabled(state)
     Config.Enabled = state and true or false
-    if mouse_box and not Config.ShowSilentAimTarget then
-        mouse_box.Visible = false
-    end
+    if mouse_box and not Config.ShowTargetMarker then mouse_box.Visible = false end
     pcall(function() ui.enabled:SetValue(Config.Enabled) end)
-    if ui.floatBtn then
-        ui.floatBtn.BackgroundColor3 = Config.Enabled
-            and Color3.fromRGB(54, 57, 241) or Color3.fromRGB(40, 40, 40)
-        ui.floatLabel.Text = Config.Enabled and "AIM: ON" or "AIM: OFF"
-    end
+    refreshFloat(ui.aimBtn, ui.aimLabel, Config.Enabled)
 end
 
+-- ── SILENT AIM ──────────────────────────────────────────────────────
+AimTab:Section({ Title = "Main" })
 ui.enabled = AimTab:Toggle({
     Title = "Enabled", Desc = "Master switch for silent aim.",
-    Value = Config.Enabled,
-    Callback = function(v) setEnabled(v) end,
-})
-
-AimTab:Toggle({
-    Title = "Team Check", Desc = "Ignore players on your team.",
-    Value = Config.TeamCheck,
-    Callback = function(v) Config.TeamCheck = v end,
-})
-AimTab:Toggle({
-    Title = "Visible Check", Desc = "Only target players in line of sight.",
-    Value = Config.VisibleCheck,
-    Callback = function(v) Config.VisibleCheck = v end,
-})
-ui.targetPart = AimTab:Dropdown({
-    Title = "Target Part", Values = { "Head", "HumanoidRootPart", "Random" },
-    Value = Config.TargetPart,
-    Callback = function(v) Config.TargetPart = v end,
+    Value = Config.Enabled, Callback = function(v) setEnabled(v) end,
 })
 ui.method = AimTab:Dropdown({
     Title  = "Aim Method",
-    Values = {
-        "Raycast", "FindPartOnRay",
-        "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList",
-        "Mouse.Hit/Target",
-    },
+    Values = { "Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist",
+               "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target" },
     Value  = Config.SilentAimMethod,
     Callback = function(v) Config.SilentAimMethod = v end,
 })
 AimTab:Slider({
     Title = "Hit Chance (%)", Desc = "Chance each shot is redirected.",
-    Value = { Min = 0, Max = 100, Default = Config.HitChance },
-    Step = 1,
+    Value = { Min = 0, Max = 100, Default = Config.HitChance }, Step = 1,
     Callback = function(v) Config.HitChance = v end,
 })
 
 AimTab:Section({ Title = "Prediction" })
 AimTab:Toggle({
-    Title = "Mouse.Hit / Target Prediction",
-    Desc  = "Lead moving targets (Mouse method only).",
-    Value = Config.MouseHitPrediction,
-    Callback = function(v) Config.MouseHitPrediction = v end,
+    Title = "Velocity Prediction", Desc = "Lead moving targets by their velocity.",
+    Value = Config.Prediction, Callback = function(v) Config.Prediction = v end,
 })
 AimTab:Slider({
-    Title = "Prediction Amount",
-    Value = { Min = 0.165, Max = 1, Default = Config.MouseHitPredictionAmount },
-    Step  = 0.001,
-    Callback = function(v) Config.MouseHitPredictionAmount = v end,
+    Title = "Prediction Amount", Desc = "Seconds of lead.",
+    Value = { Min = 0, Max = 1, Default = Config.PredictionAmount }, Step = 0.001,
+    Callback = function(v) Config.PredictionAmount = v end,
+})
+AimTab:Toggle({
+    Title = "Ping Compensation", Desc = "Add your live ping to the lead time.",
+    Value = Config.PingCompensation, Callback = function(v) Config.PingCompensation = v end,
+})
+
+-- ── TARGETING ───────────────────────────────────────────────────────
+TargetTab:Section({ Title = "Selection" })
+ui.targetMode = TargetTab:Dropdown({
+    Title  = "Target Mode",
+    Values = { "Cursor FOV", "Screen Center", "Closest Distance", "Lowest Health" },
+    Value  = Config.TargetMode,
+    Callback = function(v) Config.TargetMode = v end,
+})
+ui.targetPart = TargetTab:Dropdown({
+    Title = "Target Part", Values = { "Head", "HumanoidRootPart", "Random" },
+    Value = Config.TargetPart, Callback = function(v) Config.TargetPart = v end,
+})
+TargetTab:Toggle({
+    Title = "Sticky Target", Desc = "Hold a target until it dies or leaves range.",
+    Value = Config.StickyTarget, Callback = function(v) Config.StickyTarget = v end,
+})
+TargetTab:Section({ Title = "Filters" })
+TargetTab:Toggle({
+    Title = "Team Check", Desc = "Ignore players on your team.",
+    Value = Config.TeamCheck, Callback = function(v) Config.TeamCheck = v end,
+})
+TargetTab:Toggle({
+    Title = "Visible Check", Desc = "Only target players in line of sight.",
+    Value = Config.VisibleCheck, Callback = function(v) Config.VisibleCheck = v end,
+})
+TargetTab:Slider({
+    Title = "Max Distance (studs)", Desc = "0 = unlimited.",
+    Value = { Min = 0, Max = 5000, Default = Config.MaxDistance }, Step = 25,
+    Callback = function(v) Config.MaxDistance = v end,
+})
+TargetTab:Section({ Title = "Whitelist" })
+TargetTab:Input({
+    Title = "Add / Remove Player", Placeholder = "exact username",
+    Callback = function(name)
+        if type(name) ~= "string" or name == "" then return end
+        if isWhitelisted(name) then
+            for i = #Config.Whitelist, 1, -1 do
+                if Config.Whitelist[i] == name then table.remove(Config.Whitelist, i) end
+            end
+            WindUI:Notify({ Title = "Whitelist", Content = name .. " removed", Duration = 3, Icon = "user-minus" })
+        else
+            table.insert(Config.Whitelist, name)
+            WindUI:Notify({ Title = "Whitelist", Content = name .. " added", Duration = 3, Icon = "user-plus" })
+        end
+    end,
+})
+TargetTab:Button({
+    Title = "Clear Whitelist",
+    Callback = function()
+        table.clear(Config.Whitelist)
+        WindUI:Notify({ Title = "Whitelist", Content = "Cleared", Duration = 3, Icon = "trash" })
+    end,
+})
+
+-- ── TRIGGERBOT ──────────────────────────────────────────────────────
+TriggerTab:Section({ Title = "Triggerbot" })
+TriggerTab:Paragraph({
+    Title = "How it works",
+    Desc  = "When a valid target is inside your FOV, fires a mouse click automatically. Needs mouse1click / VirtualInputManager on your executor.",
+})
+TriggerTab:Toggle({
+    Title = "Enabled", Desc = "Auto-fire on a target in FOV.",
+    Value = Config.Triggerbot, Callback = function(v) Config.Triggerbot = v end,
+})
+TriggerTab:Slider({
+    Title = "Fire Delay (ms)", Desc = "Minimum time between shots.",
+    Value = { Min = 0, Max = 1000, Default = math.floor(Config.TriggerbotDelay * 1000) }, Step = 10,
+    Callback = function(v) Config.TriggerbotDelay = v / 1000 end,
 })
 
 -- ── VISUALS ─────────────────────────────────────────────────────────
 VisualTab:Section({ Title = "Field of View" })
 ui.fovVisible = VisualTab:Toggle({
-    Title = "Show FOV Circle",
-    Value = Config.FOVVisible,
-    Callback = function(v)
-        Config.FOVVisible = v
-        if fov_circle then fov_circle.Visible = v end
-    end,
+    Title = "Show FOV Circle", Value = Config.FOVVisible,
+    Callback = function(v) Config.FOVVisible = v; if fov_circle then fov_circle.Visible = v end end,
+})
+VisualTab:Toggle({
+    Title = "FOV Follows Cursor", Desc = "Off = locked to screen center (mobile).",
+    Value = Config.FOVFollowMouse, Callback = function(v) Config.FOVFollowMouse = v end,
 })
 VisualTab:Slider({
-    Title = "FOV Radius",
-    Value = { Min = 0, Max = 500, Default = Config.FOVRadius },
-    Step  = 1,
-    Callback = function(v)
-        Config.FOVRadius = v
-        if fov_circle then fov_circle.Radius = v end
-    end,
+    Title = "FOV Radius", Value = { Min = 0, Max = 600, Default = Config.FOVRadius }, Step = 1,
+    Callback = function(v) Config.FOVRadius = v; if fov_circle then fov_circle.Radius = v end end,
 })
+VisualTab:Slider({
+    Title = "FOV Sides", Value = { Min = 3, Max = 120, Default = Config.FOVSides }, Step = 1,
+    Callback = function(v) Config.FOVSides = v; if fov_circle then fov_circle.NumSides = v end end,
+})
+VisualTab:Toggle({
+    Title = "FOV Filled", Value = Config.FOVFilled,
+    Callback = function(v) Config.FOVFilled = v; if fov_circle then fov_circle.Filled = v end end,
+})
+VisualTab:Toggle({
+    Title = "FOV Rainbow", Value = Config.FOVRainbow,
+    Callback = function(v) Config.FOVRainbow = v end,
+})
+VisualTab:Section({ Title = "Target Marker" })
 ui.showTarget = VisualTab:Toggle({
-    Title = "Show Target Marker",
-    Value = Config.ShowSilentAimTarget,
-    Callback = function(v)
-        Config.ShowSilentAimTarget = v
-        if mouse_box and not v then mouse_box.Visible = false end
-    end,
+    Title = "Show Target Marker", Value = Config.ShowTargetMarker,
+    Callback = function(v) Config.ShowTargetMarker = v; if mouse_box and not v then mouse_box.Visible = false end end,
 })
 if not hasDrawing then
-    VisualTab:Paragraph({
-        Title = "Drawing API unavailable",
-        Desc  = "Your executor has no Drawing library, so FOV circle and target marker are disabled. Silent aim still works.",
-    })
+    VisualTab:Paragraph({ Title = "Drawing API unavailable",
+        Desc = "Your executor has no Drawing library, so FOV / marker / ESP are disabled. Silent aim still works." })
 end
+
+-- ── ESP ─────────────────────────────────────────────────────────────
+ESPTab:Section({ Title = "Player ESP" })
+local function espToggle(title, key)
+    ESPTab:Toggle({ Title = title, Value = Config[key], Callback = function(v) Config[key] = v end })
+end
+ui.espMaster = ESPTab:Toggle({
+    Title = "Enabled", Desc = "Master switch for ESP.",
+    Value = Config.ESPEnabled,
+    Callback = function(v)
+        Config.ESPEnabled = v
+        refreshFloat(ui.espBtn, ui.espLabel, v)
+        if not v then for _, o in pairs(ESP) do hideEsp(o) end end
+    end,
+})
+espToggle("Box", "ESPBox")
+espToggle("Name", "ESPName")
+espToggle("Distance", "ESPDistance")
+espToggle("Health Bar", "ESPHealth")
+espToggle("Tracer", "ESPTracer")
 
 -- ── CONFIGS ─────────────────────────────────────────────────────────
 ConfigTab:Section({ Title = "Save" })
 ConfigTab:Input({
     Title = "Config Name", Placeholder = "e.g. my-config",
-    Callback = function(text)
-        -- FIX #4: proper string emptiness check (was string.len(x) ~= "")
-        if type(text) == "string" and #text > 0 then
-            FileToSave = text
-        end
-    end,
+    Callback = function(text) if type(text) == "string" and #text > 0 then FileToSave = text end end,
 })
 ConfigTab:Button({
     Title = "Create / Save Config",
     Callback = function()
-        -- FIX #5: real emptiness check (was an always-true tautology)
         if FileToSave ~= "" then
             local ok, err = pcall(UpdateFile, FileToSave)
             if ok then
@@ -449,36 +777,34 @@ ConfigTab:Button({
         end
     end,
 })
-
 ConfigTab:Section({ Title = "Load" })
 local selectedConfig = nil
 ui.loadDrop = ConfigTab:Dropdown({
     Title = "Choose Config", Values = GetFiles(), Value = nil,
     Callback = function(v) selectedConfig = v end,
 })
-ConfigTab:Button({
-    Title = "Refresh List",
-    Callback = function()
-        pcall(function() ui.loadDrop:Refresh(GetFiles()) end)
-    end,
-})
+ConfigTab:Button({ Title = "Refresh List", Callback = function() pcall(function() ui.loadDrop:Refresh(GetFiles()) end) end })
 ConfigTab:Button({
     Title = "Load Config",
     Callback = function()
         local chosen = selectedConfig or (ui.loadDrop and ui.loadDrop.Value)
         if chosen and table.find(GetFiles(), chosen) then
             LoadFile(chosen)
-            -- push loaded values back into the UI
             pcall(function() ui.enabled:SetValue(Config.Enabled) end)
             pcall(function() ui.fovVisible:SetValue(Config.FOVVisible) end)
-            pcall(function() ui.showTarget:SetValue(Config.ShowSilentAimTarget) end)
+            pcall(function() ui.showTarget:SetValue(Config.ShowTargetMarker) end)
+            pcall(function() ui.espMaster:SetValue(Config.ESPEnabled) end)
+            pcall(function() ui.targetMode:Select(Config.TargetMode) end)
             pcall(function() ui.targetPart:Select(Config.TargetPart) end)
             pcall(function() ui.method:Select(Config.SilentAimMethod) end)
             if fov_circle then
-                fov_circle.Radius  = Config.FOVRadius
+                fov_circle.Radius = Config.FOVRadius
+                fov_circle.NumSides = Config.FOVSides
+                fov_circle.Filled = Config.FOVFilled
                 fov_circle.Visible = Config.FOVVisible
             end
             setEnabled(Config.Enabled)
+            refreshFloat(ui.espBtn, ui.espLabel, Config.ESPEnabled)
             WindUI:Notify({ Title = "Loaded", Content = chosen, Duration = 4, Icon = "check" })
         else
             WindUI:Notify({ Title = "Nothing to load", Content = "Pick a config first.", Duration = 4, Icon = "x" })
@@ -488,184 +814,228 @@ ConfigTab:Button({
 
 -- ── INFO ────────────────────────────────────────────────────────────
 InfoTab:Paragraph({
-    Title = "Universal Silent Aim • Mobile",
-    Desc  = "Fixed & rebuilt on WindUI. Use the floating AIM button (draggable) to toggle with your thumb. Credits: Averiias, Stefanuk12, xaxa.",
+    Title = "Universal Silent Aim • Advanced Mobile",
+    Desc  = "WindUI edition. Floating AIM / ESP buttons are draggable — tap to toggle. Silent aim hooks: __namecall (ray methods) + __index (Mouse). Credits: Averiias, Stefanuk12, xaxa.",
 })
+if not hasHooks then
+    InfoTab:Paragraph({ Title = "Hooks unavailable",
+        Desc = "Your executor is missing hookmetamethod/getnamecallmethod, so silent aim redirection is disabled. Triggerbot and ESP still work." })
+end
 
 -- ═══════════════════════════════════════════════════════════════════
---  MOBILE FLOATING TOGGLE BUTTON  (FIX #10: no keyboard needed)
+--  MOBILE FLOATING BUTTONS  (touch, no keyboard)
 -- ═══════════════════════════════════════════════════════════════════
+local mobileGui
 do
-    local gui = Instance.new("ScreenGui")
-    gui.Name          = "USA_MobileToggle"
-    gui.ResetOnSpawn  = false
-    gui.ZIndexBehavior= Enum.ZIndexBehavior.Sibling
-    gui.DisplayOrder  = 999
-    pcall(function() protectgui(gui) end)
-    gui.Parent = (gethui and gethui()) or LocalPlayer:WaitForChild("PlayerGui")
+    mobileGui = Instance.new("ScreenGui")
+    mobileGui.Name           = "USA_MobileButtons"
+    mobileGui.ResetOnSpawn   = false
+    mobileGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    mobileGui.DisplayOrder    = 999
+    pcall(function() protectgui(mobileGui) end)
+    mobileGui.Parent = (gethui and gethui()) or LocalPlayer:WaitForChild("PlayerGui")
 
-    local btn = Instance.new("TextButton")
-    btn.Name             = "AimButton"
-    btn.Size             = UDim2.fromOffset(84, 84)
-    btn.Position         = UDim2.new(1, -104, 0.55, 0)
-    btn.AnchorPoint      = Vector2.new(0, 0)
-    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    btn.BackgroundTransparency = 0.15
-    btn.AutoButtonColor  = false
-    btn.Text             = ""
-    btn.Parent           = gui
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
-    local stroke = Instance.new("UIStroke", btn)
-    stroke.Color     = Color3.fromRGB(54, 57, 241)
-    stroke.Thickness = 2
+    local function makeButton(offsetY, onText, offText, onTap)
+        local btn = Instance.new("TextButton")
+        btn.Size             = UDim2.fromOffset(78, 78)
+        btn.Position         = UDim2.new(1, -98, 0.5, offsetY)
+        btn.BackgroundColor3  = Color3.fromRGB(40, 40, 40)
+        btn.BackgroundTransparency = 0.15
+        btn.AutoButtonColor  = false
+        btn.Text             = ""
+        btn.Parent           = mobileGui
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+        local stroke = Instance.new("UIStroke", btn)
+        stroke.Color = Color3.fromRGB(54, 57, 241); stroke.Thickness = 2
 
-    local label = Instance.new("TextLabel")
-    label.Size                 = UDim2.fromScale(1, 1)
-    label.BackgroundTransparency= 1
-    label.Font                 = Enum.Font.GothamBold
-    label.TextColor3           = Color3.fromRGB(255, 255, 255)
-    label.TextSize             = 15
-    label.Text                 = "AIM: OFF"
-    label.Parent               = btn
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.fromScale(1, 1); label.BackgroundTransparency = 1
+        label.Font = Enum.Font.GothamBold; label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextSize = 14; label.Text = offText; label.Parent = btn
+        label:SetAttribute("onText", onText); label:SetAttribute("offText", offText)
 
-    ui.floatBtn   = btn
-    ui.floatLabel = label
-
-    -- drag + tap handling (drag past a small threshold cancels the toggle)
-    local dragging, moved, dragStart, startPos
-    btn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging, moved = true, false
-            dragStart = input.Position
-            startPos  = btn.Position
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseMovement) then
-            local delta = input.Position - dragStart
-            if delta.Magnitude > 6 then moved = true end
-            btn.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1) then
-            dragging = false
-            if not moved then
-                setEnabled(not Config.Enabled)
+        local dragging, moved, dragStart, startPos
+        btn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging, moved = true, false
+                dragStart, startPos = input.Position, btn.Position
             end
-        end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseMovement) then
+                local delta = input.Position - dragStart
+                if delta.Magnitude > 6 then moved = true end
+                btn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+                                         startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end)
+        UserInputService.InputEnded:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseButton1) then
+                dragging = false
+                if not moved then onTap() end
+            end
+        end)
+        return btn, label
+    end
+
+    ui.aimBtn, ui.aimLabel = makeButton(-88, "AIM: ON", "AIM: OFF", function() setEnabled(not Config.Enabled) end)
+    ui.espBtn, ui.espLabel = makeButton(10,  "ESP: ON", "ESP: OFF", function()
+        Config.ESPEnabled = not Config.ESPEnabled
+        pcall(function() ui.espMaster:SetValue(Config.ESPEnabled) end)
+        refreshFloat(ui.espBtn, ui.espLabel, Config.ESPEnabled)
+        if not Config.ESPEnabled then for _, o in pairs(ESP) do hideEsp(o) end end
     end)
 end
 
 -- ═══════════════════════════════════════════════════════════════════
---  RENDER LOOP  (marker + FOV circle)
+--  TRIGGERBOT
+-- ═══════════════════════════════════════════════════════════════════
+local function fireClick()
+    if mouse1click then return pcall(mouse1click) end
+    if mouse1press and mouse1release then
+        pcall(mouse1press); task.wait(); return pcall(mouse1release)
+    end
+    local VIM = game:FindService("VirtualInputManager")
+    if VIM then
+        pcall(function()
+            VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+            VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+        end)
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+--  MAIN RENDER LOOP  (target cache + FOV + marker + ESP + triggerbot)
 -- ═══════════════════════════════════════════════════════════════════
 RunService.RenderStepped:Connect(function()
-    if not hasDrawing then return end
+    -- 1) acquire the frame's target once (shared by hooks + marker + trigger)
+    if Config.Enabled or Config.Triggerbot or Config.ShowTargetMarker then
+        local player = acquireTarget()
+        Runtime.currentPlayer = player
+        Runtime.currentPart = player and player.Character and resolveTargetPart(player.Character) or nil
+    else
+        Runtime.currentPlayer, Runtime.currentPart = nil, nil
+    end
 
-    if Config.ShowSilentAimTarget and Config.Enabled then
-        -- FIX #6: resolve the target once per frame, not three times.
-        local target = getClosestPlayer()
-        if target then
-            local root = (target.Parent and target.Parent.PrimaryPart) or target
-            local viewport, onScreen = Camera:WorldToViewportPoint(root.Position)
-            mouse_box.Visible  = onScreen
-            mouse_box.Position = Vector2.new(viewport.X - mouse_box.Size.X / 2,
-                                             viewport.Y - mouse_box.Size.Y / 2)
-        else
-            mouse_box.Visible  = false
+    if not hasDrawing then
+        -- still allow triggerbot without drawings
+        if Config.Triggerbot and Runtime.currentPart then
+            local now = os.clock()
+            if now - Runtime.lastTrigger >= Config.TriggerbotDelay then
+                Runtime.lastTrigger = now; task.spawn(fireClick)
+            end
         end
+        return
+    end
+
+    -- 2) rainbow hue
+    if Config.FOVRainbow then
+        Runtime.rainbowHue = (Runtime.rainbowHue + 0.005) % 1
+    end
+
+    -- 3) FOV circle
+    if Config.FOVVisible then
+        fov_circle.Visible = true
+        fov_circle.Radius  = Config.FOVRadius
+        fov_circle.NumSides= Config.FOVSides
+        fov_circle.Filled  = Config.FOVFilled
+        fov_circle.Color   = Config.FOVRainbow and Color3.fromHSV(Runtime.rainbowHue, 1, 1) or Config.FOVColor
+        fov_circle.Position = Config.FOVFollowMouse and getMousePosition() or getViewportCenter()
+    elseif fov_circle.Visible then
+        fov_circle.Visible = false
+    end
+
+    -- 4) target marker
+    if Config.ShowTargetMarker and Config.Enabled and Runtime.currentPart then
+        local sp, onScreen = worldToScreen(Runtime.currentPart.Position)
+        mouse_box.Visible  = onScreen
+        mouse_box.Color    = Config.FOVRainbow and Color3.fromHSV(Runtime.rainbowHue, 1, 1) or Config.FOVColor
+        mouse_box.Position = Vector2.new(sp.X - mouse_box.Size.X / 2, sp.Y - mouse_box.Size.Y / 2)
     elseif mouse_box.Visible then
         mouse_box.Visible = false
     end
 
-    if Config.FOVVisible then
-        fov_circle.Visible  = true
-        fov_circle.Radius   = Config.FOVRadius
-        fov_circle.Position = getMousePosition()
-    elseif fov_circle.Visible then
-        fov_circle.Visible = false
+    -- 5) ESP
+    updateEsp()
+
+    -- 6) triggerbot
+    if Config.Triggerbot and Runtime.currentPart then
+        local now = os.clock()
+        if now - Runtime.lastTrigger >= Config.TriggerbotDelay then
+            Runtime.lastTrigger = now; fireClick()
+        end
     end
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  HOOKS  (__namecall for ray methods, __index for Mouse.Hit/Target)
+--  HOOKS
 -- ═══════════════════════════════════════════════════════════════════
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
-    local Method    = getnamecallmethod()
-    local Arguments = { ... }
-    local self      = Arguments[1]
+if hasHooks then
+    local oldNamecall
+    oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+        local Method    = getnamecallmethod()
+        local Arguments = { ... }
+        local self      = Arguments[1]
 
-    if Config.Enabled and self == Workspace and not checkcaller()
-    and CalculateChance(Config.HitChance) then
-        local wanted = Config.SilentAimMethod
+        if Config.Enabled and self == Workspace and not checkcaller()
+        and Runtime.currentPart and CalculateChance(Config.HitChance) then
+            local wanted = Config.SilentAimMethod
+            local part   = Runtime.currentPart
 
-        if Method == "FindPartOnRayWithIgnoreList" and wanted == Method then
-            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
-                local ray = Arguments[2]
-                local hit = getClosestPlayer()
-                if hit and typeof(ray) == "Ray" then
-                    Arguments[2] = Ray.new(ray.Origin, getDirection(ray.Origin, hit.Position))
-                    return oldNamecall(unpack(Arguments))
+            if Method == "FindPartOnRayWithIgnoreList" and wanted == Method then
+                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
+                    local ray = Arguments[2]
+                    if typeof(ray) == "Ray" then
+                        Arguments[2] = Ray.new(ray.Origin, getDirectionTo(ray.Origin, part))
+                        return oldNamecall(unpack(Arguments))
+                    end
                 end
-            end
-        elseif Method == "FindPartOnRayWithWhitelist" and wanted == Method then
-            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
-                local ray = Arguments[2]
-                local hit = getClosestPlayer()
-                if hit and typeof(ray) == "Ray" then
-                    Arguments[2] = Ray.new(ray.Origin, getDirection(ray.Origin, hit.Position))
-                    return oldNamecall(unpack(Arguments))
+            elseif Method == "FindPartOnRayWithWhitelist" and wanted == Method then
+                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
+                    local ray = Arguments[2]
+                    if typeof(ray) == "Ray" then
+                        Arguments[2] = Ray.new(ray.Origin, getDirectionTo(ray.Origin, part))
+                        return oldNamecall(unpack(Arguments))
+                    end
                 end
-            end
-        elseif (Method == "FindPartOnRay" or Method == "findPartOnRay")
-        and wanted:lower() == Method:lower() then
-            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
-                local ray = Arguments[2]
-                local hit = getClosestPlayer()
-                if hit and typeof(ray) == "Ray" then
-                    Arguments[2] = Ray.new(ray.Origin, getDirection(ray.Origin, hit.Position))
-                    return oldNamecall(unpack(Arguments))
+            elseif (Method == "FindPartOnRay" or Method == "findPartOnRay")
+            and wanted:lower() == Method:lower() then
+                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
+                    local ray = Arguments[2]
+                    if typeof(ray) == "Ray" then
+                        Arguments[2] = Ray.new(ray.Origin, getDirectionTo(ray.Origin, part))
+                        return oldNamecall(unpack(Arguments))
+                    end
                 end
-            end
-        elseif Method == "Raycast" and wanted == Method then
-            if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
-                local origin = Arguments[2]
-                local hit = getClosestPlayer()
-                if hit and typeof(origin) == "Vector3" then
-                    Arguments[3] = getDirection(origin, hit.Position)
-                    return oldNamecall(unpack(Arguments))
+            elseif Method == "Raycast" and wanted == Method then
+                if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
+                    local origin = Arguments[2]
+                    if typeof(origin) == "Vector3" then
+                        Arguments[3] = getDirectionTo(origin, part)
+                        return oldNamecall(unpack(Arguments))
+                    end
                 end
             end
         end
-    end
 
-    return oldNamecall(...)
-end))
+        return oldNamecall(...)
+    end))
 
-local Mouse = LocalPlayer:GetMouse()
-
-local oldIndex
-oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
-    if self == Mouse and not checkcaller() and Config.Enabled
-    and Config.SilentAimMethod == "Mouse.Hit/Target" then
-        local hit = getClosestPlayer()
-        if hit then
+    local Mouse = LocalPlayer:GetMouse()
+    local oldIndex
+    oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
+        if self == Mouse and not checkcaller() and Config.Enabled
+        and Config.SilentAimMethod == "Mouse.Hit/Target" and Runtime.currentPart then
+            local part = Runtime.currentPart
             if Index == "Target" or Index == "target" then
-                return hit
+                return part
             elseif Index == "Hit" or Index == "hit" then
-                if Config.MouseHitPrediction then
-                    return hit.CFrame + (hit.AssemblyLinearVelocity * Config.MouseHitPredictionAmount)
-                end
-                return hit.CFrame
+                return CFrame.new(getAimPosition(part))
             end
         end
-    end
-    return oldIndex(self, Index)
-end))
+        return oldIndex(self, Index)
+    end))
+end
