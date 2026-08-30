@@ -186,10 +186,17 @@ local function isWhitelisted(name)
 end
 
 local function resolveTargetPart(character)
-    if Config.TargetPart == "Random" then
-        return character:FindFirstChild(ValidTargetParts[math.random(1, #ValidTargetParts)])
+    local part = Config.TargetPart
+    if part == "Random" then
+        part = ValidTargetParts[math.random(1, #ValidTargetParts)]
     end
-    return character:FindFirstChild(Config.TargetPart)
+    -- "Torso" works on both rigs: R6 has Torso, R15 has UpperTorso.
+    if part == "Torso" then
+        return character:FindFirstChild("UpperTorso")
+            or character:FindFirstChild("Torso")
+            or character:FindFirstChild("HumanoidRootPart")
+    end
+    return character:FindFirstChild(part)
         or character:FindFirstChild("HumanoidRootPart")
 end
 
@@ -599,7 +606,7 @@ ui.targetMode = TargetTab:Dropdown({
     Callback = function(v) Config.TargetMode = v end,
 })
 ui.targetPart = TargetTab:Dropdown({
-    Title = "Target Part", Values = { "Head", "HumanoidRootPart", "Random" },
+    Title = "Target Part", Values = { "Head", "Torso", "HumanoidRootPart", "Random" },
     Value = Config.TargetPart, Callback = function(v) Config.TargetPart = v end,
 })
 TargetTab:Toggle({
@@ -853,12 +860,10 @@ RunService.RenderStepped:Connect(function()
         Runtime.currentPlayer, Runtime.currentPart = nil, nil
     end
 
-    -- CAMERA LOCK (aimbot): glide the camera onto the target part.
-    if Config.CameraLock and Runtime.currentPart then
-        local cf = Camera.CFrame
-        local goal = CFrame.new(cf.Position, getAimPosition(Runtime.currentPart))
-        Camera.CFrame = cf:Lerp(goal, math.clamp(Config.AimbotSmoothness, 0.05, 1))
-    end
+    -- NOTE: the actual camera rotation is applied in a BindToRenderStep
+    -- that runs AFTER Roblox's default camera (see below). Doing it here in
+    -- RenderStepped fails because the default camera overwrites CFrame each
+    -- frame — that was why "LOCK: ON" never turned the view.
 
     if Config.FOVRainbow then
         Runtime.rainbowHue = (Runtime.rainbowHue + 0.005) % 1
@@ -890,6 +895,39 @@ RunService.RenderStepped:Connect(function()
         markerFrame.Visible = false
     end
 end)
+
+-- ═══════════════════════════════════════════════════════════════════
+--  CAMERA LOCK (aimbot) — must run AFTER the default camera each frame,
+--  or the default camera overwrites our rotation and nothing locks.
+-- ═══════════════════════════════════════════════════════════════════
+do
+    local ok = pcall(function()
+        RunService:BindToRenderStep("USA_CameraLock", Enum.RenderPriority.Camera.Value + 1, function()
+            if not Config.CameraLock then return end
+            local part = Runtime.currentPart
+            if not part or not part.Parent then return end
+            local cam = Workspace.CurrentCamera
+            if not cam then return end
+            local cf = cam.CFrame
+            local goal = CFrame.new(cf.Position, getAimPosition(part))
+            cam.CFrame = cf:Lerp(goal, math.clamp(Config.AimbotSmoothness, 0.05, 1))
+        end)
+    end)
+    -- Fallback for executors without BindToRenderStep: RenderStepped still
+    -- helps in games whose camera doesn't re-assert CFrame every frame.
+    if not ok then
+        RunService.RenderStepped:Connect(function()
+            if not Config.CameraLock then return end
+            local part = Runtime.currentPart
+            if not part or not part.Parent then return end
+            local cam = Workspace.CurrentCamera
+            if not cam then return end
+            local cf = cam.CFrame
+            cam.CFrame = cf:Lerp(CFrame.new(cf.Position, getAimPosition(part)),
+                math.clamp(Config.AimbotSmoothness, 0.05, 1))
+        end)
+    end
+end
 
 -- ═══════════════════════════════════════════════════════════════════
 --  HOOKS
