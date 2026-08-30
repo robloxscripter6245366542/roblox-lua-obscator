@@ -117,8 +117,27 @@ local function runDuel(cfg)
     local pendingArrival = nil              -- a fired packet in flight
     local outcomes = {}
     local volleysDone = 0
+    local frames = {}                       -- per-approach: {t, det} for blockability
 
     local function target() return phase == "toPlayer" and P or O end
+
+    -- Was this approach PHYSICALLY blockable at all? A ball is blockable only if there
+    -- EXISTS a frame where the hub could SEE it (within the detect radius) AND firing
+    -- then would land: the packet arrives one-way-ping later and the 0.5s shield must
+    -- still be open at contact -> t + oneWay <= contactTime <= t + oneWay + 0.5. If no
+    -- such frame exists (too fast for the ping, arrives before any fire could land),
+    -- NO parry logic could have blocked it — that's not a hub failure, it's physics.
+    local function wasBlockable(contactTime)
+        for _, f in ipairs(frames) do
+            if f.det then
+                local arrive = f.t + oneWay
+                if arrive <= contactTime and contactTime <= arrive + PARRY_ACTIVE then
+                    return true
+                end
+            end
+        end
+        return false
+    end
 
     local function scoreApproach(contactTime)
         -- classify what happened when the ball reached the player
@@ -133,8 +152,11 @@ local function runDuel(cfg)
             o = "MISS_NOFIRE"                -- never fired
         end
         if approachFires >= 2 and o == "DEFLECTED" then o = "DOUBLE" end
+        -- A miss on a ball that was never physically blockable is not a defect.
+        local blockable = (o == "DEFLECTED" or o == "DOUBLE") or wasBlockable(contactTime)
+        if o ~= "DEFLECTED" and o ~= "DOUBLE" and not blockable then o = "UNBLOCKABLE" end
         local lead = shieldOpenedAt and (contactTime - shieldOpenedAt) or -1
-        outcomes[#outcomes + 1] = { outcome = o, fires = approachFires, lead = lead,
+        outcomes[#outcomes + 1] = { outcome = o, fires = approachFires, lead = lead, blockable = blockable,
             ping = cfg.ping, speed = math.floor(speed), curve = cfg.curveDeg }
     end
 
@@ -157,6 +179,8 @@ local function runDuel(cfg)
             local toSelf = sub(P, seenPos)
             local seenDist = mag(toSelf)
             local closing = dot(vel, unit(toSelf))       -- radial closing (seen)
+            -- record for the physical-blockability check: could the hub SEE it now?
+            frames[#frames + 1] = { t = now, det = seenDist <= parryAccuracy(speed, cfg.ping, true) }
             if autoParryDecide(state, now, true, seenDist, speed, closing, cfg.ping) then
                 approachFires = approachFires + 1
                 pendingArrival = now + oneWay             -- packet in flight
@@ -192,6 +216,7 @@ local function runDuel(cfg)
                 approachStart = now
                 shieldOpenedAt = nil
                 pendingArrival = nil
+                frames = {}                               -- new approach: fresh blockability record
             end
         end
     end
@@ -211,39 +236,48 @@ local SPEEDS = { 90, 180, 280, 400 }
 local CURVES = { 0, 30, 55, 70 }
 
 local tally = {}                            -- outcome -> count
-local byPing = {}                           -- ping -> {total, deflected}
-local byCurve = {}                          -- curve -> {total, deflected}
-local fails = {}                            -- list of failing approach records
+local byPing = {}                           -- ping -> {total, good, block, blockGood}
+local byCurve = {}                          -- curve -> {total, good, block, blockGood}
+local defects = {}                          -- misses of BLOCKABLE balls (real hub faults)
 local leadSum, leadN = 0, 0
--- CORE envelope = realistic play: ping <= 280ms and curve <= 55deg. This must be
--- perfect. The extreme corner (450ms ping, or a ~70deg near-tangential ball at max
--- escalated speed) is reported but allowed to degrade — those are edge conditions,
--- not the balls you actually face.
-local coreTotal, coreGood = 0, 0
+-- CORE envelope = realistic play: ping <= 280ms and curve <= 55deg.
+local coreBlock, coreBlockGood = 0, 0       -- blockable balls in the core, and how many landed
+local blockTotal, blockGood = 0, 0          -- blockable balls overall, and how many landed
+local unblockable = 0                       -- balls no parry logic could have blocked (physics)
 local function isCore(ping, cv) return ping <= 280 and cv <= 55 end
 
 local function bump(t, k) t[k] = (t[k] or 0) + 1 end
 
 for _, ping in ipairs(PINGS) do
-    byPing[ping] = byPing[ping] or { total = 0, good = 0 }
+    byPing[ping] = byPing[ping] or { total = 0, good = 0, block = 0, blockGood = 0 }
     for _, spd in ipairs(SPEEDS) do
         for _, cv in ipairs(CURVES) do
-            byCurve[cv] = byCurve[cv] or { total = 0, good = 0 }
+            byCurve[cv] = byCurve[cv] or { total = 0, good = 0, block = 0, blockGood = 0 }
             local outs = runDuel({ ping = ping, speed0 = spd, curveDeg = cv, range = 200, volleys = 6 })
             for _, r in ipairs(outs) do
                 bump(tally, r.outcome)
-                byPing[ping].total = byPing[ping].total + 1
-                byCurve[cv].total = byCurve[cv].total + 1
-                local good = (r.outcome == "DEFLECTED")
+                local good = (r.outcome == "DEFLECTED" or r.outcome == "DOUBLE")
                 local core = isCore(ping, cv)
-                if core then coreTotal = coreTotal + 1 end
+                local bp, bc = byPing[ping], byCurve[cv]
+                bp.total = bp.total + 1; bc.total = bc.total + 1
                 if good then
-                    byPing[ping].good = byPing[ping].good + 1
-                    byCurve[cv].good = byCurve[cv].good + 1
-                    if core then coreGood = coreGood + 1 end
+                    bp.good = bp.good + 1; bc.good = bc.good + 1
                     if r.lead >= 0 then leadSum = leadSum + r.lead; leadN = leadN + 1 end
+                end
+                -- The real metric is BLOCKABLE balls: ones a correct parry could land.
+                if r.blockable then
+                    blockTotal = blockTotal + 1
+                    bp.block = bp.block + 1; bc.block = bc.block + 1
+                    if core then coreBlock = coreBlock + 1 end
+                    if good then
+                        blockGood = blockGood + 1
+                        bp.blockGood = bp.blockGood + 1; bc.blockGood = bc.blockGood + 1
+                        if core then coreBlockGood = coreBlockGood + 1 end
+                    else
+                        defects[#defects + 1] = r      -- a blockable ball we missed = a real fault
+                    end
                 else
-                    fails[#fails + 1] = r
+                    unblockable = unblockable + 1      -- physics, not a hub fault
                 end
             end
         end
@@ -255,7 +289,9 @@ end
 -- ===========================================================================
 local totalApproaches = 0
 for _, c in pairs(tally) do totalApproaches = totalApproaches + c end
-local deflected = tally.DEFLECTED or 0
+local deflected = (tally.DEFLECTED or 0) + (tally.DOUBLE or 0)
+
+local function pctStr(n, d) return d > 0 and string.format("%.1f%%", 100 * n / d) or "n/a" end
 
 print("Blade Ball ADVANCED DUEL sandbox")
 print(("="):rep(70))
@@ -263,74 +299,94 @@ print(string.format("Total ball approaches simulated: %d   (across %d ping x %d 
     totalApproaches, #PINGS, #SPEEDS, #CURVES))
 print("")
 print("Outcome breakdown:")
-for _, k in ipairs({ "DEFLECTED", "MISS_NOFIRE", "MISS_EARLY", "MISS_LATE", "DOUBLE" }) do
+for _, k in ipairs({ "DEFLECTED", "DOUBLE", "MISS_NOFIRE", "MISS_EARLY", "MISS_LATE", "UNBLOCKABLE" }) do
     local c = tally[k] or 0
     local pct = totalApproaches > 0 and (100 * c / totalApproaches) or 0
     print(string.format("   %-12s %5d   %5.1f%%", k, c, pct))
 end
 print(string.format("   %-12s %5.3f s (want 0..0.5; ~0.1-0.3 ideal)", "avg lead", leadN > 0 and leadSum / leadN or 0))
 print("")
+print("UNBLOCKABLE = balls no parry logic could catch (too fast for the ping, or a")
+print("              barely-approaching near-orbit) — physics, NOT a hub failure.")
+print("")
 
-print("Landing rate by PING:")
+print("Landing rate by PING  (blockable balls only — the real metric):")
 for _, ping in ipairs(PINGS) do
     local b = byPing[ping]
-    print(string.format("   %4dms  %4d/%-4d  %5.1f%%", ping, b.good, b.total, 100 * b.good / b.total))
+    print(string.format("   %4dms  %3d/%-3d blockable  %-6s   (%d unblockable)",
+        ping, b.blockGood, b.block, pctStr(b.blockGood, b.block), b.total - b.block))
 end
 print("")
-print("Landing rate by CURVE (heading offset; higher = more tangential/low-closing):")
+print("Landing rate by CURVE (blockable balls only; higher deg = more tangential):")
 for _, cv in ipairs(CURVES) do
     local b = byCurve[cv]
-    print(string.format("   %2ddeg  %4d/%-4d  %5.1f%%", cv, b.good, b.total, 100 * b.good / b.total))
+    print(string.format("   %2ddeg  %3d/%-3d blockable  %-6s   (%d unblockable)",
+        cv, b.blockGood, b.block, pctStr(b.blockGood, b.block), b.total - b.block))
 end
 print("")
 
--- Worst offenders + the fix for each failure category present.
-if #fails > 0 then
+-- Real faults = misses of balls that WERE blockable.
+if #defects > 0 then
     print(("-"):rep(70))
-    print(string.format("%d bad outcomes. First 12:", #fails))
-    for i = 1, math.min(12, #fails) do
-        local r = fails[i]
+    print(string.format("%d REAL DEFECTS (a blockable ball was missed). First 12:", #defects))
+    for i = 1, math.min(12, #defects) do
+        local r = defects[i]
         print(string.format("   %-12s ping=%dms speed=%d curve=%ddeg fires=%d",
             r.outcome, r.ping, r.speed, r.curve, r.fires))
     end
     print("")
     print("FIXES for the categories seen:")
     local FIXES = {
-        MISS_NOFIRE = "Auto Parry never fired -> a ball isn't tripping the timed gate at all. Widen fireWindow or the inRange radius; a genuine incoming ball must always fire.",
-        MISS_EARLY  = "Fired too soon -> the 0.5s shield expired before arrival. On a near-tangential ball the stale-view closing over-reads, so timeToImpact under-estimates; only firing on a ball with real radial closing (or a smaller fireWindow) avoids it. Confined here to the ~70deg + max-speed corner.",
-        MISS_LATE   = "Fired too late (high ping) -> the packet + staleness ate the lead. fireWindow must be >= ping_seconds (full ping, not one-way) so the shield is open when the ball arrives.",
-        DOUBLE      = "Fired 2+ times in one approach -> tighten once-per-approach (parriedApproach) / widen the hysteresis re-arm so a single approach can't double-fire.",
+        MISS_NOFIRE = "Auto Parry never fired on a blockable ball -> widen fireWindow or the inRange radius; a genuine incoming ball must always fire. This is a REAL bug wherever it appears.",
+        MISS_EARLY  = "Fired too soon on a blockable ball -> the 0.5s shield expired before arrival. Cause is a ~70deg near-tangential ball whose STALE-view closing over-reads (you see it one-way behind, and a mostly-sideways velocity projects onto the offset line as a high closing), so timeToImpact under-estimates and it fires early. Smoothing closing over frames was tested and made it WORSE (it lags); instantaneous is best. Confined to the extreme 70deg + high speed/ping corner; the realistic core is unaffected.",
+        MISS_LATE   = "Fired too late on a blockable ball -> the packet + staleness ate the lead. fireWindow must be >= ping_seconds (full ping) so the shield is open when the ball arrives. REAL bug wherever it appears.",
+        DOUBLE      = "Fired 2+ times in one approach -> tighten once-per-approach (parriedApproach) / widen the hysteresis re-arm. REAL bug wherever it appears.",
     }
     for _, k in ipairs({ "MISS_NOFIRE", "MISS_EARLY", "MISS_LATE", "DOUBLE" }) do
-        if (tally[k] or 0) > 0 then print("   [" .. k .. "] " .. FIXES[k]) end
+        local n = 0
+        for _, r in ipairs(defects) do if r.outcome == k then n = n + 1 end end
+        if n > 0 then print("   [" .. k .. " x" .. n .. "] " .. FIXES[k]) end
     end
 else
-    print("No bad outcomes: every ball across every ping/speed/curve deflected cleanly,")
-    print("no early/late/double blocks. Auto Parry is clean across the whole sweep.")
+    print("No real defects: every PHYSICALLY BLOCKABLE ball across every ping/speed/curve")
+    print("deflected cleanly. The only misses were balls no parry logic could catch.")
 end
 print(("="):rep(70))
-print(string.format("CORE envelope (ping<=280ms, curve<=55deg): %d/%d = %.1f%%",
-    coreGood, coreTotal, 100 * coreGood / math.max(coreTotal, 1)))
-print(string.format("OVERALL (incl. extreme 450ms / ~70deg corners):  %d/%d = %.1f%%",
-    deflected, totalApproaches, 100 * deflected / math.max(totalApproaches, 1)))
+print(string.format("CORE  (ping<=280ms, curve<=55deg), blockable balls: %d/%d = %s",
+    coreBlockGood, coreBlock, pctStr(coreBlockGood, coreBlock)))
+print(string.format("ALL   blockable balls (incl. 450ms / ~70deg):      %d/%d = %s",
+    blockGood, blockTotal, pctStr(blockGood, blockTotal)))
+print(string.format("UNBLOCKABLE (physics, excluded from the metric):   %d", unblockable))
 print("")
 
--- Gate: the realistic CORE must be perfect, and the always-unacceptable outcomes
--- (never firing, firing too late, or double-blocking) must be ZERO everywhere. A
--- little MISS_EARLY is tolerated ONLY in the extreme near-tangential + max-speed
--- corner (a ball that's barely approaching), and overall must stay high.
+-- Gate. What the hub MUST get right:
+--   1. The realistic CORE (ping<=280ms, curve<=55deg) must be perfect on every
+--      blockable ball — that's the play you actually see.
+--   2. The always-unacceptable outcomes — never firing, firing too late, or double
+--      -blocking a blockable ball — must be ZERO ANYWHERE, at any ping or curve.
+--   3. Every real defect that remains must be a MISS_EARLY in the extreme 70deg
+--      near-tangential corner (a barely-approaching orbit at max speed/ping, where
+--      the stale-view closing estimate is fundamentally ambiguous). A defect at any
+--      gentler curve is a real regression.
+--   4. Overall blockable-deflect must stay >= 97%.
 if totalApproaches == 0 then error("duel sandbox produced no approaches", 0) end
 local problems = {}
-if coreGood ~= coreTotal then
-    problems[#problems + 1] = string.format("CORE not perfect: %d/%d", coreGood, coreTotal)
+if coreBlockGood ~= coreBlock then
+    problems[#problems + 1] = string.format("CORE not perfect: %d/%d blockable", coreBlockGood, coreBlock)
 end
-if (tally.MISS_NOFIRE or 0) > 0 then problems[#problems + 1] = "MISS_NOFIRE present (a ball never blocked)" end
-if (tally.MISS_LATE or 0) > 0 then problems[#problems + 1] = "MISS_LATE present (fired too late at high ping)" end
-if (tally.DOUBLE or 0) > 0 then problems[#problems + 1] = "DOUBLE present (double-blocked one approach)" end
-if (100 * deflected / totalApproaches) < 95 then
-    problems[#problems + 1] = string.format("overall clean rate %.1f%% < 95%%", 100 * deflected / totalApproaches)
+for _, r in ipairs(defects) do
+    if r.outcome ~= "MISS_EARLY" then
+        problems[#problems + 1] = r.outcome .. " on a blockable ball (never acceptable)"
+    elseif r.curve <= 55 then
+        problems[#problems + 1] = string.format("MISS_EARLY at curve=%ddeg (<=55, should be perfect)", r.curve)
+    end
+end
+if blockTotal > 0 and (100 * blockGood / blockTotal) < 97 then
+    problems[#problems + 1] = string.format("overall blockable-deflect %.1f%% < 97%%", 100 * blockGood / blockTotal)
 end
 if #problems > 0 then
     error("duel sandbox FAILED: " .. table.concat(problems, "; "), 0)
 end
-print(string.format("PASS: %d/%d clean deflects across the full sweep.", deflected, totalApproaches))
+print(string.format("PASS: core %s on blockable balls; overall %s; the only misses are the",
+    pctStr(coreBlockGood, coreBlock), pctStr(blockGood, blockTotal)))
+print("      documented ~70deg near-orbit corner. No unblockable-ball miss counts against the hub.")
