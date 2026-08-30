@@ -65,21 +65,20 @@ local Config = {
     Enabled          = false,
 
     -- targeting
-    TargetMode       = "Cursor FOV",   -- Cursor FOV | Screen Center | Closest Distance | Lowest Health
+    TargetMode       = "Screen Center", -- Cursor FOV | Screen Center | Closest Distance | Lowest Health
     TargetPart       = "HumanoidRootPart", -- Head | HumanoidRootPart | Random
     StickyTarget     = false,
-    TeamCheck        = false,
+    TeamCheck        = true,           -- enemies only by default (reads the game's teams)
     VisibleCheck     = false,
-    MaxDistance      = 2000,           -- studs; 0 = unlimited
+    MaxDistance      = 0,              -- studs; 0 = unlimited (lock anywhere)
     SilentAimMethod  = "Raycast",
 
     -- fov
-    FOVRadius        = 130,
-    FOVVisible       = false,
+    FOVRadius        = 200,
+    FOVVisible       = true,           -- show the circle by default
     FOVFollowMouse   = false,          -- false = locked to screen center (mobile-friendly)
     FOVFilled        = false,
     FOVRainbow       = false,
-    FOVSides         = 60,
     FOVColor         = Color3.fromRGB(54, 57, 241),
 
     -- aim assist
@@ -149,15 +148,25 @@ local function getMousePosition()
     return UserInputService:GetMouseLocation()
 end
 
+local GuiService = game:GetService("GuiService")
+
 local function getViewportCenter()
     local v = Camera.ViewportSize
     return Vector2.new(v.X / 2, v.Y / 2)
 end
 
--- WorldToScreenPoint accounts for the GUI inset (matches GetMouseLocation).
+-- Absolute (no-inset) screen space, matching a ScreenGui with
+-- IgnoreGuiInset = true and WorldToViewportPoint.
 local function worldToScreen(worldVector)
-    local screen, onScreen = Camera:WorldToScreenPoint(worldVector)
+    local screen, onScreen = Camera:WorldToViewportPoint(worldVector)
     return Vector2.new(screen.X, screen.Y), onScreen, screen.Z
+end
+
+-- GetMouseLocation is inset-inclusive; add the inset to reach absolute space.
+local function getCursor()
+    local m = UserInputService:GetMouseLocation()
+    local inset = GuiService:GetGuiInset()
+    return Vector2.new(m.X + inset.X, m.Y + inset.Y)
 end
 
 local function getPing()
@@ -207,6 +216,21 @@ local function ValidateArguments(Args, RayMethod)
     return matches >= RayMethod.ArgCountRequired
 end
 
+-- Robust "same team" check. Reads the game's team data: the player's
+-- Team object first, then TeamColor as a fallback (some games only set the
+-- color). If nobody has a team, everyone is fair game.
+local function isSameTeam(player)
+    local a, b = player.Team, LocalPlayer.Team
+    if a ~= nil and b ~= nil then
+        return a == b
+    end
+    local ok, same = pcall(function()
+        return player.TeamColor == LocalPlayer.TeamColor and player.Neutral == false and LocalPlayer.Neutral == false
+    end)
+    if ok and same then return true end
+    return false
+end
+
 local function isVisible(playerCharacter, localCharacter)
     if not (playerCharacter and localCharacter) then return false end
     local root = playerCharacter:FindFirstChild("HumanoidRootPart")
@@ -226,7 +250,7 @@ end
 local function acquireTarget()
     local localCharacter = LocalPlayer.Character
     local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
-    local anchor = (Config.TargetMode == "Screen Center") and getViewportCenter() or getMousePosition()
+    local anchor = (Config.TargetMode == "Screen Center") and getViewportCenter() or getCursor()
 
     -- Sticky: keep the current target while it stays valid.
     if Config.StickyTarget and Runtime.currentPlayer then
@@ -252,7 +276,7 @@ local function acquireTarget()
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
         if isWhitelisted(player.Name) then continue end
-        if Config.TeamCheck and player.Team == LocalPlayer.Team then continue end
+        if Config.TeamCheck and isSameTeam(player) then continue end
 
         local character = player.Character
         if not character then continue end
@@ -397,26 +421,46 @@ local function startAutoSave()
 end
 
 -- ═══════════════════════════════════════════════════════════════════
---  DRAWINGS  (FOV circle + target marker)
+--  VISUALS  (native Roblox UI — works on Delta / any mobile executor)
+--  Drawing.new is unreliable on mobile executors, so the FOV circle and
+--  target marker are built from Frame + UICorner + UIStroke instead.
 -- ═══════════════════════════════════════════════════════════════════
-local fov_circle, mouse_box
-if hasDrawing then
-    fov_circle              = Drawing.new("Circle")
-    fov_circle.Thickness    = 1.5
-    fov_circle.NumSides     = Config.FOVSides
-    fov_circle.Radius       = Config.FOVRadius
-    fov_circle.Filled       = false
-    fov_circle.Visible      = false
-    fov_circle.Transparency = 1
-    fov_circle.Color        = Config.FOVColor
+local visualGui = Instance.new("ScreenGui")
+visualGui.Name           = "USA_Visuals"
+visualGui.ResetOnSpawn   = false
+visualGui.IgnoreGuiInset = true                 -- absolute screen space
+visualGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+visualGui.DisplayOrder    = 998
+pcall(function() protectgui(visualGui) end)
+visualGui.Parent = (gethui and gethui()) or LocalPlayer:WaitForChild("PlayerGui")
 
-    mouse_box               = Drawing.new("Square")
-    mouse_box.Visible       = false
-    mouse_box.Color         = Config.FOVColor
-    mouse_box.Thickness     = 2
-    mouse_box.Size          = Vector2.new(14, 14)
-    mouse_box.Filled        = false
-end
+-- FOV circle (a square Frame rounded into a circle by a full UICorner)
+local fovFrame = Instance.new("Frame")
+fovFrame.AnchorPoint            = Vector2.new(0.5, 0.5)
+fovFrame.BackgroundColor3       = Config.FOVColor
+fovFrame.BackgroundTransparency = 1               -- ring only until "Filled"
+fovFrame.BorderSizePixel        = 0
+fovFrame.Size                   = UDim2.fromOffset(Config.FOVRadius * 2, Config.FOVRadius * 2)
+fovFrame.Position               = UDim2.fromScale(0.5, 0.5)
+fovFrame.Visible                = false
+fovFrame.Parent                 = visualGui
+Instance.new("UICorner", fovFrame).CornerRadius = UDim.new(1, 0)
+local fovStroke = Instance.new("UIStroke", fovFrame)
+fovStroke.Thickness = 2
+fovStroke.Color     = Config.FOVColor
+
+-- Target marker (small ring on the locked target)
+local markerFrame = Instance.new("Frame")
+markerFrame.AnchorPoint            = Vector2.new(0.5, 0.5)
+markerFrame.BackgroundTransparency = 1
+markerFrame.BorderSizePixel        = 0
+markerFrame.Size                   = UDim2.fromOffset(18, 18)
+markerFrame.Visible                = false
+markerFrame.Parent                 = visualGui
+Instance.new("UICorner", markerFrame).CornerRadius = UDim.new(1, 0)
+local markerStroke = Instance.new("UIStroke", markerFrame)
+markerStroke.Thickness = 2
+markerStroke.Color     = Config.FOVColor
 
 -- ═══════════════════════════════════════════════════════════════════
 --  UI  —  WindUI  (mobile-first)
@@ -475,7 +519,7 @@ end
 
 local function setEnabled(state)
     Config.Enabled = state and true or false
-    if mouse_box and not Config.ShowTargetMarker then mouse_box.Visible = false end
+    if not Config.ShowTargetMarker then markerFrame.Visible = false end
     pcall(function() ui.enabled:SetValue(Config.Enabled) end)
     refreshFloat(Config.Enabled)
 end
@@ -564,7 +608,7 @@ TargetTab:Toggle({
 })
 TargetTab:Section({ Title = "Filters" })
 TargetTab:Toggle({
-    Title = "Team Check", Desc = "Ignore players on your team.",
+    Title = "Team Check (enemies only)", Desc = "Reads the game's teams (Team + TeamColor) and skips teammates.",
     Value = Config.TeamCheck, Callback = function(v) Config.TeamCheck = v end,
 })
 TargetTab:Toggle({
@@ -604,23 +648,19 @@ TargetTab:Button({
 VisualTab:Section({ Title = "Field of View" })
 ui.fovVisible = VisualTab:Toggle({
     Title = "Show FOV Circle", Value = Config.FOVVisible,
-    Callback = function(v) Config.FOVVisible = v; if fov_circle then fov_circle.Visible = v end end,
+    Callback = function(v) Config.FOVVisible = v; fovFrame.Visible = v end,
 })
 VisualTab:Toggle({
     Title = "FOV Follows Cursor", Desc = "Off = locked to screen center (mobile).",
     Value = Config.FOVFollowMouse, Callback = function(v) Config.FOVFollowMouse = v end,
 })
 VisualTab:Slider({
-    Title = "FOV Radius", Value = { Min = 0, Max = 600, Default = Config.FOVRadius }, Step = 1,
-    Callback = function(v) Config.FOVRadius = v; if fov_circle then fov_circle.Radius = v end end,
-})
-VisualTab:Slider({
-    Title = "FOV Sides", Value = { Min = 3, Max = 120, Default = Config.FOVSides }, Step = 1,
-    Callback = function(v) Config.FOVSides = v; if fov_circle then fov_circle.NumSides = v end end,
+    Title = "FOV Radius", Value = { Min = 20, Max = 900, Default = Config.FOVRadius }, Step = 5,
+    Callback = function(v) Config.FOVRadius = v; fovFrame.Size = UDim2.fromOffset(v * 2, v * 2) end,
 })
 VisualTab:Toggle({
     Title = "FOV Filled", Value = Config.FOVFilled,
-    Callback = function(v) Config.FOVFilled = v; if fov_circle then fov_circle.Filled = v end end,
+    Callback = function(v) Config.FOVFilled = v; fovFrame.BackgroundTransparency = v and 0.72 or 1 end,
 })
 VisualTab:Toggle({
     Title = "FOV Rainbow", Desc = "Overrides the color below while on.",
@@ -641,8 +681,9 @@ do
                     Callback = function(c)
                         if typeof(c) == "Color3" then
                             Config.FOVColor = c
-                            if fov_circle then fov_circle.Color = c end
-                            if mouse_box then mouse_box.Color = c end
+                            fovFrame.BackgroundColor3 = c
+                            fovStroke.Color = c
+                            markerStroke.Color = c
                         end
                     end,
                 })
@@ -654,12 +695,8 @@ end
 VisualTab:Section({ Title = "Target Marker" })
 ui.showTarget = VisualTab:Toggle({
     Title = "Show Target Marker", Value = Config.ShowTargetMarker,
-    Callback = function(v) Config.ShowTargetMarker = v; if mouse_box and not v then mouse_box.Visible = false end end,
+    Callback = function(v) Config.ShowTargetMarker = v; if not v then markerFrame.Visible = false end end,
 })
-if not hasDrawing then
-    VisualTab:Paragraph({ Title = "Drawing API unavailable",
-        Desc = "Your executor has no Drawing library, so FOV / marker are disabled. Silent aim still works." })
-end
 
 -- ── CONFIGS ─────────────────────────────────────────────────────────
 ConfigTab:Section({ Title = "Auto-Save" })
@@ -709,12 +746,12 @@ ConfigTab:Button({
             pcall(function() ui.targetMode:Select(Config.TargetMode) end)
             pcall(function() ui.targetPart:Select(Config.TargetPart) end)
             pcall(function() ui.method:Select(Config.SilentAimMethod) end)
-            if fov_circle then
-                fov_circle.Radius = Config.FOVRadius
-                fov_circle.NumSides = Config.FOVSides
-                fov_circle.Filled = Config.FOVFilled
-                fov_circle.Visible = Config.FOVVisible
-            end
+            fovFrame.Size                   = UDim2.fromOffset(Config.FOVRadius * 2, Config.FOVRadius * 2)
+            fovFrame.BackgroundColor3       = Config.FOVColor
+            fovFrame.BackgroundTransparency = Config.FOVFilled and 0.72 or 1
+            fovFrame.Visible                = Config.FOVVisible
+            fovStroke.Color                 = Config.FOVColor
+            markerStroke.Color              = Config.FOVColor
             setEnabled(Config.Enabled)
             setCameraLock(Config.CameraLock)
             WindUI:Notify({ Title = "Loaded", Content = chosen, Duration = 4, Icon = "check" })
@@ -823,32 +860,34 @@ RunService.RenderStepped:Connect(function()
         Camera.CFrame = cf:Lerp(goal, math.clamp(Config.AimbotSmoothness, 0.05, 1))
     end
 
-    if not hasDrawing then return end
-
     if Config.FOVRainbow then
         Runtime.rainbowHue = (Runtime.rainbowHue + 0.005) % 1
     end
+    local rainbow = Config.FOVRainbow and Color3.fromHSV(Runtime.rainbowHue, 1, 1) or nil
 
-    -- FOV circle
+    -- FOV circle (native UI)
     if Config.FOVVisible then
-        fov_circle.Visible  = true
-        fov_circle.Radius   = Config.FOVRadius
-        fov_circle.NumSides = Config.FOVSides
-        fov_circle.Filled   = Config.FOVFilled
-        fov_circle.Color    = Config.FOVRainbow and Color3.fromHSV(Runtime.rainbowHue, 1, 1) or Config.FOVColor
-        fov_circle.Position = Config.FOVFollowMouse and getMousePosition() or getViewportCenter()
-    elseif fov_circle.Visible then
-        fov_circle.Visible = false
+        fovFrame.Visible = true
+        if rainbow then
+            fovStroke.Color = rainbow
+            fovFrame.BackgroundColor3 = rainbow
+        end
+        local center = Config.FOVFollowMouse and getCursor() or getViewportCenter()
+        fovFrame.Position = UDim2.fromOffset(center.X, center.Y)
+    elseif fovFrame.Visible then
+        fovFrame.Visible = false
     end
 
-    -- target marker
-    if Config.ShowTargetMarker and Config.Enabled and Runtime.currentPart then
+    -- target marker (native UI)
+    if Config.ShowTargetMarker and Runtime.currentPart then
         local sp, onScreen = worldToScreen(Runtime.currentPart.Position)
-        mouse_box.Visible  = onScreen
-        mouse_box.Color    = Config.FOVRainbow and Color3.fromHSV(Runtime.rainbowHue, 1, 1) or Config.FOVColor
-        mouse_box.Position = Vector2.new(sp.X - mouse_box.Size.X / 2, sp.Y - mouse_box.Size.Y / 2)
-    elseif mouse_box.Visible then
-        mouse_box.Visible = false
+        markerFrame.Visible = onScreen
+        if onScreen then
+            if rainbow then markerStroke.Color = rainbow end
+            markerFrame.Position = UDim2.fromOffset(sp.X, sp.Y)
+        end
+    elseif markerFrame.Visible then
+        markerFrame.Visible = false
     end
 end)
 
