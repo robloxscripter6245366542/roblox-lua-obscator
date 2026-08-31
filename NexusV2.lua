@@ -3989,7 +3989,7 @@ t9.value148 = t1.value2;
     t24.value6.AnchorPoint = Vector2.new(0.5, 0.5)
 
     if t9.value1 then
-        t24.value6.Size = UDim2.new(0.96, 0, 0.9, 0)
+        t24.value6.Size = UDim2.new(0, 600, 0, 360)
     else
         t24.value6.Size = UDim2.new(0, 980, 0, 600)
     end
@@ -4005,9 +4005,10 @@ t9.value148 = t1.value2;
 
     if t9.value1 then
         local UIScale = Instance.new("UIScale")
+        local v_vp = (t2.value9 and t2.value9.ViewportSize) or Vector2.new(800, 600)
+        local v_fit = math.min((v_vp.X * 0.9) / 600, (v_vp.Y * 0.9) / 360)
 
-        t23.value2 = (t2.value9 and t2.value9.ViewportSize or Vector2.new(800, 600)).X
-        UIScale.Scale = not (t23.value2 < 500) and 1 or 0.92
+        UIScale.Scale = math.clamp(v_fit, 0.6, 1)
         UIScale.Parent = t24.value6
 
         local value22 = t9.value22
@@ -4187,7 +4188,7 @@ t9.value148 = t1.value2;
     t23.value3 = "Parent"
     value18_11[t23.value3] = t24.value11
     t24.value19 = false
-    t24.value20 = t9.value1 and UDim2.new(0.96, 0, 0.9, 0) or UDim2.new(0, 980, 0, 600)
+    t24.value20 = t9.value1 and UDim2.new(0, 600, 0, 360) or UDim2.new(0, 980, 0, 600)
     v650.MouseButton1Click:Connect(function()
         t24.value19 = not t24.value19
 
@@ -4200,6 +4201,43 @@ t9.value148 = t1.value2;
         t24.value6.AnchorPoint = Vector2.new(0.5, 0.5)
         t24.value6.Position = UDim2.new(0.5, 0, 0.5, 0)
     end)
+
+    -- Draggable window: drag the title bar (works with touch and mouse)
+    do
+        local dragHandle = t24.value11
+        local dragging = false
+        local dragStart
+        local startPos
+
+        dragHandle.Active = true
+
+        dragHandle.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                dragStart = input.Position
+                startPos = t24.value6.Position
+
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                    end
+                end)
+            end
+        end)
+
+        t2.value3.InputChanged:Connect(function(input)
+            if not dragging then
+                return
+            end
+
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                local delta = input.Position - dragStart
+
+                t24.value6.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end)
+    end
+
     t24.value21 = Instance.new("Frame")
     t24.value21.Size = UDim2.new(1, 0, 1, 0)
     t24.value21.BackgroundColor3 = Color3.new(0, 0, 0)
