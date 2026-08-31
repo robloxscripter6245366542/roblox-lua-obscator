@@ -281,6 +281,108 @@ local t11 = {
 t1.value6 = {}
 t1.value1 = {}
 t9.value10 = t11
+
+-- Config persistence: save/restore UI & visual preferences only.
+-- Aim/combat toggles are intentionally NOT persisted, so nothing auto-arms on load.
+do
+    local CONFIG_FOLDER = "NexusV2"
+    local CONFIG_FILE = "NexusV2/config.json"
+    local PERSIST_KEYS = {
+        "tab", "minimized", "killfeedUI",
+        "killSoundId", "headSoundId", "killVol", "headVol",
+        "clockOn", "clockTime", "fullbright",
+        "dmgMarkers", "dmgStack"
+    }
+
+    local function hasFileApi()
+        return typeof(writefile) == "function" and typeof(readfile) == "function" and typeof(isfile) == "function"
+    end
+
+    local function serializeConfig()
+        local data = {}
+
+        for _, k in ipairs(PERSIST_KEYS) do
+            local v = t9.value10[k]
+            local tv = type(v)
+
+            if tv == "boolean" or tv == "number" or tv == "string" then
+                data[k] = v
+            end
+        end
+
+        local ok, encoded = pcall(function()
+            return t2.value12:JSONEncode(data)
+        end)
+
+        return ok and encoded or nil
+    end
+
+    local function saveConfig()
+        if not hasFileApi() then
+            return
+        end
+
+        local encoded = serializeConfig()
+
+        if not encoded then
+            return
+        end
+
+        pcall(function()
+            if typeof(isfolder) == "function" and typeof(makefolder) == "function" and not isfolder(CONFIG_FOLDER) then
+                makefolder(CONFIG_FOLDER)
+            end
+
+            writefile(CONFIG_FILE, encoded)
+        end)
+    end
+
+    local function loadConfig()
+        if not hasFileApi() then
+            return
+        end
+
+        local ok, decoded = pcall(function()
+            if not isfile(CONFIG_FILE) then
+                return nil
+            end
+
+            return t2.value12:JSONDecode(readfile(CONFIG_FILE))
+        end)
+
+        if not ok or type(decoded) ~= "table" then
+            return
+        end
+
+        for _, k in ipairs(PERSIST_KEYS) do
+            local saved = decoded[k]
+
+            if saved ~= nil and type(saved) == type(t9.value10[k]) then
+                t9.value10[k] = saved
+            end
+        end
+    end
+
+    -- Restore saved preferences before the UI is built.
+    loadConfig()
+
+    -- Persist automatically a few seconds after any tracked preference changes.
+    task.spawn(function()
+        local last = serializeConfig()
+
+        while true do
+            task.wait(4)
+
+            local current = serializeConfig()
+
+            if current and current ~= last then
+                last = current
+                saveConfig()
+            end
+        end
+    end)
+end
+
 t9.value11 = {}
 t9.value12 = t1.value1
 t9.value13 = t1.value6
