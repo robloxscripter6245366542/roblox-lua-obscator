@@ -19,10 +19,13 @@ t2.value9 = workspace.CurrentCamera
 t2.value10 = t2.value8:WaitForChild("PlayerGui")
 
 t2.value12 = game:GetService("HttpService")
-local n1 = 155615604
+local allowedPlaces = {
+    [155615604] = true,     -- Prison Life
+    [135564683255158] = true -- Prison Life (VC / voice chat)
+}
 t1.value1 = game
-if n1 ~= t1.value1.PlaceId then
-    warn("[Nexus V2] Wrong game. This script only works in place " .. tostring(n1) .. " (current: " .. tostring(game.PlaceId) .. ")")
+if not allowedPlaces[t1.value1.PlaceId] then
+    warn("[Nexus V2] Wrong game. This script only works in Prison Life (current: " .. tostring(game.PlaceId) .. ")")
 
     return
 end
