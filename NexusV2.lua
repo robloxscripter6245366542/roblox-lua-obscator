@@ -5589,7 +5589,7 @@ t9.value148 = t1.value2;
             t24.value6.Position = UDim2.new(0.5, 0, 0.5, 0)
 
             if t9.value1 then
-                t24.value6.Size = UDim2.new(0.96, 0, 0.9, 0)
+                t24.value6.Size = UDim2.new(0, 600, 0, 360)
             else
                 t24.value6.Size = UDim2.new(0, 980, 0, 600)
             end
