@@ -1,18 +1,14 @@
 --!nocheck
--- Advanced Aimbot + ESP  (Drawing-API UI)
--- Hold RIGHT CLICK to aim.  Press INSERT to show/hide the FOV panel.
+-- Advanced Aimbot + ESP  (100% ScreenGui — no Drawing API)
+-- Built for executors that don't support the Drawing API (e.g. Delta).
 --
--- The UI is built entirely with the Drawing API (no ScreenGui / Instances),
--- and the only control is the Aimbot FOV size, per request.
+--   * Hold RIGHT CLICK to aim.
+--   * Press INSERT to show/hide the FOV panel.
+--   * The only UI control is the Aimbot FOV size (drag the slider).
 --
--- Bug fixes carried over from the original menu script:
---   * Aimbot no longer double-writes its state; it aims only while
---     right-click is held.
---   * ESP drawings are hidden for off-screen / dead / character-less players
---     instead of freezing on the last frame.
---   * Health bar guards MaxHealth == 0 and clamps the percentage.
---   * Aim CFrame guarded against a degenerate look-at.
---   * getClosest uses the real screen centre.
+-- Everything that used to be a Drawing (FOV circle, ESP boxes, names,
+-- health bars, tracers, head dots) is now a real GUI Instance so it renders
+-- on ScreenGui-only executors.
 
 local uis = game:GetService("UserInputService")
 local Players = game:GetService("Players")
@@ -22,149 +18,267 @@ local plr = Players.LocalPlayer
 local cam = workspace.CurrentCamera
 
 -- ==================== STATE ====================
-local rightHeld = false      -- is right mouse button currently held?
-
+local rightHeld = false
 local fovMin, fovMax = 30, 600
 local fovRadius = 120
 
--- ESP is always on with these features (no UI toggles by design)
-local espEnabled   = true
+local espEnabled = true
 local showBoxes    = true
 local showNames    = true
 local showHealth   = true
 local showTracers  = true
-local showHeadDots  = true
+local showHeadDots = true
 
--- FOV Circle
-local fovCircle = Drawing.new("Circle")
-fovCircle.Radius = fovRadius
-fovCircle.Color = Color3.fromRGB(255, 255, 0)
-fovCircle.Thickness = 1.5
-fovCircle.Transparency = 0.7
-fovCircle.Visible = true
-fovCircle.Filled = false
-
--- ESP table
-local esp = {}
-
--- ==================== DRAWING-API UI (FOV slider only) ====================
-local UI_VISIBLE = true
-
--- panel geometry (absolute screen pixels)
-local panelX, panelY = 24, 70
-local panelW, panelH = 220, 70
-local barX, barY = panelX + 12, panelY + 44
-local barW, barH = panelW - 24, 12
-
-local ui = {}
-ui.bg = Drawing.new("Square")
-ui.bg.Filled = true
-ui.bg.Color = Color3.fromRGB(25, 25, 35)
-ui.bg.Transparency = 0.85
-ui.bg.Size = Vector2.new(panelW, panelH)
-ui.bg.Position = Vector2.new(panelX, panelY)
-
-ui.border = Drawing.new("Square")
-ui.border.Filled = false
-ui.border.Thickness = 1
-ui.border.Color = Color3.fromRGB(0, 170, 255)
-ui.border.Size = Vector2.new(panelW, panelH)
-ui.border.Position = Vector2.new(panelX, panelY)
-
-ui.title = Drawing.new("Text")
-ui.title.Size = 16
-ui.title.Center = false
-ui.title.Outline = true
-ui.title.Color = Color3.fromRGB(255, 255, 255)
-ui.title.Position = Vector2.new(panelX + 12, panelY + 10)
-
-ui.barTrack = Drawing.new("Square")
-ui.barTrack.Filled = true
-ui.barTrack.Color = Color3.fromRGB(50, 50, 65)
-ui.barTrack.Size = Vector2.new(barW, barH)
-ui.barTrack.Position = Vector2.new(barX, barY)
-
-ui.barFill = Drawing.new("Square")
-ui.barFill.Filled = true
-ui.barFill.Color = Color3.fromRGB(0, 170, 255)
-ui.barFill.Size = Vector2.new(0, barH)
-ui.barFill.Position = Vector2.new(barX, barY)
-
-local function setUIVisible(state)
-    UI_VISIBLE = state
-    for _, obj in pairs(ui) do
-        obj.Visible = state
-    end
+-- ==================== GUI ROOT ====================
+local function getGuiParent()
+    -- prefer a hidden container if the executor exposes one, else PlayerGui
+    local ok, hui = pcall(function() return gethui() end)
+    if ok and hui then return hui end
+    return plr:WaitForChild("PlayerGui")
 end
 
--- apply a FOV value to the circle + UI
+local gui = Instance.new("ScreenGui")
+gui.Name = "AimbotESP"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.DisplayOrder = 9999
+gui.IgnoreGuiInset = false -- matches Camera:WorldToViewportPoint coordinates
+gui.Parent = getGuiParent()
+
+local espFolder = Instance.new("Folder")
+espFolder.Name = "ESP"
+espFolder.Parent = gui
+
+-- ==================== FOV RING ====================
+local fovRing = Instance.new("Frame")
+fovRing.Name = "FOVRing"
+fovRing.AnchorPoint = Vector2.new(0.5, 0.5)
+fovRing.BackgroundTransparency = 1
+fovRing.BorderSizePixel = 0
+fovRing.Parent = gui
+do
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(1, 0)
+    c.Parent = fovRing
+    local s = Instance.new("UIStroke")
+    s.Color = Color3.fromRGB(255, 255, 0)
+    s.Thickness = 1.5
+    s.Transparency = 0.3
+    s.Parent = fovRing
+end
+
+-- ==================== FOV MENU (ScreenGui slider) ====================
+local menu = Instance.new("Frame")
+menu.Name = "Menu"
+menu.Size = UDim2.fromOffset(240, 92)
+menu.Position = UDim2.fromOffset(24, 80)
+menu.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+menu.BackgroundTransparency = 0.1
+menu.BorderSizePixel = 0
+menu.Parent = gui
+do
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 8)
+    c.Parent = menu
+    local s = Instance.new("UIStroke")
+    s.Color = Color3.fromRGB(0, 170, 255)
+    s.Thickness = 1
+    s.Parent = menu
+end
+
+local titleBar = Instance.new("TextLabel")
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1, 0, 0, 30)
+titleBar.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+titleBar.BorderSizePixel = 0
+titleBar.Text = "Aimbot FOV"
+titleBar.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleBar.Font = Enum.Font.GothamBold
+titleBar.TextSize = 15
+titleBar.Parent = menu
+do
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 8)
+    c.Parent = titleBar
+end
+
+local valueLabel = Instance.new("TextLabel")
+valueLabel.Size = UDim2.new(1, -20, 0, 20)
+valueLabel.Position = UDim2.fromOffset(12, 36)
+valueLabel.BackgroundTransparency = 1
+valueLabel.Text = "FOV: " .. fovRadius
+valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+valueLabel.Font = Enum.Font.Gotham
+valueLabel.TextSize = 14
+valueLabel.TextXAlignment = Enum.TextXAlignment.Left
+valueLabel.Parent = menu
+
+local bar = Instance.new("Frame")
+bar.Name = "Bar"
+bar.Size = UDim2.new(1, -24, 0, 12)
+bar.Position = UDim2.fromOffset(12, 62)
+bar.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+bar.BorderSizePixel = 0
+bar.Parent = menu
+do
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(1, 0)
+    c.Parent = bar
+end
+
+local fill = Instance.new("Frame")
+fill.Name = "Fill"
+fill.Size = UDim2.new(0, 0, 1, 0)
+fill.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+fill.BorderSizePixel = 0
+fill.Parent = bar
+do
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(1, 0)
+    c.Parent = fill
+end
+
 local function setFov(value)
     value = math.clamp(math.floor(value + 0.5), fovMin, fovMax)
     fovRadius = value
-    fovCircle.Radius = value
     local pct = (fovMax ~= fovMin) and (value - fovMin) / (fovMax - fovMin) or 0
-    ui.barFill.Size = Vector2.new(barW * pct, barH)
-    ui.title.Text = "Aimbot FOV: " .. value
+    fill.Size = UDim2.new(pct, 0, 1, 0)
+    valueLabel.Text = "FOV: " .. value
 end
-
-setUIVisible(UI_VISIBLE)
 setFov(fovRadius)
 
--- slider drag handling (Drawing UI has no built-in input, so we hit-test the mouse)
-local dragging = false
-
-local function pointInBar(px, py)
-    -- generous vertical tolerance so the thin bar is easy to grab
-    return px >= barX and px <= barX + barW
-        and py >= barY - 8 and py <= barY + barH + 8
+-- --- slider drag (real GUI input; works with mouse and touch) ---
+local sliderDragging = false
+local function updateFovFromX(px)
+    if bar.AbsoluteSize.X <= 0 then return end
+    local rel = math.clamp((px - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+    setFov(fovMin + rel * (fovMax - fovMin))
 end
-
-local function updateFovFromMouse()
-    local mx = uis:GetMouseLocation().X
-    local pct = math.clamp((mx - barX) / barW, 0, 1)
-    setFov(fovMin + pct * (fovMax - fovMin))
-end
-
--- ==================== ESP ====================
-local function hideESP(v)
-    for _, obj in pairs(v) do
-        obj.Visible = false
+bar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        sliderDragging = true
+        updateFovFromX(input.Position.X)
     end
+end)
+
+-- --- title-bar drag to move the panel ---
+local menuDragging, dragStart, panelStart = false, nil, nil
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        menuDragging = true
+        dragStart = input.Position
+        panelStart = menu.Position
+    end
+end)
+
+uis.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+        if sliderDragging then
+            updateFovFromX(input.Position.X)
+        end
+        if menuDragging then
+            local d = input.Position - dragStart
+            menu.Position = UDim2.new(
+                panelStart.X.Scale, panelStart.X.Offset + d.X,
+                panelStart.Y.Scale, panelStart.Y.Offset + d.Y)
+        end
+    end
+end)
+
+-- ==================== ESP (ScreenGui Instances) ====================
+local esp = {}
+
+local function hideESP(v)
+    v.box.Visible = false
+    v.name.Visible = false
+    v.distance.Visible = false
+    v.healthOutline.Visible = false
+    v.headDot.Visible = false
+    v.tracer.Visible = false
 end
 
 local function createESP(player)
     if player == plr then return end
     if esp[player] then return end
 
+    local box = Instance.new("Frame")
+    box.BackgroundTransparency = 1
+    box.BorderSizePixel = 0
+    box.Parent = espFolder
+    local boxStroke = Instance.new("UIStroke")
+    boxStroke.Color = Color3.fromRGB(255, 0, 0)
+    boxStroke.Thickness = 1.5
+    boxStroke.Parent = box
+
+    local name = Instance.new("TextLabel")
+    name.AnchorPoint = Vector2.new(0.5, 1)
+    name.BackgroundTransparency = 1
+    name.Font = Enum.Font.GothamBold
+    name.TextSize = 13
+    name.TextColor3 = Color3.fromRGB(255, 255, 255)
+    name.TextStrokeTransparency = 0
+    name.Size = UDim2.fromOffset(200, 14)
+    name.Parent = espFolder
+
+    local distance = Instance.new("TextLabel")
+    distance.AnchorPoint = Vector2.new(0.5, 0)
+    distance.BackgroundTransparency = 1
+    distance.Font = Enum.Font.Gotham
+    distance.TextSize = 12
+    distance.TextColor3 = Color3.fromRGB(200, 200, 200)
+    distance.TextStrokeTransparency = 0
+    distance.Size = UDim2.fromOffset(200, 14)
+    distance.Parent = espFolder
+
+    local healthOutline = Instance.new("Frame")
+    healthOutline.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    healthOutline.BorderSizePixel = 0
+    healthOutline.Parent = espFolder
+    local healthFill = Instance.new("Frame")
+    healthFill.AnchorPoint = Vector2.new(0.5, 1)
+    healthFill.Position = UDim2.new(0.5, 0, 1, 0)
+    healthFill.BorderSizePixel = 0
+    healthFill.Parent = healthOutline
+
+    local headDot = Instance.new("Frame")
+    headDot.AnchorPoint = Vector2.new(0.5, 0.5)
+    headDot.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    headDot.BorderSizePixel = 0
+    headDot.Size = UDim2.fromOffset(6, 6)
+    headDot.Parent = espFolder
+    do
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(1, 0)
+        c.Parent = headDot
+    end
+
+    local tracer = Instance.new("Frame")
+    tracer.AnchorPoint = Vector2.new(0, 0.5)
+    tracer.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    tracer.BackgroundTransparency = 0.3
+    tracer.BorderSizePixel = 0
+    tracer.Parent = espFolder
+
     esp[player] = {
-        Box = Drawing.new("Square"), BoxOutline = Drawing.new("Square"),
-        Name = Drawing.new("Text"), Distance = Drawing.new("Text"),
-        HealthBar = Drawing.new("Square"), HealthBarOutline = Drawing.new("Square"),
-        Tracer = Drawing.new("Line"), HeadDot = Drawing.new("Circle")
+        box = box, name = name, distance = distance,
+        healthOutline = healthOutline, healthFill = healthFill,
+        headDot = headDot, tracer = tracer,
     }
-
-    local v = esp[player]
-    v.Box.Thickness = 1.5; v.Box.Filled = false; v.Box.Color = Color3.fromRGB(255, 0, 0); v.Box.Transparency = 1
-    v.BoxOutline.Thickness = 3; v.BoxOutline.Filled = false; v.BoxOutline.Color = Color3.fromRGB(0, 0, 0); v.BoxOutline.Transparency = 1
-
-    v.Name.Size = 14; v.Name.Center = true; v.Name.Outline = true; v.Name.Color = Color3.fromRGB(255, 255, 255)
-    v.Distance.Size = 13; v.Distance.Center = true; v.Distance.Outline = true; v.Distance.Color = Color3.fromRGB(200, 200, 200)
-
-    v.HealthBar.Filled = true; v.HealthBar.Transparency = 1
-    v.HealthBarOutline.Filled = true; v.HealthBarOutline.Color = Color3.fromRGB(0, 0, 0); v.HealthBarOutline.Transparency = 1
-
-    v.Tracer.Thickness = 1.5; v.Tracer.Color = Color3.fromRGB(255, 0, 0); v.Tracer.Transparency = 0.7
-    v.HeadDot.Radius = 2.5; v.HeadDot.Color = Color3.fromRGB(255, 0, 0); v.HeadDot.Filled = true
-
-    hideESP(v)
+    hideESP(esp[player])
 end
 
 for _, p in pairs(Players:GetPlayers()) do createESP(p) end
 Players.PlayerAdded:Connect(createESP)
 
 Players.PlayerRemoving:Connect(function(player)
-    if esp[player] then
-        for _, obj in pairs(esp[player]) do obj:Remove() end
+    local v = esp[player]
+    if v then
+        for _, obj in pairs(v) do
+            if typeof(obj) == "Instance" then obj:Destroy() end
+        end
         esp[player] = nil
     end
 end)
@@ -198,43 +312,33 @@ end
 
 -- ==================== INPUT ====================
 uis.InputBegan:Connect(function(input, gpe)
-    -- INSERT toggles the FOV panel even when the game is capturing input
     if input.KeyCode == Enum.KeyCode.Insert then
-        setUIVisible(not UI_VISIBLE)
+        menu.Visible = not menu.Visible
         return
     end
     if gpe then return end
-
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
         rightHeld = true
-    elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
-        if UI_VISIBLE then
-            local m = uis:GetMouseLocation()
-            if pointInBar(m.X, m.Y) then
-                dragging = true
-                updateFovFromMouse()
-            end
-        end
     end
 end)
 
 uis.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
         rightHeld = false
-    elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
-end)
-
-uis.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        updateFovFromMouse()
+    elseif input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        sliderDragging = false
+        menuDragging = false
     end
 end)
 
 -- ==================== MAIN RENDER LOOP ====================
 rs.RenderStepped:Connect(function()
-    fovCircle.Position = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
+    local vp = cam.ViewportSize
+
+    -- FOV ring follows screen centre, sized to the FOV radius
+    fovRing.Position = UDim2.fromOffset(vp.X / 2, vp.Y / 2)
+    fovRing.Size = UDim2.fromOffset(fovRadius * 2, fovRadius * 2)
 
     -- Aimbot: aim only while right-click is held
     if rightHeld then
@@ -270,41 +374,47 @@ rs.RenderStepped:Connect(function()
                     local height = math.abs(headPos.Y - legPos.Y)
                     local width = height * 0.55
                     local topY = math.min(headPos.Y, legPos.Y)
+                    local bottomY = topY + height
+                    local leftX = rootPos.X - width / 2
                     local distance = math.floor((cam.CFrame.Position - root.Position).Magnitude)
 
-                    v.Box.Size = Vector2.new(width, height)
-                    v.Box.Position = Vector2.new(rootPos.X - width / 2, topY)
-                    v.Box.Visible = showBoxes
+                    -- Box
+                    v.box.Position = UDim2.fromOffset(leftX, topY)
+                    v.box.Size = UDim2.fromOffset(width, height)
+                    v.box.Visible = showBoxes
 
-                    v.BoxOutline.Size = v.Box.Size
-                    v.BoxOutline.Position = v.Box.Position
-                    v.BoxOutline.Visible = showBoxes
+                    -- Name (above box) + Distance (below box)
+                    v.name.Text = player.Name
+                    v.name.Position = UDim2.fromOffset(rootPos.X, topY - 4)
+                    v.name.Visible = showNames
 
-                    v.Name.Text = player.Name
-                    v.Name.Position = Vector2.new(rootPos.X, topY - 18)
-                    v.Name.Visible = showNames
+                    v.distance.Text = distance .. "m"
+                    v.distance.Position = UDim2.fromOffset(rootPos.X, bottomY + 2)
+                    v.distance.Visible = showNames
 
-                    v.Distance.Text = distance .. "m"
-                    v.Distance.Position = Vector2.new(rootPos.X, topY - 5)
-                    v.Distance.Visible = showNames
-
+                    -- Health bar (left of box)
                     local maxHp = humanoid.MaxHealth
                     local hpPct = (maxHp > 0) and math.clamp(humanoid.Health / maxHp, 0, 1) or 0
-                    v.HealthBar.Size = Vector2.new(4, height * hpPct)
-                    v.HealthBar.Position = Vector2.new(rootPos.X - width / 2 - 8, topY + height * (1 - hpPct))
-                    v.HealthBar.Color = Color3.fromRGB(math.floor(255 * (1 - hpPct)), math.floor(255 * hpPct), 0)
-                    v.HealthBar.Visible = showHealth
+                    v.healthOutline.Position = UDim2.fromOffset(leftX - 8, topY)
+                    v.healthOutline.Size = UDim2.fromOffset(4, height)
+                    v.healthOutline.Visible = showHealth
+                    v.healthFill.Size = UDim2.new(1, 0, hpPct, 0)
+                    v.healthFill.BackgroundColor3 = Color3.fromRGB(
+                        math.floor(255 * (1 - hpPct)), math.floor(255 * hpPct), 0)
 
-                    v.HealthBarOutline.Size = Vector2.new(6, height)
-                    v.HealthBarOutline.Position = Vector2.new(rootPos.X - width / 2 - 9, topY)
-                    v.HealthBarOutline.Visible = showHealth
+                    -- Head dot
+                    v.headDot.Position = UDim2.fromOffset(headPos.X, headPos.Y)
+                    v.headDot.Visible = showHeadDots
 
-                    v.HeadDot.Position = Vector2.new(headPos.X, headPos.Y)
-                    v.HeadDot.Visible = showHeadDots
-
-                    v.Tracer.From = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
-                    v.Tracer.To = Vector2.new(rootPos.X, topY + height)
-                    v.Tracer.Visible = showTracers
+                    -- Tracer (bottom centre of screen -> box bottom centre)
+                    local from = Vector2.new(vp.X / 2, vp.Y)
+                    local to = Vector2.new(rootPos.X, bottomY)
+                    local diff = to - from
+                    local len = diff.Magnitude
+                    v.tracer.Position = UDim2.fromOffset(from.X, from.Y)
+                    v.tracer.Size = UDim2.fromOffset(len, 1.5)
+                    v.tracer.Rotation = math.deg(math.atan2(diff.Y, diff.X))
+                    v.tracer.Visible = showTracers
                 end
             end
 
@@ -315,4 +425,4 @@ rs.RenderStepped:Connect(function()
     end
 end)
 
-print("Advanced Aimbot + ESP loaded! Hold RIGHT CLICK to aim. Press INSERT to show/hide the FOV panel.")
+print("Advanced Aimbot + ESP (ScreenGui) loaded! Hold RIGHT CLICK to aim. Press INSERT for the FOV panel.")
