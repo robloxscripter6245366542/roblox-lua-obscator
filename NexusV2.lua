@@ -4006,9 +4006,11 @@ t9.value148 = t1.value2;
     if t9.value1 then
         local UIScale = Instance.new("UIScale")
         local v_vp = (t2.value9 and t2.value9.ViewportSize) or Vector2.new(800, 600)
+        local v_isTablet = math.min(v_vp.X, v_vp.Y) >= 700 -- iPad / large tablets
+        local v_maxScale = v_isTablet and 1.35 or 1
         local v_fit = math.min((v_vp.X * 0.9) / 600, (v_vp.Y * 0.9) / 360)
 
-        UIScale.Scale = math.clamp(v_fit, 0.6, 1)
+        UIScale.Scale = math.clamp(v_fit, 0.6, v_maxScale)
         UIScale.Parent = t24.value6
 
         local value22 = t9.value22
