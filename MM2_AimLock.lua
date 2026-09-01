@@ -5,8 +5,9 @@
 ============================================================================
  A small, standalone aim tool (no UI library). Three things only:
 
-  1. FOV CIRCLE — a circle drawn at your crosshair. Only targets inside it
-     are eligible. (Needs an executor with Drawing; degrades to no circle.)
+  1. FOV CIRCLE — a circle at your crosshair, built from a rounded Frame (no
+     Drawing library needed, works on any executor). Only targets inside it
+     are eligible.
 
   2. AIM LOCK — hold AIM_KEY to smoothly lock your camera onto the closest
      target that is:
@@ -50,18 +51,42 @@ local camera = workspace.CurrentCamera
 local aiming   = false
 local lockedTo = nil
 
--- ── FOV circle ────────────────────────────────────────────────────────────
-local fovCircle
+-- ── FOV circle (built from Frames — works on any executor, no Drawing) ─────
+-- A square Frame with a full-corner radius renders as a circle; a UIStroke
+-- gives the outline. Centered on the crosshair; radius follows CONFIG.FOV.
+local fovFrame
 pcall(function()
-    if Drawing then
-        fovCircle = Drawing.new("Circle")
-        fovCircle.Thickness = 1.5
-        fovCircle.NumSides  = 64
-        fovCircle.Filled    = false
-        fovCircle.Color     = Color3.fromRGB(255, 255, 255)
-        fovCircle.Transparency = 1
-        fovCircle.Visible   = false
-    end
+    local host = game:GetService("CoreGui")
+    pcall(function() if gethui then host = gethui() end end)
+    if not host then host = lp:WaitForChild("PlayerGui") end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "AimLockFOV"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = false          -- so scale-center matches the viewport centre
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+    gui.Parent = host
+
+    fovFrame = Instance.new("Frame")
+    fovFrame.Name = "Circle"
+    fovFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    fovFrame.Position = UDim2.fromScale(0.5, 0.5)
+    fovFrame.Size = UDim2.fromOffset(CONFIG.FOV * 2, CONFIG.FOV * 2)
+    fovFrame.BackgroundTransparency = 1
+    fovFrame.BorderSizePixel = 0
+    fovFrame.Visible = false
+    fovFrame.Parent = gui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)   -- full radius on a square = circle
+    corner.Parent = fovFrame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1.5
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Transparency = 0.1
+    stroke.Parent = fovFrame
 end)
 
 -- ── Helpers ─────────────────────────────────────────────────────────────
@@ -116,10 +141,9 @@ end
 
 -- ── Aim-lock loop ─────────────────────────────────────────────────────────
 RunService.RenderStepped:Connect(function(dt)
-    if fovCircle then
-        fovCircle.Radius   = CONFIG.FOV
-        fovCircle.Position  = camera.ViewportSize / 2
-        fovCircle.Visible  = CONFIG.ShowFOV
+    if fovFrame then
+        fovFrame.Size    = UDim2.fromOffset(CONFIG.FOV * 2, CONFIG.FOV * 2)
+        fovFrame.Visible = CONFIG.ShowFOV
     end
     if not aiming then lockedTo = nil return end
 
