@@ -5881,7 +5881,7 @@ t9.value148 = t1.value2;
             end
         end)
         t2.value3.InputChanged:Connect(function(input)
-            if u1035 and input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            if u1035 and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
                 v1036(p154 + math.clamp((input.Position.X - Frame13.AbsolutePosition.X) / Frame13.AbsoluteSize.X, 0, 1) * (p155 - p154))
             end
         end)
@@ -7569,7 +7569,8 @@ t9.value148 = t1.value2;
             end
         end))
         table.insert(t24.value75, t2.value3.InputEnded:Connect(function(input)
-            if not (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                s2 = nil
             end
         end))
         local TextButton4 = Instance.new("TextButton")
