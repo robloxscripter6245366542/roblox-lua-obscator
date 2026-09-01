@@ -4086,7 +4086,9 @@ t9.value148 = t1.value2;
     t24.value5.BackgroundTransparency = 1
     t24.value5.BorderSizePixel = 0
     t24.value5.ZIndex = 1
-    t24.value5.Active = true
+    -- Visual backdrop only: must NOT be Active, or it sinks all touch/click
+    -- across the whole screen and blocks movement/world input while the menu is open.
+    t24.value5.Active = false
     t24.value5.Parent = t24.value1
     t9.value22.Dim = t24.value5
     t24.value6 = Instance.new("Frame")
