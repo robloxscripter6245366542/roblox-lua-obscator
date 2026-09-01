@@ -4296,6 +4296,106 @@ t9.value148 = t1.value2;
 
     t23.value3 = "Parent"
     value18_11[t23.value3] = t24.value11
+
+    -- Nexus logo: vector node-network mark + wordmark, centered in the title bar
+    do
+        t24.value18.Visible = false -- replaced by the logo lockup below
+
+        local lockup = Instance.new("Frame")
+        lockup.Name = "NexusLogo"
+        lockup.AnchorPoint = Vector2.new(0.5, 0.5)
+        lockup.Position = UDim2.new(0.5, 0, 0.5, 0)
+        lockup.Size = UDim2.new(0, 0, 1, 0)
+        lockup.AutomaticSize = Enum.AutomaticSize.X
+        lockup.BackgroundTransparency = 1
+        lockup.ZIndex = 12
+        lockup.Parent = t24.value11
+
+        local row = Instance.new("UIListLayout")
+        row.FillDirection = Enum.FillDirection.Horizontal
+        row.VerticalAlignment = Enum.VerticalAlignment.Center
+        row.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        row.SortOrder = Enum.SortOrder.LayoutOrder
+        row.Padding = UDim.new(0, 7)
+        row.Parent = lockup
+
+        local MARK = 22
+        local mark = Instance.new("Frame")
+
+        mark.Name = "Mark"
+        mark.Size = UDim2.fromOffset(MARK, MARK)
+        mark.BackgroundTransparency = 1
+        mark.LayoutOrder = 1
+        mark.ZIndex = 12
+        mark.Parent = lockup
+
+        local accent = t9.value9.Accent or Color3.fromRGB(90, 160, 255)
+        local center = Vector2.new(MARK / 2, MARK / 2)
+        local nodes = {
+            Vector2.new(MARK * 0.5, MARK * 0.14),
+            Vector2.new(MARK * 0.16, MARK * 0.82),
+            Vector2.new(MARK * 0.84, MARK * 0.82)
+        }
+
+        local function addLine(a, b)
+            local delta = b - a
+            local mid = (a + b) / 2
+            local seg = Instance.new("Frame")
+
+            seg.AnchorPoint = Vector2.new(0.5, 0.5)
+            seg.Size = UDim2.fromOffset(delta.Magnitude, 2)
+            seg.Position = UDim2.fromOffset(mid.X, mid.Y)
+            seg.Rotation = math.deg(math.atan2(delta.Y, delta.X))
+            seg.BackgroundColor3 = accent
+            seg.BackgroundTransparency = 0.4
+            seg.BorderSizePixel = 0
+            seg.ZIndex = 12
+            seg.Parent = mark
+            Instance.new("UICorner", seg).CornerRadius = UDim.new(1, 0)
+            -- track the theme so the logo recolors when the accent changes
+            table.insert(t9.value17, { obj = seg, prop = "BackgroundColor3", key = "Accent" })
+        end
+
+        local function addDot(p, radius, key)
+            local dot = Instance.new("Frame")
+
+            dot.AnchorPoint = Vector2.new(0.5, 0.5)
+            dot.Size = UDim2.fromOffset(radius * 2, radius * 2)
+            dot.Position = UDim2.fromOffset(p.X, p.Y)
+            dot.BackgroundColor3 = key == "Accent" and accent or t9.value9[key]
+            dot.BorderSizePixel = 0
+            dot.ZIndex = 13
+            dot.Parent = mark
+            Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+            table.insert(t9.value17, { obj = dot, prop = "BackgroundColor3", key = key })
+        end
+
+        for _, n in ipairs(nodes) do
+            addLine(center, n)
+        end
+
+        for _, n in ipairs(nodes) do
+            addDot(n, 2.6, "Accent")
+        end
+
+        addDot(center, 3.6, "Text")
+
+        local word = Instance.new("TextLabel")
+
+        word.Name = "Word"
+        word.AutomaticSize = Enum.AutomaticSize.X
+        word.Size = UDim2.new(0, 0, 1, 0)
+        word.BackgroundTransparency = 1
+        word.Text = "NEXUS"
+        word.TextColor3 = t9.value9.Text
+        word.Font = Enum.Font.GothamBold
+        word.TextSize = 15
+        word.LayoutOrder = 2
+        word.ZIndex = 12
+        word.Parent = lockup
+        table.insert(t9.value17, { obj = word, prop = "TextColor3", key = "Text" })
+    end
+
     t24.value19 = false
     t24.value20 = t9.value1 and UDim2.new(0, 600, 0, 360) or UDim2.new(0, 980, 0, 600)
     v650.MouseButton1Click:Connect(function()
