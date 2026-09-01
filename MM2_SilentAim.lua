@@ -31,7 +31,8 @@ local camera = workspace.CurrentCamera
 local CONFIG_FILE = "MM2_SilentAim.json"
 local Config = {
     Enabled        = true,
-    FOV            = 150,       -- px; nearest player to your cursor within this
+    FOV            = 150,       -- px; nearest player to your cursor within this (also the circle size)
+    ShowFOV        = true,      -- draw the FOV circle
     TargetPart     = "Head",
     PreferMurderer = true,
     SkipShield     = true,      -- never grab spawn-shielded (ForceField) players
@@ -116,6 +117,62 @@ local function nearestToMouse()
     return best
 end
 
+-- ── FOV circle (Frames — follows the cursor, sized live by the slider) ─────
+-- A square Frame + full UICorner = a circle; UIStroke draws the ring. It sits
+-- on the cursor (targeting is measured from the cursor) and never eats clicks.
+local RunService = game:GetService("RunService")
+local fovFrame
+pcall(function()
+    local host = game:GetService("CoreGui")
+    pcall(function() if gethui then host = gethui() end end)
+    if not host then host = lp:WaitForChild("PlayerGui") end
+    -- remove a leftover circle from a previous run so they never stack
+    pcall(function()
+        local old = host:FindFirstChild("SilentAimFOV")
+        if old then old:Destroy() end
+    end)
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "SilentAimFOV"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true        -- align offsets with GetMouseLocation
+    gui.DisplayOrder = 9999
+    pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+    gui.Parent = host
+
+    fovFrame = Instance.new("Frame")
+    fovFrame.Name = "Circle"
+    fovFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    fovFrame.Size = UDim2.fromOffset(Config.FOV * 2, Config.FOV * 2)
+    fovFrame.BackgroundTransparency = 1
+    fovFrame.BorderSizePixel = 0
+    fovFrame.Active = false          -- never intercept the mouse
+    fovFrame.Visible = false
+    fovFrame.Parent = gui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = fovFrame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1.5
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Transparency = 0.1
+    stroke.Parent = fovFrame
+end)
+
+RunService.RenderStepped:Connect(function()
+    if not fovFrame then return end
+    if not (Config.ShowFOV and Config.Enabled) then
+        if fovFrame.Visible then fovFrame.Visible = false end
+        return
+    end
+    local mp = UserInputService:GetMouseLocation()
+    fovFrame.Position = UDim2.fromOffset(mp.X, mp.Y)   -- follow the cursor
+    fovFrame.Size     = UDim2.fromOffset(Config.FOV * 2, Config.FOV * 2)  -- live resize
+    fovFrame.Visible  = true
+end)
+
 -- ═══════════════════════════════════════════════════════════════════════
 --  UI  —  single WindUI panel
 -- ═══════════════════════════════════════════════════════════════════════
@@ -141,8 +198,13 @@ Tab:Toggle({
     Value = Config.Enabled,
     Callback = function(v) Config.Enabled = v queueSave() end,
 })
+Tab:Toggle({
+    Title = "Show FOV Circle", Desc = "Draw the circle on your cursor.",
+    Value = Config.ShowFOV,
+    Callback = function(v) Config.ShowFOV = v queueSave() end,
+})
 Tab:Slider({
-    Title = "FOV (px)",
+    Title = "FOV / Circle Size (px)", Desc = "Targeting radius and the circle size.",
     Value = { Min = 30, Max = 1000, Default = Config.FOV },
     Step = 10, Callback = function(v) Config.FOV = v queueSave() end,
 })
