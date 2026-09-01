@@ -67,6 +67,7 @@ local Config = {
     SilentAim      = false,
     SilentFOV      = 150,          -- px; nearest player to your cursor within this
     SilentKnife    = true,         -- also redirect FlingKnife throws
+    SilentFlick    = true,         -- flick the camera to the target for the shot, then snap back
     -- knife
     KnifeFarm      = false,
     BehindDistance = 2.5,
@@ -388,6 +389,11 @@ GunTab:Toggle({
     Value = Config.SilentKnife,
     Callback = function(v) Config.SilentKnife = v queueSave() end,
 })
+GunTab:Toggle({
+    Title = "Flick Camera", Desc = "Flick the camera to the target for the shot, then snap back.",
+    Value = Config.SilentFlick,
+    Callback = function(v) Config.SilentFlick = v queueSave() end,
+})
 
 -- install the hook once; needs executor metamethod support
 do
@@ -403,7 +409,16 @@ do
             if checkcaller then return not checkcaller() end
             return true
         end
-        local oldNamecall
+        -- flick the camera to a point for the shot, fire, then snap back
+        local function flickFire(self, pos, args)
+            local restore = camera.CFrame
+            if Config.SilentFlick then
+                camera.CFrame = CFrame.new(camera.CFrame.Position, pos)
+            end
+            local res = oldNamecall(self, table.unpack(args))
+            if Config.SilentFlick then camera.CFrame = restore end
+            return res
+        end
         oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             local okm, method = pcall(getnamecallmethod)
             if okm and method == "FireServer" and typeof(self) == "Instance" and Config.SilentAim then
@@ -414,7 +429,7 @@ do
                     if part then
                         local args = { ... }
                         args[1] = part.Position          -- bend the reported hit position
-                        return oldNamecall(self, table.unpack(args))
+                        return flickFire(self, part.Position, args)
                     end
                 elseif nm == "FlingKnife" and Config.SilentKnife and fromGame() then
                     local t = nearestToMouse(Config.SilentFOV)
@@ -422,7 +437,7 @@ do
                     if part then
                         local args = { ... }
                         args[1] = CFrame.new(part.Position)   -- first FlingKnife arg is a CFrame
-                        return oldNamecall(self, table.unpack(args))
+                        return flickFire(self, part.Position, args)
                     end
                 end
             end
