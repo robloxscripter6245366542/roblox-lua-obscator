@@ -19,8 +19,10 @@
   GUN
    * Auto Shoot Aura — any player within range of you (front OR back) is shot
      with 100% accuracy: fires ShootStart at their exact part position.
-   * Silent aim / hold-to-fire, target part, prefer murderer, match gating,
-     auto-equip gun.
+   * Silent Aim — a __namecall hook that bends YOUR own shots (and knife
+     throws) to the nearest target near your cursor, so a manual click always
+     lands. Needs an executor with hookmetamethod (falls back gracefully).
+   * hold-to-fire, target part, prefer murderer, match gating, auto-equip gun.
   KNIFE
    * Auto Farm — teleport behind the nearest player and slash; switches on
      kill; skips ForceField players; auto-equip knife.
@@ -61,6 +63,10 @@ local Config = {
     PreferMurderer = true,
     GunMatchGated  = true,
     AutoEquipGun   = true,
+    -- silent aim (redirect your OWN shots via a __namecall hook)
+    SilentAim      = false,
+    SilentFOV      = 150,          -- px; nearest player to your cursor within this
+    SilentKnife    = true,         -- also redirect FlingKnife throws
     -- knife
     KnifeFarm      = false,
     BehindDistance = 2.5,
@@ -340,6 +346,90 @@ track(RunService.Heartbeat:Connect(function()
         end
     end)
 end))
+
+-- ── Silent aim (redirect YOUR own shots via a __namecall hook) ────────────
+GunTab:Section({ Title = "Silent Aim" })
+
+-- nearest player to your cursor within a screen-space FOV (px); prefers murderer
+local function nearestToMouse(fovPx)
+    local mp = UserInputService:GetMouseLocation()
+    local mouse = Vector2.new(mp.X, mp.Y)
+    local best, bestScore
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp and p.Character and alive(p.Character) and not shielded(p.Character) then
+            local part = partOf(p.Character, Config.ShootPart)
+            if part then
+                local sp = camera:WorldToViewportPoint(part.Position)
+                if sp.Z > 0 then
+                    local d = (Vector2.new(sp.X, sp.Y) - mouse).Magnitude
+                    if d <= fovPx then
+                        local score = d - (Config.PreferMurderer and isMurderer(p) and 100000 or 0)
+                        if not bestScore or score < bestScore then best, bestScore = p, score end
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+GunTab:Toggle({
+    Title = "Silent Aim", Desc = "Redirect YOUR own shots to the nearest target near your cursor — click anywhere, it hits.",
+    Value = Config.SilentAim,
+    Callback = function(v) Config.SilentAim = v queueSave() end,
+})
+GunTab:Slider({
+    Title = "Silent Aim FOV (px)",
+    Value = { Min = 30, Max = 1000, Default = Config.SilentFOV },
+    Step = 10, Callback = function(v) Config.SilentFOV = v queueSave() end,
+})
+GunTab:Toggle({
+    Title = "Silent Knife Throws", Desc = "Also bend FlingKnife throws to the target.",
+    Value = Config.SilentKnife,
+    Callback = function(v) Config.SilentKnife = v queueSave() end,
+})
+
+-- install the hook once; needs executor metamethod support
+do
+    local hasHook = (hookmetamethod ~= nil) and (getnamecallmethod ~= nil) and (newcclosure ~= nil)
+    if not hasHook then
+        WindUI:Notify({
+            Title = "Silent Aim", Icon = "alert-triangle", Duration = 7,
+            Content = "Your executor lacks hookmetamethod — Silent Aim unavailable (the aura still works).",
+        })
+    else
+        local fromGame = function()
+            -- true when the GAME (your own gun/knife script) made the call, not us
+            if checkcaller then return not checkcaller() end
+            return true
+        end
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+            local okm, method = pcall(getnamecallmethod)
+            if okm and method == "FireServer" and typeof(self) == "Instance" and Config.SilentAim then
+                local nm = self.Name
+                if nm == "ShootStart" and fromGame() then
+                    local t = nearestToMouse(Config.SilentFOV)
+                    local part = t and partOf(t.Character, Config.ShootPart)
+                    if part then
+                        local args = { ... }
+                        args[1] = part.Position          -- bend the reported hit position
+                        return oldNamecall(self, table.unpack(args))
+                    end
+                elseif nm == "FlingKnife" and Config.SilentKnife and fromGame() then
+                    local t = nearestToMouse(Config.SilentFOV)
+                    local part = t and partOf(t.Character, "UpperTorso")
+                    if part then
+                        local args = { ... }
+                        args[1] = CFrame.new(part.Position)   -- first FlingKnife arg is a CFrame
+                        return oldNamecall(self, table.unpack(args))
+                    end
+                end
+            end
+            return oldNamecall(self, ...)
+        end))
+    end
+end
 
 -- ─────────────────────────────────────────────────────────────────────────
 --  KNIFE  —  teleport-behind auto-farm
