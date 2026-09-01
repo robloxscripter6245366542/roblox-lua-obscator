@@ -2,7 +2,7 @@
 -- Advanced Aimbot + ESP  (100% ScreenGui — no Drawing API)
 -- Built for executors that don't support the Drawing API (e.g. Delta).
 --
---   * Hold RIGHT CLICK to aim.
+--   * Hold RIGHT CLICK (PC) or the on-screen AIM button (mobile) to aim.
 --   * Press INSERT to show/hide the FOV panel.
 --   * The only UI control is the Aimbot FOV size (drag the slider).
 --
@@ -18,7 +18,8 @@ local plr = Players.LocalPlayer
 local cam = workspace.CurrentCamera
 
 -- ==================== STATE ====================
-local rightHeld = false
+local rightHeld = false    -- PC: right mouse button held
+local aimButtonHeld = false -- mobile: on-screen AIM button held
 local fovMin, fovMax = 30, 600
 local fovRadius = 120
 
@@ -188,6 +189,48 @@ uis.InputChanged:Connect(function(input)
     end
 end)
 
+-- ==================== MOBILE AIM BUTTON ====================
+-- Mobile has no right-click, so provide an on-screen hold-to-aim button.
+local aimBtn = Instance.new("TextButton")
+aimBtn.Name = "AimButton"
+aimBtn.AnchorPoint = Vector2.new(1, 1)
+aimBtn.Position = UDim2.new(1, -30, 1, -120)
+aimBtn.Size = UDim2.fromOffset(90, 90)
+aimBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+aimBtn.BackgroundTransparency = 0.35
+aimBtn.AutoButtonColor = false
+aimBtn.Text = "AIM"
+aimBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+aimBtn.Font = Enum.Font.GothamBold
+aimBtn.TextSize = 20
+aimBtn.Parent = gui
+do
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(1, 0)
+    c.Parent = aimBtn
+    local s = Instance.new("UIStroke")
+    s.Color = Color3.fromRGB(0, 170, 255)
+    s.Thickness = 2
+    s.Parent = aimBtn
+end
+
+local function setAimButton(state)
+    aimButtonHeld = state
+    aimBtn.BackgroundColor3 = state and Color3.fromRGB(0, 120, 60) or Color3.fromRGB(35, 35, 50)
+end
+aimBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        setAimButton(true)
+    end
+end)
+aimBtn.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        setAimButton(false)
+    end
+end)
+
 -- ==================== ESP (ScreenGui Instances) ====================
 local esp = {}
 
@@ -329,6 +372,8 @@ uis.InputEnded:Connect(function(input)
         or input.UserInputType == Enum.UserInputType.Touch then
         sliderDragging = false
         menuDragging = false
+        -- release aim if the finger/cursor lifted anywhere (e.g. slid off the button)
+        if aimButtonHeld then setAimButton(false) end
     end
 end)
 
@@ -340,8 +385,8 @@ rs.RenderStepped:Connect(function()
     fovRing.Position = UDim2.fromOffset(vp.X / 2, vp.Y / 2)
     fovRing.Size = UDim2.fromOffset(fovRadius * 2, fovRadius * 2)
 
-    -- Aimbot: aim only while right-click is held
-    if rightHeld then
+    -- Aimbot: aim while right-click (PC) or the AIM button (mobile) is held
+    if rightHeld or aimButtonHeld then
         local target = getClosest()
         if target then
             local camPos = cam.CFrame.Position
@@ -425,4 +470,4 @@ rs.RenderStepped:Connect(function()
     end
 end)
 
-print("Advanced Aimbot + ESP (ScreenGui) loaded! Hold RIGHT CLICK to aim. Press INSERT for the FOV panel.")
+print("Advanced Aimbot + ESP (ScreenGui) loaded! Hold RIGHT CLICK or the AIM button to aim. Press INSERT for the FOV panel.")
