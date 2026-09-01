@@ -4352,19 +4352,22 @@ t9.value148 = t1.value2;
             seg.ZIndex = 12
             seg.Parent = mark
             Instance.new("UICorner", seg).CornerRadius = UDim.new(1, 0)
+            -- track the theme so the logo recolors when the accent changes
+            table.insert(t9.value17, { obj = seg, prop = "BackgroundColor3", key = "Accent" })
         end
 
-        local function addDot(p, radius, col)
+        local function addDot(p, radius, key)
             local dot = Instance.new("Frame")
 
             dot.AnchorPoint = Vector2.new(0.5, 0.5)
             dot.Size = UDim2.fromOffset(radius * 2, radius * 2)
             dot.Position = UDim2.fromOffset(p.X, p.Y)
-            dot.BackgroundColor3 = col
+            dot.BackgroundColor3 = key == "Accent" and accent or t9.value9[key]
             dot.BorderSizePixel = 0
             dot.ZIndex = 13
             dot.Parent = mark
             Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+            table.insert(t9.value17, { obj = dot, prop = "BackgroundColor3", key = key })
         end
 
         for _, n in ipairs(nodes) do
@@ -4372,10 +4375,10 @@ t9.value148 = t1.value2;
         end
 
         for _, n in ipairs(nodes) do
-            addDot(n, 2.6, accent)
+            addDot(n, 2.6, "Accent")
         end
 
-        addDot(center, 3.6, Color3.fromRGB(255, 255, 255))
+        addDot(center, 3.6, "Text")
 
         local word = Instance.new("TextLabel")
 
@@ -4384,12 +4387,13 @@ t9.value148 = t1.value2;
         word.Size = UDim2.new(0, 0, 1, 0)
         word.BackgroundTransparency = 1
         word.Text = "NEXUS"
-        word.TextColor3 = Color3.fromRGB(255, 255, 255)
+        word.TextColor3 = t9.value9.Text
         word.Font = Enum.Font.GothamBold
         word.TextSize = 15
         word.LayoutOrder = 2
         word.ZIndex = 12
         word.Parent = lockup
+        table.insert(t9.value17, { obj = word, prop = "TextColor3", key = "Text" })
     end
 
     t24.value19 = false
