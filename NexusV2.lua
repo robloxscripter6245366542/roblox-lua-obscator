@@ -5716,9 +5716,129 @@ t9.value148 = t1.value2;
     end
 
     t9.value22.setMenuVisible = v727
-    t23.value9.MouseButton1Click:Connect(function()
-        v727(true)
-    end)
+
+    do
+        local openBtn = t9.value22.MobileOpenBtn
+        local dragged = false
+
+        -- clean it up: a rounded button showing the Nexus mark instead of "N"
+        openBtn.Text = ""
+        openBtn.AutoButtonColor = false
+        UICorner.CornerRadius = UDim.new(1, 0)
+
+        local edge = Instance.new("UIStroke")
+
+        edge.Thickness = 1
+        edge.Transparency = 0.4
+        edge.Color = t9.value9.Stroke
+        edge.Parent = openBtn
+        table.insert(t9.value17, { obj = edge, prop = "Color", key = "Stroke" })
+
+        local MARK = t9.value1 and 26 or 24
+        local mark = Instance.new("Frame")
+
+        mark.Name = "Mark"
+        mark.AnchorPoint = Vector2.new(0.5, 0.5)
+        mark.Position = UDim2.new(0.5, 0, 0.5, 0)
+        mark.Size = UDim2.fromOffset(MARK, MARK)
+        mark.BackgroundTransparency = 1
+        mark.ZIndex = 201
+        mark.Parent = openBtn
+
+        local center = Vector2.new(MARK / 2, MARK / 2)
+        local nodes = {
+            Vector2.new(MARK * 0.5, MARK * 0.14),
+            Vector2.new(MARK * 0.16, MARK * 0.82),
+            Vector2.new(MARK * 0.84, MARK * 0.82)
+        }
+
+        local function addLine(a, b)
+            local d = b - a
+            local mid = (a + b) / 2
+            local seg = Instance.new("Frame")
+
+            seg.AnchorPoint = Vector2.new(0.5, 0.5)
+            seg.Size = UDim2.fromOffset(d.Magnitude, 2)
+            seg.Position = UDim2.fromOffset(mid.X, mid.Y)
+            seg.Rotation = math.deg(math.atan2(d.Y, d.X))
+            seg.BackgroundColor3 = t9.value9.Background
+            seg.BackgroundTransparency = 0.35
+            seg.BorderSizePixel = 0
+            seg.ZIndex = 201
+            seg.Parent = mark
+            Instance.new("UICorner", seg).CornerRadius = UDim.new(1, 0)
+            table.insert(t9.value17, { obj = seg, prop = "BackgroundColor3", key = "Background" })
+        end
+
+        local function addDot(p, radius)
+            local dot = Instance.new("Frame")
+
+            dot.AnchorPoint = Vector2.new(0.5, 0.5)
+            dot.Size = UDim2.fromOffset(radius * 2, radius * 2)
+            dot.Position = UDim2.fromOffset(p.X, p.Y)
+            dot.BackgroundColor3 = t9.value9.Background
+            dot.BorderSizePixel = 0
+            dot.ZIndex = 202
+            dot.Parent = mark
+            Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+            table.insert(t9.value17, { obj = dot, prop = "BackgroundColor3", key = "Background" })
+        end
+
+        for _, n in ipairs(nodes) do
+            addLine(center, n)
+        end
+
+        for _, n in ipairs(nodes) do
+            addDot(n, 2.6)
+        end
+
+        addDot(center, 3.6)
+
+        -- draggable: dragging repositions the button; a tap still reopens
+        local dragging = false
+        local startInput
+        local startPos
+        local moved = 0
+
+        openBtn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                dragged = false
+                moved = 0
+                startInput = input.Position
+                startPos = openBtn.Position
+
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                    end
+                end)
+            end
+        end)
+        t2.value3.InputChanged:Connect(function(input)
+            if not dragging then
+                return
+            end
+
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                local delta = input.Position - startInput
+
+                moved = math.max(moved, delta.Magnitude)
+
+                if moved > 6 then
+                    dragged = true
+                end
+
+                openBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end)
+
+        openBtn.MouseButton1Click:Connect(function()
+            if not dragged then
+                v727(true)
+            end
+        end)
+    end
     v648.MouseButton1Click:Connect(function()
         t9.value10.minimized = true
         t24.value6.Visible = false
