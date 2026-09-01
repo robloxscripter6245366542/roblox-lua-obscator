@@ -628,7 +628,7 @@ function t1.value5(p9)
         t9.value10.doorsConn = workspace.ChildAdded:Connect(function(child)
             task.wait(0.05)
 
-            if t9.value10.doors and child.Name == "CellDoors" or child.Name == "Doors" then
+            if t9.value10.doors and (child.Name == "CellDoors" or child.Name == "Doors") then
                 local ok11, result11 = pcall(function()
                     return child:Clone()
                 end)
