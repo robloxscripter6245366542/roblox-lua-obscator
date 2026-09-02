@@ -4124,6 +4124,7 @@ t9.value148 = t1.value2;
 
         t23.value1 = "UIScale"
         value22[t23.value1] = UIScale
+        value22.UIFitScale = UIScale.Scale -- remembered so maximize/reopen can restore it
     end
 
     t24.value7 = Instance.new("CanvasGroup")
@@ -4363,12 +4364,26 @@ t9.value148 = t1.value2;
 
     t24.value19 = false
     t24.value20 = t9.value1 and UDim2.new(0, 600, 0, 360) or UDim2.new(0, 980, 0, 600)
+
     v650.MouseButton1Click:Connect(function()
         t24.value19 = not t24.value19
 
+        local uiScale = t9.value22.UIScale
+
         if t24.value19 then
+            -- maximize: neutralize the compact-window UIScale so 98% x 94% is
+            -- literal screen size (otherwise the scale, up to 1.35x on tablets,
+            -- pushes the window past the screen edges and hides everything)
+            if uiScale then
+                uiScale.Scale = 1
+            end
+
             t24.value6.Size = UDim2.new(0.98, 0, 0.94, 0)
         else
+            if uiScale and t9.value22.UIFitScale then
+                uiScale.Scale = t9.value22.UIFitScale
+            end
+
             t24.value6.Size = t24.value20
         end
 
@@ -5655,6 +5670,14 @@ t9.value148 = t1.value2;
         end
 
         if p142 then
+            -- always reopen as the properly-scaled compact window, even if it
+            -- was left maximized before minimizing
+            t24.value19 = false
+
+            if t9.value22.UIScale and t9.value22.UIFitScale then
+                t9.value22.UIScale.Scale = t9.value22.UIFitScale
+            end
+
             t24.value6.AnchorPoint = Vector2.new(0.5, 0.5)
             t24.value6.Position = UDim2.new(0.5, 0, 0.5, 0)
 
