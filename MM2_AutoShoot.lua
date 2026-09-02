@@ -32,6 +32,8 @@ local Config = {
     PreferMurderer = true,
     SkipShield     = true,      -- skip spawn-shielded (ForceField) players
     VisibleOnly    = false,     -- only shoot players you can see (wall check)
+    TeamCheck      = true,      -- skip players on YOUR team (only shoot enemies)
+    MurdererOnly   = false,     -- only ever shoot the murderer (knife holder)
 }
 local function fsOk() return (writefile ~= nil) and (readfile ~= nil) and (isfile ~= nil) end
 local saveQueued = false
@@ -80,6 +82,15 @@ local function isMurderer(p)
     end
     return false
 end
+-- an enemy = not on your team. If either side has no team (Neutral/lobby, or
+-- the game tracks roles without Teams), we DON'T skip — so it never silently
+-- refuses to shoot when teams aren't set.
+local function enemy(p)
+    if not Config.TeamCheck then return true end
+    local mt = lp.Team
+    if mt == nil or p.Team == nil then return true end
+    return p.Team ~= mt
+end
 local function findGun()
     for _, container in ipairs({ lp.Character, lp:FindFirstChildOfClass("Backpack") }) do
         if container then
@@ -111,7 +122,9 @@ local function closestPlayer()
     local best, bestScore
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= lp and p.Character and alive(p.Character)
-        and not (Config.SkipShield and shielded(p.Character)) then
+        and not (Config.SkipShield and shielded(p.Character))
+        and enemy(p)
+        and (not Config.MurdererOnly or isMurderer(p)) then
             local part = partOf(p.Character)
             if part then
                 local d = (part.Position - root.Position).Magnitude
@@ -179,6 +192,16 @@ Tab:Dropdown({
     Title = "Target Part", Values = { "Head", "UpperTorso", "Torso", "HumanoidRootPart" },
     Value = Config.TargetPart,
     Callback = function(v) Config.TargetPart = v queueSave() end,
+})
+Tab:Toggle({
+    Title = "Team Check", Desc = "Only shoot enemies (skip players on your team).",
+    Value = Config.TeamCheck,
+    Callback = function(v) Config.TeamCheck = v queueSave() end,
+})
+Tab:Toggle({
+    Title = "Murderer Only", Desc = "Only shoot the murderer (knife holder).",
+    Value = Config.MurdererOnly,
+    Callback = function(v) Config.MurdererOnly = v queueSave() end,
 })
 Tab:Toggle({
     Title = "Prefer Murderer", Desc = "Shoot the knife holder first.",
