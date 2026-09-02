@@ -11,8 +11,9 @@
   The sheriff/hero gun fires  GunServer.ShootStart:FireServer(hitPos)  where
   hitPos is a Vector3 the client normally reads from your mouse. We hook
   __namecall so, when YOU fire, that position is bent to the nearest player
-  to your cursor and the camera flicks to them for the shot, then snaps back.
-  A manual click always lands.
+  to the screen centre (inside the FOV circle) and the camera flicks to them
+  for the shot, then snaps back. A manual click always lands. The FOV circle
+  is fixed at screen centre; an optional Shift Lock keeps your aim there.
 
  Requires an executor with hookmetamethod (you're on Delta — supported) and
  the sheriff/hero role for the shot to register. Choices auto-save.
@@ -38,6 +39,7 @@ local Config = {
     SkipShield     = true,      -- never grab spawn-shielded (ForceField) players
     FlickCamera    = true,      -- flick to target for the shot, then snap back
     VisibleOnly    = true,      -- wall-check: only target players you can see
+    ShiftLock      = false,     -- lock the mouse to centre + face the camera
 }
 local function fsOk() return (writefile ~= nil) and (readfile ~= nil) and (isfile ~= nil) end
 local saveQueued = false
@@ -93,10 +95,9 @@ local function canSee(targetChar, worldPos)
     return hit.Instance:IsDescendantOf(targetChar)
 end
 
--- nearest player to the cursor within the FOV (px); prefers the murderer
-local function nearestToMouse()
-    local mp = UserInputService:GetMouseLocation()
-    local mouse = Vector2.new(mp.X, mp.Y)
+-- nearest player to the screen centre (crosshair) within the FOV; prefers murderer
+local function nearestToCenter()
+    local center = camera.ViewportSize / 2
     local best, bestScore
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= lp and p.Character and alive(p.Character)
@@ -105,7 +106,7 @@ local function nearestToMouse()
             if part then
                 local sp = camera:WorldToViewportPoint(part.Position)
                 if sp.Z > 0 then
-                    local d = (Vector2.new(sp.X, sp.Y) - mouse).Magnitude
+                    local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
                     if d <= Config.FOV and canSee(p.Character, part.Position) then
                         local score = d - (Config.PreferMurderer and isMurderer(p) and 1e5 or 0)
                         if not bestScore or score < bestScore then best, bestScore = p, score end
@@ -135,7 +136,7 @@ pcall(function()
     local gui = Instance.new("ScreenGui")
     gui.Name = "SilentAimFOV"
     gui.ResetOnSpawn = false
-    gui.IgnoreGuiInset = true        -- align offsets with GetMouseLocation
+    gui.IgnoreGuiInset = false        -- scale-center == viewport centre (crosshair)
     gui.DisplayOrder = 9999
     pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
     gui.Parent = host
@@ -143,6 +144,7 @@ pcall(function()
     fovFrame = Instance.new("Frame")
     fovFrame.Name = "Circle"
     fovFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    fovFrame.Position = UDim2.fromScale(0.5, 0.5)   -- fixed at the centre of the screen
     fovFrame.Size = UDim2.fromOffset(Config.FOV * 2, Config.FOV * 2)
     fovFrame.BackgroundTransparency = 1
     fovFrame.BorderSizePixel = 0
@@ -167,10 +169,48 @@ RunService.RenderStepped:Connect(function()
         if fovFrame.Visible then fovFrame.Visible = false end
         return
     end
-    local mp = UserInputService:GetMouseLocation()
-    fovFrame.Position = UDim2.fromOffset(mp.X, mp.Y)   -- follow the cursor
-    fovFrame.Size     = UDim2.fromOffset(Config.FOV * 2, Config.FOV * 2)  -- live resize
-    fovFrame.Visible  = true
+    -- fixed at screen centre; only the size follows the slider
+    fovFrame.Size    = UDim2.fromOffset(Config.FOV * 2, Config.FOV * 2)
+    fovFrame.Visible = true
+end)
+
+-- ── Shift lock (mouse locked to centre; character faces the camera) ───────
+local shiftActive = false
+local function setShiftLock(on)
+    local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+    if on then
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+        if hum then hum.AutoRotate = false end
+        pcall(function() lp:SetAttribute("ShiftlockEnabled", true) end)
+    else
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        if hum then hum.AutoRotate = true end
+        pcall(function() lp:SetAttribute("ShiftlockEnabled", false) end)
+    end
+end
+RunService:BindToRenderStep("SA_ShiftLock", Enum.RenderPriority.Camera.Value + 1, function()
+    if not Config.ShiftLock then
+        if shiftActive then setShiftLock(false) shiftActive = false end
+        return
+    end
+    shiftActive = true
+    UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+    local char = lp.Character
+    local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    if hrp and hum then
+        hum.AutoRotate = false
+        local look = camera.CFrame.LookVector
+        local flat = Vector3.new(look.X, 0, look.Z)
+        if flat.Magnitude > 1e-4 then
+            hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat)
+        end
+    end
+end)
+-- restore game shift-lock state on respawn if the toggle is off
+lp.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    if not Config.ShiftLock then setShiftLock(false) end
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════
@@ -224,6 +264,11 @@ Tab:Toggle({
     Callback = function(v) Config.VisibleOnly = v queueSave() end,
 })
 Tab:Toggle({
+    Title = "Shift Lock", Desc = "Lock the mouse to centre and face the camera.",
+    Value = Config.ShiftLock,
+    Callback = function(v) Config.ShiftLock = v setShiftLock(v) queueSave() end,
+})
+Tab:Toggle({
     Title = "Prefer Murderer", Desc = "Prioritise the knife holder.",
     Value = Config.PreferMurderer,
     Callback = function(v) Config.PreferMurderer = v queueSave() end,
@@ -260,7 +305,7 @@ else
         local okm, method = pcall(getnamecallmethod)
         if Config.Enabled and okm and method == "FireServer"
         and typeof(self) == "Instance" and self.Name == "ShootStart" and fromGame() then
-            local t = nearestToMouse()
+            local t = nearestToCenter()
             local part = t and partOf(t.Character)
             if part then
                 local args = { ... }
