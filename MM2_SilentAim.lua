@@ -40,6 +40,8 @@ local Config = {
     FlickCamera    = true,      -- flick to target for the shot, then snap back
     VisibleOnly    = true,      -- wall-check: only target players you can see
     ShiftLock      = false,     -- lock the mouse to centre + face the camera
+    AutoShoot      = false,     -- fire at the target in the circle on its own (no click)
+    FireInterval   = 0.1,       -- seconds between auto shots (server also gates)
 }
 local function fsOk() return (writefile ~= nil) and (readfile ~= nil) and (isfile ~= nil) end
 local saveQueued = false
@@ -83,6 +85,21 @@ local function isMurderer(p)
         if t:IsA("Tool") and t:FindFirstChild("KnifeServer") then return true end
     end
     return false
+end
+-- our gun (found by GunServer.ShootStart, name varies with skins): returns
+-- the ShootStart remote and whether it's equipped (in the character).
+local function findGun()
+    for _, container in ipairs({ lp.Character, lp:FindFirstChildOfClass("Backpack") }) do
+        if container then
+            for _, t in ipairs(container:GetChildren()) do
+                if t:IsA("Tool") then
+                    local gs = t:FindFirstChild("GunServer")
+                    local sh = gs and gs:FindFirstChild("ShootStart")
+                    if sh then return sh, t.Parent == lp.Character end
+                end
+            end
+        end
+    end
 end
 local function canSee(targetChar, worldPos)
     if not Config.VisibleOnly then return true end
@@ -213,6 +230,23 @@ lp.CharacterAdded:Connect(function()
     if not Config.ShiftLock then setShiftLock(false) end
 end)
 
+-- ── Auto shoot (fire at the target in the circle on its own) ──────────────
+-- Fires the real ShootStart at the exact target position — 100% accuracy.
+-- Only works with the gun equipped (sheriff/hero). The __namecall hook skips
+-- our own calls (checkcaller), so these aren't double-redirected.
+local lastAuto = 0
+RunService.Heartbeat:Connect(function()
+    if not (Config.Enabled and Config.AutoShoot) then return end
+    if os.clock() - lastAuto < Config.FireInterval then return end
+    local shoot, equipped = findGun()
+    if not (shoot and equipped) then return end
+    local t = nearestToCenter()
+    local part = t and partOf(t.Character)
+    if not part then return end
+    lastAuto = os.clock()
+    pcall(function() shoot:FireServer(part.Position) end)
+end)
+
 -- ═══════════════════════════════════════════════════════════════════════
 --  UI  —  single WindUI panel
 -- ═══════════════════════════════════════════════════════════════════════
@@ -234,12 +268,22 @@ local Tab = Window:Tab({ Title = "Silent Aim", Icon = "crosshair" })
 Tab:Section({ Title = "Gun" })
 
 Tab:Toggle({
-    Title = "Silent Aim", Desc = "Bend your own gun shots to the target near your cursor.",
+    Title = "Silent Aim", Desc = "Bend your own gun shots to the target (fire manually).",
     Value = Config.Enabled,
     Callback = function(v) Config.Enabled = v queueSave() end,
 })
 Tab:Toggle({
-    Title = "Show FOV Circle", Desc = "Draw the circle on your cursor.",
+    Title = "Auto Shoot", Desc = "Fire at the player in the circle automatically — no clicking.",
+    Value = Config.AutoShoot,
+    Callback = function(v) Config.AutoShoot = v queueSave() end,
+})
+Tab:Slider({
+    Title = "Fire Rate (ms)", Desc = "Delay between auto shots (server also gates ammo/cooldown).",
+    Value = { Min = 30, Max = 500, Default = math.floor(Config.FireInterval * 1000) },
+    Step = 10, Callback = function(v) Config.FireInterval = v / 1000 queueSave() end,
+})
+Tab:Toggle({
+    Title = "Show FOV Circle", Desc = "Draw the circle at screen centre.",
     Value = Config.ShowFOV,
     Callback = function(v) Config.ShowFOV = v queueSave() end,
 })
