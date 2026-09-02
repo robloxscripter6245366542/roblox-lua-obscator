@@ -4124,6 +4124,7 @@ t9.value148 = t1.value2;
 
         t23.value1 = "UIScale"
         value22[t23.value1] = UIScale
+        value22.UIFitScale = UIScale.Scale -- remembered so maximize/reopen can restore it
     end
 
     t24.value7 = Instance.new("CanvasGroup")
@@ -4297,7 +4298,7 @@ t9.value148 = t1.value2;
     t23.value3 = "Parent"
     value18_11[t23.value3] = t24.value11
 
-    -- Nexus logo: vector node-network mark + wordmark, centered in the title bar
+    -- Nexus logo: bold "N" chip + wordmark, centered in the title bar
     do
         t24.value18.Visible = false -- replaced by the logo lockup below
 
@@ -4319,66 +4320,31 @@ t9.value148 = t1.value2;
         row.Padding = UDim.new(0, 7)
         row.Parent = lockup
 
-        local MARK = 22
-        local mark = Instance.new("Frame")
+        -- bold "N" chip mark (guaranteed to render clearly at small size)
+        local MARK = 24
+        local badge = Instance.new("Frame")
 
-        mark.Name = "Mark"
-        mark.Size = UDim2.fromOffset(MARK, MARK)
-        mark.BackgroundTransparency = 1
-        mark.LayoutOrder = 1
-        mark.ZIndex = 12
-        mark.Parent = lockup
+        badge.Name = "Mark"
+        badge.Size = UDim2.fromOffset(MARK, MARK)
+        badge.BackgroundColor3 = t9.value9.Accent
+        badge.BorderSizePixel = 0
+        badge.LayoutOrder = 1
+        badge.ZIndex = 12
+        badge.Parent = lockup
+        Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 7)
+        table.insert(t9.value17, { obj = badge, prop = "BackgroundColor3", key = "Accent" })
 
-        local accent = t9.value9.Accent or Color3.fromRGB(90, 160, 255)
-        local center = Vector2.new(MARK / 2, MARK / 2)
-        local nodes = {
-            Vector2.new(MARK * 0.5, MARK * 0.14),
-            Vector2.new(MARK * 0.16, MARK * 0.82),
-            Vector2.new(MARK * 0.84, MARK * 0.82)
-        }
+        local glyph = Instance.new("TextLabel")
 
-        local function addLine(a, b)
-            local delta = b - a
-            local mid = (a + b) / 2
-            local seg = Instance.new("Frame")
-
-            seg.AnchorPoint = Vector2.new(0.5, 0.5)
-            seg.Size = UDim2.fromOffset(delta.Magnitude, 2)
-            seg.Position = UDim2.fromOffset(mid.X, mid.Y)
-            seg.Rotation = math.deg(math.atan2(delta.Y, delta.X))
-            seg.BackgroundColor3 = accent
-            seg.BackgroundTransparency = 0.4
-            seg.BorderSizePixel = 0
-            seg.ZIndex = 12
-            seg.Parent = mark
-            Instance.new("UICorner", seg).CornerRadius = UDim.new(1, 0)
-            -- track the theme so the logo recolors when the accent changes
-            table.insert(t9.value17, { obj = seg, prop = "BackgroundColor3", key = "Accent" })
-        end
-
-        local function addDot(p, radius, key)
-            local dot = Instance.new("Frame")
-
-            dot.AnchorPoint = Vector2.new(0.5, 0.5)
-            dot.Size = UDim2.fromOffset(radius * 2, radius * 2)
-            dot.Position = UDim2.fromOffset(p.X, p.Y)
-            dot.BackgroundColor3 = key == "Accent" and accent or t9.value9[key]
-            dot.BorderSizePixel = 0
-            dot.ZIndex = 13
-            dot.Parent = mark
-            Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-            table.insert(t9.value17, { obj = dot, prop = "BackgroundColor3", key = key })
-        end
-
-        for _, n in ipairs(nodes) do
-            addLine(center, n)
-        end
-
-        for _, n in ipairs(nodes) do
-            addDot(n, 2.6, "Accent")
-        end
-
-        addDot(center, 3.6, "Text")
+        glyph.Size = UDim2.new(1, 0, 1, 0)
+        glyph.BackgroundTransparency = 1
+        glyph.Text = "N"
+        glyph.TextColor3 = t9.value9.Background
+        glyph.Font = Enum.Font.GothamBlack
+        glyph.TextSize = 16
+        glyph.ZIndex = 13
+        glyph.Parent = badge
+        table.insert(t9.value17, { obj = glyph, prop = "TextColor3", key = "Background" })
 
         local word = Instance.new("TextLabel")
 
@@ -4398,12 +4364,26 @@ t9.value148 = t1.value2;
 
     t24.value19 = false
     t24.value20 = t9.value1 and UDim2.new(0, 600, 0, 360) or UDim2.new(0, 980, 0, 600)
+
     v650.MouseButton1Click:Connect(function()
         t24.value19 = not t24.value19
 
+        local uiScale = t9.value22.UIScale
+
         if t24.value19 then
+            -- maximize: neutralize the compact-window UIScale so 98% x 94% is
+            -- literal screen size (otherwise the scale, up to 1.35x on tablets,
+            -- pushes the window past the screen edges and hides everything)
+            if uiScale then
+                uiScale.Scale = 1
+            end
+
             t24.value6.Size = UDim2.new(0.98, 0, 0.94, 0)
         else
+            if uiScale and t9.value22.UIFitScale then
+                uiScale.Scale = t9.value22.UIFitScale
+            end
+
             t24.value6.Size = t24.value20
         end
 
@@ -5690,6 +5670,14 @@ t9.value148 = t1.value2;
         end
 
         if p142 then
+            -- always reopen as the properly-scaled compact window, even if it
+            -- was left maximized before minimizing
+            t24.value19 = false
+
+            if t9.value22.UIScale and t9.value22.UIFitScale then
+                t9.value22.UIScale.Scale = t9.value22.UIFitScale
+            end
+
             t24.value6.AnchorPoint = Vector2.new(0.5, 0.5)
             t24.value6.Position = UDim2.new(0.5, 0, 0.5, 0)
 
@@ -5734,65 +5722,18 @@ t9.value148 = t1.value2;
         edge.Parent = openBtn
         table.insert(t9.value17, { obj = edge, prop = "Color", key = "Stroke" })
 
-        local MARK = t9.value1 and 26 or 24
-        local mark = Instance.new("Frame")
+        local glyph = Instance.new("TextLabel")
 
-        mark.Name = "Mark"
-        mark.AnchorPoint = Vector2.new(0.5, 0.5)
-        mark.Position = UDim2.new(0.5, 0, 0.5, 0)
-        mark.Size = UDim2.fromOffset(MARK, MARK)
-        mark.BackgroundTransparency = 1
-        mark.ZIndex = 201
-        mark.Parent = openBtn
-
-        local center = Vector2.new(MARK / 2, MARK / 2)
-        local nodes = {
-            Vector2.new(MARK * 0.5, MARK * 0.14),
-            Vector2.new(MARK * 0.16, MARK * 0.82),
-            Vector2.new(MARK * 0.84, MARK * 0.82)
-        }
-
-        local function addLine(a, b)
-            local d = b - a
-            local mid = (a + b) / 2
-            local seg = Instance.new("Frame")
-
-            seg.AnchorPoint = Vector2.new(0.5, 0.5)
-            seg.Size = UDim2.fromOffset(d.Magnitude, 2)
-            seg.Position = UDim2.fromOffset(mid.X, mid.Y)
-            seg.Rotation = math.deg(math.atan2(d.Y, d.X))
-            seg.BackgroundColor3 = t9.value9.Background
-            seg.BackgroundTransparency = 0.35
-            seg.BorderSizePixel = 0
-            seg.ZIndex = 201
-            seg.Parent = mark
-            Instance.new("UICorner", seg).CornerRadius = UDim.new(1, 0)
-            table.insert(t9.value17, { obj = seg, prop = "BackgroundColor3", key = "Background" })
-        end
-
-        local function addDot(p, radius)
-            local dot = Instance.new("Frame")
-
-            dot.AnchorPoint = Vector2.new(0.5, 0.5)
-            dot.Size = UDim2.fromOffset(radius * 2, radius * 2)
-            dot.Position = UDim2.fromOffset(p.X, p.Y)
-            dot.BackgroundColor3 = t9.value9.Background
-            dot.BorderSizePixel = 0
-            dot.ZIndex = 202
-            dot.Parent = mark
-            Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-            table.insert(t9.value17, { obj = dot, prop = "BackgroundColor3", key = "Background" })
-        end
-
-        for _, n in ipairs(nodes) do
-            addLine(center, n)
-        end
-
-        for _, n in ipairs(nodes) do
-            addDot(n, 2.6)
-        end
-
-        addDot(center, 3.6)
+        glyph.Name = "Mark"
+        glyph.Size = UDim2.new(1, 0, 1, 0)
+        glyph.BackgroundTransparency = 1
+        glyph.Text = "N"
+        glyph.TextColor3 = t9.value9.Background
+        glyph.Font = Enum.Font.GothamBlack
+        glyph.TextSize = t9.value1 and 26 or 24
+        glyph.ZIndex = 201
+        glyph.Parent = openBtn
+        table.insert(t9.value17, { obj = glyph, prop = "TextColor3", key = "Background" })
 
         -- draggable: dragging repositions the button; a tap still reopens
         local dragging = false
