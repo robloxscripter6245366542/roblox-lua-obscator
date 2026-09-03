@@ -1,0 +1,8 @@
+{
+    "robloxLsp.diagnostics.globals": [
+        "_ENV"
+    ],
+    "robloxLsp.diagnostics.disable": [
+        "trailing-space"
+    ]
+}

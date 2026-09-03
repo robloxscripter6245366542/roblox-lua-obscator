@@ -1,0 +1,13 @@
+bot_tmp/
+.env
+*.exe
+*.dump.lua
+out.lua
+__pycache__/
+*.pyc
+v1sexy/node_modules/
+v1sexy/out/
+v1sexy/formatted.lua
+v1sexy/inlined.lua
+v1sexy/localified.lua
+v1sexy/igbro.lua

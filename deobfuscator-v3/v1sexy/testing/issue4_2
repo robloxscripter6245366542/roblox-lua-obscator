@@ -1,0 +1,31 @@
+Y, D, y = 1, "math", 5;
+I = u[D];
+D = "random";
+v = I[D];
+D = 1;
+I = v(D, y);
+v = I;
+I = 1;
+D = I;
+I = 0;
+for I = Y, v, D do
+    F, Y = I, "shouldErr";
+    C = u[Y];
+    if C then
+        e = "valid";
+        p = u[e];
+        Y = p;
+        if p then
+            e, W = C, "arr";
+            T = u[W];
+            W = 1;
+            O = T[W];
+            T = false;
+            j = O == T;
+            p = j and u["arr"][2] == u["\x13"];
+            Y, C = p, e;
+        end;
+        C = "valid";
+        u[C] = Y;
+    end; 
+end;
