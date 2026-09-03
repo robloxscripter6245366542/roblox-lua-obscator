@@ -43,6 +43,25 @@ To run the command-line router directly:
 python3 router.py input.lua output.lua
 ```
 
+## Engines
+
+The router auto-detects which of three engines a script needs, or you can force
+one with a flag:
+
+| Engine   | Handles                                  | Force flag  |
+| -------- | ---------------------------------------- | ----------- |
+| `envlog` | generic / wearedevs — Luau env logger    | `--envlog`  |
+| `prom`   | Prometheus output                        | `--prom`    |
+| `luraph` | Luraph `LPH` / v13–v15 packed scripts    | `--luraph`  |
+
+The `luraph` engine drives the sibling **`luraph-deobf/`** toolkit (kept in the
+repo root; override its location with the `LURAPH_DIR` env var). Its static
+stages (fingerprint / peel / anti-tamper) need only Python; the dynamic stages
+additionally need a `luau` binary — build one with
+`bash ../luraph-deobf/dynamic/build_luau.sh`. For v13/v14.x it emits a
+behaviour-identical runnable unpack; for v15 (key-encrypted bytecode) it emits
+an analysis report explaining what a dynamic capture would still need.
+
 ## Docker
 
 The Dockerfile installs the Linux Lune runtime, copies the native `lute` binary, installs the Python and Node dependencies, and starts the bot with:

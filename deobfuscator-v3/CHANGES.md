@@ -38,6 +38,35 @@ traceback is now kept, giving useful output such as:
 --err failed to compile obfuscated script: syntax error: [string "script"]:1: Expected identifier when parsing expression, got '='
 ```
 
+## New: Luraph engine wired into the router
+
+The repo already had a working Luraph unpacker in `../luraph-deobf/`, but the
+unified router only knew two engines (`envlog`, `prom`). Luraph (the `LPH` /
+`Luraph Obfuscator v13–v15` family) is now a first-class third engine:
+
+- **Detection** — `router.detect()` recognises Luraph by its banner, its
+  `[=[LPH…` / `[==[LPH…` packed-stream headers, and its `LPH_*` v15 macros,
+  and routes those scripts to `luraph`. It is checked *before* Prometheus so an
+  LPH payload never falls through to the generic engine.
+- **Engine** — `router.run(engine="luraph")` drives the `luraph-deobf` staged
+  pipeline (fingerprint → peel → anti-tamper, plus the dynamic stages when a
+  `luau` binary is present) and `unpack_runnable.py`, then composes a single
+  self-describing `.lua`: the analysis report as `--` comments followed by the
+  richest recovered artifact — a behaviour-identical runnable unpack (v13/v14.x)
+  or the peeled VM source. On v15 (where the bytecode is key-encrypted at rest)
+  it emits the analysis with an honest note that a dynamic capture is needed.
+- **CLI / bot** — `router.py --luraph`, the interactive `force engine` prompt,
+  the Discord `.luraph` command, and the `.d` engine-picker all expose it.
+- The toolkit is located as a sibling `luraph-deobf/` (override with the
+  `LURAPH_DIR` env var).
+
+### Also fixed: wearedevs mis-detection
+
+wearedevs output opens with `return(function(...)` plus a string table, so it
+scored as Prometheus and auto-detect sent it (and the bundled sample) to the
+`prom` engine. `detect()` now treats the `wearedevs` banner as an unambiguous
+"not Prometheus" signal and routes it to the env logger.
+
 ## What is intentionally not committed
 
 `.gitignore` keeps these out of the repo:

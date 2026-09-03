@@ -47,10 +47,11 @@ WARN    = 0xFEE75C
 URL_RE  = re.compile(r"https?://[^\s<>()]+", re.I)
 OK_EXT  = (".lua", ".txt")
 
-ENGINE_LABEL = {"envlog": "env logger", "prom": "prometheus"}
+ENGINE_LABEL = {"envlog": "env logger", "prom": "prometheus", "luraph": "luraph"}
 
-# .l always uses the original env logger; .d prompts, .prom/.envlog force one.
-CMD_ENGINE = {PREFIX: "envlog", ".prom": "prom", ".envlog": "envlog"}
+# .l always uses the original env logger; .d prompts, .prom/.envlog/.luraph force one.
+CMD_ENGINE = {PREFIX: "envlog", ".prom": "prom", ".envlog": "envlog",
+              ".luraph": "luraph"}
 
 # many script hosts 403 the default aiohttp UA — look like a browser
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -305,6 +306,10 @@ class EnginePicker(discord.ui.View):
     async def envlog(self, interaction, button):
         await self._pick(interaction, "envlog")
 
+    @discord.ui.button(label="luraph", style=discord.ButtonStyle.secondary)
+    async def luraph(self, interaction, button):
+        await self._pick(interaction, "luraph")
+
 
 @bot.event
 async def on_message(message):
@@ -326,6 +331,7 @@ async def on_message(message):
             "`.d` — pick the deobfuscator from a menu\n"
             "`.prom` — force the Prometheus deobfuscator\n"
             "`.envlog` — force the Luau env logger\n"
+            "`.luraph` — force the Luraph (LPH / v13-v15) unpacker\n"
             "`.help` — show this message\n"
             "`.cfg` — show current env logger settings\n\n"
         )
@@ -445,8 +451,8 @@ def cli_dump():
     out = input(" output file [out.lua]: ").strip().strip('"') or "out.lua"
     out_path = pathlib.Path(out).resolve()
 
-    eng = input(" force engine (prom/envlog, blank = auto): ").strip().lower()
-    engine = eng if eng in ("prom", "envlog") else None
+    eng = input(" force engine (prom/envlog/luraph, blank = auto): ").strip().lower()
+    engine = eng if eng in ("prom", "envlog", "luraph") else None
 
     print("\nprocessing...")
     ok, reason, took, used = router.run(in_path, out_path, engine=engine,

@@ -1,8 +1,9 @@
 """Unified entry point: detects which engine a script needs and runs it.
 
-Two engines live in this repo:
+Three engines live in this repo:
   - envlog    lune + main.luau, the Luau environment logger / dumper
   - prom      node + v1sexy/main.js, the Prometheus deobfuscator
+  - luraph    python + ../luraph-deobf, the Luraph (LPH / v13-v15) unpacker
 """
 import os
 import pathlib
@@ -11,6 +12,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parent
@@ -42,10 +44,38 @@ PROM_STRTABLE = re.compile(r"local\s+\w+\s*=\s*\{\s*[\"'`\\]", re.I)
 PROM_REVERSE = re.compile(r"for\s+\w+\s*,\s*\w+\s+in\s+ipairs\s*\(\s*\{\s*\{", re.I)
 PROM_WATERMARK = re.compile(r"_WATERMARK\s*=", re.I)
 
+# Luraph tells: the version banner comment and the `[=[LPH....` / `[==[LPH....`
+# packed-stream headers. v15 also ships distinctive LPH_* macro artifacts.
+LURAPH_BANNER = re.compile(r"Luraph\s+Obfuscator", re.I)
+LURAPH_STREAM = re.compile(r"\[=*\[\s*LPH")
+LURAPH_MACRO = re.compile(
+    r"LPH_(?:ATTRIBUTES|PRECHECK|REWRITE|ENCBUF|STACKALLOC|JIT|NO_VIRTUALIZE)")
+
+
+def _is_luraph(head: str) -> bool:
+    if LURAPH_BANNER.search(head):
+        return True
+    if LURAPH_STREAM.search(head):
+        return True
+    if LURAPH_MACRO.search(head):
+        return True
+    return False
+
 
 def detect(src: str) -> str:
-    """Return 'prom' or 'envlog' for the given script source."""
+    """Return 'luraph', 'prom', or 'envlog' for the given script source."""
     head = src[:20000]
+
+    # Luraph is the most distinctive family (banner + LPH streams); check it
+    # first so an LPH payload never falls through to the generic env logger.
+    if _is_luraph(head):
+        return "luraph"
+
+    # wearedevs output opens with `return(function(...)` + a string table too,
+    # so it scores as Prometheus below — but its banner is an unambiguous tell
+    # that it is NOT Prometheus. The env logger is the right engine for it.
+    if "wearedevs" in head.lower():
+        return "envlog"
 
     # The wrapper is the one structure every Prometheus payload has. Without it
     # we can't distinguish output from ordinary Lua that merely mentions
@@ -103,6 +133,89 @@ def _spawn(cmd, cwd, timeout, env=None):
     return proc.returncode, log or ""
 
 
+def _luraph_dir():
+    """Locate the sibling luraph-deobf toolkit, or None if it isn't present."""
+    cands = []
+    env = os.environ.get("LURAPH_DIR")
+    if env:
+        cands.append(pathlib.Path(env))
+    cands += [ROOT.parent / "luraph-deobf", ROOT / "luraph-deobf"]
+    for c in cands:
+        if (c / "deobfuscate.py").is_file():
+            return c
+    return None
+
+
+def _run_luraph(in_path, out_path, timeout):
+    """Run the Luraph unpacker and compose a single self-describing .lua file.
+
+    The luraph-deobf staged pipeline writes a directory (report.md + peeled
+    artifacts), and unpack_runnable.py emits a behaviour-identical script. We
+    assemble the richest available result into out_path:
+
+        report summary (as `-- ` comments)  +  best recovered code
+
+    Best code preference: runnable unpack (v13/v14.x) > peeled VM source >
+    an analysis-only note (v15, where static peeling can fail by design).
+    Returns (ok, reason).
+    """
+    lur = _luraph_dir()
+    if lur is None:
+        return False, "luraph toolkit not found (expected sibling luraph-deobf/)"
+
+    work = pathlib.Path(tempfile.mkdtemp(prefix="luraph_"))
+    try:
+        code, log = _spawn(
+            ["python3", "deobfuscate.py", str(in_path.resolve()), "-o", str(work)],
+            cwd=lur, timeout=timeout,
+        )
+        if code is None:
+            return False, "timeout"
+
+        report = work / "report.md"
+        peeled_src = work / "peeled" / "stage_0.lua"
+        runnable = work / "unpacked_runnable.lua"
+
+        # Best-effort runnable unpack; harmless if it fails (e.g. on v15).
+        _spawn(
+            ["python3", "unpack_runnable.py", str(in_path.resolve()),
+             "-o", str(runnable)],
+            cwd=lur, timeout=timeout,
+        )
+
+        header = ""
+        if report.is_file():
+            header = "\n".join(
+                "-- " + l for l in report.read_text(errors="ignore").splitlines())
+
+        body, note = None, None
+        if runnable.is_file() and runnable.stat().st_size > 1024:
+            body = runnable.read_text(errors="ignore")
+            note = ("-- [luraph] runnable unpack: base-85 + LZMA + anti-tamper "
+                    "shell removed;\n-- the VM interpreter is now plain source "
+                    "(the program logic stays VM bytecode).")
+        elif peeled_src.is_file() and peeled_src.stat().st_size > 128:
+            body = peeled_src.read_text(errors="ignore")
+            note = "-- [luraph] recovered VM interpreter / loader source (static peel)."
+
+        if body is None:
+            # No code recovered (typically v15). Deliver the analysis report so
+            # the user still gets a self-describing artifact explaining why.
+            if not header:
+                return False, _reason(log)
+            body = ("-- (no static code recovery — see the analysis above.\n"
+                    "--  v15 key-encrypts the bytecode at rest, so a static peel\n"
+                    "--  can legitimately fail by design; a dynamic capture is\n"
+                    "--  needed. See luraph-deobf/v15.md.)")
+            note = None
+
+        parts = [p for p in (header, note, body) if p]
+        out_path.write_text("\n\n".join(parts) + "\n", encoding="utf-8", errors="ignore")
+        return True, None
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def run(in_path: pathlib.Path, out_path: pathlib.Path, engine=None,
         timeout=100, extra_args=(), lute_bin=None):
     """Run the appropriate engine. Returns (ok, reason, took, engine)."""
@@ -110,6 +223,13 @@ def run(in_path: pathlib.Path, out_path: pathlib.Path, engine=None,
     engine = engine or detect(src)
 
     started = time.perf_counter()
+
+    if engine == "luraph":
+        ok, reason = _run_luraph(in_path, out_path, timeout)
+        took = time.perf_counter() - started
+        if not ok:
+            return False, reason, took, engine
+        return True, None, took, engine
 
     if engine == "prom":
         # main.js resolves ./mods and ./reversing relative to its own dir.
@@ -154,7 +274,8 @@ def run(in_path: pathlib.Path, out_path: pathlib.Path, engine=None,
 def main():
     args = sys.argv[1:]
     if not args:
-        print("usage: python router.py <input.lua> [out.lua] [--prom|--envlog] [engine args...]")
+        print("usage: python router.py <input.lua> [out.lua] "
+              "[--prom|--envlog|--luraph] [engine args...]")
         return 1
 
     engine = None
@@ -164,6 +285,8 @@ def main():
             engine = "prom"
         elif a == "--envlog":
             engine = "envlog"
+        elif a == "--luraph":
+            engine = "luraph"
         else:
             rest.append(a)
 
