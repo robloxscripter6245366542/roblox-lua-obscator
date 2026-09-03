@@ -105,12 +105,15 @@ def main():
     ap.add_argument("--luau", default=None)
     ap.add_argument("--steps", type=int, default=12000, help="register-delta steps")
     ap.add_argument("--timeout", type=int, default=150)
+    ap.add_argument("--static", action="store_true",
+                    help="run only the static stages (0-2); skip the slow dynamic "
+                         "stages 3-5 even when a luau binary is available")
     args = ap.parse_args()
 
     sample = os.path.abspath(args.sample)
     out = os.path.abspath(args.outdir)
     os.makedirs(out, exist_ok=True)
-    luau = find_luau(args.luau)
+    luau = None if args.static else find_luau(args.luau)
     src = open(sample, "r", encoding="utf-8", errors="replace").read()
     rep = [f"# Luraph deobfuscation — staged report", f"\nsample: `{os.path.basename(sample)}`",
            f"luau: {'`'+luau+'`' if luau else '**missing** (dynamic stages skipped)'}\n"]

@@ -55,12 +55,26 @@ one with a flag:
 | `luraph` | Luraph `LPH` / v13–v15 packed scripts    | `--luraph`  |
 
 The `luraph` engine drives the sibling **`luraph-deobf/`** toolkit (kept in the
-repo root; override its location with the `LURAPH_DIR` env var). Its static
-stages (fingerprint / peel / anti-tamper) need only Python; the dynamic stages
-additionally need a `luau` binary — build one with
-`bash ../luraph-deobf/dynamic/build_luau.sh`. For v13/v14.x it emits a
-behaviour-identical runnable unpack; for v15 (key-encrypted bytecode) it emits
-an analysis report explaining what a dynamic capture would still need.
+repo root; override its location with the `LURAPH_DIR` env var). It has two
+tiers:
+
+- **fast** (default) — static fingerprint / peel / anti-tamper + a
+  behaviour-identical runnable unpack. Python only, seconds.
+- **deep** (`--deep`) — additionally runs the dynamic stages (boot the VM under
+  real Luau, build this build's opcode map, disassemble and **lift the bytecode
+  to readable register-level Lua**). Minutes, and needs a `luau` binary built
+  once:
+
+  ```bash
+  bash ../luraph-deobf/dynamic/build_luau.sh   # produces ../luraph-deobf/dynamic/luau
+  python3 router.py sample.lua out.lua --luraph --deep
+  ```
+
+For **v13/v14.x**, fast mode removes the whole packing shell and deep mode
+recovers the devirtualised logic. For **v15** (bytecode key-encrypted at rest
+via `LPH_PRECHECK`), a static peel legitimately can't finish; the engine emits
+the analysis explaining what a dynamic capture would still need. See
+`../luraph-deobf/v15.md`.
 
 ## Docker
 

@@ -146,7 +146,16 @@ def _luraph_dir():
     return None
 
 
-def _run_luraph(in_path, out_path, timeout):
+def _luraph_luau(lur):
+    """Return the luau binary the dynamic stages would use, or None."""
+    for c in (lur / "dynamic" / "luau", lur / "devirt" / "luau",
+              shutil.which("luau") or ""):
+        if c and pathlib.Path(c).exists():
+            return pathlib.Path(c)
+    return None
+
+
+def _run_luraph(in_path, out_path, timeout, deep=False):
     """Run the Luraph unpacker and compose a single self-describing .lua file.
 
     The luraph-deobf staged pipeline writes a directory (report.md + peeled
@@ -155,25 +164,39 @@ def _run_luraph(in_path, out_path, timeout):
 
         report summary (as `-- ` comments)  +  best recovered code
 
-    Best code preference: runnable unpack (v13/v14.x) > peeled VM source >
-    an analysis-only note (v15, where static peeling can fail by design).
+    Two tiers:
+      * fast (default) — static stages 0-2 + a behaviour-identical runnable
+        unpack. Seconds; safe under the bot's timeout.
+      * deep (deep=True) — additionally runs the dynamic stages 3-5 (needs a
+        luau binary: `bash luraph-deobf/dynamic/build_luau.sh`) and delivers
+        the register-level devirtualised Lua (`lifted.lua`). Minutes.
+
+    Body preference: deep -> lifted.lua; else runnable unpack (v13/v14.x) >
+    peeled VM source > an analysis-only note (v15, static peel can't finish).
     Returns (ok, reason).
     """
     lur = _luraph_dir()
     if lur is None:
         return False, "luraph toolkit not found (expected sibling luraph-deobf/)"
 
+    have_luau = _luraph_luau(lur) is not None
+    if deep and not have_luau:
+        return False, ("deep mode needs a luau binary — build it once with "
+                       "`bash luraph-deobf/dynamic/build_luau.sh`")
+
     work = pathlib.Path(tempfile.mkdtemp(prefix="luraph_"))
     try:
-        code, log = _spawn(
-            ["python3", "deobfuscate.py", str(in_path.resolve()), "-o", str(work)],
-            cwd=lur, timeout=timeout,
-        )
+        cmd = ["python3", "deobfuscate.py", str(in_path.resolve()), "-o", str(work)]
+        if not deep:
+            # Static-only keeps the fast path fast even once luau is built.
+            cmd.append("--static")
+        code, log = _spawn(cmd, cwd=lur, timeout=timeout)
         if code is None:
-            return False, "timeout"
+            return False, "timeout" + (" (deep dynamic stages)" if deep else "")
 
         report = work / "report.md"
         peeled_src = work / "peeled" / "stage_0.lua"
+        lifted = work / "lifted.lua"
         runnable = work / "unpacked_runnable.lua"
 
         # Best-effort runnable unpack; harmless if it fails (e.g. on v15).
@@ -189,11 +212,19 @@ def _run_luraph(in_path, out_path, timeout):
                 "-- " + l for l in report.read_text(errors="ignore").splitlines())
 
         body, note = None, None
-        if runnable.is_file() and runnable.stat().st_size > 1024:
+        if deep and lifted.is_file() and lifted.stat().st_size > 128:
+            body = lifted.read_text(errors="ignore")
+            note = ("-- [luraph] DEEP: register-level devirtualised Lua lifted from "
+                    "this build's\n-- VM bytecode (semantically faithful, not the "
+                    "original source). The runnable\n-- unpack and peeled artifacts "
+                    "are also available in the staged output dir.")
+        elif runnable.is_file() and runnable.stat().st_size > 1024:
             body = runnable.read_text(errors="ignore")
             note = ("-- [luraph] runnable unpack: base-85 + LZMA + anti-tamper "
                     "shell removed;\n-- the VM interpreter is now plain source "
-                    "(the program logic stays VM bytecode).")
+                    "(the program logic stays VM bytecode).\n"
+                    "-- Run the router with --deep (luau built) to lift the "
+                    "bytecode to readable Lua.")
         elif peeled_src.is_file() and peeled_src.stat().st_size > 128:
             body = peeled_src.read_text(errors="ignore")
             note = "-- [luraph] recovered VM interpreter / loader source (static peel)."
@@ -217,7 +248,7 @@ def _run_luraph(in_path, out_path, timeout):
 
 
 def run(in_path: pathlib.Path, out_path: pathlib.Path, engine=None,
-        timeout=100, extra_args=(), lute_bin=None):
+        timeout=100, extra_args=(), lute_bin=None, deep=False):
     """Run the appropriate engine. Returns (ok, reason, took, engine)."""
     src = in_path.read_text(encoding="utf-8", errors="ignore")
     engine = engine or detect(src)
@@ -225,7 +256,7 @@ def run(in_path: pathlib.Path, out_path: pathlib.Path, engine=None,
     started = time.perf_counter()
 
     if engine == "luraph":
-        ok, reason = _run_luraph(in_path, out_path, timeout)
+        ok, reason = _run_luraph(in_path, out_path, timeout, deep=deep)
         took = time.perf_counter() - started
         if not ok:
             return False, reason, took, engine
@@ -275,10 +306,11 @@ def main():
     args = sys.argv[1:]
     if not args:
         print("usage: python router.py <input.lua> [out.lua] "
-              "[--prom|--envlog|--luraph] [engine args...]")
+              "[--prom|--envlog|--luraph] [--deep] [engine args...]")
         return 1
 
     engine = None
+    deep = False
     rest = []
     for a in args:
         if a == "--prom":
@@ -287,6 +319,8 @@ def main():
             engine = "envlog"
         elif a == "--luraph":
             engine = "luraph"
+        elif a == "--deep":
+            deep = True
         else:
             rest.append(a)
 
@@ -298,7 +332,11 @@ def main():
         print(f"no such file: {in_path}")
         return 1
 
-    ok, reason, took, used = run(in_path, out_path, engine=engine, extra_args=extra)
+    # Deep Luraph devirtualisation runs the minutes-long dynamic stages, so
+    # give it plenty of headroom when the caller didn't force a shorter one.
+    timeout = 600 if deep else 100
+    ok, reason, took, used = run(in_path, out_path, engine=engine,
+                                 timeout=timeout, extra_args=extra, deep=deep)
     if ok:
         print(f"[{used}] done in {took:.2f}s -> {out_path}")
         return 0

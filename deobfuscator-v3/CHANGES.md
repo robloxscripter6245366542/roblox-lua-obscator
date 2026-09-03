@@ -60,6 +60,44 @@ unified router only knew two engines (`envlog`, `prom`). Luraph (the `LPH` /
 - The toolkit is located as a sibling `luraph-deobf/` (override with the
   `LURAPH_DIR` env var).
 
+### Deep mode — full v13/v14 devirtualization
+
+The Luraph engine now has two tiers:
+
+- **fast** (default) — static peel + a behaviour-identical runnable unpack.
+  Kept fast (~2 s) even after a `luau` binary is built, via a new `--static`
+  flag on `luraph-deobf/deobfuscate.py`.
+- **deep** (`router.py … --deep`) — runs the dynamic stages under real Luau:
+  boot the VM, build this build's opcode map (register-delta + census),
+  capture concrete constants/behaviour, disassemble, and **lift the bytecode
+  to readable register-level Lua** (`lifted.lua`). Verified on the bundled
+  `sample_sigil.lua` (Luraph v14.7): 91 protos / 9,179 instructions, 97 %
+  opcodes resolved, 1,113 concrete values inlined; the dynamic behaviour
+  capture also recovered the real `HttpGet` URL and UI config.
+
+Deep mode needs a one-time build: `bash luraph-deobf/dynamic/build_luau.sh`
+(git, cmake, a C++ compiler). The resulting `luau` binary and its `luau-src/`
+checkout are gitignored. Without it, `--deep` reports that it needs the build;
+fast mode is unaffected.
+
+### v15: state of public tooling (searched)
+
+I searched GitHub/the web for a working Luraph **v15** deobfuscator to lean on.
+Findings (Sep 2026): there is **no public tool that fully deobfuscates v15**.
+By design — v15's `LPH_PRECHECK` key-encrypts the bytecode with a runtime
+value, so full recovery requires a dynamic key capture, not a static pass.
+Closest references, none v15-complete:
+
+- `mehCake/luraph-deobfuscator-py` — active, symbolic-execution approach, but
+  its README states "NOT WORKING, CURRENTLY BEING WORKED ON"; no v15 claim.
+- `PhoenixZeng/LuraphDeobfuscator` (TheGreatSageEqualToHeaven) — established,
+  targets older versions.
+- `taherfuzan-creator/Luraph-Deobf` — explicitly "NO SUPPORT V15 LURAPH".
+
+So v15 stays at the honest analysis + partial-peel tier; the path forward is
+this repo's own `luraph-deobf/dynamic/` (runtime capture), documented in
+`luraph-deobf/v15.md`, not an off-the-shelf tool.
+
 ### Also fixed: wearedevs mis-detection
 
 wearedevs output opens with `return(function(...)` plus a string table, so it
