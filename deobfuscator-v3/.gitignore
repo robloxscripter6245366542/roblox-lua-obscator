@@ -1,0 +1,25 @@
+# Secrets — never commit the real Discord token / channel
+.env
+
+# Native Luau runtimes (download from the official releases, see README)
+lune
+lune.exe
+lute
+lute.exe
+
+# Python / Node dependency trees and caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+.cache/
+node_modules/
+
+# Runtime artifacts written by the engine
+bot_tmp/
+core/io/dumped_output.lua
+core/misc/*.txt
+out.lua
+
+# Large local sample corpus (kept out of git)
+v1sexy/samples/

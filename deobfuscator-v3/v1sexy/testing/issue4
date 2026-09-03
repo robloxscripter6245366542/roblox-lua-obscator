@@ -1,0 +1,12 @@
+Y = 1
+I = 5;
+v = I;
+for I = Y, v do
+    Y = "shouldErr";
+    C = u[Y]; --> Y: 1 use
+    if C then --> C's uses get cleared inside of here..
+        e, W = C, "arr"
+        Y, f = W, 123;
+    end; 
+end;
+return;

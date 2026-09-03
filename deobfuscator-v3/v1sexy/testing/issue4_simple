@@ -1,0 +1,12 @@
+for I = 1, 5 do
+    Y = "shouldErr";
+    C = u[Y];
+    if C then
+        e = "valid";
+        p = u[e];
+        Y = p;
+        if p then
+            e, W = C, "arr";
+        end;
+    end; 
+end;
