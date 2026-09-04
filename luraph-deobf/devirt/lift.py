@@ -9,10 +9,13 @@
 #
 #    * one `local function protoN(...)` per proto
 #    * registers as locals `e[...]` (a shared register table)
-#    * basic-block labels `::L_pc::` at every jump target
-#    * control flow rebuilt from JMP / TEST-BRANCH targets as goto / if-goto
-#      (Lua 5.4 goto; Luraph flattens control flow so this is the honest
-#      shape — a structuring pass can fold these into if/while later)
+#    * control flow rebuilt from JMP / TEST-BRANCH targets as a `pc`-keyed
+#      dispatch loop (`while true do if pc == ... then ... end end`), NOT
+#      goto/labels -- Luau has no goto statement at all (verified: it
+#      rejects `::label::` outright), so a goto-based emission never parses
+#      under the runtime this project targets. Every block sets its own
+#      successor's `pc` explicitly; a structuring pass can fold this into
+#      if/while later, but the dispatch loop is what actually runs today.
 #    * data ops emitted per the opcode map (NEWTABLE/LOADK/ADD/GETTABLE/…),
 #      each with the raw operands in a trailing comment for verification
 #    * unknown / no-write ops emitted as annotated comments, never guessed
@@ -180,24 +183,21 @@ def dst_reg(dst, a, b, c):
 
 
 def lift_proto(pid, instrs, opmap):
-    global CURPROTO; CURPROTO = pid
-    """Flat mode: emit in pc order with labels + gotos (faithful, un-structured)."""
-    n = len(instrs)
-    targets = set()
-    for pc, op, ops in instrs:
-        if CLASS.get(op) in ("jump", "branch"):
-            t = opval(ops, "b")
-            if is_pc(t, n):
-                targets.add(t)
-    out = [f"local function proto{pid}(...)  -- {n} instructions"]
-    out.append("  local e = regs   -- register file")
-    for pc, op, ops in instrs:
-        if pc in targets:
-            out.append(f"  ::L_{pc}::")
-        entry = opmap.get(str(op))
-        out.append("  " + emit(pc, op, ops, entry, n))
-    out.append("end")
-    return "\n".join(out)
+    """--flat mode.
+
+    This used to be a separate emitter: one dispatch case per raw
+    instruction (pc order) instead of per merged basic block, using the same
+    goto/label statements structure_proto used to. That goto-based approach
+    doesn't parse under Luau at all (verified: `luau` rejects `::label::`
+    outright) and needed the same pc-dispatch-loop fix; once written as a
+    dispatch loop, per-instruction vs. per-block dispatch is no longer a
+    correctness distinction (every block, merged or not, explicitly sets its
+    own successor's pc) -- only a size/readability one, and the merged form
+    is strictly more readable for the same semantics. So --flat now reuses
+    structure_proto directly rather than maintaining a second, redundant
+    emitter.
+    """
+    return structure_proto(pid, instrs, opmap)
 
 
 # ---- control-flow structuring (trace-linearise the flattened CFG) --------
@@ -274,52 +274,67 @@ def linearise(blocks, entry):
 
 
 def structure_proto(pid, instrs, opmap):
+    """Emit register-level Lua using a pc-dispatch loop, not goto/labels.
+
+    Luau (unlike stock Lua 5.2+) has no goto/label statement at all -- a
+    goto-based emission never parses under the runtime this project actually
+    targets (verified: `luau` rejects `::label::` outright, "Expected
+    identifier when parsing expression, got '::'"). This lowers the same
+    block graph to the standard goto-free equivalent instead: a
+    `while true do if pc == ... then ... end end` dispatch loop, where every
+    block transition is `pc = <next block start>` (or the EXIT sentinel)
+    rather than a jump. Correctness no longer depends on block emission
+    order (each block explicitly sets its successor's pc), so a stray/
+    unresolved target can never produce a dangling reference the way
+    "goto L_None" did.
+    """
     global CURPROTO; CURPROTO = pid
+    EXIT = -1
     n = len(instrs)
     blocks, entry = build_blocks(instrs, n)
     order = linearise(blocks, entry)
     pos = {b: i for i, b in enumerate(order)}
-    ctrl = {"jump", "branch"}
-    referenced = set()
-    lines = []
+
+    branches = []
     for i, start in enumerate(order):
         blk = blocks[start]
-        nextblk = order[i + 1] if i + 1 < len(order) else None
-        blines = []
-        # non-terminator instructions
+        body = []
         for (pc, op, ops) in blk["instrs"][:-1]:
-            blines.append("  " + emit(pc, op, ops, opmap.get(str(op)), n))
-        # terminator
+            body.append("      " + emit(pc, op, ops, opmap.get(str(op)), n))
         lpc, lop, lops = blk["instrs"][-1]
         if blk["kind"] == "goto":
-            if blk["target"] != nextblk:
-                blines.append(f"  goto L_{blk['target']}"); referenced.add(blk["target"])
-            # else fall-through: drop the jump
+            body.append(f"      pc = {blk['target']}")
         elif blk["kind"] == "branch":
             a = opval(lops, "a")
             cond = f"e[{a}]" if a is not None else "cond"
-            back = blk["target"] in pos and pos[blk["target"]] <= i
+            back = (blk["target"] is not None and blk["target"] in pos
+                    and pos[blk["target"]] <= i)
             note = "  -- back-edge (loop)" if back else ""
-            if blk["fall"] == nextblk:
-                blines.append(f"  if {cond} then goto L_{blk['target']} end{note}")
-                referenced.add(blk["target"])
-            else:
-                blines.append(f"  if {cond} then goto L_{blk['target']} else goto L_{blk['fall']} end{note}")
-                referenced.add(blk["target"]); referenced.add(blk["fall"])
+            tgt = blk["target"] if blk["target"] is not None else EXIT
+            fall = blk["fall"] if blk["fall"] is not None else EXIT
+            body.append(f"      if {cond} then pc = {tgt} else pc = {fall} end{note}")
         elif blk["kind"] == "return":
-            blines.append("  " + emit(lpc, lop, lops, opmap.get(str(lop)), n))
+            body.append("      " + emit(lpc, lop, lops, opmap.get(str(lop)), n))
+            body.append(f"      pc = {EXIT}")
         else:  # fall
-            blines.append("  " + emit(lpc, lop, lops, opmap.get(str(lop)), n))
-            if blk["fall"] is not None and blk["fall"] != nextblk:
-                blines.append(f"  goto L_{blk['fall']}"); referenced.add(blk["fall"])
-        lines.append((start, blines))
+            body.append("      " + emit(lpc, lop, lops, opmap.get(str(lop)), n))
+            fall = blk["fall"] if blk["fall"] is not None else EXIT
+            body.append(f"      pc = {fall}")
+        branches.append((start, body))
 
-    out = [f"local function proto{pid}(...)  -- {n} instrs, {len(order)} blocks (structured)"]
+    out = [f"local function proto{pid}(...)  -- {n} instrs, {len(order)} blocks "
+           "(structured, pc-dispatch)"]
     out.append("  local e = regs")
-    for start, blines in lines:
-        if start in referenced:
-            out.append(f"  ::L_{start}::")
-        out.extend(blines)
+    out.append(f"  local pc = {entry}")
+    out.append("  while true do")
+    for j, (start, body) in enumerate(branches):
+        kw = "if" if j == 0 else "elseif"
+        out.append(f"    {kw} pc == {start} then")
+        out.extend(body)
+    out.append("    else")
+    out.append("      break")
+    out.append("    end")
+    out.append("  end")
     out.append("end")
     return "\n".join(out)
 
@@ -331,7 +346,8 @@ def main():
     ap.add_argument("-o", "--out", default="lifted.lua")
     ap.add_argument("--protos", type=int, default=0, help="limit to first N protos (0=all)")
     ap.add_argument("--flat", action="store_true",
-                    help="emit in raw pc order (skip control-flow structuring)")
+                    help="kept for CLI compatibility; now equivalent to the default "
+                         "(both use the pc-dispatch emitter -- see lift_proto docstring)")
     ap.add_argument("--values", default=None,
                     help="capture_values.py output: inline observed constants")
     args = ap.parse_args()
@@ -361,11 +377,11 @@ def main():
             if CLASS.get(op, "unknown") != "unknown":
                 known += 1
 
-    mode = "flat (pc order)" if args.flat else "structured (trace-linearised CFG)"
+    mode = "structured (pc-dispatch loop)"
     header = [
         "-- Devirtualised from Luraph v14.7 bytecode by luraph-deobf/devirt/lift.py",
         "-- Register-level transliteration (semantically faithful, not original source).",
-        "-- e[] = VM register file; K(i) = constant #i; L_n = basic-block labels.",
+        "-- e[] = VM register file; K(i) = constant #i; pc = dispatch-loop block cursor.",
         f"-- mode: {mode}.",
         f"-- {len(ids)} protos, {total} instructions, "
         f"{known} ({known*100//max(total,1)}%) with a known opcode.",

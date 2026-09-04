@@ -60,6 +60,39 @@ unified router only knew two engines (`envlog`, `prom`). Luraph (the `LPH` /
 - The toolkit is located as a sibling `luraph-deobf/` (override with the
   `LURAPH_DIR` env var).
 
+### Deep mode lift output didn't actually run under Luau
+
+`--deep` mode produced `lifted.lua` using `goto`/`::label::` for control flow
+(the standard approach for reconstructing Luraph's flattened dispatch back
+into readable code). Turns out **Luau has no `goto` statement at all** —
+verified directly (`luau` rejects `::label::` with "Expected identifier when
+parsing expression, got '::'"), a real, load-bearing difference from the
+stock Lua 5.4 the emitter was written against. So every "fully devirtualised"
+`lifted.lua` this engine had produced was actually invalid Luau — it read as
+plausible code but never compiled.
+
+On top of that, `structure_proto` (`luraph-deobf/devirt/lift.py`) had its own
+bug: when a branch's jump target wasn't a valid in-function instruction (i.e.
+the branch actually exits the function), it unconditionally emitted
+`goto L_None` — a jump to a label that was never defined, since `None` isn't
+a real target. 1,150 of these in one sample alone.
+
+Fixed by replacing the whole goto/label emission with a `pc`-keyed dispatch
+loop — `while true do if pc == <block> then ... end end`, where every block
+sets its own successor's `pc` (or `-1` to exit) instead of jumping. This is
+the standard goto-free equivalent and is what Luau actually supports; it also
+made the `L_None` case structurally impossible (an unresolved target just
+becomes `pc = -1`, never a dangling label reference) and made the separate
+`--flat` emitter's identical goto-based bug moot, so `lift_proto` (--flat) now
+just delegates to the same fixed emitter — there was never a real behavioral
+difference between the two once neither depends on goto.
+
+Verified end-to-end on the `terrorlua/obfuscator-samples` v14.7 sample used
+below: `lifted.lua` now has zero `goto`/`::label::` tokens and compiles
+cleanly under real Luau (`luau lifted.lua` exits 0, no parse errors) —
+confirmed by extracting the lift and running it standalone, not just by
+absence of an error in the pipeline log.
+
 ### Deep mode — full v13/v14 devirtualization
 
 The Luraph engine now has two tiers:
