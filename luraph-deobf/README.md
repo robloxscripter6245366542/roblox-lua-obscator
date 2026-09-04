@@ -137,6 +137,11 @@ down.
 Reverses **both** keyless layers on every `LPH…` stream: base-85, then raw
 LZMA1. Writes `stage_N.lua` when a stage decompresses to Lua source and
 `stage_N.bin` for bytecode, and labels each. `--no-lzma` stops after base-85.
+Finds `LPH…` streams both as original-source long-bracket strings
+(`[=[LPH…]=]`) and as plain quoted string literals (`"LPH…"`) — the shape
+an executor decompiler re-emits them as (e.g. `v830("LPH}!!M...")` in
+GameCodeDumper output) — same payload, different quoting; verified
+byte-identical against a live runtime decode on a real sample.
 
 ```bash
 python3 peel.py sample_sigil.lua -o peeled

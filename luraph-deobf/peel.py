@@ -69,7 +69,7 @@ def looks_like_lua_source(data):
 
 
 def find_long_bracket_strings(src):
-    """Yield (level, header, body) for every [=[ .. ]=] of any level.
+    """Yield (label, header, body) for every [=[ .. ]=] of any level.
 
     Matches the exact opening/closing bracket level so nested levels are
     handled the way the Lua lexer handles them.
@@ -85,7 +85,27 @@ def find_long_bracket_strings(src):
         body = src[start:end]
         # Luraph packed streams start with the LPH header; skip ordinary strings.
         header = body[:8]
-        out.append((len(level), header, body))
+        out.append((f"[{level}[ bracket", header, body))
+    return out
+
+
+def find_quoted_lph_strings(src):
+    """Yield (label, header, body) for every double-quoted "LPH..." literal.
+
+    Executor decompilers (GameCodeDumper and similar) re-emit Luraph's
+    packed stream as a plain quoted string argument -- e.g.
+    `p_u_812[35] = v830("LPH}!!M...")` -- rather than the long-bracket form
+    the original obfuscated source uses. Same payload, different quoting,
+    so it needs its own lexer-level scan (long-bracket strings don't nest
+    inside quotes and vice versa) and a Lua-escape unescape pass before the
+    base-85 decode below can see the real characters.
+    """
+    out = []
+    for m in re.finditer(r'"(LPH(?:\\.|[^"\\])*)"', src):
+        body = m.group(1)
+        body = re.sub(r"\\(.)", lambda mm: mm.group(1) if mm.group(1) in "\"'\\" else mm.group(0), body)
+        header = body[:8]
+        out.append(("quoted string", header, body))
     return out
 
 
@@ -212,10 +232,10 @@ def main():
     with open(args.input, "r", encoding="utf-8", errors="replace") as f:
         src = f.read()
 
-    strings = find_long_bracket_strings(src)
+    strings = find_long_bracket_strings(src) + find_quoted_lph_strings(src)
     # Real Luraph packed streams carry the 'LPH' header. Requiring it avoids
-    # false positives from stray [[ .. ]] runs inside the encoded data itself.
-    packed = [(lvl, hdr, body) for (lvl, hdr, body) in strings
+    # false positives from stray [[ .. ]] / quoted-string runs elsewhere.
+    packed = [(label, hdr, body) for (label, hdr, body) in strings
               if hdr.startswith("LPH")]
 
     if not packed:
@@ -228,13 +248,13 @@ def main():
 
     v15_submap = extract_v15_submap(src)
 
-    for idx, (lvl, hdr, body) in enumerate(packed):
+    for idx, (label, hdr, body) in enumerate(packed):
         drop = args.drop if args.drop is not None else guess_drop(body)
         data, leftover = a85_decode(body, drop)
         outpath = os.path.join(args.outdir, f"stage_{idx}.bin")
         with open(outpath, "wb") as f:
             f.write(data)
-        print(f"  stage[{idx}]  bracket=[{'='*lvl}[  header={hdr!r}")
+        print(f"  stage[{idx}]  source={label}  header={hdr!r}")
         print(f"             encoded {len(body):>8} chars -> {len(data):>8} bytes"
               f"  (base-85)")
 
