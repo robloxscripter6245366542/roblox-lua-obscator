@@ -30,22 +30,30 @@ came out of it (`stage_0.lua`, `lifted.lua`, `disasm.txt`) as attachments.
 
 ```bash
 cd luraph-deobf/discord_bot
-pip install -r requirements.txt
+bash setup.sh          # installs deps, builds luau, creates .env
+                        # (pass --no-luau to skip the luau build)
+```
 
-# Optional but recommended -- enables the dynamic/disasm/lift stages.
-# Without this, the bot still works: report.md just marks those stages skipped.
-bash ../dynamic/build_luau.sh
+That handles everything scriptable. What's left is on Discord's website:
 
-cp .env.example .env   # fill in DISCORD_BOT_TOKEN, then load it into the
-                        # environment however your process manager does
-                        # (systemd EnvironmentFile=, docker --env-file, etc.)
+1. https://discord.com/developers/applications -> **New Application**.
+2. Left sidebar -> **Bot** -> **Reset Token** -> copy it (you only see it once).
+3. Put it in `.env` as `DISCORD_BOT_TOKEN=...`.
+4. **OAuth2** -> **URL Generator** -> scopes: `bot`, `applications.commands`;
+   bot permissions: **Send Messages**, **Attach Files** -> open the generated
+   URL, pick your server, authorize. No privileged gateway intents needed —
+   this bot only handles slash-command interactions.
+
+Then run it:
+
+```bash
+export $(grep -v '^#' .env | xargs)   # or load .env via your process
+                                        # manager (systemd EnvironmentFile=,
+                                        # docker --env-file, etc.)
 python3 bot.py
 ```
 
-Discord Developer Portal setup: create an application, add a bot user, grant
-it the `applications.commands` and `bot` scopes with the "Send Messages" and
-"Attach Files" permissions when generating the invite URL. No privileged
-gateway intents are needed — this bot only handles slash-command interactions.
+You should see `logged in as <YourBot>#0000` in the console once it's up.
 
 ## Operational notes (read before exposing this publicly)
 
@@ -68,5 +76,6 @@ host should offer it any.
 ## Files
 
 - `bot.py` — the bot itself.
+- `setup.sh` — one-shot install/build/configure script; run this first.
 - `requirements.txt` — `discord.py`.
 - `.env.example` — configuration reference.
