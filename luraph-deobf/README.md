@@ -172,6 +172,28 @@ lua sandbox.lua target.lua        # dumps to ./lph_dump/
 > Only set `CONFIG.AllowNetwork = true` inside a throwaway VM. With it off,
 > the sample cannot exfiltrate or fetch a second-stage payload.
 
+### `goto_fix.py` — make GameCodeDumper decompiler output runnable under Luau
+Executor decompilers (what `GameCodeDumper.lua` calls via `decompile()`)
+reconstruct control flow as Lua 5.x-style `goto`/`::label::`, which Luau
+doesn't support at all — the decompiled VM interpreter source fails to
+compile until every goto/label is gone. `goto_fix.py` lowers each region
+that uses them to a flat CFG of basic blocks and emits it as a
+`local pc = N; while true do ... end` dispatch loop (hoisting locals so they
+survive across states, handling nested closures/loops/`continue`, and using
+a balanced dispatch tree so deep VMs don't blow Luau's parser recursion
+limit). Regions with no goto/label are left untouched.
+
+```bash
+python3 goto_fix.py decompiled_script.lua -o fixed.lua
+```
+
+Verified end-to-end on a real Luraph-obfuscated VM interpreter dumped from
+a live game (a ~3,500-line decompiled script with 1,147 dispatch states):
+`fixed.lua` compiled and ran cleanly under real Luau with zero syntax
+errors. Note this only fixes goto/label — unrelated decompiler artifacts
+(e.g. a trailing `-- name: X` comment swallowing a function's `end`) are a
+separate class of bug and still need their own fix.
+
 ### `devirt.md`
 The deep writeup: the full bootstrap chain, the bytecode-format
 observations, and the step-by-step roadmap for lifting the bytecode using
