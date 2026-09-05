@@ -1,4 +1,5 @@
 luau
+luau-ast
 luau-src/
 harness.luau
 harness_v15.luau
