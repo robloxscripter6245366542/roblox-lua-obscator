@@ -26,11 +26,27 @@
 #  only thing that stays hard is devirtualising the bytecode back to
 #  source -- see devirt.md.
 #
+#  Variant handling (detect_encoding()):
+#  Not every build uses base-85 + LZMA -- some Luraph-family variants swap
+#  in plain base64 for the outer layer, and/or skip the LZMA layer
+#  entirely (the inner bytes are already the final Lua source/bytecode).
+#  detect_encoding() tries base-85 and base64 across the plausible header
+#  lengths and only accepts a result on a strong, unambiguous signal (a
+#  clean LZMA decode, or directly-readable Lua source/bytecode) -- it
+#  never picks base64 over base85 on a weak heuristic, since base64
+#  decoding rarely raises an error even on the wrong input. Absent a
+#  strong signal from either, it falls back to base-85's own
+#  entropy-based drop guess, unchanged from the original single-encoding
+#  behaviour (the correct path for a build with no compression layer at
+#  all, or a runtime-only codec -- see v15.md).
+#
 #  Usage:
-#     python3 peel.py <script.lua> [-o outdir] [--no-lzma]
+#     python3 peel.py <script.lua> [-o outdir] [--no-lzma] [-D drop]
 # ============================================================
 
 import argparse
+import base64
+import binascii
 import lzma
 import math
 import os
@@ -131,6 +147,25 @@ def a85_decode(body, drop=5):
     return bytes(out), s[n:]
 
 
+def b64_decode(body, drop=1):
+    """Standard/URL-safe base64, tolerant of missing padding and whitespace.
+
+    Some Luraph-family variants swap the outer base-85 pass for plain
+    base64 instead. `drop` works the same as a85_decode's: 1-indexed,
+    keeps from the drop-th char, so a build with a short ASCII header
+    before the base64 blob is still handled the same way.
+    """
+    s = re.sub(r"\s+", "", body[drop - 1:])
+    pad = (-len(s)) % 4
+    for variant, table in (("std", None), ("urlsafe", str.maketrans("-_", "+/"))):
+        candidate = s.translate(table) if table else s
+        try:
+            return base64.b64decode(candidate + "=" * pad, validate=False), variant
+        except (binascii.Error, ValueError):
+            continue
+    return None, None
+
+
 def entropy(data):
     if not data:
         return 0.0
@@ -146,28 +181,56 @@ def entropy(data):
     return ent
 
 
-def guess_drop(body):
-    """Auto-detect the header length D that the loader strips before base-85.
+def _score(data):
+    """Higher = more likely to be the real decode: low entropy or a
+    recognisable magic beats high-entropy noise from a wrong guess."""
+    if not data:
+        return -1.0
+    return (8.0 - entropy(data[:4096])) + (4.0 if data.startswith(LUA_MAGIC) else 0.0)
 
-    v14.x uses D=5 ('LPH%V', 'LPH>&', ...). Rather than hardcode that (v15 is
-    a rewrite and may header differently), try the plausible candidates and
-    keep the one whose base-85 decode actually LZMA-decompresses; fall back to
-    the one that yields the most structured bytes. Defaults to 5.
+
+def detect_encoding(body, forced_drop=None):
+    """Auto-detect both the outer encoding (base-85 vs base64) and the
+    header length D the loader strips before it.
+
+    v14.x uses base-85 with D=5 ('LPH%V', 'LPH>&', ...). Not every
+    Luraph-family build does -- some swap in plain base64 instead, and D
+    varies by header length. Returns (encoding, drop, decoded_bytes).
+
+    Priority matters here: base64 almost always "succeeds" on garbage (it's
+    lenient about padding), just less cleanly, so it must never be allowed
+    to outscore a85 on the weak entropy-based fallback -- only a strong,
+    unambiguous signal (a clean LZMA decode, or directly-readable output)
+    can make base64 win. Absent that from EITHER encoding, fall back to
+    a85's own entropy-based drop guess exactly as before base64 support
+    existed, since that's the verified-correct path for builds where the
+    inner stream doesn't decompress or read cleanly (no compression layer
+    at all, or a runtime-only codec -- see the v15 notes in main()).
     """
-    best_struct, best_score = 5, -1.0
-    for d in (5, 4, 6, 3, 7):
-        data, _ = a85_decode(body, d)
+    drops = (forced_drop,) if forced_drop is not None else (5, 4, 6, 3, 7, 1)
+
+    def strong_signal(data):
         if not data:
-            continue
+            return False
         dec, _ = lzma_raw_decompress(data)
-        if dec is not None:
-            # A clean LZMA decode is a strong signal — take the first one.
-            return d
-        # No LZMA: score by low entropy / bytecode-magic as a fallback.
-        score = (8.0 - entropy(data[:4096])) + (4.0 if data.startswith(LUA_MAGIC) else 0.0)
+        return dec is not None or looks_like_lua_source(data) or data.startswith(LUA_MAGIC)
+
+    for encoding, decode_fn in (("a85", a85_decode), ("base64", b64_decode)):
+        for d in drops:
+            data, _ = decode_fn(body, d)
+            if strong_signal(data):
+                return encoding, d, data
+
+    # No strong signal from either encoding -- a85's own entropy fallback,
+    # unchanged from the original (base64-unaware) behaviour.
+    best_drop, best_score = 5, -1.0
+    for d in drops:
+        data, _ = a85_decode(body, d)
+        score = _score(data)
         if score > best_score:
-            best_score, best_struct = score, d
-    return best_struct
+            best_score, best_drop = score, d
+    data, _ = a85_decode(body, best_drop)
+    return "a85", best_drop, data
 
 
 def classify(data):
@@ -249,38 +312,63 @@ def main():
     v15_submap = extract_v15_submap(src)
 
     for idx, (label, hdr, body) in enumerate(packed):
-        drop = args.drop if args.drop is not None else guess_drop(body)
-        data, leftover = a85_decode(body, drop)
+        encoding, drop, data = detect_encoding(body, forced_drop=args.drop)
+        decode_fn = a85_decode if encoding == "a85" else b64_decode
+        _, extra = decode_fn(body, drop)  # re-run once for the display-only leftover/variant
         outpath = os.path.join(args.outdir, f"stage_{idx}.bin")
         with open(outpath, "wb") as f:
             f.write(data)
         print(f"  stage[{idx}]  source={label}  header={hdr!r}")
+        enc_label = "base-85" if encoding == "a85" else f"base64 ({extra})"
         print(f"             encoded {len(body):>8} chars -> {len(data):>8} bytes"
-              f"  (base-85)")
+              f"  ({enc_label}, drop={drop})")
 
         if not args.no_lzma:
             dec, ds = lzma_raw_decompress(data)
             if dec is not None:
                 if looks_like_lua_source(dec):
-                    ext, label = "lua", "LUA SOURCE (VM interpreter / loader)"
+                    ext, stage_label = "lua", "LUA SOURCE (VM interpreter / loader)"
                 elif dec.startswith(LUA_MAGIC):
-                    ext, label = "luac", "lua 5.1 bytecode"
+                    ext, stage_label = "luac", "lua 5.1 bytecode"
                 else:
-                    ext, label = "bin", "VM bytecode / binary program"
+                    ext, stage_label = "bin", "VM bytecode / binary program"
                 decpath = os.path.join(args.outdir, f"stage_{idx}.{ext}")
                 with open(decpath, "wb") as f:
                     f.write(dec)
                 print(f"             LZMA -> {len(dec):>8} bytes  "
-                      f"[dict {ds >> 10}KB]  {label}")
+                      f"[dict {ds >> 10}KB]  {stage_label}")
                 print(f"             -> {decpath}")
-                if leftover:
-                    print(f"             (a85 leftover {len(leftover)} chars: {leftover!r})")
+                if encoding == "a85" and extra:
+                    print(f"             (leftover {len(extra)} chars: {extra!r})")
+                print()
+                continue
+
+            # No LZMA layer: some builds skip compression entirely, so a
+            # directly-readable result here is just as final as an LZMA hit.
+            if looks_like_lua_source(data):
+                decpath = os.path.join(args.outdir, f"stage_{idx}.lua")
+                with open(decpath, "wb") as f:
+                    f.write(data)
+                print(f"             no LZMA layer -- {enc_label} decode is already "
+                      f"readable Lua source ({len(data)} bytes)")
+                print(f"             -> {decpath}")
+                print()
+                continue
+            if data.startswith(LUA_MAGIC):
+                decpath = os.path.join(args.outdir, f"stage_{idx}.luac")
+                with open(decpath, "wb") as f:
+                    f.write(data)
+                print(f"             no LZMA layer -- {enc_label} decode is already "
+                      f"Lua 5.1 bytecode ({len(data)} bytes)")
+                print(f"             -> {decpath}")
                 print()
                 continue
 
         # v15 path: apply the per-build substitution map, re-base-85, and
         # report the recovered (still runtime-encrypted) VM buffer honestly.
-        if not args.no_lzma and entropy(data) > 7.5 and v15_submap:
+        # (v15's substitution scheme is only verified for the base-85 outer
+        # layer; skip this path if base64 was the better-scoring encoding.)
+        if not args.no_lzma and encoding == "a85" and entropy(data) > 7.5 and v15_submap:
             v15data, _ = a85_decode_v15(body, v15_submap, drop)
             v15path = os.path.join(args.outdir, f"stage_{idx}.v15buf.bin")
             with open(v15path, "wb") as f:
@@ -294,8 +382,8 @@ def main():
             print("                   readu8 path) and decrypted lazily during "
                   "execution, so it stays high-entropy statically. Recover it")
             print("                   at runtime (dynamic/) — see v15.md.")
-            if leftover:
-                print(f"             (a85 leftover {len(leftover)} chars: {leftover!r})")
+            if extra:
+                print(f"             (leftover {len(extra)} chars: {extra!r})")
             print(f"             (raw base-85 stage -> {outpath})")
             print()
             continue
@@ -307,13 +395,13 @@ def main():
             # or genuine key-encryption. On v15, LPH_PRECHECK binds the
             # bytecode to a runtime-derived key, so a static peel is expected
             # to fail here — this is by design, not a bug in the unpacker.
-            print("             note: base-85 layer removed, but the inner stream "
-                  "did not LZMA-decode.")
+            print(f"             note: {enc_label} layer removed, but the inner "
+                  "stream did not LZMA-decode and isn't directly readable either.")
             print("                   v15 can key-encrypt the bytecode "
                   "(LPH_PRECHECK) or use a new codec -> capture at runtime "
                   "instead (dynamic/). See v15.md.")
-        if leftover:
-            print(f"             (leftover {len(leftover)} chars: {leftover!r})")
+        if encoding == "a85" and extra:
+            print(f"             (leftover {len(extra)} chars: {extra!r})")
         print(f"             -> {outpath}")
         print()
 

@@ -134,14 +134,24 @@ down.
 ## Tools
 
 ### `peel.py` — static unpacker (safe, no execution)
-Reverses **both** keyless layers on every `LPH…` stream: base-85, then raw
-LZMA1. Writes `stage_N.lua` when a stage decompresses to Lua source and
-`stage_N.bin` for bytecode, and labels each. `--no-lzma` stops after base-85.
+Reverses **both** keyless layers on every `LPH…` stream: an outer encoding
+(base-85 or base64 — auto-detected), then raw LZMA1 if present. Writes
+`stage_N.lua` when a stage decompresses to Lua source and `stage_N.bin` for
+bytecode, and labels each. `--no-lzma` stops after the outer encoding.
+
 Finds `LPH…` streams both as original-source long-bracket strings
 (`[=[LPH…]=]`) and as plain quoted string literals (`"LPH…"`) — the shape
 an executor decompiler re-emits them as (e.g. `v830("LPH}!!M...")` in
 GameCodeDumper output) — same payload, different quoting; verified
 byte-identical against a live runtime decode on a real sample.
+
+Handles two variant shapes beyond the original base-85+LZMA case, both
+covered by synthetic round-trip tests (base64 auto-detection only trusts a
+strong signal — a clean LZMA decode or directly-readable output — never a
+weak heuristic, since base64 decoding rarely errors even on wrong input):
+- **base64 instead of base-85** for the outer layer.
+- **No compression layer at all** — the outer-decoded bytes are already
+  the final Lua source or bytecode, no LZMA needed.
 
 ```bash
 python3 peel.py sample_sigil.lua -o peeled
