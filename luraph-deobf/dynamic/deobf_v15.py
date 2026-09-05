@@ -26,27 +26,31 @@
 #  is defensive RE: it reveals what a hostile script WOULD do, it does not do
 #  it. Requires a luau binary (build_luau.sh).
 #
-#  STATUS (honest, revised): the rich env SOLVES the environment gate — the
-#  v15 VM no longer aborts at nil.cancel and boots past its executor/debug
+#  STATUS (honest, revised twice): the rich env SOLVES the environment gate —
+#  the v15 VM no longer aborts at nil.cancel and boots past its executor/debug
 #  checks (which the minimal run.py env could not). On sample_v15.lua it
 #  reaches `env-ready` and enters the payload's OWN bytecode interpreter (a
 #  second, inner VM distinct from the 145-handler XOR-decrypt loader that
-#  devirt/v15_opcodes.py maps). What is NOT yet solved is not just throughput:
-#  instrumenting a local Luau build (lua_callbacks interrupt hook, sampled
-#  every 2M interrupts and cross-checked out to 500M+) shows this inner VM's
-#  T==103 dispatch loop never leaves that one function -- it cycles through
-#  roughly instructions 250-650 of the payload's own bytecode indefinitely
-#  without ever taking either of that opcode set's two exits (an M==27
-#  "switch T-mode" or M==20 "return"). That is a genuine (if very long, or
-#  under this stub truly unbounded) loop in the ORIGINAL program, not merely
-#  slow interpretation -- a faster/JIT Luau would only spin it faster, not
-#  make it exit. See v15.md's "Payload recovery harness" section for the full
-#  writeup of the inner VM's opcode semantics found so far. Bounding is also
-#  limited because the Luau CLI has no debug.sethook and wrapping the hot path
-#  breaks or cripples the VM. Output streams to <out>.raw.txt so partial
-#  progress survives a timeout. Making this fully practical needs one of: a
-#  full opcode map of the inner VM (to find which opcode's operand is this
-#  loop's real exit condition, and which env stub feeds it wrong), or
+#  devirt/v15_opcodes.py maps), written as four sibling dispatch loops sharing
+#  one pc variable. What is NOT yet solved is not just throughput, and an
+#  earlier note here over-narrowed the cause to one specific loop (`T==103`)
+#  from a handful of sampled snapshots -- devirt/v15_payload_probe.py replaced
+#  that guess with a real per-opcode dynamic histogram (inject a probe after
+#  each loop's opcode fetch, run it through this same harness): three of the
+#  four dispatch modes do a small, fixed, run-length-independent amount of
+#  work (bootstrap) and are never revisited; the fourth keeps growing without
+#  bound as the time budget grows, cycling across the payload's *entire*
+#  instruction range (not a narrow slice) with 65 distinct opcodes hit and no
+#  sign of settling. That is a genuine (if very long, or under this stub truly
+#  unbounded) loop in the ORIGINAL program, not merely slow interpretation --
+#  a faster/JIT Luau would only spin it faster, not make it exit. See v15.md's
+#  "Payload recovery harness" section and devirt/v15_payload_opcode_map.md for
+#  the full writeup and the opcode frequency table. Bounding is also limited
+#  because the Luau CLI has no debug.sethook and wrapping the hot path breaks
+#  or cripples the VM. Output streams to <out>.raw.txt so partial progress
+#  survives a timeout. Making this fully practical needs one of: opcode
+#  semantics for the hot mode's dispatch (to find which opcode's operand is
+#  this loop's real exit condition, and which env stub feeds it wrong), or
 #  capturing on a real executor where that condition is genuinely satisfied.
 #
 #  Usage:
