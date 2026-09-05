@@ -82,6 +82,75 @@ Shows a toast in the bottom-right. `Duration` defaults to 4 seconds.
 
 ---
 
+## Shops & 576 ready-made variations
+
+The library ships with a full **shop / store builder** and a large catalog of
+looks. A variation is a unique combination of:
+
+| Axis | Count | Values |
+| --- | --- | --- |
+| **Themes** (`Themes.lua`) | 24 | Midnight, Obsidian, Cyberpunk, Matrix, DeepSea, Royal, Daylight, Sakura, Mint… |
+| **Layouts** (`Shop.lua`) | 6 | Grid, List, Carousel, Featured, Compact, Showcase |
+| **Card styles** | 4 | Flat, Elevated, Outline, Glass |
+
+**24 × 6 × 4 = 576** distinct, buildable shop configurations — every one real,
+no filler.
+
+### Build a shop
+
+```lua
+local Themes = require(script.Parent.Themes)
+local Shop   = require(script.Parent.Shop)
+
+local shop = Shop.new({
+    Title = "Item Shop", Theme = "Cyberpunk",
+    Layout = "Grid", CardStyle = "Glass", Columns = 3,
+})
+
+shop:AddItems({
+    -- Real Robux purchase (dev product):
+    { Name="Golden Sword", Price=99, Image="rbxassetid://0",
+      Badge="SALE", Category="Weapons", ProductId=1234567, PurchaseType="Product" },
+    -- Real Robux purchase (game pass):
+    { Name="VIP", Price=499, Image="rbxassetid://0",
+      Category="Passes", ProductId=7654321, PurchaseType="Gamepass" },
+    -- In-game currency (fires a callback instead of a Robux prompt):
+    { Name="Coin Pack", Price=250, Currency="🪙", Category="Currency",
+      Callback=function(item) print("grant coins") end },
+})
+
+shop:SetBalance(1000)   -- optional balance pill
+shop:Render()
+```
+
+Item fields: `Name`, `Price`, `Image`, `Category?`, `Badge?` (SALE/NEW/…),
+`Currency?`, `Owned?`, and for Robux: `ProductId` + `PurchaseType`
+(`"Product"` or `"Gamepass"`). Purchases go through `MarketplaceService`;
+every purchase also fires `shop.OnPurchase(item)`.
+
+Live-swap anything: `shop:SetTheme("Midnight")`, `shop:SetLayout("Carousel")`,
+`shop:SetCardStyle("Outline")`.
+
+### Browse the catalog with `Presets.lua`
+
+```lua
+local Presets = require(script.Parent.Presets)
+
+Presets.Count()                       --> 576
+Presets.Get(1)                        --> a config table
+Presets.GetByName("Midnight · Grid · Elevated")
+Presets.Random()
+Presets.Filter{ Layout = "Carousel" } --> every carousel variation
+
+-- Build a live shop straight from a variation + your items:
+local shop = Presets.BuildShop(1, myItems, { Columns = 3 })
+```
+
+See [`ShopDemo.client.lua`](./ShopDemo.client.lua) — press `]` / `[` to flip
+through all 576 variations, `R` for a random one.
+
+---
+
 ## Selling it for Robux (the legit way)
 
 You asked to let devs **pay Robux and get the tool**. The clean, ban-proof way
@@ -128,6 +197,7 @@ if owns then Window:CreateTab("Pro") --[[ premium controls ]] end
 
 ## Roadmap ideas
 - Color picker & multi-select dropdown
-- Config auto-save (write control state to a `DataStore` or `writefile`-free JSON)
+- Config auto-save (write control state to a `DataStore`)
 - Acrylic blur background option
-- Prebuilt templates: admin panel, shop, settings menu
+- More templates: admin panel, settings menu, inventory, battle-pass
+- Per-item animated reveal + featured hero banner for shops
