@@ -26,18 +26,28 @@
 #  is defensive RE: it reveals what a hostile script WOULD do, it does not do
 #  it. Requires a luau binary (build_luau.sh).
 #
-#  STATUS (honest): the rich env SOLVES the environment gate — the v15 VM no
-#  longer aborts at nil.cancel and boots past its executor/debug checks (which
-#  the minimal run.py env could not). On sample_v15.lua it reaches `env-ready`
-#  and enters the native XOR-decrypt/dispatch loop. What is NOT yet solved is
-#  throughput: this is a virtualised VM (an unrolled interpreter over encrypted
-#  bytecode) running INSIDE the Luau interpreter — nested interpretation — so
-#  the decrypt+run phase is very slow, and on this build the payload's remotes/
-#  URLs had not surfaced within a multi-minute budget. Bounding is also limited
-#  because the Luau CLI has no debug.sethook and wrapping the hot path breaks or
-#  cripples the VM. Output streams to <out>.raw.txt so partial progress survives
-#  a timeout. Making this fully practical needs one of: a faster/JIT Luau, an
-#  instruction-cap build of Luau, or capturing on a real executor.
+#  STATUS (honest, revised): the rich env SOLVES the environment gate — the
+#  v15 VM no longer aborts at nil.cancel and boots past its executor/debug
+#  checks (which the minimal run.py env could not). On sample_v15.lua it
+#  reaches `env-ready` and enters the payload's OWN bytecode interpreter (a
+#  second, inner VM distinct from the 145-handler XOR-decrypt loader that
+#  devirt/v15_opcodes.py maps). What is NOT yet solved is not just throughput:
+#  instrumenting a local Luau build (lua_callbacks interrupt hook, sampled
+#  every 2M interrupts and cross-checked out to 500M+) shows this inner VM's
+#  T==103 dispatch loop never leaves that one function -- it cycles through
+#  roughly instructions 250-650 of the payload's own bytecode indefinitely
+#  without ever taking either of that opcode set's two exits (an M==27
+#  "switch T-mode" or M==20 "return"). That is a genuine (if very long, or
+#  under this stub truly unbounded) loop in the ORIGINAL program, not merely
+#  slow interpretation -- a faster/JIT Luau would only spin it faster, not
+#  make it exit. See v15.md's "Payload recovery harness" section for the full
+#  writeup of the inner VM's opcode semantics found so far. Bounding is also
+#  limited because the Luau CLI has no debug.sethook and wrapping the hot path
+#  breaks or cripples the VM. Output streams to <out>.raw.txt so partial
+#  progress survives a timeout. Making this fully practical needs one of: a
+#  full opcode map of the inner VM (to find which opcode's operand is this
+#  loop's real exit condition, and which env stub feeds it wrong), or
+#  capturing on a real executor where that condition is genuinely satisfied.
 #
 #  Usage:
 #    python3 deobf_v15.py ../sample_v15.lua --luau ./luau --out dk_recovered
