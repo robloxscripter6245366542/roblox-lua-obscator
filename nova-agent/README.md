@@ -42,15 +42,29 @@ Then run it:
 
 In the host window:
 1. Command Palette → **Nova Agent: Set Anthropic API Key** → paste your key.
-2. Command Palette → **Nova Agent: Open Chat**.
-3. Ask it something: *"run the tests and fix the first failure"*,
-   *"create an Express server in server.js and start it"*.
+2. Click the **Nova Agent** icon in the activity bar to open the sidebar.
+3. From the sidebar you can:
+   - **pick the model** from the dropdown,
+   - hit a **quick action** — *Explain / Fix bugs / Write tests / Refactor* —
+     which runs against your current selection (or the whole file),
+   - or just type *"run the tests and fix the first failure"*.
+
+## Set up any AI
+
+The sidebar model dropdown is populated from `novaAgent.models`, and
+`novaAgent.baseUrl` lets you point Nova at **any Anthropic-compatible endpoint**
+(a gateway/proxy such as LiteLLM, or a self-hosted bridge) instead of
+`api.anthropic.com`. Add the model ids that endpoint serves to `novaAgent.models`
+and pick them from the dropdown — that's how you "set any AI up." Leave
+`baseUrl` blank to use Anthropic directly.
 
 ## Settings
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `novaAgent.model` | `claude-opus-5` | Claude model id |
+| `novaAgent.model` | `claude-opus-5` | Default model id |
+| `novaAgent.models` | opus-5 / sonnet-5 / haiku-4.5 | Models shown in the sidebar picker |
+| `novaAgent.baseUrl` | *(blank)* | Anthropic-compatible API base URL (blank = api.anthropic.com) |
 | `novaAgent.idleDisconnectMinutes` | `5` | Disconnect after N minutes idle (`0` = never) |
 | `novaAgent.bashTimeoutMs` | `120000` | Per-command bash timeout |
 

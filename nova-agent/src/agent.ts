@@ -26,25 +26,45 @@ export class Agent {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private busy = false;
 
+  private model: string;
+  private baseURL?: string;
+
   constructor(
     private getApiKey: () => Promise<string | undefined>,
     private ctx: ToolContext,
     private events: AgentEvents,
-    private opts: { model: string; idleMs: number },
-  ) {}
+    private opts: { model: string; idleMs: number; baseURL?: string },
+  ) {
+    this.model = opts.model;
+    this.baseURL = opts.baseURL;
+  }
 
   get connected(): boolean {
     return this.client !== null;
+  }
+
+  /** Switch the model for the next turn (from the sidebar picker). */
+  setModel(model: string): void {
+    this.model = model;
+  }
+
+  /** Point at a different endpoint (any Anthropic-compatible base URL). */
+  setBaseUrl(url: string | undefined): void {
+    const clean = url && url.trim() ? url.trim() : undefined;
+    if (clean !== this.baseURL) {
+      this.baseURL = clean;
+      this.disconnect(); // force a fresh client on next send
+    }
   }
 
   private async ensureClient(): Promise<Anthropic | null> {
     if (this.client) return this.client;
     const apiKey = await this.getApiKey();
     if (!apiKey) {
-      this.events.onError("No Anthropic API key set. Run “Nova Agent: Set Anthropic API Key”.");
+      this.events.onError("No API key set. Run “Nova Agent: Set Anthropic API Key”.");
       return null;
     }
-    this.client = new Anthropic({ apiKey });
+    this.client = new Anthropic(this.baseURL ? { apiKey, baseURL: this.baseURL } : { apiKey });
     this.events.onConnectionChange(true);
     return this.client;
   }
@@ -92,7 +112,7 @@ export class Agent {
       // A generous cap prevents a runaway loop.
       for (let step = 0; step < 50; step++) {
         const stream = client.messages.stream({
-          model: this.opts.model,
+          model: this.model,
           max_tokens: 64000,
           // Opus 5 runs adaptive thinking by default when `thinking` is omitted.
           system: SYSTEM,
