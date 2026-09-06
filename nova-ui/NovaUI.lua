@@ -282,6 +282,7 @@ function NovaUI:CreateWindow(opts)
 		Parent = self.Sidebar,
 	})
 	self._sideList = sideList
+	self._sideOrder = 0
 
 	self.Content = make("Frame", {
 		Name = "Content",
@@ -378,6 +379,38 @@ end
 -- ════════════════════════════════════════════════════════════════════════
 --  TAB
 -- ════════════════════════════════════════════════════════════════════════
+-- Next LayoutOrder for a sidebar entry, so groups and their tabs stay ordered.
+function NovaUI:_nextSideOrder()
+	self._sideOrder += 1
+	return self._sideOrder
+end
+
+-- Section header in the sidebar rail — groups the tabs created after it
+-- (like Fluent/WindUI tab groups). Returns a handle whose :CreateTab() adds
+-- tabs under this group.
+function NovaUI:CreateTabGroup(title)
+	local T = self.Theme
+	local header = make("TextLabel", {
+		Name = "Group_" .. title,
+		Size = UDim2.new(1, 0, 0, 22),
+		LayoutOrder = self:_nextSideOrder(),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Text = string.upper(title),
+		TextSize = 10,
+		TextColor3 = T.SubText,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = self.Sidebar,
+	})
+	make("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingTop = UDim.new(0, 6), Parent = header })
+	self:_track(header, "TextColor3", "SubText")
+	local window = self
+	return {
+		Header = header,
+		CreateTab = function(_, name, icon) return window:CreateTab(name, icon) end,
+	}
+end
+
 function NovaUI:CreateTab(name, icon)
 	local T = self.Theme
 	local tab = { Name = name, Window = self }
@@ -386,6 +419,7 @@ function NovaUI:CreateTab(name, icon)
 	local btn = make("TextButton", {
 		Name = name,
 		Size = UDim2.new(1, 0, 0, 34),
+		LayoutOrder = self:_nextSideOrder(),
 		BackgroundColor3 = T.SurfaceAlt,
 		BackgroundTransparency = 1,
 		Text = "",
@@ -910,6 +944,371 @@ function NovaUI:_componentFactory(page)
 			Parent = holder,
 		})
 		return { Instance = c }
+	end
+
+	-- ── Group box (a bordered section inside the content frame) ───────────
+	function factory:CreateGroup(title)
+		local box = make("Frame", {
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundColor3 = window.Theme.Surface,
+			BorderSizePixel = 0,
+			Parent = page,
+		})
+		corner(10, box)
+		stroke(window.Theme.Stroke, 1, box)
+		window:_track(box, "BackgroundColor3", "Surface")
+		local inner = make("Frame", {
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			Parent = box,
+		})
+		padding(10, inner)
+		make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = inner })
+		if title then
+			local lbl = make("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 16),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				Text = string.upper(title),
+				TextSize = 11,
+				TextColor3 = window.Theme.SubText,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Parent = inner,
+			})
+			window:_track(lbl, "TextColor3", "SubText")
+		end
+		-- A fresh factory bound to this box, so controls land inside it.
+		return window:_componentFactory(inner)
+	end
+
+	-- ── Divider ───────────────────────────────────────────────────────────
+	function factory:CreateDivider()
+		local line = make("Frame", {
+			Size = UDim2.new(1, 0, 0, 1),
+			BackgroundColor3 = window.Theme.Stroke,
+			BorderSizePixel = 0,
+			Parent = page,
+		})
+		window:_track(line, "BackgroundColor3", "Stroke")
+		return { Instance = line }
+	end
+
+	-- ── Image ─────────────────────────────────────────────────────────────
+	function factory:CreateImage(o)
+		o = o or {}
+		local c = card(o.Height or 120)
+		make("ImageLabel", {
+			Size = UDim2.new(1, -16, 1, -16),
+			Position = UDim2.fromOffset(8, 8),
+			BackgroundColor3 = window.Theme.SurfaceAlt,
+			Image = o.Image or "",
+			ScaleType = o.ScaleType or Enum.ScaleType.Crop,
+			Parent = c,
+		})
+		return { Instance = c }
+	end
+
+	-- ── Progress bar (driven by code) ─────────────────────────────────────
+	function factory:CreateProgressBar(o)
+		o = o or {}
+		local c = card(46)
+		cardLabel(c, o.Name or "Progress")
+		local pct = make("TextLabel", {
+			AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 8),
+			Size = UDim2.fromOffset(46, 16), BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBold, Text = "0%", TextSize = 12,
+			TextColor3 = window.Theme.Accent, TextXAlignment = Enum.TextXAlignment.Right, Parent = c,
+		})
+		local bg = make("Frame", {
+			AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, -12),
+			Size = UDim2.new(1, -24, 0, 6), BackgroundColor3 = window.Theme.SurfaceAlt, Parent = c,
+		})
+		corner(3, bg)
+		local fill = make("Frame", { Size = UDim2.fromScale(o.Default or 0, 1), BackgroundColor3 = window.Theme.Accent, Parent = bg })
+		corner(3, fill)
+		local handle = {}
+		function handle:Set(frac)
+			frac = math.clamp(frac, 0, 1)
+			tween(fill, FAST, { Size = UDim2.fromScale(frac, 1) })
+			pct.Text = math.floor(frac * 100 + 0.5) .. "%"
+		end
+		handle:Set(o.Default or 0)
+		return handle
+	end
+
+	-- ── Stepper (number with - / +) ───────────────────────────────────────
+	function factory:CreateStepper(o)
+		o = o or {}
+		local min, max = o.Min or 0, o.Max or 100
+		local step = o.Step or 1
+		local value = math.clamp(o.Default or min, min, max)
+		local c = card(40)
+		cardLabel(c, o.Name or "Stepper", o.Description)
+		local function mkBtn(txt, dx)
+			return make("TextButton", {
+				AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, dx, 0.5, 0),
+				Size = UDim2.fromOffset(26, 26), BackgroundColor3 = window.Theme.SurfaceAlt,
+				Text = txt, Font = Enum.Font.GothamBold, TextSize = 16,
+				TextColor3 = window.Theme.Text, AutoButtonColor = false, Parent = c,
+			})
+		end
+		local plus = mkBtn("+", -14); corner(6, plus)
+		local valLbl = make("TextLabel", {
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -44, 0.5, 0),
+			Size = UDim2.fromOffset(48, 26), BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBold, Text = tostring(value), TextSize = 13,
+			TextColor3 = window.Theme.Accent, Parent = c,
+		})
+		local minus = mkBtn("−", -98); corner(6, minus)
+		local handle = {}
+		local function set(v, fire)
+			value = math.clamp(v, min, max)
+			valLbl.Text = tostring(value)
+			if fire and o.Callback then task.spawn(o.Callback, value) end
+		end
+		plus.MouseButton1Click:Connect(function() set(value + step, true) end)
+		minus.MouseButton1Click:Connect(function() set(value - step, true) end)
+		function handle:Set(v) set(v, true) end
+		function handle:Get() return value end
+		return handle
+	end
+
+	-- ── Segmented control / radio row ─────────────────────────────────────
+	function factory:CreateSegmented(o)
+		o = o or {}
+		local options = o.Options or {}
+		local value = o.Default or options[1]
+		local c = card(o.Name and 62 or 40)
+		if o.Name then cardLabel(c, o.Name, o.Description) end
+		local row = make("Frame", {
+			AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -12, 1, -10),
+			Size = o.Name and UDim2.new(1, -24, 0, 28) or UDim2.new(1, -24, 0, 28),
+			BackgroundColor3 = window.Theme.SurfaceAlt, Parent = c,
+		})
+		if not o.Name then row.AnchorPoint = Vector2.new(0.5, 0.5); row.Position = UDim2.fromScale(0.5, 0.5) end
+		corner(7, row)
+		make("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 2),
+			HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center,
+			Parent = row,
+		})
+		padding(2, row)
+		local buttons = {}
+		local handle = {}
+		local function repaint()
+			for opt, b in pairs(buttons) do
+				local on = (opt == value)
+				tween(b, FAST, { BackgroundColor3 = on and window.Theme.Accent or window.Theme.SurfaceAlt })
+				b.TextColor3 = on and window.Theme.AccentText or window.Theme.SubText
+			end
+		end
+		for _, opt in ipairs(options) do
+			local b = make("TextButton", {
+				Size = UDim2.new(1 / #options, -2, 1, 0), BackgroundColor3 = window.Theme.SurfaceAlt,
+				Text = tostring(opt), Font = Enum.Font.GothamMedium, TextSize = 12,
+				TextColor3 = window.Theme.SubText, AutoButtonColor = false, Parent = row,
+			})
+			corner(6, b)
+			buttons[opt] = b
+			b.MouseButton1Click:Connect(function()
+				value = opt; repaint()
+				if o.Callback then task.spawn(o.Callback, opt) end
+			end)
+		end
+		repaint()
+		function handle:Set(v) value = v; repaint(); if o.Callback then task.spawn(o.Callback, v) end end
+		function handle:Get() return value end
+		return handle
+	end
+
+	-- ── Multi-select dropdown ─────────────────────────────────────────────
+	function factory:CreateMultiDropdown(o)
+		o = o or {}
+		local options = o.Options or {}
+		local selected = {}
+		for _, v in ipairs(o.Default or {}) do selected[v] = true end
+		local open = false
+		local c = card(40)
+		cardLabel(c, o.Name or "Select", o.Description)
+
+		local function summary()
+			local names = {}
+			for _, opt in ipairs(options) do if selected[opt] then table.insert(names, tostring(opt)) end end
+			return #names > 0 and table.concat(names, ", ") or "None"
+		end
+		local box = make("TextButton", {
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0),
+			Size = UDim2.fromOffset(150, 28), BackgroundColor3 = window.Theme.SurfaceAlt,
+			Text = summary(), Font = Enum.Font.GothamMedium, TextSize = 12,
+			TextColor3 = window.Theme.Text, TextTruncate = Enum.TextTruncate.AtEnd,
+			AutoButtonColor = false, Parent = c,
+		})
+		corner(6, box)
+		local list = make("Frame", {
+			Position = UDim2.new(0, 0, 1, 4), Size = UDim2.new(1, 0, 0, 0),
+			BackgroundColor3 = window.Theme.SurfaceAlt, ClipsDescendants = true, Visible = false, Parent = c,
+		})
+		corner(6, list)
+		make("UIListLayout", { Padding = UDim.new(0, 2), Parent = list })
+		padding(4, list)
+
+		local handle = {}
+		for _, opt in ipairs(options) do
+			local row = make("TextButton", {
+				Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1, Text = "",
+				AutoButtonColor = false, Parent = list,
+			})
+			local tick = make("TextLabel", {
+				Size = UDim2.fromOffset(20, 26), BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold, Text = selected[opt] and "☑" or "☐", TextSize = 14,
+				TextColor3 = window.Theme.Accent, Parent = row,
+			})
+			make("TextLabel", {
+				Position = UDim2.fromOffset(24, 0), Size = UDim2.new(1, -24, 1, 0),
+				BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = tostring(opt),
+				TextSize = 12, TextColor3 = window.Theme.SubText, TextXAlignment = Enum.TextXAlignment.Left, Parent = row,
+			})
+			row.MouseButton1Click:Connect(function()
+				selected[opt] = not selected[opt]
+				tick.Text = selected[opt] and "☑" or "☐"
+				box.Text = summary()
+				if o.Callback then task.spawn(o.Callback, handle:Get()) end
+			end)
+		end
+		box.MouseButton1Click:Connect(function()
+			open = not open
+			list.Visible = open
+			local h = open and (#options * 28 + 8) or 0
+			list.Size = UDim2.new(1, 0, 0, h)
+			c.Size = UDim2.new(1, 0, 0, 40 + h)
+		end)
+		function handle:Get()
+			local out = {}
+			for _, opt in ipairs(options) do if selected[opt] then table.insert(out, opt) end end
+			return out
+		end
+		function handle:Set(list2)
+			selected = {}
+			for _, v in ipairs(list2 or {}) do selected[v] = true end
+			box.Text = summary()
+		end
+		return handle
+	end
+
+	-- ── Color picker (HSV square + hue bar) ───────────────────────────────
+	function factory:CreateColorPicker(o)
+		o = o or {}
+		local color = o.Default or Color3.fromRGB(120, 90, 255)
+		local h, s, v = color:ToHSV()
+		local open = false
+		local c = card(40)
+		cardLabel(c, o.Name or "Color", o.Description)
+
+		local swatch = make("TextButton", {
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0),
+			Size = UDim2.fromOffset(40, 24), BackgroundColor3 = color, Text = "",
+			AutoButtonColor = false, Parent = c,
+		})
+		corner(6, swatch)
+		stroke(window.Theme.Stroke, 1, swatch)
+
+		-- popup
+		local pop = make("Frame", {
+			Position = UDim2.new(0, 12, 0, 46), Size = UDim2.new(1, -24, 0, 130),
+			BackgroundTransparency = 1, Visible = false, Parent = c,
+		})
+		local sq = make("Frame", {
+			Size = UDim2.new(1, -24, 0, 100), BackgroundColor3 = Color3.fromHSV(h, 1, 1), Parent = pop,
+		})
+		corner(6, sq)
+		local whiteOverlay = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), Parent = sq })
+		corner(6, whiteOverlay)
+		make("UIGradient", { Transparency = NumberSequence.new(0, 1), Parent = whiteOverlay })
+		local blackOverlay = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), Parent = sq })
+		corner(6, blackOverlay)
+		make("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(1, 0), Parent = blackOverlay })
+		local dot = make("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(10, 10),
+			BackgroundColor3 = Color3.new(1, 1, 1), Position = UDim2.new(s, 0, 1 - v, 0), ZIndex = 5, Parent = sq,
+		})
+		corner(5, dot); stroke(Color3.new(0, 0, 0), 1, dot)
+
+		local hueBar = make("Frame", {
+			AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
+			Size = UDim2.new(1, -24, 0, 12), Parent = pop,
+		})
+		corner(6, hueBar)
+		make("UIGradient", { Parent = hueBar, Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 0)),
+			ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 255, 0)),
+			ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 0)),
+			ColorSequenceKeypoint.new(0.50, Color3.fromRGB(0, 255, 255)),
+			ColorSequenceKeypoint.new(0.67, Color3.fromRGB(0, 0, 255)),
+			ColorSequenceKeypoint.new(0.83, Color3.fromRGB(255, 0, 255)),
+			ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 0)),
+		}) })
+		local hueDot = make("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(6, 14),
+			BackgroundColor3 = Color3.new(1, 1, 1), Position = UDim2.new(h, 0, 0.5, 0), ZIndex = 5, Parent = hueBar,
+		})
+		corner(3, hueDot); stroke(Color3.new(0, 0, 0), 1, hueDot)
+
+		local handle = {}
+		local function commit(fire)
+			color = Color3.fromHSV(h, s, v)
+			swatch.BackgroundColor3 = color
+			sq.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+			if fire and o.Callback then task.spawn(o.Callback, color) end
+		end
+		local sqDrag, hueDrag = false, false
+		local function fromSquare(px, py)
+			s = math.clamp((px - sq.AbsolutePosition.X) / sq.AbsoluteSize.X, 0, 1)
+			v = 1 - math.clamp((py - sq.AbsolutePosition.Y) / sq.AbsoluteSize.Y, 0, 1)
+			dot.Position = UDim2.new(s, 0, 1 - v, 0)
+			commit(true)
+		end
+		local function fromHue(px)
+			h = math.clamp((px - hueBar.AbsolutePosition.X) / hueBar.AbsoluteSize.X, 0, 1)
+			hueDot.Position = UDim2.new(h, 0, 0.5, 0)
+			commit(true)
+		end
+		sq.InputBegan:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+				sqDrag = true; fromSquare(i.Position.X, i.Position.Y)
+			end
+		end)
+		hueBar.InputBegan:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+				hueDrag = true; fromHue(i.Position.X)
+			end
+		end)
+		UserInputService.InputEnded:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+				sqDrag, hueDrag = false, false
+			end
+		end)
+		UserInputService.InputChanged:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then
+				if sqDrag then fromSquare(i.Position.X, i.Position.Y) end
+				if hueDrag then fromHue(i.Position.X) end
+			end
+		end)
+
+		swatch.MouseButton1Click:Connect(function()
+			open = not open
+			pop.Visible = open
+			c.Size = UDim2.new(1, 0, 0, open and 186 or 40)
+		end)
+		function handle:Set(col)
+			color = col; h, s, v = col:ToHSV()
+			dot.Position = UDim2.new(s, 0, 1 - v, 0)
+			hueDot.Position = UDim2.new(h, 0, 0.5, 0)
+			commit(true)
+		end
+		function handle:Get() return color end
+		return handle
 	end
 
 	return factory
