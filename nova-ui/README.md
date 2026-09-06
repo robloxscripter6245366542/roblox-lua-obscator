@@ -151,6 +151,28 @@ through all 576 variations, `R` for a random one.
 
 ---
 
+## Motion (`Animations.lua`)
+
+A tween-based motion toolkit — the polish the popular UI libraries use for
+opens, hovers and list reveals — as one-liners:
+
+```lua
+local Anim = require(script.Parent.Animations)
+
+Anim.PopIn(frame)                      -- scale + fade entrance
+Anim.SlideIn(panel, "Bottom")          -- slide from an edge
+Anim.Stagger(listContainer, "PopIn")   -- reveal children one after another
+Anim.Hover(button)                     -- grow on hover, dip on press
+Anim.Pulse(icon)                       -- one attention pulse
+local stop = Anim.Spin(loader)         -- infinite spin; call stop() to end
+Anim.CountTo(balanceLabel, 1000, 0.6, "R$ ")  -- roll a number up
+```
+
+Pure `TweenService`, no assets — pairs with any NovaUI window or Shop (e.g.
+`Anim.Stagger(shop.Body, "PopIn")` to cascade shop cards in).
+
+---
+
 ## Selling it for Robux (the legit way)
 
 You asked to let devs **pay Robux and get the tool**. The clean, ban-proof way
