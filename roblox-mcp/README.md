@@ -79,6 +79,26 @@ neon part that spins"*, or *"write a LocalScript that opens a NovaUI shop"*.
 | `get_source` | Read a script's `.Source` |
 | `run_luau` | Execute a Luau snippet in Studio; `return` a value to read it |
 | `create_animation` | Build a `KeyframeSequence` from keyframe poses |
+| `install_novaui` | Install the NovaUI library (Themes/NovaUI/Shop/Presets/Animations) into the place |
+| `list_shop_variations` | The 576-variation catalog (24 themes × 6 layouts × 4 card styles) |
+| `create_shop` | Generate a shop UI (LocalScript) from theme/layout/card-style + items |
+| `random_shop` | Spin up a random one of the 576 shop looks with sample items |
+| `create_window` | Generate a full NovaUI window from a tabs/components spec |
+
+## Let Claude build your shops & UIs
+
+Once the plugin is connected, the agent can build the interface for you:
+
+1. *"install NovaUI"* → `install_novaui` drops the library into `ReplicatedStorage`.
+2. *"make a cyberpunk grid shop with a sword, a jetpack and a VIP pass"* →
+   `create_shop` inserts a LocalScript that builds it.
+3. *"give me a random shop"* → `random_shop` picks one of the **576** looks.
+4. *"build a settings window with a Gameplay tab: a walk-speed slider and an
+   auto-sprint toggle"* → `create_window` generates the whole thing.
+
+Press **Play** in Studio to see generated UIs (they build at runtime, like every
+Roblox UI library). This is the "add Claude" piece — Claude authors the shops
+and menus directly in your place, then you tweak and sell them.
 
 ### Tagged value types
 Properties and animation poses use small tagged objects so the agent can pass
