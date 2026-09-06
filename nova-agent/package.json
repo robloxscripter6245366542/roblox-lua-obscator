@@ -1,0 +1,52 @@
+{
+  "name": "nova-agent",
+  "displayName": "Nova Agent",
+  "description": "A fast, local AI coding agent for VS Code — paste your Anthropic API key and let Claude run bash and edit files. Connects only while active and disconnects when idle.",
+  "version": "1.0.0",
+  "publisher": "nova",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["AI", "Programming Languages", "Other"],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "novaAgent.open", "title": "Nova Agent: Open Chat" },
+      { "command": "novaAgent.setApiKey", "title": "Nova Agent: Set Anthropic API Key" },
+      { "command": "novaAgent.clearApiKey", "title": "Nova Agent: Clear API Key & Disconnect" }
+    ],
+    "configuration": {
+      "title": "Nova Agent",
+      "properties": {
+        "novaAgent.model": {
+          "type": "string",
+          "default": "claude-opus-5",
+          "description": "Claude model id to use."
+        },
+        "novaAgent.idleDisconnectMinutes": {
+          "type": "number",
+          "default": 5,
+          "description": "Disconnect from Claude after this many minutes of inactivity (0 = never)."
+        },
+        "novaAgent.bashTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "description": "Per-command timeout for the bash tool, in milliseconds."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --target=node18 --external:vscode --outfile=dist/extension.js --minify",
+    "watch": "esbuild src/extension.ts --bundle --platform=node --target=node18 --external:vscode --outfile=dist/extension.js --sourcemap --watch",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.25.0",
+    "@vscode/vsce": "^3.2.0"
+  }
+}
