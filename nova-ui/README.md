@@ -63,19 +63,49 @@ print(speed:Get())      -- read the value
 Returns a `Window` with: `:CreateTab(name, icon?)`, `:Notify(o)`,
 `:SetTheme(name)`, `:Toggle(state?)`, `:Destroy()`.
 
+### Section rail (grouped tabs)
+Group tabs under headers in the sidebar — the section rail beside the tabs,
+like Fluent / WindUI:
+
+```lua
+Window:CreateTabGroup("Player")
+local main = Window:CreateTab("Gameplay")
+local char = Window:CreateTab("Character")
+
+Window:CreateTabGroup("Client")
+local ui = Window:CreateTab("Interface")
+```
+
 ### `Window:CreateTab(name, icon?)` → `Tab`
 `Tab` exposes the component constructors below. Each returns a **handle**.
 
 | Constructor | Handle methods | Callback signature |
 | --- | --- | --- |
 | `CreateSection(title)` | – | – |
+| `CreateGroup(title)` → nested factory | *(has all constructors)* | – |
 | `CreateButton{Name, Description?, Callback}` | – | `()` |
 | `CreateToggle{Name, Default, Callback}` | `:Set(bool)` `:Get()` | `(state)` |
 | `CreateSlider{Name, Min, Max, Default, Decimals?, Callback}` | `:Set(n)` `:Get()` | `(value)` |
+| `CreateStepper{Name, Min, Max, Step, Default, Callback}` | `:Set(n)` `:Get()` | `(value)` |
 | `CreateDropdown{Name, Options, Default, Callback}` | `:Set(v)` `:Get()` `:Refresh(list)` | `(option)` |
+| `CreateMultiDropdown{Name, Options, Default, Callback}` | `:Set(list)` `:Get()` | `(selectedList)` |
+| `CreateSegmented{Name?, Options, Default, Callback}` | `:Set(v)` `:Get()` | `(option)` |
+| `CreateColorPicker{Name, Default, Callback}` | `:Set(Color3)` `:Get()` | `(Color3)` |
 | `CreateInput{Name, Placeholder?, Default?, Callback}` | `:Set(s)` `:Get()` | `(text, enterPressed)` |
 | `CreateKeybind{Name, Default, OnPress}` | `:Get()` | `OnPress()` |
+| `CreateProgressBar{Name, Default?}` | `:Set(fraction)` | – |
+| `CreateImage{Image, Height?, ScaleType?}` | – | – |
+| `CreateDivider()` | – | – |
 | `CreateLabel(text)` / `CreateParagraph(title, body)` | – | – |
+
+**Group boxes** — `CreateGroup(title)` returns a nested factory whose controls
+render inside one bordered box in the content frame:
+
+```lua
+local combat = tab:CreateGroup("Combat")
+combat:CreateToggle({ Name = "Auto Parry" })
+combat:CreateColorPicker({ Name = "Trail Color" })
+```
 
 ### `Window:Notify{Title, Content?, Duration?}`
 Shows a toast in the bottom-right. `Duration` defaults to 4 seconds.

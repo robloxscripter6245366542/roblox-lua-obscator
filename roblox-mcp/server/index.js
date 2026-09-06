@@ -20,9 +20,47 @@
 
 import http from "node:http";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const NOVA_DIR = path.resolve(__dirname, "..", "..", "nova-ui");
+
+// Catalog axes (mirror nova-ui/Themes.lua, Shop.lua, Presets.lua) — 24×6×4 = 576.
+const THEME_NAMES = [
+  "Midnight", "Obsidian", "Graphite", "Nord", "Dracula", "Carbon", "Cyberpunk",
+  "Matrix", "DeepSea", "Wine", "Forest", "Ember", "RoseGold", "Neon", "Royal",
+  "Slate", "Daylight", "Paper", "Mint", "Sky", "Sakura", "Sand", "Lavender", "Frost",
+];
+const LAYOUTS = ["Grid", "List", "Carousel", "Featured", "Compact", "Showcase"];
+const CARD_STYLES = ["Flat", "Elevated", "Outline", "Glass"];
+
+// Serialize a JS value to a Luau literal.
+function luaValue(v) {
+  if (v === null || v === undefined) return "nil";
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "string") {
+    return '"' + v.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "").replace(/\t/g, "\\t") + '"';
+  }
+  if (Array.isArray(v)) return "{ " + v.map(luaValue).join(", ") + " }";
+  if (typeof v === "object") {
+    // {r,g,b} → Color3.fromRGB
+    const keys = Object.keys(v);
+    if (keys.length === 3 && "r" in v && "g" in v && "b" in v) {
+      return `Color3.fromRGB(${v.r}, ${v.g}, ${v.b})`;
+    }
+    const parts = keys.map((k) => {
+      const key = /^[A-Za-z_]\w*$/.test(k) ? k : `[${luaValue(k)}]`;
+      return `${key} = ${luaValue(v[k])}`;
+    });
+    return "{ " + parts.join(", ") + " }";
+  }
+  return "nil";
+}
 
 const PORT = Number(process.env.NOVA_MCP_PORT || 3005);
 const HOST = "127.0.0.1";
@@ -242,6 +280,163 @@ server.tool(
     keyframes: z.array(z.object({ time: z.number(), poses: z.record(z.any()) })),
   },
   async (a) => tool("create_animation", a)
+);
+
+// ── NovaUI: let Claude install the library and build shops / windows ─────────
+const MODULES = ["Themes", "NovaUI", "Shop", "Presets", "Animations"];
+
+server.tool(
+  "install_novaui",
+  "Install the NovaUI library (Themes, NovaUI, Shop, Presets, Animations) as ModuleScripts under a parent (default ReplicatedStorage). Run this once before create_shop / create_window.",
+  { parent: z.string().default("game.ReplicatedStorage") },
+  async ({ parent }) => {
+    try {
+      const folder = await callStudio("create_instance", { className: "Folder", parent, name: "NovaUI" });
+      const installed = [];
+      for (const m of MODULES) {
+        const file = path.join(NOVA_DIR, `${m}.lua`);
+        if (!fs.existsSync(file)) continue;
+        const source = fs.readFileSync(file, "utf8");
+        const r = await callStudio("insert_script", { parent: folder.path, name: m, scriptType: "ModuleScript", source });
+        installed.push(r.path);
+      }
+      return ok({ folder: folder.path, installed, note: "Reference it from scripts as require(this folder).Shop / .NovaUI" });
+    } catch (e) { return fail(e.message || e); }
+  }
+);
+
+server.tool(
+  "list_shop_variations",
+  "List the shop variation catalog: 24 themes × 6 layouts × 4 card styles = 576 combinations.",
+  {},
+  async () => ok({
+    count: THEME_NAMES.length * LAYOUTS.length * CARD_STYLES.length,
+    themes: THEME_NAMES, layouts: LAYOUTS, cardStyles: CARD_STYLES,
+  })
+);
+
+const ITEM = z.object({
+  Name: z.string(), Price: z.number().optional(), Image: z.string().optional(),
+  Category: z.string().optional(), Badge: z.string().optional(), Currency: z.string().optional(),
+  ProductId: z.number().optional(), PurchaseType: z.enum(["Product", "Gamepass"]).optional(),
+  Owned: z.boolean().optional(),
+});
+
+async function buildShopScript({ title, theme, layout, cardStyle, columns, items, parent, novaPath }) {
+  const base = novaPath || 'game:GetService("ReplicatedStorage").NovaUI';
+  const cfg = luaValue({
+    Title: title || "Shop", Theme: theme || "Midnight",
+    Layout: layout || "Grid", CardStyle: cardStyle || "Elevated", Columns: columns || 3,
+  });
+  const src =
+`local Shop = require(${base}.Shop)
+local shop = Shop.new(${cfg})
+shop:AddItems(${luaValue(items || [])})
+shop:Render()
+`;
+  return callStudio("insert_script", {
+    parent: parent || "game.StarterPlayer.StarterPlayerScripts",
+    name: (title || "Shop").replace(/[^A-Za-z0-9]/g, "") + "Shop",
+    scriptType: "LocalScript",
+    source: src,
+  });
+}
+
+server.tool(
+  "create_shop",
+  "Generate a shop UI in Studio. Inserts a LocalScript that builds a NovaUI Shop; press Play to see it. Requires install_novaui first. `items` follow the Shop item shape (Name, Price, Image, Category, Badge, ProductId, PurchaseType).",
+  {
+    title: z.string().default("Item Shop"),
+    theme: z.enum(THEME_NAMES).default("Midnight"),
+    layout: z.enum(LAYOUTS).default("Grid"),
+    cardStyle: z.enum(CARD_STYLES).default("Elevated"),
+    columns: z.number().int().min(1).max(6).default(3),
+    items: z.array(ITEM).default([]),
+    parent: z.string().optional(),
+    novaPath: z.string().optional(),
+  },
+  async (a) => {
+    try { return ok(await buildShopScript(a)); }
+    catch (e) { return fail(e.message || e); }
+  }
+);
+
+server.tool(
+  "random_shop",
+  "Build a shop with a random theme/layout/card-style from the 576-variation catalog and a sample item set — a quick way to spin up one of the hundreds of looks.",
+  { parent: z.string().optional(), novaPath: z.string().optional() },
+  async ({ parent, novaPath }) => {
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    const theme = pick(THEME_NAMES), layout = pick(LAYOUTS), cardStyle = pick(CARD_STYLES);
+    const items = [
+      { Name: "Golden Sword", Price: 99, Category: "Weapons", Badge: "SALE" },
+      { Name: "Frost Bow", Price: 149, Category: "Weapons" },
+      { Name: "Jetpack", Price: 399, Category: "Gear", Badge: "HOT" },
+      { Name: "VIP", Price: 499, Category: "Passes", PurchaseType: "Gamepass", ProductId: 0 },
+      { Name: "Coin Pack", Price: 250, Category: "Currency", Currency: "🪙" },
+    ];
+    try {
+      const r = await buildShopScript({ title: `${theme} ${layout} Shop`, theme, layout, cardStyle, items, parent, novaPath });
+      return ok({ ...r, variation: `${theme} · ${layout} · ${cardStyle}` });
+    } catch (e) { return fail(e.message || e); }
+  }
+);
+
+// Build a full NovaUI window from a spec: { title, accent, theme, tabs:[{name, groups?,
+// components:[{type, ...props}]}] }. `type` maps to a NovaUI Create<Type> call.
+function componentLua(c) {
+  const t = c.type;
+  const rest = { ...c };
+  delete rest.type;
+  if (t === "Section") return `tab:CreateSection(${luaValue(c.text || c.Name || "Section")})`;
+  if (t === "Label") return `tab:CreateLabel(${luaValue(c.text || "")})`;
+  if (t === "Paragraph") return `tab:CreateParagraph(${luaValue(c.title || "")}, ${luaValue(c.body || "")})`;
+  if (t === "Divider") return `tab:CreateDivider()`;
+  // generic: Create<Type>({ props })
+  return `tab:Create${t}(${luaValue(rest)})`;
+}
+
+server.tool(
+  "create_window",
+  "Generate a full NovaUI window in Studio from a spec. Inserts a LocalScript; press Play to see it. Requires install_novaui first. Spec: title, accent {r,g,b}, theme, tabs:[{name, components:[{type:'Toggle'|'Slider'|'Dropdown'|'ColorPicker'|'Section'|..., ...props}]}].",
+  {
+    title: z.string().default("My Game"),
+    subTitle: z.string().optional(),
+    theme: z.enum(THEME_NAMES).optional(),
+    accent: z.object({ r: z.number(), g: z.number(), b: z.number() }).optional(),
+    tabs: z.array(z.object({
+      name: z.string(),
+      components: z.array(z.record(z.any())).default([]),
+    })).default([]),
+    parent: z.string().optional(),
+    novaPath: z.string().optional(),
+  },
+  async (a) => {
+    try {
+      const base = a.novaPath || 'game:GetService("ReplicatedStorage").NovaUI';
+      const winCfg = { Title: a.title, SubTitle: a.subTitle };
+      if (a.theme) winCfg.Theme = a.theme;
+      if (a.accent) winCfg.Accent = a.accent;
+      const lines = [
+        `local NovaUI = require(${base}.NovaUI)`,
+        `local Window = NovaUI:CreateWindow(${luaValue(winCfg)})`,
+        `local tab`,
+      ];
+      for (const tabSpec of a.tabs) {
+        lines.push(`tab = Window:CreateTab(${luaValue(tabSpec.name)})`);
+        for (const comp of tabSpec.components || []) {
+          lines.push(componentLua(comp));
+        }
+      }
+      const r = await callStudio("insert_script", {
+        parent: a.parent || "game.StarterPlayer.StarterPlayerScripts",
+        name: a.title.replace(/[^A-Za-z0-9]/g, "") + "UI",
+        scriptType: "LocalScript",
+        source: lines.join("\n") + "\n",
+      });
+      return ok(r);
+    } catch (e) { return fail(e.message || e); }
+  }
 );
 
 // ── go ───────────────────────────────────────────────────────────────────────
