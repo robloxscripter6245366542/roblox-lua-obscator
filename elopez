@@ -5704,6 +5704,26 @@ local function MainConnection()
                     ACHAOTICDATA.Parry[Ball].parriedApproach = true
                     ACHAOTICDATA.Parry[Ball].LastParry = os.clock()
                     ACHAOTICDATA.Global.APStatus = string.format("FIRING d=%d acc=%d tti=%.2f", math.floor(distance), math.floor(parry_accuracy), timeToImpact)
+                elseif mine and incoming and inRange and ACHAOTICDATA.Parry[Ball].parriedApproach and sinceLast >= 0.45 then
+                    -- SAFE RE-FIRE. We already blocked this approach, but the ball is
+                    -- STILL aimed at us, still in range, and still coming — 0.45s after
+                    -- the block, i.e. the ~0.5s active parry window has essentially
+                    -- expired and the ball hasn't arrived. That's a ball arriving LATER
+                    -- than its closing speed implied (a slow / curving / angled ball
+                    -- whose radial closing was low), so the first shield ran out before
+                    -- contact and it would have slipped through. Fire again to open a
+                    -- fresh window that covers its late arrival. This is safe and does
+                    -- NOT reintroduce the double-block: a normal/fast ball arrives and
+                    -- deflects (-> clearlyGone re-arms) well inside 0.45s, so it never
+                    -- reaches here; only a genuinely overdue ball re-fires, at most a
+                    -- couple of times, and each parry just opens a new active window
+                    -- (the same thing clash spam does), never restarting a live one.
+                    if ACHAOTICDATA.Config.AutoParry.AnimationFix and ACHAOTICDATA.Config.ParrySettings.ParryMethod ~= "Legit" then
+                        PlayParry_Animation()
+                    end
+                    FireParry()
+                    ACHAOTICDATA.Parry[Ball].LastParry = os.clock()
+                    ACHAOTICDATA.Global.APStatus = string.format("RE-FIRE (slow ball still incoming) d=%d", math.floor(distance))
                 elseif clearlyGone then
                     -- Ball has clearly left (not ours / well out of range): re-arm for
                     -- its next approach. This is what makes each rally volley fire.
