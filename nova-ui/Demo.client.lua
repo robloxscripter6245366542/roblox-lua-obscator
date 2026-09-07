@@ -15,8 +15,9 @@ local Window = NovaUI:CreateWindow({
 	Title    = "Nebula Sandbox",
 	SubTitle = "v1.1 • Settings",
 	Size     = UDim2.fromOffset(600, 420),
-	Accent   = Color3.fromRGB(120, 90, 255),
-	Theme    = "Dark",
+	Accent   = Color3.fromRGB(255, 50, 55), -- bright red
+	Theme    = "GlassRed",
+	Glass    = true,                        -- transparent-red window (WindUI style)
 	ToggleKey = Enum.KeyCode.RightShift, -- press to hide/show
 })
 

@@ -59,6 +59,8 @@ print(speed:Get())      -- read the value
 | `Accent` | Color3 | purple |
 | `Theme` | `"Dark"` / `"Light"` | `"Dark"` |
 | `ToggleKey` | Enum.KeyCode | `RightShift` |
+| `Glass` | bool | `false` — make just the **window** transparent (WindUI style): see-through window + accent border + dimmed backdrop. Components are untouched. Pair with `Theme = "GlassRed"` + a red `Accent`. |
+| `WindowTransparency` / `BackdropTransparency` | number | `0.15` / `0.5` — tune the glass amount. |
 
 Returns a `Window` with: `:CreateTab(name, icon?)`, `:Notify(o)`,
 `:SetTheme(name)`, `:Toggle(state?)`, `:Destroy()`.

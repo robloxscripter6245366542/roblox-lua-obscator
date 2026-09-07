@@ -212,18 +212,18 @@ function ShopHub:Select(pack)
 	-- The shop is built into Content (no own ScreenGui), so clear it by hand.
 	for _, child in ipairs(self.Content:GetChildren()) do child:Destroy() end
 	self.Current = nil
+	-- Glass mode only makes the WINDOW transparent — packs keep their own
+	-- layout, card style and colours (the features are untouched).
 	local shop = Shop.new({
 		Parent = self.Content,
-		-- Glass mode keeps one consistent red glass palette across packs.
-		Theme = self.Glass and self.Theme or (pack.Theme or self.Theme),
+		Theme = pack.Theme or self.Theme,
 		Layout = pack.Layout or "Grid",
-		CardStyle = self.Glass and "Glass" or (pack.CardStyle or "Elevated"),
+		CardStyle = pack.CardStyle or "Elevated",
 		Title = pack.Name,
 		Columns = pack.Columns or 3,
 		Currency = pack.Currency or "R$",
 	})
-	if self.Glass then shop.Theme.Accent = self.Theme.Accent
-	elseif pack.Accent then shop.Theme.Accent = pack.Accent end
+	if pack.Accent then shop.Theme.Accent = pack.Accent end
 	shop:AddItems(self:_resolveItems(pack))
 	shop:Render()
 	self.Current = shop
