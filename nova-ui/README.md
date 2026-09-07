@@ -181,6 +181,42 @@ through all 576 variations, `R` for a random one.
 
 ---
 
+## Shop Hub — free packs with side tabs (`ShopHub.lua`)
+
+A ready-to-ship, bright-red **shop hub**: a draggable window with a **side-tab
+rail** listing a dozen free **shop packs** (`ShopPacks.lua`) — Arsenal, Pet
+Palace, Garage, RPG, Skins, Tycoon, Season pass and more — each a fully themed
+store that builds with staggered card animations.
+
+```lua
+local ShopHub = require(path.to.ShopHub)
+
+local hub = ShopHub.launch({
+    Title  = "🔥 Shop",
+    Accent = Color3.fromRGB(255, 40, 45),   -- bright red
+    Theme  = "Scarlet",                      -- Scarlet / Crimson / Inferno
+    CheckOwnership = true,                   -- grey out passes already owned
+    GamePasses = {                           -- map pack Pass names → your ids
+        x2Coins = 111111, AutoFarm = 222222, VIP = 333333,
+    },
+})
+-- Right-Ctrl toggles the hub.
+```
+
+- **Bright-red themes**: `Scarlet`, `Crimson`, `Inferno` (plus a custom `Accent`).
+- **Side tabs**: one per pack; click to switch, cards animate in.
+- **Game passes**: any pack item with `Pass = "<name>"` is wired to
+  `MarketplaceService:PromptGamePassPurchase` once you put the real id in
+  `GamePasses`. With `CheckOwnership`, owned passes show as **Owned**.
+- **Add your own pack**: `hub:AddPack({ Name=…, Theme=…, Layout=…, CardStyle=…, Items={…} })`.
+
+### Load the whole UI by asset id
+Publish the `NovaUI` folder to Roblox and load it in one line — see
+[`Loader.lua`](./Loader.lua) for the `InsertService:LoadAsset` (folder) and
+`require(assetId)` (single-module) patterns, plus where to paste your game-pass ids.
+
+---
+
 ## Motion (`Animations.lua`)
 
 A tween-based motion toolkit — the polish the popular UI libraries use for

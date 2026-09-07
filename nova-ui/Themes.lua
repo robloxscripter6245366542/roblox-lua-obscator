@@ -102,6 +102,23 @@ local Catalog = {
 		Accent=c(96,165,250), AccentText=c(12,16,24),
 	},
 
+	-- ── Red family (bright red accents) ──────────────────────────────────
+	Scarlet = {
+		Background=c(16,10,12), Surface=c(26,16,18), SurfaceAlt=c(40,22,26),
+		Stroke=c(70,30,36), Text=c(248,235,236), SubText=c(190,150,155),
+		Accent=c(255,40,45), AccentText=c(255,255,255),
+	},
+	Crimson = {
+		Background=c(20,12,14), Surface=c(32,18,22), SurfaceAlt=c(48,26,30),
+		Stroke=c(84,38,44), Text=c(250,238,240), SubText=c(200,158,164),
+		Accent=c(230,25,60), AccentText=c(255,255,255),
+	},
+	Inferno = {
+		Background=c(12,8,8), Surface=c(22,12,12), SurfaceAlt=c(36,18,16),
+		Stroke=c(72,30,24), Text=c(255,240,235), SubText=c(205,150,140),
+		Accent=c(255,70,30), AccentText=c(20,8,6),
+	},
+
 	-- ── Light family ─────────────────────────────────────────────────────
 	Daylight = {
 		Background=c(244,245,250), Surface=c(255,255,255), SurfaceAlt=c(236,238,245),

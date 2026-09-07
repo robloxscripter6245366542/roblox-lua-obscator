@@ -34,7 +34,8 @@ const NOVA_DIR = path.resolve(__dirname, "..", "..", "nova-ui");
 const THEME_NAMES = [
   "Midnight", "Obsidian", "Graphite", "Nord", "Dracula", "Carbon", "Cyberpunk",
   "Matrix", "DeepSea", "Wine", "Forest", "Ember", "RoseGold", "Neon", "Royal",
-  "Slate", "Daylight", "Paper", "Mint", "Sky", "Sakura", "Sand", "Lavender", "Frost",
+  "Slate", "Scarlet", "Crimson", "Inferno",
+  "Daylight", "Paper", "Mint", "Sky", "Sakura", "Sand", "Lavender", "Frost",
 ];
 const LAYOUTS = ["Grid", "List", "Carousel", "Featured", "Compact", "Showcase"];
 const CARD_STYLES = ["Flat", "Elevated", "Outline", "Glass"];
@@ -283,7 +284,7 @@ server.tool(
 );
 
 // ── NovaUI: let Claude install the library and build shops / windows ─────────
-const MODULES = ["Themes", "NovaUI", "Shop", "Presets", "Animations"];
+const MODULES = ["Themes", "NovaUI", "Shop", "Presets", "Animations", "ShopPacks", "ShopHub"];
 
 server.tool(
   "install_novaui",
