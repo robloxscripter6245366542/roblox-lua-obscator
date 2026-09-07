@@ -12,6 +12,11 @@ export interface ToolContext {
   bashTimeoutMs: number;
   /** Called with a short human-readable line describing each tool call. */
   onActivity?: (line: string) => void;
+  /**
+   * Asks the user to approve a shell command before it runs. Resolve `true`
+   * to run, `false` to block. When omitted, commands run without a prompt.
+   */
+  confirmBash?: (command: string) => Promise<boolean>;
 }
 
 // Tool definitions sent to Claude. Custom tools with explicit schemas.
@@ -80,6 +85,13 @@ export async function runTool(
     switch (name) {
       case "bash": {
         const command = String(input?.command ?? "");
+        if (ctx.confirmBash) {
+          const approved = await ctx.confirmBash(command);
+          if (!approved) {
+            ctx.onActivity?.(`✗ denied: ${command}`);
+            return `The user denied permission to run this command, so it was not executed:\n${command}`;
+          }
+        }
         ctx.onActivity?.(`$ ${command}`);
         try {
           const { stdout, stderr } = await pexec(command, {
