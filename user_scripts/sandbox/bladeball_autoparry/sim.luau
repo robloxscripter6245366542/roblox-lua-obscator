@@ -78,6 +78,14 @@ local function autoParryStep(state, now, mine, distance, speed, closing, ping_ms
         fired = true
         state.parried = true
         state.last = now
+    elseif mine and incoming and inRange and state.parried and sinceLast >= 0.45 then
+        -- SAFE RE-FIRE: already blocked this approach, but the ball is STILL aimed at
+        -- us / in range / incoming 0.45s later (the ~0.5s shield has expired and it
+        -- hasn't arrived) = a slow/curving ball arriving later than its closing
+        -- implied. Open a fresh window. Fast balls deflect and clear well inside
+        -- 0.45s so they never re-fire -> no double block.
+        fired = true
+        state.last = now
     elseif clearlyGone then
         state.parried = false
     else
@@ -246,15 +254,18 @@ do
         elseif phase == "wobble" then
             wob = wob + 1
             if wob > 30 then phase = "leave" end
-            -- stays close (well inside 1.35*acc), closing flips each frame
+            -- A just-parried ball lingers near you but is now DEFLECTED: it targets the
+            -- opponent (not mine), closing flips as it settles. Not-mine -> hysteresis
+            -- re-arms and nothing fires (and the safe re-fire needs `mine`, so it can't
+            -- add a block here either). This is the realistic post-clash state.
             local closing = (f % 2 == 0) and 20 or -20
-            return true, 18, speed, closing
+            return false, 18, speed, closing
         else
             dist = dist + 200 * DT
-            return (dist < 120), dist, 200, -200
+            return false, dist, 200, -200                -- gone to the opponent, leaving
         end
     end, 60, 60 * 4)
-    -- exactly the one approach block; nothing during the wobble
+    -- exactly the one approach block; nothing during the post-clash linger
     check("post-clash wobble -> no extra blocks", fires == 1, "got " .. fires)
 end
 
@@ -267,15 +278,43 @@ end
 do
     local state = { parried = false, last = -1 }
     local now, fires = 0, 0
-    local dist = 300
-    -- ball flies all the way in to contact, still closing the entire time.
+    local dist, deflected = 300, false
+    -- ball flies in to contact still closing, then (as in the real game) DEFLECTS at
+    -- contact and leaves toward the opponent. It arrives well inside 0.45s of the
+    -- block, so the safe re-fire never engages and it's exactly ONE block.
     for _ = 1, 120 do
         now = now + DT
-        dist = math.max(dist - 300 * DT, 8)               -- keeps closing to contact (<=16)
-        if (autoParryStep(state, now, true, dist, 300, 300, 250, 1)) then fires = fires + 1 end
+        if not deflected then
+            dist = dist - 300 * DT
+            if dist <= 12 then deflected = true end
+            if (autoParryStep(state, now, true, dist, 300, 300, 250, 1)) then fires = fires + 1 end
+        else
+            dist = dist + 300 * DT
+            autoParryStep(state, now, false, dist, 300, -300, 250, 1)   -- deflected, leaving
+        end
     end
     check("no double block: one block even as the ball closes into contact (high ping)",
         fires == 1, "fires=" .. fires)
+end
+
+-- 3c. SAFE RE-FIRE for a slow / late ball. A ball that stays aimed at you, in range
+--     and incoming far longer than the ~0.5s shield (it arrives later than its low
+--     closing implied) must get REFRESH blocks, so the shield keeps covering it
+--     instead of the first one expiring and the ball slipping through. Bounded, not
+--     a spam loop.
+do
+    local state = { parried = false, last = -1 }
+    local now, fires = 0, 0
+    -- radial closing only 8 st/s: from ~40 studs it takes seconds to reach contact,
+    -- far more than the 0.5s shield -> a single block would expire before arrival.
+    local dist = 40
+    for _ = 1, 300 do
+        now = now + DT
+        dist = math.max(dist - 8 * DT, 12)
+        if (autoParryStep(state, now, true, dist, 60, 8, 60, 1)) then fires = fires + 1 end
+    end
+    check("slow/late ball re-fires so the shield keeps covering it (no slip-through)",
+        fires >= 2 and fires <= 15, "fires=" .. fires)
 end
 
 -- 4a. Ball that never comes inbound (always leaving): zero blocks.
@@ -321,11 +360,18 @@ do
     local sMine = { parried = false, last = 0 }
     local sOther = { parried = false, last = 0 }
     local dMine, dOther, now, fMine, fOther = 300, 300, 0, 0, 0
+    local mDefl = false
     for _ = 1, 240 do
         now += DT
-        dMine = math.max(dMine - 200 * DT, 20)          -- settle in-range but outside contact (no clash path)
+        if not mDefl then
+            dMine = dMine - 200 * DT
+            if dMine <= 12 then mDefl = true end         -- mine arrives and deflects away
+            if (autoParryStep(sMine, now, true, dMine, 200, 200, 60, 1)) then fMine = fMine + 1 end
+        else
+            dMine = dMine + 200 * DT
+            autoParryStep(sMine, now, false, dMine, 200, -200, 60, 1)  -- deflected, leaving
+        end
         dOther = math.max(dOther - 200 * DT, 20)
-        if (autoParryStep(sMine, now, true, dMine, 200, 200, 60, 1)) then fMine = fMine + 1 end
         if (autoParryStep(sOther, now, false, dOther, 200, 200, 60, 1)) then fOther = fOther + 1 end
     end
     check("multi-ball -> only mine fires", fMine == 1 and fOther == 0,
@@ -336,12 +382,18 @@ end
 do
     local state = { parried = false, last = 0 }
     local now, fires = 0, 0
-    local dist = 300
+    local dist, defl = 300, false
     for f = 1, 120 do
         now += DT
-        dist = math.max(dist - 200 * DT, 20)            -- in-range but outside contact (no clash path)
-        local mine = not (f == 40)                      -- one glitch frame: target flickers away
-        if (autoParryStep(state, now, mine, dist, 200, 200, 60, 1)) then fires = fires + 1 end
+        if not defl then
+            dist = dist - 200 * DT
+            if dist <= 12 then defl = true end           -- arrives and deflects
+            local mine = not (f == 40)                   -- one glitch frame: target flickers away
+            if (autoParryStep(state, now, mine, dist, 200, 200, 60, 1)) then fires = fires + 1 end
+        else
+            dist = dist + 200 * DT
+            autoParryStep(state, now, false, dist, 200, -200, 60, 1)  -- deflected, leaving
+        end
     end
     check("1-frame target flicker -> still one block", fires == 1, "got " .. fires)
 end
