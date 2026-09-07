@@ -1,0 +1,78 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+<title>Nova Agent</title>
+<style>
+  :root{--bg:#141019;--panel:#1d1420;--card:#241016;--stroke:#4a1c22;--tx:#fff3f3;--sub:#c9a6aa;--accent:#ff3237;}
+  *{box-sizing:border-box;}
+  body{margin:0;height:100vh;display:flex;flex-direction:column;font:13px/1.5 "Segoe UI",system-ui,sans-serif;color:var(--tx);background:var(--bg);}
+  .bar{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--stroke);-webkit-app-region:drag;}
+  .bar *{-webkit-app-region:no-drag;}
+  .dot{width:9px;height:9px;border-radius:50%;background:#666;box-shadow:0 0 6px transparent;}
+  .dot.on{background:#3fb950;box-shadow:0 0 8px #3fb95088;}
+  .logo{font-weight:800;color:var(--accent);}
+  select,button,input{font:inherit;color:var(--tx);}
+  select{background:var(--card);border:1px solid var(--stroke);border-radius:6px;padding:3px 6px;}
+  .ghost{background:transparent;border:1px solid var(--stroke);border-radius:14px;padding:3px 10px;color:var(--sub);cursor:pointer;}
+  .ghost:hover{color:var(--tx);border-color:var(--accent);}
+  #log{flex:1;overflow-y:auto;padding:12px;}
+  .msg{margin:0 0 12px;white-space:pre-wrap;word-wrap:break-word;}
+  .who{font-size:10px;letter-spacing:.05em;text-transform:uppercase;opacity:.5;margin-bottom:2px;}
+  .msg.user .who{color:var(--accent);}
+  .act{font-family:ui-monospace,Consolas,monospace;font-size:12px;opacity:.8;border-left:2px solid var(--accent);padding:2px 8px;margin:8px 0;color:var(--sub);}
+  .err{color:#ff6a6a;}
+  .foot{border-top:1px solid var(--stroke);padding:8px;display:flex;gap:8px;}
+  textarea{flex:1;height:44px;resize:none;background:var(--card);border:1px solid var(--stroke);border-radius:8px;padding:8px;color:var(--tx);}
+  .send{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:700;cursor:pointer;}
+  .folder{font-size:11px;color:var(--sub);padding:4px 12px;border-bottom:1px solid var(--stroke);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .folder b{color:var(--tx);}
+</style></head>
+<body>
+  <div class="bar">
+    <span class="dot" id="dot"></span>
+    <span class="logo">Nova Agent</span>
+    <span style="flex:1"></span>
+    <select id="model"></select>
+    <button class="ghost" id="key">API Key</button>
+    <button class="ghost" id="folder">Folder</button>
+    <button class="ghost" id="new">New</button>
+  </div>
+  <div class="folder" id="cwd">Folder: —</div>
+  <div id="log"></div>
+  <div class="foot">
+    <textarea id="input" placeholder="Tell Nova what to do…  (Enter to send)"></textarea>
+    <button class="send" id="send">Send</button>
+  </div>
+<script>
+  const $=(id)=>document.getElementById(id);
+  const log=$("log"); let current=null;
+  function add(cls,text){const d=document.createElement("div");d.className="msg "+cls;
+    if(cls==="assistant"||cls==="user"){const w=document.createElement("div");w.className="who";w.textContent=cls==="user"?"You":"Nova";d.appendChild(w);const b=document.createElement("span");b.textContent=text;d.appendChild(b);d._b=b;}
+    else d.textContent=text;
+    log.appendChild(d);log.scrollTop=log.scrollHeight;return d;}
+  function send(){const t=$("input").value.trim();if(!t)return;add("user",t);$("input").value="";current=null;window.nova.send(t);}
+  $("send").onclick=send;
+  $("input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}});
+  $("new").onclick=()=>{log.innerHTML="";current=null;window.nova.reset();};
+  $("model").onchange=()=>window.nova.setModel($("model").value);
+  $("key").onclick=async()=>{const k=prompt("Paste your Anthropic API key:");if(k){await window.nova.setKey(k);refresh();}};
+  $("folder").onclick=async()=>{const d=await window.nova.pickFolder();$("cwd").innerHTML="Folder: <b>"+d+"</b>";};
+
+  window.nova.onEvent(m=>{
+    if(m.type==="text"){if(!current)current=add("assistant","");current._b.textContent+=m.delta;log.scrollTop=log.scrollHeight;}
+    else if(m.type==="activity"){const d=document.createElement("div");d.className="act";d.textContent=m.line;log.appendChild(d);log.scrollTop=log.scrollHeight;current=null;}
+    else if(m.type==="error"){add("err",m.message);current=null;}
+    else if(m.type==="turnEnd"){current=null;}
+    else if(m.type==="connection"){$("dot").className="dot"+(m.connected?" on":"");}
+  });
+
+  async function refresh(){
+    const s=await window.nova.getSettings();
+    const sel=$("model");sel.innerHTML="";
+    s.models.forEach(id=>{const o=document.createElement("option");o.value=id;o.textContent=id;if(id===s.model)o.selected=true;sel.appendChild(o);});
+    $("cwd").innerHTML="Folder: <b>"+s.workDir+"</b>";
+    if(!s.hasKey) add("err","No API key set — click “API Key” to paste yours.");
+  }
+  refresh();
+</script>
+</body></html>

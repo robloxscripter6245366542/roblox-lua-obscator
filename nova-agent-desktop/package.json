@@ -1,0 +1,33 @@
+{
+  "name": "nova-agent-desktop",
+  "version": "1.0.0",
+  "description": "Nova Agent as a standalone desktop app — a Claude coding agent with fast bash + file tools.",
+  "author": "nova",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node18 --format=cjs --external:electron --outfile=dist/main.js && esbuild src/preload.ts --bundle --platform=node --target=node18 --format=cjs --external:electron --outfile=dist/preload.js",
+    "typecheck": "tsc --noEmit",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win",
+    "dist:portable": "npm run build && electron-builder --win portable"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "@types/node": "^20.11.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.5.0"
+  },
+  "build": {
+    "appId": "ai.superbullet.novaagent",
+    "productName": "Nova Agent",
+    "directories": { "output": "release" },
+    "files": ["dist/**", "renderer/**"],
+    "win": {
+      "target": ["nsis", "portable"],
+      "artifactName": "NovaAgent-${version}.${ext}"
+    },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+  }
+}
