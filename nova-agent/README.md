@@ -67,6 +67,21 @@ and pick them from the dropdown — that's how you "set any AI up." Leave
 | `novaAgent.baseUrl` | *(blank)* | Anthropic-compatible API base URL (blank = api.anthropic.com) |
 | `novaAgent.idleDisconnectMinutes` | `5` | Disconnect after N minutes idle (`0` = never) |
 | `novaAgent.bashTimeoutMs` | `120000` | Per-command bash timeout |
+| `novaAgent.requireBashApproval` | `true` | Ask before the agent runs any shell command |
+| `novaAgent.autoApprovePatterns` | `[]` | Commands matching these (regex or literal prefix) skip the prompt |
+
+## Command approval
+
+By default the agent **asks before every `bash` command**: a modal shows the
+exact command with **Allow** or **Allow all (session)**; dismissing it denies
+the command (the model is told it was denied and continues). "Allow all" lasts
+until the sidebar is closed/reopened, then it re-locks.
+
+- Auto-approve safe commands you trust by adding patterns to
+  `novaAgent.autoApprovePatterns`, e.g. `["^git status", "^ls", "^npm test"]`
+  (each is tried as a regex, falling back to a literal prefix match).
+- Set `novaAgent.requireBashApproval` to `false` to run commands without
+  prompting (not recommended).
 
 ## Model & API
 

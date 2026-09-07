@@ -56,6 +56,17 @@
           "default": 5,
           "description": "Disconnect from Claude after this many minutes of inactivity (0 = never)."
         },
+        "novaAgent.requireBashApproval": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask for approval before the agent runs any shell (bash) command."
+        },
+        "novaAgent.autoApprovePatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Commands matching any of these (regex, or a literal prefix if not valid regex) run without a prompt. Example: [\"^git status\", \"^ls\", \"^npm test\"]."
+        },
         "novaAgent.bashTimeoutMs": {
           "type": "number",
           "default": 120000,

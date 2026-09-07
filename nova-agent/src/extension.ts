@@ -52,8 +52,34 @@ export function deactivate() {}
 class NovaViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private agent?: Agent;
+  private sessionAllowAll = false; // "Allow all" for this session
 
   constructor(private context: vscode.ExtensionContext) {}
+
+  /** Approval gate for the bash tool. Returns true if the command may run. */
+  private async confirmBash(command: string): Promise<boolean> {
+    const c = this.cfg();
+    if (!c.get<boolean>("requireBashApproval", true)) return true;
+    if (this.sessionAllowAll) return true;
+
+    // auto-approve safe commands the user opted into
+    const patterns = c.get<string[]>("autoApprovePatterns", []);
+    for (const p of patterns) {
+      let hit = false;
+      try { hit = new RegExp(p).test(command); } catch { hit = command.startsWith(p); }
+      if (hit) return true;
+    }
+
+    const pick = await vscode.window.showWarningMessage(
+      "Nova Agent wants to run a shell command:",
+      { modal: true, detail: command },
+      "Allow",
+      "Allow all (session)",
+    );
+    if (pick === "Allow") return true;
+    if (pick === "Allow all (session)") { this.sessionAllowAll = true; return true; }
+    return false; // dismissed / closed = deny
+  }
 
   post(msg: any) {
     this.view?.webview.postMessage(msg);
@@ -90,6 +116,7 @@ class NovaViewProvider implements vscode.WebviewViewProvider {
         root: this.root(),
         bashTimeoutMs: c.get<number>("bashTimeoutMs", 120000),
         onActivity: (line) => this.post({ type: "activity", line }),
+        confirmBash: (command) => this.confirmBash(command),
       },
       {
         onText: (delta) => this.post({ type: "text", delta }),
@@ -119,6 +146,7 @@ class NovaViewProvider implements vscode.WebviewViewProvider {
 
   resolveWebviewView(view: vscode.WebviewView) {
     this.view = view;
+    this.sessionAllowAll = false; // each session starts requiring approval
     view.webview.options = { enableScripts: true };
     view.webview.html = getHtml();
     this.agent = this.makeAgent();
