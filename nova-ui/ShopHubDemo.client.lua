@@ -13,8 +13,9 @@ local ShopHub = require(script.Parent.ShopHub)
 
 ShopHub.launch({
 	Title  = "🔥 Shop",
-	Accent = Color3.fromRGB(255, 40, 45), -- bright red
-	Theme  = "Scarlet",
+	Accent = Color3.fromRGB(255, 50, 55), -- bright red
+	Theme  = "GlassRed",
+	Glass  = true,                        -- clean transparent red
 	CheckOwnership = true,
 	GamePasses = {
 		-- name (used by ShopPacks "Pass") = your real game-pass id

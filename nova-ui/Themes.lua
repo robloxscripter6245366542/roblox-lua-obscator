@@ -118,6 +118,12 @@ local Catalog = {
 		Stroke=c(72,30,24), Text=c(255,240,235), SubText=c(205,150,140),
 		Accent=c(255,70,30), AccentText=c(20,8,6),
 	},
+	-- Clean transparent red — designed to be shown with ShopHub's Glass mode.
+	GlassRed = {
+		Background=c(20,10,12), Surface=c(34,16,20), SurfaceAlt=c(50,22,28),
+		Stroke=c(120,40,48), Text=c(255,240,242), SubText=c(210,160,168),
+		Accent=c(255,50,55), AccentText=c(255,255,255),
+	},
 
 	-- ── Light family ─────────────────────────────────────────────────────
 	Daylight = {
