@@ -294,6 +294,21 @@ function NovaUI:CreateWindow(opts)
 
 	self:_makeDraggable(self.Main, topBar)
 
+	-- Glass: make just the WINDOW transparent (WindUI style) with an accent
+	-- border and a dimmed backdrop for readability. Components are untouched.
+	if opts.Glass then
+		local backdrop = make("Frame", {
+			Name = "Backdrop", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0),
+			BackgroundTransparency = opts.BackdropTransparency or 0.5, BorderSizePixel = 0,
+			ZIndex = 0, Parent = self.ScreenGui,
+		})
+		self.Main.ZIndex = 1
+		self.Main.BackgroundTransparency = opts.WindowTransparency or 0.15
+		local st = self.Main:FindFirstChildOfClass("UIStroke")
+		if st then st.Color = self.Theme.Accent; st.Thickness = 2; st.Transparency = 0 end
+		if self.Sidebar then self.Sidebar.BackgroundTransparency = 0.35 end
+	end
+
 	-- Toggle keybind (default: RightShift)
 	self.ToggleKey = opts.ToggleKey or Enum.KeyCode.RightShift
 	UserInputService.InputBegan:Connect(function(input, gpe)

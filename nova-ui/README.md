@@ -59,6 +59,8 @@ print(speed:Get())      -- read the value
 | `Accent` | Color3 | purple |
 | `Theme` | `"Dark"` / `"Light"` | `"Dark"` |
 | `ToggleKey` | Enum.KeyCode | `RightShift` |
+| `Glass` | bool | `false` — make just the **window** transparent (WindUI style): see-through window + accent border + dimmed backdrop. Components are untouched. Pair with `Theme = "GlassRed"` + a red `Accent`. |
+| `WindowTransparency` / `BackdropTransparency` | number | `0.15` / `0.5` — tune the glass amount. |
 
 Returns a `Window` with: `:CreateTab(name, icon?)`, `:Notify(o)`,
 `:SetTheme(name)`, `:Toggle(state?)`, `:Destroy()`.
@@ -194,7 +196,8 @@ local ShopHub = require(path.to.ShopHub)
 local hub = ShopHub.launch({
     Title  = "🔥 Shop",
     Accent = Color3.fromRGB(255, 40, 45),   -- bright red
-    Theme  = "Scarlet",                      -- Scarlet / Crimson / Inferno
+    Theme  = "GlassRed",                     -- Scarlet / Crimson / Inferno / GlassRed
+    Glass  = true,                           -- clean transparent (acrylic) look
     CheckOwnership = true,                   -- grey out passes already owned
     GamePasses = {                           -- map pack Pass names → your ids
         x2Coins = 111111, AutoFarm = 222222, VIP = 333333,
@@ -203,7 +206,8 @@ local hub = ShopHub.launch({
 -- Right-Ctrl toggles the hub.
 ```
 
-- **Bright-red themes**: `Scarlet`, `Crimson`, `Inferno` (plus a custom `Accent`).
+- **Bright-red themes**: `Scarlet`, `Crimson`, `Inferno`, and `GlassRed` (plus a custom `Accent`).
+- **Glass mode** (`Glass = true`): a clean **transparent red** look — semi-transparent window + panels + Glass cards, with a dimmed backdrop behind for readability. Pair with `Theme = "GlassRed"`.
 - **Side tabs**: one per pack; click to switch, cards animate in.
 - **Game passes**: any pack item with `Pass = "<name>"` is wired to
   `MarketplaceService:PromptGamePassPurchase` once you put the real id in

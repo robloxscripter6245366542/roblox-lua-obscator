@@ -66,6 +66,7 @@ function ShopHub.new(cfg)
 	if cfg.Accent then self.Theme.Accent = cfg.Accent end
 	self.GamePasses    = cfg.GamePasses or {}
 	self.CheckOwnership = cfg.CheckOwnership ~= false
+	self.Glass = cfg.Glass == true   -- clean transparent look
 	self.Packs   = {}
 	self.TabBtns = {}
 	self.Active  = nil
@@ -83,7 +84,19 @@ function ShopHub.new(cfg)
 		BorderSizePixel = 0, Parent = self.ScreenGui,
 	})
 	corner(14, self.Main)
-	stroke(T.Accent, 1.5, self.Main)
+	stroke(T.Accent, self.Glass and 2 or 1.5, self.Main)
+
+	-- Glass: dim the game behind for readability, then make the window
+	-- and its panels semi-transparent for a clean acrylic look.
+	if self.Glass then
+		local backdrop = make("Frame", {
+			Name = "Backdrop", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0),
+			BackgroundTransparency = 0.5, BorderSizePixel = 0, ZIndex = 0, Parent = self.ScreenGui,
+		})
+		backdrop.ZIndex = 0
+		self.Main.ZIndex = 1
+		self.Main.BackgroundTransparency = 0.15
+	end
 
 	-- title bar
 	local bar = make("Frame", { Size = UDim2.new(1, 0, 0, 46), BackgroundTransparency = 1, Parent = self.Main })
@@ -112,6 +125,7 @@ function ShopHub.new(cfg)
 		Parent = self.Main,
 	})
 	corner(10, self.Rail)
+	if self.Glass then self.Rail.BackgroundTransparency = 0.3 end
 	make("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = self.Rail })
 	make("UIPadding", { PaddingTop = UDim.new(0, 8), PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), Parent = self.Rail })
 
@@ -198,6 +212,8 @@ function ShopHub:Select(pack)
 	-- The shop is built into Content (no own ScreenGui), so clear it by hand.
 	for _, child in ipairs(self.Content:GetChildren()) do child:Destroy() end
 	self.Current = nil
+	-- Glass mode only makes the WINDOW transparent — packs keep their own
+	-- layout, card style and colours (the features are untouched).
 	local shop = Shop.new({
 		Parent = self.Content,
 		Theme = pack.Theme or self.Theme,

@@ -34,7 +34,7 @@ const NOVA_DIR = path.resolve(__dirname, "..", "..", "nova-ui");
 const THEME_NAMES = [
   "Midnight", "Obsidian", "Graphite", "Nord", "Dracula", "Carbon", "Cyberpunk",
   "Matrix", "DeepSea", "Wine", "Forest", "Ember", "RoseGold", "Neon", "Royal",
-  "Slate", "Scarlet", "Crimson", "Inferno",
+  "Slate", "Scarlet", "Crimson", "Inferno", "GlassRed",
   "Daylight", "Paper", "Mint", "Sky", "Sakura", "Sand", "Lavender", "Frost",
 ];
 const LAYOUTS = ["Grid", "List", "Carousel", "Featured", "Compact", "Showcase"];
