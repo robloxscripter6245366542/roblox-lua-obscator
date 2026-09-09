@@ -4,13 +4,13 @@
 --  Paste this ONE LINE into your executor (Delta / Xeno / Solara /
 --  Codex / Wave / Fluxus / Synapse / KRNL, iOS / iPadOS / Android / PC):
 --
---    loadstring(game:HttpGet("https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/claude/remove-webhooks-tff7x9/NexusV2_Loader.lua"))()
+--    loadstring(game:HttpGet("https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/NexusV2_Loader.lua"))()
 --
 --  This loader fetches and runs the latest NexusV2.lua, so the link
 --  never changes even when the script is updated.
 -- ============================================================
 
-local URL = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/claude/remove-webhooks-tff7x9/NexusV2.lua"
+local URL = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/NexusV2.lua"
 
 local ok, body = pcall(function()
     return game:HttpGet(URL, true)

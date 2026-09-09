@@ -247,6 +247,11 @@ local t11 = {
 	walkSpeed = 16,
 	jumpHeight = 7.2,
 	flySpeed = 50,
+	infJump = false,
+	antiAfk = false,
+	noFog = false,
+	killAura = false,
+	killAuraRange = 12,
 	mobileKeys = t1.value2,
 	freecamConn = nil,
 	freecamCF = nil,
@@ -294,7 +299,14 @@ do
         "tab", "minimized", "killfeedUI",
         "killSoundId", "headSoundId", "killVol", "headVol",
         "clockOn", "clockTime", "fullbright",
-        "dmgMarkers", "dmgStack"
+        "dmgMarkers", "dmgStack",
+        -- movement / values
+        "walkSpeedOn", "walkSpeed", "jumpHeight", "flySpeed",
+        -- world / utility (added)
+        "noFog", "infJump", "antiAfk", "killAuraRange",
+        -- ESP visuals
+        "highlights", "espBoxes", "espChams", "espTeamColors", "espNames",
+        "espHealth", "espDistance", "espTracers", "espRangeOn", "espMaxRange"
     }
 
     local function hasFileApi()
@@ -7145,7 +7157,7 @@ t9.value148 = t1.value2;
         t24.value71()
     end)
     t23.value11 = t24.value48(t24.value42, "movement")
-    v735(t23.value11, "WalkSpeed", "override speed", false, function(p204)
+    local nxWalkSpeedToggle = v735(t23.value11, "WalkSpeed", "override speed", t9.value10.walkSpeedOn == true, function(p204)
         t9.value10.walkSpeedOn = p204
 
         if p204 then
@@ -7379,7 +7391,7 @@ t9.value148 = t1.value2;
         t9.value114(Vector3.new(916, 97.49, 2306))
     end)
     t23.value19 = t24.value48(t24.value42, "values")
-    v733(t23.value19, "WalkSpeed", 0, 100, 16, function(p214)
+    v733(t23.value19, "WalkSpeed", 0, 100, tonumber(t9.value10.walkSpeed) or 16, function(p214)
         t9.value10.walkSpeed = p214
 
         local v1166 = t2.value8.Character and t2.value8.Character:FindFirstChildOfClass("Humanoid")
@@ -7388,7 +7400,7 @@ t9.value148 = t1.value2;
             v1166.WalkSpeed = p214
         end
     end)
-    v733(t23.value19, "JumpHeight", 0, 100, 7, function(p215)
+    v733(t23.value19, "JumpHeight", 0, 100, tonumber(t9.value10.jumpHeight) or 7, function(p215)
         t9.value10.jumpHeight = p215
 
         local v1168 = t2.value8.Character and t2.value8.Character:FindFirstChildOfClass("Humanoid")
@@ -7397,10 +7409,283 @@ t9.value148 = t1.value2;
             v1168.JumpHeight = p215
         end
     end)
-    v733(t23.value19, "Fly Speed", 10, 500, 50, function(p216)
+    v733(t23.value19, "Fly Speed", 10, 500, tonumber(t9.value10.flySpeed) or 50, function(p216)
         t9.value10.flySpeed = p216
     end)
-    v735(t24.value48(t24.value43, "master"), "ESP Enabled", "highlight outlines", false, function(p217)
+
+    -- Re-apply a saved WalkSpeed override so the humanoid speed matches config.
+    task.defer(function()
+        if t9.value10.walkSpeedOn == true and nxWalkSpeedToggle then
+            nxWalkSpeedToggle(true)
+        end
+    end)
+
+    -- ============================================================
+    --  Nexus Extras  -  extra Prison Life features (added)
+    -- ============================================================
+    do
+        local nx_state = t9.value10
+
+        -- Defaults live in the main state table (t11) so saved config can be
+        -- restored into them before the UI is built; don't re-initialise here
+        -- or the restored choice would be wiped.
+
+        local nx_infJumpConn, nx_afkConn, nx_killAuraConn
+        local nx_lastMelee = 0
+
+        -- Robustly change team through Prison Life's TeamEvent remote.
+        local function nx_setTeam(teamColor)
+            local ok = pcall(function()
+                local remoteFolder = workspace:FindFirstChild("Remote")
+                local teamEvent = remoteFolder and remoteFolder:FindFirstChild("TeamEvent")
+
+                if not teamEvent then
+                    error("TeamEvent remote not found")
+                end
+
+                teamEvent:FireServer(teamColor)
+            end)
+
+            v666("Team Changer", ok and "changed" or "remote missing", 3)
+        end
+
+        -- Criminals aren't a TeamEvent color: reaching the criminal base
+        -- flips you to the Criminals team, then we snap back.
+        local function nx_becomeCriminal()
+            local Character = t2.value8.Character
+            local hrp = Character and Character:FindFirstChild("HumanoidRootPart")
+
+            if not hrp then
+                v666("Team Changer", "no character", 3)
+
+                return
+            end
+
+            local old = hrp.CFrame
+
+            hrp.CFrame = CFrame.new(-919.958, 95.327, 2138.189)
+            task.wait(0.14)
+
+            if hrp and hrp.Parent then
+                hrp.CFrame = old
+            end
+
+            v666("Team Changer", "Criminal", 3)
+        end
+
+        local function nx_setInfJump(on)
+            nx_state.infJump = on
+
+            if on and not nx_infJumpConn then
+                nx_infJumpConn = t2.value3.JumpRequest:Connect(function()
+                    if not nx_state.infJump then
+                        return
+                    end
+
+                    local Humanoid = t2.value8.Character and t2.value8.Character:FindFirstChildOfClass("Humanoid")
+
+                    if Humanoid then
+                        Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                    end
+                end)
+            end
+        end
+
+        local function nx_setAntiAfk(on)
+            nx_state.antiAfk = on
+
+            if on and not nx_afkConn then
+                local ok, VirtualUser = pcall(function()
+                    return game:GetService("VirtualUser")
+                end)
+
+                if not ok or not VirtualUser then
+                    return
+                end
+
+                nx_afkConn = t2.value8.Idled:Connect(function()
+                    if not nx_state.antiAfk then
+                        return
+                    end
+
+                    pcall(function()
+                        VirtualUser:CaptureController()
+                        VirtualUser:ClickButton2(Vector2.new())
+                    end)
+                end)
+            end
+        end
+
+        -- Kill Aura: auto-fire the melee remote at any living player in range.
+        local function nx_setKillAura(on)
+            nx_state.killAura = on
+
+            if on and not nx_killAuraConn then
+                nx_killAuraConn = t2.value2.Heartbeat:Connect(function()
+                    if not nx_state.killAura then
+                        return
+                    end
+
+                    if tick() - nx_lastMelee < 0.1 then
+                        return
+                    end
+
+                    local melee = t2.value7:FindFirstChild("meleeEvent")
+
+                    if not melee then
+                        return
+                    end
+
+                    local Character = t2.value8.Character
+                    local hrp = Character and Character:FindFirstChild("HumanoidRootPart")
+
+                    if not hrp then
+                        return
+                    end
+
+                    local fired = false
+
+                    for _, player in ipairs(t2.value1:GetPlayers()) do
+                        if player ~= t2.value8 and player.Character then
+                            local ehrp = player.Character:FindFirstChild("HumanoidRootPart")
+                            local hum = player.Character:FindFirstChildOfClass("Humanoid")
+
+                            if ehrp and hum and hum.Health > 0 and (ehrp.Position - hrp.Position).Magnitude <= nx_state.killAuraRange then
+                                pcall(function()
+                                    melee:FireServer(player)
+                                end)
+
+                                fired = true
+                            end
+                        end
+                    end
+
+                    if fired then
+                        nx_lastMelee = tick()
+                    end
+                end)
+            end
+        end
+
+        local function nx_reset()
+            local Humanoid = t2.value8.Character and t2.value8.Character:FindFirstChildOfClass("Humanoid")
+
+            if Humanoid then
+                Humanoid.Health = 0
+                v666("Reset", "respawning", 2)
+            end
+        end
+
+        local function nx_rejoin()
+            v666("Rejoin", "teleporting", 3)
+            pcall(function()
+                game:GetService("TeleportService"):Teleport(game.PlaceId, t2.value8)
+            end)
+        end
+
+        local function nx_serverHop()
+            v666("Server Hop", "searching", 3)
+            task.spawn(function()
+                local TeleportService = game:GetService("TeleportService")
+                local ok, servers = pcall(function()
+                    local body = game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")
+
+                    return t2.value12:JSONDecode(body)
+                end)
+
+                if ok and servers and servers.data then
+                    for _, server in ipairs(servers.data) do
+                        if type(server) == "table" and server.playing and server.maxPlayers
+                            and server.playing < server.maxPlayers and tostring(server.id) ~= tostring(game.JobId) then
+                            local teleported = pcall(function()
+                                TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, t2.value8)
+                            end)
+
+                            if teleported then
+                                return
+                            end
+                        end
+                    end
+                end
+
+                v666("Server Hop", "no server found", 3)
+            end)
+        end
+
+        -- No-fog runs on its own lightweight Heartbeat.
+        t2.value2.Heartbeat:Connect(function()
+            if nx_state.noFog then
+                t2.value6.FogStart = 0
+                t2.value6.FogEnd = 1000000000
+            end
+        end)
+
+        -- ---- UI ----
+        local nxTeam = t24.value48(t24.value42, "team changer")
+
+        v734(nxTeam, "Neutral", function()
+            nx_setTeam("Medium stone grey")
+        end)
+        v734(nxTeam, "Prisoner", function()
+            nx_setTeam("Bright orange")
+        end)
+        v734(nxTeam, "Police", function()
+            nx_setTeam("Bright blue")
+        end)
+        v734(nxTeam, "Become Criminal", nx_becomeCriminal)
+
+        local nxUtility = t24.value48(t24.value42, "utility")
+
+        -- Toggle defaults read from nx_state so a saved choice shows the switch
+        -- in the right position; the re-apply below actually re-activates them.
+        local nxSetInfToggle = v735(nxUtility, "Infinite Jump", "jump again mid-air", nx_state.infJump == true, function(state)
+            nx_setInfJump(state)
+            v666("Infinite Jump", state)
+        end)
+        local nxSetAfkToggle = v735(nxUtility, "Anti-AFK", "never kicked for idling", nx_state.antiAfk == true, function(state)
+            nx_setAntiAfk(state)
+            v666("Anti-AFK", state)
+        end)
+        local nxSetFogToggle = v735(nxUtility, "No Fog", "clear distance fog", nx_state.noFog == true, function(state)
+            nx_state.noFog = state
+            v666("No Fog", state)
+        end)
+
+        local nxMelee = t24.value48(t24.value42, "melee")
+
+        -- Kill Aura on/off is intentionally not persisted (never auto-arm melee
+        -- on spawn); its range value is remembered.
+        v735(nxMelee, "Kill Aura", "auto-melee nearby players", false, function(state)
+            nx_setKillAura(state)
+            v666("Kill Aura", state)
+        end)
+        v733(nxMelee, "Kill Aura Range", 5, 60, tonumber(nx_state.killAuraRange) or 12, function(value)
+            nx_state.killAuraRange = value
+        end)
+
+        local nxServer = t24.value48(t24.value42, "server")
+
+        v734(nxServer, "Reset Character", nx_reset)
+        v734(nxServer, "Rejoin Server", nx_rejoin)
+        v734(nxServer, "Server Hop", nx_serverHop)
+
+        -- Re-apply saved utility choices so both switch and feature match config.
+        task.defer(function()
+            if nx_state.infJump == true then
+                nxSetInfToggle(true)
+            end
+
+            if nx_state.antiAfk == true then
+                nxSetAfkToggle(true)
+            end
+
+            if nx_state.noFog == true then
+                nxSetFogToggle(true)
+            end
+        end)
+    end
+
+    v735(t24.value48(t24.value43, "master"), "ESP Enabled", "highlight outlines", t9.value10.highlights == true, function(p217)
         t9.value10.highlights = p217
 
         if not p217 then
@@ -7416,14 +7701,14 @@ t9.value148 = t1.value2;
 
     local v753 = t24.value48(t24.value43, "features")
 
-    v735(v753, "Boxes", "2D boxes around players", true, function(p218)
+    v735(v753, "Boxes", "2D boxes around players", t9.value10.espBoxes == true, function(p218)
         t9.value10.espBoxes = p218
 
         if t9.value22.refreshESPPreview then
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "Chams", "body fill through walls", false, function(p219)
+    v735(v753, "Chams", "body fill through walls", t9.value10.espChams == true, function(p219)
         t9.value10.espChams = p219
 
         for _, player in ipairs(t2.value1:GetPlayers()) do
@@ -7436,35 +7721,35 @@ t9.value148 = t1.value2;
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "Team Colors", "color by team (guards/inmates/criminals)", false, function(p220)
+    v735(v753, "Team Colors", "color by team (guards/inmates/criminals)", t9.value10.espTeamColors == true, function(p220)
         t9.value10.espTeamColors = p220
 
         if t9.value22.refreshESPPreview then
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "Names", "show names", true, function(p221)
+    v735(v753, "Names", "show names", t9.value10.espNames == true, function(p221)
         t9.value10.espNames = p221
 
         if t9.value22.refreshESPPreview then
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "Health", "side health bar", true, function(p222)
+    v735(v753, "Health", "side health bar", t9.value10.espHealth == true, function(p222)
         t9.value10.espHealth = p222
 
         if t9.value22.refreshESPPreview then
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "Distance", "show studs", true, function(p223)
+    v735(v753, "Distance", "show studs", t9.value10.espDistance == true, function(p223)
         t9.value10.espDistance = p223
 
         if t9.value22.refreshESPPreview then
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "Tracers", not t9.value21 and "needs Drawing API" or "lines from bottom", true, function(p224)
+    v735(v753, "Tracers", not t9.value21 and "needs Drawing API" or "lines from bottom", t9.value10.espTracers == true, function(p224)
         t9.value10.espTracers = p224
 
         if not p224 then
@@ -7475,11 +7760,18 @@ t9.value148 = t1.value2;
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "ESP Range Limit", "hide ESP past max studs", false, function(p225)
+    v735(v753, "ESP Range Limit", "hide ESP past max studs", t9.value10.espRangeOn == true, function(p225)
         t9.value10.espRangeOn = p225
     end)
-    v733(v753, "ESP Max Distance", 50, 2000, 1000, function(p226)
+    v733(v753, "ESP Max Distance", 50, 2000, tonumber(t9.value10.espMaxRange) or 1000, function(p226)
         t9.value10.espMaxRange = p226
+    end)
+
+    -- refresh the ESP preview once so it reflects any restored ESP config
+    task.defer(function()
+        if t9.value22 and t9.value22.refreshESPPreview then
+            pcall(t9.value22.refreshESPPreview)
+        end
     end)
 
     local v754 = t24.value48(t24.value44, "keybinds")
@@ -8387,4 +8679,4 @@ CharacterAdded:Connect(t1.value1)
 local PlayerRemoving = t2.value1.PlayerRemoving
 t1.value1 = t9.value146
 PlayerRemoving:Connect(t1.value1)
-print(not ("[Nexus V2] Successfully Loaded - " .. t9.value1) and "PC" or "Mobile")
+print("[Nexus V2] Successfully Loaded - " .. (t9.value1 and "Mobile" or "PC"))
