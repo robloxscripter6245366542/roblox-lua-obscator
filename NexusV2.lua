@@ -7400,6 +7400,256 @@ t9.value148 = t1.value2;
     v733(t23.value19, "Fly Speed", 10, 500, 50, function(p216)
         t9.value10.flySpeed = p216
     end)
+
+    -- ============================================================
+    --  Nexus Extras  -  extra Prison Life features (added)
+    -- ============================================================
+    do
+        local nx_state = t9.value10
+
+        nx_state.infJump = false
+        nx_state.antiAfk = false
+        nx_state.noFog = false
+        nx_state.killAura = false
+        nx_state.killAuraRange = 12
+        nx_state.autoBail = false
+
+        local nx_infJumpConn, nx_afkConn, nx_killAuraConn
+        local nx_lastMelee = 0
+
+        -- Robustly change team through Prison Life's TeamEvent remote.
+        local function nx_setTeam(teamColor)
+            local ok = pcall(function()
+                local remoteFolder = workspace:FindFirstChild("Remote")
+                local teamEvent = remoteFolder and remoteFolder:FindFirstChild("TeamEvent")
+
+                if not teamEvent then
+                    error("TeamEvent remote not found")
+                end
+
+                teamEvent:FireServer(teamColor)
+            end)
+
+            v666("Team Changer", ok and "changed" or "remote missing", 3)
+        end
+
+        -- Criminals aren't a TeamEvent color: reaching the criminal base
+        -- flips you to the Criminals team, then we snap back.
+        local function nx_becomeCriminal()
+            local Character = t2.value8.Character
+            local hrp = Character and Character:FindFirstChild("HumanoidRootPart")
+
+            if not hrp then
+                v666("Team Changer", "no character", 3)
+
+                return
+            end
+
+            local old = hrp.CFrame
+
+            hrp.CFrame = CFrame.new(-919.958, 95.327, 2138.189)
+            task.wait(0.14)
+
+            if hrp and hrp.Parent then
+                hrp.CFrame = old
+            end
+
+            v666("Team Changer", "Criminal", 3)
+        end
+
+        local function nx_setInfJump(on)
+            nx_state.infJump = on
+
+            if on and not nx_infJumpConn then
+                nx_infJumpConn = t2.value3.JumpRequest:Connect(function()
+                    if not nx_state.infJump then
+                        return
+                    end
+
+                    local Humanoid = t2.value8.Character and t2.value8.Character:FindFirstChildOfClass("Humanoid")
+
+                    if Humanoid then
+                        Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                    end
+                end)
+            end
+        end
+
+        local function nx_setAntiAfk(on)
+            nx_state.antiAfk = on
+
+            if on and not nx_afkConn then
+                local ok, VirtualUser = pcall(function()
+                    return game:GetService("VirtualUser")
+                end)
+
+                if not ok or not VirtualUser then
+                    return
+                end
+
+                nx_afkConn = t2.value8.Idled:Connect(function()
+                    if not nx_state.antiAfk then
+                        return
+                    end
+
+                    pcall(function()
+                        VirtualUser:CaptureController()
+                        VirtualUser:ClickButton2(Vector2.new())
+                    end)
+                end)
+            end
+        end
+
+        -- Kill Aura: auto-fire the melee remote at any living player in range.
+        local function nx_setKillAura(on)
+            nx_state.killAura = on
+
+            if on and not nx_killAuraConn then
+                nx_killAuraConn = t2.value2.Heartbeat:Connect(function()
+                    if not nx_state.killAura then
+                        return
+                    end
+
+                    if tick() - nx_lastMelee < 0.1 then
+                        return
+                    end
+
+                    local melee = t2.value7:FindFirstChild("meleeEvent")
+
+                    if not melee then
+                        return
+                    end
+
+                    local Character = t2.value8.Character
+                    local hrp = Character and Character:FindFirstChild("HumanoidRootPart")
+
+                    if not hrp then
+                        return
+                    end
+
+                    local fired = false
+
+                    for _, player in ipairs(t2.value1:GetPlayers()) do
+                        if player ~= t2.value8 and player.Character then
+                            local ehrp = player.Character:FindFirstChild("HumanoidRootPart")
+                            local hum = player.Character:FindFirstChildOfClass("Humanoid")
+
+                            if ehrp and hum and hum.Health > 0 and (ehrp.Position - hrp.Position).Magnitude <= nx_state.killAuraRange then
+                                pcall(function()
+                                    melee:FireServer(player)
+                                end)
+
+                                fired = true
+                            end
+                        end
+                    end
+
+                    if fired then
+                        nx_lastMelee = tick()
+                    end
+                end)
+            end
+        end
+
+        local function nx_reset()
+            local Humanoid = t2.value8.Character and t2.value8.Character:FindFirstChildOfClass("Humanoid")
+
+            if Humanoid then
+                Humanoid.Health = 0
+                v666("Reset", "respawning", 2)
+            end
+        end
+
+        local function nx_rejoin()
+            v666("Rejoin", "teleporting", 3)
+            pcall(function()
+                game:GetService("TeleportService"):Teleport(game.PlaceId, t2.value8)
+            end)
+        end
+
+        local function nx_serverHop()
+            v666("Server Hop", "searching", 3)
+            task.spawn(function()
+                local TeleportService = game:GetService("TeleportService")
+                local ok, servers = pcall(function()
+                    local body = game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")
+
+                    return t2.value12:JSONDecode(body)
+                end)
+
+                if ok and servers and servers.data then
+                    for _, server in ipairs(servers.data) do
+                        if type(server) == "table" and server.playing and server.maxPlayers
+                            and server.playing < server.maxPlayers and tostring(server.id) ~= tostring(game.JobId) then
+                            local teleported = pcall(function()
+                                TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, t2.value8)
+                            end)
+
+                            if teleported then
+                                return
+                            end
+                        end
+                    end
+                end
+
+                v666("Server Hop", "no server found", 3)
+            end)
+        end
+
+        -- No-fog runs on its own lightweight Heartbeat.
+        t2.value2.Heartbeat:Connect(function()
+            if nx_state.noFog then
+                t2.value6.FogStart = 0
+                t2.value6.FogEnd = 1000000000
+            end
+        end)
+
+        -- ---- UI ----
+        local nxTeam = t24.value48(t24.value42, "team changer")
+
+        v734(nxTeam, "Neutral", function()
+            nx_setTeam("Medium stone grey")
+        end)
+        v734(nxTeam, "Prisoner", function()
+            nx_setTeam("Bright orange")
+        end)
+        v734(nxTeam, "Police", function()
+            nx_setTeam("Bright blue")
+        end)
+        v734(nxTeam, "Become Criminal", nx_becomeCriminal)
+
+        local nxUtility = t24.value48(t24.value42, "utility")
+
+        v735(nxUtility, "Infinite Jump", "jump again mid-air", false, function(state)
+            nx_setInfJump(state)
+            v666("Infinite Jump", state)
+        end)
+        v735(nxUtility, "Anti-AFK", "never kicked for idling", false, function(state)
+            nx_setAntiAfk(state)
+            v666("Anti-AFK", state)
+        end)
+        v735(nxUtility, "No Fog", "clear distance fog", false, function(state)
+            nx_state.noFog = state
+            v666("No Fog", state)
+        end)
+
+        local nxMelee = t24.value48(t24.value42, "melee")
+
+        v735(nxMelee, "Kill Aura", "auto-melee nearby players", false, function(state)
+            nx_setKillAura(state)
+            v666("Kill Aura", state)
+        end)
+        v733(nxMelee, "Kill Aura Range", 5, 60, 12, function(value)
+            nx_state.killAuraRange = value
+        end)
+
+        local nxServer = t24.value48(t24.value42, "server")
+
+        v734(nxServer, "Reset Character", nx_reset)
+        v734(nxServer, "Rejoin Server", nx_rejoin)
+        v734(nxServer, "Server Hop", nx_serverHop)
+    end
+
     v735(t24.value48(t24.value43, "master"), "ESP Enabled", "highlight outlines", false, function(p217)
         t9.value10.highlights = p217
 
@@ -8387,4 +8637,4 @@ CharacterAdded:Connect(t1.value1)
 local PlayerRemoving = t2.value1.PlayerRemoving
 t1.value1 = t9.value146
 PlayerRemoving:Connect(t1.value1)
-print(not ("[Nexus V2] Successfully Loaded - " .. t9.value1) and "PC" or "Mobile")
+print("[Nexus V2] Successfully Loaded - " .. (t9.value1 and "Mobile" or "PC"))
