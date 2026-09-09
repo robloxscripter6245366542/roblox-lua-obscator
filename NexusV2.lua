@@ -247,6 +247,11 @@ local t11 = {
 	walkSpeed = 16,
 	jumpHeight = 7.2,
 	flySpeed = 50,
+	infJump = false,
+	antiAfk = false,
+	noFog = false,
+	killAura = false,
+	killAuraRange = 12,
 	mobileKeys = t1.value2,
 	freecamConn = nil,
 	freecamCF = nil,
@@ -294,7 +299,14 @@ do
         "tab", "minimized", "killfeedUI",
         "killSoundId", "headSoundId", "killVol", "headVol",
         "clockOn", "clockTime", "fullbright",
-        "dmgMarkers", "dmgStack"
+        "dmgMarkers", "dmgStack",
+        -- movement / values
+        "walkSpeedOn", "walkSpeed", "jumpHeight", "flySpeed",
+        -- world / utility (added)
+        "noFog", "infJump", "antiAfk", "killAuraRange",
+        -- ESP visuals
+        "highlights", "espBoxes", "espChams", "espTeamColors", "espNames",
+        "espHealth", "espDistance", "espTracers", "espRangeOn", "espMaxRange"
     }
 
     local function hasFileApi()
@@ -7145,7 +7157,7 @@ t9.value148 = t1.value2;
         t24.value71()
     end)
     t23.value11 = t24.value48(t24.value42, "movement")
-    v735(t23.value11, "WalkSpeed", "override speed", false, function(p204)
+    local nxWalkSpeedToggle = v735(t23.value11, "WalkSpeed", "override speed", t9.value10.walkSpeedOn == true, function(p204)
         t9.value10.walkSpeedOn = p204
 
         if p204 then
@@ -7379,7 +7391,7 @@ t9.value148 = t1.value2;
         t9.value114(Vector3.new(916, 97.49, 2306))
     end)
     t23.value19 = t24.value48(t24.value42, "values")
-    v733(t23.value19, "WalkSpeed", 0, 100, 16, function(p214)
+    v733(t23.value19, "WalkSpeed", 0, 100, tonumber(t9.value10.walkSpeed) or 16, function(p214)
         t9.value10.walkSpeed = p214
 
         local v1166 = t2.value8.Character and t2.value8.Character:FindFirstChildOfClass("Humanoid")
@@ -7388,7 +7400,7 @@ t9.value148 = t1.value2;
             v1166.WalkSpeed = p214
         end
     end)
-    v733(t23.value19, "JumpHeight", 0, 100, 7, function(p215)
+    v733(t23.value19, "JumpHeight", 0, 100, tonumber(t9.value10.jumpHeight) or 7, function(p215)
         t9.value10.jumpHeight = p215
 
         local v1168 = t2.value8.Character and t2.value8.Character:FindFirstChildOfClass("Humanoid")
@@ -7397,8 +7409,15 @@ t9.value148 = t1.value2;
             v1168.JumpHeight = p215
         end
     end)
-    v733(t23.value19, "Fly Speed", 10, 500, 50, function(p216)
+    v733(t23.value19, "Fly Speed", 10, 500, tonumber(t9.value10.flySpeed) or 50, function(p216)
         t9.value10.flySpeed = p216
+    end)
+
+    -- Re-apply a saved WalkSpeed override so the humanoid speed matches config.
+    task.defer(function()
+        if t9.value10.walkSpeedOn == true and nxWalkSpeedToggle then
+            nxWalkSpeedToggle(true)
+        end
     end)
 
     -- ============================================================
@@ -7407,12 +7426,9 @@ t9.value148 = t1.value2;
     do
         local nx_state = t9.value10
 
-        nx_state.infJump = false
-        nx_state.antiAfk = false
-        nx_state.noFog = false
-        nx_state.killAura = false
-        nx_state.killAuraRange = 12
-        nx_state.autoBail = false
+        -- Defaults live in the main state table (t11) so saved config can be
+        -- restored into them before the UI is built; don't re-initialise here
+        -- or the restored choice would be wiped.
 
         local nx_infJumpConn, nx_afkConn, nx_killAuraConn
         local nx_lastMelee = 0
@@ -7620,26 +7636,30 @@ t9.value148 = t1.value2;
 
         local nxUtility = t24.value48(t24.value42, "utility")
 
-        v735(nxUtility, "Infinite Jump", "jump again mid-air", false, function(state)
+        -- Toggle defaults read from nx_state so a saved choice shows the switch
+        -- in the right position; the re-apply below actually re-activates them.
+        local nxSetInfToggle = v735(nxUtility, "Infinite Jump", "jump again mid-air", nx_state.infJump == true, function(state)
             nx_setInfJump(state)
             v666("Infinite Jump", state)
         end)
-        v735(nxUtility, "Anti-AFK", "never kicked for idling", false, function(state)
+        local nxSetAfkToggle = v735(nxUtility, "Anti-AFK", "never kicked for idling", nx_state.antiAfk == true, function(state)
             nx_setAntiAfk(state)
             v666("Anti-AFK", state)
         end)
-        v735(nxUtility, "No Fog", "clear distance fog", false, function(state)
+        local nxSetFogToggle = v735(nxUtility, "No Fog", "clear distance fog", nx_state.noFog == true, function(state)
             nx_state.noFog = state
             v666("No Fog", state)
         end)
 
         local nxMelee = t24.value48(t24.value42, "melee")
 
+        -- Kill Aura on/off is intentionally not persisted (never auto-arm melee
+        -- on spawn); its range value is remembered.
         v735(nxMelee, "Kill Aura", "auto-melee nearby players", false, function(state)
             nx_setKillAura(state)
             v666("Kill Aura", state)
         end)
-        v733(nxMelee, "Kill Aura Range", 5, 60, 12, function(value)
+        v733(nxMelee, "Kill Aura Range", 5, 60, tonumber(nx_state.killAuraRange) or 12, function(value)
             nx_state.killAuraRange = value
         end)
 
@@ -7648,9 +7668,24 @@ t9.value148 = t1.value2;
         v734(nxServer, "Reset Character", nx_reset)
         v734(nxServer, "Rejoin Server", nx_rejoin)
         v734(nxServer, "Server Hop", nx_serverHop)
+
+        -- Re-apply saved utility choices so both switch and feature match config.
+        task.defer(function()
+            if nx_state.infJump == true then
+                nxSetInfToggle(true)
+            end
+
+            if nx_state.antiAfk == true then
+                nxSetAfkToggle(true)
+            end
+
+            if nx_state.noFog == true then
+                nxSetFogToggle(true)
+            end
+        end)
     end
 
-    v735(t24.value48(t24.value43, "master"), "ESP Enabled", "highlight outlines", false, function(p217)
+    v735(t24.value48(t24.value43, "master"), "ESP Enabled", "highlight outlines", t9.value10.highlights == true, function(p217)
         t9.value10.highlights = p217
 
         if not p217 then
@@ -7666,14 +7701,14 @@ t9.value148 = t1.value2;
 
     local v753 = t24.value48(t24.value43, "features")
 
-    v735(v753, "Boxes", "2D boxes around players", true, function(p218)
+    v735(v753, "Boxes", "2D boxes around players", t9.value10.espBoxes == true, function(p218)
         t9.value10.espBoxes = p218
 
         if t9.value22.refreshESPPreview then
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "Chams", "body fill through walls", false, function(p219)
+    v735(v753, "Chams", "body fill through walls", t9.value10.espChams == true, function(p219)
         t9.value10.espChams = p219
 
         for _, player in ipairs(t2.value1:GetPlayers()) do
@@ -7686,35 +7721,35 @@ t9.value148 = t1.value2;
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "Team Colors", "color by team (guards/inmates/criminals)", false, function(p220)
+    v735(v753, "Team Colors", "color by team (guards/inmates/criminals)", t9.value10.espTeamColors == true, function(p220)
         t9.value10.espTeamColors = p220
 
         if t9.value22.refreshESPPreview then
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "Names", "show names", true, function(p221)
+    v735(v753, "Names", "show names", t9.value10.espNames == true, function(p221)
         t9.value10.espNames = p221
 
         if t9.value22.refreshESPPreview then
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "Health", "side health bar", true, function(p222)
+    v735(v753, "Health", "side health bar", t9.value10.espHealth == true, function(p222)
         t9.value10.espHealth = p222
 
         if t9.value22.refreshESPPreview then
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "Distance", "show studs", true, function(p223)
+    v735(v753, "Distance", "show studs", t9.value10.espDistance == true, function(p223)
         t9.value10.espDistance = p223
 
         if t9.value22.refreshESPPreview then
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "Tracers", not t9.value21 and "needs Drawing API" or "lines from bottom", true, function(p224)
+    v735(v753, "Tracers", not t9.value21 and "needs Drawing API" or "lines from bottom", t9.value10.espTracers == true, function(p224)
         t9.value10.espTracers = p224
 
         if not p224 then
@@ -7725,11 +7760,18 @@ t9.value148 = t1.value2;
             t9.value22.refreshESPPreview()
         end
     end)
-    v735(v753, "ESP Range Limit", "hide ESP past max studs", false, function(p225)
+    v735(v753, "ESP Range Limit", "hide ESP past max studs", t9.value10.espRangeOn == true, function(p225)
         t9.value10.espRangeOn = p225
     end)
-    v733(v753, "ESP Max Distance", 50, 2000, 1000, function(p226)
+    v733(v753, "ESP Max Distance", 50, 2000, tonumber(t9.value10.espMaxRange) or 1000, function(p226)
         t9.value10.espMaxRange = p226
+    end)
+
+    -- refresh the ESP preview once so it reflects any restored ESP config
+    task.defer(function()
+        if t9.value22 and t9.value22.refreshESPPreview then
+            pcall(t9.value22.refreshESPPreview)
+        end
     end)
 
     local v754 = t24.value48(t24.value44, "keybinds")
