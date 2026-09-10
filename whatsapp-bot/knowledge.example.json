@@ -1,0 +1,52 @@
+[
+  {
+    "question": "What are your fees?",
+    "answer": "Our standard processing fee is 1.5% per successful transaction, capped at ₦2,000. There are no setup fees and no monthly minimums. Volume discounts are available above ₦50m/month — the sales team can quote you.",
+    "tags": ["fees", "pricing", "charges", "cost", "rates"]
+  },
+  {
+    "question": "How long does settlement take?",
+    "answer": "Local transactions settle T+1 (next business day). Card transactions settle T+2. Settlements run at 4pm WAT each business day, so anything captured after that goes out the following day.",
+    "tags": ["settlement", "payout", "timing", "when", "transfer"]
+  },
+  {
+    "question": "What do I need to open an account?",
+    "answer": "For a business account: CAC certificate, TIN, a valid ID for each director, and a corporate bank account. Verification usually completes within 48 hours of receiving complete documents.",
+    "tags": ["account", "signup", "onboarding", "kyc", "documents", "verification", "register"]
+  },
+  {
+    "question": "Which countries do you support?",
+    "answer": "We currently support Nigeria, Ghana, Kenya and South Africa, with settlement in local currency. More markets are being added — ask the team for the latest.",
+    "tags": ["countries", "coverage", "regions", "supported", "markets", "africa"]
+  },
+  {
+    "question": "How do I integrate the API?",
+    "answer": "You can integrate via our REST API or one of our SDKs. Get your test keys from the dashboard, use the sandbox environment first, then swap to live keys. Full documentation is on our developer site.",
+    "tags": ["api", "integration", "developer", "sdk", "technical", "docs", "sandbox"]
+  },
+  {
+    "question": "How do refunds work?",
+    "answer": "Refunds can be issued in full or partially from the dashboard, or through the API, within 90 days of the original transaction. The customer receives funds in 5–10 business days depending on their bank.",
+    "tags": ["refund", "reversal", "money back", "return"]
+  },
+  {
+    "question": "A payment failed — what should I do?",
+    "answer": "Failed payments are usually declined by the customer's bank (insufficient funds, limits, or an expired card). Check the failure reason on the transaction in your dashboard. If the reason is unclear or funds were debited without the payment succeeding, contact support with the transaction reference.",
+    "tags": ["failed", "declined", "error", "problem", "not working", "debited"]
+  },
+  {
+    "question": "Is my money safe / are you licensed?",
+    "answer": "We are licensed by the Central Bank of Nigeria and funds are held in segregated accounts with our partner banks. We are also PCI-DSS compliant for card handling.",
+    "tags": ["safe", "security", "licence", "license", "regulated", "compliance", "pci", "trust"]
+  },
+  {
+    "question": "How do I contact support?",
+    "answer": "You can reach us right here on WhatsApp during business hours, and the team will pick up anything that needs a human. For urgent production issues, mention that it's urgent and it will be prioritised.",
+    "tags": ["support", "contact", "help", "reach", "human"]
+  },
+  {
+    "question": "Do you have a dashboard?",
+    "answer": "Yes — the merchant dashboard shows transactions, settlements, refunds and your API keys. You get access as soon as your account is verified.",
+    "tags": ["dashboard", "portal", "login", "account", "transactions"]
+  }
+]
