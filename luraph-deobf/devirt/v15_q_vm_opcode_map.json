@@ -1,0 +1,41 @@
+{
+ "total_instructions": 0,
+ "modes": {
+  "0": {
+   "opcode_var": "J",
+   "fetch_array": "n",
+   "static_richness": 48,
+   "instructions_executed": 0,
+   "distinct_opcodes_hit": 0,
+   "pc_range": null,
+   "top_opcodes": []
+  },
+  "1": {
+   "opcode_var": "J",
+   "fetch_array": "P",
+   "static_richness": 64,
+   "instructions_executed": 0,
+   "distinct_opcodes_hit": 0,
+   "pc_range": null,
+   "top_opcodes": []
+  },
+  "2": {
+   "opcode_var": "J",
+   "fetch_array": "f",
+   "static_richness": 63,
+   "instructions_executed": 0,
+   "distinct_opcodes_hit": 0,
+   "pc_range": null,
+   "top_opcodes": []
+  },
+  "3": {
+   "opcode_var": "J",
+   "fetch_array": "n",
+   "static_richness": 61,
+   "instructions_executed": 0,
+   "distinct_opcodes_hit": 0,
+   "pc_range": null,
+   "top_opcodes": []
+  }
+ }
+}

@@ -307,6 +307,9 @@ def main():
     ap.add_argument("sample")
     ap.add_argument("--luau-ast", default="../dynamic/luau-ast")
     ap.add_argument("--hist", help="v15_payload_probe.py --json output, for dynamic overlay")
+    ap.add_argument("--pc-var", default=None,
+                     help="target this specific pc-var group instead of the "
+                          "auto-picked richest one (see find_vm_groups)")
     ap.add_argument("--json")
     ap.add_argument("--md")
     args = ap.parse_args()
@@ -315,7 +318,12 @@ def main():
     groups = find_vm_groups(src)
     if not groups:
         sys.exit("!! no candidate dispatch loop found")
-    pc = pick_payload_vm(groups)
+    if args.pc_var is not None:
+        if args.pc_var not in groups:
+            sys.exit(f"!! pc-var '{args.pc_var}' not among candidate groups: {sorted(groups)}")
+        pc = args.pc_var
+    else:
+        pc = pick_payload_vm(groups)
     blocks = groups[pc]
     print(f"[v15-payload-opcodes] pc-var '{pc}', {len(blocks)} dispatch block(s)")
 
