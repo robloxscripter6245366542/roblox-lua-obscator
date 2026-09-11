@@ -79,7 +79,7 @@ def inject_probes(src, blocks, pc_var):
     return out
 
 
-def run_probe(sample_path, luau, deobf_script, timeout, workdir):
+def run_probe(sample_path, luau, deobf_script, timeout, workdir, pc_var=None):
     instrumented = os.path.join(workdir, "probed_" + os.path.basename(sample_path))
     out_prefix = os.path.join(workdir, "probe_run")
     src = open(sample_path, encoding="utf-8", errors="replace").read()
@@ -87,7 +87,12 @@ def run_probe(sample_path, luau, deobf_script, timeout, workdir):
     if not groups:
         sys.exit("!! no candidate dispatch loop found (regex didn't match -- "
                  "this sample's payload VM may use a different source shape)")
-    pc = pick_payload_vm(groups)
+    if pc_var is not None:
+        if pc_var not in groups:
+            sys.exit(f"!! pc-var '{pc_var}' not among candidate groups: {sorted(groups)}")
+        pc = pc_var
+    else:
+        pc = pick_payload_vm(groups)
     blocks = groups[pc]
     print(f"[v15-payload-probe] pc-var groups found: "
           f"{ {k: len(v) for k, v in groups.items()} }")
@@ -142,13 +147,17 @@ def main():
     ap.add_argument("--deobf", default="dynamic/deobf_v15.py")
     ap.add_argument("--timeout", type=int, default=60)
     ap.add_argument("--workdir", default=None)
+    ap.add_argument("--pc-var", default=None,
+                     help="target this specific pc-var group instead of the "
+                          "auto-picked richest one (see find_vm_groups) -- "
+                          "e.g. to probe a second, non-payload VM in the same sample")
     ap.add_argument("--json")
     ap.add_argument("--md")
     args = ap.parse_args()
 
     workdir = args.workdir or tempfile.mkdtemp(prefix="v15probe_")
     raw_path, blocks = run_probe(args.sample, args.luau, args.deobf,
-                                  args.timeout, workdir)
+                                  args.timeout, workdir, pc_var=args.pc_var)
     result = summarize(raw_path, blocks)
 
     print(f"\n[v15-payload-probe] {args.sample}")

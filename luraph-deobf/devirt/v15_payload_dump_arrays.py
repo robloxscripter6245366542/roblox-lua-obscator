@@ -79,6 +79,9 @@ def main():
                     help="comma-separated identifier names to try dumping")
     ap.add_argument("--timeout", type=int, default=20)
     ap.add_argument("--workdir", default=None)
+    ap.add_argument("--pc-var", default=None,
+                    help="target this specific pc-var group instead of the "
+                         "auto-picked richest one (see find_vm_groups)")
     ap.add_argument("--json")
     args = ap.parse_args()
 
@@ -86,7 +89,12 @@ def main():
     groups = find_vm_groups(src)
     if not groups:
         sys.exit("!! no candidate dispatch loop found")
-    pc = pick_payload_vm(groups)
+    if args.pc_var is not None:
+        if args.pc_var not in groups:
+            sys.exit(f"!! pc-var '{args.pc_var}' not among candidate groups: {sorted(groups)}")
+        pc = args.pc_var
+    else:
+        pc = pick_payload_vm(groups)
     blocks = groups[pc]
     mode = args.mode if args.mode is not None else max(
         range(len(blocks)), key=lambda i: blocks[i][4])

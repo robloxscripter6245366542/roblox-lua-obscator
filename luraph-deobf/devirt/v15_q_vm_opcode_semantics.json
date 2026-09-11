@@ -1,0 +1,3845 @@
+{
+ "sample": "sample_v15.lua",
+ "pc_var": "Q",
+ "modes": {
+  "0": {
+   "opcode_var": "J",
+   "fetch_array": "n",
+   "opcodes": [
+    {
+     "opcode": "36",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,35676 - 2,35724",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "38",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f"
+     ],
+     "location": "2,35741 - 2,35762",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "37",
+     "category": "RETURN",
+     "calls": [
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "H",
+      "P",
+      "W",
+      "_",
+      "f"
+     ],
+     "location": "2,35766 - 2,35924",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "35",
+     "category": "RETURN",
+     "calls": [
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "H",
+      "P",
+      "_"
+     ],
+     "location": "2,35945 - 2,36091",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "34",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "E",
+      "W",
+      "f"
+     ],
+     "location": "2,36095 - 2,36118",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "32",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "W",
+      "f"
+     ],
+     "location": "2,36167 - 2,36190",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "33",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "H",
+      "P",
+      "W",
+      "_",
+      "f",
+      "s"
+     ],
+     "location": "2,36194 - 2,36782",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "31",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "P",
+      "W"
+     ],
+     "location": "2,36790 - 2,36807",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "29",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "f"
+     ],
+     "location": "2,36828 - 2,36842",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "30",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "f"
+     ],
+     "location": "2,36846 - 2,36854",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "27",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "f"
+     ],
+     "location": "2,36917 - 2,36970",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "28",
+     "category": "CALL",
+     "calls": [
+      "N"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,36974 - 2,37016",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "26",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "f",
+      "o"
+     ],
+     "location": "2,37024 - 2,37072",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "25",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "P",
+      "W",
+      "l"
+     ],
+     "location": "2,37093 - 2,37123",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "24",
+     "category": "CALL",
+     "calls": [
+      "xZ"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,37127 - 2,37176",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "19..20",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "H",
+      "P",
+      "_"
+     ],
+     "location": "2,37196 - 2,37310",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "21",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "H",
+      "P",
+      "W",
+      "X",
+      "f",
+      "s"
+     ],
+     "location": "2,37326 - 2,37915",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "22",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "f",
+      "o"
+     ],
+     "location": "2,37932 - 2,37955",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "23",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "f",
+      "o"
+     ],
+     "location": "2,37959 - 2,37982",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "13",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,38057 - 2,38082",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "12",
+     "category": "CALL",
+     "calls": [
+      "N",
+      "xZ",
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,38086 - 2,38160",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "11",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "W",
+      "f"
+     ],
+     "location": "2,38168 - 2,38188",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "10",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,38209 - 2,38260",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "9",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "H",
+      "P",
+      "W",
+      "c",
+      "f"
+     ],
+     "location": "2,38264 - 2,38833",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "15",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,38867 - 2,38893",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "14",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "H",
+      "P",
+      "W",
+      "c",
+      "f",
+      "s"
+     ],
+     "location": "2,38897 - 2,39447",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "16",
+     "category": "CALL",
+     "calls": [
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,39467 - 2,39496",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "18",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,39513 - 2,39535",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "17",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,39539 - 2,39561",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "?<39&<19&<9&<4&<2&~=1",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "f",
+      "o"
+     ],
+     "location": "2,39605 - 2,39625",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "1",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,39629 - 2,39652",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "2",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "f",
+      "o"
+     ],
+     "location": "2,39672 - 2,39692",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "3",
+     "category": "CALL",
+     "calls": [
+      "xZ"
+     ],
+     "arrays": [
+      "P",
+      "f"
+     ],
+     "location": "2,39696 - 2,39729",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "6",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "gZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "H",
+      "P",
+      "W",
+      "_",
+      "c",
+      "f",
+      "s"
+     ],
+     "location": "2,39761 - 2,40417",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "8",
+     "category": "LOOP",
+     "calls": [
+      "GZ",
+      "MZ",
+      "OZ"
+     ],
+     "arrays": [
+      "H",
+      "P",
+      "W",
+      "f",
+      "n",
+      "s"
+     ],
+     "location": "2,40433 - 2,40880",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "7",
+     "category": "CALL",
+     "calls": [
+      "N",
+      "xZ",
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "S",
+      "W",
+      "f"
+     ],
+     "location": "2,40884 - 2,41018",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "4",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "I",
+      "P",
+      "W"
+     ],
+     "location": "2,41038 - 2,41061",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "5",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,41065 - 2,41091",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "54",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P"
+     ],
+     "location": "2,41166 - 2,41178",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "55",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "E",
+      "f",
+      "o"
+     ],
+     "location": "2,41182 - 2,41202",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "58",
+     "category": "LOOP",
+     "calls": [
+      "LZ",
+      "MZ"
+     ],
+     "arrays": [
+      "P",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,41237 - 2,41367",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "57",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,41371 - 2,41397",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "56",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,41405 - 2,41430",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "50",
+     "category": "CALL",
+     "calls": [
+      "N",
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,41464 - 2,41517",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "49",
+     "category": "RETURN",
+     "calls": [],
+     "arrays": [
+      "D",
+      "H",
+      "_"
+     ],
+     "location": "2,41521 - 2,41657",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "53",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W"
+     ],
+     "location": "2,41692 - 2,41709",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "52",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "f",
+      "o"
+     ],
+     "location": "2,41713 - 2,41736",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "51",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f"
+     ],
+     "location": "2,41744 - 2,41762",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "44",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,41810 - 2,41836",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "45",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "P",
+      "W",
+      "l"
+     ],
+     "location": "2,41840 - 2,41870",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "48",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "f",
+      "o"
+     ],
+     "location": "2,41905 - 2,41920",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "47",
+     "category": "LOOP-EXIT|JUMP",
+     "calls": [],
+     "arrays": [
+      "P",
+      "W"
+     ],
+     "location": "2,41924 - 2,41947",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "46",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "I",
+      "R",
+      "W"
+     ],
+     "location": "2,41955 - 2,41972",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "40",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "f",
+      "o"
+     ],
+     "location": "2,42006 - 2,42029",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "39",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "I",
+      "P",
+      "W"
+     ],
+     "location": "2,42033 - 2,42056",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "42",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "I",
+      "P"
+     ],
+     "location": "2,42091 - 2,42105",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "43",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,42109 - 2,42141",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "41",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "f",
+      "l",
+      "o"
+     ],
+     "location": "2,42149 - 2,42176",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "66",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "W",
+      "f",
+      "m"
+     ],
+     "location": "2,42237 - 2,42277",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "67",
+     "category": "JUMP",
+     "calls": [
+      "hZ",
+      "m"
+     ],
+     "arrays": [
+      "D",
+      "W",
+      "f"
+     ],
+     "location": "2,42294 - 2,42374",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "68",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f"
+     ],
+     "location": "2,42378 - 2,42397",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "65",
+     "category": "LOOP",
+     "calls": [
+      "bZ"
+     ],
+     "arrays": [
+      "D",
+      "E",
+      "F",
+      "H",
+      "X",
+      "c",
+      "f",
+      "l",
+      "o",
+      "t"
+     ],
+     "location": "2,42418 - 2,42838",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "64",
+     "category": "JUMP",
+     "calls": [
+      "v"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W"
+     ],
+     "location": "2,42842 - 2,42899",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "63",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,42948 - 2,42974",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "62",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,42978 - 2,43029",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "61",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,43037 - 2,43063",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "59",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,43084 - 2,43110",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "60",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "f",
+      "o"
+     ],
+     "location": "2,43114 - 2,43136",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "74",
+     "category": "CALL",
+     "calls": [
+      "m"
+     ],
+     "arrays": [
+      "D",
+      "P"
+     ],
+     "location": "2,43184 - 2,43229",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "75",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "I",
+      "P",
+      "W"
+     ],
+     "location": "2,43233 - 2,43256",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "76",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,43276 - 2,43301",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "78",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "C"
+     ],
+     "location": "2,43318 - 2,43347",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "?>=39&>=59&>=69&>=74&>=76&>=77&~=78",
+     "category": "CALL",
+     "calls": [
+      "SZ",
+      "xZ",
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "f"
+     ],
+     "location": "2,43351 - 2,43412",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "70",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "f"
+     ],
+     "location": "2,43446 - 2,43457",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "69",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P"
+     ],
+     "location": "2,43461 - 2,43472",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "72",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "gZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "J",
+      "P",
+      "W",
+      "_",
+      "f"
+     ],
+     "location": "2,43507 - 2,44103",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "73",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,44107 - 2,44132",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "71",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "f"
+     ],
+     "location": "2,44140 - 2,44176",
+     "dynamic_count": 0
+    }
+   ]
+  },
+  "1": {
+   "opcode_var": "J",
+   "fetch_array": "P",
+   "opcodes": [
+    {
+     "opcode": "11",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "T",
+      "W",
+      "f",
+      "m"
+     ],
+     "location": "2,44313 - 2,44353",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "12",
+     "category": "JUMP",
+     "calls": [
+      "v"
+     ],
+     "arrays": [
+      "D",
+      "W",
+      "f"
+     ],
+     "location": "2,44357 - 2,44414",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "14",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "H",
+      "W",
+      "c",
+      "f",
+      "n"
+     ],
+     "location": "2,44435 - 2,45031",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "13",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "n"
+     ],
+     "location": "2,45035 - 2,45053",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "8",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "f",
+      "n"
+     ],
+     "location": "2,45085 - 2,45103",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "7",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "f"
+     ],
+     "location": "2,45107 - 2,45115",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "10",
+     "category": "LOOP-EXIT|JUMP",
+     "calls": [],
+     "arrays": [
+      "f",
+      "n"
+     ],
+     "location": "2,45136 - 2,45159",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "9",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W"
+     ],
+     "location": "2,45163 - 2,45175",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "5",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "n"
+     ],
+     "location": "2,45221 - 2,45240",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "6",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,45244 - 2,45270",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "4",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,45290 - 2,45312",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "3",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "gZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "H",
+      "W",
+      "_",
+      "f",
+      "n"
+     ],
+     "location": "2,45316 - 2,45963",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "1",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "T",
+      "f"
+     ],
+     "location": "2,45996 - 2,46010",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "2",
+     "category": "CALL",
+     "calls": [
+      "m"
+     ],
+     "arrays": [
+      "D",
+      "n"
+     ],
+     "location": "2,46014 - 2,46059",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "?<31&<15&<7&<3&<1",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,46067 - 2,46089",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "29",
+     "category": "LOOP",
+     "calls": [
+      "LZ",
+      "MZ"
+     ],
+     "arrays": [
+      "P",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,46152 - 2,46282",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "30",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W"
+     ],
+     "location": "2,46286 - 2,46297",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "28",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,46318 - 2,46350",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "27",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "f"
+     ],
+     "location": "2,46354 - 2,46365",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "24",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,46399 - 2,46425",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "23",
+     "category": "CALL",
+     "calls": [
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,46429 - 2,46458",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "26",
+     "category": "JUMP",
+     "calls": [
+      "hZ",
+      "m"
+     ],
+     "arrays": [
+      "D",
+      "f",
+      "n"
+     ],
+     "location": "2,46479 - 2,46559",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "25",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "T",
+      "W",
+      "f"
+     ],
+     "location": "2,46563 - 2,46586",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "19",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "W",
+      "l",
+      "n"
+     ],
+     "location": "2,46634 - 2,46664",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "20",
+     "category": "CALL",
+     "calls": [
+      "N",
+      "xZ",
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "S",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,46668 - 2,46798",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "22",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "f",
+      "n",
+      "o"
+     ],
+     "location": "2,46819 - 2,46839",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "21",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,46843 - 2,46894",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "15",
+     "category": "LOOP",
+     "calls": [
+      "bZ"
+     ],
+     "arrays": [
+      "D",
+      "F",
+      "H",
+      "I",
+      "X",
+      "c",
+      "l",
+      "n",
+      "o",
+      "t"
+     ],
+     "location": "2,46928 - 2,47348",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "16",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f"
+     ],
+     "location": "2,47352 - 2,47369",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "18",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,47390 - 2,47412",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "17",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "H",
+      "W",
+      "_",
+      "c",
+      "f",
+      "n"
+     ],
+     "location": "2,47416 - 2,48004",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "46",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,48078 - 2,48103",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "47",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "C"
+     ],
+     "location": "2,48107 - 2,48136",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "49",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "f",
+      "n"
+     ],
+     "location": "2,48157 - 2,48210",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "48",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "f",
+      "n",
+      "o"
+     ],
+     "location": "2,48214 - 2,48237",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "53",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,48272 - 2,48298",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "52",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,48302 - 2,48327",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "51",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "T",
+      "W",
+      "l"
+     ],
+     "location": "2,48348 - 2,48375",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "50",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,48379 - 2,48405",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "54",
+     "category": "RETURN",
+     "calls": [
+      "N",
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "H",
+      "W",
+      "_",
+      "f",
+      "n"
+     ],
+     "location": "2,48452 - 2,48626",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "55",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "f",
+      "n"
+     ],
+     "location": "2,48630 - 2,48651",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "57",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,48672 - 2,48719",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "56",
+     "category": "RETURN",
+     "calls": [],
+     "arrays": [
+      "D",
+      "H",
+      "_"
+     ],
+     "location": "2,48723 - 2,48859",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "58",
+     "category": "CALL",
+     "calls": [
+      "N",
+      "xZ",
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,48893 - 2,48967",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "59",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,48971 - 2,48997",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "61",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "f",
+      "n"
+     ],
+     "location": "2,49018 - 2,49054",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "?>=31&>=46&>=54&>=58&>=60&~=61",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,49058 - 2,49081",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "31",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "T",
+      "W",
+      "f"
+     ],
+     "location": "2,49127 - 2,49150",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "32",
+     "category": "LOOP",
+     "calls": [
+      "GZ",
+      "MZ",
+      "OZ"
+     ],
+     "arrays": [
+      "H",
+      "P",
+      "W",
+      "f",
+      "n",
+      "s"
+     ],
+     "location": "2,49167 - 2,49615",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "33",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "f",
+      "n",
+      "o"
+     ],
+     "location": "2,49619 - 2,49642",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "35",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "T",
+      "W",
+      "f"
+     ],
+     "location": "2,49676 - 2,49699",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "34",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "I",
+      "T",
+      "W"
+     ],
+     "location": "2,49703 - 2,49723",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "36",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "R",
+      "T",
+      "f"
+     ],
+     "location": "2,49744 - 2,49761",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "37",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "W",
+      "f",
+      "l"
+     ],
+     "location": "2,49765 - 2,49795",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "39",
+     "category": "CALL",
+     "calls": [
+      "xZ"
+     ],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,49842 - 2,49891",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "41",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,49912 - 2,49934",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "40",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "W",
+      "f"
+     ],
+     "location": "2,49938 - 2,49955",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "43",
+     "category": "CALL",
+     "calls": [
+      "N"
+     ],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,49989 - 2,50031",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "42",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "f",
+      "n"
+     ],
+     "location": "2,50035 - 2,50049",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "45",
+     "category": "CALL",
+     "calls": [
+      "N",
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,50070 - 2,50123",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "44",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,50127 - 2,50152",
+     "dynamic_count": 0
+    }
+   ]
+  },
+  "2": {
+   "opcode_var": "J",
+   "fetch_array": "f",
+   "opcodes": [
+    {
+     "opcode": "27",
+     "category": "JUMP",
+     "calls": [
+      "v"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W"
+     ],
+     "location": "2,50292 - 2,50349",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "26",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P"
+     ],
+     "location": "2,50353 - 2,50365",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "24",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "T"
+     ],
+     "location": "2,50386 - 2,50400",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "25",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,50404 - 2,50429",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "31",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "gZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "H",
+      "P",
+      "W",
+      "_",
+      "c",
+      "n"
+     ],
+     "location": "2,50464 - 2,51036",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "30",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "W",
+      "n"
+     ],
+     "location": "2,51040 - 2,51060",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "28",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "P",
+      "T",
+      "W"
+     ],
+     "location": "2,51081 - 2,51104",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "29",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "n"
+     ],
+     "location": "2,51108 - 2,51161",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "21",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,51209 - 2,51235",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "20",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "m",
+      "n",
+      "o"
+     ],
+     "location": "2,51239 - 2,51279",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "23",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "H",
+      "P",
+      "W",
+      "_",
+      "n"
+     ],
+     "location": "2,51300 - 2,51888",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "22",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "n"
+     ],
+     "location": "2,51892 - 2,51913",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "19",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "P",
+      "n",
+      "o"
+     ],
+     "location": "2,51948 - 2,51971",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "17",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "n",
+      "o"
+     ],
+     "location": "2,51992 - 2,52015",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "16",
+     "category": "CALL",
+     "calls": [
+      "xZ"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,52019 - 2,52068",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "9",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "E",
+      "T",
+      "W"
+     ],
+     "location": "2,52127 - 2,52147",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "8",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "T"
+     ],
+     "location": "2,52151 - 2,52166",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "10",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,52187 - 2,52238",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "11",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "E",
+      "W",
+      "l",
+      "n"
+     ],
+     "location": "2,52242 - 2,52278",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "15",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "P",
+      "W"
+     ],
+     "location": "2,52313 - 2,52330",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "14",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,52334 - 2,52360",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "13",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "C"
+     ],
+     "location": "2,52381 - 2,52410",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "12",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "n",
+      "o"
+     ],
+     "location": "2,52414 - 2,52434",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "6",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,52480 - 2,52505",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "7",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "P",
+      "W",
+      "l"
+     ],
+     "location": "2,52509 - 2,52539",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "4",
+     "category": "JUMP",
+     "calls": [
+      "N",
+      "xZ",
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,52559 - 2,52657",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "5",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "n",
+      "o"
+     ],
+     "location": "2,52661 - 2,52684",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "2",
+     "category": "LOOP",
+     "calls": [
+      "bZ"
+     ],
+     "arrays": [
+      "D",
+      "F",
+      "H",
+      "P",
+      "T",
+      "X",
+      "c",
+      "l",
+      "o",
+      "t"
+     ],
+     "location": "2,52717 - 2,53137",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "3",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "P",
+      "l",
+      "o"
+     ],
+     "location": "2,53141 - 2,53168",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "1",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "R",
+      "W"
+     ],
+     "location": "2,53188 - 2,53205",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "?<32&<16&<8&<4&<2&~=1",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "n",
+      "o"
+     ],
+     "location": "2,53209 - 2,53232",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "54",
+     "category": "LOOP-EXIT|JUMP",
+     "calls": [],
+     "arrays": [
+      "P",
+      "W"
+     ],
+     "location": "2,53308 - 2,53331",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "55",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,53335 - 2,53358",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "52",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "n"
+     ],
+     "location": "2,53379 - 2,53393",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "53",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,53397 - 2,53423",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "48",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "n"
+     ],
+     "location": "2,53457 - 2,53493",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "49",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,53497 - 2,53520",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "50",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "P"
+     ],
+     "location": "2,53541 - 2,53549",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "51",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,53553 - 2,53579",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "?>=32&>=48&>=56&>=60&>=62&>=63&~=64",
+     "category": "RETURN",
+     "calls": [],
+     "arrays": [
+      "D",
+      "H",
+      "_"
+     ],
+     "location": "2,53642 - 2,53778",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "64",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "H",
+      "_",
+      "n"
+     ],
+     "location": "2,53782 - 2,53874",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "62",
+     "category": "LOOP",
+     "calls": [
+      "LZ",
+      "MZ"
+     ],
+     "arrays": [
+      "P",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,53882 - 2,54012",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "61",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P"
+     ],
+     "location": "2,54033 - 2,54044",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "60",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,54048 - 2,54073",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "58",
+     "category": "CALL",
+     "calls": [
+      "N",
+      "xZ",
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,54108 - 2,54182",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "59",
+     "category": "LOOP",
+     "calls": [
+      "GZ",
+      "MZ",
+      "OZ"
+     ],
+     "arrays": [
+      "H",
+      "P",
+      "W",
+      "f",
+      "n",
+      "s"
+     ],
+     "location": "2,54186 - 2,54633",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "57",
+     "category": "JUMP",
+     "calls": [
+      "hZ",
+      "m"
+     ],
+     "arrays": [
+      "D",
+      "W",
+      "n"
+     ],
+     "location": "2,54654 - 2,54734",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "56",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,54738 - 2,54764",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "37",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "H",
+      "P",
+      "W",
+      "c",
+      "n"
+     ],
+     "location": "2,54825 - 2,55431",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "36",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,55435 - 2,55467",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "39",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,55488 - 2,55538",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "38",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,55542 - 2,55567",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "33",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "W",
+      "n"
+     ],
+     "location": "2,55601 - 2,55624",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "32",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "n",
+      "o"
+     ],
+     "location": "2,55628 - 2,55650",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "35",
+     "category": "CALL",
+     "calls": [
+      "N",
+      "xZ",
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "S",
+      "W",
+      "n"
+     ],
+     "location": "2,55671 - 2,55800",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "34",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W"
+     ],
+     "location": "2,55804 - 2,55815",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "46",
+     "category": "RETURN",
+     "calls": [
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "H",
+      "W",
+      "_"
+     ],
+     "location": "2,55864 - 2,56010",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "47",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "W",
+      "n"
+     ],
+     "location": "2,56014 - 2,56037",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "45",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W"
+     ],
+     "location": "2,56058 - 2,56076",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "44",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "n",
+      "o"
+     ],
+     "location": "2,56080 - 2,56127",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "42",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "n"
+     ],
+     "location": "2,56162 - 2,56179",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "43",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "P",
+      "W",
+      "l"
+     ],
+     "location": "2,56183 - 2,56213",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "41",
+     "category": "CALL",
+     "calls": [
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,56234 - 2,56263",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "40",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "n"
+     ],
+     "location": "2,56267 - 2,56293",
+     "dynamic_count": 0
+    }
+   ]
+  },
+  "3": {
+   "opcode_var": "J",
+   "fetch_array": "n",
+   "opcodes": [
+    {
+     "opcode": "56",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "H",
+      "_",
+      "f"
+     ],
+     "location": "2,56433 - 2,56525",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "57",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,56529 - 2,56580",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "55",
+     "category": "LOOP",
+     "calls": [
+      "GZ",
+      "MZ",
+      "OZ"
+     ],
+     "arrays": [
+      "H",
+      "L",
+      "P",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,56601 - 2,57047",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "54",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W"
+     ],
+     "location": "2,57051 - 2,57087",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "58",
+     "category": "LOOP",
+     "calls": [
+      "LZ",
+      "MZ"
+     ],
+     "arrays": [
+      "P",
+      "W",
+      "f",
+      "n"
+     ],
+     "location": "2,57121 - 2,57251",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "59",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "W",
+      "f"
+     ],
+     "location": "2,57255 - 2,57278",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "60",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "E",
+      "f",
+      "o"
+     ],
+     "location": "2,57298 - 2,57318",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "62",
+     "category": "CALL",
+     "calls": [
+      "N",
+      "xZ",
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "S",
+      "W",
+      "f"
+     ],
+     "location": "2,57335 - 2,57468",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "61",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "P",
+      "W",
+      "l"
+     ],
+     "location": "2,57472 - 2,57502",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "65",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,57549 - 2,57575",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "66",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "gZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "L",
+      "P",
+      "W",
+      "c",
+      "f",
+      "p"
+     ],
+     "location": "2,57592 - 2,58197",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "67",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,58201 - 2,58227",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "63",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W"
+     ],
+     "location": "2,58248 - 2,58269",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "64",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,58273 - 2,58321",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "68",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,58355 - 2,58380",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "69",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,58384 - 2,58410",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "70",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,58430 - 2,58453",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "?>=36&>=54&>=63&>=68&>=70&>=71&~=72",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "I",
+      "P",
+      "W"
+     ],
+     "location": "2,58470 - 2,58490",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "72",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "W",
+      "f"
+     ],
+     "location": "2,58494 - 2,58517",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "39",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,58578 - 2,58600",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "38",
+     "category": "RETURN",
+     "calls": [
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "I",
+      "L",
+      "p"
+     ],
+     "location": "2,58604 - 2,58747",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "37",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "P",
+      "W",
+      "l"
+     ],
+     "location": "2,58768 - 2,58798",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "36",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "gZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "L",
+      "P",
+      "W",
+      "f",
+      "h",
+      "p"
+     ],
+     "location": "2,58802 - 2,59380",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "40",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "L",
+      "P",
+      "W",
+      "f",
+      "p"
+     ],
+     "location": "2,59414 - 2,59986",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "41",
+     "category": "JUMP",
+     "calls": [
+      "v"
+     ],
+     "arrays": [
+      "D",
+      "W",
+      "f"
+     ],
+     "location": "2,59990 - 2,60047",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "42",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "f",
+      "o"
+     ],
+     "location": "2,60067 - 2,60089",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "43",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "f"
+     ],
+     "location": "2,60106 - 2,60118",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "44",
+     "category": "JUMP",
+     "calls": [
+      "hZ",
+      "m"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W"
+     ],
+     "location": "2,60122 - 2,60202",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "51",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,60250 - 2,60276",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "52",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "f",
+      "o"
+     ],
+     "location": "2,60293 - 2,60316",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "53",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "W",
+      "f"
+     ],
+     "location": "2,60320 - 2,60343",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "49",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f"
+     ],
+     "location": "2,60364 - 2,60382",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "50",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,60386 - 2,60418",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "46",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,60452 - 2,60474",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "45",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "E",
+      "W",
+      "f"
+     ],
+     "location": "2,60478 - 2,60501",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "47",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "P"
+     ],
+     "location": "2,60522 - 2,60530",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "48",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,60534 - 2,60560",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "10",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "f"
+     ],
+     "location": "2,60633 - 2,60648",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "9",
+     "category": "CALL",
+     "calls": [
+      "N",
+      "xZ",
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,60652 - 2,60726",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "12",
+     "category": "JUMP",
+     "calls": [],
+     "arrays": [
+      "D",
+      "f"
+     ],
+     "location": "2,60747 - 2,60758",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "11",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,60762 - 2,60784",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "13",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,60818 - 2,60844",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "14",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "W",
+      "f",
+      "m"
+     ],
+     "location": "2,60848 - 2,60888",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "17",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,60923 - 2,60948",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "16",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "R",
+      "o"
+     ],
+     "location": "2,60952 - 2,60969",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "?<36&<18&<9&<4&<2&~=1",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W"
+     ],
+     "location": "2,61017 - 2,61028",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "1",
+     "category": "RETURN",
+     "calls": [],
+     "arrays": [
+      "D",
+      "L",
+      "p"
+     ],
+     "location": "2,61032 - 2,61168",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "2",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,61188 - 2,61210",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "3",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "I",
+      "P",
+      "o"
+     ],
+     "location": "2,61214 - 2,61234",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "7",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "f",
+      "o"
+     ],
+     "location": "2,61280 - 2,61303",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "8",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,61307 - 2,61329",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "6",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "I",
+      "W",
+      "l"
+     ],
+     "location": "2,61337 - 2,61364",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "5",
+     "category": "RETURN",
+     "calls": [
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "L",
+      "f",
+      "p"
+     ],
+     "location": "2,61384 - 2,61530",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "4",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,61534 - 2,61559",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "23",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W"
+     ],
+     "location": "2,61620 - 2,61637",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "22",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "H",
+      "L",
+      "P",
+      "W",
+      "f",
+      "h"
+     ],
+     "location": "2,61641 - 2,62232",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "26",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,62267 - 2,62290",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "25",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W"
+     ],
+     "location": "2,62294 - 2,62308",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "24",
+     "category": "CALL",
+     "calls": [
+      "z"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,62316 - 2,62345",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "21",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "f"
+     ],
+     "location": "2,62380 - 2,62394",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "20",
+     "category": "CALL",
+     "calls": [
+      "N"
+     ],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,62398 - 2,62440",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "18",
+     "category": "LOOP",
+     "calls": [
+      "bZ"
+     ],
+     "arrays": [
+      "D",
+      "E",
+      "L",
+      "_",
+      "c",
+      "f",
+      "h",
+      "l",
+      "o",
+      "t"
+     ],
+     "location": "2,62461 - 2,62881",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "19",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,62885 - 2,62911",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "33",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "H",
+      "L",
+      "P",
+      "W",
+      "c",
+      "f"
+     ],
+     "location": "2,62959 - 2,63561",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "35",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,63578 - 2,63603",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "34",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "P",
+      "W",
+      "f"
+     ],
+     "location": "2,63607 - 2,63630",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "31",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "W",
+      "f"
+     ],
+     "location": "2,63651 - 2,63670",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "32",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "D",
+      "E",
+      "W",
+      "f"
+     ],
+     "location": "2,63674 - 2,63697",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "30",
+     "category": "JUMP",
+     "calls": [
+      "BZ",
+      "LZ",
+      "MZ",
+      "mZ",
+      "qZ"
+     ],
+     "arrays": [
+      "L",
+      "P",
+      "W",
+      "b",
+      "f",
+      "l"
+     ],
+     "location": "2,63732 - 2,64330",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "29",
+     "category": "CALL",
+     "calls": [],
+     "arrays": [
+      "D",
+      "I",
+      "P",
+      "W"
+     ],
+     "location": "2,64334 - 2,64357",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "27",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "B",
+      "D",
+      "W",
+      "f"
+     ],
+     "location": "2,64378 - 2,64395",
+     "dynamic_count": 0
+    },
+    {
+     "opcode": "28",
+     "category": "ARITH/MOVE",
+     "calls": [],
+     "arrays": [
+      "C"
+     ],
+     "location": "2,64399 - 2,64428",
+     "dynamic_count": 0
+    }
+   ]
+  }
+ }
+}
