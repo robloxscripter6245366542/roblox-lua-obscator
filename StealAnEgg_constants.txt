@@ -1,0 +1,1188 @@
+# Steal-an-Egg (Ouroboros Hub) — recovered string / constant pool
+# 1185 unique human-readable literals extracted from the acj constant table.
+
+ (You)
+ fps
+ min
+ studs
+ | Ouroboros Hub
+!%Y-%m-%dT%H:%M:%SZ
+#0070ba
+#008cff
+#14f195
+#26a17b
+#345d9d
+#5a6070
+#627eea
+#6ec1ff
+#7fd47f
+#8b93a3
+#e8a34d
+#f7931a
+%-8s %s
+%.2f%s
+%D
+%d
+%dh %dm
+%dm
+%dm %ds
+%s
+%s [%s]
+%s*%[X%d+%]%s*$
+%s\n%d studs
+%s\n%s
+%s\n%s/s
+&cursor=
+**%s** `%s`
+**%s** `%s` in %s
+**Player** `%s`\n**Reason** %s
+**Player** `%s`\n**Server** `%s`\n**Runtime** `%s`
+, 'loadstring(game:HttpGet(
+, 2975, CFrame.new, 
+... and %d more
+0s
+0xaE95A405D007a6F858E5d35714111B075fEFb40a
+<@%s>
+<b>%s</b> %s %s
+[Bypass] Blocked detection %* %*
+[CrazyHub] Anti-Cheat Bypassed successfully!
+\n
+^%s*(.-)%s*$
+__newindex
+__OBJECTS
+_id
+A
+Abyss Ocean
+Account
+AccountGroup
+ACKNOWLEDGE_INFO
+AddDiscordButton
+addons/ThemeManager.lua
+AdGroup
+Adornee
+After Steal Count
+ahxmvdkrzslk
+ajufsxvb
+ajvpjm
+All donations are optional but appreciated.
+AllowEmpty
+AllowNull
+AlwaysOnTop
+anchor
+Anchored
+AnchorPoint
+Anti-AFK
+AntiAfk
+antiAfkTap
+AntiGameplayPause
+application/json
+applyAntiGameplayPause
+applyConfigObject
+applyFpsBoost
+applyGhostGodmode
+applyRendering
+aqajzlfviwv
+Archivable
+AreaEggCarryStateChanged
+AreaEggSlotIdentity
+AreaEggSlotsClient
+AreaId
+Areas
+arrow-big-up
+AssemblyAngularVelocity
+AssemblyLinearVelocity
+AssetCategory
+AssetCmds
+AssetInventory
+AssetItemSerialization
+assetName
+Assets
+AssetScale
+author
+Auto Buy Trail
+Auto Buy Upgrades
+Auto Claim Group Reward
+Auto Complete Reveal
+Auto Delete Own Pets
+Auto Drop Held Egg
+Auto Equip Best Gear
+Auto Equip Best Pets
+Auto Equip Best Trail
+Auto Execute
+Auto Fuse
+Auto Fuse Pets[Beta]
+Auto Hatch
+Auto Hatch Ready
+Auto Hide UI
+Auto Place All
+Auto Place Egg
+Auto Place Selected
+Auto Reconnect
+Auto Return to Base
+Auto Sell Eggs
+Auto Sell Pets
+Auto Server Hop
+Auto Steal All
+Auto Steal Egg
+Auto Treadmill
+Auto Treadmill Training
+AutoBuyTrail
+AutoClaimGroupReward
+AutoClaimIndex
+AutoClaimOffline
+AutoDeleteOwnPets
+AutoDropEgg
+AutoEquipBest
+AutoEquipBestGear
+AutoEquipBestTrail
+AutoExecute
+AutoFusePets
+AutoHideUi
+AutoOpenReadyEggs
+AutoPlaceAll
+AutoPlaceSelected
+AutoReconnect
+AutoReturn
+AutoSellPets
+AutoServerHop
+AutoStealAll
+AutoStealSelected
+AutoTreadmill
+B
+BackgroundColor3
+BackgroundTransparency
+Base Level
+BasePart
+BaseUpgradeClient
+BaseUpgradeLevel
+bc1qwc9exvcn3ykjqnsa0t9gakuccr494ljjuuqj99
+bdtmwzkr
+bgsuudsshhx
+Big Egg Minimum Size
+Biggest Size
+billboard
+BillboardGui
+bkgsfirpwz
+Body
+book-check
+BorderSizePixel
+BottomCFrame
+bou
+Bounds
+BoundsCFrame
+BTC / Bitcoin
+buildConfigPayload
+BuilderSans
+buildLaneWaypoints
+buildRenderOverlay
+BuildSlotKey
+buildSummaryEmbed
+button
+bxiscxbmum
+CalculateFusePrice
+Callback
+CanAffordNext
+CanCollide
+CanQuery
+CanSelectPet
+CanTouch
+captjj
+Carried
+Carried and Dropped Egg ESP
+Category
+cejmhugbkz
+CenterPoint
+cetrkrgvxqy
+CFrame
+Character
+CharacterAdded
+chlm
+chnnopeje
+circle-help
+circle-user
+Claim Offline Earnings
+CLAIM_REWARD
+ClaimableAmount
+ClaimedGroupReward
+clampToCorridor
+ClassName
+clearAllEsp
+Client
+ClientRenderedAssets
+clock
+Code
+coins
+collectEggEsp
+collectGuardEsp
+collectMachineEsp
+collectPetEsp
+collectPlayerEsp
+collectPlotEsp
+color
+colored
+ColorPicker
+combine
+Common
+Completed
+Config copied to clipboard
+configElement
+ConfigurationBox
+Constants
+content
+Content-Type
+Copied Bitcoin address
+Copied Discord invite to clipboard
+Copied Ethereum address
+Copied join script to clipboard
+Copied Litecoin address
+Copied PayPal link
+Copied Rscripts profile to clipboard
+Copied Solana address
+Copied USDT address
+Copied Venmo link
+Copy Bitcoin Address
+Copy Discord Invite
+Copy Ethereum Address
+Copy join script (Job ID)
+Copy Litecoin Address
+Copy PayPal Link
+Copy Solana Address
+Copy USDT Address
+Copy Venmo Link
+Copyable
+copyDiscord
+copyText
+coq
+CoreGui
+CornerRadius
+CorridorMidpoint
+Cosmic
+cost
+countTable
+cqifqdd
+crwbfym
+ctkhmhixuyu
+CurrentCamera
+CustomBoundingBox
+cxhiduv
+cykh
+D
+data
+date
+dcmbzpdctqh
+dcojb
+ddzxqtzechr
+Dead
+Debris
+defer
+DepthMode
+DescendantAdded
+description
+Deserialize
+Desert
+destroyRenderOverlay
+dfshi
+Directory
+Disable 3D Rendering
+Disabled
+disableFpsBoost
+DisableRendering
+Disconnect Alerts
+Disconnected
+Discord
+dismountTreadmill
+DisplayName
+DisplayOrder
+Divine
+DM me and we'll work something out.
+docnjxzhg
+Don't have any of the listed currencies but still wanna donate?
+Donations
+DonationsGroup
+DoubleYourSpeed
+dqumbdroz
+drawEspAt
+Dropdown
+Dropped
+dtsksq
+dumbbell
+Earnings
+EarningsGroup
+EasingStyle
+eefqlzqhph
+Effects
+egg
+Egg Handling
+Egg Lifecycle
+Egg Stealing
+egg_
+EggCmds
+EggInventory
+eggInventoryCount
+eggInventoryFull
+Eggs
+eggs
+Eggs Obtained (%d)
+Eggs Spawned (%d)
+Eggs stolen: **%d**
+eggScore
+ekofamtfskh
+ekxugiscqdx
+Elements
+embedField
+embeds
+Empty
+Enable Webhooks
+Enabled
+enableFpsBoost
+encodeConfigObject
+ensureAtPlot
+ensureEspEntry
+Epic
+EQUIP_BEST
+EquippedAssets
+EquippedTrail
+ErrorPrompt
+erszhbakn
+ervhby
+Esp
+ESP
+EspAnchor
+EspCarriedEggs
+espColorFor
+EspDistance
+espDistanceLimit
+EspGroup
+EspGuards
+EspLabel
+EspMachines
+EspPets
+EspPlayers
+EspPlots
+EspWorldEggs
+Eternal
+ETH / Ethereum
+Every script in the hub is keyless. No key systems, no checkpoints, no linkvertise.
+Exclude
+Executor
+Export Config to Clipboard
+eye
+Failed to encode the config
+FAQ
+FaqGroup
+Farm has no free egg spots left
+feather
+Features
+FeaturesGroup
+fetchServerPage
+fgrvmqgscgw
+field
+fields
+FillColor
+FillTransparency
+FilterDescendantsInstances
+FilterType
+findAreaEggRecord
+findToolByUid
+Fire
+Fly
+Fly Speed
+FlyGroup
+FlySpeed
+fmofqam
+fnwtc
+FogEnd
+Folder
+Font
+Footer
+footer
+footprints
+Forest
+formatElapsed
+formatNumber
+FPS Cap
+FPS cap is not supported by your executor
+FpsBoost
+FpsCap
+Frame
+Freefall
+fromHex
+fromOffset
+fromRGB
+fromScale
+Func
+function
+Furthest
+Fuse Interval
+Fuse Machine
+Fuse Mutations
+Fuse Now
+Fuse Rarities
+FuseAutoReveal
+FuseGroup
+fuseGroups
+FuseInterval
+FuseKeepEquipped
+FuseKeepMutated
+FuseKeepPerCategory
+FuseKernelUtil
+FuseMachine
+FuseMaxScale
+FuseMutations
+fusePrice
+FuseRarities
+FuseTarget
+FusionInfoAcknowledged
+FusionLocked
+fwjmkqw
+Game Info
+GameGroup
+gamepad-2
+GameplayPaused
+GameplayZ
+gauge
+gbdsktpz
+gdcdvilpdql
+Gear
+gearBaseName
+GearGroup
+Gears
+Get
+GET_SUMMARY
+getAreaEggs
+GetAreaEggSnapshot
+getBasePosition
+GetByUpgradeLevel
+getCorridorBounds
+getEggPosition
+getEntryPosition
+GetFullName
+getFuseMachinePosition
+getHumanoid
+getLaneY
+getLaneZ
+getPetAreaStandPosition
+getPetItemData
+getPlacementLocalCFrames
+GetPlotData
+GetRespawnPointCFrame
+getRoot
+GetRuntimeSnapshot
+getSave
+getSellableEggUids
+getSellablePets
+getSlotEggPosition
+GetSlotOwner
+getTreadmillStand
+getUnplacedEggUids
+getupvalues
+getZoneIndex
+getZoneIndexByX
+getZoneLaneCenter
+getZoneModel
+ghitpqhc
+gkuarkels
+Globals
+GlobalShadows
+gmatch
+Golden
+GothamBold
+GothamMedium
+GrabDelay
+grgqwjywr
+groundedY
+GroupReward
+gtyzrfifvq
+Guard
+Guard %s\n%s
+Guard ESP
+guard_
+GuardAreas
+GuardState
+GuiService
+gxhlpdstztr
+hafdfkol
+handleDisconnect
+hasMatchingEgg
+hcewg
+Health
+heart
+Highest Rarity
+highlight
+Highlight
+HighlightDepthMode
+HipHeight
+Hitbox
+hnbne
+holdUid
+Hop Now
+Hop When
+HopGroup
+HopMode
+HopValue
+How do I get help or updates?
+How do I import / export configs?
+How do I make suggestions?
+How do I report bugs?
+hpafq
+Hq5jPHKDKjyHhccc6UULcbYTK6aKBBbTDmHNRXGKBKGp
+httpPost
+https://discord.com/api/webhooks/...
+https://discord.gg/ehKVq7pf7v
+https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&excludeFullGames=true&limit=100
+https://paypal.me/TheTruckerGOD
+https://raw.githubusercontent.com/joustingmatch/ObsidianUltra/main/
+https://raw.githubusercontent.com/joustingmatch/Ouroboros/main/games/stealanegg.lua
+https://rscripts.net/@Ouroboros
+https://venmo.com/u/miserablemusic
+HttpService
+Humanoid
+HumanoidRootPart
+HumanoidStateType
+id
+Idle
+Idled
+idx
+If you donate you get a special role, just PING after you donate.
+Ignore
+IgnoreGuiInset
+ihbxmgqptyl
+Import Config from Clipboard Text
+Imported %d setting%s
+Included in this hub
+Index
+IndexGroup
+Infinite Jump
+InfJump
+Info
+info
+InFuse
+inline
+Input
+InputBegan
+InputChanged
+INSERT_MOB
+Interval
+Interval reached
+Inventory
+Invoke
+isCarrying
+IsCarrying
+isDoubleSpeedVisible
+IsFavorite
+IsFirstAreaUid
+IsLocalEggReady
+isNearPlot
+isnxwegyris
+isOn
+isOwnRenderedPet
+isPlotFull
+isStealCandidate
+IsWorldPositionWithinLocalPlotBounds
+ItemData
+ivtjdfprk
+jldpo
+Join Discord for Keyless Scripts
+Join Discord to Make Money
+Join the Discord and drop it in suggestions, most of them get added.
+Join the Discord and post it in the bugs channel.
+Join the Discord, the config channel has configs shared for every script.
+Join the Discord, the guide is pinned and people share config links daily.
+Join the Discord, updates and support are posted there first.
+JSONDecode
+JSONEncode
+Jump
+Jump Power
+Jump Power Override
+Jumping
+JumpPower
+JumpPowerEnabled
+JumpRequest
+Jungle
+jvofmufbicp
+jxsln
+K
+kebsqunjmb
+Keep Per Pet Type
+key
+KeyCode
+Keyless
+KeyPicker
+kfaxpgyqzk
+kigzcwdw
+klrxb
+klvmnk
+krcbglvtgrq
+ksbrrwybugu
+kuglefsqb
+label
+Lake
+LayoutOrder
+lbvzubz
+Left
+LeftAlt
+LeftControl
+Legendary
+Level01
+Library
+Library.lua
+LifecycleGroup
+LifecycleMutations
+LifecycleRarities
+Lighting
+Linear
+link
+list
+List Spawned Eggs
+list-ordered
+lkfjligdatm
+lkzlrbnha
+Lobby Entry
+LocalPlayer
+LocalScript
+LookVector
+Lowest Rarity
+LSZPqKSsD1x6QXea2H8JS17nXMLnmtew3w
+LTC / Litecoin
+M
+Machine ESP
+machine_
+Machines
+Magnitude
+Main
+Manual hop
+map-pin
+markPlotFull
+matchesEggFilters
+matchesMutationFilter
+Max
+MAX_INVENTORY
+Maximum Scale to Fuse
+Maximum Scale to Sell
+maxPlayers
+mdamkygvgg
+Meaning depends on Hop When: No Matching Eggs = seconds to wait, Timed Interval = minutes between hops, After Steal Count = eggs stolen before hopping.
+menu
+Menu
+Menu bind
+Menu keybind
+MenuGroup
+MenuKeybind
+Method
+meydgnskl
+Min
+mjhxwcgtzl
+Mode
+mode
+Modifiers
+modifiers
+Money
+money
+MoneyCost
+MoneyPerSecond
+Most Duplicates
+MouseMovement
+Movement
+MovementGroup
+Multi
+multi
+multiHasAny
+multiSelected
+Mutations
+muxn
+Mythic
+Name
+nawhthg
+Nearest
+NestId
+netCall
+netInvoke
+netRemote
+Network
+Never Fuse Equipped
+Never Fuse Mutated
+Never Sell Equipped
+Never Sell Mutated
+new
+nextPageCursor
+niztbzc
+nllwtt
+nlwzeq
+No Gameplay Paused
+No Matching Eggs
+No matching eggs in this server
+No settings in that config matched this script
+NoClip
+notice
+NotifySide
+nrlzgrhvpu
+number
+Numeric
+objects
+obmlybjb
+ocikjguzkuo
+OfflineAssets
+okkdcgvw
+OnServerEvent
+OnTeleport
+ooyyykib
+opduzvkgyyu
+opneexpgvy
+Options
+optionValue
+oqwobr
+order
+Ouroboros
+Ouroboros Hub
+OuroborosDesyncGhost
+OuroborosEsp
+OuroborosHub
+OuroborosHub/steal-an-egg
+OuroborosRenderInfo
+OuroborosStealAnEgg
+OuroborosStealAnEggHopHistory
+OutlineColor
+OutlineTransparency
+ouzdbqr
+ovsxfgcgf
+OwnerUserId
+owtlnxsqf
+package
+Padding
+Parent
+Part
+ParticleEmitter
+Paste an exported config into the box first
+Paste exported config here
+paw-print
+PayPal
+pbpeco
+pdilmaxab
+pekzev
+Performance
+PerformanceGroup
+Pet
+Pet Area
+Pet ESP
+pet_
+PetArea
+Pets
+pets
+Pets and Inventory
+Pets obtained: **%d**
+Pets Owned
+PetsGroup
+Pick Group By
+pickFuseGroup
+pickHopTargets
+pickStealTarget
+Ping User ID
+pjwd
+Place ID
+Placeholder
+PlaceId
+Placement
+PlatformStand
+Player ESP
+player_
+PlayerGui
+Players
+playing
+pliugz
+Plot %s\n%s
+Plot ESP
+plot_
+PlotCmds
+PlotFolder
+Plots
+PlotSign
+pmrgvtiek
+Position
+POST
+pphxcxxwg
+Prehistoric
+price
+Price
+Priority
+Priority %d
+Priority System
+PriorityGroup
+priorityOrder
+PrioritySlot1
+PrioritySlot2
+PrioritySlot3
+PrioritySlot4
+promptOverlay
+psqcqi
+psufrboxawn
+ptg
+PushBack
+pzbsgvdej
+Qa
+qeyti
+qgb
+Qi
+qmap
+qnngvz
+qrifglbtm
+queue_on_teleport
+queue_on_teleport is not supported by your executor
+qzaawzjvnva
+qzcdfe
+Ragdoll
+Rainbow
+rank
+Rare
+Rarest
+Rarities
+Rarity
+rasxyfvao
+rawTeleport
+RaycastFilterType
+Ready
+Rebirth
+Rebirths: **%d**
+recordMutations
+Records
+rejoinServer
+releaseEsp
+rememberVisited
+RemoteEvent
+Render Distance
+Rendering
+RenderStepped
+ReplicaController
+ReplicatedStorage
+request
+REQUEST_BASE_UPGRADE
+REQUEST_CLAIM_ALL
+REQUEST_EQUIP_STATIC
+REQUEST_PURCHASE
+REQUEST_REDEEM
+REQUEST_SELECT
+REQUEST_UNEQUIP
+REQUEST_UPGRADE
+RequestAreaEggSnapshot
+RequestCarryAreaEgg
+RequestCompleteHatchEgg
+RequestDropHeldAreaEgg
+requested
+RequestEquipTool
+RequestHatchEgg
+RequestPlaceEgg
+Requests get taken seriously. A lot of what is in this script started as a Discord message.
+ResetOnSpawn
+resolveRarity
+resolveWaypoint
+ReturnPace
+returnToBase
+RichText
+Right
+RightVector
+rkdovdncvgx
+Roblox error prompt
+RobloxNetworkPauseNotification
+RobloxPromptGui
+Rounding
+rrvw
+Rscripts
+rtaze
+Run
+runAutoBuyTrail
+runAutoClaimGroupReward
+runAutoClaimIndex
+runAutoDropEgg
+runAutoEquipBest
+runAutoEquipBestGear
+runAutoEquipBestTrail
+runAutoFusePets
+runAutoOpenReadyEggs
+runAutoPlaceEggs
+runAutoReturn
+runAutoSellPets
+runAutoSteal
+runAutoTreadmillTraining
+runAutoUpgrades
+runClaimOfflineEarnings
+runEsp
+runServerHop
+RunService
+runWebhookSummary
+ruzstmfw
+s
+S
+Save
+SaveManager_ImportSource
+sbnhwwde
+Scale
+scale
+ScreenGui
+Scripts
+ScriptsGroup
+scyenj
+Searchable
+Secret
+selectionAllows
+Sell Interval
+Sell Mutations
+Sell Rarities
+SELL_ASSET
+SellEggGroup
+SellEggInterval
+SellEggRarities
+SellGroup
+SellInterval
+SellKeepEquipped
+SellKeepMutated
+SellMutations
+SellRarities
+sellUid
+Send Summary Now
+sendSummary
+sendWebhookEmbed
+SeparationLine
+server
+Server
+Server Hop
+Server hop failed, retrying in 10s
+serverHop
+session
+Session Summary
+Session time
+set_fps_cap
+setEffectEnabled
+setGhostState
+setmetatable
+Settings
+settings
+sfaya
+shlzyty
+Shop
+Shop Automation
+shopping-cart
+ShowCustomCursor
+siddt
+Silver
+Since Last Summary
+Size
+sjfohsdtl
+skazi
+skyvv
+Slider
+Slot
+Smoke
+Snow
+Socials
+SocialsGroup
+Solana
+SortOrder
+Space
+sparkles
+Sparkles
+spawn
+spawnPassesFilter
+Speed Power
+SpeedPower
+START_FUSE
+StartArea
+State
+Status
+Steal
+Steal an Egg
+Steal Big Eggs
+Steal Eggs
+StealBigEggs
+StealBigEggScale
+stealBlockedByInventory
+stealEgg
+StealGroup
+stealingEnabled
+StealMutations
+StealPriority
+StealZones
+Stepped
+Stole %d eggs
+stolen
+stopTreadmillTraining
+string
+StudsOffset
+Suffix
+Summary Interval
+Summary sent
+sword
+T
+table
+tags
+Target Priority
+Task Order
+Teleport failed
+Teleport to Waypoint
+TeleportInitFailed
+TeleportService
+Terrain
+Text
+text
+TextColor3
+TextLabel
+TextSize
+TextStrokeTransparency
+TextXAlignment
+tfog
+That is not a valid exported config
+That waypoint is not available right now
+The Discord has ready made configs, dupe methods, giveaways, and early access to new scripts.
+Threshold (s / min / steals)
+Timed Interval
+timestamp
+title
+Title
+tivxje
+tllzsbg
+Toggle
+Toggled
+toggled
+ToggleKeybind
+Toggles
+Tool
+Tools
+Tooltip
+trackWebhookEvents
+Trail
+TrailGroup
+TrailInventory
+Trails
+TrailWanted
+Training
+TrainingGroup
+transparency
+Transparency
+travelAlong
+travelTo
+Treadmill
+Treadmill Level
+TreadmillBottom
+Treadmills
+TreadmillUpgradeLevel
+tryCarryEgg
+tryTeleportTo
+ttrhvt
+tug
+tuoacnq
+twdosjbotcr
+TweenService
+tweenTo
+Type
+type
+Types
+uaiompspzunr
+ufhra
+uid
+Uid
+UID
+UIListLayout
+umjg
+Uncommon
+Unit
+Unknown
+Unload
+Unloaded
+uonbkl
+updateRenderOverlay
+UpgradeGroup
+Upgrades
+UpgradeTypes
+upzwfvumy
+urhcoipyx
+Url
+USDT
+UseJumpPower
+User
+User 
+UserId
+UserInputService
+UserInputType
+Util
+utndgm
+uuq
+uwfulop
+uyn
+Value
+value
+Values
+Vector3
+Velocity
+vemc
+Venmo
+vftoneytae
+vhn
+VirtualInputManager
+VirtualUser
+Visible
+Visuals
+Volcano
+vpxt
+vtywoymre
+W
+wait
+WaitForChild
+Walk Speed
+Walk Speed Override
+WalkSpeed
+WalkSpeedEnabled
+WaterReflectance
+WaterWaveSize
+Waypoint
+Waypoint Teleport
+WaypointGroup
+WaypointTarget
+Webhook
+webhook
+Webhook send failed
+Webhook URL
+WebhookDisconnectAlerts
+WebhookEggSpawns
+WebhookEnabled
+WebhookInterval
+webhookPing
+WebhookPingId
+WebhookRarities
+Webhooks
+WebhookUrl
+Where do I get a good config?
+withinEspRange
+wmaqr
+wmptguv
+wmsdqf
+Workspace
+wrso
+wsdlamxnccx
+wwhysqvvd
+X
+x
+x%.2f
+xedfpv
+xhkwdeevsjks
+xvmo
+xzbraqggu
+xzgvkklpto
+xzxnu
+Y
+ybbo
+ycp
+yinxawsrlk
+ynifvz
+yonjyijpuk
+youqugy
+Your executor does not support copying to the clipboard
+yvccjsg
+Z
+zero
+zjbcxop
+zjns
+zkixlslcyi
+zlwdc
+zmw
+znkjjmtlbf
+zqhesuko
+zvxynau
+zwqpoas
