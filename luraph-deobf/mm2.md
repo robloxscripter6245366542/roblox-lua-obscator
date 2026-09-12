@@ -88,14 +88,79 @@ arguments — **and that call is where all further observable output stops.**
 No `[[URL]]`/`[[SERVICE]]`/`[[REMOTE]]`/etc. tags fire in the tested window,
 same silent signature as `sample_v15.lua` post-setup.
 
-There is no `loadstring`/`load`/`string.dump`/`debug.*` anywhere in the
-file, ruling out a native-bytecode-loader theory — whatever `j()` returns
-must be one of the file's own 8 statically-defined closures (enumerated via
-AST; sizes 65–2807 chars), not dynamically synthesized code. One nearby
-small `vararg`-taking function matches the shape of a generic multi-return
-forwarding trampoline (`local Q=J[83](...);table.move(Q,1,Q[J.y],g+1,D)`) —
-plausibly the calling-convention glue between this VM and a native handler,
-though not yet confirmed to be what `j()` specifically returns.
+**Correction to an earlier claim in this file:** an initial literal-text
+grep for `loadstring(` found zero hits and this section originally
+concluded there was no `loadstring`/`load` anywhere in the file, ruling out
+a native-bytecode-loader theory. That was wrong — the grep only checks for
+`loadstring` spelled out as a bare call expression. Luraph never writes it
+that way: `loadstring` is reference **99** in the file's big constant-pool
+table (`[99]=loadstring`), destructured into a local also confusingly named
+`j` (shadowing the outer `j()` function's own name) alongside `pcall`
+(`[20]`, local `h`) and `buffer.tostring` (`[73]`, local `L`). The actual
+call site, found via AST + regex over `j()`'s body:
+
+```
+else local D,g,Q=t[2],e(J,W,170974),e(J,S,885685);
+local J,A=h(j,L(g),"Luraph",nil);
+if J then B,t,s,F,W,S=3,D,A,Q,A,K;else B,t,s,F,W,S=3,D,J,Q,A,K;end;
+```
+
+— which, substituting the aliases, is `pcall(loadstring, buffer.tostring(g),
+"Luraph", nil)`. `g` here is a **local** `g` from the line just before
+(shadowing yet another `g` — position 91 in the same destructuring, which is
+`buffer.readu32`; the false lead this shadow could have caused is exactly
+the kind of trap `v15.md`'s Q-VM investigation and this file's own
+comparison-chain span-finder bug already ran into twice). `e` is `J.Z`, one
+of the file's static closures, called as `e(J, W, 170974)` /
+`e(J, S, 885685)` — a base64/bit-unpacking decoder (its own locals are
+initialized to `4,6,64,4,14,4,16,3,3,8,8,8,256,2,32,2048`, classic
+alphabet-size/bit-width constants) that unpacks a slice of the file's two
+`[==[LPH...]==]` blobs into a Luau `buffer`, sized by the literal byte
+counts `170974` / `885685` passed in.
+
+**Dynamically confirmed** by instrumenting this exact call site (probe
+prints `buffer.len(g)` and a short `buffer.tostring(g)` prefix immediately
+after `g` is decoded, before the `loadstring` call runs):
+
+```
+[[GLEN]] ok=true len=170974
+[[GTS]] ok2=true
+[[GHEAD]] 1 return setmetatable({JP=functi
+[[GHEAD]] 31 on(t,r,D,J,L,b,p,o,M,H,i,u,q,K
+[[GHEAD]] 61 ,A,l)if J<=127 then if J<=126 
+[[GHEAD]] 91 then local N,_,I=L-128,(q-128)
+```
+
+`buffer.len(g)` is exactly `170974`, matching the literal byte count in the
+source — and `buffer.tostring(g)` is **plain Lua source text**, not
+bytecode: `return setmetatable({JP=function(...)if J<=127 then if J<=126
+then...`. So the real pipeline is: decode an `[==[LPH...]==]` blob with the
+file's own bit-unpacker → a 170,974-byte Lua **source string** →
+`loadstring(source, "Luraph", nil)` (wrapped in `pcall`, hence the
+`if J then ... else ... end` success/failure branch) → the compiled
+function is what `j()` returns and what gets called next. This is a genuine
+native-bytecode-loader pattern after all — just one layer of indirection
+too deep for a literal-text search to find, exactly the same lesson this
+whole investigation keeps relearning about trusting text over structure.
+
+It also explains why every static/dynamic probe on the *outer* file goes
+silent past this point: **the second stage doesn't exist anywhere in the
+original file's parse tree.** It is synthesized at runtime from decoded
+bytes, so no amount of AST analysis or instrumentation of the outer
+99% of `Release.lua`'s bytes can ever see it — only intercepting the
+`loadstring` call itself (as done here) reaches it.
+
+And the decoded string's own opening line — `if J<=127 then if J<=126
+then...` — is visibly a **third instance of the comparison-chain dispatch
+shape** (after this file's own outer `B` loop and `sample_v15.lua`'s 4
+bonus sub-VMs): Luraph nests a whole second VM layer inside the
+dynamically-compiled chunk, using the same codegen idiom recursively. That
+inner VM is the real payload interpreter; everything analyzed in this file
+so far (the outer `B`-loop, `j()`, the whole 1.17MB static file) is outer
+scaffolding whose entire job is decoding and loading it. (Only the
+`setmetatable({JP=function(...)...` scaffolding line is quoted above, to
+show the shape — not vendoring any of the decoded 170,974-byte payload
+itself, same policy as not vendoring the outer sample.)
 
 ## Cross-sample finding
 
@@ -142,17 +207,58 @@ technique, and that "obfuscated" and "Luraph" are not synonyms.
   the comparison-chain dispatch shape, the same way `v15_payload_probe.py`
   is generic for the array-fetch shape. Validated against all three files
   above.
+- `devirt/loadstring_alias_dump.py` — generic detector + dynamic prober for
+  Luraph's indirect (constant-pool-aliased) `loadstring`/`load` call: finds
+  where the builtin sits as a table value, follows the destructuring alias
+  that pulls it into a short local name (identifier-agnostic on purpose,
+  since the constant-pool table itself is often never bound to its own
+  name — see the tool's header comment), locates the real call site whether
+  the alias is invoked directly or passed as a bare argument to another
+  aliased builtin (the actual shape here: `pcall_alias(loadstring_alias,
+  source, "Luraph", nil)`), and dumps every argument's type/length/short
+  preview at runtime. Reproduces this file's finding standalone:
+
+  ```
+  arg=0 type=function
+  arg=1 type=string
+  arg=1 len=170974
+  arg=1 head 1 return setmetatable({JP=functi
+  arg=2 type=string
+  arg=2 len=6
+  arg=2 head 1 Luraph
+  arg=3 type=nil
+  ```
+
+  Run against `sample_v15.lua` as a negative control: correctly reports no
+  `loadstring`/`load` value-site found, matching that sample's
+  already-established from-scratch architecture (no dynamic second stage).
 
 ## Ways forward
 
-1. Characterize what `j()`'s returned function actually is/does when
-   called — the actual stall point, one level deeper than this writeup
-   reaches. Requires instrumenting the second call directly (the harness
-   already supports this; see the entry-point interception technique used
-   above).
-2. Characterize the 4 newly-found comparison-chain loops inside
+1. ~~Characterize what `j()`'s returned function actually is/does when
+   called~~ — **done, see above**: it's `loadstring` (aliased through the
+   constant table) on a base64/bit-unpacked 170,974-byte Lua source string,
+   decoded from one of the file's two `[==[LPH...]==]` blobs.
+2. Characterize the **inner** comparison-chain VM that lives inside that
+   decoded 170,974-byte string (`JP=function(t,r,D,J,L,b,p,o,M,H,i,u,q,K,A,l)
+   if J<=127 then if J<=126 then...`) — this is the real payload
+   interpreter, invisible to any analysis of the outer static file since it
+   is synthesized at runtime. Same tooling applies in principle
+   (`chain_dispatch_probe.py`, `v15_payload_opcodes.py`'s AST leaf
+   classifier) but needs a harness change first: today's tools all take a
+   file path and parse it statically; this target only exists as an
+   in-memory string produced by `loadstring` at runtime, so reaching it
+   means either (a) intercepting and dumping the full decoded string to a
+   file first (straightforward, same technique as the `[[GHEAD]]` probe
+   above, just uncapped), then running the existing static tools against
+   that dumped file, or (b) instrumenting *inside* the dynamically-loaded
+   chunk directly, which the current source-splicing approach can't do
+   without (a).
+3. Characterize the 4 newly-found comparison-chain loops inside
    `sample_v15.lua` itself (bonus finding above) — likely loader sub-steps,
    not yet mapped to a specific purpose.
-3. Find more real-world Luraph samples of different version labels to keep
+4. Find more real-world Luraph samples of different version labels to keep
    testing "how many codegen shapes does 'Luraph' actually cover" —
-   this file alone already disproved "one shape per major version."
+   this file alone already disproved "one shape per major version," and now
+   shows the shape can also nest inside itself across a dynamic-load
+   boundary.
