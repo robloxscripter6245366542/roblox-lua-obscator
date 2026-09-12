@@ -467,11 +467,15 @@ technique, and that "obfuscated" and "Luraph" are not synonyms.
    ~165+46+71+11 individual handlers computes *beyond* that shared
    mechanism (i.e. its actual per-opcode effect) — reading a handful
    confirmed the pattern, not what each one specifically does.
-4. Find more real-world Luraph samples of different version labels to keep
-   testing "how many codegen shapes does 'Luraph' actually cover" —
-   this file alone already disproved "one shape per major version," and now
-   shows the shape can also nest inside itself across a dynamic-load
-   boundary, AND recur directly without one (cross-sample finding above).
+4. ~~Find more real-world Luraph samples~~ — **done, see `../sample3.md`**:
+   a third real v15.0 sample confirms the same comparison-chain-outer +
+   decoded-inner-VM shape this file established, and its inner VM goes
+   further — mixing array-fetch and comparison-chain dispatch in one layer
+   (not seen before) while its two richest comparison-chain loops use the
+   exact same `t:METHOD(...)` template already catalogued here and in
+   `v15.md`. Still open: samples of different Luraph *version* labels
+   (everything found so far says v15.0) to test whether that varies the
+   shape further.
 5. (New, opened by item 2's traced crash) Find out what the real first
    argument to the outermost returned function is supposed to be in genuine
    use — is a bare `loadstring(url)()` actually how this script is meant to
