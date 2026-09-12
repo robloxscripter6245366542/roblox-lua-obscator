@@ -431,6 +431,57 @@ read-XOR-write, conditional-lookup, and list-pop handlers like
 matching. This was a targeted scan for *new shapes* (found three), not a
 claim of exhaustive coverage.
 
+## Quantified: how common are the three new categories, actually?
+
+Turned the qualitative finding above into a real count with a new
+committed tool, `devirt/handler_category_scan.py`, recognizing all five
+shapes (plain decode, decrypt, lookup, list-pop, store) across every
+handler a loop's opcode map references — not just the handful read by
+hand. Building it caught one more real bug worth recording: the first
+version extracted each handler's body with a **fixed-size character
+window**, which for short handlers bled straight into the *next* table
+entry. Confirmed on `sample_v15.lua`'s `Cu`: the window captured
+`,[38]=setfenv,qA=function(...)...t[59](12)...` — the *next* handler's own
+decrypt call — misattributing it to `Cu`, which is actually a plain
+3-branch decode with no decrypt call at all. Fixed with a keyword-depth
+counter (`function`/`if`/`while`/`for` open, `end` closes) that finds each
+handler's own closing `end` instead of guessing a window size. (Luraph's
+handler bodies use `and/or` ternaries, not Luau's `if...then...else`
+*expression* form — the one construct that broke a naive depth-counter
+once already in this project's history — so a plain keyword counter is
+safe here, checked against these samples before trusting it.)
+
+With that fixed, real counts across all four larger loops (`K`'s 10 were
+already fully hand-read in full, so isn't repeated here):
+
+| loop | total | decode | decrypt | list-pop | store | lookup | unclassified |
+|---|---|---|---|---|---|---|---|
+| `G` (MM2) | 69 | 26 | **38 (55%)** | 0 | 1 | 0 | 4 |
+| `_` (MM2) | 86 | 81 | 1 | 4 | 0 | 0 | 0 |
+| `c` (`sample_v15.lua`) | 46 | 39 | 1 | 6 | 0 | 0 | 0 |
+| `d` (`sample_v15.lua`) | 71 | 23 | **38 (54%)** | 0 | 4 | 1 | 5 |
+| `S` (`sample_v15.lua`) | 11 | 11 | 0 | 0 | 0 | 0 | 0 |
+
+**New structural finding, not visible from the qualitative pass alone:**
+`G` and `d` — one from each sample, otherwise unrelated — are both roughly
+**55% decrypt handlers**, while `K`/`_`/`c`/`S` are almost entirely plain
+decode. That's not a coincidence worth shrugging off: it suggests `G` and
+`d` each play an analogous *role* in their respective VM — a
+bulk-decryption-heavy dispatch loop — parallel to each other across two
+independent samples, distinct from the more general-purpose `_`/`c`/`S`.
+Spot-checked several handlers in each of the four buckets above (not just
+the ones already read for the qualitative finding) before trusting these
+numbers, including specifically re-verifying `Cu` now falls into
+"unclassified" as expected post-fix, and confirming 2 more genuine
+read-XOR-write chains in each of `G` and `d` beyond the ones already
+quoted above. Committed: `devirt/handler_category_counts.json` (the
+numbers) and `devirt/handler_category_scan.py` (the tool).
+
+The remaining `UNCLASSIFIED` handlers (4 in `G`, 5 in `d`) and the
+`STORE`/`LOOKUP` counts are not individually re-verified here — this
+quantifies the three new categories specifically, not a claim that every
+other bucket is now exhaustively correct too.
+
 ## Cross-sample finding
 
 Two independently-authored real Luraph v15.0 samples now show the **same**
@@ -581,11 +632,19 @@ technique, and that "obfuscated" and "Luraph" are not synonyms.
    same result**: near-total automated coverage (127 of 128 into known
    categories after the same classifier), with the one residual (`c`'s
    `E`/`Y`/`j`, initially "unclassified") turning out to be the list-pop
-   pattern above, not a fourth new shape. **Still open**: how common all
-   three new categories actually are within `G`/`_`/`c`/`d`/`S` specifically
-   (only confirmed on the handful read by hand in each, not counted
-   exhaustively), and `d`'s one remaining unclassified name (`xA`) wasn't
-   fully distinguished from an ordinary decode variant.
+   pattern above, not a fourth new shape. ~~**Still open**: how common all
+   three new categories actually are within `G`/`_`/`c`/`d`/`S`
+   specifically~~ — **done, see "Quantified" above**: real per-loop counts
+   via a new committed tool (`devirt/handler_category_scan.py`), not just
+   the handful read by hand — and a genuine new finding out of it: `G`
+   (MM2) and `d` (`sample_v15.lua`) are both ~55% decrypt handlers, an
+   analogous bulk-decryption role in each VM, while `K`/`_`/`c`/`S` are
+   almost entirely plain decode. **Still open**: the `UNCLASSIFIED`/`STORE`
+   /`LOOKUP` handlers this scan didn't individually re-verify (9 total
+   across `G`/`d` combined), and — the actual remaining ceiling on this
+   whole investigation — what any single handler's operation *specifically*
+   computes beyond its category (e.g. which byte of which key schedule a
+   given decrypt handler applies), across all ~283 categorized opcodes.
 4. ~~Find more real-world Luraph samples~~ — **done, see `../sample3.md`**:
    a third real v15.0 sample confirms the same comparison-chain-outer +
    decoded-inner-VM shape this file established, and its inner VM goes
