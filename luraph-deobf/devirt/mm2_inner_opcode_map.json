@@ -1,0 +1,1337 @@
+{
+ "sample": "mm2 decoded inner-stage VM (see ../mm2.md \"The third VM layer\" section; the decoded chunk itself is NOT vendored in this repo, same policy as the outer sample)",
+ "note": "location fields omitted -- they were byte offsets into a local, un-vendored dump of the decoded chunk, not independently reproducible without it",
+ "dispatch_loops": {
+  "K": {
+   "richness": 9,
+   "opcode_count": 9,
+   "opcodes": [
+    {
+     "opcode": "12..16",
+     "category": "JUMP",
+     "calls": [
+      "t:Tv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "17..20",
+     "category": "JUMP",
+     "calls": [
+      "t:GP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "21..24",
+     "category": "RETURN|JUMP",
+     "calls": [
+      "t:XP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "25..28",
+     "category": "JUMP",
+     "calls": [
+      "t:WP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "29..30",
+     "category": "JUMP",
+     "calls": [
+      "t:gP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "4..7",
+     "category": "JUMP",
+     "calls": [
+      "t:Jv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "8..11",
+     "category": "JUMP",
+     "calls": [
+      "t:Rv",
+      "t:yv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "?<=16&<=7&<=3",
+     "category": "JUMP",
+     "calls": [
+      "t:Ev"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "?>16&>24&>28&>30",
+     "category": "JUMP",
+     "calls": [
+      "t:BP"
+     ],
+     "arrays": []
+    }
+   ]
+  },
+  "G": {
+   "richness": 69,
+   "opcode_count": 69,
+   "opcodes": [
+    {
+     "opcode": "10..13",
+     "category": "JUMP",
+     "calls": [
+      "t:LP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "100..103",
+     "category": "JUMP",
+     "calls": [
+      "t:dP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "104..106",
+     "category": "JUMP",
+     "calls": [
+      "t:AP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "107..110",
+     "category": "JUMP",
+     "calls": [
+      "t:oP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "111..114",
+     "category": "JUMP",
+     "calls": [
+      "t:wP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "115..118",
+     "category": "JUMP",
+     "calls": [
+      "t:jP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "119..121",
+     "category": "JUMP",
+     "calls": [
+      "t:KP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "122..125",
+     "category": "JUMP",
+     "calls": [
+      "t:EP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "126..129",
+     "category": "JUMP",
+     "calls": [
+      "t:JP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "130..133",
+     "category": "JUMP",
+     "calls": [
+      "t:yP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "134..136",
+     "category": "JUMP",
+     "calls": [
+      "t:RP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "137..140",
+     "category": "JUMP",
+     "calls": [
+      "t:TP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "14..16",
+     "category": "JUMP",
+     "calls": [
+      "t:SP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "141..144",
+     "category": "JUMP",
+     "calls": [
+      "t:G8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "145..148",
+     "category": "JUMP",
+     "calls": [
+      "t:X8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "149..151",
+     "category": "JUMP",
+     "calls": [
+      "t:W8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "152..155",
+     "category": "JUMP",
+     "calls": [
+      "t:g8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "156..159",
+     "category": "JUMP",
+     "calls": [
+      "t:B8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "160..163",
+     "category": "JUMP",
+     "calls": [
+      "t:x8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "164..166",
+     "category": "JUMP",
+     "calls": [
+      "t:P8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "167..170",
+     "category": "JUMP",
+     "calls": [
+      "t:Q8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "17..20",
+     "category": "JUMP",
+     "calls": [
+      "t:_P"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "171..174",
+     "category": "JUMP",
+     "calls": [
+      "t:s8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "175..178",
+     "category": "JUMP",
+     "calls": [
+      "t:Y8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "179..181",
+     "category": "JUMP",
+     "calls": [
+      "t:t8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "182..185",
+     "category": "JUMP",
+     "calls": [
+      "t:f8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "186..189",
+     "category": "JUMP",
+     "calls": [
+      "t:a8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "190..193",
+     "category": "RETURN|JUMP",
+     "calls": [
+      "t:e8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "194..196",
+     "category": "JUMP",
+     "calls": [
+      "t:m8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "197..200",
+     "category": "JUMP",
+     "calls": [
+      "t:L8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "201..204",
+     "category": "JUMP",
+     "calls": [
+      "t:S8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "205..206",
+     "category": "JUMP",
+     "calls": [
+      "t:_8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "207..208",
+     "category": "JUMP",
+     "calls": [
+      "t:M8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "209..211",
+     "category": "JUMP",
+     "calls": [
+      "t:l8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "21..24",
+     "category": "JUMP",
+     "calls": [
+      "t:MP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "212..215",
+     "category": "JUMP",
+     "calls": [
+      "t:V8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "216..219",
+     "category": "JUMP",
+     "calls": [
+      "t:r8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "220..223",
+     "category": "JUMP",
+     "calls": [
+      "t:i8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "224..226",
+     "category": "JUMP",
+     "calls": [
+      "t:I8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "227..230",
+     "category": "JUMP",
+     "calls": [
+      "t:k8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "231..234",
+     "category": "JUMP",
+     "calls": [
+      "t:n8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "235..236",
+     "category": "JUMP",
+     "calls": [
+      "t:h8"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "25..28",
+     "category": "JUMP",
+     "calls": [
+      "t:lP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "29..31",
+     "category": "JUMP",
+     "calls": [
+      "t:VP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "3..6",
+     "category": "JUMP",
+     "calls": [
+      "t:eP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "32..35",
+     "category": "JUMP",
+     "calls": [
+      "t:rP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "36..39",
+     "category": "JUMP",
+     "calls": [
+      "t:iP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "40..43",
+     "category": "JUMP",
+     "calls": [
+      "t:IP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "44..46",
+     "category": "JUMP",
+     "calls": [
+      "t:kP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "47..50",
+     "category": "JUMP",
+     "calls": [
+      "t:nP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "51..54",
+     "category": "JUMP",
+     "calls": [
+      "t:hP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "55..58",
+     "category": "JUMP",
+     "calls": [
+      "t:pP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "59..61",
+     "category": "JUMP",
+     "calls": [
+      "t:zP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "62..65",
+     "category": "JUMP",
+     "calls": [
+      "t:OP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "66..69",
+     "category": "JUMP",
+     "calls": [
+      "t:NP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "7..9",
+     "category": "JUMP",
+     "calls": [
+      "t:mP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "70..73",
+     "category": "JUMP",
+     "calls": [
+      "t:HP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "74..76",
+     "category": "JUMP",
+     "calls": [
+      "t:ZP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "77..78",
+     "category": "JUMP",
+     "calls": [
+      "t:UP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "79..80",
+     "category": "JUMP",
+     "calls": [
+      "t:bP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "81..82",
+     "category": "JUMP",
+     "calls": [
+      "t:DP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "83..84",
+     "category": "JUMP",
+     "calls": [
+      "t:FP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "85..88",
+     "category": "JUMP",
+     "calls": [
+      "t:uP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "89..91",
+     "category": "JUMP",
+     "calls": [
+      "t:cP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "92..93",
+     "category": "JUMP",
+     "calls": [
+      "t:CP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "94..95",
+     "category": "JUMP",
+     "calls": [
+      "t:vP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "96..99",
+     "category": "JUMP",
+     "calls": [
+      "t:qP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "?<=118&<=58&<=28&<=13&<=6&<=2",
+     "category": "JUMP",
+     "calls": [
+      "t:aP"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "?>118&>178&>208&>223&>230&>234&>236",
+     "category": "JUMP",
+     "calls": [
+      "t:p8"
+     ],
+     "arrays": []
+    }
+   ]
+  },
+  "_": {
+   "richness": 62,
+   "opcode_count": 86,
+   "opcodes": [
+    {
+     "opcode": "10..14",
+     "category": "JUMP",
+     "calls": [
+      "t:e"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "101..102",
+     "category": "JUMP",
+     "calls": [
+      "t:c"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "103..105",
+     "category": "JUMP",
+     "calls": [
+      "t:C"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "106..110",
+     "category": "JUMP",
+     "calls": [
+      "t:v"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "111..115",
+     "category": "JUMP",
+     "calls": [
+      "t:q"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "116..121",
+     "category": "JUMP",
+     "calls": [
+      "t:d"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "122..123",
+     "category": "JUMP",
+     "calls": [
+      "t:A"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "124..126",
+     "category": "JUMP",
+     "calls": [
+      "t:o"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "127..131",
+     "category": "JUMP",
+     "calls": [
+      "t:w"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "132..136",
+     "category": "JUMP",
+     "calls": [
+      "t:j"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "137..141",
+     "category": "JUMP",
+     "calls": [
+      "t:K"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "142..146",
+     "category": "JUMP",
+     "calls": [
+      "t:E"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "147..148",
+     "category": "JUMP",
+     "calls": [
+      "t:J"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "149..151",
+     "category": "JUMP",
+     "calls": [
+      "t:y"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "15..19",
+     "category": "JUMP",
+     "calls": [
+      "t:m"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "152..156",
+     "category": "JUMP",
+     "calls": [
+      "t:R"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "157..159",
+     "category": "JUMP",
+     "calls": [
+      "t:T"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "160..162",
+     "category": "JUMP",
+     "calls": [
+      "t:Gv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "163..167",
+     "category": "JUMP",
+     "calls": [
+      "t:Xv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "168..172",
+     "category": "JUMP",
+     "calls": [
+      "t:Wv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "173..177",
+     "category": "JUMP",
+     "calls": [
+      "t:gv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "178..179",
+     "category": "JUMP",
+     "calls": [
+      "t:Bv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "180..182",
+     "category": "JUMP",
+     "calls": [
+      "t:xv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "183..187",
+     "category": "JUMP",
+     "calls": [
+      "t:Pv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "188..192",
+     "category": "JUMP",
+     "calls": [
+      "t:Qv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "193..197",
+     "category": "JUMP",
+     "calls": [
+      "t:sv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "198..200",
+     "category": "JUMP",
+     "calls": [
+      "t:Yv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "20..21",
+     "category": "JUMP",
+     "calls": [
+      "t:L"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "201..203",
+     "category": "JUMP",
+     "calls": [
+      "t:tv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "204..208",
+     "category": "JUMP",
+     "calls": [
+      "t:fv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "209..210",
+     "category": "JUMP",
+     "calls": [
+      "t:av"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "211..213",
+     "category": "JUMP",
+     "calls": [
+      "t:ev"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "214..218",
+     "category": "JUMP",
+     "calls": [
+      "t:mv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "219..223",
+     "category": "JUMP",
+     "calls": [
+      "t:Lv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "22..24",
+     "category": "JUMP",
+     "calls": [
+      "t:S"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "224..225",
+     "category": "JUMP",
+     "calls": [
+      "t:Sv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "226..228",
+     "category": "JUMP",
+     "calls": [
+      "t:_v"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "229..233",
+     "category": "JUMP",
+     "calls": [
+      "t:Mv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "234..238",
+     "category": "JUMP",
+     "calls": [
+      "t:lv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "239..241",
+     "category": "JUMP",
+     "calls": [
+      "t:Vv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "242..244",
+     "category": "JUMP",
+     "calls": [
+      "t:rv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "245..246",
+     "category": "JUMP",
+     "calls": [
+      "t:iv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "247..249",
+     "category": "JUMP",
+     "calls": [
+      "t:Iv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "25..26",
+     "category": "JUMP",
+     "calls": [
+      "t:_"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "250..254",
+     "category": "JUMP",
+     "calls": [
+      "t:kv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "255..259",
+     "category": "JUMP",
+     "calls": [
+      "t:nv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "260..264",
+     "category": "JUMP",
+     "calls": [
+      "t:hv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "265..266",
+     "category": "JUMP",
+     "calls": [
+      "t:pv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "267..269",
+     "category": "JUMP",
+     "calls": [
+      "t:zv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "27..29",
+     "category": "JUMP",
+     "calls": [
+      "t:M"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "270..274",
+     "category": "JUMP",
+     "calls": [
+      "t:Ov"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "275..279",
+     "category": "JUMP",
+     "calls": [
+      "t:Nv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "280..282",
+     "category": "JUMP",
+     "calls": [
+      "t:Hv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "283..285",
+     "category": "JUMP",
+     "calls": [
+      "t:Zv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "286..287",
+     "category": "JUMP",
+     "calls": [
+      "t:Uv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "288..290",
+     "category": "JUMP",
+     "calls": [
+      "t:bv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "291..295",
+     "category": "JUMP",
+     "calls": [
+      "t:Dv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "296..300",
+     "category": "JUMP",
+     "calls": [
+      "t:Fv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "30..34",
+     "category": "JUMP",
+     "calls": [
+      "t:l"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "301..305",
+     "category": "JUMP",
+     "calls": [
+      "t:uv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "306..310",
+     "category": "JUMP",
+     "calls": [
+      "t:cv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "311..315",
+     "category": "JUMP",
+     "calls": [
+      "t:Cv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "316..317",
+     "category": "JUMP",
+     "calls": [
+      "t:vv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "318..320",
+     "category": "JUMP",
+     "calls": [
+      "t:qv"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "35..39",
+     "category": "RETURN|JUMP",
+     "calls": [
+      "t:V"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "40..44",
+     "category": "JUMP",
+     "calls": [
+      "t:r"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "45..49",
+     "category": "JUMP",
+     "calls": [
+      "t:i"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "5..6",
+     "category": "JUMP",
+     "calls": [
+      "t:f"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "50..54",
+     "category": "JUMP",
+     "calls": [
+      "t:I"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "55..59",
+     "category": "JUMP",
+     "calls": [
+      "t:k"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "60..61",
+     "category": "JUMP",
+     "calls": [
+      "t:n"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "62..64",
+     "category": "JUMP",
+     "calls": [
+      "t:h"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "65..69",
+     "category": "JUMP",
+     "calls": [
+      "t:p"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "7..9",
+     "category": "JUMP",
+     "calls": [
+      "t:a"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "70..71",
+     "category": "JUMP",
+     "calls": [
+      "t:z"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "72..74",
+     "category": "JUMP",
+     "calls": [
+      "t:O"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "75..80",
+     "category": "JUMP",
+     "calls": [
+      "t:N"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "81..82",
+     "category": "JUMP",
+     "calls": [
+      "t:H"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "83..85",
+     "category": "JUMP",
+     "calls": [
+      "t:Z"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "86..87",
+     "category": "JUMP",
+     "calls": [
+      "t:U"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "88..90",
+     "category": "JUMP",
+     "calls": [
+      "t:b"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "91..95",
+     "category": "JUMP",
+     "calls": [
+      "t:D"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "96..97",
+     "category": "JUMP",
+     "calls": [
+      "t:F"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "98..100",
+     "category": "JUMP",
+     "calls": [
+      "t:u"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "?<=162&<=80&<=39&<=19&<=9&<=4",
+     "category": "JUMP",
+     "calls": [
+      "t:t"
+     ],
+     "arrays": []
+    },
+    {
+     "opcode": "?>162&>244&>285&>305&>315&>320",
+     "category": "JUMP",
+     "calls": [
+      "t:dv"
+     ],
+     "arrays": []
+    }
+   ]
+  }
+ }
+}
