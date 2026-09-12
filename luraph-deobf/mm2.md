@@ -328,6 +328,47 @@ That's the strongest evidence yet that this isn't incidental similarity —
 it's the same interpreter template, reused wherever Luraph puts a
 handler-dispatch sub-VM, regardless of which outer file it ends up in.
 
+## The `K` loop, fully characterized — not just a sample this time
+
+`K` (9 opcode ranges, 10 handler calls) is small enough to read in full
+rather than sample a handful. Doing that gives real per-opcode semantic
+categories, not just "it's a threaded interpreter":
+
+- **`Jv`, `Tv`, `WP`, `gP`, `Ev`, `BP` (6 of 9) are all operand-decode
+  variants** — each fetches 1+ bytes via `buffer.readu8` and reassembles a
+  multi-byte value with the same 7-bit/128-scaled pattern
+  (`(byte-128)*16384 + ...*128 + ...`), differing only in how many bytes
+  they pull and what they do with the result before returning the next
+  opcode. This is the operand-fetch primitive, LEB128-style, appearing
+  under six different names because each one is specialized to a
+  slightly different operand width/use, not because they're six different
+  algorithms.
+- **`GP` is a loop-counter/comparison primitive** — accumulates a running
+  sum (`p[5] = p[5] + p[1]`-shaped) against a stored limit (`p[2]`) and
+  branches on whether it has reached it. The interpreter's for/while-style
+  condition check.
+- **`XP` is a store** — `r[J]=L` writes a value into a register/array
+  slot before computing the next opcode. (Minor Luraph quirk noticed while
+  reading it: its own parameter list is `function(t,t,r,D,J,L)` — the
+  first `t` is immediately shadowed by the second and never used, i.e.
+  this specific handler doesn't actually touch `self`. Harmless, just a
+  renaming-pass artifact worth flagging so it isn't mistaken for a bug in
+  the reading, not the source.)
+- **`Rv` is the vararg-consumption entry point** — `t.W=...` captures the
+  handler's own varargs onto the VM state table, then immediately reads a
+  buffer from it via `buffer.readu8(t.W, t[95])`. This is the exact code
+  path this file's "traced crash" section above already identified as
+  where the missing-argument `buffer.readu8(nil,...)` failure originates —
+  now confirmed by reading `Rv` itself rather than just its call site.
+- **`yv`** (already covered above) **is the return/unpack trampoline.**
+
+So one full VM (not a sample of it) is now genuinely characterized:
+mostly operand decoding, one loop-condition check, one store, one
+vararg-entry, one return. Still open: the other 155 opcodes across `G`/`_`
+(this file) and the ~128 across `sample_v15.lua`'s `c`/`d`/`S` — this is a
+proof that full-VM characterization is tractable in reasonable time
+(reading 9 short handlers took minutes, not hours), not that it's done.
+
 ## Cross-sample finding
 
 Two independently-authored real Luraph v15.0 samples now show the **same**
@@ -457,16 +498,15 @@ technique, and that "obfuscated" and "Luraph" are not synonyms.
    (both identified concretely via resolved `bit32`/`buffer` builtin
    names, not guessed); `j` remains a small, unconfirmed logging-state-machine
    guess. ~~**Still open**: what any individual handler body actually
-   computes~~ — **partially done**: reading a handful of handlers
-   (`Tv`/`BP`/`yv` from MM2's `K` loop, `S` from `sample_v15.lua`'s `c`
-   loop) revealed the shared dispatch *mechanism* itself — see "What
-   individual handlers actually compute" above — a continuation-passing
-   threaded interpreter where every handler ends by returning the next
-   opcode, with per-opcode operand bytes fetched via `buffer.readu8` and
-   high-bit-branched (LEB128-style). **Still open**: what any of the
-   ~165+46+71+11 individual handlers computes *beyond* that shared
-   mechanism (i.e. its actual per-opcode effect) — reading a handful
-   confirmed the pattern, not what each one specifically does.
+   computes~~ — **the `K` loop is now fully done** (see "The `K` loop,
+   fully characterized" above): all 9 opcode ranges read and categorized —
+   6 operand-decode variants, 1 loop-counter/comparison, 1 store, 1
+   vararg-entry (confirmed as the traced crash's actual origin), 1
+   return-trampoline. That's proof full-VM characterization is tractable
+   in reasonable time, not just a mechanism sample. **Still open**: the
+   other ~155 opcodes in this file's `G`/`_` loops and the ~128 across
+   `sample_v15.lua`'s `c`/`d`/`S` — same read-every-handler approach that
+   just worked for `K`, not yet applied to the larger loops.
 4. ~~Find more real-world Luraph samples~~ — **done, see `../sample3.md`**:
    a third real v15.0 sample confirms the same comparison-chain-outer +
    decoded-inner-VM shape this file established, and its inner VM goes
