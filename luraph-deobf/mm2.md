@@ -162,6 +162,103 @@ scaffolding whose entire job is decoding and loading it. (Only the
 show the shape — not vendoring any of the decoded 170,974-byte payload
 itself, same policy as not vendoring the outer sample.)
 
+## The third VM layer: a full constant-pool+handler architecture, and why it's silent
+
+The decoded 170,974-byte string isn't one function — its opening
+`if J<=127 then...` is just the first of ~183 `=function(...)` entries and
+402 `[N]=` numeric keys in one big table literal, dumped in full with a new
+tool (`devirt/loadstring_alias_dump.py --full-dump-arg`, below) and
+confirmed byte-exact (reassembled length matches the runtime-observed
+`#g==170974` exactly). That table is Luraph's familiar
+constant-pool-plus-handler-table shape all over again, one layer deeper,
+with a real named entry point:
+
+```
+z8=function(t,...)local r,D,J,L,b,p,o,M,H,i,u,q=t:Kv();local K,A,l,...=D,J,t[29](...),...
+```
+
+`t:Kv()` is a **static initializer** — `Kv=function(t)return true,9,nil,nil,...,nil;end`,
+literally hardcoded, not derived from anything — and `t[29]` is `table.pack`.
+So `z8` starts its own register-machine state from a fixed constant and
+packs `z8`'s **own call arguments** (`...`) into its first working table.
+Running the dumped chunk through the same sandbox (`dynamic/deobf_v15.py`,
+directly — it's now a standalone valid Lua file) gets past `env-ready` and
+into `z8`, then crashes:
+
+```
+[[LOG]] RUNTIME	dropkick:1: invalid argument #1 to 'readu8' (buffer expected, got nil)
+dropkick:1 function Rv
+dropkick:1 function z8
+```
+
+Traced concretely, not guessed: `z8` is called as `s(...)` from the outer
+file's own `B`-loop (the `setmetatable({...},{}):j()(...)` entry point —
+call `j()`, which runs to completion and returns this compiled chunk as a
+function, then immediately call *that* with the original script's own
+varargs). A bare `loadstring(url)()`-style invocation — exactly the
+one-liner this whole sample was fetched from — passes **zero** arguments at
+that outermost call, so `t[29](...)` (`table.pack()`) packs an empty
+argument list, and by the time that empty result reaches `Rv`'s
+`buffer.readu8`, there's no buffer to read. This is a concrete, traced
+instance of the same wall every sample in this file has hit: **the real
+work needs an input this sandbox (or a bare `loadstring(...)()` call) never
+supplies.** Here it's not vague "needs a live client" — it's specifically
+"needs a real first call argument," letting us name the exact missing
+value for the first time instead of just observing silence.
+
+`chain_dispatch_probe.py`'s regex was hardcoded to `while true do` (Luraph
+was assumed to always exit a dispatch loop via `return`, never by
+falsifying the loop condition) — but `z8`'s real loop is
+`while r do if K<=16 then...`, a plain **variable** as the loop condition.
+Broadened the regex to `while \w+ do` (still requires the same richness
+filter, so incidental `while x do if y<=n then` snippets aren't
+suddenly treated as VMs) and re-validated against every sample already on
+file — no change to `sample_v15.lua`'s outer `B`/`F`/`j`/`L` group, MM2's
+outer `B` group, or `jnkie`'s `j` group, confirming no regression — and it
+now also finds `z8`'s loop (`K`, richness 9) plus **two more** comparison-chain
+loops inside this same inner table (`G`, richness 69, `while o do if
+G<=118...`; `_`, richness 62, `while L do if _<=162...`), each with a much
+larger opcode range than `z8`'s own. This one decoded chunk contains at
+least three distinct comparison-chain dispatch loops, not one — consistent
+with ~183 handler functions being too many for a single flat dispatch.
+
+**Cross-sample bonus, found while validating the regex broadening:** the
+same `while <var> do if <var2><=N> then...` shape, with the exact same
+`t:METHOD(...)` self-referential method-call convention (`t:Ev(...)`,
+`t:aP(...)`, `t:r(...)`) as `z8`'s handlers, also exists **directly in
+`sample_v15.lua`'s own top-level source** — three more comparison-chain
+loops (`c`, richness 45; `d`, richness 69; `S`, richness 13) beyond the 4
+already flagged in the "bonus finding" section below, each confirmed via
+AST (an `AstStatWhile` node sits at that exact offset, so this is real
+parsed code, not text inside a string literal). `sample_v15.lua` never goes
+through a
+`loadstring`-decode step at all (confirmed: no `loadstring`/`load` value-site
+found by `loadstring_alias_dump.py`), so this means the *same* self-referential,
+method-dispatching comparison-chain sub-VM architecture that MM2 only
+reaches by decoding a runtime string is, in `sample_v15.lua`, simply
+written directly into the file. That's real evidence this is a shared
+Luraph sub-VM template reused across builds regardless of how the
+outer file chooses to deliver it (inline vs. decode-at-runtime) — the
+single most generalizable finding of this investigation so far.
+
+## Tooling added (loadstring full-content dump)
+
+`devirt/loadstring_alias_dump.py` gained `--full-dump-arg N --full-dump-out
+FILE`: instead of the short, bounded preview described above, it chunks one
+whole argument (past `dynamic/deobf_v15.py`'s 120-char-per-print
+truncation) and reassembles it in Python with a real Lua `%q` unescaper
+(`lua_q_unescape` — the existing array-dump tools' bare `rstrip('"')` is
+fine for a human-eyeballed preview but would silently corrupt any escaped
+byte in a byte-exact reconstruction). Verified byte-exact on this sample:
+1900/1900 chunks captured, reassembled length matches the runtime-reported
+`#g` exactly, and the result parses cleanly with `luau-ast`. (First version
+of the probe had a scoping bug — the full-dump code referenced `local
+__ty` from a block that had already closed, so it silently read back a nil
+global instead of erroring; fixed by nesting it inside the same `if
+__ok_idx then` block.) The dumped 170,974-byte chunk itself is **not**
+vendored anywhere (same policy as the outer sample) — it lives only in a
+local scratch directory, cited here by finding, not by content.
+
 ## Cross-sample finding
 
 Two independently-authored real Luraph v15.0 samples now show the **same**
@@ -184,6 +281,15 @@ steppers (byte/modulus arithmetic in one, array-swap/permutation logic in
 another) rather than noise. **Not characterized further here** — flagged as
 a genuine, previously-uncatalogued piece of `sample_v15.lua`'s own
 architecture, worth its own follow-up in `v15.md`.
+
+**Update:** broadening `chain_dispatch_probe.py`'s loop-condition regex
+(`while true do` → `while \w+ do`, see above) found **three more** in
+`sample_v15.lua` — `c` (richness 45), `d` (richness 69), and `S`
+(richness 13) — all using the exact same `t:METHOD(...)` self-referential
+dispatch convention as MM2's decoded inner VM, all AST-confirmed as real
+`AstStatWhile` statements (not string-literal text coincidences). So
+`sample_v15.lua` has (at least) 7 uncatalogued comparison-chain sub-VMs
+total, not 4. None characterized further here; see `v15.md`.
 
 ## Not Luraph: `jnkie.com/sdk/library.lua`
 
@@ -239,26 +345,32 @@ technique, and that "obfuscated" and "Luraph" are not synonyms.
    called~~ — **done, see above**: it's `loadstring` (aliased through the
    constant table) on a base64/bit-unpacked 170,974-byte Lua source string,
    decoded from one of the file's two `[==[LPH...]==]` blobs.
-2. Characterize the **inner** comparison-chain VM that lives inside that
-   decoded 170,974-byte string (`JP=function(t,r,D,J,L,b,p,o,M,H,i,u,q,K,A,l)
-   if J<=127 then if J<=126 then...`) — this is the real payload
-   interpreter, invisible to any analysis of the outer static file since it
-   is synthesized at runtime. Same tooling applies in principle
-   (`chain_dispatch_probe.py`, `v15_payload_opcodes.py`'s AST leaf
-   classifier) but needs a harness change first: today's tools all take a
-   file path and parse it statically; this target only exists as an
-   in-memory string produced by `loadstring` at runtime, so reaching it
-   means either (a) intercepting and dumping the full decoded string to a
-   file first (straightforward, same technique as the `[[GHEAD]]` probe
-   above, just uncapped), then running the existing static tools against
-   that dumped file, or (b) instrumenting *inside* the dynamically-loaded
-   chunk directly, which the current source-splicing approach can't do
-   without (a).
-3. Characterize the 4 newly-found comparison-chain loops inside
-   `sample_v15.lua` itself (bonus finding above) — likely loader sub-steps,
-   not yet mapped to a specific purpose.
+2. ~~Characterize the inner comparison-chain VM that lives inside that
+   decoded string~~ — **done, see "The third VM layer" above**: dumped it
+   byte-exact with the new `--full-dump-arg` tooling, confirmed it's a full
+   constant-pool+handler table (~183 functions) with (at least) 3 of its own
+   comparison-chain dispatch loops (`K`, `G`, `_`), and traced the exact
+   runtime crash (`Rv`'s `buffer.readu8(nil,...)`) back to its real entry
+   point `z8` never receiving a real first call argument under a bare
+   `loadstring(...)()` invocation. **Not done**: per-opcode semantics for
+   any of `K`/`G`/`_` (or `D`/`r`/`i` from the first, narrower regex pass) —
+   this is now the same kind of "full opcode map" work `v15_payload_opcodes.py`
+   already did for `sample_v15.lua`'s outer payload VM, just not yet run
+   against these.
+3. Characterize the now-7 comparison-chain loops inside `sample_v15.lua`
+   itself (`B`, `F`, `j`, `L`, plus the newly-found `c`, `d`, `S`) — likely
+   loader sub-steps or (given `c`/`d`/`S`'s `t:METHOD(...)` shape matches
+   MM2's inner VM exactly) possibly the same reusable sub-VM template; not
+   yet mapped to a specific purpose either way.
 4. Find more real-world Luraph samples of different version labels to keep
    testing "how many codegen shapes does 'Luraph' actually cover" —
    this file alone already disproved "one shape per major version," and now
    shows the shape can also nest inside itself across a dynamic-load
-   boundary.
+   boundary, AND recur directly without one (cross-sample finding above).
+5. (New, opened by item 2's traced crash) Find out what the real first
+   argument to the outermost returned function is supposed to be in genuine
+   use — is a bare `loadstring(url)()` actually how this script is meant to
+   run, or does whatever loads it in practice supply an argument this
+   analysis hasn't seen? Answering this would settle whether the "silence
+   downstream" signature common to every sample in this project is a
+   sandbox limitation or a usage-pattern mismatch.
