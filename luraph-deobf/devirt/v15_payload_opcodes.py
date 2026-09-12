@@ -175,6 +175,20 @@ def collect_calls(node, out):
                 base = fn.get("expr", {})
                 if base.get("type") == "AstExprGlobal":
                     name = f"{base.get('global')}.{fn.get('index')}"
+                elif base.get("type") == "AstExprLocal":
+                    # A local-indexed call, `x.f(...)` or the method-call
+                    # form `x:f(...)` (marked by `func["op"]==":"` and the
+                    # call's own `self=true`) -- missed entirely before this
+                    # was added, which mattered once a VM built out of
+                    # self-referential `t:METHOD(...)` handlers showed up
+                    # (MM2's decoded inner VM, see ../mm2.md): every such
+                    # opcode classified as a bare, call-less JUMP even
+                    # though its whole body is a method call. `x`'s own
+                    # short local name is kept as a prefix since it's
+                    # usually the VM's own "self" table, not a real library
+                    # -- still far more informative than nothing.
+                    sep = ":" if fn.get("op") == ":" else "."
+                    name = f"{base.get('local', {}).get('name', '?')}{sep}{fn.get('index')}"
             elif fn.get("type") == "AstExprGlobal":
                 name = fn.get("global")
             elif fn.get("type") == "AstExprLocal":

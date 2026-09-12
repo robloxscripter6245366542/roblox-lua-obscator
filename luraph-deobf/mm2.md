@@ -241,6 +241,37 @@ Luraph sub-VM template reused across builds regardless of how the
 outer file chooses to deliver it (inline vs. decode-at-runtime) — the
 single most generalizable finding of this investigation so far.
 
+**The full opcode-to-handler map for this VM, built and verified.**
+`v15_payload_opcodes.py`'s `walk_dispatch`/`classify_leaf` were already
+proven (above) to work unchanged on a comparison-chain loop given just an
+`m_var` name and the dispatch `AstStatIf` node — tied to a real CLI now,
+`devirt/chain_opcode_semantics.py`, and run against `K`, `G`, and `_`.
+First pass classified **every single branch as a bare, call-less JUMP** —
+wrong, and caught before being trusted: `collect_calls` only ever recognized
+calls to a **global**-indexed function (`buffer.readu8`), never a
+**local**-indexed one, so it completely missed this VM's entire
+`t:METHOD(...)` self-referential dispatch style (confirmed via a minimal
+repro against `luau-ast`'s own JSON: a method call is `AstExprCall` with
+`func.type=="AstExprIndexName"`, `func.op==":"`, and `func.expr.type`
+being `AstExprLocal`, not `AstExprGlobal` — the one case the original
+function didn't branch on). Fixed by extending `collect_calls` to also
+capture local-indexed/method calls, re-validated with zero regressions
+against every category already recorded for `sample_v15.lua`'s 4-mode
+payload VM (305 opcodes total, byte-identical classification before and
+after) and MM2's own outer `B` loop (still 17/16+1) before trusting the
+new result.
+
+With that fix: **164 opcode ranges across the three loops resolve to 165
+distinct handler names, zero overlap** — `devirt/mm2_inner_opcode_map.md`
+has the full table. That's very likely the *entire* dispatch surface of
+this VM (~183 handler functions total, minus `z8` itself, the static
+`Kv` initializer, and a handful of numeric-keyed library aliases like
+`[110]=Vector2.new` that handler bodies reference directly rather than
+being dispatched to by opcode). So while no individual handler's own
+computation has been decoded yet, the **shape** of this whole VM — how
+many opcodes it has and which named function serves each — is now fully
+mapped, not just sampled.
+
 ## Tooling added (loadstring full-content dump)
 
 `devirt/loadstring_alias_dump.py` gained `--full-dump-arg N --full-dump-out
@@ -338,6 +369,16 @@ technique, and that "obfuscated" and "Luraph" are not synonyms.
   Run against `sample_v15.lua` as a negative control: correctly reports no
   `loadstring`/`load` value-site found, matching that sample's
   already-established from-scratch architecture (no dynamic second stage).
+- `devirt/chain_opcode_semantics.py` — opcode semantics for the
+  comparison-chain shape, the missing counterpart to
+  `v15_payload_opcodes.py` (array-fetch shape). Ties chain_dispatch_probe's
+  detector to `v15_payload_opcodes.py`'s AST-based `walk_dispatch`, proven
+  to work unchanged across shapes. Also fixed a real gap it exposed in
+  `collect_calls` (shared code): local-indexed/method calls (`t:METHOD(...)`)
+  were never recognized, only global-indexed ones (`buffer.readu8`) — see
+  "The full opcode-to-handler map" above. `devirt/mm2_inner_opcode_map.json`
+  / `.md` are this tool's output for MM2's inner VM: 164 opcode ranges, 165
+  handler names, zero overlap.
 
 ## Ways forward
 
@@ -352,16 +393,20 @@ technique, and that "obfuscated" and "Luraph" are not synonyms.
    comparison-chain dispatch loops (`K`, `G`, `_`), and traced the exact
    runtime crash (`Rv`'s `buffer.readu8(nil,...)`) back to its real entry
    point `z8` never receiving a real first call argument under a bare
-   `loadstring(...)()` invocation. **Not done**: per-opcode semantics for
-   any of `K`/`G`/`_` (or `D`/`r`/`i` from the first, narrower regex pass) —
-   this is now the same kind of "full opcode map" work `v15_payload_opcodes.py`
-   already did for `sample_v15.lua`'s outer payload VM, just not yet run
-   against these.
+   `loadstring(...)()` invocation. ~~**Not done**: per-opcode semantics for
+   any of `K`/`G`/`_`~~ — **also done**: 164/165 opcode-to-handler mapping,
+   see "The full opcode-to-handler map" above and
+   `devirt/mm2_inner_opcode_map.md`. **Still not done**: what each of those
+   165 handler functions individually computes (the dispatch *shape* is now
+   fully mapped; the *semantics* of any single handler body are not), and
+   the `D`/`r`/`i` groups from the first, narrower regex pass haven't been
+   run through `chain_opcode_semantics.py` at all yet.
 3. Characterize the now-7 comparison-chain loops inside `sample_v15.lua`
    itself (`B`, `F`, `j`, `L`, plus the newly-found `c`, `d`, `S`) — likely
    loader sub-steps or (given `c`/`d`/`S`'s `t:METHOD(...)` shape matches
-   MM2's inner VM exactly) possibly the same reusable sub-VM template; not
-   yet mapped to a specific purpose either way.
+   MM2's inner VM exactly) possibly the same reusable sub-VM template. The
+   same `chain_opcode_semantics.py` pipeline that just mapped MM2's inner
+   VM applies here unchanged — not yet run.
 4. Find more real-world Luraph samples of different version labels to keep
    testing "how many codegen shapes does 'Luraph' actually cover" —
    this file alone already disproved "one shape per major version," and now
