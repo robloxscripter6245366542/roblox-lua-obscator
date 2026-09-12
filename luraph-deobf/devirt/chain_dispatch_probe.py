@@ -47,8 +47,17 @@ import sys
 import tempfile
 from collections import defaultdict
 
+# The loop condition was originally assumed to always be the literal `true`
+# (a Luraph-generated dispatch loop breaks out of it via return, not by
+# falsifying the condition) -- but MM2's decoded second-stage VM (see
+# mm2.md's "third VM layer" section) uses `while r do if K<=16 then...`
+# instead: a plain variable as the loop condition, exited normally when that
+# variable goes falsy rather than only via `return`. Matching `\w+` here
+# (which still matches a literal `true` as one of many possible words) picks
+# up that real-world variant too; the richness filter below still rejects
+# incidental `while <var> do` loops that aren't actually a dispatch chain.
 CHAIN_RE = re.compile(
-    r'while\s+true\s+do\s+'
+    r'while\s+\w+\s+do\s+'
     r'(?P<body>if\s+(?P<var>\w+)\s*(?P<op><=|>=|==|~=|<|>)\s*-?\d)'
 )
 

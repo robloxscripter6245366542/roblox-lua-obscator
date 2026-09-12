@@ -64,6 +64,7 @@ BUILTIN_VALUE_RE = re.compile(
 )
 
 DUMP_TAG = "[[LSARG]]"
+FULL_TAG = "[[LSFULL]]"
 
 
 def find_builtin_value_sites(src):
@@ -202,6 +203,51 @@ def callee_name_before(src, open_paren_offset):
     return src[k + 1:j + 1] or None
 
 
+def lua_q_unescape(s):
+    """Reverse Lua's `string.format("%q", ...)` -- the escaping
+    dynamic/deobf_v15.py's ser() applies to every printed string. Only the
+    escapes %q actually produces: `\\\\`, `\\"`, `\\n` (a literal backslash
+    followed by a REAL newline byte, Lua's own quirk -- not the two-char
+    sequence `\\n`), `\\r`, and `\\ddd` decimal byte escapes (1-3 digits).
+    Everything else passes through literally. Needed for byte-exact
+    reconstruction of a full dumped payload -- unlike the short, merely
+    human-eyeballed previews elsewhere in this file, a bare rstrip('"')
+    would silently corrupt any escaped byte."""
+    out = []
+    i = 0
+    n = len(s)
+    while i < n:
+        c = s[i]
+        if c == '\\' and i + 1 < n:
+            nxt = s[i + 1]
+            if nxt == '\\':
+                out.append('\\'); i += 2
+            elif nxt == '"':
+                out.append('"'); i += 2
+            elif nxt == "'":
+                out.append("'"); i += 2
+            elif nxt == 'n':
+                out.append('\n'); i += 2
+            elif nxt == 'r':
+                out.append('\r'); i += 2
+            elif nxt == 't':
+                out.append('\t'); i += 2
+            elif nxt == '\n':
+                out.append('\n'); i += 2
+            elif nxt.isdigit():
+                j = i + 1
+                digits = ''
+                while j < n and len(digits) < 3 and s[j].isdigit():
+                    digits += s[j]; j += 1
+                out.append(chr(int(digits)))
+                i = j
+            else:
+                out.append(nxt); i += 2
+        else:
+            out.append(c); i += 1
+    return ''.join(out)
+
+
 def find_statement_start(src, offset):
     """Walk left to the start of the enclosing statement (previous `;` or
     block opener), a bounded heuristic -- good enough for Luraph's fully
@@ -214,7 +260,7 @@ def find_statement_start(src, offset):
     return start + 1 if start != -1 else 0
 
 
-def build_dump_probe(alias_name, args_text):
+def build_dump_probe(alias_name, args_text, full_dump_arg=None, chunk_size=90):
     args = split_top_level_commas(args_text)
     args = [a.strip() for a in args if a.strip()]
     lines = []
@@ -222,6 +268,41 @@ def build_dump_probe(alias_name, args_text):
     for idx, a in enumerate(args):
         tmp = f'__a{idx}'
         lines.append(f' local __ok_{idx},{tmp}=pcall(function() return ({a}) end)')
+        full_dump = ''
+        if full_dump_arg is not None and idx == full_dump_arg:
+            # Full-content dump for one argument, chunked to stay well under
+            # dynamic/deobf_v15.py's ser() truncation (any single print()
+            # argument over 120 chars gets replaced with a bare "<str N>"
+            # placeholder) -- each chunk is small enough that ser() still
+            # %q-escapes it in full, and the Python side reassembles by
+            # sequence number and properly un-escapes %q instead of the
+            # fragile bare rstrip('"') other dump tools in this repo use
+            # (fine for a short human-eyeballed preview, not for
+            # byte-exact reconstruction of a 170KB+ payload). Nested INSIDE
+            # the same `if __ok_{idx} then ... end` block as the preview
+            # below, sharing its `local __ty` -- a first version of this
+            # appended a separate top-level `if __ty==... then` statement
+            # AFTER that block already closed, which silently read `__ty`
+            # back as a nil global (caught via the harness's own
+            # global-miss logger) instead of erroring.
+            full_dump = (
+                f'if __ty=="string" or __ty=="buffer" then '
+                f'local __full={tmp} '
+                f'if __ty=="buffer" then local __ok4,__bs=pcall(buffer.tostring,{tmp}) '
+                f'if __ok4 then __full=__bs else __full=nil end end '
+                f'if __full then '
+                f'print("{FULL_TAG} total_len="..#__full) '
+                f'local __seq=0 '
+                f'for __i=1,#__full,{chunk_size} do '
+                f'print("{FULL_TAG} "..__seq.." "..__full:sub(__i,__i+{chunk_size - 1})) '
+                f'__seq=__seq+1 end '
+                f'print("{FULL_TAG} done seq="..__seq) end end '
+            )
+        # `full_dump` (when present) must sit INSIDE this outer `if __ok_idx
+        # then ... else ... end`'s THEN-branch, after the inner type-chain's
+        # own `end` but BEFORE the outer `else` -- anywhere past the outer
+        # `end` and `__ty` is out of scope (see the comment on the bug this
+        # already caused once, above).
         lines.append(
             f' if __ok_{idx} then local __ty=type({tmp}) '
             f'print("{DUMP_TAG} arg={idx} type="..__ty) '
@@ -232,6 +313,7 @@ def build_dump_probe(alias_name, args_text):
             f'print("{DUMP_TAG} arg={idx} buflen="..tostring(__bl)) '
             f'elseif __ty=="number" or __ty=="boolean" then '
             f'print("{DUMP_TAG} arg={idx} val="..tostring({tmp})) end '
+            f'{full_dump}'
             f'else print("{DUMP_TAG} arg={idx} eval-failed="..tostring({tmp})) end'
         )
     lines.append(' end;')
@@ -250,7 +332,16 @@ def main():
     ap.add_argument("--deobf", default="dynamic/deobf_v15.py")
     ap.add_argument("--timeout", type=int, default=30)
     ap.add_argument("--workdir", default=None)
+    ap.add_argument("--full-dump-arg", type=int, default=None,
+                     help="dump this argument's FULL content (chunked past the harness's "
+                          "120-char print truncation, reassembled with proper %%q "
+                          "unescaping) instead of just a short preview")
+    ap.add_argument("--full-dump-out", default=None,
+                     help="write the full-dumped argument's content to this local file "
+                          "(required with --full-dump-arg)")
     args = ap.parse_args()
+    if args.full_dump_arg is not None and not args.full_dump_out:
+        sys.exit("!! --full-dump-arg requires --full-dump-out")
 
     src = open(args.sample, encoding="utf-8", errors="replace").read()
     sites = find_builtin_value_sites(src)
@@ -285,7 +376,7 @@ def main():
         return 0
 
     stmt_start = find_statement_start(src, call_start)
-    probe = build_dump_probe(alias, args_text)
+    probe = build_dump_probe(alias, args_text, full_dump_arg=args.full_dump_arg)
     patched = src[:stmt_start] + probe + src[stmt_start:]
 
     workdir = args.workdir or tempfile.mkdtemp(prefix="lsalias_")
@@ -303,11 +394,54 @@ def main():
         sys.exit(f"!! expected {raw}, not found")
 
     print()
+    chunks = {}
+    total_len = None
+    done_seq = None
     with open(raw, encoding="utf-8", errors="replace") as f:
         for line in f:
             m2 = re.search(re.escape(DUMP_TAG) + r" (.*)", line)
             if m2:
                 print("  " + m2.group(1).rstrip('"'))
+            if args.full_dump_arg is None:
+                continue
+            # full-dump lines are wrapped one level deeper: the harness's
+            # own print() tags EVERY call as `[[print]] "<%q-escaped line>"`
+            # (see dynamic/deobf_v15.py's log()/ser()) -- so first find our
+            # tag inside that %q-escaped text, then unescape from there.
+            pm = re.search(r'\[\[print\]\] "(.*)"\s*$', line)
+            if not pm:
+                continue
+            unescaped = lua_q_unescape(pm.group(1))
+            fm = re.match(re.escape(FULL_TAG) + r' (\S+)(?: (.*))?$', unescaped, re.DOTALL)
+            if not fm:
+                continue
+            key, rest = fm.group(1), fm.group(2) or ''
+            if key == 'total_len=' or key.startswith('total_len='):
+                total_len = int(unescaped.split('=', 1)[1])
+            elif key == 'done':
+                done_seq = int(rest.split('=', 1)[1]) if '=' in rest else None
+            else:
+                chunks[int(key)] = rest
+
+    if args.full_dump_arg is not None:
+        if not chunks:
+            sys.exit(f"!! no full-dump chunks captured for arg={args.full_dump_arg} -- "
+                      f"either that argument wasn't a string/buffer, the call never ran "
+                      f"within --timeout, or the harness truncated a chunk (shrink "
+                      f"chunk_size)")
+        n_chunks = max(chunks) + 1
+        missing = [i for i in range(n_chunks) if i not in chunks]
+        content = ''.join(chunks[i] for i in range(n_chunks) if i in chunks)
+        print(f"[loadstring-alias] full dump: {len(chunks)}/{n_chunks} chunk(s) captured, "
+              f"{len(content)} byte(s) reassembled"
+              + (f" (declared total_len={total_len})" if total_len is not None else "")
+              + (f" -- INCOMPLETE, missing chunks {missing[:10]}" if missing else ""))
+        with open(args.full_dump_out, "w", encoding="utf-8", errors="surrogateescape") as f:
+            f.write(content)
+        print(f"  -> {args.full_dump_out}")
+        if total_len is not None and len(content) != total_len:
+            print(f"  !! reassembled length {len(content)} != declared total_len {total_len} "
+                  f"-- treat this dump as unverified until that's resolved")
     return 0
 
 
