@@ -369,7 +369,7 @@ vararg-entry, one return. Still open: the other 155 opcodes across `G`/`_`
 proof that full-VM characterization is tractable in reasonable time
 (reading 9 short handlers took minutes, not hours), not that it's done.
 
-## Two new opcode categories found scanning `G`/`_` for what `K` didn't have
+## Three new opcode categories found scanning `G`/`_` for what `K` didn't have
 
 Sweeping `G`/`_`'s remaining 155 handlers with an automated classifier
 (same categories as `K`'s: operand-decode / store / loop-counter /
@@ -408,6 +408,17 @@ distinction only shows up on an actual read):
   pack multiple distinct operations under a single dispatched name,
   differentiated by a finer-grained condition inside the handler body
   itself.
+- **Cons-cell-style pop from an internal list** (`A`, `K`, and others) —
+  `local D,H=r[1],p[1];return 85,D,p[2],H,L,b` (`A`); `local M,H=o+1,b[1];
+  return 104,b[2],H,M,J,r` (`K`). Both pull a value from `X[1]` and a
+  *remaining-list* pointer from `X[2]` (classic car/cdr), rather than
+  decoding fresh bytes off the bytecode buffer — a second instruction
+  source alongside the buffer, most likely consuming a results list this
+  VM already builds elsewhere (`z8`'s `t[29](...)` = `table.pack(...)`,
+  `yv`'s `unpack(r,1,r[t.s])` — see "The `K` loop" above). **Cross-sample
+  confirmed**, not a one-off: `sample_v15.lua`'s `c`-loop handlers `E`,
+  `Y`, `j` show the identical `L[1]`/`G[1]`/`t[1]` extraction shape (see
+  `v15.md`), independently, in an unrelated file.
 
 After the regex fix, only 1 name (`_`'s `Hv`) stayed automatically
 unclassified — read directly, it turned out to be an ordinary
@@ -415,9 +426,10 @@ operand-decode variant, nothing new (with the same harmless duplicate-`t`
 parameter-shadowing quirk already noted for `XP`). That doesn't mean
 `G`/`_` are fully characterized the way `K` is: the classifier's
 "operand-decode" bucket still silently contains an unknown number of
-read-XOR-write and conditional-lookup handlers like `DP`/`e8`/`mP`/`i8`
-that only reading catches, not automated matching. This was a targeted
-scan for *new shapes* (found two), not a claim of exhaustive coverage.
+read-XOR-write, conditional-lookup, and list-pop handlers like
+`DP`/`e8`/`mP`/`i8`/`A`/`K` that only reading catches, not automated
+matching. This was a targeted scan for *new shapes* (found three), not a
+claim of exhaustive coverage.
 
 ## Cross-sample finding
 
@@ -555,18 +567,25 @@ technique, and that "obfuscated" and "Luraph" are not synonyms.
    return-trampoline. That's proof full-VM characterization is tractable
    in reasonable time, not just a mechanism sample. ~~**Still open**: the
    other ~155 opcodes in this file's `G`/`_` loops~~ — **scanned, not fully
-   read** (see "Two new opcode categories" above): an automated pass sorted
-   most of `G`/`_` into `K`'s existing categories and found **two new
-   ones** — read-XOR-write buffer decrypt, and conditional table
-   lookup/cache-hit — that only surfaced by reading the residue by hand,
-   since the classifier can't distinguish "decode an operand" from "decode
-   then write the result to another buffer" or "decode then branch on a
-   lookup." So `G`/`_` are categorized at a coarser grain than `K`, not to
-   the same per-handler depth. **Still open**: the ~128 opcodes across
-   `sample_v15.lua`'s `c`/`d`/`S` (same scan-then-read approach not yet
-   applied there), and finding out how common the two new categories
-   actually are within `G`/`_` specifically (only confirmed on the handful
-   read, not counted across all 155).
+   read** (see "Three new opcode categories" above): an automated pass
+   sorted most of `G`/`_` into `K`'s existing categories and found **three
+   new ones** — read-XOR-write buffer decrypt, conditional table
+   lookup/cache-hit, and a cons-cell-style list-pop (the last one
+   cross-sample confirmed against `sample_v15.lua`'s `c` loop) — that only
+   surfaced by reading the residue by hand, since the classifier can't
+   distinguish "decode an operand" from "decode then write the result to
+   another buffer," "decode then branch on a lookup," or "pop from a list
+   instead of decoding at all." So `G`/`_` are categorized at a coarser
+   grain than `K`, not to the same per-handler depth. ~~**Still open**: the
+   ~128 opcodes across `sample_v15.lua`'s `c`/`d`/`S`~~ — **scanned too,
+   same result**: near-total automated coverage (127 of 128 into known
+   categories after the same classifier), with the one residual (`c`'s
+   `E`/`Y`/`j`, initially "unclassified") turning out to be the list-pop
+   pattern above, not a fourth new shape. **Still open**: how common all
+   three new categories actually are within `G`/`_`/`c`/`d`/`S` specifically
+   (only confirmed on the handful read by hand in each, not counted
+   exhaustively), and `d`'s one remaining unclassified name (`xA`) wasn't
+   fully distinguished from an ordinary decode variant.
 4. ~~Find more real-world Luraph samples~~ — **done, see `../sample3.md`**:
    a third real v15.0 sample confirms the same comparison-chain-outer +
    decoded-inner-VM shape this file established, and its inner VM goes
