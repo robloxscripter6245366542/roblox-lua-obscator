@@ -290,6 +290,44 @@ __ok_idx then` block.) The dumped 170,974-byte chunk itself is **not**
 vendored anywhere (same policy as the outer sample) — it lives only in a
 local scratch directory, cited here by finding, not by content.
 
+## What individual handlers actually compute — the dispatch mechanism itself
+
+164/165 mapped opcodes gives the *shape* of the dispatch (which handler
+serves which opcode); reading a handful of the handler bodies themselves —
+`Tv`, `BP`, `yv` from this VM's `K` loop — shows the actual *mechanism*,
+and it's the same one already known from elsewhere in this project:
+
+```
+Tv=function(t,r,D,J,L,b,p,o,M,H)if L<=13 then if L<=12 then return 7,D[4],H,p,M,J;
+else local i=t[56](o,H+2);return not(128<=i)and 27 or 4,D,H,p,M,i;end;...
+yv=function(t,r)return t[83](r,1,r[t.s]);end
+```
+
+`t[56]` resolves to `buffer.readu8`, `t[83]` to `unpack` (`table.unpack`).
+So: each handler ends by **returning a computed next-opcode number plus
+updated registers** — a continuation-passing, threaded-code interpreter,
+where `z8`'s own `while r do if K<=16 then...` loop just does
+`K,<registers...> = t:HANDLER(...)` every iteration and the handler itself
+decides where to go next. `Tv`'s `not(128<=i)and 27 or 4` is a live example:
+fetch one bytecode byte, and its high bit (the `128` threshold) picks
+between two different next-opcodes — classic variable-length/LEB128-style
+instruction decoding, matching the multi-byte constant-loading pattern
+`v15.md` already documented for the *outer* payload VM. `yv` is the
+interpreter's own return/multi-value trampoline (unpack a results table
+back into real Lua return values).
+
+**Cross-sample confirmation:** `sample_v15.lua`'s own newly-mapped `c`/`d`
+loops (see below) show the exact same shape —
+`S=function(t,B,L,q,M,m,x,g,G,O)if B<=97 then if B<=96 then local
+h=t[94](G,O+1);local j,b=128>h and 38 or 53,g[1];return
+j,g[2],b,m,O,q,h,L;...` — with `t[94]` in *that* file independently
+resolving to `buffer.readu8` too. Two independently-decoded/embedded VM
+instances, in two different real samples, implement identical low-level
+dispatch mechanics: byte-fetch, high-bit branch, return-the-next-opcode.
+That's the strongest evidence yet that this isn't incidental similarity —
+it's the same interpreter template, reused wherever Luraph puts a
+handler-dispatch sub-VM, regardless of which outer file it ends up in.
+
 ## Cross-sample finding
 
 Two independently-authored real Luraph v15.0 samples now show the **same**
@@ -320,7 +358,14 @@ architecture, worth its own follow-up in `v15.md`.
 dispatch convention as MM2's decoded inner VM, all AST-confirmed as real
 `AstStatWhile` statements (not string-literal text coincidences). So
 `sample_v15.lua` has (at least) 7 uncatalogued comparison-chain sub-VMs
-total, not 4. None characterized further here; see `v15.md`.
+total, not 4. **Update 2:** all 7 now characterized — `v15.md` has the full
+breakdown, but the headline: `F` turned out not to be a new VM at all (the
+main payload VM's own lazy-init wrapper), `c`/`d`/`S` are real
+handler-dispatch sub-VMs with full opcode maps
+(`devirt/sample_v15_chain_opcode_map.md`), and `B`/`L` were identified
+concretely (not guessed) as a chained LCG PRNG and an RC4 keystream
+generator respectively, by resolving their numeric-keyed calls to actual
+`bit32`/`buffer` builtins.
 
 ## Not Luraph: `jnkie.com/sdk/library.lua`
 
@@ -378,7 +423,10 @@ technique, and that "obfuscated" and "Luraph" are not synonyms.
   were never recognized, only global-indexed ones (`buffer.readu8`) — see
   "The full opcode-to-handler map" above. `devirt/mm2_inner_opcode_map.json`
   / `.md` are this tool's output for MM2's inner VM: 164 opcode ranges, 165
-  handler names, zero overlap.
+  handler names, zero overlap. Also run against `sample_v15.lua`'s own 7
+  comparison-chain candidates — `devirt/sample_v15_chain_opcode_map.json`
+  / `.md` — which is how `F` got reclassified as not a new VM and `c`/`d`/`S`
+  got their own opcode maps (see `v15.md`'s updated item 3).
 
 ## Ways forward
 
@@ -401,12 +449,24 @@ technique, and that "obfuscated" and "Luraph" are not synonyms.
    fully mapped; the *semantics* of any single handler body are not), and
    the `D`/`r`/`i` groups from the first, narrower regex pass haven't been
    run through `chain_opcode_semantics.py` at all yet.
-3. Characterize the now-7 comparison-chain loops inside `sample_v15.lua`
-   itself (`B`, `F`, `j`, `L`, plus the newly-found `c`, `d`, `S`) — likely
-   loader sub-steps or (given `c`/`d`/`S`'s `t:METHOD(...)` shape matches
-   MM2's inner VM exactly) possibly the same reusable sub-VM template. The
-   same `chain_opcode_semantics.py` pipeline that just mapped MM2's inner
-   VM applies here unchanged — not yet run.
+3. ~~Characterize the 7 comparison-chain loops inside `sample_v15.lua`
+   itself~~ — **done, see `v15.md` and `devirt/sample_v15_chain_opcode_map.md`**:
+   `F` is the payload VM's own lazy-init wrapper, not a new VM; `c`/`d`/`S`
+   are real handler-dispatch sub-VMs (opcode maps built, same as MM2's
+   inner VM); `B` is a chained LCG PRNG and `L` is RC4 keystream generation
+   (both identified concretely via resolved `bit32`/`buffer` builtin
+   names, not guessed); `j` remains a small, unconfirmed logging-state-machine
+   guess. ~~**Still open**: what any individual handler body actually
+   computes~~ — **partially done**: reading a handful of handlers
+   (`Tv`/`BP`/`yv` from MM2's `K` loop, `S` from `sample_v15.lua`'s `c`
+   loop) revealed the shared dispatch *mechanism* itself — see "What
+   individual handlers actually compute" above — a continuation-passing
+   threaded interpreter where every handler ends by returning the next
+   opcode, with per-opcode operand bytes fetched via `buffer.readu8` and
+   high-bit-branched (LEB128-style). **Still open**: what any of the
+   ~165+46+71+11 individual handlers computes *beyond* that shared
+   mechanism (i.e. its actual per-opcode effect) — reading a handful
+   confirmed the pattern, not what each one specifically does.
 4. Find more real-world Luraph samples of different version labels to keep
    testing "how many codegen shapes does 'Luraph' actually cover" —
    this file alone already disproved "one shape per major version," and now
