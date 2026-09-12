@@ -369,6 +369,56 @@ vararg-entry, one return. Still open: the other 155 opcodes across `G`/`_`
 proof that full-VM characterization is tractable in reasonable time
 (reading 9 short handlers took minutes, not hours), not that it's done.
 
+## Two new opcode categories found scanning `G`/`_` for what `K` didn't have
+
+Sweeping `G`/`_`'s remaining 155 handlers with an automated classifier
+(same categories as `K`'s: operand-decode / store / loop-counter /
+vararg-entry / return-trampoline, matched by regex against each handler's
+source) is a coarse tool, and its first pass proved it: an overly narrow
+"reads a buffer byte" pattern initially left 16 (`G`)/17 (`_`) handlers
+unclassified, which shrank to 15 total after loosening that regex to catch
+a wider range of call shapes — most of the "unclassified" count was just
+argument-order the first regex missed, not new behavior. The **real**
+signal came from reading the residue by hand rather than trusting either
+count: two genuinely new opcode shapes `K` never showed, present even
+inside handlers the *looser* regex still lumped into "operand-decode"
+(the classifier can tell "calls a buffer function" but not "then writes
+the result back to another buffer" or "then branches on the result" — that
+distinction only shows up on an actual read):
+
+- **Read → XOR → write buffer decrypt** (`DP`, `e8`, `mP`, and others) —
+  `t[59](J,M,(t[46](t[56](o,p+M),r,b)))`. Resolving the aliases: `t[56]` is
+  `buffer.readu8`, `t[46]` is `bit32.bxor`, `t[59]` is `buffer.writeu8`.
+  So: read a source byte, XOR it against a computed value, write the
+  result to a destination buffer — a decrypt-style primitive, structurally
+  the same *idea* as `v15.md`'s `sample_v15.lua` `L`-handler RC4 finding
+  (read/transform/write into a buffer) but embedded here as ordinary
+  dispatched opcodes inside the main VM rather than a separate
+  comparison-chain stepper, and using plain modular arithmetic for the
+  transform rather than a confirmed RC4 keystream — a related but distinct
+  mechanism, not the same one re-found.
+- **Conditional table lookup / cache-hit branch** (`i8`, one of its two
+  internal sub-cases) — `local q=t[H];if not not q then return
+  198,q,...;else return 187,...;end`. Check whether a table slot is
+  populated and branch on hit vs. miss — a shape neither `K` nor the
+  operand-decode/store/loop-counter categories cover. Notably, `i8`
+  contains **both** this lookup shape *and* the read-XOR-write decrypt
+  shape in different sub-branches of the same handler — confirmation that
+  one handler name doesn't mean one behavior; Luraph's opcode ranges can
+  pack multiple distinct operations under a single dispatched name,
+  differentiated by a finer-grained condition inside the handler body
+  itself.
+
+After the regex fix, only 1 name (`_`'s `Hv`) stayed automatically
+unclassified — read directly, it turned out to be an ordinary
+operand-decode variant, nothing new (with the same harmless duplicate-`t`
+parameter-shadowing quirk already noted for `XP`). That doesn't mean
+`G`/`_` are fully characterized the way `K` is: the classifier's
+"operand-decode" bucket still silently contains an unknown number of
+read-XOR-write and conditional-lookup handlers like `DP`/`e8`/`mP`/`i8`
+that only reading catches, not automated matching. This was a targeted
+scan for *new shapes* (found two), not a claim of exhaustive coverage.
+
 ## Cross-sample finding
 
 Two independently-authored real Luraph v15.0 samples now show the **same**
@@ -503,10 +553,20 @@ technique, and that "obfuscated" and "Luraph" are not synonyms.
    6 operand-decode variants, 1 loop-counter/comparison, 1 store, 1
    vararg-entry (confirmed as the traced crash's actual origin), 1
    return-trampoline. That's proof full-VM characterization is tractable
-   in reasonable time, not just a mechanism sample. **Still open**: the
-   other ~155 opcodes in this file's `G`/`_` loops and the ~128 across
-   `sample_v15.lua`'s `c`/`d`/`S` — same read-every-handler approach that
-   just worked for `K`, not yet applied to the larger loops.
+   in reasonable time, not just a mechanism sample. ~~**Still open**: the
+   other ~155 opcodes in this file's `G`/`_` loops~~ — **scanned, not fully
+   read** (see "Two new opcode categories" above): an automated pass sorted
+   most of `G`/`_` into `K`'s existing categories and found **two new
+   ones** — read-XOR-write buffer decrypt, and conditional table
+   lookup/cache-hit — that only surfaced by reading the residue by hand,
+   since the classifier can't distinguish "decode an operand" from "decode
+   then write the result to another buffer" or "decode then branch on a
+   lookup." So `G`/`_` are categorized at a coarser grain than `K`, not to
+   the same per-handler depth. **Still open**: the ~128 opcodes across
+   `sample_v15.lua`'s `c`/`d`/`S` (same scan-then-read approach not yet
+   applied there), and finding out how common the two new categories
+   actually are within `G`/`_` specifically (only confirmed on the handful
+   read, not counted across all 155).
 4. ~~Find more real-world Luraph samples~~ — **done, see `../sample3.md`**:
    a third real v15.0 sample confirms the same comparison-chain-outer +
    decoded-inner-VM shape this file established, and its inner VM goes
