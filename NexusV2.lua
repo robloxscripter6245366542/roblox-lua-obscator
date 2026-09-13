@@ -242,7 +242,6 @@ local t11 = {
 	doors = false,
 	walkSpeedOn = false,
 	spinbot = false,
-	longArrest = false,
 	freecam = false,
 	walkSpeed = 16,
 	jumpHeight = 7.2,
@@ -2689,102 +2688,8 @@ local function v58(p63)
     t9.value105()
 end
 t9.value106 = nil
-t9.value107 = 100
-t9.value108 = 0
-function t9.value109()
-    local Character = t2.value8.Character
-
-    if not Character then
-        return false
-    end
-
-    for _, child in ipairs(Character:GetChildren()) do
-        if child:IsA("Tool") and string.find(string.lower(child.Name), "handcuff", 1, true) then
-            return true
-        end
-    end
-
-    return false
-end
-t9.value110 = nil
-function t1.value6()
-    if not t9.value10.longArrest then
-        return
-    end
-
-    if not t9.value109() then
-        return
-    end
-
-    if tick() - t9.value108 < 0.35 then
-        return
-    end
-
-    local v420 = t9.value110()
-
-    if not v420 then
-        return
-    end
-
-    tick()
-    pcall(function()
-        local Remotes = t2.value7:FindFirstChild("Remotes")
-        local v869 = Remotes and Remotes:FindFirstChild("ArrestPlayer")
-
-        if v869 then
-            if v869:IsA("RemoteFunction") then
-                v869:InvokeServer(v420, 1)
-
-                return
-            end
-
-            if v869:IsA("RemoteEvent") then
-                v869:FireServer(v420, 1)
-            end
-        end
-    end)
-end
-function t9.value110()
-    local v413 = t2.value8.Character and t2.value8.Character:FindFirstChild("HumanoidRootPart")
-    if not v413 then
-        return nil
-    end
-    local function v414(p64)
-        if not p64 or (p64 == t2.value8 or not p64.Parent) then
-            return false
-        end
-
-        if not t9.value58(p64) then
-            return false
-        end
-
-        local v867 = p64.Character and p64.Character:FindFirstChild("HumanoidRootPart")
-
-        if not v867 then
-            return false
-        end
-
-        return (v867.Position - v413.Position).Magnitude <= t9.value107
-    end
-    if t9.value10.silentTarget and v414(t9.value10.silentTarget) then
-        return t9.value10.silentTarget
-    end
-    local value107 = t9.value107
-    local v416
-    for _, player in ipairs(t2.value1:GetPlayers()) do
-        if v414(player) and v54(player) then
-            local Magnitude = (player.Character.HumanoidRootPart.Position - v413.Position).Magnitude
-
-            if Magnitude < value107 then
-                v416 = player
-                value107 = Magnitude
-            end
-        end
-    end
-
-    return v416
-end
-t9.value111 = t1.value6
+-- (Auto-arrest / "Long Arrest" removed: Prison Life flags automated arresting.)
+t9.value111 = function() end
 t9.value112 = nil
 function t1.value6(p65, p66, p67)
     local v424 = p66 or 0
@@ -7055,10 +6960,6 @@ t9.value148 = t1.value2;
         t9.value92(p194)
         v666("Spinbot", p194)
     end)
-    v735(v750, "Long Arrest", "handcuffs arrest up to 100 studs", false, function(p195)
-        t9.value10.longArrest = p195
-        v666("Long Arrest", p195)
-    end)
     v733(v750, "FOV Radius", 40, 400, 120, function(p196)
         t9.value10.fovRadius = p196
         t24.value4()
@@ -7700,7 +7601,7 @@ t9.value148 = t1.value2;
 
         -- ---- Remotes recovered from the game dump (modern Prison Life) ----
         -- RequestHere.Client fires ReplicatedStorage.Remotes.RequestHere with
-        -- mouse.Hit.Position -> server teleport. ArrestPlayer arrests a player.
+        -- mouse.Hit.Position -> server teleport.
         local nx_clickTpConn
 
         local function nx_getRemote(name)
@@ -7736,43 +7637,6 @@ t9.value148 = t1.value2;
             end
         end
 
-        local function nx_arrestNearest()
-            local req = nx_getRemote("ArrestPlayer")
-            if not req then
-                v666("Arrest", "ArrestPlayer not found", 3)
-                return
-            end
-            local Character = t2.value8.Character
-            local hrp = Character and Character:FindFirstChild("HumanoidRootPart")
-            if not hrp then
-                return
-            end
-            local best, bestDist
-            for _, player in ipairs(t2.value1:GetPlayers()) do
-                if player ~= t2.value8 and player.Character then
-                    local ehrp = player.Character:FindFirstChild("HumanoidRootPart")
-                    if ehrp then
-                        local dist = (ehrp.Position - hrp.Position).Magnitude
-                        if not bestDist or dist < bestDist then
-                            best, bestDist = player, dist
-                        end
-                    end
-                end
-            end
-            if not best then
-                v666("Arrest", "no target", 2)
-                return
-            end
-            local ok = pcall(function()
-                if req:IsA("RemoteFunction") then
-                    req:InvokeServer(best)
-                else
-                    req:FireServer(best)
-                end
-            end)
-            v666("Arrest", ok and ("-> " .. best.Name) or "failed", 2)
-        end
-
         local nxRemotes = t24.value48(t24.value42, "prison remotes (dumped)")
 
         v734(nxRemotes, "Teleport to Mouse", nx_teleportToMouse)
@@ -7780,7 +7644,6 @@ t9.value148 = t1.value2;
             nx_setClickTP(state)
             v666("Click Teleport", state)
         end)
-        v734(nxRemotes, "Arrest Nearest", nx_arrestNearest)
 
         -- Player collision toggle (walk through other players) via
         -- Remotes.RequestCollisionChange. Best-effort: fired with a boolean.
@@ -8604,15 +8467,6 @@ t9.value148 = t1.value2;
             end
 
             v666("Doors", v1251)
-        end
-    end)
-    t2.value3.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then
-            return
-        end
-
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            t9.value111()
         end
     end)
 end)()
