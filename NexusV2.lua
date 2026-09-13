@@ -4012,18 +4012,11 @@ t9.value148 = t1.value2;
     t24.value6.Name = "MainFrame"
     t24.value6.AnchorPoint = Vector2.new(0.5, 0.5)
 
-    -- Responsive default window size. On mobile, fit the actual viewport
-    -- (clamped) so the menu never overflows small / large phone screens;
-    -- on PC keep the roomy fixed size. Stored so maximize/restore reuse it.
-    local nxWinSize
-    if t9.value1 then
-        local vp = (t2.value9 and t2.value9.ViewportSize) or Vector2.new(800, 400)
-        local w = math.clamp(math.floor(vp.X * 0.82), 300, 640)
-        local h = math.clamp(math.floor(vp.Y * 0.80), 240, 400)
-        nxWinSize = UDim2.new(0, w, 0, h)
-    else
-        nxWinSize = UDim2.new(0, 980, 0, 600)
-    end
+    -- Keep a fixed landscape base size; the UIScale below fits it to the
+    -- device on mobile (scaling the whole 600x360 layout down proportionally).
+    -- Don't set a viewport-relative Size here or it fights the UIScale and the
+    -- landscape layout collapses into a narrow portrait strip.
+    local nxWinSize = t9.value1 and UDim2.new(0, 600, 0, 360) or UDim2.new(0, 980, 0, 600)
 
     t24.value6.Size = nxWinSize
     t24.value6.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -4847,7 +4840,7 @@ t9.value148 = t1.value2;
     t24.value36 = v678("Home", "Home", 2)
     t24.value37 = v678("ESP", "ESP", 3)
     t24.value38 = v678("Settings", "Settings", 4)
-    t24.value39 = v678("Tutorial", "Tutorial", 5)
+    t24.value39 = v678("Info", "Tutorial", 5)
     t24.value40 = Instance.new("Frame")
     t24.value40.Size = UDim2.new(1, -(v667 + v669), 1, -48)
     t24.value40.Position = UDim2.new(0, v667, 0, 48)
