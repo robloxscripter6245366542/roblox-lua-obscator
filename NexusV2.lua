@@ -4012,12 +4012,20 @@ t9.value148 = t1.value2;
     t24.value6.Name = "MainFrame"
     t24.value6.AnchorPoint = Vector2.new(0.5, 0.5)
 
+    -- Responsive default window size. On mobile, fit the actual viewport
+    -- (clamped) so the menu never overflows small / large phone screens;
+    -- on PC keep the roomy fixed size. Stored so maximize/restore reuse it.
+    local nxWinSize
     if t9.value1 then
-        t24.value6.Size = UDim2.new(0, 600, 0, 360)
+        local vp = (t2.value9 and t2.value9.ViewportSize) or Vector2.new(800, 400)
+        local w = math.clamp(math.floor(vp.X * 0.82), 300, 640)
+        local h = math.clamp(math.floor(vp.Y * 0.80), 240, 400)
+        nxWinSize = UDim2.new(0, w, 0, h)
     else
-        t24.value6.Size = UDim2.new(0, 980, 0, 600)
+        nxWinSize = UDim2.new(0, 980, 0, 600)
     end
 
+    t24.value6.Size = nxWinSize
     t24.value6.Position = UDim2.new(0.5, 0, 0.5, 0)
     t24.value6.BackgroundTransparency = 1
     t24.value6.BorderSizePixel = 0
@@ -4314,7 +4322,7 @@ t9.value148 = t1.value2;
     end
 
     t24.value19 = false
-    t24.value20 = t9.value1 and UDim2.new(0, 600, 0, 360) or UDim2.new(0, 980, 0, 600)
+    t24.value20 = nxWinSize
     v650.MouseButton1Click:Connect(function()
         t24.value19 = not t24.value19
 
@@ -8423,7 +8431,35 @@ t9.value148 = t1.value2;
         return TextLabel23
     end
 
-    v758(t24.value48(t24.value45, "Welcome"), table.concat({ "Welcome to Nexus this script is both mobile and PC. Updates come about every 5-7 days. If the script is buggy simply leave and rejoin then run it again." }, "\n"))
+    v758(t24.value48(t24.value45, "About Nexus V3"), table.concat({
+			"Nexus V3 - a free Prison Life hub for PC and mobile.",
+			"",
+			"Built for the current (rewritten) Prison Life. Every feature is",
+			"client-side and pcall-guarded, so a missing remote just does nothing",
+			"instead of erroring.",
+			"",
+			"Tabs: Home, Commands, ESP, Settings, Tutorial.",
+			"Your toggles auto-save and turn back on next launch.",
+			"",
+			"Updates come about every 5-7 days. If the script is buggy, simply",
+			"leave and rejoin, then run it again."
+		}, "\n"))
+    v758(t24.value48(t24.value45, "Commands features (V3)"), table.concat({
+			"Team Changer: Neutral, Inmate, Guard, Criminal.",
+			"",
+			"Utility: Infinite Jump, Anti-AFK, No Fog.",
+			"Melee: Kill Aura + range slider + Team Check (skip your own team).",
+			"Server: Reset Character, Rejoin, Server Hop.",
+			"",
+			"Prison Remotes (from the game dump):",
+			"- Teleport to Mouse / Click Teleport (right-click or tap)",
+			"- TP to Nearest Player / Nearest Giver",
+			"- No Player Collision (phase through players)",
+			"- Remote Runner: type a remote name + arg and FireServer /",
+			"  InvokeServer it, or List Remotes to the console.",
+			"",
+			"Note: auto-arrest was removed on purpose - Prison Life flags it."
+		}, "\n"))
     v758(t24.value48(t24.value45, "How to use ESP"), table.concat({
 		"ESP allows you to see players through walls",
 		"",
