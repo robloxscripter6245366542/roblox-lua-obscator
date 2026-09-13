@@ -242,7 +242,6 @@ local t11 = {
 	doors = false,
 	walkSpeedOn = false,
 	spinbot = false,
-	longArrest = false,
 	freecam = false,
 	walkSpeed = 16,
 	jumpHeight = 7.2,
@@ -2689,102 +2688,8 @@ local function v58(p63)
     t9.value105()
 end
 t9.value106 = nil
-t9.value107 = 100
-t9.value108 = 0
-function t9.value109()
-    local Character = t2.value8.Character
-
-    if not Character then
-        return false
-    end
-
-    for _, child in ipairs(Character:GetChildren()) do
-        if child:IsA("Tool") and string.find(string.lower(child.Name), "handcuff", 1, true) then
-            return true
-        end
-    end
-
-    return false
-end
-t9.value110 = nil
-function t1.value6()
-    if not t9.value10.longArrest then
-        return
-    end
-
-    if not t9.value109() then
-        return
-    end
-
-    if tick() - t9.value108 < 0.35 then
-        return
-    end
-
-    local v420 = t9.value110()
-
-    if not v420 then
-        return
-    end
-
-    tick()
-    pcall(function()
-        local Remotes = t2.value7:FindFirstChild("Remotes")
-        local v869 = Remotes and Remotes:FindFirstChild("ArrestPlayer")
-
-        if v869 then
-            if v869:IsA("RemoteFunction") then
-                v869:InvokeServer(v420, 1)
-
-                return
-            end
-
-            if v869:IsA("RemoteEvent") then
-                v869:FireServer(v420, 1)
-            end
-        end
-    end)
-end
-function t9.value110()
-    local v413 = t2.value8.Character and t2.value8.Character:FindFirstChild("HumanoidRootPart")
-    if not v413 then
-        return nil
-    end
-    local function v414(p64)
-        if not p64 or (p64 == t2.value8 or not p64.Parent) then
-            return false
-        end
-
-        if not t9.value58(p64) then
-            return false
-        end
-
-        local v867 = p64.Character and p64.Character:FindFirstChild("HumanoidRootPart")
-
-        if not v867 then
-            return false
-        end
-
-        return (v867.Position - v413.Position).Magnitude <= t9.value107
-    end
-    if t9.value10.silentTarget and v414(t9.value10.silentTarget) then
-        return t9.value10.silentTarget
-    end
-    local value107 = t9.value107
-    local v416
-    for _, player in ipairs(t2.value1:GetPlayers()) do
-        if v414(player) and v54(player) then
-            local Magnitude = (player.Character.HumanoidRootPart.Position - v413.Position).Magnitude
-
-            if Magnitude < value107 then
-                v416 = player
-                value107 = Magnitude
-            end
-        end
-    end
-
-    return v416
-end
-t9.value111 = t1.value6
+-- (Auto-arrest / "Long Arrest" removed: Prison Life flags automated arresting.)
+t9.value111 = function() end
 t9.value112 = nil
 function t1.value6(p65, p66, p67)
     local v424 = p66 or 0
@@ -7055,10 +6960,6 @@ t9.value148 = t1.value2;
         t9.value92(p194)
         v666("Spinbot", p194)
     end)
-    v735(v750, "Long Arrest", "handcuffs arrest up to 100 studs", false, function(p195)
-        t9.value10.longArrest = p195
-        v666("Long Arrest", p195)
-    end)
     v733(v750, "FOV Radius", 40, 400, 120, function(p196)
         t9.value10.fovRadius = p196
         t24.value4()
@@ -7433,20 +7334,40 @@ t9.value148 = t1.value2;
         local nx_infJumpConn, nx_afkConn, nx_killAuraConn
         local nx_lastMelee = 0
 
-        -- Robustly change team through Prison Life's TeamEvent remote.
-        local function nx_setTeam(teamColor)
-            local ok = pcall(function()
-                local remoteFolder = workspace:FindFirstChild("Remote")
-                local teamEvent = remoteFolder and remoteFolder:FindFirstChild("TeamEvent")
+        -- Change team. The rewritten Prison Life uses
+        -- ReplicatedStorage.Remotes.RequestTeamChange:InvokeServer(<name>);
+        -- classic Prison Life used workspace.Remote.TeamEvent:FireServer(<BrickColor>).
+        -- Try the modern remote first, then fall back to the classic one.
+        local function nx_setTeam(teamName, teamColor)
+            local done = pcall(function()
+                local remotes = t2.value7:FindFirstChild("Remotes")
+                local req = remotes and remotes:FindFirstChild("RequestTeamChange")
 
-                if not teamEvent then
-                    error("TeamEvent remote not found")
+                if not req then
+                    error("no RequestTeamChange")
                 end
 
-                teamEvent:FireServer(teamColor)
+                if req:IsA("RemoteFunction") then
+                    req:InvokeServer(teamName)
+                else
+                    req:FireServer(teamName)
+                end
             end)
 
-            v666("Team Changer", ok and "changed" or "remote missing", 3)
+            if not done and teamColor then
+                done = pcall(function()
+                    local remoteFolder = workspace:FindFirstChild("Remote")
+                    local teamEvent = remoteFolder and remoteFolder:FindFirstChild("TeamEvent")
+
+                    if not teamEvent then
+                        error("no TeamEvent")
+                    end
+
+                    teamEvent:FireServer(teamColor)
+                end)
+            end
+
+            v666("Team Changer", done and teamName or "remote missing", 3)
         end
 
         -- Criminals aren't a TeamEvent color: reaching the criminal base
@@ -7623,16 +7544,25 @@ t9.value148 = t1.value2;
         -- ---- UI ----
         local nxTeam = t24.value48(t24.value42, "team changer")
 
+        -- (modern name, classic BrickColor fallback)
         v734(nxTeam, "Neutral", function()
-            nx_setTeam("Medium stone grey")
+            nx_setTeam("Neutral", "Medium stone grey")
         end)
-        v734(nxTeam, "Prisoner", function()
-            nx_setTeam("Bright orange")
+        v734(nxTeam, "Prisoner / Inmate", function()
+            nx_setTeam("Inmates", "Bright orange")
         end)
-        v734(nxTeam, "Police", function()
-            nx_setTeam("Bright blue")
+        v734(nxTeam, "Police / Guard", function()
+            nx_setTeam("Guards", "Bright blue")
         end)
-        v734(nxTeam, "Become Criminal", nx_becomeCriminal)
+        v734(nxTeam, "Criminal", function()
+            -- modern remote first; if it's not there, use the base-teleport trick
+            local remotes = t2.value7:FindFirstChild("Remotes")
+            if remotes and remotes:FindFirstChild("RequestTeamChange") then
+                nx_setTeam("Criminals")
+            else
+                nx_becomeCriminal()
+            end
+        end)
 
         local nxUtility = t24.value48(t24.value42, "utility")
 
@@ -7668,6 +7598,169 @@ t9.value148 = t1.value2;
         v734(nxServer, "Reset Character", nx_reset)
         v734(nxServer, "Rejoin Server", nx_rejoin)
         v734(nxServer, "Server Hop", nx_serverHop)
+
+        -- ---- Remotes recovered from the game dump (modern Prison Life) ----
+        -- RequestHere.Client fires ReplicatedStorage.Remotes.RequestHere with
+        -- mouse.Hit.Position -> server teleport.
+        local nx_clickTpConn
+
+        local function nx_getRemote(name)
+            local remotes = t2.value7:FindFirstChild("Remotes")
+            return remotes and remotes:FindFirstChild(name)
+        end
+
+        local function nx_teleportToMouse()
+            local req = nx_getRemote("RequestHere")
+            if not req then
+                v666("Click Teleport", "RequestHere not found", 3)
+                return
+            end
+            local ok = pcall(function()
+                local mouse = t2.value8:GetMouse()
+                req:FireServer(mouse.Hit.Position)
+            end)
+            v666("Click Teleport", ok and "sent" or "failed", 2)
+        end
+
+        local function nx_setClickTP(on)
+            nx_state.clickTP = on
+            if on and not nx_clickTpConn then
+                nx_clickTpConn = t2.value3.InputBegan:Connect(function(input, gpe)
+                    if gpe or not nx_state.clickTP then
+                        return
+                    end
+                    if input.UserInputType == Enum.UserInputType.MouseButton2
+                        or input.UserInputType == Enum.UserInputType.Touch then
+                        nx_teleportToMouse()
+                    end
+                end)
+            end
+        end
+
+        local nxRemotes = t24.value48(t24.value42, "prison remotes (dumped)")
+
+        v734(nxRemotes, "Teleport to Mouse", nx_teleportToMouse)
+        v735(nxRemotes, "Click Teleport", "right-click / tap to teleport there", false, function(state)
+            nx_setClickTP(state)
+            v666("Click Teleport", state)
+        end)
+
+        -- Player collision toggle (walk through other players) via
+        -- Remotes.RequestCollisionChange. Best-effort: fired with a boolean.
+        v735(nxRemotes, "No Player Collision", "phase through players", false, function(state)
+            local req = nx_getRemote("RequestCollisionChange")
+            if not req then
+                v666("Collision", "RequestCollisionChange not found", 3)
+                return
+            end
+            pcall(function()
+                if req:IsA("RemoteFunction") then
+                    req:InvokeServer(not state)
+                else
+                    req:FireServer(not state)
+                end
+            end)
+            v666("No Player Collision", state)
+        end)
+
+        -- ---- Remote Runner: fire/invoke ANY dumped remote with a typed arg ----
+        -- Because some remotes' exact argument shapes can't be read from the
+        -- bytecode, this lets you drive them by hand and see what works.
+        local nx_rrName, nx_rrArg = "", ""
+
+        -- Search the three places Prison Life keeps remotes.
+        local function nx_findRemoteAnywhere(name)
+            name = (name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            if name == "" then return nil end
+            local remotesFolder = t2.value7:FindFirstChild("Remotes")
+            local candidates = {
+                remotesFolder and remotesFolder:FindFirstChild(name),
+                t2.value7:FindFirstChild(name),
+                workspace:FindFirstChild("Remote") and workspace.Remote:FindFirstChild(name),
+            }
+            for _, c in ipairs(candidates) do
+                if c then return c end
+            end
+            -- last resort: deep search Remotes folder
+            if remotesFolder then
+                for _, d in ipairs(remotesFolder:GetDescendants()) do
+                    if d.Name == name and (d:IsA("RemoteEvent") or d:IsA("RemoteFunction")
+                        or d:IsA("UnreliableRemoteEvent")) then
+                        return d
+                    end
+                end
+            end
+            return nil
+        end
+
+        -- Parse the arg textbox into a real value: bool / number / Vector3
+        -- "x,y,z" / a player by name / else the raw string. Empty = no arg.
+        local function nx_parseArg(s)
+            if s == nil then return nil, false end
+            s = s:gsub("^%s+", ""):gsub("%s+$", "")
+            if s == "" then return nil, false end
+            if s == "true" then return true, true end
+            if s == "false" then return false, true end
+            local n = tonumber(s)
+            if n then return n, true end
+            local x, y, z = s:match("^(-?%d+%.?%d*)%s*,%s*(-?%d+%.?%d*)%s*,%s*(-?%d+%.?%d*)$")
+            if x then return Vector3.new(tonumber(x), tonumber(y), tonumber(z)), true end
+            for _, p in ipairs(t2.value1:GetPlayers()) do
+                if p.Name:lower() == s:lower() then return p, true end
+            end
+            return s, true
+        end
+
+        local function nx_runRemote(invoke)
+            local remote = nx_findRemoteAnywhere(nx_rrName)
+            if not remote then
+                v666("Remote Runner", "not found: " .. tostring(nx_rrName), 3)
+                return
+            end
+            local arg, hasArg = nx_parseArg(nx_rrArg)
+            local ok, err = pcall(function()
+                if invoke or remote:IsA("RemoteFunction") then
+                    if hasArg then remote:InvokeServer(arg) else remote:InvokeServer() end
+                else
+                    if hasArg then remote:FireServer(arg) else remote:FireServer() end
+                end
+            end)
+            v666("Remote Runner", ok and (remote.Name .. " sent") or "error", 3)
+            if not ok then warn("[Nexus] Remote Runner error: " .. tostring(err)) end
+        end
+
+        v732(nxRemotes, "remote name (e.g. RequestHere)", function(text)
+            nx_rrName = text or ""
+        end)
+        v732(nxRemotes, "arg: num / true / x,y,z / player / text", function(text)
+            nx_rrArg = text or ""
+        end)
+        v734(nxRemotes, "FireServer", function()
+            nx_runRemote(false)
+        end)
+        v734(nxRemotes, "InvokeServer", function()
+            nx_runRemote(true)
+        end)
+        v734(nxRemotes, "List Remotes -> console", function()
+            local remotesFolder = t2.value7:FindFirstChild("Remotes")
+            local count = 0
+            print("===== Nexus: Prison Life remotes =====")
+            if remotesFolder then
+                for _, d in ipairs(remotesFolder:GetDescendants()) do
+                    if d:IsA("RemoteEvent") or d:IsA("RemoteFunction") or d:IsA("UnreliableRemoteEvent") then
+                        count = count + 1
+                        print(("[%s] %s"):format(d.ClassName, d.Name))
+                    end
+                end
+            end
+            for _, d in ipairs(t2.value7:GetChildren()) do
+                if d:IsA("RemoteEvent") or d:IsA("RemoteFunction") or d:IsA("UnreliableRemoteEvent") then
+                    count = count + 1
+                    print(("[%s] %s (top-level RS)"):format(d.ClassName, d.Name))
+                end
+            end
+            v666("Remote Runner", count .. " remotes -> console", 3)
+        end)
 
         -- Re-apply saved utility choices so both switch and feature match config.
         task.defer(function()
@@ -8374,15 +8467,6 @@ t9.value148 = t1.value2;
             end
 
             v666("Doors", v1251)
-        end
-    end)
-    t2.value3.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then
-            return
-        end
-
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            t9.value111()
         end
     end)
 end)()
