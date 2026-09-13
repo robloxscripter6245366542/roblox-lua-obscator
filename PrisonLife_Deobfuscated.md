@@ -428,3 +428,26 @@ Attributes/fields: `MaxAmmo`, `CurrentAmmo`, `StoredAmmo`, `FireRate`, `Range`,
 ### `Workspace.tr5zdhtdth.ClientInputHandler` (LocalScript)
 
 `CFrame` `new` `Position` `workspace` `Unit` `Raycast` `Instance` `Parent` `GetPlayerFromCharacter` `Team` `Guards` `FireServer` `math` `random` `Pitch` `Play` `trimboi` `HasTag` `CheckHit` `GetMarkerReachedSignal` `Connect` `listenForHits` `pcall` `SetCore` `ResetButtonCallback` `task` `wait` `defer` `setResetButton` `Animation` `AnimationId` `createAnim` `type` `string` `pairs` `table` `isBusy` `isCamera` `BackpackEnabled` `SetAttribute` `startCamera` `Humanoid` `CameraSubject` `Custom` `CameraType` `RenderStepped` `Wait` `CameraOffset` `Vector3` `moveCamOffset` `isFighting` `Stop` `fight` `finish` `isTazed` `print` `Disabling reset button` `UnequipTools` `WalkSpeed` `JumpHeight`
+
+## Server-side reachability (what is NOT in the dump)
+
+The dump contains **no server-side code**. Every one of the 103 scripts is
+client-reachable: 54 `LocalScript`, 19 `Script` (client / shared `RunContext`),
+30 `ModuleScript`. Nothing under `ServerScriptService` or `ServerStorage` appears,
+because Roblox never replicates those to clients — so the server's authoritative
+logic (what actually validates a shot, an arrest, a team change, a purchase)
+cannot be read from a client dump. This is not a bypassable protection; the bytes
+are not on the machine.
+
+The only server-authoritative surface reachable from the client is the **remotes**
+listed above — that is the complete set of "server-side actions" an exploit can
+trigger. Notable server-gated markers seen in the client code:
+
+- `isAuthenticated` / `PlayerOwnsAsset` / `isPremium` / `premiumType` — the server
+  gates premium items; the client only asks (`BuyGamepassRequested`).
+- `adminSprintSpeed` — an admin/guard sprint-speed attribute set by the server.
+- No cash/economy remote is exposed (Prison Life has no client-callable money grant);
+  progression is arrest/round based and validated server-side.
+
+Bottom line: additional "server-side" features can only be built on the documented
+remotes — there is no hidden server script to lift logic from.
