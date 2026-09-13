@@ -43,6 +43,21 @@ local CONFIG = {
     WholeGame      = false,
     IncludeNil     = false,
 
+    -- SkipDefaults leaves OUT Roblox's own built-in scripts (the ones every
+    -- game has - character Animate/Health/Sound, the PlayerModule / camera /
+    -- control modules, CoreGui, chat internals) and dumps only the GAME's
+    -- own code. Matched case-insensitively against each script's full path.
+    SkipDefaults   = true,
+    DefaultPatterns = {
+        "coregui", "corepackages", "robloxgui", "corescripts",
+        "robloxreplicatedstorage", "playscriptsloader",
+        "%.playermodule", "controlmodule", "cameramodule", "basecamera",
+        "poppercam", "vehiclecamera", "clickToMove", "touchjump",
+        "%.animate$", "%.health$", "%.sound$", "rbxcharactersounds",
+        "animatecontroller", "chatscript", "%.chat%.", "bubblechat",
+        "emotebar", "playeremulator", "respawn",
+    },
+
     -- Decompile is OFF by default. Decompiling tens of thousands of scripts
     -- (Phantom Ball ~27k, TSB, etc.) crashes phones/tablets. With it off we
     -- read source/bytecode instead - far cheaper, no decompiler crash. Turn
@@ -163,6 +178,16 @@ local function fullPath(inst)
 end
 local function toHex(s) return (s:gsub(".", function(c) return string.format("%02x", string.byte(c)) end)) end
 
+-- Is this script one of Roblox's built-in defaults (not the game's code)?
+local function isDefault(path)
+    if not CONFIG.SkipDefaults then return false end
+    local p = path:lower()
+    for _, pat in ipairs(CONFIG.DefaultPatterns) do
+        if p:find(pat) then return true end
+    end
+    return false
+end
+
 local function pathExpr(inst)
     local parts, cur = {}, inst
     while cur and cur ~= game do
@@ -262,7 +287,7 @@ local function run()
             remotes[#remotes + 1] = { obj = o, cn = cn }
         end
         local oks, isSrc = pcall(function() return o:IsA("LuaSourceContainer") end)
-        if oks and isSrc then scripts[#scripts + 1] = o end
+        if oks and isSrc and not isDefault(fullPath(o)) then scripts[#scripts + 1] = o end
     end
 
     for _, root in ipairs(roots()) do
