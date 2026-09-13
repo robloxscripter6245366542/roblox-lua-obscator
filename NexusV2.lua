@@ -7782,6 +7782,123 @@ t9.value148 = t1.value2;
         end)
         v734(nxRemotes, "Arrest Nearest", nx_arrestNearest)
 
+        -- Player collision toggle (walk through other players) via
+        -- Remotes.RequestCollisionChange. Best-effort: fired with a boolean.
+        v735(nxRemotes, "No Player Collision", "phase through players", false, function(state)
+            local req = nx_getRemote("RequestCollisionChange")
+            if not req then
+                v666("Collision", "RequestCollisionChange not found", 3)
+                return
+            end
+            pcall(function()
+                if req:IsA("RemoteFunction") then
+                    req:InvokeServer(not state)
+                else
+                    req:FireServer(not state)
+                end
+            end)
+            v666("No Player Collision", state)
+        end)
+
+        -- ---- Remote Runner: fire/invoke ANY dumped remote with a typed arg ----
+        -- Because some remotes' exact argument shapes can't be read from the
+        -- bytecode, this lets you drive them by hand and see what works.
+        local nx_rrName, nx_rrArg = "", ""
+
+        -- Search the three places Prison Life keeps remotes.
+        local function nx_findRemoteAnywhere(name)
+            name = (name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            if name == "" then return nil end
+            local remotesFolder = t2.value7:FindFirstChild("Remotes")
+            local candidates = {
+                remotesFolder and remotesFolder:FindFirstChild(name),
+                t2.value7:FindFirstChild(name),
+                workspace:FindFirstChild("Remote") and workspace.Remote:FindFirstChild(name),
+            }
+            for _, c in ipairs(candidates) do
+                if c then return c end
+            end
+            -- last resort: deep search Remotes folder
+            if remotesFolder then
+                for _, d in ipairs(remotesFolder:GetDescendants()) do
+                    if d.Name == name and (d:IsA("RemoteEvent") or d:IsA("RemoteFunction")
+                        or d:IsA("UnreliableRemoteEvent")) then
+                        return d
+                    end
+                end
+            end
+            return nil
+        end
+
+        -- Parse the arg textbox into a real value: bool / number / Vector3
+        -- "x,y,z" / a player by name / else the raw string. Empty = no arg.
+        local function nx_parseArg(s)
+            if s == nil then return nil, false end
+            s = s:gsub("^%s+", ""):gsub("%s+$", "")
+            if s == "" then return nil, false end
+            if s == "true" then return true, true end
+            if s == "false" then return false, true end
+            local n = tonumber(s)
+            if n then return n, true end
+            local x, y, z = s:match("^(-?%d+%.?%d*)%s*,%s*(-?%d+%.?%d*)%s*,%s*(-?%d+%.?%d*)$")
+            if x then return Vector3.new(tonumber(x), tonumber(y), tonumber(z)), true end
+            for _, p in ipairs(t2.value1:GetPlayers()) do
+                if p.Name:lower() == s:lower() then return p, true end
+            end
+            return s, true
+        end
+
+        local function nx_runRemote(invoke)
+            local remote = nx_findRemoteAnywhere(nx_rrName)
+            if not remote then
+                v666("Remote Runner", "not found: " .. tostring(nx_rrName), 3)
+                return
+            end
+            local arg, hasArg = nx_parseArg(nx_rrArg)
+            local ok, err = pcall(function()
+                if invoke or remote:IsA("RemoteFunction") then
+                    if hasArg then remote:InvokeServer(arg) else remote:InvokeServer() end
+                else
+                    if hasArg then remote:FireServer(arg) else remote:FireServer() end
+                end
+            end)
+            v666("Remote Runner", ok and (remote.Name .. " sent") or "error", 3)
+            if not ok then warn("[Nexus] Remote Runner error: " .. tostring(err)) end
+        end
+
+        v732(nxRemotes, "remote name (e.g. RequestHere)", function(text)
+            nx_rrName = text or ""
+        end)
+        v732(nxRemotes, "arg: num / true / x,y,z / player / text", function(text)
+            nx_rrArg = text or ""
+        end)
+        v734(nxRemotes, "FireServer", function()
+            nx_runRemote(false)
+        end)
+        v734(nxRemotes, "InvokeServer", function()
+            nx_runRemote(true)
+        end)
+        v734(nxRemotes, "List Remotes -> console", function()
+            local remotesFolder = t2.value7:FindFirstChild("Remotes")
+            local count = 0
+            print("===== Nexus: Prison Life remotes =====")
+            if remotesFolder then
+                for _, d in ipairs(remotesFolder:GetDescendants()) do
+                    if d:IsA("RemoteEvent") or d:IsA("RemoteFunction") or d:IsA("UnreliableRemoteEvent") then
+                        count = count + 1
+                        print(("[%s] %s"):format(d.ClassName, d.Name))
+                    end
+                end
+            end
+            for _, d in ipairs(t2.value7:GetChildren()) do
+                if d:IsA("RemoteEvent") or d:IsA("RemoteFunction") or d:IsA("UnreliableRemoteEvent") then
+                    count = count + 1
+                    print(("[%s] %s (top-level RS)"):format(d.ClassName, d.Name))
+                end
+            end
+            v666("Remote Runner", count .. " remotes -> console", 3)
+        end)
+
         -- Re-apply saved utility choices so both switch and feature match config.
         task.defer(function()
             if nx_state.infJump == true then
