@@ -7466,8 +7466,12 @@ t9.value148 = t1.value2;
 
                     local fired = false
 
+                    local myTeam = t2.value8.Team
+
                     for _, player in ipairs(t2.value1:GetPlayers()) do
-                        if player ~= t2.value8 and player.Character then
+                        local sameTeam = nx_state.killAuraTeamCheck and myTeam ~= nil and player.Team == myTeam
+
+                        if player ~= t2.value8 and player.Character and not sameTeam then
                             local ehrp = player.Character:FindFirstChild("HumanoidRootPart")
                             local hum = player.Character:FindFirstChildOfClass("Humanoid")
 
@@ -7592,6 +7596,10 @@ t9.value148 = t1.value2;
         v733(nxMelee, "Kill Aura Range", 5, 60, tonumber(nx_state.killAuraRange) or 12, function(value)
             nx_state.killAuraRange = value
         end)
+        v735(nxMelee, "Kill Aura Team Check", "don't hit your own team", false, function(state)
+            nx_state.killAuraTeamCheck = state
+            v666("Kill Aura Team Check", state)
+        end)
 
         local nxServer = t24.value48(t24.value42, "server")
 
@@ -7622,6 +7630,66 @@ t9.value148 = t1.value2;
             v666("Click Teleport", ok and "sent" or "failed", 2)
         end
 
+        -- Teleport to a world point via RequestHere (server-honored); fall back
+        -- to a direct client CFrame set if the remote isn't present.
+        local function nx_teleportTo(pos, label)
+            label = label or "Teleport"
+            local req = nx_getRemote("RequestHere")
+            if req then
+                local ok = pcall(function() req:FireServer(pos) end)
+                if ok then
+                    v666(label, "sent (RequestHere)", 2)
+                    return
+                end
+            end
+            local hrp = t2.value8.Character and t2.value8.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                pcall(function() hrp.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0)) end)
+                v666(label, "sent (client)", 2)
+            else
+                v666(label, "no character", 2)
+            end
+        end
+
+        local function nx_nearestPlayerPos()
+            local hrp = t2.value8.Character and t2.value8.Character:FindFirstChild("HumanoidRootPart")
+            if not hrp then return nil end
+            local best, bestD
+            for _, p in ipairs(t2.value1:GetPlayers()) do
+                if p ~= t2.value8 and p.Character then
+                    local e = p.Character:FindFirstChild("HumanoidRootPart")
+                    if e then
+                        local dd = (e.Position - hrp.Position).Magnitude
+                        if not bestD or dd < bestD then best, bestD = e.Position, dd end
+                    end
+                end
+            end
+            return best
+        end
+
+        -- Nearest weapon/item giver: classic workspace.Prison_ITEMS.giver or a
+        -- top-level "giver" folder (modern). Only a shallow scan (no full tree).
+        local function nx_nearestGiverPos()
+            local hrp = t2.value8.Character and t2.value8.Character:FindFirstChild("HumanoidRootPart")
+            if not hrp then return nil end
+            local roots = {}
+            local pi = workspace:FindFirstChild("Prison_ITEMS")
+            if pi and pi:FindFirstChild("giver") then table.insert(roots, pi.giver) end
+            local topGiver = workspace:FindFirstChild("giver")
+            if topGiver then table.insert(roots, topGiver) end
+            local best, bestD
+            for _, root in ipairs(roots) do
+                for _, g in ipairs(root:GetChildren()) do
+                    local part = g:IsA("BasePart") and g or g:FindFirstChildWhichIsA("BasePart", true)
+                    if part then
+                        local dd = (part.Position - hrp.Position).Magnitude
+                        if not bestD or dd < bestD then best, bestD = part.Position, dd end
+                    end
+                end
+            end
+            return best
+        end
+
         local function nx_setClickTP(on)
             nx_state.clickTP = on
             if on and not nx_clickTpConn then
@@ -7643,6 +7711,14 @@ t9.value148 = t1.value2;
         v735(nxRemotes, "Click Teleport", "right-click / tap to teleport there", false, function(state)
             nx_setClickTP(state)
             v666("Click Teleport", state)
+        end)
+        v734(nxRemotes, "TP to Nearest Player", function()
+            local pos = nx_nearestPlayerPos()
+            if pos then nx_teleportTo(pos, "TP Player") else v666("TP Player", "no target", 2) end
+        end)
+        v734(nxRemotes, "TP to Nearest Giver", function()
+            local pos = nx_nearestGiverPos()
+            if pos then nx_teleportTo(pos, "TP Giver") else v666("TP Giver", "no giver found", 2) end
         end)
 
         -- Player collision toggle (walk through other players) via
