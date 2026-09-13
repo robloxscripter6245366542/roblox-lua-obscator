@@ -7433,20 +7433,40 @@ t9.value148 = t1.value2;
         local nx_infJumpConn, nx_afkConn, nx_killAuraConn
         local nx_lastMelee = 0
 
-        -- Robustly change team through Prison Life's TeamEvent remote.
-        local function nx_setTeam(teamColor)
-            local ok = pcall(function()
-                local remoteFolder = workspace:FindFirstChild("Remote")
-                local teamEvent = remoteFolder and remoteFolder:FindFirstChild("TeamEvent")
+        -- Change team. The rewritten Prison Life uses
+        -- ReplicatedStorage.Remotes.RequestTeamChange:InvokeServer(<name>);
+        -- classic Prison Life used workspace.Remote.TeamEvent:FireServer(<BrickColor>).
+        -- Try the modern remote first, then fall back to the classic one.
+        local function nx_setTeam(teamName, teamColor)
+            local done = pcall(function()
+                local remotes = t2.value7:FindFirstChild("Remotes")
+                local req = remotes and remotes:FindFirstChild("RequestTeamChange")
 
-                if not teamEvent then
-                    error("TeamEvent remote not found")
+                if not req then
+                    error("no RequestTeamChange")
                 end
 
-                teamEvent:FireServer(teamColor)
+                if req:IsA("RemoteFunction") then
+                    req:InvokeServer(teamName)
+                else
+                    req:FireServer(teamName)
+                end
             end)
 
-            v666("Team Changer", ok and "changed" or "remote missing", 3)
+            if not done and teamColor then
+                done = pcall(function()
+                    local remoteFolder = workspace:FindFirstChild("Remote")
+                    local teamEvent = remoteFolder and remoteFolder:FindFirstChild("TeamEvent")
+
+                    if not teamEvent then
+                        error("no TeamEvent")
+                    end
+
+                    teamEvent:FireServer(teamColor)
+                end)
+            end
+
+            v666("Team Changer", done and teamName or "remote missing", 3)
         end
 
         -- Criminals aren't a TeamEvent color: reaching the criminal base
@@ -7623,16 +7643,25 @@ t9.value148 = t1.value2;
         -- ---- UI ----
         local nxTeam = t24.value48(t24.value42, "team changer")
 
+        -- (modern name, classic BrickColor fallback)
         v734(nxTeam, "Neutral", function()
-            nx_setTeam("Medium stone grey")
+            nx_setTeam("Neutral", "Medium stone grey")
         end)
-        v734(nxTeam, "Prisoner", function()
-            nx_setTeam("Bright orange")
+        v734(nxTeam, "Prisoner / Inmate", function()
+            nx_setTeam("Inmates", "Bright orange")
         end)
-        v734(nxTeam, "Police", function()
-            nx_setTeam("Bright blue")
+        v734(nxTeam, "Police / Guard", function()
+            nx_setTeam("Guards", "Bright blue")
         end)
-        v734(nxTeam, "Become Criminal", nx_becomeCriminal)
+        v734(nxTeam, "Criminal", function()
+            -- modern remote first; if it's not there, use the base-teleport trick
+            local remotes = t2.value7:FindFirstChild("Remotes")
+            if remotes and remotes:FindFirstChild("RequestTeamChange") then
+                nx_setTeam("Criminals")
+            else
+                nx_becomeCriminal()
+            end
+        end)
 
         local nxUtility = t24.value48(t24.value42, "utility")
 
@@ -7668,6 +7697,90 @@ t9.value148 = t1.value2;
         v734(nxServer, "Reset Character", nx_reset)
         v734(nxServer, "Rejoin Server", nx_rejoin)
         v734(nxServer, "Server Hop", nx_serverHop)
+
+        -- ---- Remotes recovered from the game dump (modern Prison Life) ----
+        -- RequestHere.Client fires ReplicatedStorage.Remotes.RequestHere with
+        -- mouse.Hit.Position -> server teleport. ArrestPlayer arrests a player.
+        local nx_clickTpConn
+
+        local function nx_getRemote(name)
+            local remotes = t2.value7:FindFirstChild("Remotes")
+            return remotes and remotes:FindFirstChild(name)
+        end
+
+        local function nx_teleportToMouse()
+            local req = nx_getRemote("RequestHere")
+            if not req then
+                v666("Click Teleport", "RequestHere not found", 3)
+                return
+            end
+            local ok = pcall(function()
+                local mouse = t2.value8:GetMouse()
+                req:FireServer(mouse.Hit.Position)
+            end)
+            v666("Click Teleport", ok and "sent" or "failed", 2)
+        end
+
+        local function nx_setClickTP(on)
+            nx_state.clickTP = on
+            if on and not nx_clickTpConn then
+                nx_clickTpConn = t2.value3.InputBegan:Connect(function(input, gpe)
+                    if gpe or not nx_state.clickTP then
+                        return
+                    end
+                    if input.UserInputType == Enum.UserInputType.MouseButton2
+                        or input.UserInputType == Enum.UserInputType.Touch then
+                        nx_teleportToMouse()
+                    end
+                end)
+            end
+        end
+
+        local function nx_arrestNearest()
+            local req = nx_getRemote("ArrestPlayer")
+            if not req then
+                v666("Arrest", "ArrestPlayer not found", 3)
+                return
+            end
+            local Character = t2.value8.Character
+            local hrp = Character and Character:FindFirstChild("HumanoidRootPart")
+            if not hrp then
+                return
+            end
+            local best, bestDist
+            for _, player in ipairs(t2.value1:GetPlayers()) do
+                if player ~= t2.value8 and player.Character then
+                    local ehrp = player.Character:FindFirstChild("HumanoidRootPart")
+                    if ehrp then
+                        local dist = (ehrp.Position - hrp.Position).Magnitude
+                        if not bestDist or dist < bestDist then
+                            best, bestDist = player, dist
+                        end
+                    end
+                end
+            end
+            if not best then
+                v666("Arrest", "no target", 2)
+                return
+            end
+            local ok = pcall(function()
+                if req:IsA("RemoteFunction") then
+                    req:InvokeServer(best)
+                else
+                    req:FireServer(best)
+                end
+            end)
+            v666("Arrest", ok and ("-> " .. best.Name) or "failed", 2)
+        end
+
+        local nxRemotes = t24.value48(t24.value42, "prison remotes (dumped)")
+
+        v734(nxRemotes, "Teleport to Mouse", nx_teleportToMouse)
+        v735(nxRemotes, "Click Teleport", "right-click / tap to teleport there", false, function(state)
+            nx_setClickTP(state)
+            v666("Click Teleport", state)
+        end)
+        v734(nxRemotes, "Arrest Nearest", nx_arrestNearest)
 
         -- Re-apply saved utility choices so both switch and feature match config.
         task.defer(function()
