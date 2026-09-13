@@ -43,6 +43,21 @@ local CONFIG = {
     WholeGame      = false,
     IncludeNil     = false,
 
+    -- SkipDefaults leaves OUT Roblox's own built-in scripts (the ones every
+    -- game has - character Animate/Health/Sound, the PlayerModule / camera /
+    -- control modules, CoreGui, chat internals) and dumps only the GAME's
+    -- own code. Matched case-insensitively against each script's full path.
+    SkipDefaults   = true,
+    DefaultPatterns = {
+        "coregui", "corepackages", "robloxgui", "corescripts",
+        "robloxreplicatedstorage", "playscriptsloader",
+        "%.playermodule", "controlmodule", "cameramodule", "basecamera",
+        "poppercam", "vehiclecamera", "clickToMove", "touchjump",
+        "%.animate$", "%.health$", "%.sound$", "rbxcharactersounds",
+        "animatecontroller", "chatscript", "%.chat%.", "bubblechat",
+        "emotebar", "playeremulator", "respawn",
+    },
+
     -- Decompile is OFF by default. Decompiling tens of thousands of scripts
     -- (Phantom Ball ~27k, TSB, etc.) crashes phones/tablets. With it off we
     -- read source/bytecode instead - far cheaper, no decompiler crash. Turn
@@ -163,6 +178,16 @@ local function fullPath(inst)
 end
 local function toHex(s) return (s:gsub(".", function(c) return string.format("%02x", string.byte(c)) end)) end
 
+-- Is this script one of Roblox's built-in defaults (not the game's code)?
+local function isDefault(path)
+    if not CONFIG.SkipDefaults then return false end
+    local p = path:lower()
+    for _, pat in ipairs(CONFIG.DefaultPatterns) do
+        if p:find(pat) then return true end
+    end
+    return false
+end
+
 local function pathExpr(inst)
     local parts, cur = {}, inst
     while cur and cur ~= game do
@@ -262,7 +287,7 @@ local function run()
             remotes[#remotes + 1] = { obj = o, cn = cn }
         end
         local oks, isSrc = pcall(function() return o:IsA("LuaSourceContainer") end)
-        if oks and isSrc then scripts[#scripts + 1] = o end
+        if oks and isSrc and not isDefault(fullPath(o)) then scripts[#scripts + 1] = o end
     end
 
     for _, root in ipairs(roots()) do
@@ -300,14 +325,19 @@ local function run()
 
     table.sort(scripts, function(a, b) return fullPath(a) < fullPath(b) end)
 
-    -- ── Resume state (for batching across runs) ──
-    -- _progress.txt = every script already dumped; _current.txt = the one we
-    -- were on when a native crash killed the client (so the next run skips it).
+    -- ── Batching / resume state ──
+    -- Only track cross-run progress when it actually helps: when batching, or
+    -- when decompiling (the crash-prone path). A plain single-run bytecode dump
+    -- skips the per-script marker writes entirely — that's ~80k fewer file
+    -- writes on a 27k-script game, and file I/O is what stalls/crashes phones.
+    local batch = tonumber(CONFIG.Batch) or 0
+    local trackResume = CONFIG.Resume and (batch > 0 or CONFIG.Decompile)
+
     local progressPath = CONFIG.OutputFolder .. "/_progress.txt"
     local currentPath  = CONFIG.OutputFolder .. "/_current.txt"
     local combinedPath = CONFIG.OutputFolder .. "/_ALL.txt"
     local doneSet, doneCount, resuming = {}, 0, false
-    if CONFIG.Resume and readfile_fn then
+    if trackResume and readfile_fn then
         pcall(function()
             if isfile_fn and isfile_fn(progressPath) then
                 for line in (readfile_fn(progressPath) .. "\n"):gmatch("(.-)\n") do
@@ -318,8 +348,10 @@ local function run()
         pcall(function()
             if isfile_fn and isfile_fn(currentPath) then
                 local c = readfile_fn(currentPath)
-                if c and c ~= "" then doneSet[c] = true; doneCount = doneCount + 1
-                    warn("[MobileDumper] Skipping script that crashed last run: " .. c) end
+                if c and c ~= "" and not doneSet[c] then
+                    doneSet[c] = true; doneCount = doneCount + 1
+                    warn("[MobileDumper] Skipping script that crashed last run: " .. c)
+                end
             end
         end)
         resuming = doneCount > 0
@@ -340,12 +372,11 @@ local function run()
     end
     local perFile = CONFIG.PerScriptFiles or not combinedOK
 
-    local function markCurrent(p) if CONFIG.Resume and writefile_fn then pcall(writefile_fn, currentPath, p) end end
-    local function clearCurrent() if CONFIG.Resume and writefile_fn then pcall(writefile_fn, currentPath, "") end end
-    local function markDone(p) if CONFIG.Resume and appendfile_fn then pcall(appendfile_fn, progressPath, p .. "\n") end end
+    local function markCurrent(p) if trackResume and writefile_fn then pcall(writefile_fn, currentPath, p) end end
+    local function clearCurrent() if trackResume and writefile_fn then pcall(writefile_fn, currentPath, "") end end
+    local function markDone(p) if trackResume and appendfile_fn then pcall(appendfile_fn, progressPath, p .. "\n") end end
 
     -- ── Scripts (streamed, resumable, batched) ──
-    local batch = tonumber(CONFIG.Batch) or 0
     notify(("Dumping %d scripts%s%s..."):format(#scripts,
         resuming and (" (resuming, %d done)"):format(doneCount) or "",
         batch > 0 and (" [batch %d]"):format(batch) or ""))
@@ -411,6 +442,13 @@ local function run()
         end
     elseif not batchHit and CONFIG.CombinedFile and not appendfile_fn then
         notify("No appendfile on this executor - per-script files hold the code.")
+    end
+
+    -- On full completion, clear the resume log so a later run starts fresh
+    -- (otherwise re-running would skip everything and appear to do nothing).
+    if not batchHit and trackResume and writefile_fn then
+        pcall(writefile_fn, progressPath, "")
+        pcall(writefile_fn, currentPath, "")
     end
 
     notify(("Done this run. %d remotes, %d/%d scripts total -> /%s"):format(#remotes, totalDone, #scripts, CONFIG.OutputFolder))
