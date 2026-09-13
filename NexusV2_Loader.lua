@@ -1,5 +1,5 @@
 -- ============================================================
---  NEXUS V2  –  Loader (Prison Life)
+--  NEXUS V3  –  Loader (Prison Life)
 --
 --  Paste this ONE LINE into your executor (Delta / Xeno / Solara /
 --  Codex / Wave / Fluxus / Synapse / KRNL, iOS / iPadOS / Android / PC):
@@ -31,7 +31,7 @@ if not ok or not body then
 end
 
 if not body then
-    warn("[Nexus V2] Could not fetch the script (HTTP blocked). Paste NexusV2.lua directly instead.")
+    warn("[Nexus V3] Could not fetch the script (HTTP blocked). Paste NexusV2.lua directly instead.")
 
     return
 end
@@ -39,7 +39,7 @@ end
 local fn, err = loadstring(body)
 
 if not fn then
-    warn("[Nexus V2] Compile error: " .. tostring(err))
+    warn("[Nexus V3] Compile error: " .. tostring(err))
 
     return
 end
@@ -47,5 +47,5 @@ end
 local ran, rerr = pcall(fn)
 
 if not ran then
-    warn("[Nexus V2] Runtime error: " .. tostring(rerr))
+    warn("[Nexus V3] Runtime error: " .. tostring(rerr))
 end

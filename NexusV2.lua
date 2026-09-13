@@ -1,4 +1,4 @@
--- Nexus V2 (cleaned: removed data-logging Discord webhook and execution telemetry)
+-- Nexus V3 (cleaned: removed data-logging Discord webhook and execution telemetry)
 
 local t1 = {}
 local t2 = {
@@ -25,7 +25,7 @@ local allowedPlaces = {
 }
 t1.value1 = game
 if not allowedPlaces[t1.value1.PlaceId] then
-    warn("[Nexus V2] Wrong game. This script only works in Prison Life (current: " .. tostring(game.PlaceId) .. ")")
+    warn("[Nexus V3] Wrong game. This script only works in Prison Life (current: " .. tostring(game.PlaceId) .. ")")
 
     return
 end
@@ -46,7 +46,7 @@ t1.value1 = Enum.HighlightDepthMode.AlwaysOnTop
 t9.value2 = t1.value1
 t9.value3 = 0.18
 t9.value4 = 0.08
-t9.value5 = "NexusV2"
+t9.value5 = "NexusV3"
 t9.value6 = "nexusv2"
 t9.value7 = "total_executions"
 t9.value8 = {
@@ -4177,7 +4177,7 @@ t9.value148 = t1.value2;
     local value18_4 = t24.value18
 
     t23.value3 = "Text"
-    value18_4[t23.value3] = "NEXUS"
+    value18_4[t23.value3] = "NEXUS V3"
 
     local value18_5 = t24.value18
 
@@ -4303,7 +4303,7 @@ t9.value148 = t1.value2;
         word.AutomaticSize = Enum.AutomaticSize.X
         word.Size = UDim2.new(0, 0, 1, 0)
         word.BackgroundTransparency = 1
-        word.Text = "NEXUS"
+        word.Text = "NEXUS V3"
         word.TextColor3 = t9.value9.Text
         word.Font = Enum.Font.GothamBold
         word.TextSize = 15
@@ -4393,7 +4393,7 @@ t9.value148 = t1.value2;
     t24.value25.Size = UDim2.new(1, -20, 0, 20)
     t24.value25.Position = UDim2.new(0, 10, 0, 16)
     t24.value25.BackgroundTransparency = 1
-    t24.value25.Text = "Close Nexus V2?"
+    t24.value25.Text = "Close Nexus V3?"
     t24.value25.TextColor3 = t9.value9.Text
     t24.value25.Font = Enum.Font.Code
     t24.value25.TextSize = 14
@@ -8554,7 +8554,7 @@ function t1.value1(p247)
     t9.value20[p247.UserId] = true
 
     if t9.value22.notify then
-        t9.value22.notify("Nexus User", p247.Name .. " is using Nexus V2")
+        t9.value22.notify("Nexus User", p247.Name .. " is using Nexus V3")
     end
 end
 function t9.value149(p248)
@@ -8839,4 +8839,4 @@ CharacterAdded:Connect(t1.value1)
 local PlayerRemoving = t2.value1.PlayerRemoving
 t1.value1 = t9.value146
 PlayerRemoving:Connect(t1.value1)
-print("[Nexus V2] Successfully Loaded - " .. (t9.value1 and "Mobile" or "PC"))
+print("[Nexus V3] Successfully Loaded - " .. (t9.value1 and "Mobile" or "PC"))
