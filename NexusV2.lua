@@ -4603,6 +4603,41 @@ t9.value148 = t1.value2;
     t24.value31.BackgroundColor3 = t9.value9.Stroke
     t24.value31.BorderSizePixel = 0
     t24.value31.Parent = t24.value30
+
+    -- ===== Granite: slow-drifting dark shade animation (Shell + Sidebar) =====
+    -- A multi-band grayscale UIGradient multiplies the (already very dark)
+    -- background, so it only paints darker veins that slowly drift and rotate
+    -- like stone grain. Same dark colour family; nothing brightens the UI.
+    do
+        local function nx_makeGranite(parent, rot)
+            local g = Instance.new("UIGradient")
+            g.Rotation = rot
+            g.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 255, 255)),
+                ColorSequenceKeypoint.new(0.28, Color3.fromRGB(150, 150, 160)),
+                ColorSequenceKeypoint.new(0.52, Color3.fromRGB(214, 214, 226)),
+                ColorSequenceKeypoint.new(0.76, Color3.fromRGB(132, 132, 144)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(238, 238, 250)),
+            })
+            g.Parent = parent
+
+            return g
+        end
+
+        local nx_shellGranite = nx_makeGranite(t24.value7, 25)
+        local nx_sideGranite = nx_makeGranite(t24.value30, 115)
+        local nx_graniteT0 = os.clock()
+
+        t2.value2.Heartbeat:Connect(function()
+            local t = os.clock() - nx_graniteT0
+
+            nx_shellGranite.Offset = Vector2.new(math.sin(t * 0.11) * 0.22, math.sin(t * 0.08 + 1.1) * 0.22)
+            nx_shellGranite.Rotation = 25 + math.sin(t * 0.05) * 35
+            nx_sideGranite.Offset = Vector2.new(math.sin(t * 0.09 + 2.0) * 0.18, math.sin(t * 0.07) * 0.18)
+            nx_sideGranite.Rotation = 115 + math.sin(t * 0.045 + 0.7) * 30
+        end)
+    end
+
     t24.value32 = {}
 
     local function v670(p123, p124, p125)
