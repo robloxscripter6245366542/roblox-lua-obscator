@@ -152,4 +152,164 @@ if typeof(getgenv) == "function" then
     getgenv().UniversalESP = api
 end
 
+-- ==================== CURVED DRAGGABLE UI ====================
+-- A rounded on/off pill you can drag anywhere on screen. Works with both
+-- mouse (PC) and touch (mobile): a tap toggles the ESP, a drag moves it.
+local UserInputService = game:GetService("UserInputService")
+
+local ON_COLOR  = Color3.fromRGB(70, 200, 120)
+local OFF_COLOR = Color3.fromRGB(90, 95, 110)
+
+local function getGuiParent()
+    -- prefer a hidden container if the executor exposes one, else PlayerGui
+    local ok, hui = pcall(function() return gethui() end)
+    if ok and hui then return hui end
+    return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "UniversalESP_UI"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.DisplayOrder = 10000
+gui.IgnoreGuiInset = true
+gui.Parent = getGuiParent()
+
+-- The draggable pill button.
+local btn = Instance.new("TextButton")
+btn.Name = "ESPToggle"
+btn.Size = UDim2.fromOffset(150, 46)
+btn.Position = UDim2.new(0, 20, 0.35, 0)
+btn.AutoButtonColor = false
+btn.BorderSizePixel = 0
+btn.BackgroundColor3 = CONFIG.Enabled and ON_COLOR or OFF_COLOR
+btn.Text = ""
+btn.Font = Enum.Font.GothamBold
+btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+btn.TextSize = 16
+btn.Parent = gui
+
+-- Fully curved corners (pill shape).
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(1, 0)
+corner.Parent = btn
+
+-- Soft vertical gradient for a nicer look.
+local gradient = Instance.new("UIGradient")
+gradient.Rotation = 90
+gradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 200, 200)),
+})
+gradient.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0, 0.78),
+    NumberSequenceKeypoint.new(1, 0.92),
+})
+gradient.Parent = btn
+
+-- Subtle outline/glow.
+local stroke = Instance.new("UIStroke")
+stroke.Thickness = 1.5
+stroke.Color = Color3.fromRGB(255, 255, 255)
+stroke.Transparency = 0.6
+stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+stroke.Parent = btn
+
+-- Status dot + label inside the pill.
+local dot = Instance.new("Frame")
+dot.Name = "Dot"
+dot.AnchorPoint = Vector2.new(0, 0.5)
+dot.Position = UDim2.new(0, 14, 0.5, 0)
+dot.Size = UDim2.fromOffset(14, 14)
+dot.BorderSizePixel = 0
+dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+dot.Parent = btn
+local dotCorner = Instance.new("UICorner")
+dotCorner.CornerRadius = UDim.new(1, 0)
+dotCorner.Parent = dot
+
+local label = Instance.new("TextLabel")
+label.Name = "Label"
+label.BackgroundTransparency = 1
+label.AnchorPoint = Vector2.new(0, 0.5)
+label.Position = UDim2.new(0, 36, 0.5, 0)
+label.Size = UDim2.new(1, -44, 1, 0)
+label.Font = Enum.Font.GothamBold
+label.TextSize = 15
+label.TextXAlignment = Enum.TextXAlignment.Left
+label.TextColor3 = Color3.fromRGB(255, 255, 255)
+label.Parent = btn
+
+local function refreshButton()
+    local on = CONFIG.Enabled
+    btn.BackgroundColor3 = on and ON_COLOR or OFF_COLOR
+    label.Text = on and "ESP: ON" or "ESP: OFF"
+    dot.BackgroundColor3 = on and Color3.fromRGB(235, 255, 240)
+                              or  Color3.fromRGB(200, 205, 215)
+end
+refreshButton()
+
+-- ---- drag + tap handling (mouse and touch) ----
+local dragging      = false
+local moved         = false
+local dragStart      -- Vector2 of the pointer when the press began
+local startPos       -- UDim2 of the button when the press began
+local DRAG_THRESHOLD = 6  -- pixels of movement before it counts as a drag
+
+btn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        moved = false
+        dragStart = input.Position
+        startPos = btn.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if not dragging then return end
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+        local delta = input.Position - dragStart
+        if math.abs(delta.X) > DRAG_THRESHOLD or math.abs(delta.Y) > DRAG_THRESHOLD then
+            moved = true
+        end
+        btn.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+btn.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        if dragging and not moved then
+            -- treated as a tap -> toggle ESP (api.Toggle refreshes the button)
+            api.Toggle()
+        end
+        dragging = false
+    end
+end)
+
+-- Keep the button in sync if the ESP is toggled elsewhere (console/hotkey).
+api.RefreshUI = refreshButton
+do
+    local baseToggle = api.Toggle
+    api.Toggle = function()
+        local state = baseToggle()
+        refreshButton()
+        return state
+    end
+end
+
+-- Make sure the UI goes away when the ESP is stopped.
+do
+    local baseStop = api.Stop
+    api.Stop = function()
+        baseStop()
+        if gui then gui:Destroy() end
+    end
+end
+
 return api
