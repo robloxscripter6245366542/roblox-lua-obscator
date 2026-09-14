@@ -4183,7 +4183,7 @@ t9.value148 = t1.value2;
     local value18_5 = t24.value18
 
     t23.value3 = "TextColor3"
-    value18_5[t23.value3] = Color3.fromRGB(255, 255, 255)
+    value18_5[t23.value3] = Color3.fromRGB(255, 87, 168) -- pink Nexus logo
 
     local value18_6 = t24.value18
 
@@ -4305,13 +4305,12 @@ t9.value148 = t1.value2;
         word.Size = UDim2.new(0, 0, 1, 0)
         word.BackgroundTransparency = 1
         word.Text = "NEXUS V3"
-        word.TextColor3 = t9.value9.Text
+        word.TextColor3 = Color3.fromRGB(255, 87, 168) -- pink Nexus logo
         word.Font = Enum.Font.GothamBold
         word.TextSize = 15
         word.LayoutOrder = 2
         word.ZIndex = 12
         word.Parent = lockup
-        table.insert(t9.value17, { obj = word, prop = "TextColor3", key = "Text" })
     end
 
     t24.value19 = false
@@ -6211,7 +6210,7 @@ t9.value148 = t1.value2;
         t24.value9.Thickness = 1
         t24.value9.Transparency = 0.35
         t24.value8.CornerRadius = UDim.new(0, 14)
-        t24.value18.TextColor3 = Color3.fromRGB(255, 255, 255)
+        t24.value18.TextColor3 = Color3.fromRGB(255, 87, 168) -- pink Nexus logo
         if t24.value16 then
             t24.value16.BackgroundColor3 = t24.value13
         end
