@@ -4042,6 +4042,8 @@ t9.value148 = t1.value2;
 
         t23.value1 = "UIScale"
         value22[t23.value1] = UIScale
+        -- remember the fit scale so maximize/restore can return to it
+        value22.uiBaseScale = UIScale.Scale
     end
 
     t24.value7 = Instance.new("CanvasGroup")
@@ -4318,7 +4320,24 @@ t9.value148 = t1.value2;
     v650.MouseButton1Click:Connect(function()
         t24.value19 = not t24.value19
 
-        if t24.value19 then
+        local uiScale = t9.value22 and t9.value22.UIScale
+
+        if t9.value1 and uiScale then
+            -- Mobile: the window is a fixed 600x360 layout fitted by a UIScale.
+            -- A scale-based Size (0.98,0.94) would MULTIPLY with that UIScale and
+            -- shrink the UI instead of maximizing it. So keep the frame at its
+            -- fixed size and grow the UIScale instead (never below the fit scale).
+            t24.value6.Size = t24.value20
+
+            if t24.value19 then
+                local vp = (t2.value9 and t2.value9.ViewportSize) or Vector2.new(800, 400)
+                local fill = math.min((vp.X * 0.98) / 600, (vp.Y * 0.94) / 360)
+
+                uiScale.Scale = math.max(fill, t9.value22.uiBaseScale or uiScale.Scale)
+            else
+                uiScale.Scale = t9.value22.uiBaseScale or uiScale.Scale
+            end
+        elseif t24.value19 then
             t24.value6.Size = UDim2.new(0.98, 0, 0.94, 0)
         else
             t24.value6.Size = t24.value20
