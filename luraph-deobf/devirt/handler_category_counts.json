@@ -1,0 +1,60 @@
+{
+ "note": "quantified opcode-handler category counts per dispatch loop, built with devirt/handler_category_scan.py -- see ../mm2.md and ../v15.md for the full writeup",
+ "loops": {
+  "mm2:K": {
+   "total": 10,
+   "counts": {
+    "OPERAND-DECODE": 7,
+    "VARARG-ENTRY": 1,
+    "UNCLASSIFIED": 1,
+    "RETURN-TRAMPOLINE": 1
+   }
+  },
+  "mm2:G": {
+   "total": 69,
+   "counts": {
+    "OPERAND-DECODE": 22,
+    "OPERAND-DECODE(short)": 4,
+    "DECRYPT(read-xor-write)": 38,
+    "UNCLASSIFIED": 4,
+    "STORE": 1
+   }
+  },
+  "mm2:_": {
+   "total": 86,
+   "counts": {
+    "OPERAND-DECODE": 67,
+    "DECRYPT(read-xor-write)": 1,
+    "OPERAND-DECODE(short)": 14,
+    "LIST-POP": 4
+   }
+  },
+  "sample_v15:c": {
+   "total": 46,
+   "counts": {
+    "OPERAND-DECODE": 28,
+    "OPERAND-DECODE(short)": 11,
+    "LIST-POP": 6,
+    "DECRYPT(read-xor-write)": 1
+   }
+  },
+  "sample_v15:d": {
+   "total": 71,
+   "counts": {
+    "OPERAND-DECODE": 13,
+    "DECRYPT(read-xor-write)": 38,
+    "LOOKUP": 1,
+    "UNCLASSIFIED": 5,
+    "OPERAND-DECODE(short)": 10,
+    "STORE": 4
+   }
+  },
+  "sample_v15:S": {
+   "total": 11,
+   "counts": {
+    "OPERAND-DECODE(short)": 3,
+    "OPERAND-DECODE": 8
+   }
+  }
+ }
+}
