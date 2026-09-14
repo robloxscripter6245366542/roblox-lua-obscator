@@ -4183,7 +4183,7 @@ t9.value148 = t1.value2;
     local value18_5 = t24.value18
 
     t23.value3 = "TextColor3"
-    value18_5[t23.value3] = Color3.fromRGB(255, 255, 255)
+    value18_5[t23.value3] = Color3.fromRGB(255, 87, 168) -- pink Nexus logo
 
     local value18_6 = t24.value18
 
@@ -4305,13 +4305,12 @@ t9.value148 = t1.value2;
         word.Size = UDim2.new(0, 0, 1, 0)
         word.BackgroundTransparency = 1
         word.Text = "NEXUS V3"
-        word.TextColor3 = t9.value9.Text
+        word.TextColor3 = Color3.fromRGB(255, 87, 168) -- pink Nexus logo
         word.Font = Enum.Font.GothamBold
         word.TextSize = 15
         word.LayoutOrder = 2
         word.ZIndex = 12
         word.Parent = lockup
-        table.insert(t9.value17, { obj = word, prop = "TextColor3", key = "Text" })
     end
 
     t24.value19 = false
@@ -4604,6 +4603,41 @@ t9.value148 = t1.value2;
     t24.value31.BackgroundColor3 = t9.value9.Stroke
     t24.value31.BorderSizePixel = 0
     t24.value31.Parent = t24.value30
+
+    -- ===== Granite: slow-drifting dark shade animation (Shell + Sidebar) =====
+    -- A multi-band grayscale UIGradient multiplies the (already very dark)
+    -- background, so it only paints darker veins that slowly drift and rotate
+    -- like stone grain. Same dark colour family; nothing brightens the UI.
+    do
+        local function nx_makeGranite(parent, rot)
+            local g = Instance.new("UIGradient")
+            g.Rotation = rot
+            g.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 255, 255)),
+                ColorSequenceKeypoint.new(0.28, Color3.fromRGB(150, 150, 160)),
+                ColorSequenceKeypoint.new(0.52, Color3.fromRGB(214, 214, 226)),
+                ColorSequenceKeypoint.new(0.76, Color3.fromRGB(132, 132, 144)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(238, 238, 250)),
+            })
+            g.Parent = parent
+
+            return g
+        end
+
+        local nx_shellGranite = nx_makeGranite(t24.value7, 25)
+        local nx_sideGranite = nx_makeGranite(t24.value30, 115)
+        local nx_graniteT0 = os.clock()
+
+        t2.value2.Heartbeat:Connect(function()
+            local t = os.clock() - nx_graniteT0
+
+            nx_shellGranite.Offset = Vector2.new(math.sin(t * 0.11) * 0.22, math.sin(t * 0.08 + 1.1) * 0.22)
+            nx_shellGranite.Rotation = 25 + math.sin(t * 0.05) * 35
+            nx_sideGranite.Offset = Vector2.new(math.sin(t * 0.09 + 2.0) * 0.18, math.sin(t * 0.07) * 0.18)
+            nx_sideGranite.Rotation = 115 + math.sin(t * 0.045 + 0.7) * 30
+        end)
+    end
+
     t24.value32 = {}
 
     local function v670(p123, p124, p125)
@@ -6211,7 +6245,7 @@ t9.value148 = t1.value2;
         t24.value9.Thickness = 1
         t24.value9.Transparency = 0.35
         t24.value8.CornerRadius = UDim.new(0, 14)
-        t24.value18.TextColor3 = Color3.fromRGB(255, 255, 255)
+        t24.value18.TextColor3 = Color3.fromRGB(255, 87, 168) -- pink Nexus logo
         if t24.value16 then
             t24.value16.BackgroundColor3 = t24.value13
         end
