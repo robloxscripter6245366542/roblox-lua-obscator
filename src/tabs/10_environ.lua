@@ -9,7 +9,7 @@ local eRow = rowBar(P10, 18, 26)
 local BEnvRun  = B(eRow, "Run Check",   UDim2.new(0,108,1,0), nil, C.ACC)
 local BEnvCopy = B(eRow, "Copy Report", UDim2.new(0,102,1,0), nil, C.GREY)
 local BEnvSave = B(eRow, "Save File",   UDim2.new(0,88,1,0),  nil, C.GREY)
-for i, b in {BEnvRun,BEnvCopy,BEnvSave} do b.LayoutOrder=i; b.TextSize=11 end
+styleRow({BEnvRun,BEnvCopy,BEnvSave})
 hov(BEnvRun, C.ACC, C.ACCHV); hov(BEnvCopy, C.GREY, C.GRYHV); hov(BEnvSave, C.GREY, C.GRYHV)
 
 local ExecLbl = L(P10, "Executor: …", UDim2.new(1,0,0,16), UDim2.new(0,0,0,48), C.TXTS, FC, 11)
@@ -18,7 +18,7 @@ listV(EnvScr, 2)
 local reportLines = {}
 
 local function clrEnv()
-    for _, ch in EnvScr:GetChildren() do if not ch:IsA("UIListLayout") then ch:Destroy() end end
+    clearLayout(EnvScr)
     reportLines = {}
 end
 

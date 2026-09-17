@@ -11,15 +11,12 @@ local BScanKill = B(scRow, "Kill All LS", UDim2.new(0,92,1,0),  nil, C.RED)
 local BScanList = B(scRow, "List Scripts",UDim2.new(0,106,1,0), nil, C.BLUE)
 local BScanBrdg = B(scRow, "Bridge Scan", UDim2.new(0,106,1,0), nil, C.GREY)
 local BScanKill1= B(scRow, "Kill Name",   UDim2.new(0,96,1,0),  nil, C.GREY)
-for i, b in {BScanRun,BScanKill,BScanList,BScanBrdg,BScanKill1} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BScanRun,BScanKill,BScanList,BScanBrdg,BScanKill1})
 hov(BScanRun,  C.ACC,  C.ACCHV); hov(BScanKill, C.RED,  C.REDHV)
 hov(BScanList, C.BLUE, C.BLHV);  hov(BScanBrdg, C.GREY, C.GRYHV)
 hov(BScanKill1,C.GREY, C.GRYHV)
 
-local ScanOut = OUT(P6, UDim2.new(1,0,1,-52), UDim2.new(0,0,0,50))
-local function scanOut(msg, ok2) ScanOut.TextColor3 = ok2 and C.GRN or C.RED; ScanOut.Text = ts()..tostring(msg) end
+local scanOut = statusOut(P6, UDim2.new(1,0,1,-52), UDim2.new(0,0,0,50))
 
 -- Kill-by-name input (inline below buttons)
 local KillNameIn = INS(P6, "Script name to kill…", UDim2.new(0.55,0,0,20), UDim2.new(0,0,0,48))
@@ -84,24 +81,18 @@ BScanRun.MouseButton1Click:Connect(function()
         local flagged  = 0
         local highCnt  = 0
 
-        local function recurse(obj)
-            for _, ch in obj:GetChildren() do
-                if ch:IsA("LocalScript") or ch:IsA("ModuleScript") or ch:IsA("Script") then
-                    total += 1
-                    local hits = scanScript(ch)
-                    if #hits > 0 then
-                        flagged += 1
-                        results[#results+1] = "⚠  " .. ch:GetFullName()
-                        for _, h in hits do
-                            results[#results+1] = "   [" .. h.sev .. "] " .. h.lbl
-                            if h.sev == "HIGH" then highCnt += 1 end
-                        end
-                    end
+        forEachScript(game, function(ch)
+            total += 1
+            local hits = scanScript(ch)
+            if #hits > 0 then
+                flagged += 1
+                results[#results+1] = "⚠  " .. ch:GetFullName()
+                for _, h in hits do
+                    results[#results+1] = "   [" .. h.sev .. "] " .. h.lbl
+                    if h.sev == "HIGH" then highCnt += 1 end
                 end
-                recurse(ch)
             end
-        end
-        recurse(game)
+        end)
 
         if #results == 0 then
             scanOut(("Scanned %d scripts — no signatures found ✓"):format(total), true)
@@ -120,16 +111,10 @@ end)
 
 BScanList.MouseButton1Click:Connect(function()
     local lines = {}; local n = 0
-    local function recurse(obj)
-        for _, ch in obj:GetChildren() do
-            if ch:IsA("LocalScript") or ch:IsA("ModuleScript") or ch:IsA("Script") then
-                n += 1
-                lines[#lines+1] = ("[%s] %s"):format(ch.ClassName, ch:GetFullName())
-            end
-            recurse(ch)
-        end
-    end
-    recurse(game)
+    forEachScript(game, function(ch)
+        n += 1
+        lines[#lines+1] = ("[%s] %s"):format(ch.ClassName, ch:GetFullName())
+    end)
     scanOut(n .. " scripts found:\n" .. table.concat(lines, "\n"), true)
 end)
 

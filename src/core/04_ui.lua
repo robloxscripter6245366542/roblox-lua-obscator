@@ -188,6 +188,32 @@ local function OUT(par, sz, pos, ph)
     return b
 end
 
+-- Single-line, timestamped status console. Returns a writer fn(msg, ok)
+-- that colours the box green on success / red on failure.
+local function statusOut(par, sz, pos, ph)
+    local box = OUT(par, sz, pos, ph)
+    return function(msg, ok)
+        box.TextColor3 = ok and C.GRN or C.RED
+        box.Text = ts() .. tostring(msg)
+    end
+end
+
+-- Remove every child of a layout container except its UIListLayout.
+local function clearLayout(container)
+    for _, ch in container:GetChildren() do
+        if not ch:IsA("UIListLayout") then ch:Destroy() end
+    end
+end
+
+-- Assign sequential LayoutOrder + a common TextSize to a row of buttons.
+local function styleRow(btns, textSize)
+    for i, b in btns do
+        b.LayoutOrder = i
+        b.TextSize    = textSize or 11
+    end
+    return btns
+end
+
 -- ScrollingFrame (auto canvas, vertical by default)
 local function SCR(par, sz, pos, barThick)
     local s = Instance.new("ScrollingFrame")
