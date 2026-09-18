@@ -23,10 +23,14 @@
       team changer, kill aura (meleeEvent), click / mouse teleport
       (RequestHere), no-collision (RequestCollisionChange), TP to nearest
       giver — the real remotes recovered from the Prison Life dump.
-  * Murder Mystery 2 (129264514977232 / 142823291)
-      auto shoot aura + silent aim (GunServer.ShootStart), knife auto-farm
-      + ranged throw (KnifeServer.SlashStart / FlingKnife), role-coloured
-      ESP — the real remotes verified in the MM2 dump.
+  * Murder Mystery 2 — auto-picks the remote scheme by PlaceId:
+      - modern (129264514977232): GunServer.ShootStart /
+        KnifeServer.SlashStart / FlingKnife.
+      - classic (142823291): Remotes.Gameplay.GunFired / KnifeThrown /
+        GetLatestPlayerData, plus auto-collect coins (CoinVisual tag).
+      Both give auto shoot aura + silent aim, knife auto-farm + ranged
+      throw, and role-aware targeting — real remotes from the MM2 dumps
+      (see MM2_ClassicDump_Deobfuscated.md).
   * Any other game
       the Universal tabs (Player / Visuals / Teleport / Server / Misc)
       still give you speed, jump, fly, noclip, infinite jump, ESP,
@@ -72,6 +76,11 @@ end
 
 local GameKey, GameName = detectGame()
 
+-- MM2 has two remote schemes: classic (142823291) uses
+-- Remotes.Gameplay.GunFired / KnifeThrown; modern (129264514977232) uses
+-- GunServer.ShootStart / KnifeServer.SlashStart on the tool.
+local MM2Variant = (game.PlaceId == 142823291) and "classic" or "modern"
+
 -- ── Config + persistence ───────────────────────────────────────────────
 local CONFIG_FILE = "Nexus_WindUI.json"
 local Config = {
@@ -113,6 +122,10 @@ local Config = {
     KnifeThrow     = false,
     ThrowRange     = 120,
     ThrowInterval  = 0.6,
+    -- mm2 classic (coins)
+    AutoCoins      = false,
+    CoinInterval   = 0.15,
+    CoinReturn     = true,
 }
 
 local function fsOk() return (writefile ~= nil) and (readfile ~= nil) and (isfile ~= nil) end
@@ -895,6 +908,79 @@ if GameKey == "MM2" then
         if h and tool and tool.Parent ~= lp.Character then pcall(function() h:EquipTool(tool) end) end
     end
 
+    -- ── Classic MM2 (142823291) remotes, recovered from the dump ──────────
+    -- ReplicatedStorage.Remotes.Gameplay.{GunFired, KnifeThrown,
+    -- GetLatestPlayerData}; coins are parts tagged "CoinVisual".
+    local CollectionService = game:GetService("CollectionService")
+    local function gameplayFolder()
+        local r = ReplicatedStorage:FindFirstChild("Remotes")
+        return r and r:FindFirstChild("Gameplay")
+    end
+    local function classicRemote(name)
+        local g = gameplayFolder()
+        local rem = g and g:FindFirstChild(name)
+        if rem then return rem end
+        -- fallback: search anywhere for a remote by that name
+        for _, d in ipairs(ReplicatedStorage:GetDescendants()) do
+            if d.Name == name and (d:IsA("RemoteEvent") or d:IsA("RemoteFunction")) then return d end
+        end
+    end
+
+    -- Unified combat: fire the gun / throw the knife at a world position,
+    -- whichever remote scheme this MM2 uses.
+    local function fireGunAt(pos)
+        if MM2Variant == "classic" then
+            local rem = classicRemote("GunFired")
+            if rem then pcall(function() rem:FireServer(pos) end) return true end
+            return false
+        else
+            local _, shoot, equipped = findGun()
+            if shoot and equipped then pcall(function() shoot:FireServer(pos) end) return true end
+            return false
+        end
+    end
+    local function throwKnifeAt(pos)
+        if MM2Variant == "classic" then
+            local rem = classicRemote("KnifeThrown")
+            if rem then pcall(function() rem:FireServer(pos) end) return true end
+            return false
+        else
+            local k = findKnifeAll()
+            if k and k.equipped and k.fling then pcall(function() k.fling:FireServer(pos) end) return true end
+            return false
+        end
+    end
+
+    -- Authoritative role for classic MM2 via GetLatestPlayerData.
+    local roleCache = {}     -- [player] = role string
+    if MM2Variant == "classic" then
+        local function refreshRoles()
+            local rf = classicRemote("GetLatestPlayerData")
+            if not rf or not rf:IsA("RemoteFunction") then return end
+            for _, p in ipairs(Players:GetPlayers()) do
+                pcall(function()
+                    local data = rf:InvokeServer(p)
+                    if type(data) == "table" and data.Role then roleCache[p] = data.Role end
+                end)
+            end
+        end
+        task.spawn(function()
+            while _G.NexusWindUIActive do
+                pcall(refreshRoles)
+                task.wait(2)
+            end
+        end)
+        local pdc = classicRemote("PlayerDataChanged")
+        if pdc and pdc:IsA("RemoteEvent") then
+            track(pdc.OnClientEvent:Connect(function() pcall(refreshRoles) end))
+        end
+    end
+    -- variant-aware murderer test (classic uses role data; modern uses the tool)
+    local function isMurdererV(p)
+        if MM2Variant == "classic" then return roleCache[p] == "Murderer" end
+        return isMurderer(p)
+    end
+
     -- round state
     local lastStatus
     local function matchActive()
@@ -929,7 +1015,7 @@ if GameKey == "MM2" then
                 if part then
                     local d = (part.Position - root.Position).Magnitude
                     if d <= Config.AuraRange then
-                        local score = d - (Config.PreferMurderer and isMurderer(p) and 100000 or 0)
+                        local score = d - (Config.PreferMurderer and isMurdererV(p) and 100000 or 0)
                         if not bestD or score < bestD then best, bestD = p, score end
                     end
                 end
@@ -976,15 +1062,18 @@ if GameKey == "MM2" then
             if not Config.AutoShoot then return end
             if Config.ShootHold and not fireHeld then return end
             if Config.GunMatchGated and not matchActive() then return end
-            local _, shoot, equipped = findGun()
-            if not (shoot and equipped) then return end
+            -- modern needs the gun tool equipped; classic fires the shared remote
+            if MM2Variant == "modern" then
+                local _, shoot, equipped = findGun()
+                if not (shoot and equipped) then return end
+            end
             local target = auraTarget()
             if not target then return end
             local part = partOf(target.Character, Config.ShootPart)
             if not part then return end
             if os.clock() - lastFire >= Config.FireInterval then
                 lastFire = os.clock()
-                shoot:FireServer(part.Position)
+                fireGunAt(part.Position)
             end
         end)
     end))
@@ -1003,7 +1092,7 @@ if GameKey == "MM2" then
                     if sp.Z > 0 then
                         local d = (Vector2.new(sp.X, sp.Y) - mouse).Magnitude
                         if d <= fovPx then
-                            local score = d - (Config.PreferMurderer and isMurderer(p) and 100000 or 0)
+                            local score = d - (Config.PreferMurderer and isMurdererV(p) and 100000 or 0)
                             if not bestScore or score < bestScore then best, bestScore = p, score end
                         end
                     end
@@ -1031,19 +1120,37 @@ if GameKey == "MM2" then
                 local args = { ... }
                 local method = getnamecallmethod()
                 if not checkcaller() and method == "FireServer" and Config.SilentAim then
-                    local gunTool, shoot = findGun()
-                    if shoot and self == shoot and typeof(args[1]) == "Vector3" then
-                        local target = nearestToMouse(Config.SilentFOV)
-                        local part = target and partOf(target.Character, Config.ShootPart)
-                        if part then args[1] = part.Position return old(self, unpack(args)) end
-                    end
-                    if Config.SilentKnife then
-                        local k = findKnifeAll()
-                        if k and k.fling and self == k.fling then
+                    if MM2Variant == "classic" then
+                        -- classic: bend Remotes.Gameplay.GunFired / KnifeThrown
+                        local gunRem = classicRemote("GunFired")
+                        if gunRem and self == gunRem and typeof(args[1]) == "Vector3" then
                             local target = nearestToMouse(Config.SilentFOV)
-                            local part = target and partOf(target.Character, "Head")
-                            if part and typeof(args[1]) == "Vector3" then
-                                args[1] = part.Position return old(self, unpack(args))
+                            local part = target and partOf(target.Character, Config.ShootPart)
+                            if part then args[1] = part.Position return old(self, unpack(args)) end
+                        end
+                        if Config.SilentKnife then
+                            local knifeRem = classicRemote("KnifeThrown")
+                            if knifeRem and self == knifeRem and typeof(args[1]) == "Vector3" then
+                                local target = nearestToMouse(Config.SilentFOV)
+                                local part = target and partOf(target.Character, "Head")
+                                if part then args[1] = part.Position return old(self, unpack(args)) end
+                            end
+                        end
+                    else
+                        local gunTool, shoot = findGun()
+                        if shoot and self == shoot and typeof(args[1]) == "Vector3" then
+                            local target = nearestToMouse(Config.SilentFOV)
+                            local part = target and partOf(target.Character, Config.ShootPart)
+                            if part then args[1] = part.Position return old(self, unpack(args)) end
+                        end
+                        if Config.SilentKnife then
+                            local k = findKnifeAll()
+                            if k and k.fling and self == k.fling then
+                                local target = nearestToMouse(Config.SilentFOV)
+                                local part = target and partOf(target.Character, "Head")
+                                if part and typeof(args[1]) == "Vector3" then
+                                    args[1] = part.Position return old(self, unpack(args))
+                                end
                             end
                         end
                     end
@@ -1064,26 +1171,52 @@ if GameKey == "MM2" then
     KnifeTab:Toggle({ Title = "Auto Equip Knife", Desc = "Keep the knife out after respawn.",
         Value = Config.AutoEquipKnife, Callback = function(v) Config.AutoEquipKnife = v queueSave() end })
 
+    -- classic: knife tool is tagged Weapon_Knife (no KnifeServer child)
+    local function findClassicKnifeTool()
+        for _, container in ipairs({ lp.Character, lp:FindFirstChildOfClass("Backpack") }) do
+            if container then
+                for _, t in ipairs(container:GetChildren()) do
+                    if t:IsA("Tool") and (CollectionService:HasTag(t, "Weapon_Knife")
+                        or t.Name:lower():find("knife")) then
+                        return t, t.Parent == lp.Character
+                    end
+                end
+            end
+        end
+    end
+
     local lastSlash, lastKnifeEquip = 0, 0
     track(RunService.Heartbeat:Connect(function()
         pcall(function()
-            local k = findKnifeAll()
-            if Config.AutoEquipKnife and k and os.clock() - lastKnifeEquip >= 0.25 then
+            if Config.AutoEquipKnife and os.clock() - lastKnifeEquip >= 0.25 then
                 lastKnifeEquip = os.clock()
-                equip(k.tool)
+                if MM2Variant == "classic" then
+                    local tool = select(1, findClassicKnifeTool())
+                    if tool then equip(tool) end
+                else
+                    local k = findKnifeAll()
+                    if k then equip(k.tool) end
+                end
             end
             if not Config.KnifeFarm then return end
-            k = findKnifeAll()
-            if not (k and k.equipped and k.slash) then return end
             local root = myRoot()
             local target = nearestPlayer(Config.KnifeRange)
             local ehrp = target and target.Character and target.Character:FindFirstChild("HumanoidRootPart")
-            if root and ehrp and not shielded(target.Character) then
-                if os.clock() - lastSlash >= Config.KnifeInterval then
-                    lastSlash = os.clock()
-                    root.CFrame = ehrp.CFrame * CFrame.new(0, 0, 2.5)
-                    k.slash:FireServer()
-                end
+            if not (root and ehrp and not shielded(target.Character)) then return end
+            if os.clock() - lastSlash < Config.KnifeInterval then return end
+            if MM2Variant == "classic" then
+                -- classic: TP close and throw the knife at them (KnifeThrown)
+                local _, equipped = findClassicKnifeTool()
+                if not equipped then return end
+                lastSlash = os.clock()
+                root.CFrame = ehrp.CFrame * CFrame.new(0, 0, 2.5)
+                throwKnifeAt(ehrp.Position)
+            else
+                local k = findKnifeAll()
+                if not (k and k.equipped and k.slash) then return end
+                lastSlash = os.clock()
+                root.CFrame = ehrp.CFrame * CFrame.new(0, 0, 2.5)
+                k.slash:FireServer()
             end
         end)
     end))
@@ -1099,18 +1232,76 @@ if GameKey == "MM2" then
     track(RunService.Heartbeat:Connect(function()
         pcall(function()
             if not Config.KnifeThrow then return end
-            local k = findKnifeAll()
-            if not (k and k.equipped and k.fling) then return end
+            if MM2Variant == "modern" then
+                local k = findKnifeAll()
+                if not (k and k.equipped and k.fling) then return end
+            end
             local target = nearestPlayer(Config.ThrowRange)
             local part = target and partOf(target.Character, "Head")
             if part and not shielded(target.Character) then
                 if os.clock() - lastThrow >= Config.ThrowInterval then
                     lastThrow = os.clock()
-                    k.fling:FireServer(part.Position)
+                    throwKnifeAt(part.Position)
                 end
             end
         end)
     end))
+
+    -- ── COINS (classic tag: CoinVisual) + ROLE ESP ────────────────────────
+    local CoinTab = Window:Tab({ Title = "Coins", Icon = "coins" })
+    CoinTab:Section({ Title = "Auto Collect" })
+    CoinTab:Toggle({ Title = "Auto Collect Coins", Desc = "Teleport onto every coin (CoinVisual tag).",
+        Value = Config.AutoCoins, Callback = function(v) Config.AutoCoins = v queueSave() end })
+    CoinTab:Slider({ Title = "Collect Interval (ms)",
+        Value = { Min = 50, Max = 1000, Default = math.floor(Config.CoinInterval * 1000) }, Step = 25,
+        Callback = function(v) Config.CoinInterval = v / 1000 queueSave() end })
+    CoinTab:Toggle({ Title = "Return After Collecting", Desc = "Snap back to your start position each pass.",
+        Value = Config.CoinReturn, Callback = function(v) Config.CoinReturn = v queueSave() end })
+
+    local lastCoin = 0
+    track(RunService.Heartbeat:Connect(function()
+        pcall(function()
+            if not Config.AutoCoins then return end
+            if os.clock() - lastCoin < Config.CoinInterval then return end
+            local root = myRoot()
+            if not root then return end
+            local coins = CollectionService:GetTagged("CoinVisual")
+            if #coins == 0 then return end
+            lastCoin = os.clock()
+            local home = root.CFrame
+            for _, coin in ipairs(coins) do
+                if coin:IsA("BasePart") and coin.Parent then
+                    local r = myRoot()
+                    if r then pcall(function() r.CFrame = CFrame.new(coin.Position) end) end
+                    task.wait()
+                end
+            end
+            if Config.CoinReturn then
+                local r = myRoot()
+                if r then pcall(function() r.CFrame = home end) end
+            end
+        end)
+    end))
+
+    CoinTab:Section({ Title = "Round" })
+    CoinTab:Paragraph({ Title = "Variant",
+        Desc = MM2Variant == "classic"
+            and "Classic MM2 (142823291): GunFired / KnifeThrown / CoinVisual."
+            or  "Modern MM2: GunServer.ShootStart / KnifeServer.SlashStart." })
+    CoinTab:Button({ Title = "Print My Role", Desc = "Check the role the server assigned you.",
+        Callback = function()
+            local role = "unknown"
+            if MM2Variant == "classic" then
+                local rf = classicRemote("GetLatestPlayerData")
+                if rf and rf:IsA("RemoteFunction") then
+                    pcall(function()
+                        local d = rf:InvokeServer(lp)
+                        if type(d) == "table" and d.Role then role = d.Role end
+                    end)
+                end
+            end
+            WindUI:Notify({ Title = "Your Role", Content = role, Duration = 4 })
+        end })
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
