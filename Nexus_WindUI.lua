@@ -267,7 +267,8 @@ do
             pcall(function()
                 local root = guiRoot()
                 for _, sg in ipairs(root:GetChildren()) do
-                    if sg:IsA("ScreenGui") and (sg.Name == "WindUI" or sg:FindFirstChild("UIElements", true) or true) then
+                    -- only WindUI's own ScreenGui, never the game's UI
+                    if sg:IsA("ScreenGui") and sg.Name:lower():find("wind") then
                         -- collect big rounded frames inside this ScreenGui
                         local candidates = {}
                         for _, f in ipairs(sg:GetDescendants()) do
@@ -294,6 +295,7 @@ do
         if #grads == 0 then return end
         local t0 = os.clock()
         track(RunService.Heartbeat:Connect(function()
+          pcall(function()
             local t = os.clock() - t0
             for i, g in ipairs(grads) do
                 if i == 1 then
@@ -304,6 +306,7 @@ do
                     g.Rotation = 115 + math.sin(t * 0.045 + 0.7) * 30
                 end
             end
+          end)
         end))
     end)
 end
@@ -430,7 +433,8 @@ do
         end
         local root = myRoot()
         if not root then return end
-        if not flying then startFly() end
+        -- (re)create the body movers if missing or left on an old character
+        if not flying or not flyBV or flyBV.Parent ~= root then startFly() end
         if not (flyBV and flyBG) then return end
         local cf = camera.CFrame
         local dir = Vector3.zero
@@ -497,11 +501,16 @@ do
         if not Config.ESPTeamColor then return Color3.fromRGB(200, 200, 210) end
         -- MM2: murderer red, else default; other games: team color
         if GameKey == "MM2" then
+            -- modern: KnifeServer tool; classic: tool tagged Weapon_Knife / named knife
+            local CS = game:GetService("CollectionService")
             local isM = false
             for _, container in ipairs({ p.Character, p:FindFirstChildOfClass("Backpack") }) do
                 if container then
                     for _, t in ipairs(container:GetChildren()) do
-                        if t:IsA("Tool") and t:FindFirstChild("KnifeServer") then isM = true break end
+                        if t:IsA("Tool") and (t:FindFirstChild("KnifeServer")
+                            or CS:HasTag(t, "Weapon_Knife") or t.Name:lower():find("knife")) then
+                            isM = true break
+                        end
                     end
                 end
             end
@@ -951,33 +960,27 @@ if GameKey == "MM2" then
         end
     end
 
-    -- Authoritative role for classic MM2 via GetLatestPlayerData.
-    local roleCache = {}     -- [player] = role string
-    if MM2Variant == "classic" then
-        local function refreshRoles()
-            local rf = classicRemote("GetLatestPlayerData")
-            if not rf or not rf:IsA("RemoteFunction") then return end
-            for _, p in ipairs(Players:GetPlayers()) do
-                pcall(function()
-                    local data = rf:InvokeServer(p)
-                    if type(data) == "table" and data.Role then roleCache[p] = data.Role end
-                end)
+    -- Murderer detection.
+    -- classic MM2's GetLatestPlayerData RemoteFunction returns the *caller's*
+    -- data (you can't ask it for another player's role), so for others we
+    -- detect the murderer by the client-visible knife: a tool tagged
+    -- "Weapon_Knife" (or named *knife*) in their character/backpack.
+    local function hasKnifeTagged(p)
+        for _, container in ipairs({ p.Character, p:FindFirstChildOfClass("Backpack") }) do
+            if container then
+                for _, t in ipairs(container:GetChildren()) do
+                    if t:IsA("Tool") and (CollectionService:HasTag(t, "Weapon_Knife")
+                        or t.Name:lower():find("knife")) then
+                        return true
+                    end
+                end
             end
         end
-        task.spawn(function()
-            while _G.NexusWindUIActive do
-                pcall(refreshRoles)
-                task.wait(2)
-            end
-        end)
-        local pdc = classicRemote("PlayerDataChanged")
-        if pdc and pdc:IsA("RemoteEvent") then
-            track(pdc.OnClientEvent:Connect(function() pcall(refreshRoles) end))
-        end
+        return false
     end
-    -- variant-aware murderer test (classic uses role data; modern uses the tool)
+    -- variant-aware murderer test (classic: knife tag; modern: KnifeServer tool)
     local function isMurdererV(p)
-        if MM2Variant == "classic" then return roleCache[p] == "Murderer" end
+        if MM2Variant == "classic" then return hasKnifeTagged(p) end
         return isMurderer(p)
     end
 
@@ -1259,27 +1262,34 @@ if GameKey == "MM2" then
         Value = Config.CoinReturn, Callback = function(v) Config.CoinReturn = v queueSave() end })
 
     local lastCoin = 0
+    local collectingCoins = false
     track(RunService.Heartbeat:Connect(function()
-        pcall(function()
-            if not Config.AutoCoins then return end
-            if os.clock() - lastCoin < Config.CoinInterval then return end
-            local root = myRoot()
-            if not root then return end
-            local coins = CollectionService:GetTagged("CoinVisual")
-            if #coins == 0 then return end
-            lastCoin = os.clock()
-            local home = root.CFrame
-            for _, coin in ipairs(coins) do
-                if coin:IsA("BasePart") and coin.Parent then
-                    local r = myRoot()
-                    if r then pcall(function() r.CFrame = CFrame.new(coin.Position) end) end
-                    task.wait()
+        if collectingCoins then return end          -- a pass is still running
+        if not Config.AutoCoins then return end
+        if os.clock() - lastCoin < Config.CoinInterval then return end
+        local root = myRoot()
+        if not root then return end
+        local coins = CollectionService:GetTagged("CoinVisual")
+        if #coins == 0 then return end
+        collectingCoins = true
+        task.spawn(function()
+            pcall(function()
+                local home = root.CFrame
+                for _, coin in ipairs(coins) do
+                    if not Config.AutoCoins then break end
+                    if coin:IsA("BasePart") and coin.Parent then
+                        local r = myRoot()
+                        if r then pcall(function() r.CFrame = CFrame.new(coin.Position) end) end
+                        task.wait()
+                    end
                 end
-            end
-            if Config.CoinReturn then
-                local r = myRoot()
-                if r then pcall(function() r.CFrame = home end) end
-            end
+                if Config.CoinReturn then
+                    local r = myRoot()
+                    if r then pcall(function() r.CFrame = home end) end
+                end
+            end)
+            lastCoin = os.clock()
+            collectingCoins = false
         end)
     end))
 
@@ -1326,7 +1336,10 @@ InfoTab:Button({
     Callback = function()
         _G.NexusWindUIActive = false
         for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
-        pcall(function() Window:Destroy() end)
+        -- WindUI versions differ: try Close then Destroy
+        if not pcall(function() Window:Close() end) then
+            pcall(function() Window:Destroy() end)
+        end
     end,
 })
 
