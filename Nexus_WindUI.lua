@@ -126,6 +126,13 @@ local Config = {
     AutoCoins      = false,
     CoinInterval   = 0.15,
     CoinReturn     = true,
+    -- mm2 role-aware auto farm
+    AutoFarm       = false,
+    FarmRange      = 300,
+    FarmInterval   = 0.35,
+    FarmAutoEquip  = true,
+    FarmMatchGated = false,
+    FarmCoins      = true,
 }
 
 local function fsOk() return (writefile ~= nil) and (readfile ~= nil) and (isfile ~= nil) end
@@ -1246,6 +1253,120 @@ if GameKey == "MM2" then
                     lastThrow = os.clock()
                     throwKnifeAt(part.Position)
                 end
+            end
+        end)
+    end))
+
+    -- ── AUTO FARM (role-aware: kills as murderer OR sheriff) ──────────────
+    -- One toggle that reads which weapon you hold and farms accordingly:
+    --   knife  -> teleport to the nearest player and slash / throw
+    --   gun    -> shoot the nearest player (murderer prioritised)
+    -- Falls back to grabbing the nearest coin when there is no target.
+    local AutoFarmTab = Window:Tab({ Title = "Auto Farm", Icon = "swords" })
+    AutoFarmTab:Section({ Title = "Play the round for me" })
+    AutoFarmTab:Toggle({ Title = "Auto Farm", Desc = "Auto-kill with whatever weapon you're holding.",
+        Value = Config.AutoFarm, Callback = function(v) Config.AutoFarm = v queueSave() end })
+    AutoFarmTab:Slider({ Title = "Farm Range (studs)",
+        Value = { Min = 20, Max = 500, Default = Config.FarmRange }, Step = 10,
+        Callback = function(v) Config.FarmRange = v queueSave() end })
+    AutoFarmTab:Slider({ Title = "Farm Interval (ms)",
+        Value = { Min = 50, Max = 1000, Default = math.floor(Config.FarmInterval * 1000) }, Step = 25,
+        Callback = function(v) Config.FarmInterval = v / 1000 queueSave() end })
+    AutoFarmTab:Toggle({ Title = "Auto Equip Weapon", Desc = "Keep your weapon out (re-equips after respawn).",
+        Value = Config.FarmAutoEquip, Callback = function(v) Config.FarmAutoEquip = v queueSave() end })
+    AutoFarmTab:Toggle({ Title = "Only During Round", Desc = "Pause between rounds.",
+        Value = Config.FarmMatchGated, Callback = function(v) Config.FarmMatchGated = v queueSave() end })
+    AutoFarmTab:Toggle({ Title = "Grab Coins When Idle", Desc = "Collect the nearest coin when there's no target.",
+        Value = Config.FarmCoins, Callback = function(v) Config.FarmCoins = v queueSave() end })
+
+    -- client-visible weapon in my own hands/backpack (both variants)
+    local function myGunTool()
+        if MM2Variant == "modern" then return (findGun()) end
+        for _, container in ipairs({ lp.Character, lp:FindFirstChildOfClass("Backpack") }) do
+            if container then
+                for _, t in ipairs(container:GetChildren()) do
+                    if t:IsA("Tool") and (CollectionService:HasTag(t, "Weapon_Gun")
+                        or t.Name:lower():find("gun")) then return t end
+                end
+            end
+        end
+    end
+    local function myKnifeTool()
+        if MM2Variant == "modern" then local k = findKnifeAll() return k and k.tool end
+        return (findClassicKnifeTool())
+    end
+
+    local lastFarm = 0
+    track(RunService.Heartbeat:Connect(function()
+        pcall(function()
+            if not Config.AutoFarm then return end
+            if Config.FarmMatchGated and not matchActive() then return end
+            local root = myRoot()
+            if not root then return end
+
+            local knife = myKnifeTool()
+            local gun   = myGunTool()
+
+            if Config.FarmAutoEquip then
+                if knife then equip(knife) elseif gun then equip(gun) end
+            end
+            if os.clock() - lastFarm < Config.FarmInterval then return end
+
+            -- choose a target: as a shooter, prefer the murderer
+            local target
+            if gun and not knife then
+                local best, bestScore
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= lp and p.Character and alive(p.Character) and not shielded(p.Character) then
+                        local part = partOf(p.Character, Config.ShootPart)
+                        if part then
+                            local d = (part.Position - root.Position).Magnitude
+                            if d <= Config.FarmRange then
+                                local score = d - (isMurdererV(p) and 100000 or 0)
+                                if not bestScore or score < bestScore then best, bestScore = p, score end
+                            end
+                        end
+                    end
+                end
+                target = best
+            else
+                target = nearestPlayer(Config.FarmRange)
+            end
+
+            -- no one to kill: grab the nearest coin instead
+            if not target then
+                if Config.FarmCoins then
+                    local best, bestD
+                    for _, c in ipairs(CollectionService:GetTagged("CoinVisual")) do
+                        if c:IsA("BasePart") and c.Parent then
+                            local d = (c.Position - root.Position).Magnitude
+                            if not bestD or d < bestD then best, bestD = c, d end
+                        end
+                    end
+                    if best then
+                        lastFarm = os.clock()
+                        pcall(function() root.CFrame = CFrame.new(best.Position) end)
+                    end
+                end
+                return
+            end
+
+            local ehrp = target.Character:FindFirstChild("HumanoidRootPart")
+            if not ehrp or shielded(target.Character) then return end
+            lastFarm = os.clock()
+
+            if knife then
+                pcall(function() root.CFrame = ehrp.CFrame * CFrame.new(0, 0, 2.5) end)
+                if MM2Variant == "modern" then
+                    local k = findKnifeAll()
+                    if k and k.equipped and k.slash then pcall(function() k.slash:FireServer() end)
+                    else throwKnifeAt(ehrp.Position) end
+                else
+                    throwKnifeAt(ehrp.Position)
+                end
+            elseif gun then
+                local part = partOf(target.Character, Config.ShootPart)
+                if part then fireGunAt(part.Position) end
             end
         end)
     end))
