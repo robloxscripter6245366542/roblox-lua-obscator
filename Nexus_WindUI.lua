@@ -1587,6 +1587,23 @@ if GameKey == "Plus1Forge" then
     -- Only the ones that affect YOUR OWN save are exposed here — never
     -- KickPlayerRE (targets other players) or DestroyDataRE (wipes data).
     local DevTab = Window:Tab({ Title = "Forge: Dev", Icon = "flask-conical" })
+    DevTab:Section({ Title = "Access check" })
+    DevTab:Button({ Title = "Am I a Dev?", Desc = "Invoke IsDevRF for your account — tells you if the Dev tab will do anything.",
+        Callback = function()
+            local ok, res = pfFire("IsDevRF")
+            local isDev
+            if type(res) == "boolean" then isDev = res
+            elseif type(res) == "table" then isDev = res.IsDev or res.isDev or res[1] end
+            local msg
+            if not ok then msg = "IsDevRF not found / errored"
+            elseif isDev == true then msg = "YES — you're a dev. The Dev tab will work."
+            elseif isDev == false or isDev == nil then msg = "No — normal account. Dev remotes will no-op."
+            else msg = "IsDevRF returned: " .. tostring(res) end
+            print("[Nexus] IsDevRF ->", res)
+            WindUI:Notify({ Title = "Am I a Dev?", Content = msg, Duration = 6,
+                Icon = (isDev == true) and "check" or "info" })
+        end })
+
     DevTab:Section({ Title = "Currency  (AddAnyEcoRE)" })
     local ecoType, ecoAmt = "Coin", 1000000
     DevTab:Dropdown({ Title = "Currency", Values = { "Coin", "Diamond", "Gold", "Power", "Points", "Ore" },
