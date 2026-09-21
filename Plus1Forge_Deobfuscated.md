@@ -85,9 +85,12 @@ for a descendant of that name, so it works regardless of the exact subfolder.
   `ExitDungeonRE`, `DungeonGiveUpBE`.
 
 ### Dev-gated (server checks `IsDevRF` — will reject normal players)
-- `AddAnyEcoRE`, `AddAnyFunnelRE`, `AddFunnelWithPemRE`, `ResetEcoRE`,
-  `KickPlayerRE`, `DestroyDataRE`. Listed for completeness; not exposed as
-  headline features because the server rejects them for non-devs.
+- Currency / stats (self-affecting): `AddAnyEcoRE`, `AddAnyFunnelRE`,
+  `AddFunnelWithPemRE`, `SetStatsRE`, `AddStatsRE`, `DelStatsRE`, `ResetEcoRE`.
+  These are wired in the **Forge: Dev** tab (best-effort args). On a normal
+  account the server's `IsDevRF` check makes them no-ops.
+- **Not wired** (harm others / destructive): `KickPlayerRE` (kicks other
+  players), `DestroyDataRE` (wipes data). Documented only.
 
 ## What Nexus wires from this
 

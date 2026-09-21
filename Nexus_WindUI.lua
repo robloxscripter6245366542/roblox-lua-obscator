@@ -1581,6 +1581,62 @@ if GameKey == "Plus1Forge" then
         pcall(function() pfFire("ForgeRF") end)
     end))
 
+    -- ── DEV REMOTES (self-affecting; server-gated by IsDevRF) ─────────────
+    -- These are the dump's admin remotes. On a live server they're checked
+    -- against IsDevRF, so for a normal account they'll simply do nothing.
+    -- Only the ones that affect YOUR OWN save are exposed here — never
+    -- KickPlayerRE (targets other players) or DestroyDataRE (wipes data).
+    local DevTab = Window:Tab({ Title = "Forge: Dev", Icon = "flask-conical" })
+    DevTab:Section({ Title = "Currency  (AddAnyEcoRE)" })
+    local ecoType, ecoAmt = "Coin", 1000000
+    DevTab:Dropdown({ Title = "Currency", Values = { "Coin", "Diamond", "Gold", "Power", "Points", "Ore" },
+        Value = "Coin", Callback = function(v) ecoType = v end })
+    DevTab:Input({ Title = "Amount", Placeholder = "1000000",
+        Callback = function(v) ecoAmt = tonumber(v) or ecoAmt end })
+    DevTab:Button({ Title = "Add Currency", Desc = "AddAnyEcoRE(type, amount) - best-effort.",
+        Callback = function()
+            -- try (type, amount); fall back to (amount, type)
+            pfFire("AddAnyEcoRE", ecoType, ecoAmt)
+            pfFire("AddAnyEcoRE", ecoAmt, ecoType)
+            WindUI:Notify({ Title = "Dev", Content = ("Tried +%s %s"):format(tostring(ecoAmt), ecoType), Duration = 4 })
+        end })
+    DevTab:Button({ Title = "Add Funnel", Desc = "AddAnyFunnelRE / AddFunnelWithPemRE(type, amount).",
+        Callback = function()
+            pfFire("AddAnyFunnelRE", ecoType, ecoAmt)
+            pfFire("AddFunnelWithPemRE", ecoType, ecoAmt)
+        end })
+
+    DevTab:Section({ Title = "Stats  (SetStatsRE / AddStatsRE)" })
+    local statName, statVal = "Power", 1000000
+    DevTab:Dropdown({ Title = "Stat", Values = { "Power", "STR", "Attack", "Damage", "Luck", "Speed", "Stamina", "End" },
+        Value = "Power", Callback = function(v) statName = v end })
+    DevTab:Input({ Title = "Value", Placeholder = "1000000",
+        Callback = function(v) statVal = tonumber(v) or statVal end })
+    DevTab:Button({ Title = "Set Stat", Desc = "SetStatsRE(stat, value) - best-effort.",
+        Callback = function()
+            pfFire("SetStatsRE", statName, statVal)
+            pfFire("SetStatsRE", statVal, statName)
+            WindUI:Notify({ Title = "Dev", Content = ("Set %s = %s"):format(statName, tostring(statVal)), Duration = 4 })
+        end })
+    DevTab:Button({ Title = "Add Stat", Desc = "AddStatsRE(stat, value) - best-effort.",
+        Callback = function()
+            pfFire("AddStatsRE", statName, statVal)
+            pfFire("AddStatsRE", statVal, statName)
+        end })
+
+    DevTab:Section({ Title = "Danger" })
+    DevTab:Button({ Title = "Reset Economy (self)", Desc = "ResetEcoRE - resets YOUR economy. Use with care.",
+        Callback = function()
+            pfFire("ResetEcoRE")
+            WindUI:Notify({ Title = "Dev", Content = "ResetEcoRE fired", Duration = 4, Icon = "alert-triangle" })
+        end })
+    DevTab:Paragraph({ Title = "Heads up",
+        Desc = "These are the game's own dev/admin remotes. A live server checks "
+            .. "IsDevRF before honouring them, so on a normal account they do nothing "
+            .. "(the calls fail silently). Argument order is a best-effort guess from "
+            .. "the dump - if a button seems ignored, use Forge: Remotes to try other "
+            .. "arg shapes. Only self-affecting remotes are here by design." })
+
     -- ── DIAGNOSTICS / REMOTE RUNNER ──────────────────────────────────────
     local DiagTab = Window:Tab({ Title = "Forge: Remotes", Icon = "terminal" })
     DiagTab:Section({ Title = "Remote runner (drive any remote)" })
