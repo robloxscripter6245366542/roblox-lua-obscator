@@ -65,12 +65,14 @@ _G.NexusWindUIActive = true
 local GAMES = {
     PrisonLife = { [155615604] = true, [135564683255158] = true },
     MM2        = { [129264514977232] = true, [142823291] = true },
+    Plus1Forge = { [118805555015549] = true },
 }
 
 local function detectGame()
     local id = game.PlaceId
     if GAMES.PrisonLife[id] then return "PrisonLife", "Prison Life" end
     if GAMES.MM2[id]        then return "MM2",        "Murder Mystery 2" end
+    if GAMES.Plus1Forge[id] then return "Plus1Forge", "Plus 1 Forge" end
     return "Universal", "Universal"
 end
 
@@ -133,6 +135,15 @@ local Config = {
     FarmAutoEquip  = true,
     FarmMatchGated = false,
     FarmCoins      = true,
+    -- plus 1 forge
+    PFAutoTrain    = false,
+    PFTrainInterval= 0.1,
+    PFAutoRebirth  = false,
+    PFAutoLuck     = false,
+    PFAutoUpgrade  = false,
+    PFAutoSell     = false,
+    PFAutoForge    = false,
+    PFLoopInterval = 1.0,
 }
 
 local function fsOk() return (writefile ~= nil) and (readfile ~= nil) and (isfile ~= nil) end
@@ -1436,6 +1447,233 @@ if GameKey == "MM2" then
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
+--  PLUS 1 FORGE  (118805555015549) — forge / train / rebirth simulator
+--  Remotes live under ReplicatedStorage.Remote, resolved by name.
+--  See Plus1Forge_Deobfuscated.md for the full map.
+-- ═══════════════════════════════════════════════════════════════════════
+if GameKey == "Plus1Forge" then
+    -- resolve a remote by name anywhere under ReplicatedStorage.Remote
+    -- (then anywhere in ReplicatedStorage), regardless of subfolder layout.
+    local function pfRemote(name)
+        local root = ReplicatedStorage:FindFirstChild("Remote") or ReplicatedStorage
+        local r = root:FindFirstChild(name, true)
+        if r and (r:IsA("RemoteEvent") or r:IsA("RemoteFunction")) then return r end
+        for _, d in ipairs(ReplicatedStorage:GetDescendants()) do
+            if d.Name == name and (d:IsA("RemoteEvent") or d:IsA("RemoteFunction")) then return d end
+        end
+    end
+    -- fire / invoke a remote by name; returns ok, result
+    local function pfFire(name, ...)
+        local r = pfRemote(name)
+        if not r then return false, "not found: " .. name end
+        if r:IsA("RemoteFunction") then
+            local ok, res = pcall(function(...) return r:InvokeServer(...) end, ...)
+            return ok, res
+        else
+            local args = { ... }
+            pcall(function() r:FireServer(table.unpack(args)) end)
+            return true
+        end
+    end
+
+    -- ── TRAIN ──────────────────────────────────────────────────────────────
+    local TrainTab = Window:Tab({ Title = "Forge: Train", Icon = "dumbbell" })
+    TrainTab:Section({ Title = "Auto Train" })
+    TrainTab:Toggle({ Title = "Auto Train", Desc = "Spam TrainOnceRF to train non-stop.",
+        Value = Config.PFAutoTrain, Callback = function(v) Config.PFAutoTrain = v queueSave() end })
+    TrainTab:Slider({ Title = "Train Interval (ms)",
+        Value = { Min = 30, Max = 1000, Default = math.floor(Config.PFTrainInterval * 1000) }, Step = 10,
+        Callback = function(v) Config.PFTrainInterval = v / 1000 queueSave() end })
+    TrainTab:Button({ Title = "Enter Auto-Train Area", Desc = "Fire IntoAutoTrainRE.",
+        Callback = function() pfFire("IntoAutoTrainRE") WindUI:Notify({ Title = "Train", Content = "IntoAutoTrainRE", Duration = 3 }) end })
+    TrainTab:Button({ Title = "Exit Auto-Train Area",
+        Callback = function() pfFire("ExitAutoTrainRE") end })
+
+    local lastTrain = 0
+    track(RunService.Heartbeat:Connect(function()
+        if not Config.PFAutoTrain then return end
+        if os.clock() - lastTrain < Config.PFTrainInterval then return end
+        lastTrain = os.clock()
+        pcall(function() pfFire("TrainOnceRF") end)
+    end))
+
+    -- ── AUTO FARM ────────────────────────────────────────────────────────
+    local FarmTab = Window:Tab({ Title = "Forge: Farm", Icon = "repeat" })
+    FarmTab:Section({ Title = "Auto loops (no-arg remotes)" })
+    FarmTab:Toggle({ Title = "Auto Rebirth", Desc = "Fire RebirthRE / TryRebirthRE.",
+        Value = Config.PFAutoRebirth, Callback = function(v) Config.PFAutoRebirth = v queueSave() end })
+    FarmTab:Toggle({ Title = "Auto Luck Roll", Desc = "Fire LuckOnceRE.",
+        Value = Config.PFAutoLuck, Callback = function(v) Config.PFAutoLuck = v queueSave() end })
+    FarmTab:Toggle({ Title = "Auto Upgrade", Desc = "Fire UpgradeOnceRE.",
+        Value = Config.PFAutoUpgrade, Callback = function(v) Config.PFAutoUpgrade = v queueSave() end })
+    FarmTab:Toggle({ Title = "Auto Sell All", Desc = "Fire TrySellAllRE.",
+        Value = Config.PFAutoSell, Callback = function(v) Config.PFAutoSell = v queueSave() end })
+    FarmTab:Slider({ Title = "Loop Interval (ms)",
+        Value = { Min = 200, Max = 5000, Default = math.floor(Config.PFLoopInterval * 1000) }, Step = 100,
+        Callback = function(v) Config.PFLoopInterval = v / 1000 queueSave() end })
+
+    FarmTab:Section({ Title = "Claim everything" })
+    FarmTab:Button({ Title = "Claim All Rewards", Desc = "Fire every claim remote once.",
+        Callback = function()
+            for _, n in ipairs({ "TryClaimRE", "TryClaimOfflineRewardRE", "TryClaimLevelRewardRF",
+                "TryClaimIndexExpRF", "TryClaimUPDRewardRE", "TryClaimDailyDunTicRE", "ClaimedAllOreRE" }) do
+                pfFire(n)
+            end
+            WindUI:Notify({ Title = "Claim", Content = "Fired all claim remotes", Duration = 3 })
+        end })
+
+    FarmTab:Section({ Title = "Codes" })
+    local codeInput = ""
+    FarmTab:Input({ Title = "Code", Placeholder = "enter a code",
+        Callback = function(v) codeInput = v end })
+    FarmTab:Button({ Title = "Redeem Code", Desc = "InvokeServer TryUseCodeRF.",
+        Callback = function()
+            if codeInput == "" then return end
+            local ok = pfFire("TryUseCodeRF", codeInput)
+            WindUI:Notify({ Title = "Code", Content = ok and ("sent: " .. codeInput) or "failed", Duration = 4 })
+        end })
+
+    local lastLoop = 0
+    track(RunService.Heartbeat:Connect(function()
+        if os.clock() - lastLoop < Config.PFLoopInterval then return end
+        lastLoop = os.clock()
+        pcall(function()
+            if Config.PFAutoRebirth then pfFire("RebirthRE") pfFire("TryRebirthRE") end
+            if Config.PFAutoLuck    then pfFire("LuckOnceRE") end
+            if Config.PFAutoUpgrade then pfFire("UpgradeOnceRE") end
+            if Config.PFAutoSell    then pfFire("TrySellAllRE") end
+        end)
+    end))
+
+    -- ── FORGE / EQUIP / ABILITIES (modify your sword permanently) ─────────
+    local GearTab = Window:Tab({ Title = "Forge: Gear", Icon = "sword" })
+    GearTab:Section({ Title = "Weapon (persists server-side)" })
+    GearTab:Button({ Title = "Equip Best Weapon", Desc = "GetMyBestRF -> ChangeEquipedIndexRE.",
+        Callback = function()
+            local ok, best = pfFire("GetMyBestRF")
+            -- best shape unknown; try common fields, else just poke ChangeEquipedIndexRE
+            local idx = (type(best) == "table" and (best.Index or best.index or best[1])) or best
+            pfFire("ChangeEquipedIndexRE", idx)
+            WindUI:Notify({ Title = "Equip", Content = "Tried equip best (" .. tostring(idx) .. ")", Duration = 4 })
+        end })
+    local slotIdx = 1
+    GearTab:Slider({ Title = "Equip Slot Index",
+        Value = { Min = 1, Max = 50, Default = 1 }, Step = 1,
+        Callback = function(v) slotIdx = v end })
+    GearTab:Button({ Title = "Change Equipped Weapon", Desc = "ChangeEquipedIndexRE(slot).",
+        Callback = function()
+            pfFire("ChangeEquipedIndexRE", slotIdx)
+            WindUI:Notify({ Title = "Equip", Content = "Slot " .. slotIdx, Duration = 3 })
+        end })
+
+    GearTab:Section({ Title = "Forge & enchant" })
+    GearTab:Toggle({ Title = "Auto Forge", Desc = "Spam ForgeRF (best-effort args).",
+        Value = Config.PFAutoForge, Callback = function(v) Config.PFAutoForge = v queueSave() end })
+    GearTab:Button({ Title = "Forge Once", Callback = function() pfFire("ForgeRF") end })
+    GearTab:Button({ Title = "Enchant Equipped", Desc = "EnchantRE (best-effort).",
+        Callback = function() pfFire("EnchantRE") end })
+
+    local lastForge = 0
+    track(RunService.Heartbeat:Connect(function()
+        if not Config.PFAutoForge then return end
+        if os.clock() - lastForge < 0.5 then return end
+        lastForge = os.clock()
+        pcall(function() pfFire("ForgeRF") end)
+    end))
+
+    -- ── DEV REMOTES (self-affecting; server-gated by IsDevRF) ─────────────
+    -- These are the dump's admin remotes. On a live server they're checked
+    -- against IsDevRF, so for a normal account they'll simply do nothing.
+    -- Only the ones that affect YOUR OWN save are exposed here — never
+    -- KickPlayerRE (targets other players) or DestroyDataRE (wipes data).
+    local DevTab = Window:Tab({ Title = "Forge: Dev", Icon = "flask-conical" })
+    DevTab:Section({ Title = "Currency  (AddAnyEcoRE)" })
+    local ecoType, ecoAmt = "Coin", 1000000
+    DevTab:Dropdown({ Title = "Currency", Values = { "Coin", "Diamond", "Gold", "Power", "Points", "Ore" },
+        Value = "Coin", Callback = function(v) ecoType = v end })
+    DevTab:Input({ Title = "Amount", Placeholder = "1000000",
+        Callback = function(v) ecoAmt = tonumber(v) or ecoAmt end })
+    DevTab:Button({ Title = "Add Currency", Desc = "AddAnyEcoRE(type, amount) - best-effort.",
+        Callback = function()
+            -- try (type, amount); fall back to (amount, type)
+            pfFire("AddAnyEcoRE", ecoType, ecoAmt)
+            pfFire("AddAnyEcoRE", ecoAmt, ecoType)
+            WindUI:Notify({ Title = "Dev", Content = ("Tried +%s %s"):format(tostring(ecoAmt), ecoType), Duration = 4 })
+        end })
+    DevTab:Button({ Title = "Add Funnel", Desc = "AddAnyFunnelRE / AddFunnelWithPemRE(type, amount).",
+        Callback = function()
+            pfFire("AddAnyFunnelRE", ecoType, ecoAmt)
+            pfFire("AddFunnelWithPemRE", ecoType, ecoAmt)
+        end })
+
+    DevTab:Section({ Title = "Stats  (SetStatsRE / AddStatsRE)" })
+    local statName, statVal = "Power", 1000000
+    DevTab:Dropdown({ Title = "Stat", Values = { "Power", "STR", "Attack", "Damage", "Luck", "Speed", "Stamina", "End" },
+        Value = "Power", Callback = function(v) statName = v end })
+    DevTab:Input({ Title = "Value", Placeholder = "1000000",
+        Callback = function(v) statVal = tonumber(v) or statVal end })
+    DevTab:Button({ Title = "Set Stat", Desc = "SetStatsRE(stat, value) - best-effort.",
+        Callback = function()
+            pfFire("SetStatsRE", statName, statVal)
+            pfFire("SetStatsRE", statVal, statName)
+            WindUI:Notify({ Title = "Dev", Content = ("Set %s = %s"):format(statName, tostring(statVal)), Duration = 4 })
+        end })
+    DevTab:Button({ Title = "Add Stat", Desc = "AddStatsRE(stat, value) - best-effort.",
+        Callback = function()
+            pfFire("AddStatsRE", statName, statVal)
+            pfFire("AddStatsRE", statVal, statName)
+        end })
+
+    DevTab:Section({ Title = "Danger" })
+    DevTab:Button({ Title = "Reset Economy (self)", Desc = "ResetEcoRE - resets YOUR economy. Use with care.",
+        Callback = function()
+            pfFire("ResetEcoRE")
+            WindUI:Notify({ Title = "Dev", Content = "ResetEcoRE fired", Duration = 4, Icon = "alert-triangle" })
+        end })
+    DevTab:Paragraph({ Title = "Heads up",
+        Desc = "These are the game's own dev/admin remotes. A live server checks "
+            .. "IsDevRF before honouring them, so on a normal account they do nothing "
+            .. "(the calls fail silently). Argument order is a best-effort guess from "
+            .. "the dump - if a button seems ignored, use Forge: Remotes to try other "
+            .. "arg shapes. Only self-affecting remotes are here by design." })
+
+    -- ── DIAGNOSTICS / REMOTE RUNNER ──────────────────────────────────────
+    local DiagTab = Window:Tab({ Title = "Forge: Remotes", Icon = "terminal" })
+    DiagTab:Section({ Title = "Remote runner (drive any remote)" })
+    local rrName, rrArg = "", ""
+    DiagTab:Input({ Title = "Remote Name", Placeholder = "e.g. TrainOnceRF",
+        Callback = function(v) rrName = v end })
+    DiagTab:Input({ Title = "Arg (optional)", Placeholder = "number or text",
+        Callback = function(v) rrArg = v end })
+    DiagTab:Button({ Title = "Fire / Invoke", Desc = "Send the named remote with the arg.",
+        Callback = function()
+            if rrName == "" then return end
+            local arg = tonumber(rrArg)
+            if arg == nil and rrArg ~= "" then arg = rrArg end
+            local ok, res = pfFire(rrName, arg)
+            WindUI:Notify({ Title = rrName, Content = ok and ("ok " .. tostring(res)) or tostring(res), Duration = 5 })
+        end })
+    DiagTab:Section({ Title = "Discovery" })
+    DiagTab:Button({ Title = "Print Remote Tree", Desc = "List every remote under ReplicatedStorage.Remote (F9 console).",
+        Callback = function()
+            local root = ReplicatedStorage:FindFirstChild("Remote") or ReplicatedStorage
+            local n = 0
+            for _, d in ipairs(root:GetDescendants()) do
+                if d:IsA("RemoteEvent") or d:IsA("RemoteFunction") then
+                    n = n + 1
+                    print(("[Nexus] %s  (%s)  %s"):format(d.Name, d.ClassName, d:GetFullName()))
+                end
+            end
+            WindUI:Notify({ Title = "Remotes", Content = n .. " remotes printed to console (F9)", Duration = 5 })
+        end })
+    DiagTab:Paragraph({ Title = "Note",
+        Desc = "Remote argument shapes couldn't be read from the bytecode dump. "
+            .. "No-arg loops (train / rebirth / luck / sell / claim) are reliable; "
+            .. "forge / equip / stats take best-effort args — use the runner + tree "
+            .. "to confirm exact names and args in-game." })
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
 --  INFO
 -- ═══════════════════════════════════════════════════════════════════════
 local InfoTab = Window:Tab({ Title = "Info", Icon = "info" })
@@ -1448,8 +1686,8 @@ InfoTab:Paragraph({
     Title = "About",
     Desc = "Nexus rebuilt on WindUI with an animated Granite dark theme. "
         .. "Universal player, visual, teleport and server tools work in every game; "
-        .. "Prison Life and Murder Mystery 2 get dedicated tabs driven by the real "
-        .. "remotes from their dumps. Config auto-saves.",
+        .. "Prison Life, Murder Mystery 2 and Plus 1 Forge get dedicated tabs driven "
+        .. "by the real remotes from their dumps. Config auto-saves.",
 })
 InfoTab:Button({
     Title = "Unload Nexus",
