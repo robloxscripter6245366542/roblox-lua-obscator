@@ -325,6 +325,69 @@ function detectFps(v){
   });
 }
 
+// Capture frames by PLAYING the video and grabbing each presented frame.
+// This is the reliable path on iPad/iPhone Safari, where seeking a hidden
+// video frame-by-frame often never fires `seeked`. Works on desktop too.
+function captureByPlayback(v, ow, oh, ctx, lut, opts, dur){
+  return new Promise((resolve, reject) => {
+    const frames = [];
+    let blank = 0, last = -Infinity, stopped = false, count = 0;
+    const strideT = opts.fps > 0 ? 1/opts.fps : 0;   // 0 = keep every frame
+    const grab = () => {
+      ctx.drawImage(v, 0, 0, ow, oh);
+      const data = ctx.getImageData(0, 0, ow, oh).data;
+      let nz = false;
+      for (let p=3; p<data.length; p+=4*97){ if (data[p-3]||data[p-2]||data[p-1]){ nz = true; break; } }
+      if (!nz) blank++;
+      frames.push(b64(encodeFrame(data, ow*oh, lut)));
+    };
+    const finish = () => {
+      if (stopped) return; stopped = true;
+      try { v.pause(); } catch(e){}
+      resolve({ frames, blank });
+    };
+    const onFrame = (now, meta) => {
+      if (stopped) return;
+      const t = (meta && typeof meta.mediaTime === "number") ? meta.mediaTime : v.currentTime;
+      if (strideT === 0 || t >= last + strideT - 1e-4){
+        last = t; grab(); count++;
+        progress(dur>0 ? Math.min(1, t/dur) : 0, `Capturing frame ${count}  (${ow}×${oh})`);
+        if (opts.maxFrames > 0 && frames.length >= opts.maxFrames){ finish(); return; }
+      }
+      v.requestVideoFrameCallback(onFrame);
+    };
+    v.addEventListener("ended", finish, { once: true });
+    try { v.currentTime = 0; } catch(e){}
+    v.requestVideoFrameCallback(onFrame);
+    v.play().catch(() => { if (!stopped){ stopped = true; reject(new Error(
+      "Safari blocked playback for capture. Tap Convert to Lua again, or try an .mp4.")); } });
+    // Safety: stop after the clip's real length + slack if `ended` misfires.
+    setTimeout(finish, (dur > 0 ? dur * 1000 + 4000 : 60000));
+  });
+}
+
+// Capture by seeking to each frame time — exact, for browsers without
+// requestVideoFrameCallback.
+async function captureBySeek(v, ow, oh, ctx, lut, fps, dur, opts){
+  const frames = []; let blank = 0;
+  let total = dur > 0 ? Math.floor(dur * fps) : (opts.maxFrames || 1);
+  if (opts.maxFrames>0) total = Math.min(total, opts.maxFrames);
+  total = Math.max(1, total);
+  for (let i=0;i<total;i++){
+    await seekTo(v, i/fps);
+    ctx.drawImage(v, 0, 0, ow, oh);
+    const data = ctx.getImageData(0, 0, ow, oh).data;
+    let nz = false;
+    for (let p=3; p<data.length; p+=4*97){ if (data[p-3]||data[p-2]||data[p-1]){ nz = true; break; } }
+    if (!nz) blank++;
+    frames.push(b64(encodeFrame(data, ow*oh, lut)));
+    if (i % 2 === 0 || i === total-1)
+      progress(i/total, `Encoding frame ${i+1} / ${total}  (${ow}×${oh} @ ${fps}fps)`);
+    if (i % 4 === 0) await new Promise(r=>setTimeout(r));
+  }
+  return { frames, blank };
+}
+
 // quantize a single channel value to `levels` steps
 function makeQuant(levels){
   if (levels >= 256) return null;
@@ -389,11 +452,7 @@ async function convert(){
     if (!v.videoWidth || !v.videoHeight)
       throw new Error("The video has no visible track this browser can read.");
 
-    let fps = opts.fps;
-    if (fps <= 0){ progress(0, "Detecting frame rate…"); fps = await detectFps(v); }
-    if (!(fps > 0)) fps = 30;
-
-    progress(0, "Reading duration…");
+    progress(0, "Reading video…");
     await ensureDuration(v);
     const dur = isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
 
@@ -407,28 +466,21 @@ async function convert(){
     const cv = $("cv"); cv.width = ow; cv.height = oh;
     const ctx = cv.getContext("2d", { willReadFrequently: true });
     $("preview").style.display = "block";
-
     const lut = makeQuant(opts.colors);
-    let total = dur > 0 ? Math.floor(dur * fps) : (opts.maxFrames || 0);
-    if (opts.maxFrames>0) total = Math.min(total, opts.maxFrames);
-    total = Math.max(1, total);
 
-    const frames = [];
-    let rawBytes = 0, blank = 0;
-    for (let i=0;i<total;i++){
-      await seekTo(v, i/fps);
-      ctx.drawImage(v, 0, 0, ow, oh);
-      const data = ctx.getImageData(0, 0, ow, oh).data;
-      // Detect an all-black/blank frame (decoder not ready) so we can warn.
-      let nz = false;
-      for (let p=3; p<data.length; p+=4*97){ if (data[p-3]||data[p-2]||data[p-1]){ nz = true; break; } }
-      if (!nz) blank++;
-      const enc = encodeFrame(data, ow*oh, lut);
-      rawBytes += enc.length;
-      frames.push(b64(enc));
-      if (i % 2 === 0 || i === total-1)
-        progress(i/total, `Encoding frame ${i+1} / ${total}  (${ow}×${oh} @ ${fps}fps)`);
-      if (i % 4 === 0) await new Promise(r=>setTimeout(r)); // keep UI responsive
+    // Choose a capture strategy. Playback capture is reliable on iPad/iPhone
+    // (where seeking a hidden video is flaky) and works on desktop too; fall
+    // back to seek-based only where requestVideoFrameCallback is missing.
+    let frames, blank, fps;
+    if ("requestVideoFrameCallback" in HTMLVideoElement.prototype){
+      const r = await captureByPlayback(v, ow, oh, ctx, lut, opts, dur);
+      frames = r.frames; blank = r.blank;
+      fps = opts.fps > 0 ? opts.fps
+          : (dur > 0 ? Math.max(1, Math.min(60, Math.round(frames.length / dur))) : 30);
+    } else {
+      fps = opts.fps > 0 ? opts.fps : 30;
+      const r = await captureBySeek(v, ow, oh, ctx, lut, fps, dur, opts);
+      frames = r.frames; blank = r.blank;
     }
     destroyVideo(v);
 
