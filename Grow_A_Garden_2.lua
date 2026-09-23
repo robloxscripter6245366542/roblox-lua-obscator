@@ -440,6 +440,7 @@ do
 				pad(list, 8, 8, 0, 8)
 				new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = list })
 				local rows = {}
+				local rowsCount = #values
 				local function fireCb()
 					if not c.Callback then return end
 					if multi then
@@ -457,24 +458,40 @@ do
 						tw(row, { BackgroundColor3 = on and C.AccentLo or C.Bg })
 					end
 				end
-				for i, val in ipairs(values) do
-					local row = new("TextButton", { Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = selected[val] and C.AccentLo or C.Bg,
-						Text = "  " .. tostring(val), Font = FONT, TextSize = 12, TextColor3 = C.Text,
-						TextXAlignment = Enum.TextXAlignment.Left, AutoButtonColor = false, LayoutOrder = i, Parent = list })
-					corner(row, 6)
-					rows[val] = row
-					row.MouseButton1Click:Connect(function()
-						if multi then
-							selected[val] = not selected[val] or nil
-						else
-							local was = selected[val]
-							for k in pairs(selected) do selected[k] = nil end
-							if not (was and c.AllowNone) then selected[val] = true end
-						end
-						refresh(); fireCb()
-					end)
+				local function rebuild(newValues)
+					if newValues then
+						values = newValues
+						local valid = {}
+						for _, v in ipairs(values) do valid[v] = true end
+						for k in pairs(selected) do if not valid[k] then selected[k] = nil end end
+					end
+					for _, row in pairs(rows) do row:Destroy() end
+					rows = {}
+					for i, val in ipairs(values) do
+						local row = new("TextButton", { Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = selected[val] and C.AccentLo or C.Bg,
+							Text = "  " .. tostring(val), Font = FONT, TextSize = 12, TextColor3 = C.Text,
+							TextXAlignment = Enum.TextXAlignment.Left, AutoButtonColor = false, LayoutOrder = i, Parent = list })
+						corner(row, 6)
+						rows[val] = row
+						row.MouseButton1Click:Connect(function()
+							if multi then
+								selected[val] = not selected[val] or nil
+							else
+								local was = selected[val]
+								for k in pairs(selected) do selected[k] = nil end
+								if not (was and c.AllowNone) then selected[val] = true end
+							end
+							refresh(); fireCb()
+						end)
+					end
+					rowsCount = #values
+					if open then
+						f.Size = UDim2.new(1, 0, 0, 40 + rowsCount * 30 + 8)
+						list.Size = UDim2.new(1, 0, 0, rowsCount * 30)
+					end
+					refresh()
 				end
-				local rowsCount = #values
+				rebuild()
 				header.MouseButton1Click:Connect(function()
 					open = not open
 					local h = open and (40 + rowsCount * 30 + 8) or 40
@@ -482,7 +499,12 @@ do
 					tw(list, { Size = UDim2.new(1, 0, 0, open and (rowsCount * 30) or 0) }, TIs)
 					tw(arrow, { Rotation = open and 180 or 0 })
 				end)
-				return { Set = function(_, t) end }
+				-- :Set(newValues) rebuilds the option list; :Select(val)/:Clear() manage selection.
+				return {
+					Set = function(_, newValues) rebuild(newValues) end,
+					Select = function(_, val) if not multi then for k in pairs(selected) do selected[k] = nil end end selected[val] = true; refresh() end,
+					Clear = function(_) for k in pairs(selected) do selected[k] = nil end refresh() end,
+				}
 			end
 
 			return Tab
@@ -1817,6 +1839,168 @@ RemoteTab:Input({ Title = "Run Cmdr command", Placeholder = "e.g. help",
 		end)
 		WindUI:Notify({ Title = "Cmdr", Content = ok and ("Ran: " .. text) or "Command blocked / no access", Icon = "terminal", Duration = 4 })
 	end })
+
+--============================================================--
+--  TAB: Teleports (players + server hop)
+--============================================================--
+local TpTab = Window:Tab({ Title = "Teleports", Icon = "plane" })
+TpTab:Section({ Title = "Players" })
+local function playerNames()
+	local names = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer then names[#names + 1] = p.Name end
+	end
+	table.sort(names)
+	return names
+end
+State.tpTarget = nil
+local playerDrop = TpTab:Dropdown({ Title = "Select player", Values = playerNames(), Value = nil, AllowNone = true,
+	Callback = function(v) State.tpTarget = (type(v) == "table") and v[1] or v end })
+TpTab:Button({ Title = "Refresh player list", Callback = function()
+	pcall(function() playerDrop:Set(playerNames()) end)
+	WindUI:Notify({ Title = "Players", Content = ("%d others online"):format(#playerNames()), Icon = "users", Duration = 3 })
+end })
+TpTab:Button({ Title = "Teleport to selected", Callback = function()
+	local _, hrp = getCharacter()
+	local tp = State.tpTarget and Players:FindFirstChild(State.tpTarget)
+	local thrp = tp and tp.Character and tp.Character:FindFirstChild("HumanoidRootPart")
+	if hrp and thrp then hrp.CFrame = thrp.CFrame + Vector3.new(0, 4, 0)
+	else WindUI:Notify({ Title = "Teleport", Content = "Player not found", Icon = "map-pin", Duration = 3 }) end
+end })
+State.spectate, State.spectateReset = false, nil
+TpTab:Toggle({ Title = "Spectate selected", Value = false,
+	Callback = function(on)
+		State.spectate = on
+		local cam = Workspace.CurrentCamera
+		if on then
+			local tp = State.tpTarget and Players:FindFirstChild(State.tpTarget)
+			if tp and tp.Character and tp.Character:FindFirstChildOfClass("Humanoid") then
+				State.spectateReset = cam.CameraSubject
+				cam.CameraSubject = tp.Character:FindFirstChildOfClass("Humanoid")
+			end
+		else
+			local char = LocalPlayer.Character
+			cam.CameraSubject = (char and char:FindFirstChildOfClass("Humanoid")) or State.spectateReset
+		end
+	end })
+
+TpTab:Section({ Title = "Server" })
+TpTab:Button({ Title = "Rejoin server", Callback = function()
+	pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer) end)
+end })
+TpTab:Button({ Title = "Server Hop (new server)", Desc = "Finds another public server and teleports.",
+	Callback = function()
+		WindUI:Notify({ Title = "Server Hop", Content = "Searching for a server…", Icon = "globe", Duration = 3 })
+		task.spawn(function()
+			local ok, body = pcall(function()
+				return game:HttpGetAsync("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")
+			end)
+			if not ok or not body then WindUI:Notify({ Title = "Server Hop", Content = "Server list unavailable", Icon = "triangle-alert", Duration = 4 }); return end
+			local HttpService = game:GetService("HttpService")
+			local dec = select(2, pcall(function() return HttpService:JSONDecode(body) end))
+			if not dec or not dec.data then WindUI:Notify({ Title = "Server Hop", Content = "Could not parse servers", Icon = "triangle-alert", Duration = 4 }); return end
+			for _, s in ipairs(dec.data) do
+				if type(s) == "table" and s.playing and s.maxPlayers and s.playing < s.maxPlayers and s.id ~= game.JobId then
+					pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LocalPlayer) end)
+					return
+				end
+			end
+			WindUI:Notify({ Title = "Server Hop", Content = "No open server found", Icon = "map-pin", Duration = 4 })
+		end)
+	end })
+
+--============================================================--
+--  TAB: Performance
+--============================================================--
+local PerfTab = Window:Tab({ Title = "Performance", Icon = "sparkles" })
+PerfTab:Section({ Title = "FPS" })
+local fpsPara = PerfTab:Paragraph({ Title = "Live FPS / Ping", Desc = "Measuring…" })
+do
+	local frames, last = 0, os.clock()
+	RunService.RenderStepped:Connect(function() frames += 1 end)
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			local now = os.clock()
+			local fps = math.floor(frames / (now - last) + 0.5)
+			frames, last = 0, now
+			local ping = "?"
+			pcall(function()
+				local stat = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]
+				ping = math.floor(stat:GetValue()) .. "ms"
+			end)
+			pcall(function() fpsPara:SetDesc(("FPS: %d   •   Ping: %s"):format(fps, ping)) end)
+		end
+	end)
+end
+
+PerfTab:Section({ Title = "Boost" })
+State.fpsBoost = false
+local boostConn
+local function applyBoost(root)
+	for _, d in ipairs(root:GetDescendants()) do
+		pcall(function()
+			if d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Smoke") or d:IsA("Fire") or d:IsA("Sparkles") then
+				d.Enabled = false
+			elseif d:IsA("BasePart") then
+				d.Material = Enum.Material.SmoothPlastic; d.Reflectance = 0
+			elseif d:IsA("Decal") or d:IsA("Texture") then
+				d.Transparency = 1
+			elseif d:IsA("PostEffect") then
+				d.Enabled = false
+			end
+		end)
+	end
+end
+PerfTab:Toggle({ Title = "FPS Boost", Desc = "Strips particles/textures/effects (visual downgrade).", Value = false,
+	Callback = function(on)
+		State.fpsBoost = on
+		if on then
+			pcall(function()
+				Lighting.GlobalShadows = false; Lighting.FogEnd = 1e9
+				local t = Workspace:FindFirstChildOfClass("Terrain")
+				if t then t.WaterWaveSize = 0; t.WaterWaveSpeed = 0; t.WaterReflectance = 0; t.Decoration = false end
+			end)
+			applyBoost(Workspace); applyBoost(Lighting)
+			if not boostConn then
+				boostConn = Workspace.DescendantAdded:Connect(function(d)
+					if not State.fpsBoost then return end
+					task.defer(function()
+						pcall(function()
+							if d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Smoke") or d:IsA("Fire") then d.Enabled = false
+							elseif d:IsA("BasePart") then d.Material = Enum.Material.SmoothPlastic end
+						end)
+					end)
+				end)
+			end
+			WindUI:Notify({ Title = "Performance", Content = "FPS Boost applied", Icon = "sparkles", Duration = 3 })
+		else
+			if boostConn then boostConn:Disconnect(); boostConn = nil end
+			WindUI:Notify({ Title = "Performance", Content = "Boost off (rejoin to fully restore visuals)", Icon = "refresh-cw", Duration = 4 })
+		end
+	end })
+
+PerfTab:Section({ Title = "Connection" })
+State.autoReconnect = false
+PerfTab:Toggle({ Title = "Auto-Reconnect on disconnect", Value = false,
+	Callback = function(on) State.autoReconnect = on end })
+do
+	local gs = game:GetService("GuiService")
+	local ok = pcall(function() return gs.ErrorMessageChanged end)
+	if ok then
+		gs.ErrorMessageChanged:Connect(function()
+			if State.autoReconnect then
+				task.wait(1)
+				pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer) end)
+				pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end)
+			end
+		end)
+	end
+end
+
+-- keep the Teleports player dropdown fresh as players join/leave
+Players.PlayerAdded:Connect(function() pcall(function() playerDrop:Set(playerNames()) end) end)
+Players.PlayerRemoving:Connect(function() task.defer(function() pcall(function() playerDrop:Set(playerNames()) end) end) end)
 
 --============================================================--
 --  TAB: Settings
