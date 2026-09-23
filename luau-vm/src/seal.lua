@@ -3,15 +3,20 @@
 -- the build-time GraniteCipher payload has been decoded to proto tables.
 --
 -- Each proto's instruction array is packed into per-instruction encrypted slices
--- and the plaintext `code` table is dropped. vm.lua then decodes exactly ONE
--- instruction at a time, immediately before executing it. Consequences:
---   * Streamed execution — the whole plaintext instruction stream is never
---     resident; only the current instruction exists, as a short-lived local the
---     GC reclaims (best-effort "memory scrubbing" in a managed runtime).
+-- and the plaintext `code` table is dropped. vm.lua decodes each instruction the
+-- FIRST time its pc executes and caches the result (sealed.cache), so a hot loop
+-- pays the keystream math once, not per iteration. Consequences:
+--   * Encrypted at rest — in the emitted bundle and until first use, the
+--     instruction stream exists only as opaque encrypted bytes, not an
+--     easy-to-inspect {op=,a=,b=} mirror. Dead/never-taken code stays encrypted.
+--   * Lazy decode — only instructions that actually run are ever decrypted; the
+--     decoded form is then cached for the proto's lifetime (a deliberate
+--     speed/secrecy trade: re-decoding every step was pathologically slow and
+--     bought little, since a dynamic attacker sees decoded memory regardless).
 --   * Ephemeral session key — the key is derived at RUNTIME (per execution), so
---     the in-memory encrypted form differs every run; a memory dump is unstable.
---   * Compact representation — instructions live as opaque encrypted bytes, not
---     an easy-to-inspect {op=,a=,b=} mirror.
+--     the encrypted bytes on disk/in the bundle differ every run.
+-- This is NOT a defense against a dynamic attacker who runs the script; its job
+-- is to defeat a static dump of the bundle and to keep unused code encrypted.
 --
 -- Additive keystream over a GraniteRNG-style split-multiply LCG (products < 2^53,
 -- exact on Luau/Lua doubles, no bit library); per-instruction seeds give random

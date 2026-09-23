@@ -71,6 +71,22 @@ local function safeStrip(src)
   return src
 end
 
+-- Per-build POLYMORPHIC VM: rewrite a runtime module so its local identifiers
+-- differ every build (globals / require / stdlib untouched), so a generic
+-- devirtualizer keyed to one build's readable VM source does not transfer.
+-- Falls back to plain comment-stripping if the mutate/verify path is anything
+-- but perfectly clean — the emitted VM is never allowed to be broken.
+local function mutateSrc(name, src, rng)
+  local ok, out = pcall(function()
+    return require('mutate').mutate(src, rng, name)
+  end)
+  if ok and type(out) == 'string' then
+    local chunk = (loadstring or load)(out)
+    if chunk then return out end
+  end
+  return safeStrip(src)
+end
+
 -- Per-build fresh identifier generator: `_` + 5 chars from [a-z0-9]. The leading
 -- underscore + lowercase means a name can never collide with a Lua keyword, a
 -- stdlib global (string/math/table/...), `_ENV`/`_G`, or `require`, so the
@@ -206,10 +222,14 @@ function M.bundle(src, runtimeSrc, chunkName, opts)
   parts[#parts + 1] = 'local function require(n) if ' .. N.mcache .. '[n]==nil then '
     .. N.mcache .. '[n]=' .. N.mreg .. '[n]() end return ' .. N.mcache .. '[n] end'
   parts[#parts + 1] = junkStmt(g, rng)
+  -- independent prng for VM mutation so it doesn't disturb the main stream
+  local mrng = Harden.prng((seed + 3266489917) % 4294967296)
+  local mutateVM = not (opts and opts.mutateVM == false)
   for _, name in ipairs(order) do
     local s = runtimeSrc[name]
     if not s then error('webbundle: missing runtime source for ' .. name) end
-    parts[#parts + 1] = N.mreg .. "['" .. name .. "']=function()\n" .. safeStrip(s) .. '\nend'
+    local body = mutateVM and mutateSrc(name, s, mrng) or safeStrip(s)
+    parts[#parts + 1] = N.mreg .. "['" .. name .. "']=function()\n" .. body .. '\nend'
     if rng.int(2) == 0 then parts[#parts + 1] = junkStmt(g, rng) end
   end
   for _ = 1, rng.int(3) + 2 do parts[#parts + 1] = junkStmt(g, rng) end
