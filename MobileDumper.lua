@@ -126,30 +126,67 @@ local http_request_fn = (syn and syn.request) or (http and http.request)
                         or rawget(ENV, "http_request") or http_request
                         or (fluxus and fluxus.request) or request
 
--- Upload text to a paste host and return a raw link. Uses a multipart POST
--- to 0x0.st, whose response body IS the direct raw URL. All pcall-guarded.
+-- Upload text to a paste host and return a raw link. Tries 0x0.st first
+-- (multipart; it 403s requests with no User-Agent, so we send one), then a
+-- hastebin-style host as a fallback. All pcall-guarded; the error string
+-- carries the HTTP status so failures are diagnosable.
 local function uploadPaste(text)
     if not http_request_fn then return nil, "no http request function on this executor" end
-    local boundary = "----MobileDump" .. tostring(math.random(100000, 999999))
-    local body = table.concat({
-        "--" .. boundary,
-        'Content-Disposition: form-data; name="file"; filename="dump.txt"',
-        "Content-Type: text/plain", "", text,
-        "--" .. boundary .. "--", "",
-    }, "\r\n")
-    local ok, res = pcall(http_request_fn, {
-        Url = CONFIG.UploadUrl, Method = "POST",
-        Headers = { ["Content-Type"] = "multipart/form-data; boundary=" .. boundary },
-        Body = body,
-    })
-    if not ok then return nil, tostring(res) end
-    local b = res and (res.Body or res.body)
-    if type(b) == "string" then
-        local url = b:match("(https?://%S+)")
-        if url then return url end
-        return nil, "unexpected response: " .. b:sub(1, 120)
+    local UA = "Mozilla/5.0 (MobileDumper)"
+    local errs = {}
+
+    local function post(opts)
+        local ok, res = pcall(http_request_fn, opts)
+        if not ok then return nil, "request error: " .. tostring(res) end
+        local code = res and (res.StatusCode or res.status_code or res.Status)
+        local b = res and (res.Body or res.body)
+        return b, code
     end
-    return nil, "no response body"
+
+    -- Host 1: 0x0.st — multipart form, response body is the raw URL.
+    do
+        local boundary = "----MobileDump" .. tostring(math.random(100000, 999999))
+        local body = table.concat({
+            "--" .. boundary,
+            'Content-Disposition: form-data; name="file"; filename="dump.txt"',
+            "Content-Type: text/plain", "", text,
+            "--" .. boundary .. "--", "",
+        }, "\r\n")
+        local b, code = post({
+            Url = "https://0x0.st", Method = "POST",
+            Headers = { ["Content-Type"] = "multipart/form-data; boundary=" .. boundary, ["User-Agent"] = UA },
+            Body = body,
+        })
+        if type(b) == "string" then
+            local url = b:match("(https?://[%w%./%-_]+)")
+            if url and (not code or code < 300) then return url end
+            errs[#errs + 1] = ("0x0.st [%s]: %s"):format(tostring(code), b:sub(1, 80))
+        else
+            errs[#errs + 1] = "0x0.st: " .. tostring(code or b)
+        end
+    end
+
+    -- Host 2: hastebin-style — POST raw body, JSON {"key":...}, raw at /raw/<key>.
+    for _, host in ipairs({ "https://pastes.dev/post", "https://hst.sh", "https://hastebin.com" }) do
+        local b, code = post({
+            Url = host .. (host:find("pastes.dev") and "" or "/documents"),
+            Method = "POST",
+            Headers = { ["Content-Type"] = "text/plain", ["User-Agent"] = UA },
+            Body = text,
+        })
+        if type(b) == "string" then
+            local key = b:match('"key"%s*:%s*"([%w%._%-]+)"') or b:match('"id"%s*:%s*"([%w%._%-]+)"')
+            if key and (not code or code < 300) then
+                if host:find("pastes.dev") then return "https://pastes.dev/" .. key end
+                return host .. "/raw/" .. key
+            end
+            errs[#errs + 1] = ("%s [%s]: %s"):format(host, tostring(code), b:sub(1, 60))
+        else
+            errs[#errs + 1] = host .. ": " .. tostring(code or b)
+        end
+    end
+
+    return nil, table.concat(errs, " | ")
 end
 
 if not writefile_fn then
