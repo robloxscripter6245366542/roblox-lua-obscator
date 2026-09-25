@@ -66,6 +66,7 @@ local GAMES = {
     PrisonLife = { [155615604] = true, [135564683255158] = true },
     MM2        = { [129264514977232] = true, [142823291] = true },
     Plus1Forge = { [118805555015549] = true },
+    DonateGame = { [76653273729321] = true },
 }
 
 local function detectGame()
@@ -73,6 +74,7 @@ local function detectGame()
     if GAMES.PrisonLife[id] then return "PrisonLife", "Prison Life" end
     if GAMES.MM2[id]        then return "MM2",        "Murder Mystery 2" end
     if GAMES.Plus1Forge[id] then return "Plus1Forge", "Plus 1 Forge" end
+    if GAMES.DonateGame[id] then return "DonateGame", "Donation Game" end
     return "Universal", "Universal"
 end
 
@@ -144,6 +146,10 @@ local Config = {
     PFAutoSell     = false,
     PFAutoForge    = false,
     PFLoopInterval = 1.0,
+    -- donation game (quests / coins)
+    DGAutoQuest    = false,
+    DGAutoCoins    = false,
+    DGQuestInterval= 0.5,
 }
 
 local function fsOk() return (writefile ~= nil) and (readfile ~= nil) and (isfile ~= nil) end
@@ -1688,6 +1694,122 @@ if GameKey == "Plus1Forge" then
             .. "No-arg loops (train / rebirth / luck / sell / claim) are reliable; "
             .. "forge / equip / stats take best-effort args — use the runner + tree "
             .. "to confirm exact names and args in-game." })
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  DONATION GAME  (76653273729321) — PLS-DONATE-style
+--  Only the self-affecting in-game features: quests, coins, giftbux claims.
+--  NOT wired: ClientGifting / StartTransferDonation (real-Robux donations),
+--  FakeRobux / RobuxEvent effects (they move no balance and exist only to
+--  make other real players think a donation happened).
+-- ═══════════════════════════════════════════════════════════════════════
+if GameKey == "DonateGame" then
+    local function dgRemote(name)
+        local root = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
+        local r = root:FindFirstChild(name, true)
+        if r and (r:IsA("RemoteEvent") or r:IsA("RemoteFunction")) then return r end
+        for _, d in ipairs(ReplicatedStorage:GetDescendants()) do
+            if d.Name == name and (d:IsA("RemoteEvent") or d:IsA("RemoteFunction")) then return d end
+        end
+    end
+    local function dgFire(name, ...)
+        local r = dgRemote(name)
+        if not r then return false end
+        if r:IsA("RemoteFunction") then
+            local ok = pcall(function(...) return r:InvokeServer(...) end, ...)
+            return ok
+        else
+            local a = { ... }
+            pcall(function() r:FireServer(table.unpack(a)) end)
+            return true
+        end
+    end
+    -- fire a ProximityPrompt regardless of distance (executor helper)
+    local function fireProx(p)
+        if typeof(fireproximityprompt) == "function" then pcall(fireproximityprompt, p) end
+    end
+    -- every quest/coin ProximityPrompt in the world (quest coins carry prompts)
+    local function coinPrompts()
+        local out = {}
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") then
+                local par = d.Parent
+                local n = (par and par.Name or "") .. " " .. tostring(d.Name)
+                if n:lower():find("coin") or n:lower():find("quest") then out[#out + 1] = d end
+            end
+        end
+        return out
+    end
+
+    local QuestTab = Window:Tab({ Title = "Donate: Quests", Icon = "scroll" })
+    QuestTab:Section({ Title = "Auto Quest" })
+    QuestTab:Toggle({ Title = "Auto Quest", Desc = "Accept, collect quest coins, and claim on a loop.",
+        Value = Config.DGAutoQuest, Callback = function(v) Config.DGAutoQuest = v queueSave() end })
+    QuestTab:Slider({ Title = "Quest Interval (ms)",
+        Value = { Min = 100, Max = 3000, Default = math.floor(Config.DGQuestInterval * 1000) }, Step = 50,
+        Callback = function(v) Config.DGQuestInterval = v / 1000 queueSave() end })
+    QuestTab:Button({ Title = "Accept Nearest Quest", Desc = "Fire the QuestGiver prompt / AcceptQuest.",
+        Callback = function()
+            dgFire("AcceptQuest")
+            local qg = workspace:FindFirstChild("QuestGiver", true)
+            if qg then
+                for _, d in ipairs(qg:GetDescendants()) do
+                    if d:IsA("ProximityPrompt") then fireProx(d) end
+                end
+            end
+            WindUI:Notify({ Title = "Quest", Content = "Accept fired", Duration = 3 })
+        end })
+    QuestTab:Button({ Title = "Claim Quest", Callback = function() dgFire("ClaimQuest") end })
+
+    QuestTab:Section({ Title = "Coins & rewards" })
+    QuestTab:Toggle({ Title = "Auto Collect Coins", Desc = "Fire every quest-coin prompt (lets the game collect them).",
+        Value = Config.DGAutoCoins, Callback = function(v) Config.DGAutoCoins = v queueSave() end })
+    QuestTab:Button({ Title = "Claim All Rewards", Desc = "ClaimReward / ClaimBooth once.",
+        Callback = function()
+            dgFire("ClaimReward")
+            dgFire("ClaimBooth")
+            WindUI:Notify({ Title = "Rewards", Content = "Claim fired", Duration = 3 })
+        end })
+
+    local lastQuest, lastCoin = 0, 0
+    track(RunService.Heartbeat:Connect(function()
+        pcall(function()
+            if (Config.DGAutoCoins or Config.DGAutoQuest) and os.clock() - lastCoin >= 0.2 then
+                lastCoin = os.clock()
+                for _, p in ipairs(coinPrompts()) do fireProx(p) end
+            end
+            if Config.DGAutoQuest and os.clock() - lastQuest >= Config.DGQuestInterval then
+                lastQuest = os.clock()
+                dgFire("AcceptQuest")
+                local qg = workspace:FindFirstChild("QuestGiver", true)
+                if qg then
+                    for _, d in ipairs(qg:GetDescendants()) do
+                        if d:IsA("ProximityPrompt") then fireProx(d) end
+                    end
+                end
+                dgFire("ClaimQuest")
+                dgFire("ClaimReward")
+            end
+        end)
+    end))
+
+    QuestTab:Section({ Title = "Advanced" })
+    local dgRRName = ""
+    QuestTab:Input({ Title = "Remote Name", Placeholder = "e.g. ClaimQuest",
+        Callback = function(v) dgRRName = v end })
+    QuestTab:Button({ Title = "Fire Remote", Desc = "Drive any remote under ReplicatedStorage.Remotes.",
+        Callback = function()
+            if dgRRName ~= "" then
+                local ok = dgFire(dgRRName)
+                WindUI:Notify({ Title = dgRRName, Content = ok and "fired" or "not found", Duration = 4 })
+            end
+        end })
+    QuestTab:Paragraph({ Title = "What's not here (and why)",
+        Desc = "This tab only automates YOUR quests/coins/reward claims — the server "
+            .. "still validates every claim, so it can't be inflated. Real-Robux "
+            .. "donations (ClientGifting) and the fake-robux effects are deliberately "
+            .. "left out: you can't mint real Robux, and the fake ones only exist to "
+            .. "mislead other players." })
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
