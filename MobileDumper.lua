@@ -143,6 +143,32 @@ local function uploadPaste(text)
         return b, code
     end
 
+    -- Host 0: catbox.moe — resolves on Delta, handles big files (200 MB), and
+    -- its response body is the direct file URL. Best for a multi-MB dump.
+    do
+        local boundary = "----MobileDump" .. tostring(math.random(100000, 999999))
+        local body = table.concat({
+            "--" .. boundary,
+            'Content-Disposition: form-data; name="reqtype"', "", "fileupload",
+            "--" .. boundary,
+            'Content-Disposition: form-data; name="fileToUpload"; filename="dump.txt"',
+            "Content-Type: text/plain", "", text,
+            "--" .. boundary .. "--", "",
+        }, "\r\n")
+        local b, code = post({
+            Url = "https://catbox.moe/user/api.php", Method = "POST",
+            Headers = { ["Content-Type"] = "multipart/form-data; boundary=" .. boundary, ["User-Agent"] = UA },
+            Body = body,
+        })
+        if type(b) == "string" then
+            local url = b:match("(https?://[%w%./%-_]+)")
+            if url and (not code or code < 300) then return url end
+            errs[#errs + 1] = ("catbox [%s]: %s"):format(tostring(code), b:sub(1, 80))
+        else
+            errs[#errs + 1] = "catbox: " .. tostring(code or b)
+        end
+    end
+
     -- Host 1: 0x0.st — multipart form, response body is the raw URL.
     do
         local boundary = "----MobileDump" .. tostring(math.random(100000, 999999))
