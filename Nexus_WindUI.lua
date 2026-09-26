@@ -1934,6 +1934,73 @@ if GameKey == "CloneBuild" then
             .. "ONLY for game admins — on a normal account they no-op (nothing to bypass; "
             .. "it's a server-side permission check). 'Assign All Clones' and the universal "
             .. "WalkSpeed (Player tab) work for everyone." })
+
+    -- ── ADVANCED BUILDING TOOLS (F3X: Move / Resize / Rotate) ─────────────
+    -- The game's builder is a Tool "CloneBuildersF3X" enabled via the
+    -- WorldPicking attribute + the Workshop remote. The "Advanced" tier is a
+    -- gamepass (Pass_Advanced) checked with UserOwnsGamePassAsync.
+    local BuildTab = Window:Tab({ Title = "Clones: Build", Icon = "hammer" })
+
+    local function findBuildTool()
+        for _, c in ipairs({ lp.Character, lp:FindFirstChildOfClass("Backpack") }) do
+            if c then
+                for _, t in ipairs(c:GetChildren()) do
+                    if t:IsA("Tool") and (t.Name:find("F3X") or t.Name:lower():find("build")) then
+                        return t
+                    end
+                end
+            end
+        end
+    end
+
+    BuildTab:Section({ Title = "Builder" })
+    BuildTab:Button({ Title = "Equip Build Tool", Desc = "Find & equip CloneBuildersF3X (Move / Resize / Rotate).",
+        Callback = function()
+            local tool = findBuildTool()
+            local h = myHum()
+            if tool and h then
+                pcall(function() h:EquipTool(tool) end)
+                WindUI:Notify({ Title = "Build", Content = "Equipped " .. tool.Name, Duration = 4 })
+            else
+                WindUI:Notify({ Title = "Build", Content = "Build tool not found in backpack", Duration = 4, Icon = "alert-triangle" })
+            end
+        end })
+    BuildTab:Button({ Title = "Open Build Tools", Desc = "Enable world-picking + open the Workshop tools.",
+        Callback = function()
+            pcall(function() lp:SetAttribute("WorldPicking", true) end)
+            pcall(function() lp:SetAttribute("BuildInspectorEnabled", true) end)
+            cbFire("Workshop", "OpenTools")
+            cbFire("Workshop", { Action = "OpenTools" })
+            WindUI:Notify({ Title = "Build", Content = "World-picking on + OpenTools fired", Duration = 4 })
+        end })
+    BuildTab:Button({ Title = "Close Build Tools",
+        Callback = function()
+            pcall(function() lp:SetAttribute("WorldPicking", false) end)
+            pcall(function() lp:SetAttribute("BuildInspectorEnabled", false) end)
+            cbFire("Workshop", "CloseTools")
+        end })
+
+    BuildTab:Section({ Title = "Vehicle / ride tuning" })
+    local vMax = 100
+    BuildTab:Slider({ Title = "Max Speed",
+        Value = { Min = 10, Max = 500, Default = 100 }, Step = 10,
+        Callback = function(v) vMax = v end })
+    BuildTab:Button({ Title = "Tune Vehicle", Desc = "TuneVehicle -> MaxSpeed (best-effort).",
+        Callback = function()
+            cbFire("TuneVehicle", { MaxSpeed = vMax })
+            cbFire("TuneVehicle", vMax)
+            WindUI:Notify({ Title = "Vehicle", Content = "MaxSpeed " .. vMax, Duration = 3 })
+        end })
+
+    BuildTab:Section({ Title = "Clone assignment" })
+    BuildTab:Button({ Title = "Reassign All Clones", Callback = function() cbFire("ReassignAll") end })
+    BuildTab:Button({ Title = "Unassign All Clones", Callback = function() cbFire("Unassign") cbFire("ReassignAll", false) end })
+    BuildTab:Paragraph({ Title = "Advanced builder note",
+        Desc = "Move / Resize / Rotate come from the equipped CloneBuildersF3X tool. "
+            .. "The 'Advanced' precision tier is a gamepass (Pass_Advanced) the server "
+            .. "checks — basic building works for everyone; advanced needs the pass. Use "
+            .. "the Clones: Admin remote runner / Print Remote Tree if a button's arg "
+            .. "shape needs adjusting in-game." })
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
