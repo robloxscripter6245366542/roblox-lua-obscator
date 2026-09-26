@@ -29,14 +29,15 @@ local CONFIG = {
     FillTransparency = 0.75,                        -- 1 = outline only, lower = more fill
     OutlineTransparency = 0,
     MaxDistance      = 0,                            -- 0 = unlimited, else studs from you
+    ShowName         = true,                          -- name tag above each player
 }
 
 -- ==================== STATE ====================
--- NOTE: Roblox only renders a limited number of Highlight instances at once
--- (~31). In a very busy server the extra targets' outlines may silently not
--- draw. Outline-only mode keeps things clean; if you ever need a guaranteed
--- marker past that cap again, ask for the name/dot tag back.
+-- The name tag uses a BillboardGui (AlwaysOnTop). Besides showing the name,
+-- it also isn't subject to the ~31 Highlight render cap, so players still show
+-- a marker in a busy server even when their outline can't be drawn.
 local highlights = {}   -- [player] = Highlight
+local markers    = {}   -- [player] = BillboardGui (name tag)
 local running    = true
 
 -- ==================== HELPERS ====================
@@ -83,6 +84,19 @@ local function removeHighlight(player)
     end
 end
 
+local function removeMarker(player)
+    local m = markers[player]
+    if m then
+        m:Destroy()
+        markers[player] = nil
+    end
+end
+
+local function removeESP(player)
+    removeHighlight(player)
+    removeMarker(player)
+end
+
 local function ensureHighlight(player, character, col)
     local h = highlights[player]
     -- Recreate if missing, destroyed, or now on a new (respawned) character.
@@ -102,6 +116,45 @@ local function ensureHighlight(player, character, col)
     h.OutlineTransparency = CONFIG.OutlineTransparency
 end
 
+-- Name tag above the head, coloured to match the player's team (same as the
+-- outline): blue-team players get a blue name, red-team a red name, etc.
+local function ensureMarker(player, character, col)
+    local root = getRootPart(character)
+    if not root then
+        removeMarker(player)
+        return
+    end
+
+    local m = markers[player]
+    if not m or m.Adornee ~= root or m.Parent == nil then
+        removeMarker(player)
+        m = Instance.new("BillboardGui")
+        m.Name = "UniversalESP_Tag"
+        m.AlwaysOnTop = true                 -- through walls; not capped like Highlight
+        m.Size = UDim2.fromOffset(200, 20)
+        m.StudsOffset = Vector3.new(0, 3, 0) -- float above the head
+        m.Adornee = root
+        m.Parent  = root
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Name = "Name"
+        lbl.BackgroundTransparency = 1
+        lbl.Size = UDim2.fromScale(1, 1)
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 14
+        lbl.TextStrokeTransparency = 0.4
+        lbl.Parent = m
+
+        markers[player] = m
+    end
+
+    local lbl = m:FindFirstChild("Name")
+    if lbl then
+        lbl.Text = (player.DisplayName ~= "" and player.DisplayName) or player.Name
+        lbl.TextColor3 = col  -- name colour matches the team-coloured outline
+    end
+end
+
 -- ==================== MAIN REFRESH LOOP ====================
 local function refresh()
     for _, player in ipairs(Players:GetPlayers()) do
@@ -112,9 +165,15 @@ local function refresh()
             and getRootPart(character)   -- something we can actually adorn
             and withinRange(character)
         then
-            ensureHighlight(player, character, colorFor(player))
+            local col = colorFor(player)
+            ensureHighlight(player, character, col)
+            if CONFIG.ShowName then
+                ensureMarker(player, character, col)
+            else
+                removeMarker(player)
+            end
         else
-            removeHighlight(player)
+            removeESP(player)
         end
     end
 end
@@ -125,7 +184,7 @@ local heartbeat = RunService.Heartbeat:Connect(function()
 end)
 
 -- Clean up when a player leaves.
-Players.PlayerRemoving:Connect(removeHighlight)
+Players.PlayerRemoving:Connect(removeESP)
 
 -- ==================== PUBLIC TOGGLE ====================
 -- Optional global so you can flip it from the console: getgenv().UniversalESP
@@ -141,6 +200,9 @@ local api = {
         if heartbeat then heartbeat:Disconnect() end
         for player in pairs(highlights) do
             removeHighlight(player)
+        end
+        for player in pairs(markers) do
+            removeMarker(player)
         end
     end,
 }
