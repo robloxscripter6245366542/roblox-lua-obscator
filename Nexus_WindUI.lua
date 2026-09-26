@@ -67,6 +67,7 @@ local GAMES = {
     MM2        = { [129264514977232] = true, [142823291] = true },
     Plus1Forge = { [118805555015549] = true },
     DonateGame = { [76653273729321] = true },
+    CloneBuild = { [98456203230140] = true },
 }
 
 local function detectGame()
@@ -75,6 +76,7 @@ local function detectGame()
     if GAMES.MM2[id]        then return "MM2",        "Murder Mystery 2" end
     if GAMES.Plus1Forge[id] then return "Plus1Forge", "Plus 1 Forge" end
     if GAMES.DonateGame[id] then return "DonateGame", "Donation Game" end
+    if GAMES.CloneBuild[id] then return "CloneBuild", "Clone Builders" end
     return "Universal", "Universal"
 end
 
@@ -150,6 +152,10 @@ local Config = {
     DGAutoQuest    = false,
     DGAutoCoins    = false,
     DGQuestInterval= 0.5,
+    -- clone builders
+    CBCloneAmount  = 24,
+    CBAutoAssign   = false,
+    CBPermanent    = true,
 }
 
 local function fsOk() return (writefile ~= nil) and (readfile ~= nil) and (isfile ~= nil) end
@@ -1810,6 +1816,124 @@ if GameKey == "DonateGame" then
             .. "donations (ClientGifting) and the fake-robux effects are deliberately "
             .. "left out: you can't mint real Robux, and the fake ones only exist to "
             .. "mislead other players." })
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  CLONE BUILDERS  (98456203230140) — CloneForge
+--  Clone count (CloneCapacity) and build/work speed are SERVER stats bought
+--  via gamepasses/upgrades or granted by the game's Admin remote (dev-gated).
+--  Remotes live under ReplicatedStorage.CloneForge.Remotes.
+-- ═══════════════════════════════════════════════════════════════════════
+if GameKey == "CloneBuild" then
+    local function cbRemotesFolder()
+        local cf = ReplicatedStorage:FindFirstChild("CloneForge")
+        return (cf and cf:FindFirstChild("Remotes")) or ReplicatedStorage
+    end
+    local function cbRemote(name)
+        local root = cbRemotesFolder()
+        local r = root:FindFirstChild(name, true)
+        if r and (r:IsA("RemoteEvent") or r:IsA("RemoteFunction")) then return r end
+        for _, d in ipairs(ReplicatedStorage:GetDescendants()) do
+            if d.Name == name and (d:IsA("RemoteEvent") or d:IsA("RemoteFunction")) then return d end
+        end
+    end
+    local function cbFire(name, ...)
+        local r = cbRemote(name)
+        if not r then return false, "not found: " .. name end
+        if r:IsA("RemoteFunction") then
+            local ok, res = pcall(function(...) return r:InvokeServer(...) end, ...)
+            return ok, res
+        else
+            local a = { ... }
+            pcall(function() r:FireServer(table.unpack(a)) end)
+            return true
+        end
+    end
+
+    -- ── Clones ─────────────────────────────────────────────────────────────
+    local CloneTab = Window:Tab({ Title = "Clones", Icon = "users" })
+    CloneTab:Section({ Title = "Work faster (no gate)" })
+    CloneTab:Button({ Title = "Assign All Clones", Desc = "ReassignAll — put every clone you own on one build so it finishes faster.",
+        Callback = function()
+            local ok = cbFire("ReassignAll")
+            WindUI:Notify({ Title = "Clones", Content = ok and "Assigned all clones" or "ReassignAll not found", Duration = 4 })
+        end })
+    CloneTab:Toggle({ Title = "Keep Clones Assigned", Desc = "Re-assign all clones every few seconds.",
+        Value = Config.CBAutoAssign, Callback = function(v) Config.CBAutoAssign = v queueSave() end })
+    do
+        local lastAssign = 0
+        track(RunService.Heartbeat:Connect(function()
+            if not Config.CBAutoAssign then return end
+            if os.clock() - lastAssign < 3 then return end
+            lastAssign = os.clock()
+            pcall(function() cbFire("ReassignAll") end)
+        end))
+    end
+
+    CloneTab:Section({ Title = "Ad rewards (needs a watched ad; server-checked)" })
+    CloneTab:Button({ Title = "Claim +Clone Reward", Callback = function() cbFire("Rewards", "Clone") cbFire("Rewards", { Kind = "Clone" }) end })
+    CloneTab:Button({ Title = "Claim Build-Speed Reward", Callback = function() cbFire("Rewards", "Build") cbFire("Rewards", { Kind = "Build" }) end })
+    CloneTab:Button({ Title = "Claim Walk-Speed Reward", Callback = function() cbFire("Rewards", "Walk") cbFire("Rewards", { Kind = "Walk" }) end })
+    CloneTab:Button({ Title = "Claim Coins Reward", Callback = function() cbFire("Rewards", "Coins") cbFire("Rewards", { Kind = "Coins" }) end })
+
+    -- ── Admin (dev-gated: this is how 24 clones / more speed is granted) ────
+    local AdminTab = Window:Tab({ Title = "Clones: Admin", Icon = "shield" })
+    AdminTab:Section({ Title = "Access" })
+    AdminTab:Button({ Title = "Am I Admin?", Desc = "Probe the Admin remote — tells you if these grants will work.",
+        Callback = function()
+            local ok, res = cbFire("Admin", { Action = "Ping" })
+            WindUI:Notify({ Title = "Admin", Content = ok and ("responded: " .. tostring(res)) or "no access / not found",
+                Duration = 5, Icon = ok and "check" or "info" })
+            print("[Nexus] Admin ping ->", ok, res)
+        end })
+
+    AdminTab:Section({ Title = "Give (server checks admin — no-ops otherwise)" })
+    AdminTab:Slider({ Title = "Clone Amount",
+        Value = { Min = 1, Max = 200, Default = Config.CBCloneAmount }, Step = 1,
+        Callback = function(v) Config.CBCloneAmount = v queueSave() end })
+    AdminTab:Toggle({ Title = "Permanent", Desc = "Ask for a permanent grant (vs. temporary).",
+        Value = Config.CBPermanent, Callback = function(v) Config.CBPermanent = v queueSave() end })
+    local function adminGive(kind, amount)
+        -- exact request shape isn't in the dump; try the likely shapes
+        cbFire("Admin", { Action = "Give", Kind = kind, Args = amount, Scope = "Server", Permanent = Config.CBPermanent })
+        cbFire("Admin", { Action = "Give", Kind = kind, Amount = amount, Permanent = Config.CBPermanent })
+        cbFire("Admin", "Give", kind, amount, Config.CBPermanent)
+        WindUI:Notify({ Title = "Admin", Content = ("Tried: Give %s %s"):format(tostring(amount), kind), Duration = 4 })
+    end
+    AdminTab:Button({ Title = "Give Clones", Desc = "Give yourself the set number of clones.",
+        Callback = function() adminGive("Clones", Config.CBCloneAmount) end })
+    AdminTab:Button({ Title = "Give Build Speed", Callback = function() adminGive("Build", 3) end })
+    AdminTab:Button({ Title = "Give Walk Speed", Callback = function() adminGive("Walk", 3) end })
+
+    AdminTab:Section({ Title = "Advanced" })
+    local cbRRName = ""
+    AdminTab:Input({ Title = "Remote Name", Placeholder = "e.g. Admin / Rewards / ReassignAll",
+        Callback = function(v) cbRRName = v end })
+    AdminTab:Button({ Title = "Fire Remote", Callback = function()
+        if cbRRName ~= "" then
+            local ok = cbFire(cbRRName)
+            WindUI:Notify({ Title = cbRRName, Content = ok and "fired" or "not found", Duration = 4 })
+        end
+    end })
+    AdminTab:Button({ Title = "Print Remote Tree", Desc = "List every remote under CloneForge.Remotes (F9 console).",
+        Callback = function()
+            local root = cbRemotesFolder()
+            local n = 0
+            for _, d in ipairs(root:GetDescendants()) do
+                if d:IsA("RemoteEvent") or d:IsA("RemoteFunction") then
+                    n = n + 1
+                    print(("[Nexus] %s (%s) %s"):format(d.Name, d.ClassName, d:GetFullName()))
+                end
+            end
+            WindUI:Notify({ Title = "Remotes", Content = n .. " printed to console (F9)", Duration = 5 })
+        end })
+    AdminTab:Paragraph({ Title = "How clone count / speed actually work",
+        Desc = "CloneCapacity and build/work speed are server stats. A normal account "
+            .. "raises them only through the game's upgrades / gamepasses / ad rewards. "
+            .. "The Give buttons use the game's own Admin remote, which the server honors "
+            .. "ONLY for game admins — on a normal account they no-op (nothing to bypass; "
+            .. "it's a server-side permission check). 'Assign All Clones' and the universal "
+            .. "WalkSpeed (Player tab) work for everyone." })
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
