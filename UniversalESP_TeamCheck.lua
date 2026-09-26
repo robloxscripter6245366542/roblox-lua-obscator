@@ -1,16 +1,17 @@
 --!nocheck
 -- ============================================================================
---  Universal ESP  —  Body Outline + Smart Team Detection
+--  Universal ESP  —  Team-Colored Body Outline
 -- ----------------------------------------------------------------------------
---  * Outlines every target's body using Roblox Highlight instances
+--  * Outlines EVERY player's body using Roblox Highlight instances
 --    (works on any character rig — R6, R15, custom).
---  * Team logic:
---      - If YOU are on a team  -> ESP only players NOT on your team
---        (the opposite / enemy team).
---      - If YOU are on NO team (Neutral or no team assigned)
---        -> ESP EVERYONE (except yourself).
---  * Re-evaluates targets live, so it keeps working after respawns and
---    when players switch teams mid-game.
+--  * Colour = each player's own team:
+--      - Your team shows in your team's colour (e.g. red).
+--      - The other team shows in their colour (e.g. blue).
+--      - Players with no team get a fallback colour.
+--    New players who join are picked up automatically and coloured by
+--    whatever team they're on.
+--  * Re-evaluates live, so it keeps working after respawns and when players
+--    switch teams mid-game.
 --
 --  Drop this into any executor and run. No Drawing API required.
 -- ============================================================================
@@ -23,8 +24,8 @@ local LocalPlayer = Players.LocalPlayer
 -- ==================== CONFIG ====================
 local CONFIG = {
     Enabled          = true,
-    UseTeamColor     = true,                       -- outline uses the target's TeamColor
-    EnemyColor       = Color3.fromRGB(255, 60, 60), -- fallback / no-team color
+    UseTeamColor     = true,                        -- outline uses each player's TeamColor
+    NoTeamColor      = Color3.fromRGB(255, 255, 255),-- colour for players with no team
     FillTransparency = 0.75,                        -- 1 = outline only, lower = more fill
     OutlineTransparency = 0,
     MaxDistance      = 0,                            -- 0 = unlimited, else studs from you
@@ -40,33 +41,18 @@ local running    = true
 
 -- ==================== HELPERS ====================
 
--- Are we (the local player) currently teamless / neutral?
-local function localHasNoTeam()
-    if LocalPlayer.Neutral then return true end
-    return LocalPlayer.Team == nil
-end
-
--- Should this player be ESP'd, given our team rules?
+-- Highlight everyone except yourself; each is coloured by their own team.
 local function isTarget(player)
-    if player == LocalPlayer then return false end
-
-    -- No team on our side -> everyone is a target.
-    if localHasNoTeam() then
-        return true
-    end
-
-    -- We have a team: target anyone who ISN'T our teammate.
-    -- (Neutral players and players on any other team count as "opposite".)
-    if player.Neutral then return true end
-    return player.Team ~= LocalPlayer.Team
+    return player ~= LocalPlayer
 end
 
--- Colour to use for a given target's outline.
+-- Colour to use for a player's outline: their team colour, or the no-team
+-- fallback. (player.Team is nil for neutral / unassigned players.)
 local function colorFor(player)
     if CONFIG.UseTeamColor and player.Team then
         return player.TeamColor.Color
     end
-    return CONFIG.EnemyColor
+    return CONFIG.NoTeamColor
 end
 
 -- A part we can adorn to / distance-check against. Not every character has a
