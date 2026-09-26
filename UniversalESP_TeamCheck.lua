@@ -25,7 +25,7 @@ local LocalPlayer = Players.LocalPlayer
 local CONFIG = {
     Enabled          = true,
     UseTeamColor     = true,                        -- outline uses each player's TeamColor
-    NoTeamColor      = Color3.fromRGB(255, 255, 255),-- colour for players with no team
+    NoTeamColor      = Color3.fromRGB(255, 0, 0),   -- red highlight for players with no team
     FillTransparency = 0.75,                        -- 1 = outline only, lower = more fill
     OutlineTransparency = 0,
     MaxDistance      = 0,                            -- 0 = unlimited, else studs from you
