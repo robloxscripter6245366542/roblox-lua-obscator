@@ -2,6 +2,7 @@
 -- Cleaned up from a deobfuscated build. Fixes:
 --   * FOV circle is built from Frame segments instead of Drawing.new (and no
 --     UIStroke), so it shows on mobile executors that lack either.
+--     It is visible as soon as the script runs (toggle with "Show FOV").
 --   * Ring is centred in a ScreenGui with IgnoreGuiInset, so it lines up with
 --     the camera centre the aimbot actually measures from.
 --   * Toggle buttons (Team/Kill/Wall Check) no longer error when clicked
@@ -70,6 +71,7 @@ end)
 
 -- Settings
 local aimbotEnabled = false
+local showFov = true -- ring is visible as soon as the script runs
 local fovRadius = 80
 local FOV_MAX = 300
 local FOV_MIN = 10
@@ -146,7 +148,7 @@ end
 
 local function updateFovCircle()
     layoutFovCircle(fovRadius)
-    FovCircle.Visible = aimbotEnabled
+    FovCircle.Visible = showFov
 end
 updateFovCircle()
 
@@ -173,7 +175,7 @@ ToggleButton.MouseLeave:Connect(function()
 end)
 
 local Panel = Instance.new("Frame")
-Panel.Size = UDim2.new(0, 180, 0, 300)
+Panel.Size = UDim2.new(0, 180, 0, 330)
 Panel.Position = UDim2.new(0, 70, 0, 10)
 Panel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 Panel.Active = true
@@ -304,6 +306,7 @@ Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(1, 0)
 
 local function shutdown()
     aimbotEnabled = false
+    showFov = false
     FovCircle.Visible = false
     pcall(function()
         RunService:UnbindFromRenderStep(RENDER_NAME)
@@ -513,6 +516,10 @@ end)
 makeToggle("Wall Check", 190, wallCheck, function(v)
     wallCheck = v
 end)
+makeToggle("Show FOV", 220, showFov, function(v)
+    showFov = v
+    updateFovCircle()
+end)
 
 --------------------------------------------------------------------------
 -- Target part dropdown
@@ -541,7 +548,7 @@ end
 do
     local Holder = Instance.new("Frame")
     Holder.Size = UDim2.new(1, -20, 0, 36)
-    Holder.Position = UDim2.new(0, 10, 0, 220)
+    Holder.Position = UDim2.new(0, 10, 0, 250)
     Holder.BackgroundTransparency = 1
     Holder.ZIndex = 5
     Holder.Parent = Panel
