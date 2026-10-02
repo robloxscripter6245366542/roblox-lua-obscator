@@ -1,6 +1,6 @@
 --!nocheck
 -- ============================================================================
---  Universal ESP + Aimbot  —  Team-Colored Body Outline & Smooth Aim Lock
+--  Universal Aimbot  —  Smooth Aim Lock + Team-Colored ESP
 -- ----------------------------------------------------------------------------
 --  ESP
 --  * Outlines EVERY player's body using Roblox Highlight instances
@@ -53,8 +53,8 @@ local CONFIG = {
     AimWallCheck     = true,         -- ignore players behind walls
     AimTeamCheck     = true,         -- ignore teammates (same non-nil Team)
     AimPrediction    = 0,            -- seconds of velocity lead (0 = off, max 0.5)
-    AimStrength      = "Medium",     -- key into AIM_PRESETS
-    AimUserYield     = 0.15,         -- lock strength multiplier while you move the camera
+    AimStrength      = "Strong",     -- key into AIM_PRESETS
+    AimUserYield     = 0.5,          -- lock strength multiplier while you move the camera
     AimUserYieldTime = 0.25,         -- seconds after your last camera input to keep yielding
     AimDeadzone      = 0.0015,       -- radians; stop nudging when already on target (no jitter)
     ShowFOV          = true,
@@ -64,9 +64,9 @@ local CONFIG = {
 
 -- How fast the camera eases onto the target (per second). The original HBSS
 -- lock lerped 50% of the way every tick at 100 Hz (~69/s, basically a snap),
--- which is why it fought you so hard. These are much gentler.
-local AIM_PRESETS = { "Soft", "Medium", "Strong" }
-local AIM_SPEED   = { Soft = 4, Medium = 8, Strong = 15 }
+-- which is why it fought you so hard. "Max" is close to that; the rest ease in.
+local AIM_PRESETS = { "Soft", "Medium", "Strong", "Max" }
+local AIM_SPEED   = { Soft = 10, Medium = 18, Strong = 30, Max = 60 }
 
 -- ==================== STATE ====================
 -- NOTE: Roblox only renders ~31 Highlight instances at once. In a very busy
@@ -339,7 +339,7 @@ local function aimStep(dt)
     if math.acos(dot) < CONFIG.AimDeadzone then return end
 
     -- Exponential ease: same feel at 30 fps or 240 fps.
-    local speed = AIM_SPEED[CONFIG.AimStrength] or AIM_SPEED.Medium
+    local speed = AIM_SPEED[CONFIG.AimStrength] or AIM_SPEED.Strong
     local alpha = 1 - math.exp(-speed * math.min(dt, 0.1))
     if os.clock() - lastUserAim < CONFIG.AimUserYieldTime then
         alpha = alpha * CONFIG.AimUserYield
@@ -390,7 +390,7 @@ function api.ToggleWallCheck()
 end
 
 function api.CycleStrength()
-    local idx = table.find(AIM_PRESETS, CONFIG.AimStrength) or 2
+    local idx = table.find(AIM_PRESETS, CONFIG.AimStrength) or 3
     CONFIG.AimStrength = AIM_PRESETS[idx % #AIM_PRESETS + 1]
     if refreshUI then refreshUI() end
     return CONFIG.AimStrength
@@ -415,6 +415,7 @@ end
 
 if typeof(getgenv) == "function" then
     getgenv().UniversalESP = api
+    getgenv().UniversalAimbot = api
 end
 
 -- ==================== UI: ONE DRAGGABLE PANEL ====================
@@ -491,7 +492,7 @@ title.Name = "Title"
 title.Size = UDim2.new(1, 0, 0, TITLE_H)
 title.BackgroundTransparency = 1
 title.AutoButtonColor = false
-title.Text = "  Universal ESP"
+title.Text = "  Universal Aimbot"
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Font = Enum.Font.GothamBold
 title.TextSize = 15
