@@ -1,5 +1,5 @@
 -- ============================================================
---  Universal Aimbot  –  Loadstring Loader
+--  Universal ESP  –  Loadstring Loader
 --
 --  Paste this ONE LINE into Delta (iOS / iPadOS / Android / PC),
 --  Xeno, Solara, Codex, Wave, Fluxus, Synapse X, KRNL, or any
@@ -10,9 +10,9 @@
 --  This loader fetches and runs the latest UniversalESP_TeamCheck.lua,
 --  so the link never changes even when the script is updated.
 --
---  Features: team-coloured body-outline ESP + a smooth aimbot
---  (FOV circle, team/wall check, Soft/Medium/Strong/Max lock), all
---  controlled from one draggable panel that works on mobile.
+--  Features: body-outline ESP with opposite-team detection (ESPs
+--  everyone if you're on no team) + a curved draggable on/off button
+--  that works on mobile.
 -- ============================================================
 
 local URL = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/UniversalESP_TeamCheck.lua"
@@ -29,19 +29,19 @@ if not ok or not body then
 end
 
 if not body then
-    warn("[Universal Aimbot] Could not fetch the script (HTTP blocked). Paste UniversalESP_TeamCheck.lua directly instead.")
+    warn("[Universal ESP] Could not fetch the script (HTTP blocked). Paste UniversalESP_TeamCheck.lua directly instead.")
     return
 end
 
 local fn, err = loadstring(body)
 if not fn then
-    warn("[Universal Aimbot] Compile error: " .. tostring(err))
+    warn("[Universal ESP] Compile error: " .. tostring(err))
     return
 end
 
 local ran, result = pcall(fn)
 if not ran then
-    warn("[Universal Aimbot] Runtime error: " .. tostring(result))
+    warn("[Universal ESP] Runtime error: " .. tostring(result))
     return
 end
 
