@@ -745,6 +745,126 @@ do
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
+--  UNIVERSAL  —  Animations (play any animation on your character)
+-- ═══════════════════════════════════════════════════════════════════════
+local AnimTab = Window:Tab({ Title = "Anims", Icon = "person-standing" })
+do
+    local animId, animSpeed, animLoop = "", 1, true
+    local currentTrack
+
+    local function myAnimator()
+        local char = lp.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not hum then return nil end
+        return hum:FindFirstChildOfClass("Animator") or hum, hum
+    end
+    local function stopAnim()
+        if currentTrack then pcall(function() currentTrack:Stop() end) currentTrack = nil end
+    end
+    local function playAnim()
+        local id = tostring(animId):gsub("%D", "")   -- keep digits only
+        if id == "" then
+            WindUI:Notify({ Title = "Anims", Content = "Enter an animation ID first", Duration = 3, Icon = "alert-triangle" })
+            return
+        end
+        local animator = myAnimator()
+        if not animator then
+            WindUI:Notify({ Title = "Anims", Content = "No character loaded", Duration = 3, Icon = "alert-triangle" })
+            return
+        end
+        stopAnim()
+        local anim = Instance.new("Animation")
+        anim.AnimationId = "rbxassetid://" .. id
+        local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
+        if not ok or not track then
+            WindUI:Notify({ Title = "Anims", Content = "Couldn't load that animation", Duration = 4, Icon = "alert-triangle" })
+            return
+        end
+        currentTrack = track
+        track.Looped = animLoop
+        track:Play()
+        pcall(function() track:AdjustSpeed(animSpeed) end)
+        WindUI:Notify({ Title = "Anims", Content = "Playing " .. id, Duration = 3 })
+    end
+
+    AnimTab:Section({ Title = "Play animation" })
+    AnimTab:Input({ Title = "Animation ID", Placeholder = "e.g. 507771019 or rbxassetid://...",
+        Callback = function(v) animId = v end })
+    AnimTab:Slider({ Title = "Speed",
+        Value = { Min = 0, Max = 5, Default = 1 }, Step = 0.1,
+        Callback = function(v) animSpeed = v if currentTrack then pcall(function() currentTrack:AdjustSpeed(v) end) end end })
+    AnimTab:Toggle({ Title = "Loop", Value = true,
+        Callback = function(v) animLoop = v if currentTrack then currentTrack.Looped = v end end })
+    AnimTab:Button({ Title = "Play", Callback = playAnim })
+    AnimTab:Button({ Title = "Stop", Callback = stopAnim })
+    AnimTab:Button({ Title = "Stop All Playing Anims", Desc = "Stop every track on your character.",
+        Callback = function()
+            local animator = myAnimator()
+            if animator then
+                for _, t in ipairs(animator:GetPlayingAnimationTracks()) do pcall(function() t:Stop() end) end
+            end
+            stopAnim()
+        end })
+    -- clear our handle on respawn so a stale track isn't reused
+    track(lp.CharacterAdded:Connect(function() currentTrack = nil end))
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  UNIVERSAL  —  Code (run your own Lua, like a mini executor)
+-- ═══════════════════════════════════════════════════════════════════════
+local CodeTab = Window:Tab({ Title = "Code", Icon = "code" })
+do
+    local codeText, scriptUrl = "", ""
+    local function runSource(src, label)
+        if not src or src == "" then return end
+        local fn, err = loadstring(src)
+        if not fn then
+            WindUI:Notify({ Title = "Code", Content = "Compile error: " .. tostring(err), Duration = 6, Icon = "alert-triangle" })
+            warn("[Nexus] compile error:", err)
+            return
+        end
+        local ok, res = pcall(fn)
+        if not ok then
+            WindUI:Notify({ Title = "Code", Content = "Runtime error: " .. tostring(res), Duration = 6, Icon = "alert-triangle" })
+            warn("[Nexus] runtime error:", res)
+        else
+            WindUI:Notify({ Title = "Code", Content = (label or "Ran") .. " ✓", Duration = 3, Icon = "check" })
+        end
+    end
+
+    CodeTab:Section({ Title = "Run Lua" })
+    CodeTab:Input({ Title = "Code", Placeholder = "print('hi') — paste a line of Lua",
+        Callback = function(v) codeText = v end })
+    CodeTab:Button({ Title = "Execute", Desc = "loadstring + run the code above (needs an executor).",
+        Callback = function()
+            if not loadstring then
+                WindUI:Notify({ Title = "Code", Content = "loadstring unavailable in this environment", Duration = 5, Icon = "alert-triangle" })
+                return
+            end
+            runSource(codeText, "Executed")
+        end })
+
+    CodeTab:Section({ Title = "Run a script from a URL" })
+    CodeTab:Input({ Title = "Script URL", Placeholder = "https://.../script.lua",
+        Callback = function(v) scriptUrl = v end })
+    CodeTab:Button({ Title = "Fetch & Run", Desc = "HttpGet the URL, then loadstring it.",
+        Callback = function()
+            if scriptUrl == "" then return end
+            local ok, body = pcall(function() return game:HttpGet(scriptUrl, true) end)
+            if not ok or not body then
+                WindUI:Notify({ Title = "Code", Content = "Fetch failed (HTTP blocked?)", Duration = 5, Icon = "alert-triangle" })
+                return
+            end
+            runSource(body, "Ran URL")
+        end })
+    CodeTab:Paragraph({ Title = "Note",
+        Desc = "This runs YOUR own Lua in your session via loadstring — it needs an "
+            .. "executor that provides loadstring/HttpGet. WindUI's input is single-line; "
+            .. "for a big script, host it and use Fetch & Run. Server-side rules still "
+            .. "apply: your code can't do anything the game's server wouldn't let a client do." })
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
 --  PRISON LIFE  —  real remotes recovered from the dump
 -- ═══════════════════════════════════════════════════════════════════════
 if GameKey == "PrisonLife" then
