@@ -5,10 +5,11 @@
 --  Xeno, Solara, Codex, Wave, Fluxus, Synapse X, KRNL, or any
 --  executor:
 --
---    loadstring(game:HttpGet("https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/UniversalESP_Loader.lua"))()
+--    loadstring(game:HttpGet("https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/UniversalAimbot_Loader.lua"))()
 --
 --  This loader fetches and runs the latest UniversalESP_TeamCheck.lua,
 --  so the link never changes even when the script is updated.
+--  (The old UniversalESP_Loader.lua link still works too.)
 --
 --  Features: team-coloured body-outline ESP + a smooth aimbot
 --  (FOV circle, team/wall check, Soft/Medium/Strong/Max lock), all
