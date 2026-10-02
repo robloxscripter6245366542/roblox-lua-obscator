@@ -1,7 +1,7 @@
 -- Aimbot Mobile (fixed)
 -- Cleaned up from a deobfuscated build. Fixes:
---   * FOV circle now uses a GUI ring (Frame + UIStroke) instead of Drawing.new,
---     so it shows on mobile executors that lack / break the Drawing API.
+--   * FOV circle is built from Frame segments instead of Drawing.new (and no
+--     UIStroke), so it shows on mobile executors that lack either.
 --   * Ring is centred in a ScreenGui with IgnoreGuiInset, so it lines up with
 --     the camera centre the aimbot actually measures from.
 --   * Toggle buttons (Team/Kill/Wall Check) no longer error when clicked
@@ -100,27 +100,55 @@ ScreenGui.Destroying:Connect(function()
     FovGui:Destroy()
 end)
 
+-- The ring is built purely from small rotated Frames (no Drawing API, no
+-- UIStroke), so it renders on every mobile executor.
+local FOV_SEGMENTS = 72
+local FOV_THICKNESS = 2
+local FOV_COLOR = Color3.fromRGB(255, 255, 255)
+
 local FovCircle = Instance.new("Frame")
 FovCircle.Name = "FOVCircle"
-FovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-FovCircle.Position = UDim2.fromScale(0.5, 0.5)
-FovCircle.Size = UDim2.fromOffset(fovRadius * 2, fovRadius * 2)
+FovCircle.Size = UDim2.fromScale(1, 1)
 FovCircle.BackgroundTransparency = 1
+FovCircle.BorderSizePixel = 0
 FovCircle.Active = false
 FovCircle.Visible = false
 FovCircle.Parent = FovGui
-Instance.new("UICorner", FovCircle).CornerRadius = UDim.new(1, 0)
 
-local FovStroke = Instance.new("UIStroke")
-FovStroke.Thickness = 1.5
-FovStroke.Color = Color3.fromRGB(255, 255, 255)
-FovStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-FovStroke.Parent = FovCircle
+local fovSegments = {}
+for i = 1, FOV_SEGMENTS do
+    local seg = Instance.new("Frame")
+    seg.Name = "Seg" .. i
+    seg.AnchorPoint = Vector2.new(0.5, 0.5)
+    seg.BackgroundColor3 = FOV_COLOR
+    seg.BackgroundTransparency = 0
+    seg.BorderSizePixel = 0
+    seg.Active = false
+    seg.Parent = FovCircle
+    fovSegments[i] = seg
+end
+
+local laidOutRadius
+local function layoutFovCircle(radius)
+    if radius == laidOutRadius then
+        return
+    end
+    laidOutRadius = radius
+    -- Slightly longer than the arc so neighbouring segments overlap (no gaps).
+    local segLength = (2 * math.pi * radius) / FOV_SEGMENTS + 1
+    for i, seg in ipairs(fovSegments) do
+        local angle = (i - 1) / FOV_SEGMENTS * 2 * math.pi
+        seg.Size = UDim2.fromOffset(segLength, FOV_THICKNESS)
+        seg.Position = UDim2.new(0.5, math.cos(angle) * radius, 0.5, math.sin(angle) * radius)
+        seg.Rotation = math.deg(angle) + 90
+    end
+end
 
 local function updateFovCircle()
-    FovCircle.Size = UDim2.fromOffset(fovRadius * 2, fovRadius * 2)
+    layoutFovCircle(fovRadius)
     FovCircle.Visible = aimbotEnabled
 end
+updateFovCircle()
 
 --------------------------------------------------------------------------
 -- Toggle button + panel
