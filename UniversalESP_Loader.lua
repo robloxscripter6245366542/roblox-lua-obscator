@@ -10,9 +10,9 @@
 --  This loader fetches and runs the latest UniversalESP_TeamCheck.lua,
 --  so the link never changes even when the script is updated.
 --
---  Features: body-outline ESP with opposite-team detection (ESPs
---  everyone if you're on no team) + a curved draggable on/off button
---  that works on mobile.
+--  Features: team-coloured body-outline ESP + a smooth aimbot
+--  (FOV circle, team/wall check, Soft/Medium/Strong lock), all
+--  controlled from one draggable panel that works on mobile.
 -- ============================================================
 
 local URL = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/UniversalESP_TeamCheck.lua"
