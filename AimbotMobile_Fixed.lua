@@ -29,6 +29,8 @@
 --   * Wall check sees through glass, invisible and non-collidable parts.
 --   * Optional NPC targeting (bots / dummies with a Humanoid).
 --   * Controls live in a scrollable list so the panel fits phone screens.
+--   * ESP: red outline around every other player, seen through walls
+--     (toggle with the "ESP" button).
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -69,7 +71,7 @@ local function getGuiParent()
 end
 
 local guiParent = getGuiParent()
-for _, oldName in ipairs({ "AimbotGUI", "AimbotFOV" }) do
+for _, oldName in ipairs({ "AimbotGUI", "AimbotFOV", "AimbotESP" }) do
     local old = guiParent:FindFirstChild(oldName)
     if old then
         old:Destroy()
@@ -90,6 +92,7 @@ local killCheck = true -- skip dead players by default
 local wallCheck = false
 local stickyLock = true -- stay on one target instead of flicking between people
 local targetNpcs = false
+local espEnabled = true -- red outline on every other player
 local smoothness = 0 -- 0 = instant, up to 90 = very smooth
 local predictionCs = 10 -- lead moving targets by this many hundredths of a second
 local targetPartName = "Head"
@@ -115,6 +118,62 @@ FovGui.Parent = guiParent
 ScreenGui.Destroying:Connect(function()
     FovGui:Destroy()
 end)
+
+--------------------------------------------------------------------------
+-- ESP: red outline around every other player (Highlight, works on mobile)
+--------------------------------------------------------------------------
+local ESP_COLOR = Color3.fromRGB(255, 0, 0)
+
+local EspFolder = Instance.new("Folder")
+EspFolder.Name = "AimbotESP"
+EspFolder.Parent = guiParent
+ScreenGui.Destroying:Connect(function()
+    EspFolder:Destroy()
+end)
+
+local espHighlights = {} -- [Player] = Highlight
+
+local function removeEsp(player)
+    local hl = espHighlights[player]
+    if hl then
+        hl:Destroy()
+        espHighlights[player] = nil
+    end
+end
+
+local function clearEsp()
+    for player in pairs(espHighlights) do
+        removeEsp(player)
+    end
+end
+
+-- Called every frame: adds outlines for new players / respawned characters
+-- and drops them for players who left.
+local function updateEsp()
+    if not espEnabled then
+        return
+    end
+    for player, hl in pairs(espHighlights) do
+        if player.Parent ~= Players then
+            removeEsp(player)
+        elseif hl.Adornee ~= player.Character then
+            hl.Adornee = player.Character
+        end
+    end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and not espHighlights[player] and player.Character then
+            local hl = Instance.new("Highlight")
+            hl.Name = player.Name
+            hl.FillTransparency = 1 -- outline only
+            hl.OutlineColor = ESP_COLOR
+            hl.OutlineTransparency = 0
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop -- visible through walls
+            hl.Adornee = player.Character
+            hl.Parent = EspFolder
+            espHighlights[player] = hl
+        end
+    end
+end
 
 -- The ring is built purely from small rotated Frames (no Drawing API, no
 -- UIStroke), so it renders on every mobile executor.
@@ -322,6 +381,8 @@ local function shutdown()
     aimbotEnabled = false
     showFov = false
     FovCircle.Visible = false
+    espEnabled = false
+    clearEsp()
     pcall(function()
         RunService:UnbindFromRenderStep(RENDER_NAME)
     end)
@@ -579,6 +640,14 @@ makeToggle("Show FOV", 305, showFov, function(v)
     showFov = v
     updateFovCircle()
 end)
+makeToggle("ESP", 335, espEnabled, function(v)
+    espEnabled = v
+    if v then
+        updateEsp()
+    else
+        clearEsp()
+    end
+end)
 
 --------------------------------------------------------------------------
 -- Target part dropdown
@@ -606,7 +675,7 @@ local function findPart(character, displayName)
 end
 
 do
-    local y = 335
+    local y = 365
     local Holder = Instance.new("Frame")
     Holder.Size = UDim2.new(1, -20, 0, 36)
     Holder.Position = UDim2.new(0, 10, 0, y)
@@ -834,6 +903,7 @@ end
 
 RunService:BindToRenderStep(RENDER_NAME, Enum.RenderPriority.Camera.Value + 1, function(dt)
     updateFovCircle()
+    updateEsp()
     if not aimbotEnabled then
         currentTarget = nil
         return
