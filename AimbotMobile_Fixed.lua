@@ -31,6 +31,8 @@
 --   * Controls live in a scrollable list so the panel fits phone screens.
 --   * ESP: red outline around every other player, seen through walls
 --     (toggle with the "ESP" button).
+--   * Config: every option is saved to AimbotMobile_Config.json (executor
+--     workspace folder) and restored the next time the script runs.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -96,6 +98,96 @@ local espEnabled = true -- red outline on every other player
 local smoothness = 0 -- 0 = instant, up to 90 = very smooth
 local predictionCs = 10 -- lead moving targets by this many hundredths of a second
 local targetPartName = "Head"
+
+--------------------------------------------------------------------------
+-- Config: options are saved to a file in the executor's workspace folder
+-- and loaded the next time the script runs.
+--------------------------------------------------------------------------
+local HttpService = game:GetService("HttpService")
+local CONFIG_FILE = "AimbotMobile_Config.json"
+local canSave = typeof(writefile) == "function" and typeof(readfile) == "function"
+    and typeof(isfile) == "function"
+
+local VALID_PARTS = {
+    Auto = true, Head = true, Torso = true, HumanoidRootPart = true,
+    ["Left Leg"] = true, ["Right Leg"] = true,
+}
+
+local function loadConfig()
+    if not canSave then
+        return
+    end
+    local ok, data = pcall(function()
+        if not isfile(CONFIG_FILE) then
+            return nil
+        end
+        return HttpService:JSONDecode(readfile(CONFIG_FILE))
+    end)
+    if not ok or type(data) ~= "table" then
+        return
+    end
+    local function bool(key, current)
+        if type(data[key]) == "boolean" then
+            return data[key]
+        end
+        return current
+    end
+    local function num(key, current, lo, hi)
+        if type(data[key]) == "number" then
+            return math.clamp(math.floor(data[key]), lo, hi)
+        end
+        return current
+    end
+    aimbotEnabled = bool("aimbotEnabled", aimbotEnabled)
+    showFov = bool("showFov", showFov)
+    teamCheck = bool("teamCheck", teamCheck)
+    killCheck = bool("killCheck", killCheck)
+    wallCheck = bool("wallCheck", wallCheck)
+    stickyLock = bool("stickyLock", stickyLock)
+    targetNpcs = bool("targetNpcs", targetNpcs)
+    espEnabled = bool("espEnabled", espEnabled)
+    fovRadius = num("fovRadius", fovRadius, FOV_MIN, FOV_MAX)
+    smoothness = num("smoothness", smoothness, 0, 90)
+    predictionCs = num("predictionCs", predictionCs, 0, 30)
+    if type(data.targetPartName) == "string" and VALID_PARTS[data.targetPartName] then
+        targetPartName = data.targetPartName
+    end
+end
+
+local savePending = false
+local function writeConfig()
+    savePending = false
+    if not canSave then
+        return
+    end
+    pcall(function()
+        writefile(CONFIG_FILE, HttpService:JSONEncode({
+            aimbotEnabled = aimbotEnabled,
+            showFov = showFov,
+            fovRadius = fovRadius,
+            teamCheck = teamCheck,
+            killCheck = killCheck,
+            wallCheck = wallCheck,
+            stickyLock = stickyLock,
+            targetNpcs = targetNpcs,
+            espEnabled = espEnabled,
+            smoothness = smoothness,
+            predictionCs = predictionCs,
+            targetPartName = targetPartName,
+        }))
+    end)
+end
+
+-- Batches rapid changes (e.g. dragging a slider) into one write.
+local function saveConfig()
+    if savePending then
+        return
+    end
+    savePending = true
+    task.delay(0.5, writeConfig)
+end
+
+loadConfig()
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "AimbotGUI"
@@ -500,7 +592,7 @@ AimbotButton.Size = UDim2.new(1, -20, 0, 30)
 AimbotButton.Position = UDim2.new(0, 10, 0, 0)
 AimbotButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 AimbotButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-AimbotButton.Text = "Ativar Aimbot: OFF"
+AimbotButton.Text = "Ativar Aimbot: " .. (aimbotEnabled and "ON" or "OFF")
 AimbotButton.Font = Enum.Font.Gotham
 AimbotButton.TextScaled = true
 AimbotButton.Parent = Content
@@ -511,6 +603,7 @@ AimbotButton.MouseButton1Click:Connect(function()
     aimbotEnabled = not aimbotEnabled
     AimbotButton.Text = "Ativar Aimbot: " .. (aimbotEnabled and "ON" or "OFF")
     updateFovCircle()
+    saveConfig()
 end)
 
 --------------------------------------------------------------------------
@@ -557,6 +650,7 @@ local function makeSlider(name, y, minValue, maxValue, initial, onChanged)
         Knob.Position = UDim2.new((value - minValue) / (maxValue - minValue), 0, 0, 0)
         Label.Text = name .. ": " .. value
         onChanged(value)
+        saveConfig()
     end
 
     Bar.InputBegan:Connect(function(input)
@@ -618,6 +712,7 @@ local function makeToggle(name, y, initial, onChanged)
         state = not state
         Button.Text = name .. ": " .. (state and "ON" or "OFF")
         onChanged(state)
+        saveConfig()
     end)
 end
 
@@ -732,6 +827,7 @@ do
             targetPartName = option
             Selected.Text = option
             List.Visible = false
+            saveConfig()
         end)
     end
 
