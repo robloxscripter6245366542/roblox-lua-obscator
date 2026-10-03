@@ -31,6 +31,9 @@
 --   * Controls live in a scrollable list so the panel fits phone screens.
 --   * ESP: red outline around every other player, seen through walls
 --     (toggle with the "ESP" button).
+--   * Dead players are always skipped (even if the game keeps the body with
+--     health left); Kill Check also skips downed / knocked / ragdolled and
+--     spawn-protected players.
 --   * Config: every option is saved to AimbotMobile_Config.json (executor
 --     workspace folder) and restored the next time the script runs.
 
@@ -900,6 +903,61 @@ end
 
 -- Returns (part, screenDistance) for the best aim part on this character,
 -- or nil if it fails the enabled checks.
+-- Flags many shooters use instead of (or before) setting Health to 0.
+local DOWNED_FLAGS = { "Dead", "IsDead", "Died", "Downed", "Knocked", "KnockedOut", "KO", "Ragdoll", "Ragdolled" }
+
+local function hasFlag(inst)
+    for _, name in ipairs(DOWNED_FLAGS) do
+        if inst:GetAttribute(name) == true then
+            return true
+        end
+        local value = inst:FindFirstChild(name)
+        if value and value:IsA("BoolValue") and value.Value then
+            return true
+        end
+    end
+    return false
+end
+
+-- True when the character is dead or can't be hurt right now. Games often
+-- leave Health above 0 for a moment (or forever) after a kill, so Health
+-- alone isn't enough.
+local function isDeadOrDown(character, humanoid)
+    if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead then
+        return true
+    end
+    if not character:FindFirstChild("HumanoidRootPart") and not character:FindFirstChild("Head") then
+        return true -- body taken apart / ragdoll leftovers
+    end
+    if hasFlag(character) or hasFlag(humanoid) then
+        return true
+    end
+    local player = Players:GetPlayerFromCharacter(character)
+    if player and hasFlag(player) then
+        return true
+    end
+    return false
+end
+
+-- Bodies that died are ignored for a while even if the game resets their
+-- health (common with ragdoll corpses). Player characters are ignored for
+-- DEAD_IGNORE_TIME so games that respawn in place still work; NPC / corpse
+-- models stay ignored for good.
+local DEAD_IGNORE_TIME = 5
+local deadModels = setmetatable({}, { __mode = "k" }) -- [Model] = os.clock() of death
+
+local function recentlyDied(character)
+    local diedAt = deadModels[character]
+    if not diedAt then
+        return false
+    end
+    if Players:GetPlayerFromCharacter(character) and os.clock() - diedAt > DEAD_IGNORE_TIME then
+        deadModels[character] = nil
+        return false
+    end
+    return true
+end
+
 local function evaluateCharacter(character, camera, center, origin)
     if not character or not character.Parent or character == LocalPlayer.Character then
         return nil
@@ -908,7 +966,16 @@ local function evaluateCharacter(character, camera, center, origin)
     if not humanoid then
         return nil
     end
-    if killCheck and humanoid.Health <= 0 then
+    -- Truly dead targets are always skipped. Kill Check additionally skips
+    -- downed / knocked / ragdolled players and spawn-protected ones.
+    if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead then
+        deadModels[character] = os.clock()
+        return nil
+    end
+    if recentlyDied(character) then
+        return nil
+    end
+    if killCheck and (isDeadOrDown(character, humanoid) or character:FindFirstChildOfClass("ForceField")) then
         return nil
     end
     if teamCheck and isTeammate(character) then
