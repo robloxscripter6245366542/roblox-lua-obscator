@@ -358,7 +358,7 @@ end)
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 30)
-Title.Text = "Aimbot Mobile"
+Title.Text = "Silent Aim"
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -560,7 +560,7 @@ CloseButton.MouseButton1Click:Connect(function()
         Overlay:Destroy()
         Panel.Visible = false
         ToggleButton.Visible = false
-        notify("Até a próxima!\nBy ZecadaDiv", "rbxassetid://8284260932", function()
+        notify("Até a próxima!", "rbxassetid://8284260932", function()
             ScreenGui:Destroy()
         end)
     end)
@@ -1094,7 +1094,4 @@ end)
 --------------------------------------------------------------------------
 -- Startup
 --------------------------------------------------------------------------
-notify("Script Ativado\nBy ZecadaDiv", "rbxassetid://6026984224")
-if setclipboard then
-    pcall(setclipboard, "https://www.roblox.com/pt/users/7904067601/profile?friendshipSourceType=PlayerSearch")
-end
+notify("Silent Aim ativado", "rbxassetid://6026984224")
