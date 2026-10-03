@@ -19,6 +19,16 @@
 --   * Panel drag works with touch (Draggable is deprecated / mouse only).
 --   * Closing the GUI disconnects every connection; re-running the script
 --     replaces the old GUI instead of stacking a second one.
+-- Tracking upgrades for shooters:
+--   * Sticky Lock: stays on the current target instead of flicking between
+--     players when two are close to the crosshair.
+--   * Prediction: leads moving targets by their velocity (slider).
+--   * Smoothness slider: 0 = instant snap, higher = smoother camera.
+--   * "Auto" target part: aims at whichever of head / torso / root is visible
+--     and closest to the crosshair.
+--   * Wall check sees through glass, invisible and non-collidable parts.
+--   * Optional NPC targeting (bots / dummies with a Humanoid).
+--   * Controls live in a scrollable list so the panel fits phone screens.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -76,8 +86,12 @@ local fovRadius = 80
 local FOV_MAX = 300
 local FOV_MIN = 10
 local teamCheck = false
-local killCheck = false
+local killCheck = true -- skip dead players by default
 local wallCheck = false
+local stickyLock = true -- stay on one target instead of flicking between people
+local targetNpcs = false
+local smoothness = 0 -- 0 = instant, up to 90 = very smooth
+local predictionCs = 10 -- lead moving targets by this many hundredths of a second
 local targetPartName = "Head"
 
 local ScreenGui = Instance.new("ScreenGui")
@@ -175,7 +189,7 @@ ToggleButton.MouseLeave:Connect(function()
 end)
 
 local Panel = Instance.new("Frame")
-Panel.Size = UDim2.new(0, 180, 0, 330)
+Panel.Size = UDim2.new(0, 180, 0, 300)
 Panel.Position = UDim2.new(0, 70, 0, 10)
 Panel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 Panel.Active = true
@@ -400,18 +414,37 @@ CloseButton.MouseButton1Click:Connect(function()
 end)
 
 --------------------------------------------------------------------------
+-- Scrollable controls area (fits small phone screens)
+--------------------------------------------------------------------------
+local Content = Instance.new("ScrollingFrame")
+Content.Size = UDim2.new(1, 0, 1, -75)
+Content.Position = UDim2.new(0, 0, 0, 35)
+Content.BackgroundTransparency = 1
+Content.BorderSizePixel = 0
+Content.ScrollBarThickness = 4
+Content.ScrollingDirection = Enum.ScrollingDirection.Y
+Content.Parent = Panel
+
+local CONTENT_HEIGHT = 0
+local function reserve(y, h)
+    CONTENT_HEIGHT = math.max(CONTENT_HEIGHT, y + h)
+    Content.CanvasSize = UDim2.new(0, 0, 0, CONTENT_HEIGHT + 10)
+end
+
+--------------------------------------------------------------------------
 -- Aimbot toggle
 --------------------------------------------------------------------------
 local AimbotButton = Instance.new("TextButton")
 AimbotButton.Size = UDim2.new(1, -20, 0, 30)
-AimbotButton.Position = UDim2.new(0, 10, 0, 35)
+AimbotButton.Position = UDim2.new(0, 10, 0, 0)
 AimbotButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 AimbotButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 AimbotButton.Text = "Ativar Aimbot: OFF"
 AimbotButton.Font = Enum.Font.Gotham
 AimbotButton.TextScaled = true
-AimbotButton.Parent = Panel
+AimbotButton.Parent = Content
 Instance.new("UICorner", AimbotButton).CornerRadius = UDim.new(0, 6)
+reserve(0, 30)
 
 AimbotButton.MouseButton1Click:Connect(function()
     aimbotEnabled = not aimbotEnabled
@@ -420,72 +453,91 @@ AimbotButton.MouseButton1Click:Connect(function()
 end)
 
 --------------------------------------------------------------------------
--- FOV slider
+-- Sliders
 --------------------------------------------------------------------------
-local FovLabel = Instance.new("TextLabel")
-FovLabel.Size = UDim2.new(1, -20, 0, 30)
-FovLabel.Position = UDim2.new(0, 10, 0, 70)
-FovLabel.BackgroundTransparency = 1
-FovLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-FovLabel.Text = "FOV: " .. fovRadius
-FovLabel.Font = Enum.Font.Gotham
-FovLabel.TextScaled = true
-FovLabel.Parent = Panel
+local function makeSlider(name, y, minValue, maxValue, initial, onChanged)
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -20, 0, 18)
+    Label.Position = UDim2.new(0, 10, 0, y)
+    Label.BackgroundTransparency = 1
+    Label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Label.Text = name .. ": " .. initial
+    Label.Font = Enum.Font.Gotham
+    Label.TextScaled = true
+    Label.Parent = Content
 
-local SliderBar = Instance.new("TextButton")
-SliderBar.Size = UDim2.new(1, -20, 0, 15)
-SliderBar.Position = UDim2.new(0, 10, 0, 105)
-SliderBar.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-SliderBar.Text = ""
-SliderBar.AutoButtonColor = false
-SliderBar.Parent = Panel
+    local Bar = Instance.new("TextButton")
+    Bar.Size = UDim2.new(1, -20, 0, 14)
+    Bar.Position = UDim2.new(0, 10, 0, y + 20)
+    Bar.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    Bar.Text = ""
+    Bar.AutoButtonColor = false
+    Bar.Parent = Content
+    Instance.new("UICorner", Bar).CornerRadius = UDim.new(1, 0)
 
-local SliderKnob = Instance.new("Frame")
-SliderKnob.Size = UDim2.new(0, 10, 1, 0)
-SliderKnob.AnchorPoint = Vector2.new(0.5, 0)
-SliderKnob.Position = UDim2.new(fovRadius / FOV_MAX, 0, 0, 0)
-SliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-SliderKnob.Parent = SliderBar
-Instance.new("UICorner", SliderKnob).CornerRadius = UDim.new(1, 0)
+    local Knob = Instance.new("Frame")
+    Knob.Size = UDim2.new(0, 12, 1, 0)
+    Knob.AnchorPoint = Vector2.new(0.5, 0)
+    Knob.Position = UDim2.new((initial - minValue) / (maxValue - minValue), 0, 0, 0)
+    Knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    Knob.Parent = Bar
+    Instance.new("UICorner", Knob).CornerRadius = UDim.new(1, 0)
 
-local sliderInput -- the touch/mouse input currently dragging the slider
+    reserve(y, 34)
 
-local function setSliderFromX(x)
-    local width = SliderBar.AbsoluteSize.X
-    if width <= 0 then
-        return
+    local dragInput
+    local function setFromX(x)
+        local width = Bar.AbsoluteSize.X
+        if width <= 0 then
+            return
+        end
+        local alpha = math.clamp((x - Bar.AbsolutePosition.X) / width, 0, 1)
+        local value = math.floor(minValue + alpha * (maxValue - minValue) + 0.5)
+        Knob.Position = UDim2.new((value - minValue) / (maxValue - minValue), 0, 0, 0)
+        Label.Text = name .. ": " .. value
+        onChanged(value)
     end
-    local alpha = math.clamp((x - SliderBar.AbsolutePosition.X) / width, 0, 1)
-    fovRadius = math.max(FOV_MIN, math.floor(alpha * FOV_MAX))
-    SliderKnob.Position = UDim2.new(fovRadius / FOV_MAX, 0, 0, 0)
-    FovLabel.Text = "FOV: " .. fovRadius
-    updateFovCircle()
+
+    Bar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragInput = input
+            Content.ScrollingEnabled = false -- don't scroll the panel while sliding
+            setFromX(input.Position.X)
+        end
+    end)
+    track(UserInputService.InputChanged:Connect(function(input)
+        if not dragInput then
+            return
+        end
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+            or (input.UserInputType == Enum.UserInputType.Touch and input == dragInput) then
+            setFromX(input.Position.X)
+        end
+    end))
+    track(UserInputService.InputEnded:Connect(function(input)
+        if dragInput and (input == dragInput or input.UserInputType == Enum.UserInputType.MouseButton1) then
+            dragInput = nil
+            Content.ScrollingEnabled = true
+        end
+    end))
 end
 
-SliderBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        sliderInput = input
-        setSliderFromX(input.Position.X)
-    end
+makeSlider("FOV", 35, FOV_MIN, FOV_MAX, fovRadius, function(v)
+    fovRadius = v
+    updateFovCircle()
 end)
-track(UserInputService.InputChanged:Connect(function(input)
-    if not sliderInput then
-        return
-    end
-    if input.UserInputType == Enum.UserInputType.MouseMovement
-        or (input.UserInputType == Enum.UserInputType.Touch and input == sliderInput) then
-        setSliderFromX(input.Position.X)
-    end
-end))
-track(UserInputService.InputEnded:Connect(function(input)
-    if input == sliderInput or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        sliderInput = nil
-    end
-end))
+-- 0 = instant snap, higher = slower / more human-looking camera movement.
+makeSlider("Smoothness", 75, 0, 90, smoothness, function(v)
+    smoothness = v
+end)
+-- How far ahead (in hundredths of a second) to lead moving targets.
+makeSlider("Prediction", 115, 0, 30, predictionCs, function(v)
+    predictionCs = v
+end)
 
 --------------------------------------------------------------------------
--- Check toggles
+-- Toggles
 --------------------------------------------------------------------------
 local function makeToggle(name, y, initial, onChanged)
     local state = initial
@@ -497,8 +549,9 @@ local function makeToggle(name, y, initial, onChanged)
     Button.Font = Enum.Font.Gotham
     Button.TextScaled = true
     Button.Text = name .. ": " .. (state and "ON" or "OFF")
-    Button.Parent = Panel
+    Button.Parent = Content
     Instance.new("UICorner", Button).CornerRadius = UDim.new(0, 6)
+    reserve(y, 25)
 
     Button.MouseButton1Click:Connect(function()
         state = not state
@@ -507,16 +560,22 @@ local function makeToggle(name, y, initial, onChanged)
     end)
 end
 
-makeToggle("Team Check", 130, teamCheck, function(v)
+makeToggle("Team Check", 155, teamCheck, function(v)
     teamCheck = v
 end)
-makeToggle("Kill Check", 160, killCheck, function(v)
+makeToggle("Kill Check", 185, killCheck, function(v)
     killCheck = v
 end)
-makeToggle("Wall Check", 190, wallCheck, function(v)
+makeToggle("Wall Check", 215, wallCheck, function(v)
     wallCheck = v
 end)
-makeToggle("Show FOV", 220, showFov, function(v)
+makeToggle("Sticky Lock", 245, stickyLock, function(v)
+    stickyLock = v
+end)
+makeToggle("Target NPCs", 275, targetNpcs, function(v)
+    targetNpcs = v
+end)
+makeToggle("Show FOV", 305, showFov, function(v)
     showFov = v
     updateFovCircle()
 end)
@@ -532,26 +591,30 @@ local PART_ALIASES = {
     ["Left Leg"] = { "Left Leg", "LeftUpperLeg", "LeftLowerLeg" },
     ["Right Leg"] = { "Right Leg", "RightUpperLeg", "RightLowerLeg" },
 }
-local PART_OPTIONS = { "Head", "Torso", "HumanoidRootPart", "Left Leg", "Right Leg" }
+-- "Auto" picks whichever of these is visible and closest to the crosshair.
+local AUTO_PARTS = { "Head", "Torso", "HumanoidRootPart" }
+local PART_OPTIONS = { "Auto", "Head", "Torso", "HumanoidRootPart", "Left Leg", "Right Leg" }
 
-local function getTargetPart(character)
-    for _, partName in ipairs(PART_ALIASES[targetPartName] or { targetPartName }) do
+local function findPart(character, displayName)
+    for _, partName in ipairs(PART_ALIASES[displayName] or { displayName }) do
         local part = character:FindFirstChild(partName)
         if part and part:IsA("BasePart") then
             return part
         end
     end
-    -- Fall back so the aimbot still works if the rig lacks the chosen part.
-    return character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
+    return nil
 end
 
 do
+    local y = 335
     local Holder = Instance.new("Frame")
     Holder.Size = UDim2.new(1, -20, 0, 36)
-    Holder.Position = UDim2.new(0, 10, 0, 250)
+    Holder.Position = UDim2.new(0, 10, 0, y)
     Holder.BackgroundTransparency = 1
     Holder.ZIndex = 5
-    Holder.Parent = Panel
+    Holder.Parent = Content
+    -- leave room below for the open list (it is clipped by the scroll area)
+    reserve(y, 36 + #PART_OPTIONS * 20)
 
     local Label = Instance.new("TextLabel")
     Label.Text = "Aimbot Target Part"
@@ -609,70 +672,189 @@ do
 end
 
 --------------------------------------------------------------------------
--- Targeting
+-- NPC tracking (Humanoid models that are not player characters)
 --------------------------------------------------------------------------
-local function isVisible(camera, part, character)
-    local origin = camera.CFrame.Position
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = { LocalPlayer.Character, camera }
-    local result = workspace:Raycast(origin, part.Position - origin, params)
-    return result == nil or result.Instance:IsDescendantOf(character)
+local npcModels = {} -- [Model] = true
+
+local function considerNpc(inst)
+    if inst:IsA("Humanoid") then
+        local model = inst.Parent
+        if model and model:IsA("Model") and not Players:GetPlayerFromCharacter(model) then
+            npcModels[model] = true
+        end
+    end
 end
 
-local function getClosestTarget(camera)
-    local center = camera.ViewportSize / 2
-    local bestDist = math.huge
-    local bestPart
+task.spawn(function()
+    for _, inst in ipairs(workspace:GetDescendants()) do
+        considerNpc(inst)
+    end
+end)
+track(workspace.DescendantAdded:Connect(considerNpc))
+track(workspace.DescendantRemoving:Connect(function(inst)
+    if npcModels[inst] then
+        npcModels[inst] = nil
+    end
+end))
 
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player == LocalPlayer then
-            continue
-        end
-        local character = player.Character
-        if not character then
-            continue
-        end
-        if teamCheck and player.Team ~= nil and player.Team == LocalPlayer.Team then
-            continue
-        end
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if killCheck and (not humanoid or humanoid.Health <= 0) then
-            continue
-        end
-        local part = getTargetPart(character)
-        if not part then
-            continue
-        end
-        if wallCheck and not isVisible(camera, part, character) then
-            continue
-        end
+--------------------------------------------------------------------------
+-- Targeting
+--------------------------------------------------------------------------
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.IgnoreWater = true
 
-        local screenPos, onScreen = camera:WorldToViewportPoint(part.Position)
-        if onScreen then
-            local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-            if dist < fovRadius and dist < bestDist then
-                bestDist = dist
-                bestPart = part
+-- Line-of-sight check that sees through glass, invisible walls and
+-- non-collidable decoration (common in shooters), up to a few layers deep.
+local function isVisible(origin, part, character)
+    local ignore = { LocalPlayer.Character, workspace.CurrentCamera }
+    local target = part.Position
+    for _ = 1, 4 do
+        rayParams.FilterDescendantsInstances = ignore
+        local result = workspace:Raycast(origin, target - origin, rayParams)
+        if not result then
+            return true
+        end
+        local hit = result.Instance
+        if hit:IsDescendantOf(character) then
+            return true
+        end
+        if hit.Transparency >= 0.9 or not hit.CanCollide then
+            table.insert(ignore, hit)
+        else
+            return false
+        end
+    end
+    return false
+end
+
+local function isTeammate(character)
+    local player = Players:GetPlayerFromCharacter(character)
+    return player ~= nil and player.Team ~= nil and player.Team == LocalPlayer.Team
+end
+
+-- Returns (part, screenDistance) for the best aim part on this character,
+-- or nil if it fails the enabled checks.
+local function evaluateCharacter(character, camera, center, origin)
+    if not character or not character.Parent or character == LocalPlayer.Character then
+        return nil
+    end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        return nil
+    end
+    if killCheck and humanoid.Health <= 0 then
+        return nil
+    end
+    if teamCheck and isTeammate(character) then
+        return nil
+    end
+
+    local candidates
+    if targetPartName == "Auto" then
+        candidates = AUTO_PARTS
+    else
+        -- Chosen part first; fall back to the head / root so the aimbot
+        -- still works on custom rigs that lack it.
+        candidates = { targetPartName, "Head", "HumanoidRootPart" }
+    end
+
+    local bestPart, bestDist
+    for _, name in ipairs(candidates) do
+        local part = findPart(character, name)
+        if part then
+            local screenPos, onScreen = camera:WorldToViewportPoint(part.Position)
+            if onScreen and (not wallCheck or isVisible(origin, part, character)) then
+                local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+                if targetPartName ~= "Auto" then
+                    return part, dist -- first valid part in priority order
+                end
+                if not bestDist or dist < bestDist then
+                    bestPart, bestDist = part, dist
+                end
             end
         end
     end
+    return bestPart, bestDist
+end
 
+local currentTarget -- character model we are locked onto
+
+local function acquireTarget(camera)
+    local center = camera.ViewportSize / 2
+    local origin = camera.CFrame.Position
+
+    -- Sticky lock: keep the current target while it stays valid, even if it
+    -- drifts a bit past the FOV edge, so the aim doesn't flick between people.
+    if stickyLock and currentTarget then
+        local part, dist = evaluateCharacter(currentTarget, camera, center, origin)
+        if part and dist <= fovRadius * 1.5 then
+            return part
+        end
+        currentTarget = nil
+    end
+
+    local bestPart, bestChar
+    local bestDist = fovRadius
+    local function consider(character)
+        local part, dist = evaluateCharacter(character, camera, center, origin)
+        if part and dist < bestDist then
+            bestPart, bestChar, bestDist = part, character, dist
+        end
+    end
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            consider(player.Character)
+        end
+    end
+    if targetNpcs then
+        for model in pairs(npcModels) do
+            consider(model)
+        end
+    end
+
+    currentTarget = bestChar
     return bestPart
 end
 
-RunService:BindToRenderStep(RENDER_NAME, Enum.RenderPriority.Camera.Value + 1, function()
+-- Where to aim: the part position, led by its velocity when prediction is on.
+local function aimPoint(part)
+    local pos = part.Position
+    if predictionCs > 0 then
+        local velocity = part.AssemblyLinearVelocity
+        local root = part.Parent and part.Parent:FindFirstChild("HumanoidRootPart")
+        if root and velocity.Magnitude < 0.1 then
+            velocity = root.AssemblyLinearVelocity
+        end
+        pos = pos + velocity * (predictionCs / 100)
+    end
+    return pos
+end
+
+RunService:BindToRenderStep(RENDER_NAME, Enum.RenderPriority.Camera.Value + 1, function(dt)
     updateFovCircle()
     if not aimbotEnabled then
+        currentTarget = nil
         return
     end
     local camera = workspace.CurrentCamera
     if not camera then
         return
     end
-    local part = getClosestTarget(camera)
-    if part then
-        camera.CFrame = CFrame.new(camera.CFrame.Position, part.Position)
+    local part = acquireTarget(camera)
+    if not part then
+        return
+    end
+
+    local camPos = camera.CFrame.Position
+    local goal = CFrame.lookAt(camPos, aimPoint(part))
+    if smoothness <= 0 then
+        camera.CFrame = goal
+    else
+        -- Frame-rate independent smoothing: same feel at 30 or 120 FPS.
+        local keep = (smoothness / 100) ^ (dt * 60)
+        camera.CFrame = camera.CFrame:Lerp(goal, 1 - keep)
     end
 end)
 
