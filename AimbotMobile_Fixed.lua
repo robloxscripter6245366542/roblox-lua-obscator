@@ -1095,6 +1095,3 @@ end)
 -- Startup
 --------------------------------------------------------------------------
 notify("Script Ativado\nBy ZecadaDiv", "rbxassetid://6026984224")
-if setclipboard then
-    pcall(setclipboard, "https://www.roblox.com/pt/users/7904067601/profile?friendshipSourceType=PlayerSearch")
-end
