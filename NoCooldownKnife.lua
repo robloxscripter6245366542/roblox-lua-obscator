@@ -1,122 +1,130 @@
 --!nocheck
 --[[
 ============================================================================
- No-Cooldown Knife  —  spam melee with the client cooldown removed
+ No-Cooldown Knife  —  direct-remote melee spam (no cooldown, no equip needed)
  Built from the game dump (PlaceId 18879239467).
 ============================================================================
- How the game gates attacks (recovered from the client dump)
+ Why v1 still felt like it had a cooldown
  ---------------------------------------------------------------------------
-  * Each melee module's onActivate() checks CHARACTER / HUMANOID attributes
-    before it swings: Cooldown, Endlag, Stunned, Kicking, Dropkick, Ragdoll,
-    Blocking. If any is set it refuses to swing.
-  * The swing fires ReplicatedStorage.Remotes.Swing:FireServer(direction).
-  * Hits come from a client RaycastHitboxV4; the hitbox module fires
-    ReplicatedStorage.Remotes.Hit:FireServer(...) on each detected target and
-    uses hitDebounce / hitDebounceL / hitDebounceR so it won't re-hit the same
-    target during one swing.
+  v1 drove the tool's Activate() path, but onActivate() re-checks the client
+  gate attributes (Cooldown / Endlag / Stunned / …) itself, so most swings got
+  blocked before firing, and it only worked with the knife equipped.
 
- What this does
+ What this version does
  ---------------------------------------------------------------------------
-  * Every frame it clears those gate attributes (so onActivate never blocks)
-    and resets the hitDebounce flags (so the hitbox can keep connecting), then
-    re-triggers the equipped tool's Activate() — i.e. it swings as fast as the
-    client loop runs. Equip the knife (or any melee) and toggle it on.
+  It skips onActivate completely and fires the game's own combat remotes
+  DIRECTLY, every frame, at every living player near you:
+    * ReplicatedStorage.Remotes.Swing:FireServer(direction)   -- the attack
+    * ReplicatedStorage.Remotes.Hit:FireServer(target...)     -- the damage
+  Because nothing checks a cooldown attribute, there is no cooldown, and
+  because it doesn't use the Tool, it works whether or not the knife is
+  equipped. It also keeps clearing the gate + hitDebounce attributes so the
+  game's own hitbox (if a tool IS equipped) also keeps connecting.
 
- Honest caveat
+ Honest caveat (unchanged)
  ---------------------------------------------------------------------------
-  The cooldown in this game is CLIENT-side, so removing it lets you spam the
-  swing/hit remotes with no delay. Whether EVERY hit "registers" as damage is
-  up to the SERVER: if the server trusts the client hit reports (common for
-  RaycastHitbox games) they all land; if it runs its own cooldown it will cap
-  them. A client script can't change a server-side check. Also fire the Swing
-  remote directly (below) if Activate() isn't enough on your executor.
+  The Hit remote's exact argument shape isn't recoverable from a bytecode
+  dump, so this tries the common shapes (target character / humanoid / with
+  direction). If the SERVER validates a cooldown or an exact arg shape, it
+  caps what registers — a client script can't change a server-side check.
+  If nothing registers, flip USE_HIT shapes or check the console warnings.
 
- Controls:  RightShift toggles it on/off.  Set _G.NoCDKnife=false to stop.
+ Controls:  RightShift toggles on/off.  _G.NoCDKnife=false stops.
 ============================================================================
 ]]
 
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local ReplicatedStorage= game:GetService("ReplicatedStorage")
-local lp = Players.LocalPlayer
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local lp     = Players.LocalPlayer
+local camera = workspace.CurrentCamera
 
--- boolean state-gates (truthy = blocked) and the hit-debounce flags
-local GATES = { "Cooldown", "Endlag", "Stunned", "Kicking", "Dropkick", "Ragdoll", "Blocking", "Stun", "Windup", "WINDUP" }
-local DEBS  = { "hitDebounce", "hitDebounceL", "hitDebounceR", "Debounce" }
--- time-based cooldown attributes (compared against tick()) → push into the past
+-- ── config ───────────────────────────────────────────────────────────────
+local RANGE      = 60      -- studs; players within this get hit
+local INTERVAL   = 0       -- seconds between bursts (0 = every frame)
+local DIRECTION  = "Center"  -- getDirectionString uses Right / Left / Center
+
+_G.NoCDKnife = (_G.NoCDKnife ~= false)   -- default on; re-running keeps choice
+
+-- gates the client checks before swinging / between hits
+local GATES  = { "Cooldown", "Endlag", "Stunned", "Kicking", "Dropkick", "Ragdoll", "Blocking", "Stun", "Windup", "WINDUP" }
+local DEBS   = { "hitDebounce", "hitDebounceL", "hitDebounceR", "Debounce" }
 local TIMERS = { "cooldownUntil", "ClientCooldownUntil" }
 
-_G.NoCDKnife = (_G.NoCDKnife ~= false)   -- default on; re-running keeps your choice
-
-local function char() return lp.Character end
-local function hum()
-    local c = char()
-    return c and c:FindFirstChildOfClass("Humanoid")
+-- ── helpers ───────────────────────────────────────────────────────────────
+local function myRoot()
+    local c = lp.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
 end
-local function equippedTool()
-    local c = char()
-    if not c then return nil end
-    return c:FindFirstChildOfClass("Tool")
+local function clearGatesOn(inst)
+    if not inst then return end
+    for _, a in ipairs(GATES) do if inst:GetAttribute(a) ~= nil then pcall(function() inst:SetAttribute(a, false) end) end end
+    for _, a in ipairs(DEBS)  do if inst:GetAttribute(a) ~= nil then pcall(function() inst:SetAttribute(a, false) end) end end
+    for _, a in ipairs(TIMERS) do if inst:GetAttribute(a) ~= nil then pcall(function() inst:SetAttribute(a, 0) end) end end
 end
 
--- the game's Remotes.Swing / Remotes.Hit (best-effort direct fire)
 local function remote(name)
     local r = ReplicatedStorage:FindFirstChild("Remotes")
     r = r and r:FindFirstChild(name, true)
-    if r and (r:IsA("RemoteEvent") or r:IsA("RemoteFunction")) then return r end
+    if r and r:IsA("RemoteEvent") then return r end
     for _, d in ipairs(ReplicatedStorage:GetDescendants()) do
-        if d.Name == name and (d:IsA("RemoteEvent") or d:IsA("RemoteFunction")) then return d end
+        if d.Name == name and d:IsA("RemoteEvent") then return d end
     end
 end
 
-local function clearGates()
-    for _, inst in ipairs({ char(), hum() }) do
-        if inst then
-            for _, a in ipairs(GATES) do
-                if inst:GetAttribute(a) ~= nil then pcall(function() inst:SetAttribute(a, false) end) end
-            end
-            for _, a in ipairs(DEBS) do
-                if inst:GetAttribute(a) ~= nil then pcall(function() inst:SetAttribute(a, false) end) end
-            end
-            for _, a in ipairs(TIMERS) do
-                if inst:GetAttribute(a) ~= nil then pcall(function() inst:SetAttribute(a, 0) end) end
-            end
-        end
-    end
+local swingRemote, hitRemote
+local function ensureRemotes()
+    if not swingRemote then swingRemote = remote("Swing") end
+    if not hitRemote   then hitRemote   = remote("Hit")   end
 end
 
--- reset the hitbox debounces that live on OTHER characters too (so you can
--- keep hitting the same person): clear hitDebounce* on every character.
-local function clearAllDebounces()
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= lp and p.Character then
-            for _, a in ipairs(DEBS) do
-                if p.Character:GetAttribute(a) ~= nil then
-                    pcall(function() p.Character:SetAttribute(a, false) end)
-                end
-            end
-        end
+-- fire Hit at one target trying the arg shapes the hitbox is likely to use
+local function fireHit(target)
+    if not hitRemote then return end
+    local char = target.Character
+    if not char then return end
+    local hum  = char:FindFirstChildOfClass("Humanoid")
+    local hrp  = char:FindFirstChild("HumanoidRootPart")
+    -- clear the target's hit-debounce so repeat hits land
+    for _, a in ipairs(DEBS) do
+        if char:GetAttribute(a) ~= nil then pcall(function() char:SetAttribute(a, false) end) end
     end
+    pcall(function() hitRemote:FireServer(char) end)
+    if hum then pcall(function() hitRemote:FireServer(hum) end) end
+    if hum and hrp then pcall(function() hitRemote:FireServer(char, hrp.Position, DIRECTION) end) end
 end
 
-local lastDir = "Center"
-local swingRemote
+local function alive(char)
+    local h = char and char:FindFirstChildOfClass("Humanoid")
+    return h and h.Health > 0
+end
 
+local lastBurst = 0
 RunService.Heartbeat:Connect(function()
     if not _G.NoCDKnife then return end
+    if os.clock() - lastBurst < INTERVAL then return end
+    lastBurst = os.clock()
     pcall(function()
-        clearGates()
-        clearAllDebounces()
-        local tool = equippedTool()
-        if not tool then return end
-        -- drive the game's own activation path (fires Swing + runs the hitbox
-        -- with the correct args); spam it every frame
-        pcall(function() tool:Activate() end)
-        -- also fire the Swing remote directly as a fallback
-        if not swingRemote then swingRemote = remote("Swing") end
-        if swingRemote and swingRemote:IsA("RemoteEvent") then
-            pcall(function() swingRemote:FireServer(lastDir) end)
+        ensureRemotes()
+        -- keep our own gates clear (covers the real hitbox path too)
+        clearGatesOn(lp.Character)
+        local hh = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+        clearGatesOn(hh)
+
+        -- the swing itself (plays the attack + lets the server see a swing)
+        if swingRemote then pcall(function() swingRemote:FireServer(DIRECTION) end) end
+
+        -- damage every living player in range, directly
+        local root = myRoot()
+        if not root then return end
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp and p.Character and alive(p.Character) then
+                local ehrp = p.Character:FindFirstChild("HumanoidRootPart")
+                if ehrp and (ehrp.Position - root.Position).Magnitude <= RANGE then
+                    fireHit(p)
+                end
+            end
         end
     end)
 end)
@@ -129,4 +137,4 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
-warn("[No-CD Knife] loaded — equip your knife; RightShift toggles. _G.NoCDKnife=false to stop.")
+warn("[No-CD Knife] loaded — fires Swing/Hit directly (no equip needed). RightShift toggles.")
