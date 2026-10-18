@@ -448,33 +448,39 @@ local function run()
         :format(#remotes, #scripts, totalDone, thisRun, got, skipped,
                 batchHit and " | BATCH LIMIT HIT - run again for the next batch" or ""))
 
-    -- ── Copy / upload the code, but ONLY once the whole game is done ──
-    -- (mid-batch there's no point copying a partial dump; run again first.)
+    -- ── Produce a shareable result, ONLY once the whole game is done ──
+    -- Clipboard and on-screen notifications are unreliable on some mobile
+    -- executors ("it said nothing"), so the result ALWAYS goes to a file you
+    -- can open: MobileDump/_LINK.txt. It holds the raw link, or the exact
+    -- failure reason, or a pointer to the local _ALL.txt.
+    local linkPath = CONFIG.OutputFolder .. "/_LINK.txt"
     if batchHit then
-        notify(("Batch done: %d/%d dumped. RUN IT AGAIN for the next %d."):format(totalDone, #scripts, batch))
-    elseif CONFIG.CopyCode and setclipboard_fn and combinedOK and readfile_fn then
-        -- Read the finished file ONCE and decide from its length.
+        local msg = ("Batch done: %d/%d dumped. RUN IT AGAIN for the next %d."):format(totalDone, #scripts, batch)
+        pcall(writefile_fn, linkPath, msg)
+        notify(msg)
+    elseif combinedOK and readfile_fn then
         local okR, all = pcall(readfile_fn, combinedPath)
         if okR and type(all) == "string" then
-            if #all <= CONFIG.ClipboardCap then
-                if pcall(setclipboard_fn, (all:gsub("%z", "?"))) then
-                    notify(("Copied ALL game code to clipboard! (%d chars)"):format(#all))
-                end
-            elseif CONFIG.Upload and #all <= CONFIG.UploadCap then
-                notify(("Code too big to copy (%d bytes) - uploading for a raw link..."):format(#all))
+            local result
+            if CONFIG.Upload and #all <= CONFIG.UploadCap then
+                notify(("Uploading %d bytes for a raw link..."):format(#all))
                 local url, uerr = uploadPaste(all)
                 if url then
-                    pcall(setclipboard_fn, url)
-                    notify("Raw code link copied to clipboard: " .. url)
+                    result = "RAW CODE LINK:\n" .. url
+                    if setclipboard_fn then pcall(setclipboard_fn, url) end
                     print("[MobileDumper] Raw code link: " .. url)
                 else
-                    notify("Upload failed (" .. tostring(uerr) .. ") - it's all in " .. CONFIG.OutputFolder .. "/_ALL.txt")
+                    result = "UPLOAD FAILED: " .. tostring(uerr)
+                        .. "\n\nThe full code is saved locally at " .. combinedPath
                 end
             else
-                notify(("Code too big for clipboard/upload (%d bytes) - it's all in %s/_ALL.txt"):format(#all, CONFIG.OutputFolder))
+                result = ("Dump is %d bytes - too big to upload. Full code is at %s"):format(#all, combinedPath)
             end
+            pcall(writefile_fn, linkPath, result)
+            notify(result:gsub("\n", " "):sub(1, 180))
         end
-    elseif not batchHit and CONFIG.CombinedFile and not appendfile_fn then
+    elseif CONFIG.CombinedFile and not appendfile_fn then
+        pcall(writefile_fn, linkPath, "No appendfile on this executor - per-script files hold the code under " .. CONFIG.OutputFolder)
         notify("No appendfile on this executor - per-script files hold the code.")
     end
 
@@ -485,8 +491,8 @@ local function run()
         pcall(writefile_fn, currentPath, "")
     end
 
-    notify(("Done this run. %d remotes, %d/%d scripts total -> /%s"):format(#remotes, totalDone, #scripts, CONFIG.OutputFolder))
-    print(("[MobileDumper] Done. Remotes: %d | this run: %d | total: %d/%d. See /%s/_index.txt")
+    notify(("Done. %d remotes, %d/%d scripts -> /%s (link in _LINK.txt)"):format(#remotes, totalDone, #scripts, CONFIG.OutputFolder))
+    print(("[MobileDumper] Done. Remotes: %d | this run: %d | total: %d/%d. See /%s/_LINK.txt and _index.txt")
         :format(#remotes, thisRun, totalDone, #scripts, CONFIG.OutputFolder))
 end
 
