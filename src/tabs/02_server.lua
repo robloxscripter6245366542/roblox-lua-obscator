@@ -15,18 +15,12 @@ local BSrvRun  = B(sr1, "▶ Run Server",  UDim2.new(0,116,1,0), nil, C.GRN)
 local BSrvURL  = B(sr1, "Run URL",        UDim2.new(0,88,1,0),  nil, C.GREY)
 local BSrvReq  = B(sr1, "Require ID",     UDim2.new(0,92,1,0),  nil, C.GREY)
 local BSrvPing = B(sr1, "Ping",           UDim2.new(0,60,1,0),  nil, C.ACC)
-for i, b in {BSrvRun,BSrvURL,BSrvReq,BSrvPing} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BSrvRun,BSrvURL,BSrvReq,BSrvPing})
 hov(BSrvRun, C.GRN, C.GRNHV); hov(BSrvURL, C.GREY, C.GRYHV)
 hov(BSrvReq, C.GREY, C.GRYHV); hov(BSrvPing, C.ACC, C.ACCHV)
 
 -- ── Output ────────────────────────────────────────────────────────────────────
-local SrvOut = OUT(P2, UDim2.new(1,0,0,50), UDim2.new(0,0,0,134))
-local function srvOut(msg, ok2)
-    SrvOut.TextColor3 = ok2 and C.GRN or C.RED
-    SrvOut.Text = ts() .. tostring(msg)
-end
+local srvOut = statusOut(P2, UDim2.new(1,0,0,50), UDim2.new(0,0,0,134))
 local function bOut(act, pay)
     local ok2, msg2, data = callBridge(act, pay)
     local lines = {msg2 or ""}
@@ -59,9 +53,7 @@ local BGetPlrs = B(sr2, "Get Players",  UDim2.new(0,100,1,0), nil, C.GREY)
 local BGetScr  = B(sr2, "Get Scripts",  UDim2.new(0,100,1,0), nil, C.GREY)
 local BKillAll = B(sr2, "Kill Scripts", UDim2.new(0,106,1,0), nil, C.RED)
 local BBridge  = B(sr2, "Re-Ping",      UDim2.new(0,80,1,0),  nil, C.GREY)
-for i, b in {BGetPlrs,BGetScr,BKillAll,BBridge} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BGetPlrs,BGetScr,BKillAll,BBridge})
 hov(BGetPlrs, C.GREY, C.GRYHV); hov(BGetScr,  C.GREY, C.GRYHV)
 hov(BKillAll, C.RED,  C.REDHV); hov(BBridge,  C.GREY, C.GRYHV)
 
@@ -85,9 +77,7 @@ local PlrScr = SCR(P2, UDim2.new(1,0,1,-244), UDim2.new(0,0,0,242))
 listV(PlrScr, 3)
 
 local function refreshPlrs()
-    for _, ch in PlrScr:GetChildren() do
-        if not ch:IsA("UIListLayout") then ch:Destroy() end
-    end
+    clearLayout(PlrScr)
     for _, plr in Players:GetPlayers() do
         local row = F(PlrScr, UDim2.new(1,-4,0,34), nil, C.PANEL); corner(row,6)
         local isMe = (plr == LP)

@@ -6,11 +6,7 @@
 local P4 = newTab("👤", "Player")
 L(P4, "PLAYER & CHARACTER TOOLS", UDim2.new(1,0,0,16), UDim2.new(0,0,0,0), C.TXTS, FB, 11)
 
-local PlrOut = OUT(P4, UDim2.new(1,0,0,38), UDim2.new(0,0,1,-40))
-local function plrOut(msg, ok2)
-    PlrOut.TextColor3 = ok2 and C.GRN or C.RED
-    PlrOut.Text = ts() .. tostring(msg)
-end
+local plrOut = statusOut(P4, UDim2.new(1,0,0,38), UDim2.new(0,0,1,-40))
 
 -- ── Stats row ─────────────────────────────────────────────────────────────────
 local statsF = F(P4, UDim2.new(1,0,0,60), UDim2.new(0,0,0,20), C.PANEL); corner(statsF,7)
@@ -45,9 +41,7 @@ local BInfJump = B(tRow, "∞ Jump",  UDim2.new(0,72,1,0), nil, C.GREY)
 local BNoclip  = B(tRow, "Noclip",   UDim2.new(0,68,1,0), nil, C.GREY)
 local BFreeze  = B(tRow, "Freeze",   UDim2.new(0,68,1,0), nil, C.GREY)
 local BFly     = B(tRow, "Fly",      UDim2.new(0,58,1,0), nil, C.GREY)
-for i, b in {BRespawn,BGod,BInfJump,BNoclip,BFreeze,BFly} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BRespawn,BGod,BInfJump,BNoclip,BFreeze,BFly})
 hov(BRespawn, C.BLUE, C.BLHV)
 for _, b in {BGod,BInfJump,BNoclip,BFreeze,BFly} do hov(b, C.GREY, C.GRYHV) end
 

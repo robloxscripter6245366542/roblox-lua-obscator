@@ -143,6 +143,41 @@ local function getRoot() local c=LP and LP.Character; return c and c:FindFirstCh
 local function getHum()  local c=LP and LP.Character; return c and c:FindFirstChildOfClass("Humanoid")   end
 local function getChar() return LP and LP.Character end
 
+-- ── Shared execution helpers ──────────────────────────────────────────────────
+-- Compile then run a chunk of Lua.
+-- Returns: ok(bool), err(string|nil), stage("compile"|"runtime"|nil)
+local function runCode(code)
+    local fn, cerr = _ld(code)
+    if not fn then return false, tostring(cerr), "compile" end
+    local ok, rerr = pcall(fn)
+    if not ok then return false, tostring(rerr), "runtime" end
+    return true
+end
+
+-- Depth-first walk of every script instance under `root`, calling fn(scriptInst).
+local function forEachScript(root, fn)
+    for _, ch in root:GetChildren() do
+        if ch:IsA("LocalScript") or ch:IsA("ModuleScript") or ch:IsA("Script") then
+            fn(ch)
+        end
+        forEachScript(ch, fn)
+    end
+end
+
+-- Detect whether a (possibly dotted, e.g. "debug.getinfo") global exists.
+local function hasGlobal(name)
+    local root = name:match("^([^%.]+)%.")
+    if root then
+        local tbl = (getfenv and getfenv()[root]) or _G[root]
+        if type(tbl) == "table" then
+            return tbl[name:match("%.(.+)$")] ~= nil
+        end
+        return false
+    end
+    if getfenv and getfenv()[name] ~= nil then return true end
+    return _G[name] ~= nil
+end
+
 -- ── Session ───────────────────────────────────────────────────────────────────
 local SESSION = {
     startTime   = os.time(),

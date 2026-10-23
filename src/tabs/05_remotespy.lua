@@ -18,9 +18,7 @@ local BSpyOff  = B(rRow, "■ Stop",   UDim2.new(0,80,1,0), nil, C.GREY)
 local BSpyClr  = B(rRow, "Clear",    UDim2.new(0,68,1,0), nil, C.GREY)
 local BSpyExp  = B(rRow, "Export",   UDim2.new(0,76,1,0), nil, C.BLUE)
 local BSpyCopy = B(rRow, "Copy All", UDim2.new(0,82,1,0), nil, C.GREY)
-for i, b in {BSpyOn,BSpyOff,BSpyClr,BSpyExp,BSpyCopy} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BSpyOn,BSpyOff,BSpyClr,BSpyExp,BSpyCopy})
 hov(BSpyOn,   C.GRN,  C.GRNHV); hov(BSpyOff, C.GREY, C.GRYHV)
 hov(BSpyClr,  C.GREY, C.GRYHV); hov(BSpyExp,  C.BLUE, C.BLHV)
 hov(BSpyCopy, C.GREY, C.GRYHV)
@@ -148,9 +146,7 @@ BSpyOff.MouseButton1Click:Connect(function()
 end)
 
 BSpyClr.MouseButton1Click:Connect(function()
-    for _, ch in SpyScr:GetChildren() do
-        if not ch:IsA("UIListLayout") then ch:Destroy() end
-    end
+    clearLayout(SpyScr)
     spyLog = {}; spyCountLbl.Text = "Captured: 0"
 end)
 
