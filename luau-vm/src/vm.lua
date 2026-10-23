@@ -97,6 +97,16 @@ end
 execute = function(proto, upvals, env, args, argN)
   local code = proto.code
   local sealed = proto.sealed -- when set, instructions are decoded on demand (seal.lua)
+  -- Decode cache: a sealed instruction is decrypted the FIRST time its pc runs
+  -- and reused thereafter, so a hot loop or a recursive body never re-runs the
+  -- (deliberately non-trivial) keystream math per iteration. The cache lives on
+  -- the proto, so it also amortizes across calls. Instructions stay encrypted at
+  -- rest in the bundle; only the ones that actually execute are ever decoded.
+  local dcache
+  if sealed then
+    dcache = sealed.cache
+    if not dcache then dcache = {}; sealed.cache = dcache end
+  end
   local K = proto.consts
   local protos = proto.protos
   local R = {}
@@ -117,8 +127,14 @@ execute = function(proto, upvals, env, args, argN)
   local pc = 1
 
   while true do
-    -- JIT/streamed: decode exactly this instruction now, then let it be reclaimed
-    local ins = sealed and Seal.decode(sealed, pc) or code[pc]
+    -- decode-once: first touch of a sealed pc decrypts it and caches the result
+    local ins
+    if sealed then
+      ins = dcache[pc]
+      if not ins then ins = Seal.decode(sealed, pc); dcache[pc] = ins end
+    else
+      ins = code[pc]
+    end
     pc = pc + 1
     local op = ins.op
     local a = ins.a
