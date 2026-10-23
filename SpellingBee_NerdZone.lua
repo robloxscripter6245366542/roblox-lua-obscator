@@ -34,6 +34,7 @@ local botEnabled=true
 local submitDelay=0.05
 local currentWord=""
 local answerRemote=nil
+local knownAnswerRemotes={} -- confirmed FireServer remotes
 local antiAFK=false
 local infJump=false
 local sessionStart=os.clock()
@@ -72,10 +73,27 @@ local function looksLikeWord(s)
     return not UI_BL[trimmed:lower()]
 end
 
+-- Reassemble a word from a table of single-letter keys (keyboard layout payload).
+local function assembleFromKeys(t)
+    local letters={}
+    for _,v in pairs(t) do
+        if type(v)=="string" and v:match("^%a$") then
+            letters[#letters+1]=v
+        end
+    end
+    if #letters>=2 then
+        -- try every ordering — shortest plausible first, then sorted by key order
+        table.sort(letters)
+        local combined=table.concat(letters)
+        if looksLikeWord(combined) then return combined end
+    end
+end
+
 local function extractWord(args)
     for _,v in ipairs(args) do
         if looksLikeWord(v) then return v end
         if type(v)=="table" then
+            -- first pass: look for a full word value
             for _,tv in pairs(v) do
                 if looksLikeWord(tv) then return tv end
                 if type(tv)=="string" then
@@ -83,6 +101,9 @@ local function extractWord(args)
                     if w and looksLikeWord(w) then return w end
                 end
             end
+            -- second pass: reassemble from single-letter keys (keyboard payload)
+            local assembled=assembleFromKeys(v)
+            if assembled then return assembled end
         end
         if type(v)=="string" then
             local trimmed=v:match("^%s*(.-)%s*$")
@@ -98,11 +119,26 @@ local function extractWord(args)
             end)
         end
     end
+    -- last resort: reassemble from all string args that are single letters
+    local letters={}
+    for _,v in ipairs(args) do
+        if type(v)=="string" and v:match("^%a$") then letters[#letters+1]=v end
+    end
+    if #letters>=2 then
+        local combined=table.concat(letters)
+        if looksLikeWord(combined) then return combined end
+    end
 end
+
+-- ── specific RS.Events / RS.Modules paths ───────────────────────────────
+local RS_EVENTS   = RS:FindFirstChild("Events")
+local RS_MODULES  = RS:FindFirstChild("Modules")
 
 local SCAN_ROOTS={RS,WS,game:GetService("ReplicatedFirst"),PGui,LP}
 pcall(function()table.insert(SCAN_ROOTS,LP.Backpack)end)
 pcall(function()table.insert(SCAN_ROOTS,LP.Character)end)
+if RS_EVENTS  then table.insert(SCAN_ROOTS,RS_EVENTS) end
+if RS_MODULES then table.insert(SCAN_ROOTS,RS_MODULES) end
 
 local ANSWER_KEYS={"submit","answer","spell","type","guess","check","input","word","attempt","confirm","enter","send","fire","respond","bean","can","scary","horror","spook","round","solve"}
 local function isAnswerRemote(name)
@@ -148,6 +184,10 @@ local function fireAnswer(word)
     task.wait(math.min(#word*CHAR_MS_BASE,3))
     local r=findAnswerRemote()
     if r then pcall(function()r:FireServer(word)end);return true end
+    -- try confirmed FireServer remotes (GameEvent, MusicEvent)
+    for _,kr in ipairs(knownAnswerRemotes) do
+        if kr and kr.Parent then pcall(function()kr:FireServer(word)end);return true end
+    end
     return fireAllRemotes(word)
 end
 
@@ -176,10 +216,20 @@ submitAnswer=function(word)
     end
 end
 
--- ── hooks ───────────────────────────────────────────────────────────────
+-- ── hooks (Delta) ───────────────────────────────────────────────────────
 local _hooked={}
 local function hookOne(remote)
     if _hooked[remote] then return end;_hooked[remote]=true
+    -- wrap every existing connection with hookfunction
+    pcall(function()
+        for _,conn in ipairs(getconnections(remote.OnClientEvent)) do
+            local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
+                local w=extractWord({...});if w then task.spawn(onWordFound,w) end
+                return orig(...)
+            end))
+        end
+    end)
+    -- also add our own listener for events with no prior connections
     remote.OnClientEvent:Connect(function(...)
         local w=extractWord({...});if w then task.spawn(onWordFound,w) end
     end)
@@ -188,6 +238,14 @@ end
 local _hookedRF={}
 local function hookOneRF(rf)
     if _hookedRF[rf] then return end;_hookedRF[rf]=true
+    pcall(function()
+        for _,conn in ipairs(getconnections(rf.OnClientInvoke)) do
+            local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
+                local w=extractWord({...});if w then task.spawn(onWordFound,w) end
+                return orig(...)
+            end))
+        end
+    end)
     rf.OnClientInvoke=function(...)
         local w=extractWord({...});if w then task.spawn(onWordFound,w) end
     end
@@ -204,28 +262,6 @@ local function hookIncoming()
     end
 end
 
-local function installNamecallHook()
-    if not hookmetamethod or not newcclosure or not getnamecallmethod then return false end
-    local ok=pcall(function()
-        local _old;_old=hookmetamethod(game,"__namecall",newcclosure(function(self,...)
-            local m=getnamecallmethod()
-            if m=="FireServer" or m=="InvokeServer" then
-                local isRE=pcall(function()return self:IsA("RemoteEvent")end)
-                local isRF=pcall(function()return self:IsA("RemoteFunction")end)
-                if isRE or isRF then
-                    local rname=tostring(self):match("^(.+) %(") or tostring(self)
-                    local lw=extractWord({...})
-                    if lw and self:IsA("RemoteEvent") then answerRemote=self end
-                    if isAnswerRemote(rname) and botEnabled and currentWord~="" then
-                        if self:IsA("RemoteEvent") then answerRemote=self;return _old(self,currentWord) end
-                    end
-                end
-            end
-            return _old(self,...)
-        end))
-    end)
-    return ok
-end
 
 local SV_KEYS={"word","spell","current","target","prompt","letter","round","question","answer","display","show","text","challenge","bean","scary"}
 local function isSVKey(name)
@@ -291,9 +327,89 @@ local function getHumanoid()
     local c=LP.Character;return c and c:FindFirstChildOfClass("Humanoid")
 end
 
+-- ── RS.Events.GameEvent dedicated hook (Cobalt-style) ───────────────────
+local function hookGameEvent()
+    local evFolder = RS:FindFirstChild("Events") or RS:WaitForChild("Events",5)
+    if not evFolder then return end
+    local GameEvent = evFolder:FindFirstChild("GameEvent") or evFolder:WaitForChild("GameEvent",5)
+    if not GameEvent then return end
+
+    -- confirmed: GameEvent:FireServer() is used for answer submission
+    answerRemote = GameEvent
+    table.insert(knownAnswerRemotes, GameEvent)
+    evFolder.ChildAdded:Connect(function(ch)
+        if ch:IsA("RemoteEvent") and isAnswerRemote(ch.Name) then answerRemote=ch end
+    end)
+
+    hookOne(GameEvent)
+end
+
+-- ── RS.Events.MusicEvent dedicated hook (Cobalt-style) ──────────────────
+-- MusicEvent carries round-start/stop signals; intercepting it lets us
+-- trigger a re-scan for the current word the moment a new round begins.
+local function hookMusicEvent()
+    local evFolder = RS:FindFirstChild("Events") or RS:WaitForChild("Events",5)
+    if not evFolder then return end
+    local MusicEvent = evFolder:FindFirstChild("MusicEvent") or evFolder:WaitForChild("MusicEvent",5)
+    if not MusicEvent then return end
+
+    local function onMusicPayload(...)
+        -- extract any word carried in the payload
+        local w = extractWord({...})
+        if w then task.spawn(onWordFound, w) end
+        -- regardless, re-scan GUI/workspace for the new word
+        task.delay(0.15, function()
+            if not botEnabled then return end
+            local found = scanLabels(PGui) or scanLabels(WS)
+            if found then onWordFound(found) end
+        end)
+    end
+
+    -- confirmed: MusicEvent:FireServer() is also used — register as fallback answer remote
+    table.insert(knownAnswerRemotes, MusicEvent)
+
+    pcall(function()
+        for _,conn in ipairs(getconnections(MusicEvent.OnClientEvent)) do
+            local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
+                onMusicPayload(...)
+                return orig(...)
+            end))
+        end
+    end)
+    MusicEvent.OnClientEvent:Connect(onMusicPayload)
+end
+
+-- ── RS.Events.UIEvent dedicated hook (Cobalt-style) ─────────────────────
+-- UIEvent pushes display updates to the client; the word to spell is
+-- almost always embedded here as a plain string argument.
+local function hookUIEvent()
+    local evFolder = RS:FindFirstChild("Events") or RS:WaitForChild("Events",5)
+    if not evFolder then return end
+    local UIEvent = evFolder:FindFirstChild("UIEvent") or evFolder:WaitForChild("UIEvent",5)
+    if not UIEvent then return end
+
+    local function onUIPayload(...)
+        local w = extractWord({...})
+        if w then task.spawn(onWordFound, w) end
+    end
+
+    pcall(function()
+        for _,conn in ipairs(getconnections(UIEvent.OnClientEvent)) do
+            local orig; orig = hookfunction(conn.Function, newcclosure(function(...)
+                onUIPayload(...)
+                return orig(...)
+            end))
+        end
+    end)
+    UIEvent.OnClientEvent:Connect(onUIPayload)
+end
+
+task.spawn(hookGameEvent)
+task.spawn(hookMusicEvent)
+task.spawn(hookUIEvent)
+
 hookIncoming()
 for _,root in ipairs(SCAN_ROOTS) do pcall(function()hookSVs(root)end) end
-local _h2ok=installNamecallHook()
 startLiveWatch()
 
 LP.CharacterAdded:Connect(function(char)
@@ -336,16 +452,20 @@ end)
 --  RAYFIELD-STYLE GUI
 -- ═══════════════════════════════════════════════════════════════════════
 
-local old=PGui:FindFirstChild("__PrepSpellHub__")
-if old then old:Destroy() end
+-- clean up any previous instance from gethui, CoreGui, and PlayerGui
+local CoreGui=game:GetService("CoreGui")
+for _,container in ipairs({gethui(),CoreGui,PGui}) do
+    pcall(function()
+        local old=container:FindFirstChild("__PrepSpellHub__")
+        if old then old:Destroy() end
+    end)
+end
 
 local SG=Instance.new("ScreenGui")
 SG.Name="__PrepSpellHub__";SG.ResetOnSpawn=false
 SG.IgnoreGuiInset=true;SG.DisplayOrder=999
 SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
-local guiParent=PGui
-pcall(function()if gethui then guiParent=gethui() end end)
-SG.Parent=guiParent
+SG.Parent=gethui()
 
 local R={
     BG    =Color3.fromRGB(25,  25,  35),
@@ -392,7 +512,7 @@ hubLbl.TextXAlignment=Enum.TextXAlignment.Left
 
 local subLbl=Instance.new("TextLabel",TOP)
 subLbl.Size=UDim2.new(0,220,0,14);subLbl.Position=UDim2.new(0,24,0.5,4)
-subLbl.BackgroundTransparency=1;subLbl.Text=GAME_NAME.."  •  v2.3"
+subLbl.BackgroundTransparency=1;subLbl.Text=GAME_NAME.."  •  Delta"
 subLbl.TextColor3=R.MUTED;subLbl.Font=Enum.Font.Gotham;subLbl.TextSize=10
 subLbl.TextXAlignment=Enum.TextXAlignment.Left
 
@@ -700,4 +820,3 @@ end)
 tabs["Bot"].btn.MouseButton1Click:Fire()
 
 notify("Spelling Bee Hub",GAME_NAME.." — Ready",4)
-if not _h2ok then notify("Spelling Bee Hub","Event hooks only (no __namecall)",3) end
