@@ -37,12 +37,18 @@ Wine and extra electron-builder setup.
 
 ## Size note
 
-Electron bundles Chromium, so the packaged app is **~70–90 MB** — it will **not**
-be under 30 MB. If you need a sub‑30 MB standalone exe, the app has to use the
-OS's built‑in WebView instead of bundling Chromium — that means a **Tauri**
-(Rust) build. The UI (`renderer/index.html`) and the agent logic port over; the
-shell (`main.ts`/`preload.ts`) would be replaced by Tauri's Rust `main.rs` +
-commands. Say the word and I'll scaffold the Tauri version.
+The build uses **maximum (LZMA) compression** (`"compression": "maximum"` in the
+`build` config), which uses 7‑Zip LZMA to make the **installer download** as
+small as Electron allows — typically **~35–45 MB** for the NSIS installer. The
+app still runs normally; on launch it unpacks the full Chromium runtime
+(~150 MB installed), so this shrinks the *download*, not the installed
+footprint.
+
+Electron cannot go under 30 MB — it always bundles Chromium. A true sub‑30 MB
+standalone exe requires the OS's built‑in WebView instead of bundling Chromium,
+i.e. a **Tauri** (Rust) build. The UI (`renderer/index.html`) and the agent
+logic port over; only the shell (`main.ts`/`preload.ts`) would be replaced by
+Tauri's Rust side. Say the word and I'll scaffold the Tauri version.
 
 ## Files
 - `src/main.ts` — Electron main: window, settings (key/model/folder), IPC, the

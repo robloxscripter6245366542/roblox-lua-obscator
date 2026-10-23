@@ -24,6 +24,7 @@
     "productName": "Nova Agent",
     "directories": { "output": "release" },
     "files": ["dist/**", "renderer/**"],
+    "compression": "maximum",
     "win": {
       "target": ["nsis", "portable"],
       "artifactName": "NovaAgent-${version}.${ext}"
