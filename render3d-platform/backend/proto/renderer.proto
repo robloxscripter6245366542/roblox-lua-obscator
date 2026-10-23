@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package render3d;
+
+// Internal service-to-service contract: the API layer calls this to hand a
+// render job to a dedicated GPU worker pool without going through HTTP/Celery.
+service RenderService {
+  rpc SubmitRender (RenderRequest) returns (RenderResponse);
+  rpc StreamStatus (StatusRequest) returns (stream StatusUpdate);
+}
+
+message RenderRequest {
+  string job_id = 1;
+  string source_asset_key = 2;
+  string target_format = 3;
+  float simplify_ratio = 4;
+  bool draco_compress = 5;
+}
+
+message RenderResponse {
+  string job_id = 1;
+  string status = 2;
+}
+
+message StatusRequest {
+  string job_id = 1;
+}
+
+message StatusUpdate {
+  string job_id = 1;
+  string status = 2;
+  float progress = 3;
+  string message = 4;
+}
