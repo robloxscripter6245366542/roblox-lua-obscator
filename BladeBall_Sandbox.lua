@@ -11,8 +11,9 @@
         ReplicatedStorage.Remotes.ParryAttempt       (BindableEvent)
         ReplicatedStorage.Remotes.BallAdded / BallExplode / ParrySuccessAll
       • workspace.Balls — ball parts, each with:
-          - a "zoomies" LinearVelocity whose VectorVelocity is the live velocity
+          - a "realBall" attribute flagging the true ball (decoys lack it)
           - a "target" attribute holding the aimed player's name
+          (velocity is derived from position deltas, as the hub does)
       • homing + curving ball physics (velocity changes over time)
       • simulated network latency on the parry press (configurable ping)
       • impact detection + a parry-active window (deflect vs death)
@@ -131,23 +132,17 @@ local function spawnBall()
     ball.Material     = Enum.Material.Neon
     ball.Color        = Color3.fromRGB(255, 210, 90)
     ball.Position     = origin
+    -- real Blade Ball attributes: the true ball is flagged "realBall" and
+    -- its "target" attribute holds the aimed player's name.
+    ball:SetAttribute("realBall", true)
     ball:SetAttribute("target", PLAYER_NAME)
     ball.Parent       = BallsFolder
-
-    -- the "zoomies" LinearVelocity the hub reads velocity from
-    local att = Instance.new("Attachment") att.Parent = ball
-    local zoom = Instance.new("LinearVelocity")
-    zoom.Name       = "zoomies"
-    zoom.Attachment0 = att
-    zoom.VectorVelocity = Vector3.zero
-    zoom.Parent     = ball
 
     local dir = (playerPos() - origin).Unit
     balls[ball] = {
         vel   = dir * roundSpeed,
         speed = roundSpeed,
         curve = rng:NextNumber(0, CFG.CURVE_MAX) * (rng:NextInteger(0, 1) == 0 and 1 or -1),
-        zoom  = zoom,
     }
     BallAdded:Fire(ball)
 end
@@ -291,7 +286,7 @@ RunService.Heartbeat:Connect(function(dt)
             -- perpendicular curve
             local perp = Vector3.new(-dir.Z, 0, dir.X) * data.curve
             data.vel   = (dir * data.speed) + perp
-            data.zoom.VectorVelocity = data.vel
+            -- move kinematically; the hub derives velocity from position deltas
             ball.Position = ball.Position + data.vel * dt
             if toMe.Magnitude <= CFG.HIT_RADIUS then
                 resolveBall(ball, data, now <= parryActiveUntil)
