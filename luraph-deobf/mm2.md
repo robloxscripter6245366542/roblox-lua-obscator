@@ -369,7 +369,7 @@ vararg-entry, one return. Still open: the other 155 opcodes across `G`/`_`
 proof that full-VM characterization is tractable in reasonable time
 (reading 9 short handlers took minutes, not hours), not that it's done.
 
-## Two new opcode categories found scanning `G`/`_` for what `K` didn't have
+## Three new opcode categories found scanning `G`/`_` for what `K` didn't have
 
 Sweeping `G`/`_`'s remaining 155 handlers with an automated classifier
 (same categories as `K`'s: operand-decode / store / loop-counter /
@@ -408,6 +408,17 @@ distinction only shows up on an actual read):
   pack multiple distinct operations under a single dispatched name,
   differentiated by a finer-grained condition inside the handler body
   itself.
+- **Cons-cell-style pop from an internal list** (`A`, `K`, and others) —
+  `local D,H=r[1],p[1];return 85,D,p[2],H,L,b` (`A`); `local M,H=o+1,b[1];
+  return 104,b[2],H,M,J,r` (`K`). Both pull a value from `X[1]` and a
+  *remaining-list* pointer from `X[2]` (classic car/cdr), rather than
+  decoding fresh bytes off the bytecode buffer — a second instruction
+  source alongside the buffer, most likely consuming a results list this
+  VM already builds elsewhere (`z8`'s `t[29](...)` = `table.pack(...)`,
+  `yv`'s `unpack(r,1,r[t.s])` — see "The `K` loop" above). **Cross-sample
+  confirmed**, not a one-off: `sample_v15.lua`'s `c`-loop handlers `E`,
+  `Y`, `j` show the identical `L[1]`/`G[1]`/`t[1]` extraction shape (see
+  `v15.md`), independently, in an unrelated file.
 
 After the regex fix, only 1 name (`_`'s `Hv`) stayed automatically
 unclassified — read directly, it turned out to be an ordinary
@@ -415,9 +426,61 @@ operand-decode variant, nothing new (with the same harmless duplicate-`t`
 parameter-shadowing quirk already noted for `XP`). That doesn't mean
 `G`/`_` are fully characterized the way `K` is: the classifier's
 "operand-decode" bucket still silently contains an unknown number of
-read-XOR-write and conditional-lookup handlers like `DP`/`e8`/`mP`/`i8`
-that only reading catches, not automated matching. This was a targeted
-scan for *new shapes* (found two), not a claim of exhaustive coverage.
+read-XOR-write, conditional-lookup, and list-pop handlers like
+`DP`/`e8`/`mP`/`i8`/`A`/`K` that only reading catches, not automated
+matching. This was a targeted scan for *new shapes* (found three), not a
+claim of exhaustive coverage.
+
+## Quantified: how common are the three new categories, actually?
+
+Turned the qualitative finding above into a real count with a new
+committed tool, `devirt/handler_category_scan.py`, recognizing all five
+shapes (plain decode, decrypt, lookup, list-pop, store) across every
+handler a loop's opcode map references — not just the handful read by
+hand. Building it caught one more real bug worth recording: the first
+version extracted each handler's body with a **fixed-size character
+window**, which for short handlers bled straight into the *next* table
+entry. Confirmed on `sample_v15.lua`'s `Cu`: the window captured
+`,[38]=setfenv,qA=function(...)...t[59](12)...` — the *next* handler's own
+decrypt call — misattributing it to `Cu`, which is actually a plain
+3-branch decode with no decrypt call at all. Fixed with a keyword-depth
+counter (`function`/`if`/`while`/`for` open, `end` closes) that finds each
+handler's own closing `end` instead of guessing a window size. (Luraph's
+handler bodies use `and/or` ternaries, not Luau's `if...then...else`
+*expression* form — the one construct that broke a naive depth-counter
+once already in this project's history — so a plain keyword counter is
+safe here, checked against these samples before trusting it.)
+
+With that fixed, real counts across all four larger loops (`K`'s 10 were
+already fully hand-read in full, so isn't repeated here):
+
+| loop | total | decode | decrypt | list-pop | store | lookup | unclassified |
+|---|---|---|---|---|---|---|---|
+| `G` (MM2) | 69 | 26 | **38 (55%)** | 0 | 1 | 0 | 4 |
+| `_` (MM2) | 86 | 81 | 1 | 4 | 0 | 0 | 0 |
+| `c` (`sample_v15.lua`) | 46 | 39 | 1 | 6 | 0 | 0 | 0 |
+| `d` (`sample_v15.lua`) | 71 | 23 | **38 (54%)** | 0 | 4 | 1 | 5 |
+| `S` (`sample_v15.lua`) | 11 | 11 | 0 | 0 | 0 | 0 | 0 |
+
+**New structural finding, not visible from the qualitative pass alone:**
+`G` and `d` — one from each sample, otherwise unrelated — are both roughly
+**55% decrypt handlers**, while `K`/`_`/`c`/`S` are almost entirely plain
+decode. That's not a coincidence worth shrugging off: it suggests `G` and
+`d` each play an analogous *role* in their respective VM — a
+bulk-decryption-heavy dispatch loop — parallel to each other across two
+independent samples, distinct from the more general-purpose `_`/`c`/`S`.
+Spot-checked several handlers in each of the four buckets above (not just
+the ones already read for the qualitative finding) before trusting these
+numbers, including specifically re-verifying `Cu` now falls into
+"unclassified" as expected post-fix, and confirming 2 more genuine
+read-XOR-write chains in each of `G` and `d` beyond the ones already
+quoted above. Committed: `devirt/handler_category_counts.json` (the
+numbers) and `devirt/handler_category_scan.py` (the tool).
+
+The remaining `UNCLASSIFIED` handlers (4 in `G`, 5 in `d`) and the
+`STORE`/`LOOKUP` counts are not individually re-verified here — this
+quantifies the three new categories specifically, not a claim that every
+other bucket is now exhaustively correct too.
 
 ## Cross-sample finding
 
@@ -555,18 +618,33 @@ technique, and that "obfuscated" and "Luraph" are not synonyms.
    return-trampoline. That's proof full-VM characterization is tractable
    in reasonable time, not just a mechanism sample. ~~**Still open**: the
    other ~155 opcodes in this file's `G`/`_` loops~~ — **scanned, not fully
-   read** (see "Two new opcode categories" above): an automated pass sorted
-   most of `G`/`_` into `K`'s existing categories and found **two new
-   ones** — read-XOR-write buffer decrypt, and conditional table
-   lookup/cache-hit — that only surfaced by reading the residue by hand,
-   since the classifier can't distinguish "decode an operand" from "decode
-   then write the result to another buffer" or "decode then branch on a
-   lookup." So `G`/`_` are categorized at a coarser grain than `K`, not to
-   the same per-handler depth. **Still open**: the ~128 opcodes across
-   `sample_v15.lua`'s `c`/`d`/`S` (same scan-then-read approach not yet
-   applied there), and finding out how common the two new categories
-   actually are within `G`/`_` specifically (only confirmed on the handful
-   read, not counted across all 155).
+   read** (see "Three new opcode categories" above): an automated pass
+   sorted most of `G`/`_` into `K`'s existing categories and found **three
+   new ones** — read-XOR-write buffer decrypt, conditional table
+   lookup/cache-hit, and a cons-cell-style list-pop (the last one
+   cross-sample confirmed against `sample_v15.lua`'s `c` loop) — that only
+   surfaced by reading the residue by hand, since the classifier can't
+   distinguish "decode an operand" from "decode then write the result to
+   another buffer," "decode then branch on a lookup," or "pop from a list
+   instead of decoding at all." So `G`/`_` are categorized at a coarser
+   grain than `K`, not to the same per-handler depth. ~~**Still open**: the
+   ~128 opcodes across `sample_v15.lua`'s `c`/`d`/`S`~~ — **scanned too,
+   same result**: near-total automated coverage (127 of 128 into known
+   categories after the same classifier), with the one residual (`c`'s
+   `E`/`Y`/`j`, initially "unclassified") turning out to be the list-pop
+   pattern above, not a fourth new shape. ~~**Still open**: how common all
+   three new categories actually are within `G`/`_`/`c`/`d`/`S`
+   specifically~~ — **done, see "Quantified" above**: real per-loop counts
+   via a new committed tool (`devirt/handler_category_scan.py`), not just
+   the handful read by hand — and a genuine new finding out of it: `G`
+   (MM2) and `d` (`sample_v15.lua`) are both ~55% decrypt handlers, an
+   analogous bulk-decryption role in each VM, while `K`/`_`/`c`/`S` are
+   almost entirely plain decode. **Still open**: the `UNCLASSIFIED`/`STORE`
+   /`LOOKUP` handlers this scan didn't individually re-verify (9 total
+   across `G`/`d` combined), and — the actual remaining ceiling on this
+   whole investigation — what any single handler's operation *specifically*
+   computes beyond its category (e.g. which byte of which key schedule a
+   given decrypt handler applies), across all ~283 categorized opcodes.
 4. ~~Find more real-world Luraph samples~~ — **done, see `../sample3.md`**:
    a third real v15.0 sample confirms the same comparison-chain-outer +
    decoded-inner-VM shape this file established, and its inner VM goes
