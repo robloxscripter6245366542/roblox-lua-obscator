@@ -57,7 +57,10 @@ local function LoadSettings()
 			local decoded = HttpService:JSONDecode(readfile(ConfigFile))
 			if type(decoded) == "table" then
 				for k, v in pairs(decoded) do
-					if Settings[k] ~= nil then
+					-- Only accept a saved value when it matches the type of the
+					-- default. A corrupt or old-schema config (e.g. a number
+					-- stored as a string) can otherwise break the UI builders.
+					if Settings[k] ~= nil and type(v) == type(Settings[k]) then
 						Settings[k] = v
 					end
 				end
@@ -82,6 +85,15 @@ LoadSettings()
 local genv = (getgenv and getgenv()) or _G
 if type(genv.__d4vidCleanup) == "function" then
 	pcall(genv.__d4vidCleanup)
+end
+-- Older d4vid builds (the pasted V24) stored their aim loop as a live
+-- RBXScriptConnection in _G.EliteLock. Disconnect any such leftover so two
+-- aim loops don't fight over the camera after upgrading.
+for _, tbl in ipairs({ genv, _G }) do
+	local legacy = rawget(tbl, "EliteLock")
+	if typeof(legacy) == "RBXScriptConnection" then
+		pcall(function() legacy:Disconnect() end)
+	end
 end
 
 local conns = {}
@@ -125,31 +137,26 @@ end
 -- ============================================================
 local function makeDraggable(gui, handle)
 	handle = handle or gui
-	local dragging, dragInput, dragStart, startPos
+	local dragging, dragStart, startPos
 
 	track(handle.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			dragStart = input.Position
 			startPos = gui.Position
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then
-					dragging = false
-				end
-			end)
-		end
-	end))
-
-	track(handle.InputChanged:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-			dragInput = input
 		end
 	end))
 
 	track(UserInputService.InputChanged:Connect(function(input)
-		if input == dragInput and dragging then
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			local delta = input.Position - dragStart
 			gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end))
+
+	track(UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
 		end
 	end))
 end
@@ -281,8 +288,9 @@ local function createSlider(name, min, max, settingKey, isFloat)
 	bg.ZIndex = 6
 	Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
 
+	local initPos = math.clamp((Settings[settingKey] - min) / (max - min), 0, 1)
 	local fill = Instance.new("Frame", bg)
-	fill.Size = UDim2.new((Settings[settingKey] - min) / (max - min), 0, 1, 0)
+	fill.Size = UDim2.new(initPos, 0, 1, 0)
 	fill.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
 	fill.ZIndex = 7
 	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
@@ -290,7 +298,7 @@ local function createSlider(name, min, max, settingKey, isFloat)
 
 	local knob = Instance.new("TextButton", bg)
 	knob.Size = UDim2.new(0, 18, 0, 18)
-	knob.Position = UDim2.new(fill.Size.X.Scale, -9, 0.5, -9)
+	knob.Position = UDim2.new(initPos, -9, 0.5, -9)
 	knob.Text = ""
 	knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	knob.ZIndex = 8
