@@ -119,11 +119,12 @@ table.trace tr:hover td{background:#161b22}
   <span class="badge bpurple">Luraph 11–14.7</span>
   <span class="badge bpurple">Moonsec v1–v3</span>
   <span class="badge bblue">IronBrew 2</span>
-  <span class="badge bblue">Prometheus</span>
+  <span class="badge bblue">Prometheus · PSU</span>
   <span class="badge bgreen">Key Extractor</span>
   <span class="badge borange">VM Runner</span>
   <span class="badge bteal">VM Tracer</span>
   <span class="badge" style="background:#1a1830;color:#b39ddb">Bytecode Disasm</span>
+  <span class="badge" style="background:#0f2820;color:#4caf50">Deep Deob</span>
 </header>
 
 <div class="toolbar">
@@ -134,6 +135,7 @@ table.trace tr:hover td{background:#161b22}
   <button class="btn brun"    onclick="runVM()">▶ Run &amp; Capture</button>
   <button class="btn btrace"  onclick="runTrace()">🔬 VM Trace</button>
   <button class="btn bdis"    onclick="runDisasm()">📋 Disassemble</button>
+  <button class="btn" style="background:#0f2820;color:#4caf50;border:1px solid #1a4030" onclick="runDeepDeob()">⚡ Deep Deob</button>
   <button class="btn bclear"  onclick="clearAll()">✕ Clear</button>
   <button class="btn bcopy"   onclick="copyOutput()">⎘ Copy</button>
 </div>
@@ -173,6 +175,19 @@ inp.addEventListener('input',()=>{
 function fmt(n){return n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB'}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function setOut(html,chip,cls){out.innerHTML=html;outChip.textContent=chip;outChip.className='chip '+cls}
+
+// Auto-copy text to clipboard and flash the copy button
+function autoCopy(text){
+  if(!text||!text.trim()) return;
+  navigator.clipboard.writeText(text).then(()=>{
+    const b=document.querySelector('.bcopy');
+    if(!b) return;
+    const orig=b.textContent;
+    b.textContent='✓ Auto-copied!';
+    b.style.color='var(--green)';
+    setTimeout(()=>{b.textContent=orig;b.style.color='';},2200);
+  }).catch(()=>{});
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  LUA 5.1 OPCODES
@@ -456,18 +471,48 @@ const KEY_SIGS=[
 ];
 
 function detect(code){
-  const d={vm:null,vmVer:null,moon:null,moonVer:null,keys:[],layers:[]};
+  const d={vm:null,vmVer:null,moon:null,moonVer:null,keys:[],layers:[],obf:[]};
+  // VM detection
   for(const s of LURAPH_SIGS){if(s.p.test(code)){d.vm='Luraph';d.vmVer=s.ver;break;}}
+  // Luraph v14 structural: return(function()local...string.byte...[=[ blob ]=]
+  if(!d.vm&&/^return\s*\(function\s*\(\)/.test(code)&&/\[=\[/.test(code)&&/string\.byte/.test(code)){d.vm='Luraph';d.vmVer='v14.x (struct)';}
   for(const s of MOON_SIGS){if(s.p.test(code)){d.moon='Moonsec';d.moonVer=s.ver;break;}}
+  // Moonsec v3 structural: local function XXX(  +  bit.bxor  +  repeat
+  if(!d.moon&&/local function [A-Z]{3}\(/.test(code)&&/bit\.bxor/.test(code)&&/repeat/.test(code)){d.moon='Moonsec';d.moonVer='v3 (struct)';}
   if(!d.vm&&/getfenv/.test(code)&&/0x[0-9a-fA-F]{4,}/.test(code)){d.vm=/ironbrew/i.test(code)?'IronBrew 2':'IronBrew';d.vmVer='detected';}
+  // IronBrew 2 structural
+  if(!d.vm&&/string\.dump/.test(code)&&/bit\.bxor/.test(code)&&/loadstring/.test(code)){d.vm='IronBrew 2';d.vmVer='struct';}
   if(!d.vm&&/prometheus/i.test(code)){d.vm='Prometheus';d.vmVer='detected';}
+  if(!d.vm&&/local VM = function\(Instructions, Env\)/.test(code)){d.vm='Prometheus';d.vmVer='struct';}
   if(!d.vm&&/\bPSU\b/.test(code)&&/loadstring/.test(code)){d.vm='PSU';d.vmVer='detected';}
+  // Raw Lua bytecode
+  if(code.charCodeAt(0)===0x1b&&code.charCodeAt(1)===0x4c&&code.charCodeAt(2)===0x75&&code.charCodeAt(3)===0x61){
+    d.vm='Lua bytecode'; d.vmVer=code.charCodeAt(4)===0x51?'5.1':code.charCodeAt(4)===0x52?'5.2':'?';
+  }
+  // Generic custom VM heuristic
+  if(!d.vm){
+    let score=0;
+    if(/repeat/.test(code)) score++;
+    if(/while\s+true/.test(code)) score++;
+    if(/\[=\[/.test(code)) score+=2;
+    if(/opcode|instruction/i.test(code)) score+=2;
+    if(/local\s+[A-Z]{2,}\s*=\s*\{/.test(code)) score++;
+    if(/loadstring\s*\(/.test(code)&&score>=2) score++;
+    if(score>=4){d.vm='CustomVM';d.vmVer='score='+score;}
+  }
+  // Key systems
   for(const k of KEY_SIGS){if(k.p.test(code))d.keys.push(k.label);}
-  if(d.vm) d.layers.push(d.vm+(d.vmVer?' '+d.vmVer:''));
+  // Text obfuscation layers
+  if(/string\.char\(\s*\d/.test(code))     d.obf.push('string.char');
+  if(/\\x[0-9a-fA-F]{2}/.test(code))       d.obf.push('hex-escape');
+  if(/\{\s*\d+\s*,\s*\d+\s*,\s*\d/.test(code)) d.obf.push('num-array');
+  if(/string\.reverse\(/.test(code))        d.obf.push('string.reverse');
+  if(/bit\.bxor\(/.test(code))              d.obf.push('bit.bxor');
+  // Build layers summary
+  if(d.vm)   d.layers.push(d.vm+(d.vmVer?' '+d.vmVer:''));
   if(d.moon) d.layers.push(d.moon+' '+d.moonVer);
   if(d.keys.length) d.layers.push('Key:'+d.keys.join('+'));
-  if(/string\.char\(\s*\d/.test(code)) d.layers.push('string.char');
-  if(/\\x[0-9a-fA-F]{2}/.test(code)) d.layers.push('hex-escape');
+  d.obf.forEach(o=>d.layers.push(o));
   return d;
 }
 
@@ -482,16 +527,92 @@ function vmCls(vm){
 // ═══════════════════════════════════════════════════════════════
 //  DEOBFUSCATION TEXT PASSES
 // ═══════════════════════════════════════════════════════════════
+// base64 decode helper (returns null if result is not printable)
+function b64decode(s){
+  try{
+    const d=atob(s);
+    if(/^[\x09\x0a\x0d\x20-\x7e]+$/.test(d)) return d;
+  }catch{}
+  return null;
+}
+
+// XOR single-byte decode of a literal string with a literal key
+function xorDecode(str, key){
+  return str.split('').map(c=>{
+    const x=c.charCodeAt(0)^key;
+    return x>=32&&x<=126?String.fromCharCode(x):c;
+  }).join('');
+}
+
 function deobPasses(code){
   let passes=[],c=code;
   const ap=(lbl,fn)=>{const b=c;c=fn(c);if(c!==b)passes.push(lbl);};
-  ap('hex-escape',   s=>s.replace(/\\x([0-9a-fA-F]{2})/g,(_,h)=>String.fromCharCode(parseInt(h,16))));
-  ap('dec-escape',   s=>s.replace(/\\(\d{1,3})/g,(_,d)=>{const n=parseInt(d);return n<=255?String.fromCharCode(n):'\\'+d}));
-  ap('string.char',  s=>s.replace(/string\.char\(([\d,\s]+)\)/g,(_,a)=>'"'+a.split(',').map(n=>{const x=parseInt(n.trim());return isNaN(x)?'':String.fromCharCode(x)}).join('')+'"'));
-  ap('bare-char',    s=>s.replace(/\bchar\(([\d,\s]+)\)/g,(_,a)=>'"'+a.split(',').map(n=>{const x=parseInt(n.trim());return isNaN(x)?'':String.fromCharCode(x)}).join('')+'"'));
-  for(let i=0;i<12;i++) ap('concat', s=>s.replace(/"([^"\\]*)"\s*\.\.\s*"([^"\\]*)"/g,'"$1$2"'));
-  ap('base64-str',   s=>s.replace(/"([A-Za-z0-9+/]{20,}={0,2})"/g,(m,b)=>{try{const d=atob(b);if(/^[\x20-\x7e\n\r\t]+$/.test(d))return`"${d}"`}catch{}return m;}));
+
+  // round 1
+  ap('hex-escape',      s=>s.replace(/\\x([0-9a-fA-F]{2})/g,(_,h)=>String.fromCharCode(parseInt(h,16))));
+  ap('dec-escape',      s=>s.replace(/\\(\d{1,3})/g,(_,d)=>{const n=parseInt(d);return n<=255?String.fromCharCode(n):'\\'+d}));
+  ap('string.char',     s=>s.replace(/string\.char\(([\d,\s]+)\)/g,(_,a)=>'"'+a.split(',').map(n=>{const x=parseInt(n.trim());return isNaN(x)?'':String.fromCharCode(x)}).join('')+'"'));
+  ap('bare-char',       s=>s.replace(/\bchar\(([\d,\s]+)\)/g,(_,a)=>'"'+a.split(',').map(n=>{const x=parseInt(n.trim());return isNaN(x)?'':String.fromCharCode(x)}).join('')+'"'));
+  for(let i=0;i<14;i++) ap('concat', s=>s.replace(/"([^"\\]*)"\s*\.\.\s*"([^"\\]*)"/g,'"$1$2"'));
+
+  // number array {n,n,n,...} → string (printable ASCII only, min 3 elements)
+  ap('num-array', s=>s.replace(/\{(\s*\d+(?:\s*,\s*\d+){2,}\s*)\}/g,(m,nums)=>{
+    const arr=nums.split(',').map(n=>parseInt(n.trim()));
+    if(arr.every(n=>n>=32&&n<=126)) return'"'+arr.map(n=>String.fromCharCode(n)).join('')+'"';
+    return m;
+  }));
+
+  // string.reverse("literal") inline evaluation
+  ap('string.reverse', s=>s.replace(/string\.reverse\("([^"\\]*)"\)/g,(_,str)=>'"'+[...str].reverse().join('')+'"'));
+
+  // string.rep("x", n) inline evaluation
+  ap('string.rep', s=>s.replace(/string\.rep\("([^"\\]*)",\s*(\d+)\)/g,(m,str,n)=>{
+    const cnt=parseInt(n);
+    return cnt>0&&cnt<2000?'"'+str.repeat(cnt)+'"':m;
+  }));
+
+  // string.sub("literal", s, e) inline evaluation
+  ap('string.sub', s=>s.replace(/string\.sub\("([^"\\]*)",\s*(-?\d+),\s*(-?\d+)\)/g,(m,str,a,b)=>{
+    const si=parseInt(a),ei=parseInt(b);
+    const lua_sub=(s,i,j)=>{
+      const len=s.length;
+      const ni=i<0?Math.max(0,len+i):Math.max(0,i-1);
+      const nj=j<0?len+j+1:Math.min(len,j);
+      return s.slice(ni,nj);
+    };
+    return'"'+lua_sub(str,si,ei)+'"';
+  }));
+
+  // string.upper / string.lower inline
+  ap('string.case', s=>s
+    .replace(/string\.upper\("([^"\\]*)"\)/g,(_,str)=>'"'+str.toUpperCase()+'"')
+    .replace(/string\.lower\("([^"\\]*)"\)/g,(_,str)=>'"'+str.toLowerCase()+'"')
+  );
+
+  // XOR single-byte: (function(s,k)...bxor(byte(s,i),k)...end)("LITERAL", KEY)
+  ap('xor-literal', s=>s.replace(
+    /\(?function\s*\([^)]+\)[^)]*bxor[^)]*\)\s*\("([^"]+)",\s*(\d+)\)/g,
+    (m,str,key)=>{
+      const k=parseInt(key);
+      const r=xorDecode(str,k);
+      if(/^[\x20-\x7e]+$/.test(r)) return'"'+r+'"';
+      return m;
+    }
+  ));
+
+  // base64 literal decode — Base64.decode("...") / decodeBase64("...") / b64("...")
+  ap('base64-call', s=>s.replace(/(?:[Bb]ase64\.?[Dd]ecode|[Dd]ecodeBase64|b64decode)\s*\("([A-Za-z0-9+/=]+)"\)/g,(m,b)=>{
+    const d=b64decode(b);
+    return d?'"'+d.replace(/"/g,'\\"')+'"':m;
+  }));
+
+  // second round of string.char + concat after previous passes unlocked new literals
+  ap('string.char-2', s=>s.replace(/string\.char\(([\d,\s]+)\)/g,(_,a)=>'"'+a.split(',').map(n=>{const x=parseInt(n.trim());return isNaN(x)?'':String.fromCharCode(x)}).join('')+'"'));
+  for(let i=0;i<8;i++) ap('concat-2', s=>s.replace(/"([^"\\]*)"\s*\.\.\s*"([^"\\]*)"/g,'"$1$2"'));
+
+  // junkie header strip (text pass)
   ap('junkie-hdr',   s=>s.replace(/^local\s+\w+\s*=\s*loadstring\(game:HttpGet\("https?:\/\/jnkie[^"]+"\)\)\(\)\s*\n(?:\w+\.\w+\s*=\s*[^\n]+\n){1,6}/m,''));
+
   return{code:c,passes};
 }
 
@@ -501,11 +622,23 @@ function deobPasses(code){
 function extractKey(code){
   let removed=[],c=code;
   const strip=(lbl,rx)=>{const m=c.match(rx);if(m){removed.push({lbl,snip:m[0].substring(0,200)});c=c.replace(m[0],'');return true;}return false;};
-  const stripG=(lbl,rx)=>{let f=false;c=c.replace(rx,m=>{removed.push({lbl,snip:m.substring(0,200)});f=true;return'';});return f;};
+  const stripG=(lbl,rx)=>{let f=false;c=c.replace(rx,m=>{if(m.length>3){removed.push({lbl,snip:m.substring(0,200)});f=true;} return'';});return f;};
+  // Junkie
   strip('Junkie SDK header',/^local\s+\w+\s*=\s*loadstring\(game:HttpGet\("https?:\/\/jnkie[^"]+"\)\)\(\)\s*\n(?:\w+\.\w+\s*=\s*[^\n]+\n){1,6}/m);
   strip('Junkie key UI block',/local\s+result\s*=\s*\(function\(\)[\s\S]*?(?:Junkie\.check_key|JunkieKeySystemUI)[\s\S]*?end\)\(\)/);
   stripG('Junkie inline',/loadstring\(game:HttpGet\("https?:\/\/(?:api\.jnkie|jnkie)[^"]+"\)\)\(\)/g);
-  strip('Generic key fn',/local\s+function\s+(?:checkKey|verifyKey|getKey|KeySystem)\b[\s\S]*?^end/m);
+  // Linkvertise redirect
+  strip('Linkvertise redirect',/if\s+not\s+pcall\s*\(function\s*\(\)[\s\S]{0,400}?linkvertise[\s\S]{0,400}?end\s*\)\s*then[\s\S]{0,300}?end/i);
+  // getgenv().Key / getrenv().Key checks
+  stripG('getgenv key check',/if\s+(?:getgenv|getrenv)\s*\(\s*\)\s*\.\s*\w*[Kk]ey\w*\s*~=\s*"[^"]*"\s*then[\s\S]{0,600}?end\s*\n/g);
+  // local WHITELIST tables
+  strip('Whitelist block',/local\s+\w+\s*=\s*\{[^}]*whitelist[^}]*\}[\s\S]{0,500}?if\s+not\s+\w+[\s\S]{0,200}?end/i);
+  // Generic key check functions
+  strip('Generic key fn',/local\s+function\s+(?:checkKey|verifyKey|getKey|KeySystem|check_key)\b[\s\S]*?^end/m);
+  // require(ID):check / :verify patterns
+  stripG('require key check',/require\s*\(\s*\d+\s*\)\s*:\s*(?:checkKey|verifyKey|KeySystem|check)\s*\([^)]*\)/g);
+  // getgenv().WHITELIST / getgenv().Whitelist
+  stripG('getgenv whitelist',/getgenv\s*\(\s*\)\s*\.\s*(?:WHITELIST|Whitelist|KEY|Key)\s*=[^;\n]+[;\n]/g);
   return{cleaned:c.trim(),removed};
 }
 
@@ -606,6 +739,7 @@ async function runVM() {
   setOut(html||'<div class="card cerr-card">No output.</div>',
     captured.length?captured.length+' captured':errMsg?'error':'no capture',
     captured.length?'cok':errMsg?'cerr':'cwarn');
+  if(captured.length) autoCopy(captured[captured.length-1]);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -711,6 +845,45 @@ async function runTrace() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  LURAPH STATIC DECODER  (base85 → Lua 5.1 bytecode)
+// ═══════════════════════════════════════════════════════════════
+function luraphB85DecodeBlob(blob, offset) {
+  let data = blob.slice(offset - 1); // offset is 1-based
+  data = data.replace(/z/g, '!!!!!');
+  const bytes = [];
+  for (let i = 0; i + 4 < data.length; i += 5) {
+    const M=data.charCodeAt(i)-33, N=data.charCodeAt(i+1)-33,
+          S=data.charCodeAt(i+2)-33, C=data.charCodeAt(i+3)-33,
+          A=data.charCodeAt(i+4)-33;
+    if (M<0||N<0||S<0||C<0||A<0) break;
+    const b = M*52200625 + N*614125 + S*7225 + C*85 + A;
+    bytes.push((b>>>24)&0xFF, (b>>>16)&0xFF, (b>>>8)&0xFF, b&0xFF);
+  }
+  return bytes;
+}
+
+function luraphFindBytecode(src) {
+  const blobs = [];
+  const re = /\[=\[([\s\S]*?)\]=\]/g;
+  let m;
+  while ((m = re.exec(src)) !== null) blobs.push(m[1]);
+  if (!blobs.length) return null;
+  for (let bi = 0; bi < blobs.length; bi++) {
+    for (let offset = 1; offset <= 25; offset++) {
+      if (offset > blobs[bi].length - 9) break;
+      const bc = luraphB85DecodeBlob(blobs[bi], offset);
+      if (bc.length >= 12
+        && bc[0]===0x1b && bc[1]===0x4c
+        && bc[2]===0x75 && bc[3]===0x61
+        && bc[4]===0x51) {
+        return { bc: new Uint8Array(bc), blobIdx: bi+1, offset };
+      }
+    }
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  BYTECODE DISASSEMBLER  (📋 Disassemble)
 // ═══════════════════════════════════════════════════════════════
 async function runDisasm() {
@@ -719,7 +892,26 @@ async function runDisasm() {
   setOut('<div class="card" style="background:#1a1830;border-color:#2d2050;color:#b39ddb"><span class="spinner"></span>Extracting and disassembling bytecode…</div>','disassembling…','cinfo');
   await new Promise(r=>setTimeout(r,60));
 
-  // First try to capture bytecode via fengari (running the VM)
+  // ── Step 0: Try Luraph static decode (base85 → Lua 5.1 bytecode, no VM needed) ──
+  const luraphResult = luraphFindBytecode(code);
+  if (luraphResult) {
+    const { bc, blobIdx, offset } = luraphResult;
+    let html2 = `<div class="card cok-card">✓ Luraph static decode: blob #${blobIdx} offset=${offset} → ${fmt(bc.length)} Lua 5.1 bytecode (no VM needed)</div>`;
+    try {
+      const dis = new Lua51Dis(bc);
+      const disHTML = dis.disassemble();
+      html2 += `<div>${disHTML}</div>`;
+      const bcStr = String.fromCharCode(...bc);
+      autoCopy(bcStr);
+      setOut(html2, 'luraph decoded', 'cok');
+    } catch(e) {
+      html2 += `<div class="card cwarn-card">⚠ Disassembly failed: ${esc(e.message)}</div>`;
+      setOut(html2, 'luraph bc', 'cwarn');
+    }
+    return;
+  }
+
+  // ── Step 1: Try to capture bytecode via fengari (running the VM) ──
   const {cleaned}=extractKey(code);
   const {code:prepped}=deobPasses(cleaned);
   const captured=[];let errMsg=null;
@@ -789,8 +981,8 @@ __getcap=function() return _cap end
         disasmCount++;
       }catch(e){html+=`<div class="card cwarn-card">Bytecode parse error: ${esc(e.message)}</div>`;}
     } else {
-      html+=`<div class="card cwarn-card">⚠ No bytecode captured. The Luraph VM could not be fully emulated without Roblox globals. Try pasting the raw bytecode blob (starting with \\x1bLua) directly.</div>`;
-      html+=`<div class="card cinfo-card">💡 Tip: If you can run the script in a real Roblox executor, hook <code>loadstring</code> to dump the raw binary argument, then paste that here.</div>`;
+      html+=`<div class="card cwarn-card">⚠ No bytecode captured. Luraph static decode found no base85 blob and the Fengari VM could not extract a layer without Roblox globals.</div>`;
+      html+=`<div class="card cinfo-card">💡 Tip: For Luraph scripts, the static decoder runs first automatically. For other VMs, hook <code>loadstring</code> in a real executor and paste the raw bytecode here.</div>`;
     }
   }
 
@@ -822,13 +1014,16 @@ function runDeob(){
   const code=inp.value;
   if(!code.trim()){setOut('<div class="card cinfo-card">Paste some code first.</div>','empty','cinfo');return;}
   const d=detect(code);
-  const {code:r,passes}=deobPasses(code);
+  const {cleaned}=extractKey(code);
+  const {code:r,passes}=deobPasses(cleaned);
   let html='';
   if(passes.length) html+=`<div class="row"><span class="rl">Passes</span><span class="rv">${passes.map(p=>`<span class="tag tok">${p}</span>`).join(' ')}</span></div>`;
-  else html+=`<div class="card cwarn-card">No text passes applied.</div>`;
-  if(d.vm||d.moon) html+=`<div class="card cwarn-card">⚠ VM layer present — use ▶ Run &amp; Capture for inner source.</div>`;
+  else html+=`<div class="card cwarn-card">No text passes applied — code may already be clean or VM-only.</div>`;
+  if(d.vm||d.moon) html+=`<div class="card cwarn-card">⚠ VM layer present — use ⚡ Deep Deob or ▶ Run &amp; Capture to extract inner source.</div>`;
+  html+=`<div class="card cok-card" style="font-size:.7rem">✓ ${fmt(r.length)} · ${r.split('\n').length} lines — auto-copied to clipboard</div>`;
   html+=`<pre class="code">${esc(r)}</pre>`;
   setOut(html,passes.length+' passes',passes.length?'cok':'cwarn');
+  autoCopy(r);
 }
 
 function runKeyExtract(){
@@ -854,6 +1049,84 @@ function runVMAnalysis(){
   html+=`<div class="row"><span class="rl">Approach</span><span class="rv"><span class="tag tteal">▶ Run &amp; Capture</span> <span class="tag tteal">🔬 VM Trace</span> <span class="tag" style="background:#1a1830;color:#b39ddb">📋 Disassemble</span></span></div>`;
   html+=`<div class="card cpink-card">▶ Run &amp; Capture — execute VM, hook loadstring, capture inner source.<br/>🔬 VM Trace — attach debug hook, trace every call/return event the VM makes.<br/>📋 Disassemble — capture Lua 5.1 bytecode and parse every instruction.</div>`;
   setOut(html,'vm analysis','cinfo');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DEEP DEOB (⚡ Deep Deob)
+//  Strip key → text deob → execute sandbox → deob each captured layer
+// ═══════════════════════════════════════════════════════════════
+async function runDeepDeob(){
+  const code=inp.value.trim();
+  if(!code){setOut('<div class="card cinfo-card">Paste some code first.</div>','empty','cinfo');return;}
+  setOut('<div class="card" style="background:#0f2820;border-color:#1a4030;color:#4caf50"><span class="spinner" style="border-top-color:#4caf50"></span>Deep deob: strip keys → text passes → VM execution → layer capture…</div>','working…','cok');
+  await new Promise(r=>setTimeout(r,60));
+
+  // Step 1: strip key system
+  const {cleaned:nokey, removed}=extractKey(code);
+  // Step 2: text deob passes
+  const {code:texted, passes}=deobPasses(nokey);
+  // Step 3: VM execution in Fengari sandbox
+  const layers=[];
+  let errMsg=null;
+
+  try{
+    if(typeof fengari==='undefined') throw new Error('Fengari not loaded — no internet?');
+    const {L,lua,lauxlib,to_luastring,to_jsstring,run}=buildFengariState();
+    run(STUBS);
+    run(CAPTURE_HOOKS);
+    lauxlib.luaL_dostring(L,to_luastring('pcall(function()\n'+texted+'\nend)'));
+    const r=lauxlib.luaL_dostring(L,to_luastring('return __getcap()'));
+    if(r===0){
+      lua.lua_pushnil(L);
+      while(lua.lua_next(L,-2)){
+        const s=lua.lua_tostring(L,-1);
+        if(s) layers.push(to_jsstring(s));
+        lua.lua_pop(L,1);
+      }
+    }
+  }catch(e){errMsg=e.message;}
+
+  let html='';
+  // Key system info
+  if(removed.length) html+=`<div class="row"><span class="rl">Key stripped</span><span class="rv">${removed.map(r=>`<span class="tag tkey">${esc(r.lbl)}</span>`).join(' ')}</span></div>`;
+  // Text passes
+  if(passes.length) html+=`<div class="row"><span class="rl">Text passes</span><span class="rv">${passes.map(p=>`<span class="tag tok">${p}</span>`).join(' ')}</span></div>`;
+  // VM error
+  if(errMsg) html+=`<div class="card cwarn-card">⚠ VM: ${esc(errMsg)}</div>`;
+
+  if(layers.length){
+    html+=`<div class="card cok-card">✓ Captured ${layers.length} VM layer(s). Applying text passes to each…</div>`;
+    // Apply deob passes to each captured layer
+    const finalLayers=layers.map(src=>{
+      const {code:dc,passes:dp}=deobPasses(src);
+      return{raw:src,clean:dc,passes:dp};
+    });
+    finalLayers.forEach((l,i)=>{
+      const isBc=l.raw.charCodeAt(0)===0x1b;
+      html+=`<div class="row"><span class="rl">Layer ${i+1}</span><span class="rv">${isBc?'<span class="tag tkey">BYTECODE</span>':'<span class="tag tok">source</span>'} ${fmt(l.clean.length)} · ${l.clean.split('\n').length} lines${l.passes.length?' · '+l.passes.map(p=>`<span class="tag tok">${p}</span>`).join(' '):''}</span></div>`;
+      if(isBc){
+        html+=`<div class="card cwarn-card">📋 Lua 5.1 bytecode — use Disassemble to decode instructions.</div>`;
+      } else {
+        html+=`<pre class="code">${esc(l.clean)}</pre>`;
+      }
+    });
+    // Auto-copy deepest non-bytecode layer
+    const best=finalLayers.slice().reverse().find(l=>l.raw.charCodeAt(0)!==0x1b);
+    if(best){
+      html+=`<div class="card cok-card" style="font-size:.7rem">✓ Deepest source layer auto-copied to clipboard (${fmt(best.clean.length)})</div>`;
+      autoCopy(best.clean);
+    }
+  } else if(!errMsg){
+    // No VM layers — output the text-deobbed version
+    html+=`<div class="card cwarn-card">⚠ No inner VM layers captured (VM may need full Roblox env). Showing text-deobbed result:</div>`;
+    html+=`<div class="card cok-card" style="font-size:.7rem">✓ ${fmt(texted.length)} · ${texted.split('\n').length} lines — auto-copied to clipboard</div>`;
+    html+=`<pre class="code">${esc(texted)}</pre>`;
+    autoCopy(texted);
+  }
+
+  setOut(html||'<div class="card cerr-card">No output.</div>',
+    layers.length?layers.length+' layers':errMsg?'error':'text-only',
+    layers.length?'cok':errMsg?'cwarn':'cok');
 }
 
 function clearAll(){
