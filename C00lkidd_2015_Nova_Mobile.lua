@@ -129,8 +129,28 @@ local function loop(fn, delay)
     return function() running = false end
 end
 
-local active = {}
-local stoppers = {}
+-- World commands affect the whole server (shared state). Body commands
+-- affect ONLY the player who clicked, so their on/off state is tracked
+-- per player - otherwise one player's toggle would flip another's effect.
+local WORLD = {
+    Skybox = true, ["Decal Spam"] = true, Music = true, Message = true,
+    Disco = true, ["Red Sky"] = true, Fog = true, Night = true,
+    Fullbright = true, Gravity = true, Rainbow = true,
+}
+
+local worldActive = {}
+local worldStoppers = {}
+
+-- bodyState[player] = { active = {name=true}, stoppers = {name=fn} }
+local bodyState = {}
+local function stateFor(player)
+    local s = bodyState[player]
+    if not s then
+        s = { active = {}, stoppers = {} }
+        bodyState[player] = s
+    end
+    return s
+end
 
 -- ===================================================================
 -- COMMANDS
@@ -295,9 +315,9 @@ commands["Infect"] = {
     on = function(player)
         local char = character(player)
         if not char then return end
-        if not char:FindFirstChild("C00lLocalHighlight") then
+        if not char:FindFirstChild("C00lInfectHighlight") then
             local hl = Instance.new("Highlight")
-            hl.Name = "C00lLocalHighlight"
+            hl.Name = "C00lInfectHighlight"
             hl.FillColor = RED
             hl.FillTransparency = 0.4
             hl.OutlineColor = BLACK
@@ -308,7 +328,7 @@ commands["Infect"] = {
     off = function(player)
         local char = character(player)
         if char then
-            local hl = char:FindFirstChild("C00lLocalHighlight")
+            local hl = char:FindFirstChild("C00lInfectHighlight")
             if hl then hl:Destroy() end
         end
         detach(player, "C00lInfectFire")
@@ -442,38 +462,108 @@ end
 -- TOGGLE DISPATCH
 -- ===================================================================
 
-local function broadcastActive()
+-- a player's lit buttons = all active world commands + their own body ones
+local function activeListFor(player)
     local list = {}
-    for name in pairs(active) do list[#list + 1] = name end
-    remote:FireAllClients("active", list)
+    for name in pairs(worldActive) do list[#list + 1] = name end
+    local s = bodyState[player]
+    if s then
+        for name in pairs(s.active) do list[#list + 1] = name end
+    end
+    return list
+end
+
+local function sendActive(player)
+    remote:FireClient(player, "active", activeListFor(player))
+end
+
+local function sendActiveAll()
+    for _, p in ipairs(Players:GetPlayers()) do
+        sendActive(p)
+    end
+end
+
+local function toggleWorld(player, name)
+    local cmd = commands[name]
+    if worldActive[name] then
+        if worldStoppers[name] then worldStoppers[name]() worldStoppers[name] = nil end
+        cmd.off(player)
+        worldActive[name] = nil
+    else
+        worldStoppers[name] = cmd.on(player)
+        worldActive[name] = true
+    end
+    sendActiveAll() -- world change relights every player's buttons
+end
+
+local function toggleBody(player, name)
+    local cmd = commands[name]
+    local s = stateFor(player)
+    if s.active[name] then
+        if s.stoppers[name] then s.stoppers[name]() s.stoppers[name] = nil end
+        cmd.off(player)
+        s.active[name] = nil
+    else
+        s.stoppers[name] = cmd.on(player)
+        s.active[name] = true
+    end
+    sendActive(player)
 end
 
 local function toggle(player, name)
-    local cmd = commands[name]
-    if not cmd then return end
-    if active[name] then
-        if stoppers[name] then stoppers[name]() stoppers[name] = nil end
-        cmd.off(player)
-        active[name] = nil
+    if not commands[name] then return end
+    if WORLD[name] then
+        toggleWorld(player, name)
     else
-        stoppers[name] = cmd.on(player)
-        active[name] = true
+        toggleBody(player, name)
     end
-    broadcastActive()
 end
 
 oneShots["Clear All"] = function(player)
-    for name in pairs(active) do
-        toggle(player, name)
+    -- turn off every world effect (affects everyone)
+    for name in pairs(worldActive) do
+        if worldStoppers[name] then worldStoppers[name]() worldStoppers[name] = nil end
+        commands[name].off(player)
+        worldActive[name] = nil
+    end
+    -- turn off this player's own body effects
+    local s = bodyState[player]
+    if s then
+        for name in pairs(s.active) do
+            if s.stoppers[name] then s.stoppers[name]() s.stoppers[name] = nil end
+            commands[name].off(player)
+            s.active[name] = nil
+        end
+    end
+    sendActiveAll()
+end
+
+-- clear a player's body effects (used on respawn; effects are already gone)
+local function clearBody(player)
+    local s = bodyState[player]
+    if not s then return end
+    for name in pairs(s.active) do
+        if s.stoppers[name] then s.stoppers[name]() s.stoppers[name] = nil end
+        s.active[name] = nil
     end
 end
 
 remote.OnServerEvent:Connect(function(player, name)
     if type(name) ~= "string" then return end
-    if oneShots[name] then
+    if name == "__ready" then
+        sendActive(player) -- client just loaded; sync its button lights
+    elseif oneShots[name] then
         oneShots[name](player)
     elseif commands[name] then
         toggle(player, name)
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    local s = bodyState[player]
+    if s then
+        for _, stop in pairs(s.stoppers) do stop() end
+        bodyState[player] = nil
     end
 end)
 
@@ -586,6 +676,9 @@ UserInputService.InputChanged:Connect(function(input)
             startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
+
+-- tell the server we're ready so it can sync which buttons should be lit
+remote:FireServer("__ready")
 ]]
 
 local function classic(obj)
@@ -718,6 +811,11 @@ local function giveGui(player)
     gui.Parent = playerGui
 
     local function onCharacter(character)
+        -- a respawn wipes the old character's body effects; clear their state
+        -- so buttons reflect reality instead of staying stuck "on"
+        clearBody(player)
+        sendActive(player)
+
         local old = character:FindFirstChild("CoolKidHighlight")
         if old then old:Destroy() end
         local highlight = Instance.new("Highlight")
