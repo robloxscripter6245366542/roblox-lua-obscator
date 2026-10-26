@@ -6,9 +6,20 @@
 -- big touch targets, touch drag, and a floating OPEN button so it never
 -- eats the whole screen.
 --
+-- Classic-flavor commands: Message (server-wide banner), Music, Skybox,
+-- Decal Spam, Fire, ForceField, Infect, Fling, Sparkles, Smoke, Particles,
+-- Disco, Fog, Night, Red Sky, Fullbright, Speed, High Jump, Highlight, Spin,
+-- Big Head, Invisible, Rainbow, Gravity, Fov, Reset, Clear All.
+--
+-- World/visual effects (Message, Music, Skybox, Fog, Night, Red Sky, Disco,
+-- Fullbright, Gravity, Decal Spam) are server-wide so everyone sees them.
+-- Body effects (Fire, ForceField, Infect, Fling, Speed, etc.) apply ONLY to
+-- the player who clicked - never forced onto others.
+--
 -- Follows the ENHANCED ruleset:
---   * No Crash Scripts  -> Decal Spam is capped (DECAL_LIMIT) so it can't
---                          stall clients or the server; no infinite spawns.
+--   * No Crash Scripts  -> Decal Spam is capped (DECAL_LIMIT); Fling is a
+--                          one-shot that cleans itself up; no infinite spawns
+--                          or lag loops that stall clients or the server.
 --   * No Mass Kicking   -> there is no kick/remove-player command at all.
 --   * Limited Map Edit  -> Decal Spam only ADDS reversible decals to parts;
 --                          nothing deletes or replaces the whole map.
@@ -30,10 +41,14 @@ local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
 local TEXTURE = "rbxassetid://" .. DECAL_ID
 
+-- classic c00lkidd GUI message (shown server-wide by the Message button)
+local MESSAGE_TEXT = "TEAM C00LKIDD JOIN TODAY!"
+
 -- button name = command name
 local BUTTONS = {
-    "Skybox", "Decal Spam", "Music", "Disco",
-    "Fire", "Sparkles", "Smoke", "Particles",
+    "Message", "Music", "Skybox", "Decal Spam",
+    "Fire", "ForceField", "Infect", "Fling",
+    "Sparkles", "Smoke", "Particles", "Disco",
     "Fog", "Night", "Red Sky", "Fullbright",
     "Speed", "High Jump", "Highlight", "Spin",
     "Big Head", "Invisible", "Rainbow", "Gravity",
@@ -178,6 +193,17 @@ commands["Music"] = {
     end,
 }
 
+-- classic on-screen message: the server tells every client to show/hide a
+-- big red banner. No crash, no map edit, no kick - just a GUI label (rule-safe).
+commands["Message"] = {
+    on = function()
+        remote:FireAllClients("message", MESSAGE_TEXT)
+    end,
+    off = function()
+        remote:FireAllClients("message", false)
+    end,
+}
+
 commands["Disco"] = {
     on = function()
         return loop(function()
@@ -243,6 +269,51 @@ for name, class in pairs({ Fire = "Fire", Sparkles = "Sparkles", Smoke = "Smoke"
         off = function(player) detach(player, "C00l" .. class) end,
     }
 end
+
+-- ForceField on the clicker (classic; cosmetic + self-protection only)
+commands["ForceField"] = {
+    on = function(player)
+        local char = character(player)
+        if not char then return end
+        local existing = char:FindFirstChild("C00lForceField")
+        if existing then existing:Destroy() end
+        local ff = Instance.new("ForceField")
+        ff.Name = "C00lForceField"
+        ff.Visible = true
+        ff.Parent = char
+    end,
+    off = function(player)
+        local char = character(player)
+        local ff = char and char:FindFirstChild("C00lForceField")
+        if ff then ff:Destroy() end
+    end,
+}
+
+-- Infect: the clicker gets the c00lkidd look (red fill + fire). Applied to
+-- the one who clicks only, never forced on other players (no griefing).
+commands["Infect"] = {
+    on = function(player)
+        local char = character(player)
+        if not char then return end
+        if not char:FindFirstChild("C00lLocalHighlight") then
+            local hl = Instance.new("Highlight")
+            hl.Name = "C00lLocalHighlight"
+            hl.FillColor = RED
+            hl.FillTransparency = 0.4
+            hl.OutlineColor = BLACK
+            hl.Parent = char
+        end
+        attach(player, "Fire", "C00lInfectFire", { Size = 10, Heat = 0 })
+    end,
+    off = function(player)
+        local char = character(player)
+        if char then
+            local hl = char:FindFirstChild("C00lLocalHighlight")
+            if hl then hl:Destroy() end
+        end
+        detach(player, "C00lInfectFire")
+    end,
+}
 
 commands["Particles"] = {
     on = function(player)
@@ -349,6 +420,20 @@ oneShots["Reset"] = function(player)
     if h then h.Health = 0 end
 end
 
+-- gentle one-shot pop upward on the clicker (self only; cleans itself up)
+oneShots["Fling"] = function(player)
+    local _, _, root = character(player)
+    if not root then return end
+    local v = Instance.new("BodyVelocity")
+    v.Name = "C00lFling"
+    v.MaxForce = Vector3.new(0, math.huge, 0)
+    v.Velocity = Vector3.new(0, 60, 0)
+    v.Parent = root
+    task.delay(0.25, function()
+        if v then v:Destroy() end
+    end)
+end
+
 oneShots["Fov"] = function(player)
     remote:FireClient(player, "fov")
 end
@@ -446,6 +531,26 @@ remote.OnClientEvent:Connect(function(kind, payload)
         panel.BorderColor3 = payload
     elseif kind == "fov" then
         camera.FieldOfView = camera.FieldOfView > 70 and 70 or 120
+    elseif kind == "message" then
+        local banner = gui:FindFirstChild("Banner")
+        if payload then
+            if not banner then
+                banner = Instance.new("TextLabel")
+                banner.Name = "Banner"
+                banner.BackgroundTransparency = 1
+                banner.Size = UDim2.new(1, 0, 0, 60)
+                banner.Position = UDim2.fromScale(0, 0.08)
+                banner.Font = Enum.Font.SourceSansBold
+                banner.TextScaled = true
+                banner.TextColor3 = Color3.fromRGB(255, 0, 0)
+                banner.TextStrokeTransparency = 0
+                banner.ZIndex = 50
+                banner.Parent = gui
+            end
+            banner.Text = payload
+        elseif banner then
+            banner:Destroy()
+        end
     end
 end)
 
