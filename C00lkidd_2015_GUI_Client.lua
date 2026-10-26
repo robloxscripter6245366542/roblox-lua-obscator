@@ -11,16 +11,38 @@ local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local SoundService = game:GetService("SoundService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 local gui = player:WaitForChild("PlayerGui"):WaitForChild("CoolKidGUI")
 local panel = gui:WaitForChild("MainPanel")
+local shadow = gui:WaitForChild("Shadow")
+local titleBar = panel:WaitForChild("TitleBar")
+local tabBar = panel:WaitForChild("TabBar")
+local indicator = tabBar:WaitForChild("Indicator")
 local pages = panel:WaitForChild("Pages")
+local panelScale = panel:WaitForChild("Scale")
 
 local RED = Color3.fromRGB(255, 0, 0)
 local TEXTURE = "rbxassetid://" .. DECAL_ID
 local FACES = Enum.NormalId:GetEnumItems()
+
+-- modern UI palette + animation helper
+local ACCENT     = Color3.fromRGB(240, 52, 62)
+local SURFACE    = Color3.fromRGB(31, 31, 38)
+local SURFACE_HI = Color3.fromRGB(44, 44, 53)
+local SURFACE_ON = Color3.fromRGB(52, 26, 30)
+local STROKE     = Color3.fromRGB(54, 54, 64)
+local TEXT       = Color3.fromRGB(238, 238, 245)
+local MUTED      = Color3.fromRGB(150, 150, 163)
+
+local function tween(obj, t, props, style, dir)
+    local info = TweenInfo.new(t, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out)
+    local tw = TweenService:Create(obj, info, props)
+    tw:Play()
+    return tw
+end
 
 local saved = {
     Ambient = Lighting.Ambient,
@@ -268,19 +290,21 @@ actions["Rainbow"] = {
     on = function()
         return loop(function()
             local c = Color3.fromHSV(tick() % 5 / 5, 1, 1)
-            for _, b in ipairs(panel:GetDescendants()) do
-                if b:IsA("GuiObject") then b.BorderColor3 = c end
+            for _, s in ipairs(panel:GetDescendants()) do
+                if s:IsA("UIStroke") then s.Color = c end
             end
-            panel.BorderColor3 = c
         end, 0.05)
     end,
     off = function()
-        for _, b in ipairs(panel:GetDescendants()) do
-            if b:IsA("GuiObject") then
-                b.BorderColor3 = active[b.Name] and Color3.new(1, 1, 1) or RED
+        -- restore each button's resting stroke (active = accent, rest = grey)
+        for _, page in ipairs(pages:GetChildren()) do
+            for _, b in ipairs(page:GetChildren()) do
+                local s = b:IsA("TextButton") and b:FindFirstChild("Stroke")
+                if s then s.Color = active[b.Name] and ACCENT or STROKE end
             end
         end
-        panel.BorderColor3 = RED
+        local panelStroke = panel:FindFirstChild("PanelStroke")
+        if panelStroke then panelStroke.Color = STROKE end
     end,
 }
 
@@ -303,11 +327,21 @@ oneShots["Reset"] = function()
 end
 
 
+-- animate a single button to its on/off look
+local function styleButton(b, on)
+    local s = b:FindFirstChild("Stroke")
+    tween(b, 0.18, { BackgroundColor3 = on and SURFACE_ON or SURFACE })
+    tween(b, 0.18, { TextColor3 = on and Color3.fromRGB(255, 255, 255) or TEXT })
+    if s then
+        tween(s, 0.18, { Color = on and ACCENT or STROKE, Thickness = on and 1.4 or 1 })
+    end
+end
+
 local function setActive(button, on)
     active[button.Name] = on or nil
     for _, page in ipairs(pages:GetChildren()) do
         local b = page:FindFirstChild(button.Name)
-        if b then b.BorderColor3 = on and Color3.new(1, 1, 1) or RED end
+        if b then styleButton(b, on) end
     end
 end
 
@@ -359,6 +393,20 @@ end)
 for _, page in ipairs(pages:GetChildren()) do
     for _, b in ipairs(page:GetChildren()) do
         if b:IsA("TextButton") then
+            local sc = b:FindFirstChild("Scale")
+            b.MouseEnter:Connect(function()
+                if not active[b.Name] then tween(b, 0.15, { BackgroundColor3 = SURFACE_HI }) end
+            end)
+            b.MouseLeave:Connect(function()
+                styleButton(b, active[b.Name])
+                if sc then tween(sc, 0.15, { Scale = 1 }) end
+            end)
+            b.MouseButton1Down:Connect(function()
+                if sc then tween(sc, 0.08, { Scale = 0.95 }) end
+            end)
+            b.MouseButton1Up:Connect(function()
+                if sc then tween(sc, 0.2, { Scale = 1 }, Enum.EasingStyle.Back) end
+            end)
             b.MouseButton1Click:Connect(function()
                 if oneShots[b.Name] then
                     oneShots[b.Name]()
@@ -370,33 +418,82 @@ for _, page in ipairs(pages:GetChildren()) do
     end
 end
 
--- PAGING
-local pageList = {}
+-- TABS (sliding indicator + animated page swap)
+local pageList, base = {}, {}
 for _, page in ipairs(pages:GetChildren()) do
-    pageList[tonumber(page.Name:match("%d+"))] = page
+    local idx = tonumber(page.Name:match("%d+"))
+    pageList[idx] = page
+    base[page] = page.Position
 end
-local current = 1
-local pageNumber = panel:WaitForChild("PageNumber")
 
-local function showPage(i)
-    current = (i - 1) % #pageList + 1
-    for n, page in ipairs(pageList) do
-        page.Visible = n == current
+local tabButtons = {}
+for _, t in ipairs(tabBar:GetChildren()) do
+    if t:IsA("TextButton") then tabButtons[tonumber(t.Name:match("%d+"))] = t end
+end
+
+local current = 0
+local function showTab(i, instant)
+    i = (i - 1) % #pageList + 1
+    if i == current then return end
+    local previous = current
+    current = i
+
+    for n, t in ipairs(tabButtons) do
+        tween(t, 0.2, { TextColor3 = n == i and TEXT or MUTED })
     end
-    pageNumber.Text = current .. "/" .. #pageList
+
+    local target = tabButtons[i]
+    tween(indicator, instant and 0 or 0.28, {
+        Position = UDim2.new(0, target.Position.X.Offset, 1, -3),
+        Size = UDim2.new(0, target.AbsoluteSize.X, 0, 3),
+    })
+
+    for n, page in ipairs(pageList) do
+        if n == i then
+            local dir = (previous ~= 0 and n < previous) and -1 or 1
+            page.Visible = true
+            page.Position = base[page] + UDim2.fromOffset(dir * 26, 0)
+            page.GroupTransparency = 1
+            tween(page, 0.3, { Position = base[page], GroupTransparency = 0 })
+        elseif page.Visible then
+            local dir = (n < i) and -1 or 1
+            tween(page, 0.2, { Position = base[page] + UDim2.fromOffset(dir * 26, 0), GroupTransparency = 1 })
+            task.delay(0.2, function() if current ~= n then page.Visible = false end end)
+        end
+    end
 end
 
-panel:WaitForChild("Prev").MouseButton1Click:Connect(function() showPage(current - 1) end)
-panel:WaitForChild("Next").MouseButton1Click:Connect(function() showPage(current + 1) end)
+for n, t in ipairs(tabButtons) do
+    t.MouseButton1Click:Connect(function() showTab(n) end)
+end
 
--- CLOSE
-local titleBar = panel:WaitForChild("TitleBar")
-titleBar:WaitForChild("Close").MouseButton1Click:Connect(function()
-    oneShots["Clear All"]()
-    gui:Destroy()
+task.defer(function()
+    local first = tabButtons[1]
+    indicator.Position = UDim2.new(0, first.Position.X.Offset, 1, -3)
+    indicator.Size = UDim2.new(0, first.AbsoluteSize.X, 0, 3)
+    showTab(1, true)
 end)
 
--- DRAG (title bar, mouse + touch)
+-- CLOSE (reverse the entrance, then clear effects + remove)
+titleBar:WaitForChild("Close").MouseButton1Click:Connect(function()
+    tween(panel, 0.2, { GroupTransparency = 1 })
+    tween(panelScale, 0.2, { Scale = 0.9 }, Enum.EasingStyle.Quad)
+    tween(shadow, 0.2, { ImageTransparency = 1 })
+    task.delay(0.22, function()
+        oneShots["Clear All"]()
+        gui:Destroy()
+    end)
+end)
+
+-- ENTRANCE (spring in)
+panel.GroupTransparency = 1
+panelScale.Scale = 0.9
+shadow.ImageTransparency = 1
+tween(panel, 0.32, { GroupTransparency = 0 })
+tween(panelScale, 0.45, { Scale = 1 }, Enum.EasingStyle.Back)
+tween(shadow, 0.4, { ImageTransparency = 0.5 })
+
+-- DRAG (title bar; shadow follows)
 local dragging, dragStart, startPos
 
 titleBar.InputBegan:Connect(function(input)
@@ -419,5 +516,7 @@ UserInputService.InputChanged:Connect(function(input)
         local delta = input.Position - dragStart
         panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
             startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        shadow.Position = UDim2.new(panel.Position.X.Scale, panel.Position.X.Offset - 18,
+            panel.Position.Y.Scale, panel.Position.Y.Offset - 18)
     end
 end)

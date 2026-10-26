@@ -31,23 +31,29 @@ local TEXTURE = "rbxassetid://" .. DECAL_ID
 local PANEL_W, PANEL_H = 300, 345
 local BTN_W, BTN_H = 135, 30
 
--- button name = command name (the client fires this string to the server)
+-- each tab is a named page; button name = command name (fired to the server)
 local PAGES = {
     {
-        "Skybox", "Decal Spam",
-        "Music", "Disco",
-        "Fire", "Sparkles",
-        "Smoke", "Particles",
-        "Fog", "Night",
-        "Red Sky", "Clear All",
+        name = "World",
+        items = {
+            "Skybox", "Decal Spam",
+            "Music", "Disco",
+            "Fog", "Night",
+            "Red Sky", "Fullbright",
+            "Gravity", "Rainbow",
+            "Fov", "Clear All",
+        },
     },
     {
-        "Speed", "High Jump",
-        "Highlight", "Spin",
-        "Big Head", "Invisible",
-        "Rainbow", "Gravity",
-        "Fullbright", "Fov",
-        "Reset", "Clear All",
+        name = "Player",
+        items = {
+            "Speed", "High Jump",
+            "Highlight", "Spin",
+            "Big Head", "Invisible",
+            "Fire", "Sparkles",
+            "Smoke", "Particles",
+            "Reset", "Clear All",
+        },
     },
 }
 
@@ -508,111 +514,221 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 -- ===================================================================
--- GUI BUILDER (server builds, clones to each player)
+-- PREMIUM UI  (modern dark theme + animated tabs; server builds, clones)
 -- ===================================================================
 
-local function classic(obj)
-    obj.BackgroundColor3 = BLACK
-    obj.BorderColor3 = RED
-    obj.BorderSizePixel = 1
+-- modern palette (kept separate from the gameplay RED/WHITE/BLACK above)
+local BG      = Color3.fromRGB(17, 17, 21)
+local SURFACE = Color3.fromRGB(31, 31, 38)
+local STROKE  = Color3.fromRGB(54, 54, 64)
+local ACCENT  = Color3.fromRGB(240, 52, 62)
+local TEXT    = Color3.fromRGB(238, 238, 245)
+local MUTED   = Color3.fromRGB(150, 150, 163)
+
+local PW, PH = 344, 420
+
+local function corner(obj, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r)
+    c.Parent = obj
     return obj
 end
 
-local function label(parent, text, pos, size, font, textSize, color, name)
-    local l = Instance.new("TextLabel")
-    l.Name = name or "Label"
-    l.BackgroundTransparency = 1
-    l.Position = pos
-    l.Size = size
-    l.Font = font
-    l.TextSize = textSize
-    l.Text = text
-    l.TextColor3 = color
-    l.TextStrokeTransparency = 0.5
-    l.Parent = parent
-    return l
+local function stroke(obj, color, thickness, transparency)
+    local s = Instance.new("UIStroke")
+    s.Name = "Stroke"
+    s.Color = color
+    s.Thickness = thickness or 1
+    s.Transparency = transparency or 0
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = obj
+    return s
 end
 
-local function button(parent, name, text, pos, size)
-    local b = classic(Instance.new("TextButton"))
+-- a modern command button (styling only; the client wires clicks + anims)
+local function makeButton(parent, name, text)
+    local b = Instance.new("TextButton")
     b.Name = name
-    b.Position = pos
-    b.Size = size
-    b.AutoButtonColor = true
-    b.Font = Enum.Font.SourceSans
-    b.TextSize = 18
+    b.AutoButtonColor = false
+    b.BackgroundColor3 = SURFACE
+    b.BorderSizePixel = 0
     b.Text = text
-    b.TextColor3 = WHITE
-    b.TextStrokeTransparency = 0.5
+    b.Font = Enum.Font.GothamMedium
+    b.TextSize = 14
+    b.TextColor3 = TEXT
+    b.TextTruncate = Enum.TextTruncate.AtEnd
     b.Parent = parent
+    corner(b, 8)
+    stroke(b, STROKE, 1, 0)
+    local scale = Instance.new("UIScale")
+    scale.Name = "Scale"
+    scale.Parent = b
     return b
 end
 
--- client-side wiring, inserted as a LocalScript into each player's GUI
+-- client-side wiring + animation, inserted as a LocalScript into each GUI
 local CLIENT_SOURCE = [[
-local remote = game:GetService("ReplicatedStorage"):WaitForChild("]] .. REMOTE_NAME .. [[")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local remote = game:GetService("ReplicatedStorage"):WaitForChild("]] .. REMOTE_NAME .. [[")
 local camera = workspace.CurrentCamera
+
 local gui = script.Parent
 local panel = gui:WaitForChild("MainPanel")
-local pages = panel:WaitForChild("Pages")
+local shadow = gui:WaitForChild("Shadow")
+local titleBar = panel:WaitForChild("TitleBar")
+local tabBar = panel:WaitForChild("TabBar")
+local indicator = tabBar:WaitForChild("Indicator")
+local pagesFolder = panel:WaitForChild("Pages")
+local panelScale = panel:WaitForChild("Scale")
 
-local RED = Color3.fromRGB(255, 0, 0)
-local WHITE = Color3.new(1, 1, 1)
+local ACCENT     = Color3.fromRGB(240, 52, 62)
+local SURFACE    = Color3.fromRGB(31, 31, 38)
+local SURFACE_HI = Color3.fromRGB(44, 44, 53)
+local SURFACE_ON = Color3.fromRGB(52, 26, 30)
+local STROKE     = Color3.fromRGB(54, 54, 64)
+local TEXT       = Color3.fromRGB(238, 238, 245)
+local MUTED      = Color3.fromRGB(150, 150, 163)
 
--- buttons -> fire the command name to the server
-for _, page in ipairs(pages:GetChildren()) do
-    for _, b in ipairs(page:GetChildren()) do
-        if b:IsA("TextButton") then
-            b.MouseButton1Click:Connect(function()
-                remote:FireServer(b.Name)
-            end)
-        end
+local function tween(obj, t, props, style, dir)
+    local info = TweenInfo.new(t, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out)
+    local tw = TweenService:Create(obj, info, props)
+    tw:Play()
+    return tw
+end
+
+-- index the pages and remember each one's resting position
+local pages, base = {}, {}
+for _, page in ipairs(pagesFolder:GetChildren()) do
+    if page:IsA("GuiObject") then
+        local idx = tonumber(page.Name:match("%d+"))
+        pages[idx] = page
+        base[page] = page.Position
     end
 end
 
--- server tells us which commands are active -> light those borders white
+local activeSet = {}
+
+local function styleButton(b, on)
+    local s = b:FindFirstChild("Stroke")
+    tween(b, 0.18, { BackgroundColor3 = on and SURFACE_ON or SURFACE })
+    tween(b, 0.18, { TextColor3 = on and Color3.fromRGB(255, 255, 255) or TEXT })
+    if s then
+        tween(s, 0.18, { Color = on and ACCENT or STROKE, Thickness = on and 1.4 or 1 })
+    end
+end
+
+local function hookButton(b)
+    local sc = b:FindFirstChild("Scale")
+    b.MouseEnter:Connect(function()
+        if not activeSet[b.Name] then tween(b, 0.15, { BackgroundColor3 = SURFACE_HI }) end
+    end)
+    b.MouseLeave:Connect(function()
+        styleButton(b, activeSet[b.Name])
+        if sc then tween(sc, 0.15, { Scale = 1 }) end
+    end)
+    b.MouseButton1Down:Connect(function()
+        if sc then tween(sc, 0.08, { Scale = 0.95 }) end
+    end)
+    b.MouseButton1Up:Connect(function()
+        if sc then tween(sc, 0.2, { Scale = 1 }, Enum.EasingStyle.Back) end
+    end)
+    b.MouseButton1Click:Connect(function()
+        remote:FireServer(b.Name)
+    end)
+end
+
+for _, page in ipairs(pagesFolder:GetChildren()) do
+    for _, b in ipairs(page:GetChildren()) do
+        if b:IsA("TextButton") then hookButton(b) end
+    end
+end
+
+-- server tells us which commands are active -> glow those buttons
 remote.OnClientEvent:Connect(function(kind, payload)
     if kind == "active" then
-        local set = {}
-        for _, name in ipairs(payload) do set[name] = true end
-        for _, page in ipairs(pages:GetChildren()) do
+        activeSet = {}
+        for _, name in ipairs(payload) do activeSet[name] = true end
+        for _, page in ipairs(pagesFolder:GetChildren()) do
             for _, b in ipairs(page:GetChildren()) do
-                if b:IsA("TextButton") and b.Name ~= "Prev" and b.Name ~= "Next" then
-                    b.BorderColor3 = set[b.Name] and WHITE or RED
-                end
+                if b:IsA("TextButton") then styleButton(b, activeSet[b.Name]) end
             end
         end
     elseif kind == "rainbow" then
         for _, d in ipairs(panel:GetDescendants()) do
-            if d:IsA("GuiObject") then d.BorderColor3 = payload end
+            if d:IsA("UIStroke") then d.Color = payload end
         end
-        panel.BorderColor3 = payload
     elseif kind == "fov" then
         camera.FieldOfView = camera.FieldOfView > 70 and 70 or 120
     end
 end)
 
--- paging
-local pageList = {}
-for _, page in ipairs(pages:GetChildren()) do
-    pageList[tonumber(page.Name:match("%d+"))] = page
+-- TABS (sliding indicator + animated page swap)
+local tabButtons = {}
+for _, t in ipairs(tabBar:GetChildren()) do
+    if t:IsA("TextButton") then tabButtons[tonumber(t.Name:match("%d+"))] = t end
 end
-local current = 1
-local pageNumber = panel:WaitForChild("PageNumber")
-local function showPage(i)
-    current = (i - 1) % #pageList + 1
-    for n, page in ipairs(pageList) do page.Visible = n == current end
-    pageNumber.Text = current .. "/" .. #pageList
+
+local current = 0
+local function showTab(i, instant)
+    i = (i - 1) % #pages + 1
+    if i == current then return end
+    local previous = current
+    current = i
+
+    for n, t in ipairs(tabButtons) do
+        tween(t, 0.2, { TextColor3 = n == i and TEXT or MUTED })
+    end
+
+    local target = tabButtons[i]
+    tween(indicator, instant and 0 or 0.28, {
+        Position = UDim2.new(0, target.Position.X.Offset, 1, -3),
+        Size = UDim2.new(0, target.AbsoluteSize.X, 0, 3),
+    })
+
+    for n, page in ipairs(pages) do
+        if n == i then
+            local dir = (previous ~= 0 and n < previous) and -1 or 1
+            page.Visible = true
+            page.Position = base[page] + UDim2.fromOffset(dir * 26, 0)
+            page.GroupTransparency = 1
+            tween(page, 0.3, { Position = base[page], GroupTransparency = 0 })
+        elseif page.Visible then
+            local dir = (n < i) and -1 or 1
+            tween(page, 0.2, { Position = base[page] + UDim2.fromOffset(dir * 26, 0), GroupTransparency = 1 })
+            task.delay(0.2, function() if current ~= n then page.Visible = false end end)
+        end
+    end
 end
-panel:WaitForChild("Prev").MouseButton1Click:Connect(function() showPage(current - 1) end)
-panel:WaitForChild("Next").MouseButton1Click:Connect(function() showPage(current + 1) end)
 
--- close
-local titleBar = panel:WaitForChild("TitleBar")
-titleBar:WaitForChild("Close").MouseButton1Click:Connect(function() gui:Destroy() end)
+for n, t in ipairs(tabButtons) do
+    t.MouseButton1Click:Connect(function() showTab(n) end)
+end
 
--- drag (mouse + touch)
+task.defer(function()
+    local first = tabButtons[1]
+    indicator.Position = UDim2.new(0, first.Position.X.Offset, 1, -3)
+    indicator.Size = UDim2.new(0, first.AbsoluteSize.X, 0, 3)
+    showTab(1, true)
+end)
+
+-- CLOSE (reverse the entrance, then remove)
+titleBar:WaitForChild("Close").MouseButton1Click:Connect(function()
+    tween(panel, 0.2, { GroupTransparency = 1 })
+    tween(panelScale, 0.2, { Scale = 0.9 }, Enum.EasingStyle.Quad)
+    tween(shadow, 0.2, { ImageTransparency = 1 })
+    task.delay(0.22, function() gui:Destroy() end)
+end)
+
+-- ENTRANCE (spring in)
+panel.GroupTransparency = 1
+panelScale.Scale = 0.9
+shadow.ImageTransparency = 1
+tween(panel, 0.32, { GroupTransparency = 0 })
+tween(panelScale, 0.45, { Scale = 1 }, Enum.EasingStyle.Back)
+tween(shadow, 0.4, { ImageTransparency = 0.5 })
+
+-- DRAG (title bar; shadow follows)
 local dragging, dragStart, startPos
 titleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -631,6 +747,8 @@ UserInputService.InputChanged:Connect(function(input)
         local delta = input.Position - dragStart
         panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
             startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        shadow.Position = UDim2.new(panel.Position.X.Scale, panel.Position.X.Offset - 18,
+            panel.Position.Y.Scale, panel.Position.Y.Offset - 18)
     end
 end)
 
@@ -643,65 +761,174 @@ local function buildGui()
     gui.Name = "CoolKidGUI"
     gui.ResetOnSpawn = false
     gui.DisplayOrder = 100
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-    local panel = classic(Instance.new("Frame"))
+    -- soft drop shadow (sibling behind the panel, follows it on drag)
+    local shadow = Instance.new("ImageLabel")
+    shadow.Name = "Shadow"
+    shadow.BackgroundTransparency = 1
+    shadow.Image = "rbxassetid://5028857084"
+    shadow.ImageColor3 = BLACK
+    shadow.ImageTransparency = 0.5
+    shadow.ScaleType = Enum.ScaleType.Slice
+    shadow.SliceCenter = Rect.new(24, 24, 276, 276)
+    shadow.Size = UDim2.fromOffset(PW + 36, PH + 36)
+    shadow.Position = UDim2.new(0.5, -PW / 2 - 18, 0.5, -PH / 2 - 18)
+    shadow.ZIndex = 0
+    shadow.Parent = gui
+
+    -- MAIN PANEL (CanvasGroup so the whole window fades as one on open/close)
+    local panel = Instance.new("CanvasGroup")
     panel.Name = "MainPanel"
-    panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
-    panel.Position = UDim2.new(0.5, -PANEL_W / 2, 0.5, -PANEL_H / 2)
-    panel.BorderSizePixel = 3
+    panel.Size = UDim2.fromOffset(PW, PH)
+    panel.Position = UDim2.new(0.5, -PW / 2, 0.5, -PH / 2)
+    panel.BackgroundColor3 = WHITE -- the gradient supplies the real color
+    panel.BorderSizePixel = 0
     panel.Active = true
     panel.Parent = gui
+    corner(panel, 14)
+    stroke(panel, STROKE, 1.2, 0).Name = "PanelStroke"
 
-    local titleBar = classic(Instance.new("Frame"))
+    local grad = Instance.new("UIGradient")
+    grad.Rotation = 90
+    grad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(34, 34, 42)),
+        ColorSequenceKeypoint.new(1, BG),
+    })
+    grad.Parent = panel
+
+    local panelScale = Instance.new("UIScale")
+    panelScale.Name = "Scale"
+    panelScale.Parent = panel
+
+    -- TITLE BAR (drag handle)
+    local titleBar = Instance.new("Frame")
     titleBar.Name = "TitleBar"
-    titleBar.Size = UDim2.new(1, 0, 0, 30)
+    titleBar.BackgroundTransparency = 1
+    titleBar.Size = UDim2.new(1, 0, 0, 52)
     titleBar.Active = true
     titleBar.Parent = panel
 
-    label(titleBar, "c00lgui", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0),
-        Enum.Font.SourceSansBold, 26, RED, "Title")
+    local dot = Instance.new("Frame")
+    dot.Name = "Dot"
+    dot.BackgroundColor3 = ACCENT
+    dot.BorderSizePixel = 0
+    dot.Size = UDim2.fromOffset(10, 10)
+    dot.Position = UDim2.fromOffset(18, 21)
+    dot.Parent = titleBar
+    corner(dot, 5)
 
-    local close = button(titleBar, "Close", "X", UDim2.new(1, -30, 0, 0), UDim2.fromOffset(30, 30))
-    close.Font = Enum.Font.SourceSansBold
-    close.TextColor3 = RED
-    close.TextSize = 22
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.BackgroundTransparency = 1
+    title.Position = UDim2.fromOffset(36, 9)
+    title.Size = UDim2.new(1, -90, 0, 22)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 18
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Text = "c00lgui"
+    title.TextColor3 = TEXT
+    title.Parent = titleBar
 
-    label(panel, "Team C00lkidd join today!", UDim2.fromOffset(0, 32),
-        UDim2.new(1, 0, 0, 20), Enum.Font.SourceSans, 16, WHITE, "Subtitle")
+    local subtitle = Instance.new("TextLabel")
+    subtitle.Name = "Subtitle"
+    subtitle.BackgroundTransparency = 1
+    subtitle.Position = UDim2.fromOffset(36, 30)
+    subtitle.Size = UDim2.new(1, -90, 0, 14)
+    subtitle.Font = Enum.Font.Gotham
+    subtitle.TextSize = 11
+    subtitle.TextXAlignment = Enum.TextXAlignment.Left
+    subtitle.Text = "Team C00lkidd join today!"
+    subtitle.TextColor3 = MUTED
+    subtitle.Parent = titleBar
 
+    local close = Instance.new("TextButton")
+    close.Name = "Close"
+    close.BackgroundColor3 = SURFACE
+    close.BorderSizePixel = 0
+    close.AutoButtonColor = false
+    close.Size = UDim2.fromOffset(28, 28)
+    close.Position = UDim2.new(1, -40, 0, 12)
+    close.Font = Enum.Font.GothamBold
+    close.TextSize = 13
+    close.Text = "✕"
+    close.TextColor3 = MUTED
+    close.Parent = titleBar
+    corner(close, 8)
+    stroke(close, STROKE, 1, 0)
+
+    -- TAB BAR (named tabs + sliding indicator)
+    local tabBar = Instance.new("Frame")
+    tabBar.Name = "TabBar"
+    tabBar.BackgroundTransparency = 1
+    tabBar.Position = UDim2.fromOffset(16, 56)
+    tabBar.Size = UDim2.new(1, -32, 0, 30)
+    tabBar.Parent = panel
+
+    local sep = Instance.new("Frame")
+    sep.Name = "Sep"
+    sep.BackgroundColor3 = STROKE
+    sep.BackgroundTransparency = 0.4
+    sep.BorderSizePixel = 0
+    sep.Size = UDim2.new(1, 0, 0, 1)
+    sep.Position = UDim2.new(0, 0, 1, 0)
+    sep.Parent = tabBar
+
+    local indicator = Instance.new("Frame")
+    indicator.Name = "Indicator"
+    indicator.BackgroundColor3 = ACCENT
+    indicator.BorderSizePixel = 0
+    indicator.Size = UDim2.new(0, 60, 0, 3)
+    indicator.Position = UDim2.new(0, 0, 1, -3)
+    indicator.ZIndex = 2
+    indicator.Parent = tabBar
+    corner(indicator, 2)
+
+    local tabX = 0
+    for i, entry in ipairs(PAGES) do
+        local t = Instance.new("TextButton")
+        t.Name = "Tab" .. i
+        t.BackgroundTransparency = 1
+        t.AutoButtonColor = false
+        t.Position = UDim2.fromOffset(tabX, 0)
+        t.Size = UDim2.fromOffset(72, 28)
+        t.Font = Enum.Font.GothamBold
+        t.TextSize = 13
+        t.Text = entry.name
+        t.TextColor3 = i == 1 and TEXT or MUTED
+        t.Parent = tabBar
+        tabX = tabX + 80
+    end
+
+    -- PAGES (one CanvasGroup grid per tab)
     local pages = Instance.new("Folder")
     pages.Name = "Pages"
     pages.Parent = panel
 
-    for i, names in ipairs(PAGES) do
-        local page = Instance.new("Frame")
+    for i, entry in ipairs(PAGES) do
+        local page = Instance.new("CanvasGroup")
         page.Name = "Page" .. i
         page.BackgroundTransparency = 1
-        page.Position = UDim2.fromOffset(10, 60)
-        page.Size = UDim2.new(1, -20, 0, 6 * (BTN_H + 10))
+        page.BorderSizePixel = 0
+        page.Position = UDim2.fromOffset(16, 96)
+        page.Size = UDim2.new(1, -32, 1, -108)
         page.Visible = i == 1
         page.Parent = pages
 
-        for n, name in ipairs(names) do
-            local col = (n - 1) % 2
-            local row = math.floor((n - 1) / 2)
-            button(page, name, name,
-                UDim2.fromOffset(col * (BTN_W + 10), row * (BTN_H + 10)),
-                UDim2.fromOffset(BTN_W, BTN_H))
+        local grid = Instance.new("UIGridLayout")
+        grid.CellSize = UDim2.new(0.5, -5, 0, 34)
+        grid.CellPadding = UDim2.fromOffset(10, 10)
+        grid.SortOrder = Enum.SortOrder.LayoutOrder
+        grid.Parent = page
+
+        for n, name in ipairs(entry.items) do
+            makeButton(page, name, name).LayoutOrder = n
         end
     end
 
-    local y = PANEL_H - 40
-    button(panel, "Prev", "<", UDim2.fromOffset(10, y), UDim2.fromOffset(40, 30)).Font =
-        Enum.Font.SourceSansBold
-    button(panel, "Next", ">", UDim2.fromOffset(PANEL_W - 50, y), UDim2.fromOffset(40, 30)).Font =
-        Enum.Font.SourceSansBold
-    label(panel, "1/" .. #PAGES, UDim2.fromOffset(60, y), UDim2.new(1, -120, 0, 30),
-        Enum.Font.SourceSansBold, 22, RED, "PageNumber")
-
     local client = Instance.new("LocalScript")
     client.Name = "C00lClient"
-    client.Source = CLIENT_SOURCE -- requires an executor; Studio uses a fallback below
+    client.Source = CLIENT_SOURCE -- requires an executor to run
     client.Parent = gui
 
     return gui
