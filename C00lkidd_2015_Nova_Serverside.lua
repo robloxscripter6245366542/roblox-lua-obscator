@@ -15,8 +15,10 @@
 --   * no auto-executing loadstrings from unknown URLs; all code is inline
 --   * set the asset IDs below to your own uploads before running
 
-local DECAL_ID = 0 -- c00lkidd face decal (skybox, decal spam, particles)
+local DECAL_ID = 0 -- c00lkidd face decal (skybox, decal spam, particles, jumpscare)
 local MUSIC_ID = 0 -- skeleton music
+local SCREAM_ID = 0 -- c00lkidd scream (Script tab)
+local THUNDER_ID = 0 -- thunder clap (Script tab)
 
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
@@ -53,6 +55,17 @@ local PAGES = {
             "Fire", "Sparkles",
             "Smoke", "Particles",
             "Reset", "Clear All",
+        },
+    },
+    {
+        name = "Script",
+        items = {
+            "Scream", "Jumpscare",
+            "Thunder", "Blood",
+            "Trail", "Confetti",
+            "Fireworks", "Sit",
+            "Freeze", "Flames",
+            "Teleport Spawn", "Clear All",
         },
     },
 }
@@ -143,7 +156,7 @@ end
 local WORLD = {
     Skybox = true, ["Decal Spam"] = true, Music = true, Disco = true,
     ["Red Sky"] = true, Fog = true, Night = true, Fullbright = true,
-    Gravity = true, Rainbow = true,
+    Gravity = true, Rainbow = true, Blood = true, Flames = true,
 }
 
 local worldActive = {}
@@ -390,6 +403,99 @@ commands["Rainbow"] = {
     end,
 }
 
+-- SCRIPT TAB --------------------------------------------------------
+-- Classic c00lkidd flavour, built to the ENHANCED ruleset:
+--   * No Crash Scripts -> no lag loops; Flames is capped, Fireworks
+--                         cleans itself up, nothing spawns unbounded.
+--   * No Mass Kicking  -> there is no kick/remove command here.
+--   * Limited Map Edit -> Flames only ADDS reversible fire to parts and
+--                         Fireworks adds one small self-cleaning part;
+--                         nothing deletes or replaces the map.
+
+-- red screen tint (whole server), fully reversible
+commands["Blood"] = {
+    on = function()
+        local cc = Instance.new("ColorCorrectionEffect")
+        cc.Name = "C00lBlood"
+        cc.TintColor = Color3.fromRGB(255, 70, 70)
+        cc.Saturation = 0.35
+        cc.Brightness = -0.05
+        cc.Parent = Lighting
+    end,
+    off = function()
+        local cc = Lighting:FindFirstChild("C00lBlood")
+        if cc then cc:Destroy() end
+    end,
+}
+
+-- Flames: adds fire to map parts, CAPPED at FLAME_LIMIT (anti-crash) and
+-- fully reversible (adds only; never deletes or replaces the map).
+local FLAME_LIMIT = 60
+commands["Flames"] = {
+    on = function()
+        local count = 0
+        for _, part in ipairs(Workspace:GetDescendants()) do
+            if count >= FLAME_LIMIT then break end
+            if part:IsA("BasePart") and not Players:GetPlayerFromCharacter(part.Parent)
+                and not part:FindFirstChild("C00lFlame") then
+                local f = Instance.new("Fire")
+                f.Name = "C00lFlame"
+                f.Heat = 0 -- cosmetic only, does no damage
+                f.Size = 5
+                f.Parent = part
+                count += 1
+            end
+        end
+    end,
+    off = function()
+        for _, f in ipairs(Workspace:GetDescendants()) do
+            if f.Name == "C00lFlame" then f:Destroy() end
+        end
+    end,
+}
+
+-- rainbow character trail (the clicker only)
+commands["Trail"] = {
+    on = function(player)
+        local _, _, root = character(player)
+        if not root then return end
+        local a0 = Instance.new("Attachment")
+        a0.Name = "C00lTrailA0"
+        a0.Position = Vector3.new(0, 1, 0)
+        a0.Parent = root
+        local a1 = Instance.new("Attachment")
+        a1.Name = "C00lTrailA1"
+        a1.Position = Vector3.new(0, -1, 0)
+        a1.Parent = root
+        local trail = Instance.new("Trail")
+        trail.Name = "C00lTrail"
+        trail.Attachment0 = a0
+        trail.Attachment1 = a1
+        trail.Lifetime = 1
+        trail.Color = ColorSequence.new(RED, Color3.fromRGB(255, 160, 0))
+        trail.Parent = root
+    end,
+    off = function(player)
+        local _, _, root = character(player)
+        for _, n in ipairs({ "C00lTrail", "C00lTrailA0", "C00lTrailA1" }) do
+            local o = root and root:FindFirstChild(n)
+            if o then o:Destroy() end
+        end
+    end,
+}
+
+-- Freeze the clicker in place (self only; respawn clears it)
+commands["Freeze"] = {
+    on = function(player)
+        local _, _, root = character(player)
+        if root then root.Anchored = true end
+    end,
+    off = function(player)
+        local _, _, root = character(player)
+        if root then root.Anchored = false end
+    end,
+}
+
 -- ONE-SHOT ----------------------------------------------------------
 
 local oneShots = {}
@@ -402,6 +508,120 @@ end
 oneShots["Fov"] = function(player)
     -- camera is client-only; tell that client to toggle fov
     remote:FireClient(player, "fov")
+end
+
+-- SCRIPT TAB one-shots ----------------------------------------------
+
+-- server-wide scream (self-cleans; one Sound, not a loop)
+oneShots["Scream"] = function()
+    local s = Instance.new("Sound")
+    s.Name = "C00lScream"
+    s.SoundId = "rbxassetid://" .. SCREAM_ID
+    s.Volume = 1
+    s.Parent = holder
+    s:Play()
+    s.Ended:Connect(function() s:Destroy() end)
+    task.delay(10, function() if s then s:Destroy() end end)
+end
+
+-- flash the c00lkidd face on every screen for a moment (client GUI only)
+oneShots["Jumpscare"] = function()
+    remote:FireAllClients("jumpscare", TEXTURE)
+end
+
+-- a couple of lightning flashes + a thunder clap, server-wide
+oneShots["Thunder"] = function()
+    local original = Lighting.Brightness
+    task.spawn(function()
+        for _ = 1, 2 do
+            if not holder.Parent then return end
+            Lighting.Brightness = 5
+            task.wait(0.07)
+            Lighting.Brightness = original
+            task.wait(0.12)
+        end
+    end)
+    local s = Instance.new("Sound")
+    s.Name = "C00lThunder"
+    s.SoundId = "rbxassetid://" .. THUNDER_ID
+    s.Volume = 1
+    s.Parent = holder
+    s:Play()
+    s.Ended:Connect(function() s:Destroy() end)
+    task.delay(8, function() if s then s:Destroy() end end)
+end
+
+-- confetti burst on the clicker
+oneShots["Confetti"] = function(player)
+    local _, _, root = character(player)
+    if not root then return end
+    local e = Instance.new("ParticleEmitter")
+    e.Name = "C00lConfetti"
+    e.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    e.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 60, 60)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(60, 160, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 220, 60)),
+    })
+    e.Lifetime = NumberRange.new(1.5, 2.5)
+    e.Speed = NumberRange.new(16, 24)
+    e.SpreadAngle = Vector2.new(180, 180)
+    e.Rate = 0
+    e.Parent = root
+    e:Emit(90)
+    task.delay(3, function() if e then e:Destroy() end end)
+end
+
+-- a firework rises from the clicker and bursts (one small self-cleaning part)
+oneShots["Fireworks"] = function(player)
+    local _, _, root = character(player)
+    if not root then return end
+    local color = Color3.fromHSV(math.random(), 1, 1)
+    local p = Instance.new("Part")
+    p.Name = "C00lFirework"
+    p.Shape = Enum.PartType.Ball
+    p.Size = Vector3.new(1, 1, 1)
+    p.Color = color
+    p.Material = Enum.Material.Neon
+    p.CanCollide = false
+    p.CFrame = root.CFrame + Vector3.new(0, 3, 0)
+    p.Parent = Workspace
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(0, math.huge, 0)
+    bv.Velocity = Vector3.new(0, 55, 0)
+    bv.Parent = p
+    task.delay(0.8, function()
+        if not p or not p.Parent then return end
+        bv:Destroy()
+        local e = Instance.new("ParticleEmitter")
+        e.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+        e.Color = ColorSequence.new(color)
+        e.Lifetime = NumberRange.new(1, 1.6)
+        e.Speed = NumberRange.new(26, 34)
+        e.SpreadAngle = Vector2.new(180, 180)
+        e.Rate = 0
+        e.Parent = p
+        e:Emit(140)
+        p.Transparency = 1
+        task.delay(2, function() if p then p:Destroy() end end)
+    end)
+end
+
+-- sit the clicker down
+oneShots["Sit"] = function(player)
+    local _, h = character(player)
+    if h then h.Sit = true end
+end
+
+-- send the clicker back to a spawn point
+oneShots["Teleport Spawn"] = function(player)
+    local _, _, root = character(player)
+    if not root then return end
+    local dest
+    for _, v in ipairs(Workspace:GetDescendants()) do
+        if v:IsA("SpawnLocation") then dest = v break end
+    end
+    if dest then root.CFrame = dest.CFrame + Vector3.new(0, 5, 0) end
 end
 
 -- ===================================================================
@@ -660,6 +880,21 @@ remote.OnClientEvent:Connect(function(kind, payload)
         end
     elseif kind == "fov" then
         camera.FieldOfView = camera.FieldOfView > 70 and 70 or 120
+    elseif kind == "jumpscare" then
+        local js = Instance.new("ImageLabel")
+        js.Name = "Jumpscare"
+        js.BackgroundColor3 = Color3.new(0, 0, 0)
+        js.BorderSizePixel = 0
+        js.Size = UDim2.fromScale(1, 1)
+        js.Image = payload
+        js.ScaleType = Enum.ScaleType.Fit
+        js.ZIndex = 999
+        js.Parent = gui
+        tween(js, 0.15, { ImageTransparency = 0 })
+        task.delay(1.1, function()
+            tween(js, 0.25, { ImageTransparency = 1, BackgroundTransparency = 1 })
+            task.delay(0.3, function() if js then js:Destroy() end end)
+        end)
     end
 end)
 

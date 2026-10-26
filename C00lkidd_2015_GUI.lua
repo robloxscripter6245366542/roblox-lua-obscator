@@ -48,6 +48,17 @@ local PAGES = {
             "Reset", "Clear All",
         },
     },
+    {
+        name = "Script",
+        items = {
+            "Scream", "Jumpscare",
+            "Thunder", "Blood",
+            "Trail", "Confetti",
+            "Fireworks", "Sit",
+            "Freeze", "Flames",
+            "Teleport Spawn", "Clear All",
+        },
+    },
 }
 
 local function corner(obj, r)
