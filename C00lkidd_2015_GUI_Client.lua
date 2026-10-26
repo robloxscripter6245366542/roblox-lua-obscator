@@ -402,6 +402,34 @@ actions["Freeze"] = {
     end,
 }
 
+-- Unanchor All: capped + fully reversible (restores each part's anchor and
+-- position on off / Clear All), so it stays a limited, non-permanent map edit.
+local unanchored = {}
+actions["Unanchor All"] = {
+    on = function()
+        for _, part in ipairs(workspace:GetDescendants()) do
+            if #unanchored >= 150 then break end
+            if part:IsA("BasePart") and part.Anchored
+                and not Players:GetPlayerFromCharacter(part.Parent) then
+                unanchored[#unanchored + 1] = { part = part, cframe = part.CFrame }
+                part.Anchored = false
+            end
+        end
+    end,
+    off = function()
+        for _, saved in ipairs(unanchored) do
+            local part = saved.part
+            if part and part.Parent then
+                part.AssemblyLinearVelocity = Vector3.zero
+                part.AssemblyAngularVelocity = Vector3.zero
+                part.CFrame = saved.cframe
+                part.Anchored = true
+            end
+        end
+        table.clear(unanchored)
+    end,
+}
+
 -- one-shot buttons
 local oneShots = {}
 

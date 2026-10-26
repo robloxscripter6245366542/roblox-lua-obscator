@@ -65,7 +65,8 @@ local PAGES = {
             "Trail", "Confetti",
             "Fireworks", "Sit",
             "Freeze", "Flames",
-            "Teleport Spawn", "Clear All",
+            "Teleport Spawn", "Unanchor All",
+            "Clear All",
         },
     },
 }
@@ -157,6 +158,7 @@ local WORLD = {
     Skybox = true, ["Decal Spam"] = true, Music = true, Disco = true,
     ["Red Sky"] = true, Fog = true, Night = true, Fullbright = true,
     Gravity = true, Rainbow = true, Blood = true, Flames = true,
+    ["Unanchor All"] = true,
 }
 
 local worldActive = {}
@@ -493,6 +495,37 @@ commands["Freeze"] = {
     off = function(player)
         local _, _, root = character(player)
         if root then root.Anchored = false end
+    end,
+}
+
+-- Unanchor All: lets map parts react to physics. CAPPED and FULLY
+-- REVERSIBLE - it records each part's anchor state + position and restores
+-- them on off / Clear All, so it stays a limited, non-permanent map edit
+-- rather than a whole-map change (Limited Map Editing rule).
+local UNANCHOR_LIMIT = 150
+local unanchored = {}
+commands["Unanchor All"] = {
+    on = function()
+        for _, part in ipairs(Workspace:GetDescendants()) do
+            if #unanchored >= UNANCHOR_LIMIT then break end
+            if part:IsA("BasePart") and part.Anchored
+                and not Players:GetPlayerFromCharacter(part.Parent) then
+                unanchored[#unanchored + 1] = { part = part, cframe = part.CFrame }
+                part.Anchored = false
+            end
+        end
+    end,
+    off = function()
+        for _, saved in ipairs(unanchored) do
+            local part = saved.part
+            if part and part.Parent then
+                part.AssemblyLinearVelocity = Vector3.zero
+                part.AssemblyAngularVelocity = Vector3.zero
+                part.CFrame = saved.cframe
+                part.Anchored = true
+            end
+        end
+        table.clear(unanchored)
     end,
 }
 

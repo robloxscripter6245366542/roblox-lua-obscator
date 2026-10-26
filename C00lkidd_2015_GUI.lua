@@ -56,7 +56,8 @@ local PAGES = {
             "Trail", "Confetti",
             "Fireworks", "Sit",
             "Freeze", "Flames",
-            "Teleport Spawn", "Clear All",
+            "Teleport Spawn", "Unanchor All",
+            "Clear All",
         },
     },
 }
