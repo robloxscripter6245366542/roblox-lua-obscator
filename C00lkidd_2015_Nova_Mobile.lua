@@ -833,12 +833,12 @@ local indicator = tabBar:WaitForChild("Indicator")
 local pagesFolder = panel:WaitForChild("Pages")
 local panelScale = panel:WaitForChild("Scale")
 
-local ACCENT     = Color3.fromRGB(240, 52, 62)
-local SURFACE    = Color3.fromRGB(31, 31, 38)
-local SURFACE_ON = Color3.fromRGB(52, 26, 30)
-local STROKE     = Color3.fromRGB(54, 54, 64)
-local TEXT       = Color3.fromRGB(238, 238, 245)
-local MUTED      = Color3.fromRGB(150, 150, 163)
+local ACCENT     = Color3.fromRGB(255, 62, 74)
+local SURFACE    = Color3.fromRGB(38, 38, 52)
+local SURFACE_ON = Color3.fromRGB(78, 30, 40)
+local EDGE       = Color3.fromRGB(255, 255, 255)
+local TEXT       = Color3.fromRGB(242, 242, 250)
+local MUTED      = Color3.fromRGB(156, 156, 176)
 
 local function tween(obj, t, props, style, dir)
     local info = TweenInfo.new(t, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out)
@@ -871,10 +871,12 @@ local activeSet = {}
 
 local function styleButton(b, on)
     local s = b:FindFirstChild("Stroke")
-    tween(b, 0.18, { BackgroundColor3 = on and SURFACE_ON or SURFACE })
-    tween(b, 0.18, { TextColor3 = on and Color3.fromRGB(255, 255, 255) or TEXT })
+    tween(b, 0.2, { BackgroundColor3 = on and SURFACE_ON or SURFACE,
+        BackgroundTransparency = on and 0.1 or 0.25 })
+    tween(b, 0.2, { TextColor3 = on and Color3.fromRGB(255, 255, 255) or TEXT })
     if s then
-        tween(s, 0.18, { Color = on and ACCENT or STROKE, Thickness = on and 1.4 or 1 })
+        tween(s, 0.2, { Color = on and ACCENT or EDGE,
+            Thickness = on and 1.6 or 1, Transparency = on and 0 or 0.72 })
     end
 end
 
@@ -972,8 +974,8 @@ local function showTab(i, instant)
 
     local target = tabButtons[i]
     tween(indicator, instant and 0 or 0.28, {
-        Position = UDim2.new(0, target.Position.X.Offset, 1, -3),
-        Size = UDim2.new(0, target.AbsoluteSize.X, 0, 3),
+        Position = UDim2.new(0, target.Position.X.Offset, 0, 0),
+        Size = UDim2.new(0, target.AbsoluteSize.X, 1, 0),
     })
 
     for n, page in ipairs(pages) do
@@ -997,8 +999,8 @@ end
 
 task.defer(function()
     local first = tabButtons[1]
-    indicator.Position = UDim2.new(0, first.Position.X.Offset, 1, -3)
-    indicator.Size = UDim2.new(0, first.AbsoluteSize.X, 0, 3)
+    indicator.Position = UDim2.new(0, first.Position.X.Offset, 0, 0)
+    indicator.Size = UDim2.new(0, first.AbsoluteSize.X, 1, 0)
     showTab(1, true)
 end)
 
@@ -1096,13 +1098,17 @@ help.MouseButton1Click:Connect(showTutorial)
 remote:FireServer("__ready")
 ]]
 
--- modern palette (kept separate from the gameplay RED/WHITE/BLACK above)
-local BG      = Color3.fromRGB(17, 17, 21)
-local SURFACE = Color3.fromRGB(31, 31, 38)
-local STROKE  = Color3.fromRGB(54, 54, 64)
-local ACCENT  = Color3.fromRGB(240, 52, 62)
-local TEXT    = Color3.fromRGB(238, 238, 245)
-local MUTED   = Color3.fromRGB(150, 150, 163)
+-- glassy palette (kept separate from the gameplay RED/WHITE/BLACK above)
+local BG      = Color3.fromRGB(18, 18, 26)
+local BG2     = Color3.fromRGB(46, 46, 64)
+local SURFACE = Color3.fromRGB(38, 38, 52)
+local STROKE  = Color3.fromRGB(86, 86, 112)
+local EDGE    = Color3.fromRGB(255, 255, 255)
+local ACCENT  = Color3.fromRGB(255, 62, 74)
+local TEXT    = Color3.fromRGB(242, 242, 250)
+local MUTED   = Color3.fromRGB(156, 156, 176)
+
+local LOGO_ID = DECAL_ID -- the c00lkidd image used for the logo
 
 local function corner(obj, r)
     local c = Instance.new("UICorner")
@@ -1122,12 +1128,13 @@ local function stroke(obj, color, thickness, transparency)
     return s
 end
 
--- a modern command button (big touch target; the client wires clicks + anims)
+-- a glassy command button (big touch target; the client wires clicks + anims)
 local function makeButton(parent, name, text)
     local b = Instance.new("TextButton")
     b.Name = name
     b.AutoButtonColor = false
     b.BackgroundColor3 = SURFACE
+    b.BackgroundTransparency = 0.25
     b.BorderSizePixel = 0
     b.Text = text
     b.Font = Enum.Font.GothamMedium
@@ -1135,49 +1142,30 @@ local function makeButton(parent, name, text)
     b.TextColor3 = TEXT
     b.TextWrapped = true
     b.Parent = parent
-    corner(b, 9)
-    stroke(b, STROKE, 1, 0)
+    corner(b, 11)
+    stroke(b, EDGE, 1, 0.72)
     local scale = Instance.new("UIScale")
     scale.Name = "Scale"
     scale.Parent = b
     return b
 end
 
--- a small vector c00lkidd face logo (red face, black eyes, toothy grin).
--- Always renders - no asset needed - so the logo is c00lkidd by default.
-local function coolkidFace(parent, px, z)
-    z = z or 1
-    local FACE = Color3.fromRGB(150, 22, 22)
-    local f = Instance.new("Frame")
-    f.Name = "Face"
-    f.BackgroundColor3 = FACE
+-- the c00lkidd logo: an image in a glass ring. Set LOGO_ID to your decal;
+-- at 0 it shows a clean glass disc with an accent ring (no blocky face).
+local function makeLogo(parent, px, z)
+    local f = Instance.new("ImageLabel")
+    f.Name = "Logo"
+    f.BackgroundColor3 = Color3.fromRGB(30, 30, 42)
+    f.BackgroundTransparency = 0.1
     f.BorderSizePixel = 0
     f.Size = UDim2.fromOffset(px, px)
-    f.ZIndex = z
+    f.Image = "rbxassetid://" .. LOGO_ID
+    f.ScaleType = Enum.ScaleType.Crop
+    f.ZIndex = z or 1
     f.Parent = parent
-    corner(f, math.floor(px * 0.28))
-    stroke(f, Color3.fromRGB(70, 8, 8), math.max(1, px * 0.03), 0)
-
-    local function feature(name, sx, sy, posx, posy, color, zi)
-        local p = Instance.new("Frame")
-        p.Name = name
-        p.BackgroundColor3 = color
-        p.BorderSizePixel = 0
-        p.AnchorPoint = Vector2.new(0.5, 0.5)
-        p.Size = UDim2.fromScale(sx, sy)
-        p.Position = UDim2.fromScale(posx, posy)
-        p.ZIndex = zi
-        p.Parent = f
-        corner(p, math.max(1, math.floor(px * 0.1)))
-        return p
-    end
-
-    local BLACK0 = Color3.fromRGB(0, 0, 0)
-    feature("EyeL", 0.17, 0.26, 0.33, 0.4, BLACK0, z + 1)
-    feature("EyeR", 0.17, 0.26, 0.67, 0.4, BLACK0, z + 1)
-    feature("Mouth", 0.66, 0.22, 0.5, 0.7, BLACK0, z + 1)
-    feature("Tooth1", 0.06, 0.22, 0.4, 0.7, FACE, z + 2)
-    feature("Tooth2", 0.06, 0.22, 0.6, 0.7, FACE, z + 2)
+    corner(f, math.floor(px / 2))
+    local ring = stroke(f, ACCENT, math.max(1.5, px * 0.06), 0)
+    ring.Name = "Ring"
     return f
 end
 
@@ -1211,16 +1199,17 @@ local function buildGui()
     panel.Size = UDim2.fromOffset(320, 440)
     panel.Position = UDim2.new(0.5, -160, 0.5, -220)
     panel.BackgroundColor3 = WHITE -- the gradient supplies the real color
+    panel.BackgroundTransparency = 0.08
     panel.BorderSizePixel = 0
     panel.Active = true
     panel.Parent = gui
-    corner(panel, 14)
-    stroke(panel, STROKE, 1.2, 0).Name = "PanelStroke"
+    corner(panel, 18)
+    stroke(panel, EDGE, 1.4, 0.55).Name = "PanelStroke"
 
     local grad = Instance.new("UIGradient")
     grad.Rotation = 90
     grad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(34, 34, 42)),
+        ColorSequenceKeypoint.new(0, BG2),
         ColorSequenceKeypoint.new(1, BG),
     })
     grad.Parent = panel
@@ -1237,9 +1226,8 @@ local function buildGui()
     titleBar.Active = true
     titleBar.Parent = panel
 
-    local logo = coolkidFace(titleBar, 24, 1)
-    logo.Name = "Logo"
-    logo.Position = UDim2.fromOffset(14, 13)
+    local logo = makeLogo(titleBar, 26, 1)
+    logo.Position = UDim2.fromOffset(14, 12)
 
     local title = Instance.new("TextLabel")
     title.Name = "Title"
@@ -1268,6 +1256,7 @@ local function buildGui()
     local close = Instance.new("TextButton")
     close.Name = "Close"
     close.BackgroundColor3 = SURFACE
+    close.BackgroundTransparency = 0.25
     close.BorderSizePixel = 0
     close.AutoButtonColor = false
     close.Size = UDim2.fromOffset(32, 32)
@@ -1277,13 +1266,14 @@ local function buildGui()
     close.Text = "✕"
     close.TextColor3 = MUTED
     close.Parent = titleBar
-    corner(close, 9)
-    stroke(close, STROKE, 1, 0)
+    corner(close, 10)
+    stroke(close, EDGE, 1, 0.72)
 
     -- help button (re-opens the tutorial)
     local help = Instance.new("TextButton")
     help.Name = "Help"
     help.BackgroundColor3 = SURFACE
+    help.BackgroundTransparency = 0.25
     help.BorderSizePixel = 0
     help.AutoButtonColor = false
     help.Size = UDim2.fromOffset(32, 32)
@@ -1293,10 +1283,10 @@ local function buildGui()
     help.Text = "?"
     help.TextColor3 = MUTED
     help.Parent = titleBar
-    corner(help, 9)
-    stroke(help, STROKE, 1, 0)
+    corner(help, 10)
+    stroke(help, EDGE, 1, 0.72)
 
-    -- TAB BAR (named tabs + sliding indicator)
+    -- TAB BAR (glass pill slides to the active tab)
     local tabBar = Instance.new("Frame")
     tabBar.Name = "TabBar"
     tabBar.BackgroundTransparency = 1
@@ -1304,24 +1294,17 @@ local function buildGui()
     tabBar.Size = UDim2.new(1, -28, 0, 30)
     tabBar.Parent = panel
 
-    local sep = Instance.new("Frame")
-    sep.Name = "Sep"
-    sep.BackgroundColor3 = STROKE
-    sep.BackgroundTransparency = 0.4
-    sep.BorderSizePixel = 0
-    sep.Size = UDim2.new(1, 0, 0, 1)
-    sep.Position = UDim2.new(0, 0, 1, 0)
-    sep.Parent = tabBar
-
     local indicator = Instance.new("Frame")
     indicator.Name = "Indicator"
     indicator.BackgroundColor3 = ACCENT
+    indicator.BackgroundTransparency = 0.76
     indicator.BorderSizePixel = 0
-    indicator.Size = UDim2.new(0, 66, 0, 3)
-    indicator.Position = UDim2.new(0, 0, 1, -3)
-    indicator.ZIndex = 2
+    indicator.Size = UDim2.new(0, 66, 1, 0)
+    indicator.Position = UDim2.new(0, 0, 0, 0)
+    indicator.ZIndex = 1
     indicator.Parent = tabBar
-    corner(indicator, 2)
+    corner(indicator, 9)
+    stroke(indicator, ACCENT, 1, 0.35).Name = "Glow"
 
     local tabX = 0
     for i, entry in ipairs(PAGES) do
@@ -1330,11 +1313,12 @@ local function buildGui()
         t.BackgroundTransparency = 1
         t.AutoButtonColor = false
         t.Position = UDim2.fromOffset(tabX, 0)
-        t.Size = UDim2.fromOffset(66, 28)
+        t.Size = UDim2.fromOffset(66, 30)
         t.Font = Enum.Font.GothamBold
         t.TextSize = 13
         t.Text = entry.name
         t.TextColor3 = i == 1 and TEXT or MUTED
+        t.ZIndex = 2
         t.Parent = tabBar
         tabX = tabX + 72
     end
@@ -1387,13 +1371,14 @@ local function buildGui()
     tut.Name = "Tutorial"
     tut.Position = UDim2.fromOffset(8, 48)
     tut.Size = UDim2.new(1, -16, 1, -56)
-    tut.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    tut.BackgroundColor3 = Color3.fromRGB(22, 22, 32)
+    tut.BackgroundTransparency = 0.04
     tut.BorderSizePixel = 0
     tut.ZIndex = 20
     tut.Visible = true
     tut.Parent = panel
-    corner(tut, 12)
-    stroke(tut, STROKE, 1, 0)
+    corner(tut, 14)
+    stroke(tut, EDGE, 1.2, 0.6)
 
     local tscroll = Instance.new("ScrollingFrame")
     tscroll.Name = "TScroll"
@@ -1421,24 +1406,10 @@ local function buildGui()
     tlist.SortOrder = Enum.SortOrder.LayoutOrder
     tlist.Parent = tscroll
 
-    -- the c00lkidd logo: a drawn face by default, or your decal if DECAL_ID is set
-    local face
-    if DECAL_ID ~= 0 then
-        local img = Instance.new("ImageLabel")
-        img.BackgroundColor3 = ACCENT
-        img.Size = UDim2.fromOffset(76, 76)
-        img.Image = TEXTURE
-        img.ScaleType = Enum.ScaleType.Crop
-        img.Parent = tscroll
-        corner(img, 38)
-        stroke(img, ACCENT, 2, 0)
-        face = img
-    else
-        face = coolkidFace(tscroll, 76, 21)
-    end
+    -- the c00lkidd logo image (glass ring; set LOGO_ID to your decal)
+    local face = makeLogo(tscroll, 80, 21)
     face.Name = "Face"
     face.LayoutOrder = 1
-    face.ZIndex = 21
 
     local heading = Instance.new("TextLabel")
     heading.Name = "Heading"
