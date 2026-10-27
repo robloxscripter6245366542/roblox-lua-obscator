@@ -30,14 +30,14 @@ local RED = Color3.fromRGB(255, 0, 0)
 local TEXTURE = "rbxassetid://" .. DECAL_ID
 local FACES = Enum.NormalId:GetEnumItems()
 
--- modern UI palette + animation helper
-local ACCENT     = Color3.fromRGB(240, 52, 62)
-local SURFACE    = Color3.fromRGB(31, 31, 38)
-local SURFACE_HI = Color3.fromRGB(44, 44, 53)
-local SURFACE_ON = Color3.fromRGB(52, 26, 30)
-local STROKE     = Color3.fromRGB(54, 54, 64)
-local TEXT       = Color3.fromRGB(238, 238, 245)
-local MUTED      = Color3.fromRGB(150, 150, 163)
+-- glassy UI palette + animation helper
+local ACCENT     = Color3.fromRGB(255, 62, 74)
+local SURFACE    = Color3.fromRGB(38, 38, 52)
+local SURFACE_HI = Color3.fromRGB(56, 56, 74)
+local SURFACE_ON = Color3.fromRGB(78, 30, 40)
+local EDGE       = Color3.fromRGB(255, 255, 255)
+local TEXT       = Color3.fromRGB(242, 242, 250)
+local MUTED      = Color3.fromRGB(156, 156, 176)
 
 local function tween(obj, t, props, style, dir)
     local info = TweenInfo.new(t, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out)
@@ -298,15 +298,15 @@ actions["Rainbow"] = {
         end, 0.05)
     end,
     off = function()
-        -- restore each button's resting stroke (active = accent, rest = grey)
+        -- restore each button's resting stroke (active = accent, rest = glass edge)
         for _, page in ipairs(pages:GetChildren()) do
             for _, b in ipairs(page:GetChildren()) do
                 local s = b:IsA("TextButton") and b:FindFirstChild("Stroke")
-                if s then s.Color = active[b.Name] and ACCENT or STROKE end
+                if s then s.Color = active[b.Name] and ACCENT or EDGE end
             end
         end
         local panelStroke = panel:FindFirstChild("PanelStroke")
-        if panelStroke then panelStroke.Color = STROKE end
+        if panelStroke then panelStroke.Color = EDGE end
     end,
 }
 
@@ -559,10 +559,12 @@ end
 -- animate a single button to its on/off look
 local function styleButton(b, on)
     local s = b:FindFirstChild("Stroke")
-    tween(b, 0.18, { BackgroundColor3 = on and SURFACE_ON or SURFACE })
-    tween(b, 0.18, { TextColor3 = on and Color3.fromRGB(255, 255, 255) or TEXT })
+    tween(b, 0.2, { BackgroundColor3 = on and SURFACE_ON or SURFACE,
+        BackgroundTransparency = on and 0.1 or 0.25 })
+    tween(b, 0.2, { TextColor3 = on and Color3.fromRGB(255, 255, 255) or TEXT })
     if s then
-        tween(s, 0.18, { Color = on and ACCENT or STROKE, Thickness = on and 1.4 or 1 })
+        tween(s, 0.2, { Color = on and ACCENT or EDGE,
+            Thickness = on and 1.6 or 1, Transparency = on and 0 or 0.72 })
     end
 end
 
@@ -625,7 +627,9 @@ for _, page in ipairs(pages:GetChildren()) do
         if b:IsA("TextButton") then
             local sc = b:FindFirstChild("Scale")
             b.MouseEnter:Connect(function()
-                if not active[b.Name] then tween(b, 0.15, { BackgroundColor3 = SURFACE_HI }) end
+                if not active[b.Name] then
+                    tween(b, 0.15, { BackgroundColor3 = SURFACE_HI, BackgroundTransparency = 0.12 })
+                end
             end)
             b.MouseLeave:Connect(function()
                 styleButton(b, active[b.Name])
@@ -674,8 +678,8 @@ local function showTab(i, instant)
 
     local target = tabButtons[i]
     tween(indicator, instant and 0 or 0.28, {
-        Position = UDim2.new(0, target.Position.X.Offset, 1, -3),
-        Size = UDim2.new(0, target.AbsoluteSize.X, 0, 3),
+        Position = UDim2.new(0, target.Position.X.Offset, 0, 0),
+        Size = UDim2.new(0, target.AbsoluteSize.X, 1, 0),
     })
 
     for n, page in ipairs(pageList) do
@@ -699,8 +703,8 @@ end
 
 task.defer(function()
     local first = tabButtons[1]
-    indicator.Position = UDim2.new(0, first.Position.X.Offset, 1, -3)
-    indicator.Size = UDim2.new(0, first.AbsoluteSize.X, 0, 3)
+    indicator.Position = UDim2.new(0, first.Position.X.Offset, 0, 0)
+    indicator.Size = UDim2.new(0, first.AbsoluteSize.X, 1, 0)
     showTab(1, true)
 end)
 
