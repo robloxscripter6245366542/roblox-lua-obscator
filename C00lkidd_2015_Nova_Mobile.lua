@@ -1034,16 +1034,35 @@ panelScale.Scale = 0.9
 tween(panel, 0.34, { GroupTransparency = 0 })
 tween(panelScale, 0.46, { Scale = 1 }, Enum.EasingStyle.Back)
 
--- drag (title bar, touch + mouse)
-local dragging, dragStart, startPos
+-- drag (title bar) - smooth weighted follow + pick-up / settle animation
+local RunService = game:GetService("RunService")
+local dragging, dragStart, startPos, targetPos, moveConn
 titleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = panel.Position
+        targetPos = panel.Position
+        tween(panelScale, 0.18, { Scale = 1.03 }, Enum.EasingStyle.Back)
+        if moveConn then moveConn:Disconnect() end
+        moveConn = RunService.RenderStepped:Connect(function(dt)
+            panel.Position = panel.Position:Lerp(targetPos, math.min(dt * 16, 1))
+            if not dragging then
+                local p = panel.Position
+                if math.abs(p.X.Offset - targetPos.X.Offset) < 0.5
+                    and math.abs(p.Y.Offset - targetPos.Y.Offset) < 0.5 then
+                    panel.Position = targetPos
+                    moveConn:Disconnect()
+                    moveConn = nil
+                end
+            end
+        end)
         input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                tween(panelScale, 0.3, { Scale = 1 }, Enum.EasingStyle.Back)
+            end
         end)
     end
 end)
@@ -1051,10 +1070,27 @@ UserInputService.InputChanged:Connect(function(input)
     if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
         or input.UserInputType == Enum.UserInputType.Touch) then
         local delta = input.Position - dragStart
-        panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+        targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
             startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
+
+-- TUTORIAL (shown on first open; ? re-opens it)
+local tutorial = panel:WaitForChild("Tutorial")
+local gotIt = tutorial:WaitForChild("TScroll"):WaitForChild("GotIt")
+local help = titleBar:WaitForChild("Help")
+
+local function showTutorial()
+    tutorial.Visible = true
+    tutorial.GroupTransparency = 1
+    tween(tutorial, 0.25, { GroupTransparency = 0 })
+end
+local function hideTutorial()
+    tween(tutorial, 0.22, { GroupTransparency = 1 })
+    task.delay(0.24, function() tutorial.Visible = false end)
+end
+gotIt.MouseButton1Click:Connect(hideTutorial)
+help.MouseButton1Click:Connect(showTutorial)
 
 -- tell the server we're ready so it can sync which buttons should be lit
 remote:FireServer("__ready")
@@ -1105,6 +1141,44 @@ local function makeButton(parent, name, text)
     scale.Name = "Scale"
     scale.Parent = b
     return b
+end
+
+-- a small vector c00lkidd face logo (red face, black eyes, toothy grin).
+-- Always renders - no asset needed - so the logo is c00lkidd by default.
+local function coolkidFace(parent, px, z)
+    z = z or 1
+    local FACE = Color3.fromRGB(150, 22, 22)
+    local f = Instance.new("Frame")
+    f.Name = "Face"
+    f.BackgroundColor3 = FACE
+    f.BorderSizePixel = 0
+    f.Size = UDim2.fromOffset(px, px)
+    f.ZIndex = z
+    f.Parent = parent
+    corner(f, math.floor(px * 0.28))
+    stroke(f, Color3.fromRGB(70, 8, 8), math.max(1, px * 0.03), 0)
+
+    local function feature(name, sx, sy, posx, posy, color, zi)
+        local p = Instance.new("Frame")
+        p.Name = name
+        p.BackgroundColor3 = color
+        p.BorderSizePixel = 0
+        p.AnchorPoint = Vector2.new(0.5, 0.5)
+        p.Size = UDim2.fromScale(sx, sy)
+        p.Position = UDim2.fromScale(posx, posy)
+        p.ZIndex = zi
+        p.Parent = f
+        corner(p, math.max(1, math.floor(px * 0.1)))
+        return p
+    end
+
+    local BLACK0 = Color3.fromRGB(0, 0, 0)
+    feature("EyeL", 0.17, 0.26, 0.33, 0.4, BLACK0, z + 1)
+    feature("EyeR", 0.17, 0.26, 0.67, 0.4, BLACK0, z + 1)
+    feature("Mouth", 0.66, 0.22, 0.5, 0.7, BLACK0, z + 1)
+    feature("Tooth1", 0.06, 0.22, 0.4, 0.7, FACE, z + 2)
+    feature("Tooth2", 0.06, 0.22, 0.6, 0.7, FACE, z + 2)
+    return f
 end
 
 local function buildGui()
@@ -1163,31 +1237,26 @@ local function buildGui()
     titleBar.Active = true
     titleBar.Parent = panel
 
-    local dot = Instance.new("Frame")
-    dot.Name = "Dot"
-    dot.BackgroundColor3 = ACCENT
-    dot.BorderSizePixel = 0
-    dot.Size = UDim2.fromOffset(10, 10)
-    dot.Position = UDim2.fromOffset(16, 20)
-    dot.Parent = titleBar
-    corner(dot, 5)
+    local logo = coolkidFace(titleBar, 24, 1)
+    logo.Name = "Logo"
+    logo.Position = UDim2.fromOffset(14, 13)
 
     local title = Instance.new("TextLabel")
     title.Name = "Title"
     title.BackgroundTransparency = 1
-    title.Position = UDim2.fromOffset(34, 8)
-    title.Size = UDim2.new(1, -90, 0, 20)
+    title.Position = UDim2.fromOffset(46, 8)
+    title.Size = UDim2.new(1, -100, 0, 20)
     title.Font = Enum.Font.GothamBold
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Text = "c00lgui"
+    title.Text = "c00lkidd"
     title.TextColor3 = TEXT
     title.Parent = titleBar
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
     subtitle.BackgroundTransparency = 1
-    subtitle.Position = UDim2.fromOffset(34, 28)
+    subtitle.Position = UDim2.fromOffset(46, 28)
     subtitle.Size = UDim2.new(1, -90, 0, 14)
     subtitle.Font = Enum.Font.Gotham
     subtitle.TextSize = 11
@@ -1210,6 +1279,22 @@ local function buildGui()
     close.Parent = titleBar
     corner(close, 9)
     stroke(close, STROKE, 1, 0)
+
+    -- help button (re-opens the tutorial)
+    local help = Instance.new("TextButton")
+    help.Name = "Help"
+    help.BackgroundColor3 = SURFACE
+    help.BorderSizePixel = 0
+    help.AutoButtonColor = false
+    help.Size = UDim2.fromOffset(32, 32)
+    help.Position = UDim2.new(1, -82, 0, 9)
+    help.Font = Enum.Font.GothamBold
+    help.TextSize = 16
+    help.Text = "?"
+    help.TextColor3 = MUTED
+    help.Parent = titleBar
+    corner(help, 9)
+    stroke(help, STROKE, 1, 0)
 
     -- TAB BAR (named tabs + sliding indicator)
     local tabBar = Instance.new("Frame")
@@ -1295,6 +1380,114 @@ local function buildGui()
             makeButton(scroll, name, name).LayoutOrder = n
         end
     end
+
+    -- TUTORIAL overlay (shown on first open; re-open with the ? button).
+    -- Scrolls so it fits on any phone screen.
+    local tut = Instance.new("CanvasGroup")
+    tut.Name = "Tutorial"
+    tut.Position = UDim2.fromOffset(8, 48)
+    tut.Size = UDim2.new(1, -16, 1, -56)
+    tut.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    tut.BorderSizePixel = 0
+    tut.ZIndex = 20
+    tut.Visible = true
+    tut.Parent = panel
+    corner(tut, 12)
+    stroke(tut, STROKE, 1, 0)
+
+    local tscroll = Instance.new("ScrollingFrame")
+    tscroll.Name = "TScroll"
+    tscroll.BackgroundTransparency = 1
+    tscroll.BorderSizePixel = 0
+    tscroll.Size = UDim2.new(1, 0, 1, 0)
+    tscroll.ScrollBarThickness = 3
+    tscroll.ScrollBarImageColor3 = ACCENT
+    tscroll.CanvasSize = UDim2.new()
+    tscroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    tscroll.ZIndex = 21
+    tscroll.Parent = tut
+
+    local tpad = Instance.new("UIPadding")
+    tpad.PaddingTop = UDim.new(0, 16)
+    tpad.PaddingBottom = UDim.new(0, 16)
+    tpad.PaddingLeft = UDim.new(0, 16)
+    tpad.PaddingRight = UDim.new(0, 16)
+    tpad.Parent = tscroll
+
+    local tlist = Instance.new("UIListLayout")
+    tlist.FillDirection = Enum.FillDirection.Vertical
+    tlist.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    tlist.Padding = UDim.new(0, 12)
+    tlist.SortOrder = Enum.SortOrder.LayoutOrder
+    tlist.Parent = tscroll
+
+    -- the c00lkidd logo: a drawn face by default, or your decal if DECAL_ID is set
+    local face
+    if DECAL_ID ~= 0 then
+        local img = Instance.new("ImageLabel")
+        img.BackgroundColor3 = ACCENT
+        img.Size = UDim2.fromOffset(76, 76)
+        img.Image = TEXTURE
+        img.ScaleType = Enum.ScaleType.Crop
+        img.Parent = tscroll
+        corner(img, 38)
+        stroke(img, ACCENT, 2, 0)
+        face = img
+    else
+        face = coolkidFace(tscroll, 76, 21)
+    end
+    face.Name = "Face"
+    face.LayoutOrder = 1
+    face.ZIndex = 21
+
+    local heading = Instance.new("TextLabel")
+    heading.Name = "Heading"
+    heading.LayoutOrder = 2
+    heading.BackgroundTransparency = 1
+    heading.Size = UDim2.new(1, 0, 0, 22)
+    heading.Font = Enum.Font.GothamBold
+    heading.TextSize = 18
+    heading.Text = "Welcome to c00lgui"
+    heading.TextColor3 = TEXT
+    heading.ZIndex = 21
+    heading.Parent = tscroll
+
+    local body = Instance.new("TextLabel")
+    body.Name = "Body"
+    body.LayoutOrder = 3
+    body.BackgroundTransparency = 1
+    body.AutomaticSize = Enum.AutomaticSize.Y
+    body.Size = UDim2.new(1, 0, 0, 0)
+    body.Font = Enum.Font.Gotham
+    body.TextSize = 13
+    body.TextWrapped = true
+    body.RichText = true
+    body.TextYAlignment = Enum.TextYAlignment.Top
+    body.TextXAlignment = Enum.TextXAlignment.Left
+    body.Text = "• <b>Tabs</b> at the top switch between <b>World</b>, <b>Player</b> and <b>Script</b>."
+        .. "\n• <b>Tap any button</b> to toggle that effect — active ones glow red."
+        .. "\n• <b>Drag the title bar</b> to move the panel around."
+        .. "\n• <b>Clear All</b> turns every effect back off."
+        .. "\n• Close with ✕ then tap the <b>c00l</b> button to reopen."
+        .. "\n• Tap the <b>?</b> button any time to open this again."
+    body.TextColor3 = MUTED
+    body.ZIndex = 21
+    body.Parent = tscroll
+
+    local gotIt = Instance.new("TextButton")
+    gotIt.Name = "GotIt"
+    gotIt.LayoutOrder = 4
+    gotIt.AutoButtonColor = false
+    gotIt.BackgroundColor3 = ACCENT
+    gotIt.BorderSizePixel = 0
+    gotIt.Size = UDim2.new(1, 0, 0, 38)
+    gotIt.Font = Enum.Font.GothamBold
+    gotIt.TextSize = 15
+    gotIt.Text = "Got it"
+    gotIt.TextColor3 = Color3.new(1, 1, 1)
+    gotIt.ZIndex = 21
+    gotIt.Parent = tscroll
+    corner(gotIt, 9)
 
     local client = Instance.new("LocalScript")
     client.Name = "C00lClient"
