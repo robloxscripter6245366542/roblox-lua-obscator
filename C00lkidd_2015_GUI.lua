@@ -103,6 +103,44 @@ local function makeButton(parent, name, text)
     return b
 end
 
+-- a small vector c00lkidd face logo (red face, black eyes, toothy grin).
+-- Always renders - no asset needed - so the logo is c00lkidd by default.
+local function coolkidFace(parent, px, z)
+    z = z or 1
+    local FACE = Color3.fromRGB(150, 22, 22)
+    local f = Instance.new("Frame")
+    f.Name = "Face"
+    f.BackgroundColor3 = FACE
+    f.BorderSizePixel = 0
+    f.Size = UDim2.fromOffset(px, px)
+    f.ZIndex = z
+    f.Parent = parent
+    corner(f, math.floor(px * 0.28))
+    stroke(f, Color3.fromRGB(70, 8, 8), math.max(1, px * 0.03), 0)
+
+    local function feature(name, sx, sy, posx, posy, color, zi)
+        local p = Instance.new("Frame")
+        p.Name = name
+        p.BackgroundColor3 = color
+        p.BorderSizePixel = 0
+        p.AnchorPoint = Vector2.new(0.5, 0.5)
+        p.Size = UDim2.fromScale(sx, sy)
+        p.Position = UDim2.fromScale(posx, posy)
+        p.ZIndex = zi
+        p.Parent = f
+        corner(p, math.max(1, math.floor(px * 0.1)))
+        return p
+    end
+
+    local BLACK0 = Color3.fromRGB(0, 0, 0)
+    feature("EyeL", 0.17, 0.26, 0.33, 0.4, BLACK0, z + 1)
+    feature("EyeR", 0.17, 0.26, 0.67, 0.4, BLACK0, z + 1)
+    feature("Mouth", 0.66, 0.22, 0.5, 0.7, BLACK0, z + 1)
+    feature("Tooth1", 0.06, 0.22, 0.4, 0.7, FACE, z + 2)
+    feature("Tooth2", 0.06, 0.22, 0.6, 0.7, FACE, z + 2)
+    return f
+end
+
 local function buildGui()
     local gui = Instance.new("ScreenGui")
     gui.Name = "CoolKidGUI"
@@ -156,31 +194,26 @@ local function buildGui()
     titleBar.Active = true
     titleBar.Parent = panel
 
-    local dot = Instance.new("Frame")
-    dot.Name = "Dot"
-    dot.BackgroundColor3 = ACCENT
-    dot.BorderSizePixel = 0
-    dot.Size = UDim2.fromOffset(10, 10)
-    dot.Position = UDim2.fromOffset(18, 21)
-    dot.Parent = titleBar
-    corner(dot, 5)
+    local logo = coolkidFace(titleBar, 24, 1)
+    logo.Name = "Logo"
+    logo.Position = UDim2.fromOffset(14, 14)
 
     local title = Instance.new("TextLabel")
     title.Name = "Title"
     title.BackgroundTransparency = 1
-    title.Position = UDim2.fromOffset(36, 9)
-    title.Size = UDim2.new(1, -90, 0, 22)
+    title.Position = UDim2.fromOffset(46, 9)
+    title.Size = UDim2.new(1, -100, 0, 22)
     title.Font = Enum.Font.GothamBold
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Text = "c00lgui"
+    title.Text = "c00lkidd"
     title.TextColor3 = TEXT
     title.Parent = titleBar
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
     subtitle.BackgroundTransparency = 1
-    subtitle.Position = UDim2.fromOffset(36, 30)
+    subtitle.Position = UDim2.fromOffset(46, 30)
     subtitle.Size = UDim2.new(1, -90, 0, 14)
     subtitle.Font = Enum.Font.Gotham
     subtitle.TextSize = 11
@@ -329,18 +362,24 @@ local function buildGui()
     tlist.SortOrder = Enum.SortOrder.LayoutOrder
     tlist.Parent = tscroll
 
-    -- the c00lkidd image (rounded, with an accent ring)
-    local face = Instance.new("ImageLabel")
+    -- the c00lkidd logo: a drawn face by default, or your decal if FACE_ID is set
+    local face
+    if FACE_ID ~= 0 then
+        local img = Instance.new("ImageLabel")
+        img.BackgroundColor3 = ACCENT
+        img.Size = UDim2.fromOffset(76, 76)
+        img.Image = "rbxassetid://" .. FACE_ID
+        img.ScaleType = Enum.ScaleType.Crop
+        img.Parent = tscroll
+        corner(img, 38)
+        stroke(img, ACCENT, 2, 0)
+        face = img
+    else
+        face = coolkidFace(tscroll, 76, 21)
+    end
     face.Name = "Face"
     face.LayoutOrder = 1
-    face.BackgroundColor3 = ACCENT
-    face.Size = UDim2.fromOffset(72, 72)
-    face.Image = "rbxassetid://" .. FACE_ID
-    face.ScaleType = Enum.ScaleType.Crop
     face.ZIndex = 21
-    face.Parent = tscroll
-    corner(face, 36)
-    stroke(face, ACCENT, 2, 0)
 
     local heading = Instance.new("TextLabel")
     heading.Name = "Heading"
