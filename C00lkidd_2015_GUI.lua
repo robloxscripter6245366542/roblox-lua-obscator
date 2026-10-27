@@ -14,6 +14,8 @@ local RED = Color3.fromRGB(255, 0, 0)
 local BLACK = Color3.new(0, 0, 0)
 local WHITE = Color3.new(1, 1, 1)
 
+local FACE_ID = 0 -- c00lkidd image shown in the tutorial (set to your upload)
+
 -- modern palette
 local BG      = Color3.fromRGB(17, 17, 21)
 local SURFACE = Color3.fromRGB(31, 31, 38)
@@ -202,6 +204,22 @@ local function buildGui()
     corner(close, 8)
     stroke(close, STROKE, 1, 0)
 
+    -- help button (re-opens the tutorial)
+    local help = Instance.new("TextButton")
+    help.Name = "Help"
+    help.BackgroundColor3 = SURFACE
+    help.BorderSizePixel = 0
+    help.AutoButtonColor = false
+    help.Size = UDim2.fromOffset(28, 28)
+    help.Position = UDim2.new(1, -74, 0, 12)
+    help.Font = Enum.Font.GothamBold
+    help.TextSize = 15
+    help.Text = "?"
+    help.TextColor3 = MUTED
+    help.Parent = titleBar
+    corner(help, 8)
+    stroke(help, STROKE, 1, 0)
+
     -- TAB BAR (named tabs + sliding indicator)
     local tabBar = Instance.new("Frame")
     tabBar.Name = "TabBar"
@@ -270,6 +288,107 @@ local function buildGui()
             makeButton(page, name, name).LayoutOrder = n
         end
     end
+
+    -- TUTORIAL overlay (shown on first open; re-open with the ? button).
+    -- Scrolls so it fits on any panel size.
+    local tut = Instance.new("CanvasGroup")
+    tut.Name = "Tutorial"
+    tut.Position = UDim2.fromOffset(8, 50)
+    tut.Size = UDim2.new(1, -16, 1, -58)
+    tut.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    tut.BorderSizePixel = 0
+    tut.ZIndex = 20
+    tut.Visible = true
+    tut.Parent = panel
+    corner(tut, 12)
+    stroke(tut, STROKE, 1, 0)
+
+    local tscroll = Instance.new("ScrollingFrame")
+    tscroll.Name = "TScroll"
+    tscroll.BackgroundTransparency = 1
+    tscroll.BorderSizePixel = 0
+    tscroll.Size = UDim2.new(1, 0, 1, 0)
+    tscroll.ScrollBarThickness = 3
+    tscroll.ScrollBarImageColor3 = ACCENT
+    tscroll.CanvasSize = UDim2.new()
+    tscroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    tscroll.ZIndex = 21
+    tscroll.Parent = tut
+
+    local tpad = Instance.new("UIPadding")
+    tpad.PaddingTop = UDim.new(0, 16)
+    tpad.PaddingBottom = UDim.new(0, 16)
+    tpad.PaddingLeft = UDim.new(0, 16)
+    tpad.PaddingRight = UDim.new(0, 16)
+    tpad.Parent = tscroll
+
+    local tlist = Instance.new("UIListLayout")
+    tlist.FillDirection = Enum.FillDirection.Vertical
+    tlist.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    tlist.Padding = UDim.new(0, 12)
+    tlist.SortOrder = Enum.SortOrder.LayoutOrder
+    tlist.Parent = tscroll
+
+    -- the c00lkidd image (rounded, with an accent ring)
+    local face = Instance.new("ImageLabel")
+    face.Name = "Face"
+    face.LayoutOrder = 1
+    face.BackgroundColor3 = ACCENT
+    face.Size = UDim2.fromOffset(72, 72)
+    face.Image = "rbxassetid://" .. FACE_ID
+    face.ScaleType = Enum.ScaleType.Crop
+    face.ZIndex = 21
+    face.Parent = tscroll
+    corner(face, 36)
+    stroke(face, ACCENT, 2, 0)
+
+    local heading = Instance.new("TextLabel")
+    heading.Name = "Heading"
+    heading.LayoutOrder = 2
+    heading.BackgroundTransparency = 1
+    heading.Size = UDim2.new(1, 0, 0, 22)
+    heading.Font = Enum.Font.GothamBold
+    heading.TextSize = 18
+    heading.Text = "Welcome to c00lgui"
+    heading.TextColor3 = TEXT
+    heading.ZIndex = 21
+    heading.Parent = tscroll
+
+    local body = Instance.new("TextLabel")
+    body.Name = "Body"
+    body.LayoutOrder = 3
+    body.BackgroundTransparency = 1
+    body.AutomaticSize = Enum.AutomaticSize.Y
+    body.Size = UDim2.new(1, 0, 0, 0)
+    body.Font = Enum.Font.Gotham
+    body.TextSize = 13
+    body.TextWrapped = true
+    body.RichText = true
+    body.TextYAlignment = Enum.TextYAlignment.Top
+    body.TextXAlignment = Enum.TextXAlignment.Left
+    body.Text = "• <b>Tabs</b> at the top switch between <b>World</b>, <b>Player</b> and <b>Script</b>."
+        .. "\n• <b>Click any button</b> to toggle that effect — active ones glow red."
+        .. "\n• <b>Drag the title bar</b> to move the panel around."
+        .. "\n• <b>Clear All</b> turns every effect back off."
+        .. "\n• Click the <b>?</b> button any time to open this again."
+    body.TextColor3 = MUTED
+    body.ZIndex = 21
+    body.Parent = tscroll
+
+    local gotIt = Instance.new("TextButton")
+    gotIt.Name = "GotIt"
+    gotIt.LayoutOrder = 4
+    gotIt.AutoButtonColor = false
+    gotIt.BackgroundColor3 = ACCENT
+    gotIt.BorderSizePixel = 0
+    gotIt.Size = UDim2.new(1, 0, 0, 34)
+    gotIt.Font = Enum.Font.GothamBold
+    gotIt.TextSize = 14
+    gotIt.Text = "Got it"
+    gotIt.TextColor3 = Color3.new(1, 1, 1)
+    gotIt.ZIndex = 21
+    gotIt.Parent = tscroll
+    corner(gotIt, 8)
 
     return gui
 end

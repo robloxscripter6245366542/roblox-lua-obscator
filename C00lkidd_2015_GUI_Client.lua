@@ -750,3 +750,20 @@ UserInputService.InputChanged:Connect(function(input)
             panel.Position.Y.Scale, panel.Position.Y.Offset - 18)
     end
 end)
+
+-- TUTORIAL (shown on first open; ? re-opens it)
+local tutorial = panel:WaitForChild("Tutorial")
+local gotIt = tutorial:WaitForChild("TScroll"):WaitForChild("GotIt")
+local help = titleBar:WaitForChild("Help")
+
+local function showTutorial()
+    tutorial.Visible = true
+    tutorial.GroupTransparency = 1
+    tween(tutorial, 0.25, { GroupTransparency = 0 })
+end
+local function hideTutorial()
+    tween(tutorial, 0.22, { GroupTransparency = 1 })
+    task.delay(0.24, function() tutorial.Visible = false end)
+end
+gotIt.MouseButton1Click:Connect(hideTutorial)
+help.MouseButton1Click:Connect(showTutorial)
