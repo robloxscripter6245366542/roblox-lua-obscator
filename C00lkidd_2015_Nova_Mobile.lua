@@ -1034,16 +1034,35 @@ panelScale.Scale = 0.9
 tween(panel, 0.34, { GroupTransparency = 0 })
 tween(panelScale, 0.46, { Scale = 1 }, Enum.EasingStyle.Back)
 
--- drag (title bar, touch + mouse)
-local dragging, dragStart, startPos
+-- drag (title bar) - smooth weighted follow + pick-up / settle animation
+local RunService = game:GetService("RunService")
+local dragging, dragStart, startPos, targetPos, moveConn
 titleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = panel.Position
+        targetPos = panel.Position
+        tween(panelScale, 0.18, { Scale = 1.03 }, Enum.EasingStyle.Back)
+        if moveConn then moveConn:Disconnect() end
+        moveConn = RunService.RenderStepped:Connect(function(dt)
+            panel.Position = panel.Position:Lerp(targetPos, math.min(dt * 16, 1))
+            if not dragging then
+                local p = panel.Position
+                if math.abs(p.X.Offset - targetPos.X.Offset) < 0.5
+                    and math.abs(p.Y.Offset - targetPos.Y.Offset) < 0.5 then
+                    panel.Position = targetPos
+                    moveConn:Disconnect()
+                    moveConn = nil
+                end
+            end
+        end)
         input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                tween(panelScale, 0.3, { Scale = 1 }, Enum.EasingStyle.Back)
+            end
         end)
     end
 end)
@@ -1051,7 +1070,7 @@ UserInputService.InputChanged:Connect(function(input)
     if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
         or input.UserInputType == Enum.UserInputType.Touch) then
         local delta = input.Position - dragStart
-        panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+        targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
             startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)

@@ -1034,16 +1034,46 @@ tween(panel, 0.32, { GroupTransparency = 0 })
 tween(panelScale, 0.45, { Scale = 1 }, Enum.EasingStyle.Back)
 tween(shadow, 0.4, { ImageTransparency = 0.5 })
 
--- DRAG (title bar; shadow follows)
-local dragging, dragStart, startPos
+-- DRAG (title bar) - smooth weighted follow + pick-up / settle animation
+local RunService = game:GetService("RunService")
+local dragging, dragStart, startPos, targetPos, moveConn
+
+local function shadowTo(pos)
+    shadow.Position = UDim2.new(pos.X.Scale, pos.X.Offset - 18, pos.Y.Scale, pos.Y.Offset - 18)
+end
+
 titleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = panel.Position
+        targetPos = panel.Position
+        -- pick the panel up: a small lift + a lighter shadow
+        tween(panelScale, 0.18, { Scale = 1.03 }, Enum.EasingStyle.Back)
+        tween(shadow, 0.18, { ImageTransparency = 0.3 })
+        if moveConn then moveConn:Disconnect() end
+        moveConn = RunService.RenderStepped:Connect(function(dt)
+            panel.Position = panel.Position:Lerp(targetPos, math.min(dt * 16, 1))
+            shadowTo(panel.Position)
+            if not dragging then
+                local p = panel.Position
+                if math.abs(p.X.Offset - targetPos.X.Offset) < 0.5
+                    and math.abs(p.Y.Offset - targetPos.Y.Offset) < 0.5 then
+                    panel.Position = targetPos
+                    shadowTo(targetPos)
+                    moveConn:Disconnect()
+                    moveConn = nil
+                end
+            end
+        end)
         input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                -- drop it back down
+                tween(panelScale, 0.3, { Scale = 1 }, Enum.EasingStyle.Back)
+                tween(shadow, 0.25, { ImageTransparency = 0.5 })
+            end
         end)
     end
 end)
@@ -1051,10 +1081,8 @@ UserInputService.InputChanged:Connect(function(input)
     if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
         or input.UserInputType == Enum.UserInputType.Touch) then
         local delta = input.Position - dragStart
-        panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+        targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
             startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        shadow.Position = UDim2.new(panel.Position.X.Scale, panel.Position.X.Offset - 18,
-            panel.Position.Y.Scale, panel.Position.Y.Offset - 18)
     end
 end)
 
