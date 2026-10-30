@@ -461,23 +461,35 @@ local function run()
     elseif combinedOK and readfile_fn then
         local okR, all = pcall(readfile_fn, combinedPath)
         if okR and type(all) == "string" then
-            local result
             if CONFIG.Upload and #all <= CONFIG.UploadCap then
-                notify(("Uploading %d bytes for a raw link..."):format(#all))
-                local url, uerr = uploadPaste(all)
-                if url then
-                    result = "RAW CODE LINK:\n" .. url
-                    if setclipboard_fn then pcall(setclipboard_fn, url) end
-                    print("[MobileDumper] Raw code link: " .. url)
-                else
-                    result = "UPLOAD FAILED: " .. tostring(uerr)
-                        .. "\n\nThe full code is saved locally at " .. combinedPath
-                end
+                -- Write a pending marker FIRST so _LINK.txt is never empty,
+                -- then upload in the BACKGROUND: a slow or hung request must
+                -- not block the run from finishing. The link/error replaces
+                -- the pending marker when the upload returns.
+                pcall(writefile_fn, linkPath,
+                    ("Uploading %d bytes... reopen this file in a few seconds for the link.\n"
+                     .. "(If this message stays, the upload is stuck - the full code is at %s)")
+                    :format(#all, combinedPath))
+                notify(("Uploading %d bytes in the background - link lands in _LINK.txt"):format(#all))
+                task.spawn(function()
+                    local url, uerr = uploadPaste(all)
+                    local result
+                    if url then
+                        result = "RAW CODE LINK:\n" .. url
+                        if setclipboard_fn then pcall(setclipboard_fn, url) end
+                        print("[MobileDumper] Raw code link: " .. url)
+                    else
+                        result = "UPLOAD FAILED: " .. tostring(uerr)
+                            .. "\n\nThe full code is saved locally at " .. combinedPath
+                    end
+                    pcall(writefile_fn, linkPath, result)
+                    notify(result:gsub("\n", " "):sub(1, 180))
+                end)
             else
-                result = ("Dump is %d bytes - too big to upload. Full code is at %s"):format(#all, combinedPath)
+                local result = ("Dump is %d bytes - too big to upload. Full code is at %s"):format(#all, combinedPath)
+                pcall(writefile_fn, linkPath, result)
+                notify(result:gsub("\n", " "):sub(1, 180))
             end
-            pcall(writefile_fn, linkPath, result)
-            notify(result:gsub("\n", " "):sub(1, 180))
         end
     elseif CONFIG.CombinedFile and not appendfile_fn then
         pcall(writefile_fn, linkPath, "No appendfile on this executor - per-script files hold the code under " .. CONFIG.OutputFolder)
