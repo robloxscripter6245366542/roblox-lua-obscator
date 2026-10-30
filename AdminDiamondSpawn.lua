@@ -1,33 +1,34 @@
 --!nocheck
 --[[
 ============================================================================
- Admin Diamond Spawner  —  capture & replay the real Admin panel's spawn
+ Admin Diamond Spawner  —  auto-repeat 1t spawns up to your target
  Built from the whole-game dump (PlaceId 98459174589830).
 ============================================================================
- WHY THIS VERSION
+ THE REAL LIMIT (confirmed in-game)
  ---------------------------------------------------------------------------
-  The game's own Admin Inventory button already works (you typed 100q and it
-  spawned). The exact arguments it sends to AdminInventory_SpawnItem can't be
-  read from a bytecode dump, so guessing them failed. So instead of guessing,
-  this LEARNS the call: it watches the game's own spawn once, records the
-  exact remote + arguments, then REPLAYS that same call for you — manually or
-  on an always-on loop — at whatever amount you choose.
+  The Admin Panel's "Spawn Currency!" caps EVERY spawn at 1t (one trillion)
+  per press — type 100q and the server answers "No more than 1t at a time!".
+  That cap is enforced on the SERVER. No client script can push more than 1t
+  in a single call; it just gets rejected. So the only way up to 100q is to
+  spawn 1t many times.
 
- HOW TO USE  (one-time learn, then it's automatic)
+ WHAT THIS DOES
  ---------------------------------------------------------------------------
-  1. Run this script. The panel shows "LEARN: spawn once in the real menu".
-  2. Open the game's real Admin Inventory, pick Diamonds, type any amount,
-     press its spawn button ONCE. (Do it on yourself.)
-  3. This captures the exact call. Status flips to "LEARNED ✓". From then on
-     the loop auto-replays it (default amount 100q), and the Spawn button /
-     Auto work. You only have to teach it once per session.
+  It learns the panel's exact spawn call once, then auto-fires 1t spawns on a
+  loop until your Diamonds reach the target you set (default 100q), then stops.
+  Reaching 100q from ~20q is ~80,000 spawns of 1t, so it takes a while and
+  fires a lot of remotes — the game has abuse detection, so keep the rate
+  sane (there's a Rate control; too fast risks a kick). This can't beat the
+  1t-per-call server cap — nothing client-side can — it just automates it.
 
- It still only works if your account actually has the Admin panel, and
- Diamonds still have a server-side cap (over it → snaps back on rejoin).
- Those are server rules a client can't change — but the amount the real
- panel let through, this will let through too, because it's the same call.
+ HOW TO USE
+ ---------------------------------------------------------------------------
+  1. Run this. Status shows "LEARN: spawn once in the real menu".
+  2. Open the real Admin Panel → Spawn Currency → "Diamonds", any amount,
+     press Spawn ONCE. (Even a rejected 100q works — we send 1t on replay.)
+  3. Status flips to "LEARNED ✓" and it starts auto-spawning 1t up to target.
 
- CONTROLS:  RightShift = Auto on/off.  _G.AdminDiamondSpawn.running=false stops.
+ CONTROLS:  RightShift = pause/resume.  _G.AdminDiamondSpawn.running=false stops.
 ============================================================================
 ]]
 
@@ -38,24 +39,24 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local lp = Players.LocalPlayer
 
 -- ── config / state ─────────────────────────────────────────────────────────
-local MIN_AMOUNT = 1e12          -- 1T
-local MAX_AMOUNT = 100 * 1e15    -- 100q = 1e17
+local PER_CALL   = 1e12               -- server max per spawn = 1t (hard cap)
+local TARGET_MAX = 100 * 1e15         -- 100q ceiling for the target field
 local SPAWN_NAME = "AdminInventory_SpawnItem"
-local AMOUNT_FLOOR_FOR_SWAP = 1e6  -- only numbers this big are treated as "the amount"
+local AMOUNT_FLOOR_FOR_SWAP = 1e6     -- only numbers this big are "the amount"
 
 _G.AdminDiamondSpawn = _G.AdminDiamondSpawn or {}
 local S = _G.AdminDiamondSpawn
-S.amount         = S.amount         or 100 * 1e15   -- default 100q
-S.interval       = S.interval       or 0.25
-S.auto           = true
-S.target         = S.target         or lp.Name
-S.running        = true
-S.overrideAmount = (S.overrideAmount ~= false)      -- swap captured amount with S.amount
-S.captured       = S.captured       or nil          -- the learned call
-S.version        = (S.version or 0) + 1
+S.target       = S.target       or 100 * 1e15      -- default goal: 100q
+S.perTick      = S.perTick      or 5               -- spawns fired per interval
+S.interval     = S.interval     or 0.2             -- seconds per burst
+S.auto         = true
+S.running      = true
+S.stopAtTarget = (S.stopAtTarget ~= false)
+S.captured     = S.captured     or nil
+S.version      = (S.version or 0) + 1
 
 -- ── number parsing / formatting ─────────────────────────────────────────────
-local SUFFIX = { k=1e3, m=1e6, b=1e9, t=1e12, q=1e15, qa=1e15, qi=1e18 }
+local SUFFIX = { k=1e3, m=1e6, b=1e9, t=1e12, q=1e15, qa=1e15, qi=1e18, a=1e18 }
 local function parseAmount(txt)
     if type(txt) == "number" then return txt end
     txt = tostring(txt):gsub("%s+",""):gsub(",",""):lower()
@@ -69,14 +70,9 @@ local function parseAmount(txt)
     end
     return nil
 end
-local function clamp(n)
-    if not n then return S.amount end
-    if n < MIN_AMOUNT then n = MIN_AMOUNT end
-    if n > MAX_AMOUNT then n = MAX_AMOUNT end
-    return math.floor(n)
-end
 local function shorten(n)
-    for _, u in ipairs({ {1e18,"Qi"},{1e15,"q"},{1e12,"T"},{1e9,"B"},{1e6,"M"},{1e3,"K"} }) do
+    if not n then return "?" end
+    for _, u in ipairs({ {1e18,"a"},{1e15,"q"},{1e12,"t"},{1e9,"B"},{1e6,"M"},{1e3,"K"} }) do
         if n >= u[1] then return string.format("%.3g%s", n/u[1], u[2]) end
     end
     return tostring(math.floor(n))
@@ -95,36 +91,73 @@ local function getNetwork()
     return Network
 end
 
--- ── CAPTURE layer ────────────────────────────────────────────────────────────
--- Record { kind, ... } describing the exact spawn call so we can replay it.
-
--- copy a vararg list, skipping nothing
-local function pack(...) return { n = select("#", ...), ... } end
-local function unpackn(t) return table.unpack(t, 1, t.n) end
-
--- does this arg list look like the admin-spawn call? (name appears as a string)
-local function looksLikeSpawn(t)
-    for i = 1, t.n do
-        if t[i] == SPAWN_NAME then return true end
+-- ── best-effort Diamonds balance read (for progress + auto-stop) ─────────────
+-- Tries a few common places; parses the HUD label last. Precision at the HUD's
+-- shortened granularity is fine for a "reached 100q" stop.
+local function readDiamonds()
+    -- player attribute / value objects
+    local a = lp:GetAttribute("Diamonds")
+    if type(a) == "number" then return a end
+    for _, where in ipairs({ lp, lp:FindFirstChild("leaderstats") }) do
+        if where then
+            local v = where:FindFirstChild("Diamonds")
+            if v and (v:IsA("NumberValue") or v:IsA("IntValue")) then return v.Value end
+        end
     end
-    return false
+    -- client Save module (Pet-Sim style): require and probe getters
+    local ok, val = pcall(function()
+        local lib = ReplicatedStorage:FindFirstChild("Library")
+        local client = lib and lib:FindFirstChild("Client")
+        local saveMod = client and client:FindFirstChild("Save")
+        if not saveMod then return nil end
+        local Save = require(saveMod)
+        local data
+        if type(Save.Get) == "function" then data = Save:Get() or Save.Get() end
+        data = data or (type(Save) == "table" and (Save.Data or Save.save or Save))
+        if type(data) == "table" then
+            local cur = data.Currency or data.Currencies or data
+            if type(cur) == "table" and type(cur.Diamonds) == "number" then return cur.Diamonds end
+            if type(data.Diamonds) == "number" then return data.Diamonds end
+        end
+        return nil
+    end)
+    if ok and type(val) == "number" then return val end
+    -- HUD text fallback: find a short-number label near a "Diamonds" context
+    local pg = lp:FindFirstChild("PlayerGui")
+    if pg then
+        local best
+        for _, d in ipairs(pg:GetDescendants()) do
+            if d:IsA("TextLabel") and (d.Name == "Amount" or d.Name == "Quantity" or d.Name == "Diamonds") then
+                local parsed = parseAmount((d.Text or ""):gsub("[^%d%.kmbtqaKMBTQA]", ""))
+                if parsed and parsed > (best or 0) then best = parsed end
+            end
+        end
+        if best then return best end
+    end
+    return nil
 end
 
--- replace the single largest number (>= floor) with `amount`, on a copy
-local function withAmount(t, amount)
+-- ── CAPTURE layer (learn the real spawn call) ────────────────────────────────
+local function pack(...) return { n = select("#", ...), ... } end
+local function unpackn(t) return table.unpack(t, 1, t.n) end
+local function looksLikeSpawn(t)
+    for i = 1, t.n do if t[i] == SPAWN_NAME then return true end end
+    return false
+end
+-- force the amount arg to 1t (the server cap) on a copy, so replay always lands
+local function withPerCall(t)
     local copy = { n = t.n }
-    local bestIdx, bestVal
+    local bi, bv
     for i = 1, t.n do
         copy[i] = t[i]
         if type(t[i]) == "number" and t[i] >= AMOUNT_FLOOR_FOR_SWAP then
-            if not bestVal or t[i] > bestVal then bestVal, bestIdx = t[i], i end
+            if not bv or t[i] > bv then bv, bi = t[i], i end
         end
     end
-    if bestIdx then copy[bestIdx] = amount end
+    if bi then copy[bi] = PER_CALL end
     return copy
 end
 
--- (1) module-level hook: wrap Network's fire/invoke methods (pure Lua, safe)
 local moduleHooked = false
 local function installModuleHook()
     local n = getNetwork()
@@ -139,25 +172,22 @@ local function installModuleHook()
                 if looksLikeSpawn(argl) or (not isSelf and a == SPAWN_NAME) or (isSelf and argl[1] == SPAWN_NAME) then
                     S.captured = { kind = "module", method = m, isSelf = isSelf, argl = argl }
                 end
-                if isSelf then return realOrig(a, ...) else return realOrig(a, ...) end
+                return realOrig(a, ...)
             end
             moduleHooked = true
         end
     end
 end
 
--- (2) executor __namecall hook: capture the raw FireServer (most faithful).
 local namecallHooked = false
 local function installNamecallHook()
     if namecallHooked then return end
-    local hookmeta = (type(hookmetamethod) == "function")
-    local getnc    = (type(getnamecallmethod) == "function")
-    local ncc      = (type(newcclosure) == "function") and newcclosure or function(f) return f end
-    if not (hookmeta and getnc) then return end
+    if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" then return end
+    local ncc = (type(newcclosure) == "function") and newcclosure or function(f) return f end
     pcall(function()
         local old
         old = hookmetamethod(game, "__namecall", ncc(function(self, ...)
-            local method = getnc()
+            local method = getnamecallmethod()
             if method == "FireServer" or method == "fireServer" then
                 local argl = pack(...)
                 if looksLikeSpawn(argl) then
@@ -170,25 +200,21 @@ local function installNamecallHook()
     end)
 end
 
--- ── REPLAY ───────────────────────────────────────────────────────────────────
-local function replay(amount)
+-- ── REPLAY one 1t spawn ──────────────────────────────────────────────────────
+local function replayOne()
     local c = S.captured
-    if not c then return false, "not learned yet" end
-    local argl = S.overrideAmount and withAmount(c.argl, amount) or c.argl
-    local ok = false
+    if not c then return false end
+    local argl = withPerCall(c.argl)
     if c.kind == "namecall" and typeof(c.remote) == "Instance" then
-        ok = pcall(function() c.remote:FireServer(unpackn(argl)) end)
+        return pcall(function() c.remote:FireServer(unpackn(argl)) end)
     elseif c.kind == "module" then
         local n = getNetwork()
         if n and type(n[c.method]) == "function" then
-            if c.isSelf then
-                ok = pcall(function() n[c.method](n, unpackn(argl)) end)
-            else
-                ok = pcall(function() n[c.method](unpackn(argl)) end)
-            end
+            if c.isSelf then return pcall(function() n[c.method](n, unpackn(argl)) end)
+            else return pcall(function() n[c.method](unpackn(argl)) end) end
         end
     end
-    return ok
+    return false
 end
 
 -- ── GUI ───────────────────────────────────────────────────────────────────────
@@ -198,14 +224,14 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = (gethui and gethui()) or lp:WaitForChild("PlayerGui")
 
 local main = Instance.new("Frame")
-main.Size = UDim2.fromOffset(300, 290); main.Position = UDim2.new(0,20,0.5,-145)
+main.Size = UDim2.fromOffset(300, 300); main.Position = UDim2.new(0,20,0.5,-150)
 main.BackgroundColor3 = Color3.fromRGB(18,20,28); main.BorderSizePixel = 0
 main.Active = true; main.Draggable = true; main.Parent = gui
 Instance.new("UICorner", main).CornerRadius = UDim.new(0,10)
 local stroke = Instance.new("UIStroke", main); stroke.Color = Color3.fromRGB(80,180,255); stroke.Thickness = 1.5
 local pad = Instance.new("UIPadding", main)
 pad.PaddingTop=UDim.new(0,10); pad.PaddingBottom=UDim.new(0,10); pad.PaddingLeft=UDim.new(0,10); pad.PaddingRight=UDim.new(0,10)
-local layout = Instance.new("UIListLayout", main); layout.Padding = UDim.new(0,6); layout.SortOrder = Enum.SortOrder.LayoutOrder
+local layoutU = Instance.new("UIListLayout", main); layoutU.Padding = UDim.new(0,6); layoutU.SortOrder = Enum.SortOrder.LayoutOrder
 
 local function label(txt,h,c)
     local l=Instance.new("TextLabel"); l.Size=UDim2.new(1,0,0,h or 18); l.BackgroundTransparency=1
@@ -224,56 +250,54 @@ local function textbox(d)
 end
 
 label("💎 Admin Diamond Spawner", 20, Color3.fromRGB(120,200,255))
+label("Server cap: 1t per spawn. This repeats 1t up to your target.", 28, Color3.fromRGB(180,190,205))
 local status = label("LEARN: spawn once in the real menu", 30, Color3.fromRGB(255,210,120))
 
-label("Amount per click (1t … 100q)")
-local amountBox = textbox("100q")
+label("Target total (stops here, max 100q)")
+local targetBox = textbox("100q")
 
-local presetHolder = Instance.new("Frame"); presetHolder.Size=UDim2.new(1,0,0,26); presetHolder.BackgroundTransparency=1; presetHolder.Parent=main
-local pl=Instance.new("UIListLayout",presetHolder); pl.FillDirection=Enum.FillDirection.Horizontal; pl.Padding=UDim.new(0,4)
-local function preset(txt)
-    local b=Instance.new("TextButton"); b.Size=UDim2.new(0,46,1,0); b.BackgroundColor3=Color3.fromRGB(45,50,62)
+-- rate presets
+local rateHolder = Instance.new("Frame"); rateHolder.Size=UDim2.new(1,0,0,26); rateHolder.BackgroundTransparency=1; rateHolder.Parent=main
+local rl=Instance.new("UIListLayout",rateHolder); rl.FillDirection=Enum.FillDirection.Horizontal; rl.Padding=UDim.new(0,4)
+local function rateBtn(name, perTick, interval)
+    local b=Instance.new("TextButton"); b.Size=UDim2.new(0,90,1,0); b.BackgroundColor3=Color3.fromRGB(45,50,62)
     b.BorderSizePixel=0; b.Font=Enum.Font.GothamBold; b.TextSize=12; b.TextColor3=Color3.fromRGB(230,235,245)
-    b.Text=txt; b.Parent=presetHolder; Instance.new("UICorner",b).CornerRadius=UDim.new(0,5)
-    b.Activated:Connect(function() amountBox.Text=txt:lower(); S.amount=clamp(parseAmount(txt)) end)
+    b.Text=name; b.Parent=rateHolder; Instance.new("UICorner",b).CornerRadius=UDim.new(0,5)
+    b.Activated:Connect(function() S.perTick=perTick; S.interval=interval end)
     return b
 end
-for _,p in ipairs({"1T","10T","100T","1q","10q","100q"}) do preset(p) end
+rateBtn("Safe ~5/s", 1, 0.2)
+rateBtn("Normal ~25/s", 5, 0.2)
+rateBtn("Fast ~100/s", 10, 0.1)
 
-local spawnBtn = button("💎 Spawn Diamonds", Color3.fromRGB(40,150,90))
-local autoBtn  = button("Auto: ON", Color3.fromRGB(190,60,60))
+local autoBtn = button("Auto: ON", Color3.fromRGB(190,60,60))
 
 -- ── behavior ───────────────────────────────────────────────────────────────
-local function syncAmount()
-    local parsed = parseAmount(amountBox.Text)
-    S.amount = clamp(parsed)
-    return S.amount
-end
-amountBox.FocusLost:Connect(syncAmount)
+targetBox.FocusLost:Connect(function()
+    local t = parseAmount(targetBox.Text)
+    if t then S.target = math.min(t, TARGET_MAX) end
+end)
 
-local function updateStatus(extra)
+local function updateStatus()
     if not (status and status.Parent) then return end
-    if S.captured then
-        status.Text = string.format("LEARNED ✓  %s%s", shorten(S.overrideAmount and S.amount or 0),
-            extra and ("  — "..extra) or (S.overrideAmount and "" or " (captured amt)"))
+    if not S.captured then
+        status.Text = "LEARN: spawn once in the real menu"
+        status.TextColor3 = Color3.fromRGB(255,210,120)
+        return
+    end
+    local bal = readDiamonds()
+    local progress = bal and (shorten(bal) .. " / " .. shorten(S.target)) or ("target " .. shorten(S.target))
+    if S.stopAtTarget and bal and bal >= S.target then
+        status.Text = "DONE ✓  " .. progress
+        status.TextColor3 = Color3.fromRGB(150,220,150)
+    elseif S.auto then
+        status.Text = "spawning 1t…  " .. progress
         status.TextColor3 = Color3.fromRGB(150,220,150)
     else
-        status.Text = "LEARN: spawn once in the real menu" .. (extra and ("  ("..extra..")") or "")
-        status.TextColor3 = Color3.fromRGB(255,210,120)
+        status.Text = "paused  " .. progress
+        status.TextColor3 = Color3.fromRGB(200,200,120)
     end
 end
-
-local function doSpawn()
-    syncAmount()
-    if not S.captured then
-        updateStatus("waiting — press the real panel's button once")
-        return false
-    end
-    local ok = replay(S.amount)
-    updateStatus(ok and ("spawned "..shorten(S.amount)) or "replay failed (still admin-gated?)")
-    return ok
-end
-spawnBtn.Activated:Connect(doSpawn)
 
 local function setAuto(on)
     S.auto = on; autoBtn.Text = "Auto: "..(on and "ON" or "OFF")
@@ -285,32 +309,37 @@ UserInputService.InputBegan:Connect(function(i,gpe)
     if i.KeyCode == Enum.KeyCode.RightShift then setAuto(not S.auto) end
 end)
 
--- always-on loop
+-- main loop: burst 1t spawns, stop at target
 local MY = S.version
 task.spawn(function()
     while S.running and S.version == MY do
         if S.auto and S.captured then
-            getNetwork(); replay(clamp(S.amount)); updateStatus("auto "..shorten(S.amount))
-            task.wait(math.max(0.05, tonumber(S.interval) or 0.25))
+            local bal = readDiamonds()
+            if S.stopAtTarget and bal and bal >= S.target then
+                updateStatus()
+                task.wait(0.5)
+            else
+                local n = math.max(1, math.floor(tonumber(S.perTick) or 5))
+                for _ = 1, n do
+                    replayOne()
+                    task.wait()        -- one frame between fires (kinder to anti-abuse)
+                end
+                task.wait(math.max(0, tonumber(S.interval) or 0.2))
+            end
         else
             task.wait(0.15)
         end
     end
 end)
 
--- watch for the learn event flipping the status live
+-- live status refresh
 task.spawn(function()
-    while S.running and S.version == MY do
-        if S.captured and (status and status.Parent) and status.TextColor3 ~= Color3.fromRGB(150,220,150) then
-            updateStatus()
-        end
-        task.wait(0.25)
-    end
+    while S.running and S.version == MY do updateStatus(); task.wait(0.4) end
 end)
 
--- install hooks, resolve network, keep healthy across respawns
+-- hooks + health
 getNetwork(); installModuleHook(); installNamecallHook()
 lp.CharacterAdded:Connect(function() task.wait(1); getNetwork(); installModuleHook() end)
 
-syncAmount(); updateStatus()
-warn("[Admin Diamond Spawner] loaded. Spawn once in the REAL admin menu to teach it the exact call, then it auto-replays at your chosen amount.")
+setAuto(S.auto); updateStatus()
+warn("[Admin Diamond Spawner] loaded. Spawn once in the REAL menu to teach it, then it auto-repeats 1t up to your target (server caps each spawn at 1t).")
