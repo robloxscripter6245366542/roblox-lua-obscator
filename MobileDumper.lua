@@ -91,7 +91,7 @@ local CONFIG = {
     -- whole thing has to fit in memory to POST it).
     Upload         = true,
     UploadUrl      = "https://0x0.st",
-    UploadCap      = 25000000,   -- ~25 MB max to upload
+    UploadCap      = 60000000,   -- ~60 MB max (big dumps are chunked, 9 MB/part)
 
     -- Batch = N processes only N NEW scripts per run, then stops and tells
     -- you to run again for the next batch. With Resume, progress is saved to
@@ -126,64 +126,55 @@ local http_request_fn = (syn and syn.request) or (http and http.request)
                         or rawget(ENV, "http_request") or http_request
                         or (fluxus and fluxus.request) or request
 
--- Upload text to a paste host and return a raw link. Primary host is
--- api.pastes.dev (verified: raw-body POST, no multipart, handles ~10 MB,
--- resolves on Delta). Others are fallbacks. pcall-guarded; the error string
--- carries the HTTP status so failures stay diagnosable.
+-- Upload text and return raw link(s). Uses api.pastes.dev (verified:
+-- raw-body POST, no multipart, resolves on Delta). pastes.dev caps a single
+-- paste at 10 MB, so bigger dumps are SPLIT into <=9 MB parts and each is
+-- uploaded, returning one link per part. pcall-guarded; errors carry the
+-- HTTP status so failures stay diagnosable.
+local PASTE_MAX = 9000000  -- per-paste byte cap (pastes.dev rejects >10 MB)
+
 local function uploadPaste(text)
     if not http_request_fn then return nil, "no http request function on this executor" end
     local UA = "Mozilla/5.0 (MobileDumper)"
-    local errs = {}
 
-    local function post(opts)
-        local ok, res = pcall(http_request_fn, opts)
+    -- POST one piece of raw text; returns a raw URL or (nil, errorString).
+    local function postPaste(chunk)
+        local ok, res = pcall(http_request_fn, {
+            Url = "https://api.pastes.dev/post", Method = "POST",
+            Headers = { ["Content-Type"] = "text/plain", ["User-Agent"] = UA },
+            Body = chunk,
+        })
         if not ok then return nil, "request error: " .. tostring(res) end
         local code = res and (res.StatusCode or res.status_code or res.Status)
         local b = res and (res.Body or res.body)
-        return b, code
-    end
-
-    -- Host 0: api.pastes.dev — raw body POST, returns {"key":"..."}; the raw
-    -- text is then at https://api.pastes.dev/<key>. This is the reliable one.
-    do
-        local b, code = post({
-            Url = "https://api.pastes.dev/post", Method = "POST",
-            Headers = { ["Content-Type"] = "text/plain", ["User-Agent"] = UA },
-            Body = text,
-        })
         if type(b) == "string" then
             local key = b:match('"key"%s*:%s*"([%w%._%-]+)"')
             if key and (not code or code < 300) then return "https://api.pastes.dev/" .. key end
-            errs[#errs + 1] = ("pastes.dev [%s]: %s"):format(tostring(code), b:sub(1, 80))
-        else
-            errs[#errs + 1] = "pastes.dev: " .. tostring(code or b)
+            return nil, ("pastes.dev [%s]: %s"):format(tostring(code), b:sub(1, 80))
         end
+        return nil, "pastes.dev: " .. tostring(code or b)
     end
 
-    -- Host 1: 0x0.st — multipart form, response body is the raw URL (fallback).
-    do
-        local boundary = "----MobileDump" .. tostring(math.random(100000, 999999))
-        local body = table.concat({
-            "--" .. boundary,
-            'Content-Disposition: form-data; name="file"; filename="dump.txt"',
-            "Content-Type: text/plain", "", text,
-            "--" .. boundary .. "--", "",
-        }, "\r\n")
-        local b, code = post({
-            Url = "https://0x0.st", Method = "POST",
-            Headers = { ["Content-Type"] = "multipart/form-data; boundary=" .. boundary, ["User-Agent"] = UA },
-            Body = body,
-        })
-        if type(b) == "string" then
-            local url = b:match("(https?://[%w%./%-_]+)")
-            if url and (not code or code < 300) then return url end
-            errs[#errs + 1] = ("0x0.st [%s]: %s"):format(tostring(code), b:sub(1, 80))
-        else
-            errs[#errs + 1] = "0x0.st: " .. tostring(code or b)
-        end
+    -- Fits in one paste.
+    if #text <= PASTE_MAX then
+        return postPaste(text)
     end
 
-    return nil, table.concat(errs, " | ")
+    -- Too big: split into <=PASTE_MAX parts, upload each, return all links.
+    local links = {}
+    local total = math.ceil(#text / PASTE_MAX)
+    local n = 0
+    for i = 1, #text, PASTE_MAX do
+        n = n + 1
+        local url, err = postPaste(text:sub(i, i + PASTE_MAX - 1))
+        if not url then
+            return nil, ("part %d/%d failed: %s"):format(n, total, tostring(err))
+        end
+        links[#links + 1] = ("part %d/%d: %s"):format(n, total, url)
+        task.wait()  -- breathe between uploads
+    end
+    -- Multiple links: caller detects the newline and labels it as split.
+    return table.concat(links, "\n")
 end
 
 if not writefile_fn then
@@ -475,9 +466,14 @@ local function run()
                     local url, uerr = uploadPaste(all)
                     local result
                     if url then
-                        result = "RAW CODE LINK:\n" .. url
+                        if url:find("\n") then
+                            result = "CODE TOO BIG FOR ONE PASTE - split into parts.\n"
+                                .. "Open each link, copy its text, and join them in order:\n\n" .. url
+                        else
+                            result = "RAW CODE LINK:\n" .. url
+                        end
                         if setclipboard_fn then pcall(setclipboard_fn, url) end
-                        print("[MobileDumper] Raw code link: " .. url)
+                        print("[MobileDumper] Raw code link(s):\n" .. url)
                     else
                         result = "UPLOAD FAILED: " .. tostring(uerr)
                             .. "\n\nThe full code is saved locally at " .. combinedPath
