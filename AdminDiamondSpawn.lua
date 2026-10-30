@@ -60,9 +60,11 @@ _G.AdminDiamondSpawn = _G.AdminDiamondSpawn or {}
 local S = _G.AdminDiamondSpawn
 S.amount   = S.amount   or MIN_AMOUNT
 S.interval = S.interval or 0.25
-S.auto     = false
+S.auto     = true          -- keep running all the time (on by default)
 S.target   = S.target   or lp.Name
 S.currency = "Diamonds"
+S.running  = true          -- master kill switch: set false to stop the loop for good
+S.version  = (S.version or 0) + 1   -- bump so an older loop from a re-run exits
 
 -- ── number parsing ("1t", "100q", "1e15", "1000000000000") ─────────────────
 local SUFFIX = {
@@ -339,11 +341,29 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     if input.KeyCode == Enum.KeyCode.RightShift then setAuto(not S.auto) end
 end)
 
--- auto loop
+-- GUI-free spawn used by the always-on loop (survives the menu being closed)
+local function autoSpawnTick()
+    local amt = clamp(S.amount)
+    local ok, err = spawnDiamonds(amt)
+    -- update the status label only if the GUI is still around
+    pcall(function()
+        if status and status.Parent then
+            status.Text = ok
+                and string.format("auto: spawned %s", shorten(amt))
+                or  ("auto failed: " .. tostring(err or "server rejected (admin only?)"))
+        end
+    end)
+end
+
+-- always-on loop: keeps firing while S.auto and S.running are true.
+-- Runs independently of the GUI, re-resolves the Network each tick, and a
+-- version guard lets a fresh re-run of the script retire this one cleanly.
+local MY_VERSION = S.version
 task.spawn(function()
-    while gui.Parent do
+    while S.running and S.version == MY_VERSION do
         if S.auto then
-            doSpawn()
+            getNetwork()
+            autoSpawnTick()
             task.wait(math.max(0.05, tonumber(S.interval) or 0.25))
         else
             task.wait(0.1)
@@ -351,8 +371,16 @@ task.spawn(function()
     end
 end)
 
+-- re-grab the Network after a respawn (the module reference stays valid, but
+-- this keeps the loop healthy if the game tears things down on death)
+lp.CharacterAdded:Connect(function()
+    task.wait(1)
+    getNetwork()
+end)
+
 -- init
 syncAmount()
-status.Text = "ready — amount = " .. shorten(S.amount)
+setAuto(S.auto)          -- reflect the default-ON state on the button
+status.Text = "running — amount = " .. shorten(S.amount)
 getNetwork()
-warn("[Admin Diamond Spawner] loaded. Admin-gated; Diamonds have a server cap. RightShift = Auto.")
+warn("[Admin Diamond Spawner] loaded — AUTO IS ON and will keep spawning. RightShift toggles. _G.AdminDiamondSpawn.running=false stops it for good.")
