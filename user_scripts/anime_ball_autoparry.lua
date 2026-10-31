@@ -645,6 +645,7 @@ local Tabs = {
     Visuals = Window:Tab({ Title = "Visuals",    Icon = "eye" }),
     Stats   = Window:Tab({ Title = "Statistics", Icon = "activity" }),
     Discord = Window:Tab({ Title = "Discord",    Icon = "message-circle" }),
+    Kick    = Window:Tab({ Title = "Kick",       Icon = "log-out" }),
 }
 pcall(function() Window:SelectTab(1) end)
 
@@ -931,6 +932,59 @@ task.spawn(function()
         end
     end
 end)
+
+-- ============================================
+-- KICK TAB (kick yourself from the game)
+-- ============================================
+-- Player:Kick() on your OWN player is allowed from the client: it disconnects
+-- you with your message. Nothing here can affect anyone else. Kept inside a
+-- do-block so it adds no locals to the main chunk (Luau's 200-local cap).
+do
+    local kickMessage = "You kicked yourself (Anime Ball Hub)"
+    section(Tabs.Kick, "Kick Yourself")
+    paragraph(Tabs.Kick, "What this does",
+        "Disconnects YOU from this server with your message. It only affects your own account.")
+    pcall(function()
+        Tabs.Kick:Input({
+            Title = "Kick Message",
+            Desc = "Shown on the disconnect screen",
+            Value = kickMessage,
+            Placeholder = "Kick message",
+            Callback = function(text)
+                if type(text) == "string" and text ~= "" then kickMessage = text end
+            end,
+        })
+    end)
+    Tabs.Kick:Button({
+        Title = "Kick Me Now",
+        Desc = "Leave the game immediately with the message above",
+        Callback = function()
+            pcall(function() LocalPlayer:Kick(kickMessage) end)
+        end,
+    })
+    Tabs.Kick:Button({
+        Title = "Kick Me In 3 Seconds",
+        Desc = "Same, with a 3 second countdown",
+        Callback = function()
+            notify("Kicking", "Leaving in 3 seconds...", 3)
+            task.delay(3, function()
+                if not destroyed then pcall(function() LocalPlayer:Kick(kickMessage) end) end
+            end)
+        end,
+    })
+    section(Tabs.Kick, "Rejoin")
+    Tabs.Kick:Button({
+        Title = "Rejoin This Server",
+        Desc = "Leave and come straight back to the same server",
+        Callback = function()
+            local TeleportService = game:GetService("TeleportService")
+            local ok = pcall(function()
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+            end)
+            if not ok then pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end) end
+        end,
+    })
+end
 
 -- ============================================
 -- DISCORD TAB
