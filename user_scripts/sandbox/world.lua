@@ -30,7 +30,7 @@ local function build(SRC, pingMs, opts)
     if opts.yieldTransport then task.wait(oneway*2) end   -- real round-trip yield
     server.inflight=server.inflight-1
     local reg=R.VTIME()+oneway
-    if reg<server.cooldownUntil then server.rejected=server.rejected+1; return false end
+    if reg<server.cooldownUntil then server.rejected=server.rejected+1; return nil end  -- game returns nil on a refused block
     server.shields[#server.shields+1]={reg,reg+0.6}; server.cooldownUntil=reg+1.0
     server.landed=server.landed+1; return true end
   local function shieldAt(t) for _,s in ipairs(server.shields) do if t>=s[1] and t<=s[2] then return true end end return false end
@@ -63,8 +63,16 @@ local function build(SRC, pingMs, opts)
   function movement.ForceDash() if movement.CanDash==false then return end
     movement.dashCount=movement.dashCount+1; movement.CanDash=false
     task.delay(1.1, function() movement.CanDash=true end) end
+  -- Persistent controllers (the real framework:Get returns the same module
+  -- table every time), so the script's Server.* hooks land on objects a test
+  -- can then call like the server would.
+  local ballCtl={ Server={ ChangeBallColor=function(name, target)
+    if WS:GetAttribute("NoHighlight") then return end
+    local b=Balls:FindFirstChild(name); if b and not b:GetAttribute("Invisible") then b:SetAttribute("Target", target) end end } }
+  local swordCtl={ Server={ BlockSuccess=function() end } }
   FW._moduleValue={ Fetch=function(_,n) if n=="SwordService" then return swordProxy end return {} end,
-                    Get=function(_,n) if n=="BallController" then return {Server={ChangeBallColor=function() end}} end
+                    Get=function(_,n) if n=="BallController" then return ballCtl end
+                                        if n=="SwordController" then return swordCtl end
                                         if n=="MovementController" then return movement end return nil end }
   local realmath,realtable=math,table
   local envmath=setmetatable({clamp=function(x,l,h) return realmath.max(l,realmath.min(h,x)) end,
@@ -122,7 +130,8 @@ local function build(SRC, pingMs, opts)
   for i=1,6 do R.advance(0.1) end
   return { R=R,v3=v3,Instance=Instance,Enum=Enum,RunService=RunService,Balls=Balls,heroF=heroF,Eff=Eff,
            Players=Players,players=players,LP=LP,char=char,
-           hrp=hrp,char_ref=char,server=server,shieldAt=shieldAt,oneway=oneway,movement=movement }
+           hrp=hrp,char_ref=char,server=server,shieldAt=shieldAt,oneway=oneway,movement=movement,
+           ballCtl=ballCtl,swordCtl=swordCtl,genv=env._genv }
 end
 
 return { build=build }

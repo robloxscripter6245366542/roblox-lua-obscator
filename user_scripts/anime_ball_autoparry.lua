@@ -24,6 +24,8 @@ local moveGuardConn = nil      -- the walk-speed guard Heartbeat
 local unloadScript             -- forward decl; body defined once everything exists
 local ballColorController = nil -- BallController we patch (kept so we can restore it)
 local ballColorOriginal = nil   -- its original ChangeBallColor
+local swordController = nil     -- SwordController we patch for BlockSuccess
+local blockSuccessOriginal = nil
 local function track(conn)
     if conn then table.insert(activeConnections, conn) end
     return conn
@@ -306,10 +308,17 @@ local totalBurstBlocks = 0
 -- you're still on the 1s cooldown). We were discarding it; capturing it is the
 -- ground truth for WHY a ball got through - accepted-but-still-hit vs
 -- rejected-on-cooldown vs never-sent.
+-- Return values, verified against the decompiled SwordController.Block:
+--   nil   -> server REJECTED the block (cooldown / no sword) - no shield
+--   false -> block ACCEPTED, shield is up (a parry may follow via BlockSuccess)
+--   true  -> block parried a ball instantly (cooldown reset)
+-- The old code counted `false` as "rejected", so the land rate read ~0% and the
+-- unstick watchdog thought every normal block had failed.
 local blockSent = 0        -- total Block:Invoke calls that completed
-local blockLanded = 0      -- returned truthy (accepted)
-local blockRejected = 0    -- returned falsy (cooldown/denied)
-local lastBlockResult = "-" -- "landed" / "rejected" / "error"
+local blockLanded = 0      -- accepted (false or true): a shield went up
+local blockRejected = 0    -- nil: refused (cooldown / no sword)
+local blockParried = 0     -- confirmed parries (instant true + server BlockSuccess)
+local lastBlockResult = "-" -- "shield" / "parried" / "rejected" / "error"
 
 -- Stuck-block self-heal. A block can get "stuck" - we keep firing at a ball
 -- that's targeting us and in range, yet nothing lands: the service proxy went
@@ -452,7 +461,11 @@ local ballPosSample = {}      -- [ballInstance] = {pos, time, vel} - motion-deri
 -- [ball] = {target = name, time = tick()} so findClosestBall can arm the panic even
 -- when ball:GetAttribute("Target") never reports us. (Hook installed lazily below.)
 local serverTargetCache = {}  -- [ballInstance] = {target=playerName, time=tick()}
-local SERVER_TARGET_TTL = 2.5 -- seconds a captured target stays trusted before it goes stale
+-- The capture is refreshed on EVERY retarget, so the latest one is the truth
+-- for as long as the ball lives (cleared when it despawns). The TTL is only a
+-- safety net in case a retarget call is ever missed.
+local SERVER_TARGET_TTL = 15
+local resolveBallRef, recordServerTarget  -- defined next to the ChangeBallColor hook
 
 -- ============================================
 -- APPLY SAVED SETTINGS
@@ -746,6 +759,7 @@ Tabs.Stats:Button({
         blockSent = 0
         blockLanded = 0
         blockRejected = 0
+        blockParried = 0
         lastBlockResult = "-"
         totalUnsticks = 0
         notify("Stats Reset", "All statistics have been reset")
@@ -1467,18 +1481,17 @@ local function recordBlockResult(ok, result)
     blockSent = blockSent + 1
     if not ok then
         lastBlockResult = "error"
-    elseif result then
-        blockLanded = blockLanded + 1
-        lastBlockResult = "landed"
-        -- NOTE (verified against the decompiled SwordController.Block): a truthy
-        -- return means the block PARRIED a ball, which RESETS the block cooldown
-        -- (the game clears LastBlock, letting you re-block immediately) - it does
-        -- NOT start a 1s lockout. So there is no post-landed cooldown to model
-        -- here; we deliberately keep firing every frame during a threat/clash and
-        -- let the server arbitrate, which is what holds a clash indefinitely.
-    else
+    elseif result == nil then
         blockRejected = blockRejected + 1
         lastBlockResult = "rejected"
+    else
+        blockLanded = blockLanded + 1
+        if result == true then
+            blockParried = blockParried + 1
+            lastBlockResult = "parried"
+        else
+            lastBlockResult = "shield"
+        end
     end
 end
 -- Block-send RATE CAP. Spamming the block is worse than useless, and the game
@@ -1644,15 +1657,20 @@ local function findClosestBall(humanoidRootPart)
                 -- Targeting must consider EVERY ball, not just the closest:
                 -- the ball assigned to me may not be the nearest one.
                 local target = ball:GetAttribute("Target")
-                if target == myName then targetedByAny = true end
-                -- Server-hook capture (see serverTargetCache): the game told us
-                -- the server's real target for this ball, which for invisible
-                -- balls is the ONLY truthful source (the attribute is never
-                -- written). If it's fresh and it names us, we're targeted -
-                -- even if the attribute above says otherwise/nil.
+                -- Server-hook capture (see serverTargetCache) is the game's own
+                -- retarget call. The Target ATTRIBUTE goes stale whenever the
+                -- ball is invisible or the round has NoHighlight on (the game
+                -- returns before writing it), so a fresh capture OVERRIDES the
+                -- attribute: a stale "Target = me" no longer makes us block a
+                -- ball that's really aimed at someone else (which burned our
+                -- cooldown right before our real ball arrived), and a stale
+                -- "Target = them" no longer hides the ball coming for us.
                 local sm = serverTargetCache[ball]
-                local serverSaysMe = sm ~= nil and sm.target == myName
-                    and (tick() - sm.time) < SERVER_TARGET_TTL
+                if sm ~= nil and (tick() - sm.time) < SERVER_TARGET_TTL then
+                    target = sm.target
+                end
+                if type(target) ~= "string" then target = nil end
+                local serverSaysMe = target == myName
                 if serverSaysMe then targetedByAny = true end
                 -- Only balls aimed at me (or not yet assigned, or hidden and
                 -- closing) can threaten me; a ball assigned to another player
@@ -1801,11 +1819,11 @@ task.spawn(function()
             autoParryEnabled and "ON" or "OFF",
             autoSpamEnabled and "ON" or "OFF"))
 
-        setDesc(HUD.ParryStats, string.format("- Total Parries: %d\n- High Speed Parries: %d\n- Burst Blocks: %d\n- High Speed Rate: %.1f%%\n- Current Mode: %s\n- Blocks Sent: %d | Landed: %d | Rejected(cooldown): %d\n- Land Rate: %.0f%% | Last: %s\n- Auto-Unstick: %s (%d recoveries)",
+        setDesc(HUD.ParryStats, string.format("- Total Parries: %d\n- High Speed Parries: %d\n- Burst Blocks: %d\n- High Speed Rate: %.1f%%\n- Current Mode: %s\n- Blocks Sent: %d | Shield Up: %d | Rejected: %d\n- Confirmed Parries: %d | Accept Rate: %.0f%% | Last: %s\n- Auto-Unstick: %s (%d recoveries)",
             totalParries, highSpeedParries, totalBurstBlocks,
             totalParries > 0 and (highSpeedParries / totalParries * 100) or 0,
             isHighSpeedMode and "MAX SPEED" or "Normal",
-            blockSent, blockLanded, blockRejected,
+            blockSent, blockLanded, blockRejected, blockParried,
             blockSent > 0 and (blockLanded / blockSent * 100) or 0, lastBlockResult,
             autoUnstick and "ON" or "OFF", totalUnsticks))
 
@@ -1872,6 +1890,33 @@ task.spawn(function()
     end
 end)
 
+-- Resolve the ball a server call refers to: an Instance, or a ball NAME looked
+-- up in workspace.Balls (then any other bound ball container).
+resolveBallRef = function(ref)
+    if typeof(ref) == "Instance" then return ref end
+    if ref == nil then return nil end
+    local key = tostring(ref)
+    local balls = workspace:FindFirstChild("Balls")
+    local found = balls and balls:FindFirstChild(key)
+    if found then return found end
+    for folder in pairs(boundContainers) do
+        if folder.Parent then
+            found = folder:FindFirstChild(key)
+            if found then return found end
+        end
+    end
+    return nil
+end
+-- Keep only the NEWEST capture per ball (a deferred lookup must not overwrite a
+-- later retarget).
+recordServerTarget = function(ball, name, stamp)
+    if not isRealBall(ball) then return end
+    local prev = serverTargetCache[ball]
+    if prev and prev.time > stamp then return end
+    serverTargetCache[ball] = { target = name, time = stamp }
+    ballsCache[ball] = true
+end
+
 -- Hook BallController.Server.ChangeBallColor to capture the SERVER's real target
 -- for each ball the instant it retargets. The server invokes this every time a
 -- ball is (re)assigned, and for INVISIBLE balls it runs this callback but bails
@@ -1903,23 +1948,65 @@ task.spawn(function()
     BC.Server.ChangeBallColor = function(...)
         -- Once unloaded, behave as the untouched game function.
         if destroyed then return orig(...) end
-        local args = table.pack(...)
-        pcall(function()
-            -- Robust arg-scan (signature-agnostic): first Instance is the ball,
-            -- first string is the target player name.
-            local ball, name
-            for i = 1, args.n do
-                local v = args[i]
-                if ball == nil and typeof(v) == "Instance" then
-                    ball = v
-                elseif name == nil and type(v) == "string" then
-                    name = v
+        -- Real signature (decompiled BallController): ChangeBallColor(ballName,
+        -- targetName, customColor). The FIRST arg is the ball's NAME inside
+        -- workspace.Balls (the game resolves it with Balls:WaitForChild(name)),
+        -- not an Instance. The old hook scanned for an Instance + "first string"
+        -- and so recorded the ball name as the target and never matched a ball -
+        -- the invisible / NoHighlight target capture never worked in-game.
+        local ballRef, targetName = ...
+        if type(targetName) == "string" then
+            local stamp = tick()
+            pcall(function()
+                local ball = resolveBallRef(ballRef)
+                if ball then
+                    recordServerTarget(ball, targetName, stamp)
+                elseif ballRef ~= nil then
+                    -- Ball not replicated yet: resolve it shortly (the game waits
+                    -- up to 2s too) without yielding the game's own handler.
+                    task.spawn(function()
+                        for _ = 1, 20 do
+                            task.wait(0.1)
+                            if destroyed then return end
+                            local b = resolveBallRef(ballRef)
+                            if b then recordServerTarget(b, targetName, stamp) return end
+                        end
+                    end)
                 end
-            end
-            if ball and name and (ballsCache[ball] or isRealBall(ball)) then
-                serverTargetCache[ball] = { target = name, time = tick() }
-            end
+            end)
+        end
+        return orig(...)
+    end
+end)
+
+-- Hook SwordController.Server.BlockSuccess: the server calls it every time one
+-- of our blocks actually PARRIES a ball. That's the only ground truth for "the
+-- parry worked" (Block:Invoke usually returns false = shield up, and the parry
+-- lands later), so it feeds the Confirmed Parries stat and keeps the unstick
+-- watchdog from "recovering" healthy blocking.
+task.spawn(function()
+    local SC
+    for _ = 1, 15 do
+        if destroyed then return end
+        local ok, controller = pcall(function()
+            return require(ReplicatedStorage:WaitForChild("Framework", 5)):Get("SwordController")
         end)
+        if ok and type(controller) == "table" and type(controller.Server) == "table"
+            and type(controller.Server.BlockSuccess) == "function" then
+            SC = controller
+            break
+        end
+        task.wait(1)
+    end
+    if not SC or destroyed then return end
+    local orig = SC.Server.BlockSuccess
+    swordController, blockSuccessOriginal = SC, orig
+    SC.Server.BlockSuccess = function(...)
+        if not destroyed then
+            blockParried = blockParried + 1
+            blockLanded = blockLanded + 1
+            lastBlockResult = "parried"
+        end
         return orig(...)
     end
 end)
@@ -2668,6 +2755,10 @@ unloadScript = function()
         pcall(function() ballColorController.Server.ChangeBallColor = ballColorOriginal end)
     end
     ballColorController, ballColorOriginal = nil, nil
+    if swordController and blockSuccessOriginal then
+        pcall(function() swordController.Server.BlockSuccess = blockSuccessOriginal end)
+    end
+    swordController, blockSuccessOriginal = nil, nil
 
     -- Remove every Instance we spawned: detection sphere, player detectors, labels.
     if visualSphere then pcall(function() visualSphere:Destroy() end) visualSphere = nil end
