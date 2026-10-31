@@ -91,10 +91,10 @@ for _,ping in ipairs({90,150}) do
 end
 
 print("=== Clash with the game's Clash visual setting OFF ===")
--- A ball sits 28 studs away (outside point-blank) aimed at the OTHER clasher (not an imminent threat
--- by itself). The server says a clash started, but with the visual setting off
--- the game never sets ClashEffect. The script must still hold the clash (fire),
--- then stop once the server ends it.
+-- My clash with the game's Clash visual setting OFF: the game never sets
+-- ClashEffect, only the server's StartClash tells us. The ball sits 28 studs
+-- away (outside point-blank) and its target flips between me and the other
+-- clasher. The script must hold the clash (fire), then stop once it ends.
 for _,ping in ipairs({60,180}) do
   local w = assert(build(SRC, ping))
   local v3,Instance = w.v3,w.Instance
@@ -104,7 +104,15 @@ for _,ping in ipairs({60,180}) do
   local function frames(n) for _=1,n do w.RunService.Heartbeat:Fire(); w.R.advance(1/60) end end
   frames(60); local idle = w.server.blocks
   w.clashCtl.Server.StartClash()
-  frames(60); local during = w.server.blocks - idle
+  -- MY clash: the ball's target flips between me and the other clasher each
+  -- exchange (that's what makes it mine, not someone else's nearby).
+  local during0 = w.server.blocks
+  for i=1,60 do
+    if i % 18 == 1 then b:SetAttribute("Target", (math.floor(i/18) % 2 == 0) and "Hero" or "Other") end
+    frames(1)
+  end
+  b:SetAttribute("Target","Other")
+  local during = w.server.blocks - during0
   w.clashCtl.Server.EndClash()
   frames(90); local mark = w.server.blocks; frames(60); local after = w.server.blocks - mark
   local tag = "clash @"..ping.." (effects off)"
@@ -189,6 +197,80 @@ do
   if captured and math.abs(captured.X-0.7071)<0.02 and math.abs(captured.Z+0.7071)<0.02 and math.abs(captured.Y)<1e-6 then
     ok(string.format("dash angle 45 deg away + toward your movement -> (%.2f, %.2f, %.2f)", captured.X, captured.Y, captured.Z))
   else bad("dash direction", captured and string.format("(%.2f, %.2f, %.2f)", captured.X, captured.Y, captured.Z) or "Move never called") end
+end
+
+print("=== Someone ELSE's clash nearby (bystander) ===")
+-- The game's clash state is match-wide (ClashController.Start reads
+-- MatchService.IsClashing; lighting/effects apply arena-wide), so StartClash
+-- and the ClashEffect attributes fire for EVERYONE. Two other players clash
+-- 25 studs away; I'm not in it. My blocks must stay at 0 - every whiffed block
+-- costs the 1s cooldown - and when the ball then comes for ME it must be parried.
+for _,ping in ipairs({60,150}) do
+  local w = assert(build(SRC, ping)); settle(w)
+  local v3,Instance,Enum = w.v3,w.Instance,w.Enum
+  local b=Instance.new("Part"); b.Name="Ball9"
+  local lv=Instance.new("LinearVelocity"); lv.Enabled=true; lv.RelativeTo=Enum.ActuatorRelativeTo.World
+  lv.VelocityConstraintMode=Enum.VelocityConstraintMode.Vector; lv.Parent=b
+  local pos=v3(-18,5,25); local vel=v3(120,0,0)
+  b.Position=pos; b.AssemblyLinearVelocity=vel; lv.VectorVelocity=vel; b:SetAttribute("Target","P2"); b.Parent=w.Balls
+  w.clashCtl.Server.StartClash(); w.Eff:SetAttribute("ClashEffect", true)
+  local dt=1/60; local blocks0=w.server.blocks
+  for _=1,180 do   -- 3s of P1 <-> P2 ping-pong
+    pos=pos+v3(vel.X*dt,0,0)
+    if pos.X>18 then vel=v3(-120,0,0); b:SetAttribute("Target","P1") elseif pos.X<-18 then vel=v3(120,0,0); b:SetAttribute("Target","P2") end
+    b.Position=pos; b.AssemblyLinearVelocity=vel; lv.VectorVelocity=vel
+    w.RunService.Heartbeat:Fire(); w.R.advance(dt)
+  end
+  local wasted=w.server.blocks-blocks0
+  -- clash ends; the ball is sent at me
+  w.clashCtl.Server.EndClash(); w.Eff:SetAttribute("ClashEffect", false)
+  w.ballCtl.Server.ChangeBallColor("Ball9","Hero")
+  local to=(w.hrp.Position-pos); local d=to.Magnitude; vel=v3(to.X/d*150,0,to.Z/d*150)
+  local parried=nil
+  for _=1,120 do
+    pos=pos+v3(vel.X*dt,vel.Y*dt,vel.Z*dt); b.Position=pos; b.AssemblyLinearVelocity=vel; lv.VectorVelocity=vel
+    w.RunService.Heartbeat:Fire(); w.R.advance(dt)
+    if (w.hrp.Position-pos).Magnitude<=8 then parried=w.shieldAt(w.R.VTIME()) break end
+  end
+  local tag=string.format("bystander @%d: wasted %d blocks on their clash, my ball %s", ping, wasted, parried and "PARRIED" or "MISSED")
+  if wasted==0 and parried then ok(tag) else bad(tag, "should waste 0 and parry") end
+end
+
+print("=== Not in a clash: someone just standing next to me ===")
+-- A player stands 6 studs from me (lobby crowding / walking past) while the
+-- ball flies around 30 studs away aimed at a THIRD player. Nobody is dashing
+-- into me with their ball, so this is not a clash: my blocks must stay at 0,
+-- and when the ball then comes for me it must be parried.
+for _,ping in ipairs({60,150}) do
+  local w = assert(build(SRC, ping)); settle(w)
+  local v3,Instance,Enum = w.v3,w.Instance,w.Enum
+  local nb=Instance.new("Player"); nb.Name="Neighbour"
+  local nchar=Instance.new("Model"); nchar.Name="Neighbour"
+  local nhrp=Instance.new("Part"); nhrp.Name="HumanoidRootPart"; nhrp.Position=v3(6,5,0); nhrp.AssemblyLinearVelocity=v3(0,0,0); nhrp.Parent=nchar
+  nb.Character=nchar; nb.CharacterAdded=w.R.newSignal(); nb.CharacterRemoving=w.R.newSignal()
+  w.players[#w.players+1]=nb; w.Players.PlayerAdded:Fire(nb)
+  local b=Instance.new("Part"); b.Name="Ball5"
+  local lv=Instance.new("LinearVelocity"); lv.Enabled=true; lv.RelativeTo=Enum.ActuatorRelativeTo.World
+  lv.VelocityConstraintMode=Enum.VelocityConstraintMode.Vector; lv.Parent=b
+  local t=0; local pos=v3(30,5,0); local vel=v3(0,0,0)
+  b.Position=pos; b:SetAttribute("Target","Third"); b.Parent=w.Balls
+  local dt=1/60; local blocks0=w.server.blocks
+  for _=1,180 do   -- ball circles 30 studs away (aimed at someone else)
+    t=t+dt; local np=v3(30*math.cos(t*1.5),5,30*math.sin(t*1.5)); vel=v3((np.X-pos.X)/dt,0,(np.Z-pos.Z)/dt); pos=np
+    b.Position=pos; b.AssemblyLinearVelocity=vel; lv.VectorVelocity=vel
+    w.RunService.Heartbeat:Fire(); w.R.advance(dt)
+  end
+  local wasted=w.server.blocks-blocks0
+  w.ballCtl.Server.ChangeBallColor("Ball5","Hero"); b:SetAttribute("Target","Hero")
+  local to=(w.hrp.Position-pos); local d=to.Magnitude; vel=v3(to.X/d*150,0,to.Z/d*150)
+  local parried=nil
+  for _=1,120 do
+    pos=pos+v3(vel.X*dt,vel.Y*dt,vel.Z*dt); b.Position=pos; b.AssemblyLinearVelocity=vel; lv.VectorVelocity=vel
+    w.RunService.Heartbeat:Fire(); w.R.advance(dt)
+    if (w.hrp.Position-pos).Magnitude<=8 then parried=w.shieldAt(w.R.VTIME()) break end
+  end
+  local tag=string.format("neighbour @%d: wasted %d blocks, my ball %s", ping, wasted, parried and "PARRIED" or "MISSED")
+  if wasted==0 and parried then ok(tag) else bad(tag, "should waste 0 and parry") end
 end
 
 print("=== Block result + BlockSuccess hook ===")

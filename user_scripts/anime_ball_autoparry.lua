@@ -386,6 +386,19 @@ local Clash = {
     -- own ClashEffect attributes when your "Clash" VISUAL setting is on and
     -- the map has a BallSpawn, so on its own that signal is often dead.
     server = false,
+    -- Participation gate. The game's clash state is MATCH-WIDE: ClashController
+    -- reads MatchService.IsClashing and applies the lighting/effects (and the
+    -- ClashEffect attributes, and StartClash) for everyone in the arena. So
+    -- "a clash is happening" is NOT "I'm in the clash". Without this gate a
+    -- bystander within parry range fired a block every frame at other people's
+    -- clash (180 blocks in 3s in the sandbox) - burning the 1s cooldown and the
+    -- game's 120 req/s remote budget right before the ball came for them.
+    -- I'm a participant if a ball targeted me within PART_WINDOW seconds (in a
+    -- clash the target flips to each clasher every exchange) or the ball is
+    -- within NEAR studs of me (the exchange is happening on top of me).
+    meAt = -math.huge,
+    PART_WINDOW = 1.5,
+    NEAR = 15,
 }
 
 -- Keep-moving guard: firing block used to yield the main thread on every
@@ -2419,7 +2432,7 @@ end
 
 -- Auto Spam: split out of the main Heartbeat so that closure stays under Lua
 -- 5.1's 60-upvalue cap (the offline test sandbox runs stock 5.1).
-local function runAutoSpam(amTargeted, clashDetected, realClash, hudTick)
+local function runAutoSpam(amTargeted, clashDetected, realClash, hudTick, recentlyTargeted)
     if not autoSpamEnabled then
         if spamStarted then
             spamDuration = spamDuration + (tick() - lastSpamStartTime)
@@ -2461,10 +2474,15 @@ local function runAutoSpam(amTargeted, clashDetected, realClash, hudTick)
     local spamStartCond, spamStayCond
     if Clash.enabled then
         spamStartCond = clashDetected and amTargeted and ballInRange
-        spamStayCond = clashDetected or ballInRange
+        -- STAY used to be "clash OR any ball within 34 studs", so once started
+        -- Auto Spam never stopped while a ball idled nearby - even after the
+        -- clash ended and the ball was aimed at someone else (sandbox: 60 extra
+        -- blocks/s after EndClash, each one burning the cooldown). A nearby
+        -- ball only keeps it going while it's still recently been aimed at me.
+        spamStayCond = clashDetected or (ballInRange and recentlyTargeted)
     else
         spamStartCond = playerInRange and ballInRange and amTargeted
-        spamStayCond = ballInRange
+        spamStayCond = ballInRange and recentlyTargeted
     end
 
     if spamStartCond and not spamStarted then
@@ -2496,6 +2514,28 @@ local function runAutoSpam(amTargeted, clashDetected, realClash, hudTick)
             clashDetected and "Yes" or "No", #Clash.flipTimes,
             ballInRange and "Yes" or "No", amTargeted and "Yes" or "No"))
     end
+end
+
+-- Is a ball near me (within `radius` studs) in play between me and `otherName`?
+-- True when its target (fresh server capture, else the attribute) is me, them,
+-- or not assigned yet. Used to gate the dash-in pre-shield.
+Clash.NEAR_BALL = 22
+Clash.ballInvolves = function(otherName, myPos, radius)
+    local myName = LocalPlayer.Name
+    for ball in pairs(ballsCache) do
+        if ball.Parent then
+            local bp = getBallPosition(ball)
+            if bp and (bp - myPos).Magnitude <= radius then
+                local target = ball:GetAttribute("Target")
+                local sm = serverTargetCache[ball]
+                if sm ~= nil and (tick() - sm.time) < SERVER_TARGET_TTL then target = sm.target end
+                if type(target) ~= "string" or target == myName or target == otherName then
+                    return true
+                end
+            end
+        end
+    end
+    return false
 end
 
 local lastUpdateTime = 0
@@ -2539,6 +2579,8 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
     -- targetedByAny checks every ball (not just the closest), OR'd with the
     -- highlight so it's strictly more reliable, never less.
     local amTargeted = hasHighlight or targetedByAny
+    if amTargeted then Clash.meAt = currentTime end
+    local inMyClash = (currentTime - Clash.meAt) <= Clash.PART_WINDOW or closestAnyDist <= Clash.NEAR
 
     -- Clash detection: count rapid direction reversals of the closest ball.
     -- Runs outside the parry branch so Auto Spam's clash sensing works even
@@ -2547,7 +2589,9 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
     if closestBall then
         ballPos = getBallPosition(closestBall)
         ballVel = getBallVelocityVector(closestBall)
-        if Clash.lastVelBall == closestBall and Clash.lastVelVec then
+        -- Only count reversals of a ball I'm part of (see Clash.meAt): a ball
+        -- ping-ponging between two OTHER players reverses just the same.
+        if inMyClash and Clash.lastVelBall == closestBall and Clash.lastVelVec then
             local m1, m2 = Clash.lastVelVec.Magnitude, ballVel.Magnitude
             if m1 > Clash.MIN_SPEED and m2 > Clash.MIN_SPEED
                 and Clash.lastVelVec:Dot(ballVel) / (m1 * m2) < -0.3 then
@@ -2581,6 +2625,8 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
     -- arm the grace whenever it's genuinely on, and treat the clash as active for
     -- GRACE seconds afterward so a one-frame blink of ClashEffect can't stop the
     -- force-fire mid-exchange and let a return through.
+    -- Match-wide signal -> only mine if I'm a participant.
+    if realClash and not inMyClash then realClash = false end
     if realClash then Clash.forceUntil = currentTime + Clash.GRACE end
     local clashActive = realClash or currentTime < Clash.forceUntil
     local clashDetected = clashActive or (#Clash.flipTimes >= Clash.MIN_FLIPS)
@@ -2952,7 +2998,18 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
                         if od <= 18 then
                             local ov = ohrp.AssemblyLinearVelocity
                             local oClose = od > 1e-3 and ov:Dot(off) / od or 0
-                            if od <= 9 or oClose >= 45 then clashIncoming = true break end
+                            -- Only a pre-shield if a ball near me is actually in
+                            -- play between us (see Clash.ballInvolves): a player
+                            -- merely standing/walking next to me while the ball is
+                            -- elsewhere fired a block every frame (180 in 3s in the
+                            -- sandbox) and kept me on cooldown for the real ball.
+                            -- Dashing at me (>= 45 studs/s) with a ball of ours in
+                            -- play within 34 studs, or standing on top of me (<= 9)
+                            -- with such a ball within 22 studs.
+                            if (oClose >= 45 and Clash.ballInvolves(pl.Name, humanoidRootPart.Position, 34))
+                                or (od <= 9 and Clash.ballInvolves(pl.Name, humanoidRootPart.Position, Clash.NEAR_BALL)) then
+                                clashIncoming = true break
+                            end
                         end
                     end
                 end
@@ -3022,7 +3079,8 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
     end
 
     updateVisualSphere(humanoidRootPart)
-    runAutoSpam(amTargeted, clashDetected, realClash, hudTick)
+    runAutoSpam(amTargeted, clashDetected, realClash, hudTick,
+        (currentTime - Clash.meAt) <= Clash.PART_WINDOW)
 end)
 
 track(LocalPlayer.CharacterRemoving:Connect(function()
