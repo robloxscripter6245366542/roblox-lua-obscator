@@ -1,0 +1,1261 @@
+# All 630 scripts in the 2026-10-31 dump: path -> function names
+Players.Luluckas15.PlayerGui.Clicks.ClickEffects
+    (no named functions)
+Players.Luluckas15.PlayerGui.FreeCam.FreecamScript
+    new, Update, Reset, fCurve, fDeadzone, thumbstickCurve, Vel, Pan, Fov, Keypress, GpButton, MousePan, Thumb, Trigger, MouseWheel, Zero, StartCapture, StopCapture, GetFocusDistance, StepFreecam, Push, Pop, StartFreecam, StopFreecam, ToggleFreecam, CheckMacro, HandleActivationInput
+Players.Luluckas15.PlayerScripts.PlayerScriptsLoader
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.AFKController
+    Init, PendAttributeAsync, SetupAFKWorld, LogAura, Start
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController
+    Init, AbilityEffect, PlayAnimation, LoadAnimations, IsAlive, UpdateLevelBar, UpdateAbilityLevel, UpdateAbilityImage, ShowText, ShowText, StartCooldown, ResetCooldown, LockAbilities, CancelCooldown, CancelCooldown, StartCooldown, Cooldown, Activate, Execute, Activate, ConnectAction, Start
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Ascend
+    PlayVFX, GetCharacterMass, Start
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Chrono Stasis
+    Start
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Ethereal Strike
+    increaseEmitterSize, CreateSegment, UpdateSegment, Stop, CleanupFunction, Start
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Full Calling
+    Start
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Gum Gum Cannon
+    Start
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Hollow Surge
+    Disable, Start
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Ice Wall
+    CreateSpikes, AddHandVFX, DestroySpikes, Start
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Infinite Void
+    SetInvisible, EndDomain, EndConnections, Start, End
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Instant Transmission
+    CreateClone, Start
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Invisibility
+    Start
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Kaleidoscope
+    CreateHexagonLayer, Start, DestroyPart
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Kamehameha
+    EmitVFX, ChargeVFX, Disable, Start
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Sky Walk
+    Init
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Strongest Slash
+    VerticalSlash, HorizontalSlash, Start, Aura
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Super Dash
+    Init
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Super Raiyan
+    Beam, Start
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Temporal Haki
+    Start, End
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Thunderflash
+    Start, Trail
+Players.Luluckas15.PlayerScripts.Scripts.AbilityController.Whirlwind Pull
+    Start
+Players.Luluckas15.PlayerScripts.Scripts.AmbientController
+    Init, SetActiveLighting, OverrideLighting, ResetLighting, ApplySkybox, RecursiveApply, ApplyLighting, Start
+Players.Luluckas15.PlayerScripts.Scripts.AuraController
+    Init, GetRandomAura, ChangeAuraLabel, RollAura, ApplyAura, ToggleAuras, PlayerAdded, Start
+Players.Luluckas15.PlayerScripts.Scripts.AutoParryController
+    setEnabled, Init, Show, Hide, Start, PlayerRemoving
+Players.Luluckas15.PlayerScripts.Scripts.BallController
+    Init, TrackBall, GetBallAsync, PlaySound, StopSound, getLiveOculusVfxColor, ReflectEffect, HitEffect, ChangeBallColor, Start
+Players.Luluckas15.PlayerScripts.Scripts.BoothController
+    Init, PriceErrorMessage, new, SetupModel, UpdateOwner, GetItemAmount, ListItem, UnlistItem, UpdateListingAmount, UpdateBoothItem, BoothEquipped, BuyListing, AddBooth, ResetUI, ToggleBoothInventory, Start
+Players.Luluckas15.PlayerScripts.Scripts.CameraController
+    Init, CameraShake, CameraShake, SetBlur, GetDropoff, Start
+Players.Luluckas15.PlayerScripts.Scripts.CharacterController
+    Init, capVelocity, capAngularVelocity, SetVisible, EndBlock, ConnectBlockAnimation, UpdateSpeed, UpdateAFK, UpdateEliminated, PlayerAdded, CharacterAdded, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.ChatController
+    Init, toInteger, toHex, SendServerMessage, play, animate, addTriangle, close, ShowAnnouncement, formatChatTitle, IsMuted, Start
+Players.Luluckas15.PlayerScripts.Scripts.ClashController
+    Init, LerpAny, StartClash, EndClash, ApplyBallEffects, ApplyParticles, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.ConsoleController
+    Init, KeyCodeToString, ChangeCloseText, SwitchToConsole, ConnectInput, Start
+Players.Luluckas15.PlayerScripts.Scripts.CraftingController
+    Init, ErrorMessage, EmitSparkle, ShakeSword, RevealOutput, UpdateAmountDisplay, GetVisibility, CustomizeOutput, StartCrafting, StopCrafting, ToggleSelected, ItemUpdated, UpdatePadding, Start
+Players.Luluckas15.PlayerScripts.Scripts.CrateController
+    Init, GetMulti, SelectItem, CreateTemplate, IsCrateExpired, FillList, CopyList, ClearList, Roll, UpdatePity, UpdateCratePity, UpdateAbilitySpins, AnimateCrateOpen, DisplayRarities, ConnectBoard, ToggleAuto, OpenCrate, CloseCandyChoice, createChoiceButton, CreateCandyChoice, UpdateCrateMenu, AdjustDelay, CrateTask, ConnectCrate, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.CurrencyController
+    Init, GetCurrencyText, PromptProduct, UpdateCache, RemoveCurrency, GetCurrency, ConnectChangedSignal, PlayerRemoving, AddLabel, showCurrencyChange, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.DecorationController
+    ConnectBoat, ConnectFloat, ConnectFaceCamera, Start
+Players.Luluckas15.PlayerScripts.Scripts.DevRainController
+    getRoot, destroyDrop, clearEvent, createDrop, StartRain, ClearRain, ClearDrop, UpdateDrop, Init
+Players.Luluckas15.PlayerScripts.Scripts.EffectController
+    Init, GetGround, Smoke, Freeze, LightningBolt, Tween, GetEffectCache, AddEffectCache, EnableVFX
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController
+    Init, CoopEmoteCancel, SyncEmoteCancel, SyncEmote, ReturnAnimTimePosition, CoopEmote, PauseCurrentAnim, resetConnections, setConnections, PlayEmote, StopEmote, Start
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.Bring it in
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.Bring it in First
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.Bring it in Stop
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.For You
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.For You First
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.For You First Stop
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.For You Second Stop
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.For You Stop
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.Fused Emote
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.Fused Emote First
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.Fused Emote Stop
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.Pumpkin Head Spin
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.Pumpkin Head Spin Stop
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.Roomba
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.Roomba Stop
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.There Ya Go
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.There Ya Go Stop
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.Witch Apprentice
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.EmoteController.Witch Apprentice Stop
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.ExplosionController
+    Init, ForceAngle, CloneAndEmitAttachments, Explode, IsGrounded, EmitExplosion, Start
+Players.Luluckas15.PlayerScripts.Scripts.ExplosionController.Harvest Horror Explosion
+    End
+Players.Luluckas15.PlayerScripts.Scripts.ExplosionController.Healers Mercy
+    Whilst
+Players.Luluckas15.PlayerScripts.Scripts.ExplosionController.Turkeys Call Explosion
+    End
+Players.Luluckas15.PlayerScripts.Scripts.HapticController
+    Init, Trigger
+Players.Luluckas15.PlayerScripts.Scripts.LeaderboardController
+    ApplyTextGradient, Init, ClearCache, GetPlayerImage, UpdateLeaderboard, UpdateData, addLeaderboard, Start
+Players.Luluckas15.PlayerScripts.Scripts.LowGraphicsController
+    Init, applyCategory, applyProfile, IsLowGraphics, Apply, Start, OnPlayerAdded
+Players.Luluckas15.PlayerScripts.Scripts.MatchController
+    Init, MatchCountdown, Intermission, UpdateStatus, UpdateMusic, SwitchMap, StartMatch, EndMatch, UpdateText, UpdateAFK, ToggleAFK, Start
+Players.Luluckas15.PlayerScripts.Scripts.MountsController
+    Init, StartAnim, StopAnim, CancelControl, CanControl, ControlMount, Start
+Players.Luluckas15.PlayerScripts.Scripts.MovementController
+    Init, Horizontal, ReplicateDash, ReplicateJump, DashEffect, Dash, ForceDash, JumpEffect, DoubleJump, ForceJump, ConnectCharacter, ToggleMobileJump, Start
+Players.Luluckas15.PlayerScripts.Scripts.NewPlayerController
+    Init, Start
+Players.Luluckas15.PlayerScripts.Scripts.PerformanceController
+    (no named functions)
+Players.Luluckas15.PlayerScripts.Scripts.PlayerController
+    Init, disableReset, UpdateWins, EnableTeleportHome, UpdateServerLocation, UpdateIndicator, UpdatePing, QueueButton, GetIconFunction, AddButtons, PromptFavorite, Start, Setup, Step
+Players.Luluckas15.PlayerScripts.Scripts.SoundController
+    Init, new, IsA, SetVolume, Play, Stop, GetVolumeLevel, Destroy, Mute, SoundExists, DestroySounds, PlaySound, PlayMusic, CreateMusic
+Players.Luluckas15.PlayerScripts.Scripts.SpectateController
+    Init, GetPlayers, Focus, SetVisible, Toggle, Switch, Start
+Players.Luluckas15.PlayerScripts.Scripts.StPatricksController
+    Start
+Players.Luluckas15.PlayerScripts.Scripts.SwordController
+    Init, BlockSuccess, GetSwordAnim, ShowShield, Block, Start
+Players.Luluckas15.PlayerScripts.Scripts.TutorialController
+    Init, UpdateStatus, UpdateProgress, AddBlock, Start
+Players.Luluckas15.PlayerScripts.Scripts.UltimateController
+    Init, SpawnUltimateBall, EnableUltimate, DisableUltimate, EnableUltimateLighting, DisableUltimateLighting, ExecuteUltimate, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.AbilitySpinController
+    Init, ToggleAuto, OpenFrame, UpdatePity, BuySpin, UpdateCost, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.BoostController
+    Init, ReplicateTimer, ReplicateInventory, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.DailyRewardController
+    Init, UpdateCurrentReward, Claim, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.EventCurrencyController
+    Init, OpenTab, SwitchTab, UpdateTransfer, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.EventPassController
+    Init, GetCurrentSeasonData, UpdateEXP, UpdateLevel, UpdateSeasonRewards, UpdateSkipFrame, ClaimReward, SetupRewards, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.EventQuestController
+    Init, UpdateCache, CreateFrame, updateFrames, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.FreecamController
+    Init, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.GiftController
+    Init, Error, UpdateGifts, ClaimResult, UpdateGiftButton, SetGiftTarget, BuyGift, OpenGiftingMenu, UpdateGiftIndicator, ClaimGift, AddGift, PlayerAdded, PlayerRemoving, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.GoldController
+    Init, OpenTab, SwitchTab, UpdateGoldTransfer, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.InventoryController
+    Init, updateBoostAmount, ConfigureBoostContainer, GetItemInfo, IsCatalogItemVisible, GetItemAmount, SetRarityGradient, UpdateEquipped, UpdateAmount, ToggleSelect, StartSelection, ConfirmSelection, ShowItem, SwitchTab, UpdateMode, SetupTemplate, CreateItem, UpdateItem, EquipItem, PressButton, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.KillFeedController
+    Init, pop, Feed
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.LabelController
+    UpdateTeamHighlight, UpdateHealthLabel, UpdateNametag, PlayerAdded, CharacterAdded, SetupCharacter, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.LivesController
+    Init, TakeDamage, UpdateLives, UpdateHealth, SetupCharacter, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.MatchmakingController
+    Init, ShowFrame, UpdateTimer, StartMatchmaking, UpdateMatchmaking, CompleteMatchmaking, CancelMatchmaking, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.MenuController
+    Init, Open, Close, TweenEffect, Toggle, CloseAllFrames, GetFrame, AddFrame, OpenFrame, CloseFrame, ToggleFrame, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.MountController
+    Init, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.NotificationController
+    Init, Tip, Shout, Notify, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.PromptController
+    Init, new, TriggerTask, SwitchPart, GetButtons, FindButton, UpdateKeybinds, UpdateKeybinds, SetupPrompt, RemovePrompt, ConnectInput, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.QuestController
+    Init, SetupBar, UpdateBar, GetDefaultInfo, IsQuestCompleted, GetQuestFrame, FlattenRewards, GetQuestSeasonExpDisplay, GetQuestRewards, QuestEnded, QuestClaimed, UpdateQuestProgress, StartQuest, UpdateQuestFrame, CreateQuestFrame, RemoveQuestFrame, UpdateQuestCounters, SwitchTab, setupTab, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.RankedController
+    Init, UpdateRankedStats, UpdateElo, ShowMatchResults, UpdateMatchResults, FormatRankName, GetRankedGradient, UpdateClaimableRewards, UpdateInfo, TogglePanel, taskWait, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.RewardController
+    Init, IsHiddenRollReward, GetDisplayText, withAmount, GetTextOnlyDisplayText, UpdateRewardFrame
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.SFXKillController
+    Init, LoadSFX, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.SeasonController
+    Init, GetCurrentSeasonData, UpdateEXP, UpdateLevel, UpdateSeasonRewards, UpdateSkipFrame, ClaimReward, SetupRewards, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.SecondaryInventoryController
+    has, updateButton, loadTitle, Load, Init, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.SettingsController
+    Init, ShowButton, UpdateSetting, UpdateButton, ApplySetting, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.ShopController
+    GetPromoCatalog, Init, UpdateGamepasses, UpdateProduct, UpdatePremiumButton, UpdateGroupButton, GetProductInfo, LoadProductInfo, UpdateGamepasses, CanBuyPromo, Gift, ConnectGift, Purchase, OpenTab, SwitchTab, ConnectGamepass, ConnectBoards, GetPromoInfo, ConnectPromoStand, CreateStarterpackAltar, DestroyStarterpackAltar, ConnectPromo, GetCrateInfo, IsCrateActive, ConnectCrate, NeedsAutoOpen, ExtraTask, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.SocialsController
+    Init, PendAttributeAsync, UpdateInvite, UpdateCodePrompt, RedeemCode, SwitchTab, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.SocialsController2
+    Init, RedeemCode, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.SpinWheelController
+    Init, angleDiff, FetchTimeLeft, UpdateSpins, ClaimSpinReward, UpdateSpinButton, SpinWheel, SetupSpinWheel, PressSpin, CanBuy, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.SpriteController
+    Init, Task, Task, Task, Task, Task, Task, UpdateVisible, AddConnections, AddSprite, AnimateSprite, Start, Step
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.StrokeScaleController
+    Average, GetScreenRatio, GetInstancePosition, TagRecursive, TagStrokes, GetOriginalThickness, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.TeleportController
+    Init, SetupTeleport, UpdateWinRequirement, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.ToolTipController
+    Init, UpdatePosition, AddFrame, NewToolTip, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.TourneyController
+    Init, CreateInitialGhostEntries, FixPathsAlignment, CalculateEntryPath, SetPlayerDisplayInfo1v1, ToggleTourneyGui, SetFirstBracketParticipants, SetBracketParticipants, PlayerEliminated, Preload1v1IntroGui, Show1v1IntroGui, GetConfigFolder, GetHolderFrame, AddContribution, AddBoost, AddContribution, SetupPrizes, UpdateWins, SelectTourney, SetupTourneySelection, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.TourneyController.AnimatedEntry
+    InitEntry, new, ParentTo, Move, Destroy
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.TourneyController.Entry
+    SetYouLabelVisibility, SetIconImage, InitEntry, GetEntry, new, ToggleVisible, SetIconImage, ParentTo, Destroy
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.TourneyController.GhostEntry
+    SetIconImageBlack, InitEntry, SetIconImage, new, DestroyGhostEntry, ToggleVisible, SetIconImage, ParentTo, Destroy
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.TourneyController.TourneyAnimations
+    EndAnimationProcess, EndAnimationProcessChampionship, StartAnimationProcess, StartAnimationProcess, CancelBackgroundEffects, StartGlowEffects, StartTrophyEffects, InitBackgroundEffects
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.TourneyController.TourneyIntroAnimations
+    ForegroundToggle, GetModel, InitViewports, getRandomShakeIntensity, ShakeUi, MoveSmoke
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.TradeController
+    Init, StartTimer, StopTimer, ErrorMessage, StartTrade, SetReady, FinishTrade, SetCurrency, IncludeItem, ToggleSelected, ItemUpdated, RequestEnded, RequestReceived, RequestDeclined, ChangePlayerStatus, CreatePlayerFrame, PlayerRemoving, SetTradePending, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.UIController
+    Init, HideHUD, ShowHUD, UpdateInput, ToggleShiftlock, GetColor, ScaleLabel, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.VersusController
+    Init, UpdateRewards, CreateRewards, UpdateTeamPoints, ClaimReward, UpdateTeam, Start, UpdateTeamsPoints
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.VotingController
+    Init, StartVoting, EndVoting, UpdateOption, AddOptions, Start
+Players.Luluckas15.PlayerScripts.Scripts.UserInterface.WaypointsController
+    Init, Start, Step
+Players.Luluckas15.PlayerScripts.SmartBoneInitializer
+    (no named functions)
+Players.Luluckas15.PlayerScripts.StartupClient
+    (no named functions)
+ReplicatedFirst.GameLoad
+    (no named functions)
+ReplicatedStorage.CmdrClient
+    __index, SetActivationKeys, SetPlaceName, SetEnabled, SetActivationUnlocksMouse, Show, Hide, Toggle, SetMashToEnable, SetHideOnLostFocus, HandleEvent
+ReplicatedStorage.CmdrClient.CmdrInterface
+    ProcessEntry, OnTextChanged
+ReplicatedStorage.CmdrClient.CmdrInterface.AutoComplete
+    SetText, UpdateContainerSize, UpdateInfoDisplay, Show, GetSelectedItem, Hide, IsVisible, Select
+ReplicatedStorage.CmdrClient.CmdrInterface.Window
+    UpdateLabel, GetLabel, UpdateWindowHeight, AddLine, IsVisible, SetVisible, Hide, Show, SetEntryText, GetEntryText, SetIsValidInput, HideInvalidState, LoseFocus, TraverseHistory, ClearHistoryState, SelectVertical, BeginInput
+ReplicatedStorage.CmdrClient.Commands.AddBundle
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.AddCrate
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.AddSeasonalKills
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.AddSeasonalTrophys
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.AddSeasonalWins
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.AddSword
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.AutoParry
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.DevRain
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.Devbring
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.Devjoin
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.Devserver
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.DummyRound
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.GiveEmote
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.GiveExplosion
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.SetCandy
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.SetGold
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.SetKills
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.SetSeasonalKills
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.SetSeasonalTrophys
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.SetSeasonalWins
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.SetWins
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.SetYen
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.alias
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.announce
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.bind
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.blink
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.clear
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.convertTimestamp
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.echo
+    Run
+ReplicatedStorage.CmdrClient.Commands.edit
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.fetch
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.getPlayerPlaceInstance
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.gotoPlace
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.help
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.history
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.hover
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.jsonArrayDecode
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.jsonArrayEncode
+    Run
+ReplicatedStorage.CmdrClient.Commands.kick
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.kill
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.len
+    Run
+ReplicatedStorage.CmdrClient.Commands.math
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.pick
+    Run
+ReplicatedStorage.CmdrClient.Commands.position
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.rand
+    Run
+ReplicatedStorage.CmdrClient.Commands.replace
+    Run
+ReplicatedStorage.CmdrClient.Commands.resolve
+    Run
+ReplicatedStorage.CmdrClient.Commands.run
+    Run
+ReplicatedStorage.CmdrClient.Commands.runLines
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.runif
+    startsWith, Run
+ReplicatedStorage.CmdrClient.Commands.teleport
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.template
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.thru
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.unbind
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.uptime
+    (no named functions)
+ReplicatedStorage.CmdrClient.Commands.var
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.varSet
+    ClientRun
+ReplicatedStorage.CmdrClient.Commands.version
+    Run
+ReplicatedStorage.CmdrClient.DefaultEventHandlers
+    (no named functions)
+ReplicatedStorage.CmdrClient.Shared.Argument
+    unescapeOperators, new, GetDefaultAutocomplete, Transform, TransformSegment, GetTransformedValue, Validate, GetAutocomplete, ParseValue, GetValue
+ReplicatedStorage.CmdrClient.Shared.Command
+    new, Parse, Validate, GetLastArgument, GatherArgumentValues, Run, GetArgument, GetData, SendEvent, BroadcastEvent, Reply, GetStore, HasImplementation
+ReplicatedStorage.CmdrClient.Shared.Dispatcher
+    Evaluate, EvaluateAndRun, Send, Run, RunHooks, PushHistory, GetHistory
+ReplicatedStorage.CmdrClient.Shared.Registry
+    __index, RegisterType, RegisterTypePrefix, RegisterTypeAlias, RegisterTypesIn, RegisterCommandObject, RegisterCommand, RegisterCommandsIn, RegisterDefaultCommands, GetCommand, GetCommands, GetCommandNames, GetTypeNames, GetType, GetTypeName, RegisterHook, GetStore, FlushAutoExecBufferDeferred, FlushAutoExecBuffer
+ReplicatedStorage.CmdrClient.Shared.Util
+    MakeDictionary, DictionaryKeys, transformInstanceSet, MakeFuzzyFinder, GetNames, SplitStringSimple, charCode, ParseEscapeSequences, EncodeEscapedOperator, EncodeEscapedOperators, encodeControlChars, decodeControlChars, SplitString, MashExcessArguments, TrimString, GetTextSize, Validate, Autocomplete, Parse, MakeEnumType, ParsePrefixedUnionType, Parse, MakeListableType, encodeCommandEscape, decodeCommandEscape, RunCommandString, RunEmbeddedCommands, SubstituteArgs, Run, MakeAliasCommand, Transform, Validate, MakeSequenceType, SplitPrioritizedDelimeter, Map, Each, EmulateTabstops, Mutex
+ReplicatedStorage.CmdrClient.Types.AddCrate
+    (no named functions)
+ReplicatedStorage.CmdrClient.Types.AddEmote
+    (no named functions)
+ReplicatedStorage.CmdrClient.Types.AddExplosion
+    (no named functions)
+ReplicatedStorage.CmdrClient.Types.AddSword
+    (no named functions)
+ReplicatedStorage.CmdrClient.Types.BeforeRun
+    (no named functions)
+ReplicatedStorage.CmdrClient.Types.BindableResource
+    (no named functions)
+ReplicatedStorage.CmdrClient.Types.BrickColor
+    Transform, Validate, Autocomplete, Parse, Parse
+ReplicatedStorage.CmdrClient.Types.Bundle
+    (no named functions)
+ReplicatedStorage.CmdrClient.Types.Color3
+    ValidateEach, parseHexDigit, Transform, Validate, Parse
+ReplicatedStorage.CmdrClient.Types.Command
+    Transform, Validate, Autocomplete, Parse
+ReplicatedStorage.CmdrClient.Types.ConditionFunction
+    (no named functions)
+ReplicatedStorage.CmdrClient.Types.DevTarget
+    normalize, Transform, Validate, Autocomplete, Parse
+ReplicatedStorage.CmdrClient.Types.Duration
+    stringToSecondDuration, mapUnits, Transform, Validate, Autocomplete, Parse
+ReplicatedStorage.CmdrClient.Types.JSON
+    Validate, Parse
+ReplicatedStorage.CmdrClient.Types.MathOperator
+    Perform, Perform, Perform, Perform, Perform, Perform
+ReplicatedStorage.CmdrClient.Types.Player
+    Transform, Validate, Autocomplete, Parse, Default
+ReplicatedStorage.CmdrClient.Types.PlayerId
+    getUserId, Transform, ValidateOnce, Autocomplete, Parse, Default
+ReplicatedStorage.CmdrClient.Types.Primitives
+    Validate, Parse, Transform, Validate, Parse, Transform, Validate, Parse, Transform, Validate, Parse, Transform, Validate, Parse, Transform, Validate, Parse, Transform, Validate, Parse, Transform, Validate, Parse
+ReplicatedStorage.CmdrClient.Types.Set
+    Transform, Validate, Autocomplete, Parse, registerSetType
+ReplicatedStorage.CmdrClient.Types.SetWins
+    (no named functions)
+ReplicatedStorage.CmdrClient.Types.StoredKey
+    Autocomplete, Validate, Parse
+ReplicatedStorage.CmdrClient.Types.Team
+    Transform, Validate, Autocomplete, Parse, Parse, Parse
+ReplicatedStorage.CmdrClient.Types.Type
+    Transform, Validate, Autocomplete, Parse
+ReplicatedStorage.CmdrClient.Types.URL
+    Validate, Parse
+ReplicatedStorage.CmdrClient.Types.UserInput
+    Transform, Validate, Autocomplete, Parse
+ReplicatedStorage.CmdrClient.Types.Vector
+    validateVector
+ReplicatedStorage.Framework
+    ReconcileInstance, SetupBindables, CheckString, FilterArgs, ProcessCall, Get, __index, Fetch, IsTemporaryServer, Warn, SetupFramework, IncludeScripts, DefineModule, Execute, ReplicatedExecute, processBatch, runTask, SetupPlayer, callback, Start, Get, Fetch, IsTemporaryServer
+ReplicatedStorage.Framework.ByteNet
+    (no named functions)
+ReplicatedStorage.Framework.ByteNet.dataTypes.array
+    read, write
+ReplicatedStorage.Framework.ByteNet.dataTypes.bool
+    read
+ReplicatedStorage.Framework.ByteNet.dataTypes.buff
+    read, write
+ReplicatedStorage.Framework.ByteNet.dataTypes.cframe
+    read, write
+ReplicatedStorage.Framework.ByteNet.dataTypes.float32
+    read
+ReplicatedStorage.Framework.ByteNet.dataTypes.float64
+    read
+ReplicatedStorage.Framework.ByteNet.dataTypes.inst
+    write, read
+ReplicatedStorage.Framework.ByteNet.dataTypes.int16
+    read
+ReplicatedStorage.Framework.ByteNet.dataTypes.int32
+    read
+ReplicatedStorage.Framework.ByteNet.dataTypes.int8
+    read
+ReplicatedStorage.Framework.ByteNet.dataTypes.map
+    read, write
+ReplicatedStorage.Framework.ByteNet.dataTypes.nothing
+    write, read
+ReplicatedStorage.Framework.ByteNet.dataTypes.optional
+    read, write
+ReplicatedStorage.Framework.ByteNet.dataTypes.string
+    read, write
+ReplicatedStorage.Framework.ByteNet.dataTypes.struct
+    read, write
+ReplicatedStorage.Framework.ByteNet.dataTypes.uint16
+    read
+ReplicatedStorage.Framework.ByteNet.dataTypes.uint32
+    read
+ReplicatedStorage.Framework.ByteNet.dataTypes.uint8
+    read
+ReplicatedStorage.Framework.ByteNet.dataTypes.unknown
+    write, read
+ReplicatedStorage.Framework.ByteNet.dataTypes.vec2
+    read, write
+ReplicatedStorage.Framework.ByteNet.dataTypes.vec3
+    read, write
+ReplicatedStorage.Framework.ByteNet.namespaces.namespace
+    (no named functions)
+ReplicatedStorage.Framework.ByteNet.namespaces.namespacesDependencies
+    start, add, currentLength, currentName, empty
+ReplicatedStorage.Framework.ByteNet.namespaces.packetIDs
+    set, ref
+ReplicatedStorage.Framework.ByteNet.packets.definePacket
+    (no named functions)
+ReplicatedStorage.Framework.ByteNet.packets.packet
+    __index, sendToList, sendTo, sendToAllExcept, sendToAll, send, wait, listen, getListeners
+ReplicatedStorage.Framework.ByteNet.process.bufferWriter
+    alloc, dyn_alloc, u8, i8, reference, u16, i16, u32, writestring, i32, f32NoAlloc, f64NoAlloc, f32, f64, copy, bool, load, export
+ReplicatedStorage.Framework.ByteNet.process.client
+    onClientEvent, create, dump, sendReliable, sendUnreliable, start
+ReplicatedStorage.Framework.ByteNet.process.read
+    functionPasser, yielder, runListener
+ReplicatedStorage.Framework.ByteNet.process.readRefs
+    set, get
+ReplicatedStorage.Framework.ByteNet.process.server
+    create, dump, onServerEvent, playerAdded, sendAllReliable, sendAllUnreliable, sendPlayerReliable, sendPlayerUnreliable, start
+ReplicatedStorage.Framework.ByteNet.replicated.replicatedValue
+    write, read
+ReplicatedStorage.Framework.ByteNet.replicated.values
+    start, access
+ReplicatedStorage.Framework.ByteNet.types
+    (no named functions)
+ReplicatedStorage.NetRay
+    EnableMonitoring, RegisterMiddleware, GetCircuitBreaker, RegisterEvent, RegisterRequestEvent, RegisterMiddleware, GetCircuitBreaker, GetEvent, RegisterRequestEvent
+ReplicatedStorage.NetRay.Client.ClientEvent
+    new, processSingleEvent, SetupListeners, OnEvent, FireServer
+ReplicatedStorage.NetRay.Client.ClientManager
+    new, Initialize, StartQueueProcessing, ProcessMessage, GetRemoteEvent, GetRemoteFunction, _InternalRegisterEvent, CheckOutgoingThrottle, EnqueueMessage, InvokeMiddleware
+ReplicatedStorage.NetRay.Client.RequestClient
+    logError, new, SerializeResponse, SetupResponseHandler, OnRequest, Request
+ReplicatedStorage.NetRay.Server.RequestServer
+    logError, new, SerializeResponse, SetupRequestHandler, OnRequest, Request
+ReplicatedStorage.NetRay.Server.ServerEvent
+    new, processSingleEvent, SetupListeners, OnEvent, FireClient, FireAllClients, FireAllClientsExcept, FireFilteredClients
+ReplicatedStorage.NetRay.Server.ServerManager
+    new, Initialize, StartQueueProcessing, ProcessMessage, CreateRemoteEvent, CreateRemoteFunction, RegisterEvent, CheckRateLimit, EnqueueMessage, InvokeMiddleware, CheckPlayerTimeout, SetPlayerTimeout, CheckIncomingThrottle
+ReplicatedStorage.NetRay.Shared.CircuitBreaker
+    calculateAdaptiveTimeout, new, IsAllowed, Execute, RecordSuccess, RecordFailure, TransitionTo, PerformHealthCheck, ForceState, GetMetrics
+ReplicatedStorage.NetRay.Shared.Compressor
+    read_u16_le, write_u16_le, write_lz4_len, read_length, mul32, hash_sequence, compressor, decompressor, Compress, Decompress
+ReplicatedStorage.NetRay.Shared.Constants
+    (no named functions)
+ReplicatedStorage.NetRay.Shared.DynamicSender
+    addTypeCode, checkAndAddOptional, GetNumberType, isInteger, getBestVector2Type, getBestCFrameType, getBestVector3Type, _serializeSingleMessage, sendServerBatch, Send, SendToMany, DecodeReceivedData, GetMetrics, ResetMetrics, FlushBatches
+ReplicatedStorage.NetRay.Shared.Errors
+    new, __tostring, isNetRayError, try, serialize, deserialize
+ReplicatedStorage.NetRay.Shared.Middleware
+    new, Register, Remove, Execute, AddToCache, SortHandlers, GetMetrics, ResetMetrics, Configure, ClearCache, AddErrorHandling, AddRateLimiting
+ReplicatedStorage.NetRay.Shared.Queue
+    new, Enqueue, _PhysicalIndex, _Resize, Dequeue, Peek, Size, IsEmpty, Clear, GetItems, Find, Remove, BatchEnqueue, GetStats
+ReplicatedStorage.NetRay.Shared.Serializer
+    isInteger, determineType, analyzeTable, Serialize, Deserialize, EstimateSize, GetMetrics, ResetMetrics, ClearCache
+ReplicatedStorage.NetRay.Shared.TypeChecker
+    isType, getStructureFingerprint, validateData, validateArgs, clearCache, createTypeDefinition, hasCircularReferences, isValidEventPayload, Validate, matchesSchema, getDetailedType
+ReplicatedStorage.NetRay.Shared.Utilities
+    generateId, deepCopy, shallowCopy, timer, throttle, debounce, safeCall, memoize, isInstanceOf, formatNetworkSize, createLogger, waitFor, getMemoizeStats, clearMemoizeCache, getPath, setPath, isEmpty, serialize, add, touch, remove, getSize, CreateLRUManager
+ReplicatedStorage.NetRay.ThirdParty.BinaryEncoder
+    encodingError, decodingError, isInteger, writeLength, readLength, getInstancePath, GetInstanceAtPath, encodeValue, decodeValue, encode, decode
+ReplicatedStorage.NetRay.ThirdParty.Promise
+    transition, resolve, reject, new, fulfilledCallbackWrapper, rejectedCallbackWrapper, andThen, fulfilledCallbackWrapper, rejectedCallbackWrapper, catch, finally, resolve, reject, all
+ReplicatedStorage.NetRay.ThirdParty.SignalPlus
+    reusableThreadCall, reusableThread, Callback, Callback
+ReplicatedStorage.NetRay.Types.Any
+    Read, Write
+ReplicatedStorage.NetRay.Types.Binary
+    Read, Write
+ReplicatedStorage.NetRay.Types.Boolean1
+    Read, Write
+ReplicatedStorage.NetRay.Types.Boolean8
+    Read, Write
+ReplicatedStorage.NetRay.Types.BrickColor
+    Read, Write
+ReplicatedStorage.NetRay.Types.Buffer
+    Read, Write
+ReplicatedStorage.NetRay.Types.CFrameF24U8
+    Read, Write
+ReplicatedStorage.NetRay.Types.CFrameF32U16
+    Read, Write
+ReplicatedStorage.NetRay.Types.CFrameF32U8
+    Read, Write
+ReplicatedStorage.NetRay.Types.Characters
+    Read, Write
+ReplicatedStorage.NetRay.Types.Color3
+    Read, Write
+ReplicatedStorage.NetRay.Types.ColorSequence
+    Read, Write
+ReplicatedStorage.NetRay.Types.Cursor
+    Constructor, Allocate, Clear, Truncate, ReadS1, WriteS1, ReadS2, WriteS2, ReadS3, WriteS3, ReadS4, WriteS4, ReadU1, WriteU1, ReadU2, WriteU2, ReadU3, WriteU3, ReadU4, WriteU4, ReadF2, WriteF2, ReadF3, WriteF3, ReadF4, WriteF4, ReadF8, WriteF8, ReadString, WriteString, ReadBuffer, WriteBuffer, ReadInstance, WriteInstance
+ReplicatedStorage.NetRay.Types.EfficientTable
+    getValueType, isDenseArray, isHomogeneousTable, isStringKeyMap, getTypesModule, Read, Write
+ReplicatedStorage.NetRay.Types.EnumItem
+    Read, Write
+ReplicatedStorage.NetRay.Types.Instance
+    Read, Write
+ReplicatedStorage.NetRay.Types.JSON
+    (no named functions)
+ReplicatedStorage.NetRay.Types.Nil
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberF16
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberF24
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberF32
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberF64
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberRange
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberS16
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberS24
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberS32
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberS8
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberSequence
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberU16
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberU24
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberU32
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberU4
+    Read, Write
+ReplicatedStorage.NetRay.Types.NumberU8
+    Read, Write
+ReplicatedStorage.NetRay.Types.Rect
+    Read, Write
+ReplicatedStorage.NetRay.Types.Region3
+    Read, Write
+ReplicatedStorage.NetRay.Types.Static
+    Read, Write
+ReplicatedStorage.NetRay.Types.String
+    Read, Write
+ReplicatedStorage.NetRay.Types.Types
+    (no named functions)
+ReplicatedStorage.NetRay.Types.UDim
+    Read, Write
+ReplicatedStorage.NetRay.Types.UDim2
+    Read, Write
+ReplicatedStorage.NetRay.Types.Vector2F24
+    Read, Write
+ReplicatedStorage.NetRay.Types.Vector2F32
+    Read, Write
+ReplicatedStorage.NetRay.Types.Vector2S16
+    Read, Write
+ReplicatedStorage.NetRay.Types.Vector3F24
+    Read, Write
+ReplicatedStorage.NetRay.Types.Vector3F32
+    Read, Write
+ReplicatedStorage.NetRay.Types.Vector3S16
+    Read, Write
+ReplicatedStorage.Services
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.AbilityInfo
+    Cooldown, Cooldown, Cooldown, Cooldown, Cooldown, Cooldown, Cooldown, ActivationType, ActivationType, Cooldown, Cooldown, Cooldown, Cooldown, Cooldown, Cooldown, Cooldown, ActivationType, GetMaxEXP, GetMaxLevel
+ReplicatedStorage.SharedModules.Info.AuraInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.BadgeInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.BoostInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.BoothInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.BroadcastInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.CraftingInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.CrateInfo
+    GetItemPool, HasTag
+ReplicatedStorage.SharedModules.Info.CurrencyInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.CycleInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.DummyInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.EmoteInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.EventPassInfo
+    CanDouble, GetMaxExp
+ReplicatedStorage.SharedModules.Info.EventQuestInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.ExplosionInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.GamemodeInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.GamepassInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.LimitedStockInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.MapInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.MountInfo
+    IsTestGame
+ReplicatedStorage.SharedModules.Info.QuestInfo
+    GetWeeklyResetTimestamp, GetQuestWeek, GetNextWeeklyResetTimestamp, IsEventActive, CreateEventQuest, CreateHalloweenQuest, ScaleWeeklyReward, CreateWeeklyQuest
+ReplicatedStorage.SharedModules.Info.RankedInfo
+    GetRank
+ReplicatedStorage.SharedModules.Info.RarityInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.RewardInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.SeasonInfo
+    CanDouble, GetMaxExp
+ReplicatedStorage.SharedModules.Info.SwordInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.TeleportInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.TitleInfo
+    CreateSeasonalLeaderboardTitleInfo, GetSeasonalLeaderboardTitleParts, IsSeasonalLeaderboardTitle, GetTitleInfo
+ReplicatedStorage.SharedModules.Info.TourneyInfo
+    GetDropChance, GetWinReward, GetKillReward
+ReplicatedStorage.SharedModules.Info.TradeInfo
+    GetItemValue, GetYenCap
+ReplicatedStorage.SharedModules.Info.UltimateInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.VersusEvents
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.VersusTeams
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.WaypointsInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.WheelMilestoneInfo
+    (no named functions)
+ReplicatedStorage.SharedModules.Info.WhitelistInfo
+    rankAllowed, IsInGroup, IsInUserId, IsWhitelisted
+ReplicatedStorage.SharedModules.Utilities.Alphabet
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.CameraShaker
+    new, Start, Stop, StopSustained, Update, Shake, ShakeSustain, ShakeOnce, StartShake
+ReplicatedStorage.SharedModules.Utilities.CameraShaker.CameraShakeInstance
+    new, UpdateShake, StartFadeOut, StartFadeIn, GetScaleRoughness, SetScaleRoughness, GetScaleMagnitude, SetScaleMagnitude, GetNormalizedFadeTime, IsShaking, IsFadingOut, IsFadingIn, GetState
+ReplicatedStorage.SharedModules.Utilities.CameraShaker.CameraShakePresets
+    Bump, Explosion, Dash, IceZ, LightningStrike, SwordSwing, Hit, Twerk, Earthquake, BadTrip, HandheldCamera, Vibration, RoughDriving, __index
+ReplicatedStorage.SharedModules.Utilities.Compression
+    Compress, Decompress, Compress, Decompress, Compress, Decompress, Adler32, IsEqualAdler32, CreateDictionary, IsValidDictionary, IsValidArguments, WriteBits, WriteString, FlushWriter, CreateWriter, MinHeapPush, MinHeapPop, GetHuffmanCodeFromBitlen, SortByFirstThenSecond, GetHuffmanBitlenAndCode, RunLengthEncodeHuffmanBitlen, LoadStringToTable, GetBlockLZ77Result, GetBlockDynamicHuffmanHeader, GetDynamicHuffmanBlockSize, CompressDynamicHuffmanBlock, GetFixedHuffmanBlockSize, CompressFixedHuffmanBlock, GetStoreBlockSize, CompressStoreBlock, Deflate, CompressDeflateInternal, CompressZlibInternal, CompressDeflate, CompressDeflateWithDict, CompressZlib, CompressZlibWithDict, ReadBits, ReadBytes, Decode, ReaderBitlenLeft, SkipToByteBoundary, CreateReader, CreateDecompressState, GetHuffmanForDecode, DecodeUntilEndOfBlock, DecompressStoreBlock, DecompressFixBlock, DecompressDynamicBlock, Inflate, DecompressDeflateInternal, DecompressZlibInternal, DecompressDeflate, DecompressDeflateWithDict, DecompressZlib, DecompressZlibWithDict, escape_for_gsub, Encode, Decode, CreateCodec, EncodeForPrint, DecodeForPrint, InternalClearCache
+ReplicatedStorage.SharedModules.Utilities.CreateIndicator
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.Debug
+    CreateIndicator
+ReplicatedStorage.SharedModules.Utilities.DeepCopy
+    deepCopy
+ReplicatedStorage.SharedModules.Utilities.FormatImage
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.GetPathValue
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.Icon
+    setFeatureChange, new, mimic, set, setAdditionalValue, get, getHovering, getToggleState, getIconState, _update, _updateAll, _updateHovering, _updateStateOverlay, setTheme, getInstance, setInstance, getSettingDetail, modifySetting, __newindex, convertLabelToNumberSpinner, setEnabled, setName, setProperty, _playClickSound, select, deselect, notify, _updateNotice, clearNotices, disableStateOverlay, setLabel, setCornerRadius, setImage, setOrder, setLeft, setMid, setRight, setImageYScale, setImageRatio, setLabelYScale, setBaseZIndex, _updateBaseZIndex, setSize, setXSize, setYSize, _getContentText, _updateIconSize, bindEvent, unbindEvent, bindToggleKey, unbindToggleKey, lock, unlock, debounce, autoDeselect, setTopPadding, bindToggleItem, updateSelectionInstances, addBackBlocker, unbindToggleItem, _setToggleItemsVisible, call, give, setTip, _updateTipSize, updateTipPositon, displayTip, setCaption, _updateCaptionSize, displayCaption, join, scanFeature, leave, _decideToCallSignal, updateSize, updatePos, _ignoreClipping, setDropdown, _updateDropdown, _dropdownIgnoreClipping, setMenu, _getMenuDirection, _updateMenu, _menuIgnoreClipping, destroy
+ReplicatedStorage.SharedModules.Utilities.Icon.IconController
+    checkTopbarEnabled, checkTopbarEnabledAccountingForMimic, bindCamera, getOffset, getStartOffset, getOffset, getStartOffset, getOffset, getStartOffset, setGameTheme, setDisplayOrder, getIcons, getIcon, disableHealthbar, disableControllerOption, canShowIconOnTopbar, getMenuOffset, getIncrement, getBoundaryX, getSizeX, doesExceed, checkBoundaryExceeded, updateTopbar, setTopbarEnabled, setGap, setLeftOffset, setRightOffset, clearIconOnSpawn, _updateSelectionGroup, getScaleMultiplier, _setControllerSelectedObject, _enableControllerMode, _enableControllerModeForIcon, powColor3, lerpColor, updateHealthBar, listenToHealth, setupHealthbar, _determineControllerDisplay, iconClicked, checkVoiceChatManuallyEnabled, updateAllIcons
+ReplicatedStorage.SharedModules.Utilities.Icon.Maid
+    new, isMaid, __index, __newindex, giveTask, give, doCleaning
+ReplicatedStorage.SharedModules.Utilities.Icon.Signal
+    RunHandlerInFreeThread, CreateFreeThread, new, Is, IsActive, Connect, ConnectOnce, Wait, Fire, DisconnectAll, Destroy, Disconnect
+ReplicatedStorage.SharedModules.Utilities.Icon.Themes
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.Icon.Themes.BlueGradient
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.Icon.Themes.Default
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.Icon.TopbarPlusGui
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.Icon.TopbarPlusReference
+    addToReplicatedStorage, getObject
+ReplicatedStorage.SharedModules.Utilities.Icon.VERSION
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.Janitor
+    __tostring, __tostring, new, Is, Add, AddObject, AddPromise, Remove, RemoveNoClean, RemoveList, RemoveListNoClean, Get, GetAll, GetFenv, Cleanup, Destroy, LinkToInstance, LinkToInstances, __tostring
+ReplicatedStorage.SharedModules.Utilities.LightningBolt
+    CubicBezier, DiscretePulse, ExtrudeCenter, NoiseBetween, Setup, new, Destroy, DestroyDissipate, _UpdateGeometry, _UpdateColor, _Disable
+ReplicatedStorage.SharedModules.Utilities.LightningBolt.PartCache.PartCache
+    assertwarn, MakeFromTemplate, new, GetPart, ReturnPart, SetCacheParent, Expand, Dispose
+ReplicatedStorage.SharedModules.Utilities.LightningBolt.PartCache.Table
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.NumberLibrary
+    addComas, roundWhole, roundDecimal, Short, Roman, RoundTo
+ReplicatedStorage.SharedModules.Utilities.Octree
+    new, GetAllNodes, CreateNode, RadiusSearch, KNearestNeighborsSearch, GetOrCreateLowestSubRegion, _radiusSearch, _getRegion, _getOrCreateRegion
+ReplicatedStorage.SharedModules.Utilities.Octree.OctreeNode
+    new, KNearestNeighborsSearch, GetObject, RadiusSearch, GetPosition, GetRawPosition, SetPosition, Destroy
+ReplicatedStorage.SharedModules.Utilities.Octree.OctreeRegionUtils
+    create, addNode, moveNode, removeNode, getSearchRadiusSquared, getNeighborsWithinRadius, getOrCreateSubRegionAtDepth, createSubRegion, inRegionBounds, getSubRegionIndex, getTopLevelRegionHash, getTopLevelRegionCellIndex, getTopLevelRegionPosition, areEqualTopRegions, findRegion, getOrCreateRegion
+ReplicatedStorage.SharedModules.Utilities.ParticleEffects
+    EmitParticle, EnableParticle, Emit, Enable, GetGround
+ReplicatedStorage.SharedModules.Utilities.Promise
+    isCallable, __index, __newindex, makeEnum, new, is, isKind, extend, getErrorChain, __tostring, pack, packResult, makeErrorHandler, runExecutor, createAdvancer, isEmpty, resolve, reject, onCancel, _new, new, __tostring, defer, resolve, reject, _try, try, cancel, resolveOne, _all, all, fold, some, any, resolveOne, allSettled, cancel, finalize, race, cancel, each, is, promisify, delay, timeout, getStatus, _andThen, andThen, catch, tap, andThenCall, andThenReturn, cancel, _consumerCancelled, _finally, finally, finallyCall, finallyReturn, awaitStatus, awaitHelper, await, expectHelper, expect, _unwrap, _resolve, _reject, _finalize, now, retry, retryWithDelay, disconnect, fromEvent, onUnhandledRejection
+ReplicatedStorage.SharedModules.Utilities.ServerType
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.ShallowCopy
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.ShortUID
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.TimeLibrary
+    Format, PreciseTimer, Remaining, Timer
+ReplicatedStorage.SharedModules.Utilities.TourneyUtils
+    GetEntryPoint, GetExitPoint, IsNodeFull
+ReplicatedStorage.SharedModules.Utilities.Tween
+    AdjustModelVelocity
+ReplicatedStorage.SharedModules.Utilities.UIEffects
+    GetSize, ToggleTextLabel, ToggleOverlay, Task, CreateDetection, callback, AddEvent, InitEffect
+ReplicatedStorage.SharedModules.Utilities.ValidId
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.Zone
+    new, createCube, fromRegion, parseCheck, parse, roundToFour, _calculateRegion, _displayBounds, update, verifyDefaultCollision, _update, _updateOccupants, _formTouchedConnection, _updateTouchedConnection, _updateTouchedConnections, _disconnectTouchedConnection, round, _partTouchedZone, _getRegionConstructor, findLocalPlayer, _find, findPlayer, findItem, findPart, getCheckerPart, findPoint, _getAll, getPlayers, getItems, getParts, getRandomPoint, setAccuracy, setDetection, trackItem, untrackItem, bindToGroup, unbindFromGroup, relocate, triggerCallback, _onItemCallback, onItemEnter, onItemExit, destroy
+ReplicatedStorage.SharedModules.Utilities.Zone.Enum
+    getName, getValue, getProperty, __index, createEnum, getEnums
+ReplicatedStorage.SharedModules.Utilities.Zone.Enum.Accuracy
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.Zone.Enum.Detection
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.Zone.Janitor
+    new, Is, Add, AddObject, Remove, Get, Cleanup, Destroy, Disconnect, __tostring, ChangedFunction, LinkToInstance, LinkToInstances
+ReplicatedStorage.SharedModules.Utilities.Zone.OldSignal
+    new, Fire, Disconnect, Connect, Wait, Destroy
+ReplicatedStorage.SharedModules.Utilities.Zone.Signal
+    acquireRunnerThreadAndCallEventHandler, runEventHandlerInFreeThread, new, Disconnect, __index, __newindex, new, Connect, DisconnectAll, Fire, Wait
+ReplicatedStorage.SharedModules.Utilities.Zone.VERSION
+    (no named functions)
+ReplicatedStorage.SharedModules.Utilities.Zone.ZoneController
+    dictLength, fillOccupants, _registerZone, _deregisterZone, _registerConnection, updateDetection, _formHeartbeat, _deregisterConnection, _updateZoneDetails, _getZonesAndItems, getZones, getTouchingZones, setGroup, getGroup, getWorkspaceContainer
+ReplicatedStorage.SharedModules.Utilities.Zone.ZoneController.CollectiveWorldModel
+    setupWorldModel, _getCombinedResults, GetPartBoundsInBox, GetPartBoundsInRadius, GetPartsInPart
+ReplicatedStorage.SharedModules.Utilities.Zone.ZoneController.Tracker
+    getCombinedTotalVolumes, getCharacterSize, updatePlayerCharacters, charAdded, playerAdded, updateItem, new, _preventMultiFrameUpdates, updateTrackerOnParentChanged, update
+ReplicatedStorage.SharedModules.Utilities.Zone.ZonePlusReference
+    addToReplicatedStorage, getObject
+ReplicatedStorage.SmartBone
+    new, Init, AppendParticleTree, AppendParticles, UpdateParameters, PreUpdate, UpdateParticles, CorrectParticles, SkipUpdateParticles, CalculateTransforms, TransformBones, DEBUG, RunLoop, ResetParticles, ResetTransforms, UpdateBones, DebugPrint, registerSmartBoneObject, removeSmartBoneObject, Start
+ReplicatedStorage.SmartBone.Components.Particle
+    new
+ReplicatedStorage.SmartBone.Components.ParticleTree
+    new
+ReplicatedStorage.SmartBone.Dependencies.ActorScript
+    roundNumber, smoothDelta, Initialize
+ReplicatedStorage.SmartBone.Dependencies.CameraUtil
+    getCorners, WithinViewport
+ReplicatedStorage.SmartBone.Dependencies.Config
+    (no named functions)
+ReplicatedStorage.SmartBone.Dependencies.DefaultSettings
+    (no named functions)
+ReplicatedStorage.SmartBone.Dependencies.SettingsMath
+    Clamp, Floor, Offset
+ReplicatedStorage.SmartBone.Dependencies.UnitConversion
+    Convert, ConvertInverse, ConvertRounded
+ReplicatedStorage.SmartBone.Dependencies.Utilities
+    ShallowCopy, Lerp, GetRotationBetween, GetHierarchyLength, WaitForChildOfClass
+ReplicatedStorage.SupscribtionService
+    Init, Start, PlayerAdded, SubscribePlayer
+ReplicatedStorage.SupsctibtionsController
+    Init, Start
+StarterGui.Clicks.ClickEffects
+    (no named functions)
+StarterGui.FreeCam.FreecamScript
+    new, Update, Reset, fCurve, fDeadzone, thumbstickCurve, Vel, Pan, Fov, Keypress, GpButton, MousePan, Thumb, Trigger, MouseWheel, Zero, StartCapture, StopCapture, GetFocusDistance, StepFreecam, Push, Pop, StartFreecam, StopFreecam, ToggleFreecam, CheckMacro, HandleActivationInput
+StarterPlayer.StarterCharacterScripts.CustomShiftLock
+    (no named functions)
+StarterPlayer.StarterCharacterScripts.CustomShiftLock.SmoothShiftLock
+    Init, CharacterAdded, CharacterDiedOrRemoved, IsEnabled, SetMouseState, SetMouseIcon, TransitionLockOffset, ToggleShiftLock
+StarterPlayer.StarterCharacterScripts.CustomShiftLock.SmoothShiftLock.Utils.Maid
+    new, isMaid, __index, __newindex, GiveTask, GivePromise, DoCleaning
+StarterPlayer.StarterCharacterScripts.CustomShiftLock.SmoothShiftLock.Utils.Signal
+    isSignal, new, Fire, Connect, Wait, Destroy
+StarterPlayer.StarterCharacterScripts.CustomShiftLock.SmoothShiftLock.Utils.Spring
+    new, Impulse, TimeSkip, __index, __newindex, _positionVelocity
+StarterPlayer.StarterPlayerScripts.PlayerScriptsLoader
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.AFKController
+    Init, PendAttributeAsync, SetupAFKWorld, LogAura, Start
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController
+    Init, AbilityEffect, PlayAnimation, LoadAnimations, IsAlive, UpdateLevelBar, UpdateAbilityLevel, UpdateAbilityImage, ShowText, ShowText, StartCooldown, ResetCooldown, LockAbilities, CancelCooldown, CancelCooldown, StartCooldown, Cooldown, Activate, Execute, Activate, ConnectAction, Start
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Ascend
+    PlayVFX, GetCharacterMass, Start
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Chrono Stasis
+    Start
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Ethereal Strike
+    increaseEmitterSize, CreateSegment, UpdateSegment, Stop, CleanupFunction, Start
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Full Calling
+    Start
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Gum Gum Cannon
+    Start
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Hollow Surge
+    Disable, Start
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Ice Wall
+    CreateSpikes, AddHandVFX, DestroySpikes, Start
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Infinite Void
+    SetInvisible, EndDomain, EndConnections, Start, End
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Instant Transmission
+    CreateClone, Start
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Invisibility
+    Start
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Kaleidoscope
+    CreateHexagonLayer, Start, DestroyPart
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Kamehameha
+    EmitVFX, ChargeVFX, Disable, Start
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Sky Walk
+    Init
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Strongest Slash
+    VerticalSlash, HorizontalSlash, Start, Aura
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Super Dash
+    Init
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Super Raiyan
+    Beam, Start
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Temporal Haki
+    Start, End
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Thunderflash
+    Start, Trail
+StarterPlayer.StarterPlayerScripts.Scripts.AbilityController.Whirlwind Pull
+    Start
+StarterPlayer.StarterPlayerScripts.Scripts.AmbientController
+    Init, SetActiveLighting, OverrideLighting, ResetLighting, ApplySkybox, RecursiveApply, ApplyLighting, Start
+StarterPlayer.StarterPlayerScripts.Scripts.AuraController
+    Init, GetRandomAura, ChangeAuraLabel, RollAura, ApplyAura, ToggleAuras, PlayerAdded, Start
+StarterPlayer.StarterPlayerScripts.Scripts.AutoParryController
+    setEnabled, Init, Show, Hide, Start, PlayerRemoving
+StarterPlayer.StarterPlayerScripts.Scripts.BallController
+    Init, TrackBall, GetBallAsync, PlaySound, StopSound, getLiveOculusVfxColor, ReflectEffect, HitEffect, ChangeBallColor, Start
+StarterPlayer.StarterPlayerScripts.Scripts.BoothController
+    Init, PriceErrorMessage, new, SetupModel, UpdateOwner, GetItemAmount, ListItem, UnlistItem, UpdateListingAmount, UpdateBoothItem, BoothEquipped, BuyListing, AddBooth, ResetUI, ToggleBoothInventory, Start
+StarterPlayer.StarterPlayerScripts.Scripts.CameraController
+    Init, CameraShake, CameraShake, SetBlur, GetDropoff, Start
+StarterPlayer.StarterPlayerScripts.Scripts.CharacterController
+    Init, capVelocity, capAngularVelocity, SetVisible, EndBlock, ConnectBlockAnimation, UpdateSpeed, UpdateAFK, UpdateEliminated, PlayerAdded, CharacterAdded, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.ChatController
+    Init, toInteger, toHex, SendServerMessage, play, animate, addTriangle, close, ShowAnnouncement, formatChatTitle, IsMuted, Start
+StarterPlayer.StarterPlayerScripts.Scripts.ClashController
+    Init, LerpAny, StartClash, EndClash, ApplyBallEffects, ApplyParticles, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.ConsoleController
+    Init, KeyCodeToString, ChangeCloseText, SwitchToConsole, ConnectInput, Start
+StarterPlayer.StarterPlayerScripts.Scripts.CraftingController
+    Init, ErrorMessage, EmitSparkle, ShakeSword, RevealOutput, UpdateAmountDisplay, GetVisibility, CustomizeOutput, StartCrafting, StopCrafting, ToggleSelected, ItemUpdated, UpdatePadding, Start
+StarterPlayer.StarterPlayerScripts.Scripts.CrateController
+    Init, GetMulti, SelectItem, CreateTemplate, IsCrateExpired, FillList, CopyList, ClearList, Roll, UpdatePity, UpdateCratePity, UpdateAbilitySpins, AnimateCrateOpen, DisplayRarities, ConnectBoard, ToggleAuto, OpenCrate, CloseCandyChoice, createChoiceButton, CreateCandyChoice, UpdateCrateMenu, AdjustDelay, CrateTask, ConnectCrate, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.CurrencyController
+    Init, GetCurrencyText, PromptProduct, UpdateCache, RemoveCurrency, GetCurrency, ConnectChangedSignal, PlayerRemoving, AddLabel, showCurrencyChange, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.DecorationController
+    ConnectBoat, ConnectFloat, ConnectFaceCamera, Start
+StarterPlayer.StarterPlayerScripts.Scripts.DevRainController
+    getRoot, destroyDrop, clearEvent, createDrop, StartRain, ClearRain, ClearDrop, UpdateDrop, Init
+StarterPlayer.StarterPlayerScripts.Scripts.EffectController
+    Init, GetGround, Smoke, Freeze, LightningBolt, Tween, GetEffectCache, AddEffectCache, EnableVFX
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController
+    Init, CoopEmoteCancel, SyncEmoteCancel, SyncEmote, ReturnAnimTimePosition, CoopEmote, PauseCurrentAnim, resetConnections, setConnections, PlayEmote, StopEmote, Start
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.Bring it in
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.Bring it in First
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.Bring it in Stop
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.For You
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.For You First
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.For You First Stop
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.For You Second Stop
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.For You Stop
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.Fused Emote
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.Fused Emote First
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.Fused Emote Stop
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.Pumpkin Head Spin
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.Pumpkin Head Spin Stop
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.Roomba
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.Roomba Stop
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.There Ya Go
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.There Ya Go Stop
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.Witch Apprentice
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.EmoteController.Witch Apprentice Stop
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.ExplosionController
+    Init, ForceAngle, CloneAndEmitAttachments, Explode, IsGrounded, EmitExplosion, Start
+StarterPlayer.StarterPlayerScripts.Scripts.ExplosionController.Harvest Horror Explosion
+    End
+StarterPlayer.StarterPlayerScripts.Scripts.ExplosionController.Healers Mercy
+    Whilst
+StarterPlayer.StarterPlayerScripts.Scripts.ExplosionController.Turkeys Call Explosion
+    End
+StarterPlayer.StarterPlayerScripts.Scripts.HapticController
+    Init, Trigger
+StarterPlayer.StarterPlayerScripts.Scripts.LeaderboardController
+    ApplyTextGradient, Init, ClearCache, GetPlayerImage, UpdateLeaderboard, UpdateData, addLeaderboard, Start
+StarterPlayer.StarterPlayerScripts.Scripts.LowGraphicsController
+    Init, applyCategory, applyProfile, IsLowGraphics, Apply, Start, OnPlayerAdded
+StarterPlayer.StarterPlayerScripts.Scripts.MatchController
+    Init, MatchCountdown, Intermission, UpdateStatus, UpdateMusic, SwitchMap, StartMatch, EndMatch, UpdateText, UpdateAFK, ToggleAFK, Start
+StarterPlayer.StarterPlayerScripts.Scripts.MountsController
+    Init, StartAnim, StopAnim, CancelControl, CanControl, ControlMount, Start
+StarterPlayer.StarterPlayerScripts.Scripts.MovementController
+    Init, Horizontal, ReplicateDash, ReplicateJump, DashEffect, Dash, ForceDash, JumpEffect, DoubleJump, ForceJump, ConnectCharacter, ToggleMobileJump, Start
+StarterPlayer.StarterPlayerScripts.Scripts.NewPlayerController
+    Init, Start
+StarterPlayer.StarterPlayerScripts.Scripts.PerformanceController
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.Scripts.PlayerController
+    Init, disableReset, UpdateWins, EnableTeleportHome, UpdateServerLocation, UpdateIndicator, UpdatePing, QueueButton, GetIconFunction, AddButtons, PromptFavorite, Start, Setup, Step
+StarterPlayer.StarterPlayerScripts.Scripts.SoundController
+    Init, new, IsA, SetVolume, Play, Stop, GetVolumeLevel, Destroy, Mute, SoundExists, DestroySounds, PlaySound, PlayMusic, CreateMusic
+StarterPlayer.StarterPlayerScripts.Scripts.SpectateController
+    Init, GetPlayers, Focus, SetVisible, Toggle, Switch, Start
+StarterPlayer.StarterPlayerScripts.Scripts.StPatricksController
+    Start
+StarterPlayer.StarterPlayerScripts.Scripts.SwordController
+    Init, BlockSuccess, GetSwordAnim, ShowShield, Block, Start
+StarterPlayer.StarterPlayerScripts.Scripts.TutorialController
+    Init, UpdateStatus, UpdateProgress, AddBlock, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UltimateController
+    Init, SpawnUltimateBall, EnableUltimate, DisableUltimate, EnableUltimateLighting, DisableUltimateLighting, ExecuteUltimate, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.AbilitySpinController
+    Init, ToggleAuto, OpenFrame, UpdatePity, BuySpin, UpdateCost, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.BoostController
+    Init, ReplicateTimer, ReplicateInventory, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.DailyRewardController
+    Init, UpdateCurrentReward, Claim, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.EventCurrencyController
+    Init, OpenTab, SwitchTab, UpdateTransfer, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.EventPassController
+    Init, GetCurrentSeasonData, UpdateEXP, UpdateLevel, UpdateSeasonRewards, UpdateSkipFrame, ClaimReward, SetupRewards, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.EventQuestController
+    Init, UpdateCache, CreateFrame, updateFrames, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.FreecamController
+    Init, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.GiftController
+    Init, Error, UpdateGifts, ClaimResult, UpdateGiftButton, SetGiftTarget, BuyGift, OpenGiftingMenu, UpdateGiftIndicator, ClaimGift, AddGift, PlayerAdded, PlayerRemoving, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.GoldController
+    Init, OpenTab, SwitchTab, UpdateGoldTransfer, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.InventoryController
+    Init, updateBoostAmount, ConfigureBoostContainer, GetItemInfo, IsCatalogItemVisible, GetItemAmount, SetRarityGradient, UpdateEquipped, UpdateAmount, ToggleSelect, StartSelection, ConfirmSelection, ShowItem, SwitchTab, UpdateMode, SetupTemplate, CreateItem, UpdateItem, EquipItem, PressButton, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.KillFeedController
+    Init, pop, Feed
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.LabelController
+    UpdateTeamHighlight, UpdateHealthLabel, UpdateNametag, PlayerAdded, CharacterAdded, SetupCharacter, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.LivesController
+    Init, TakeDamage, UpdateLives, UpdateHealth, SetupCharacter, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.MatchmakingController
+    Init, ShowFrame, UpdateTimer, StartMatchmaking, UpdateMatchmaking, CompleteMatchmaking, CancelMatchmaking, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.MenuController
+    Init, Open, Close, TweenEffect, Toggle, CloseAllFrames, GetFrame, AddFrame, OpenFrame, CloseFrame, ToggleFrame, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.MountController
+    Init, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.NotificationController
+    Init, Tip, Shout, Notify, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.PromptController
+    Init, new, TriggerTask, SwitchPart, GetButtons, FindButton, UpdateKeybinds, UpdateKeybinds, SetupPrompt, RemovePrompt, ConnectInput, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.QuestController
+    Init, SetupBar, UpdateBar, GetDefaultInfo, IsQuestCompleted, GetQuestFrame, FlattenRewards, GetQuestSeasonExpDisplay, GetQuestRewards, QuestEnded, QuestClaimed, UpdateQuestProgress, StartQuest, UpdateQuestFrame, CreateQuestFrame, RemoveQuestFrame, UpdateQuestCounters, SwitchTab, setupTab, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.RankedController
+    Init, UpdateRankedStats, UpdateElo, ShowMatchResults, UpdateMatchResults, FormatRankName, GetRankedGradient, UpdateClaimableRewards, UpdateInfo, TogglePanel, taskWait, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.RewardController
+    Init, IsHiddenRollReward, GetDisplayText, withAmount, GetTextOnlyDisplayText, UpdateRewardFrame
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.SFXKillController
+    Init, LoadSFX, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.SeasonController
+    Init, GetCurrentSeasonData, UpdateEXP, UpdateLevel, UpdateSeasonRewards, UpdateSkipFrame, ClaimReward, SetupRewards, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.SecondaryInventoryController
+    has, updateButton, loadTitle, Load, Init, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.SettingsController
+    Init, ShowButton, UpdateSetting, UpdateButton, ApplySetting, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.ShopController
+    GetPromoCatalog, Init, UpdateGamepasses, UpdateProduct, UpdatePremiumButton, UpdateGroupButton, GetProductInfo, LoadProductInfo, UpdateGamepasses, CanBuyPromo, Gift, ConnectGift, Purchase, OpenTab, SwitchTab, ConnectGamepass, ConnectBoards, GetPromoInfo, ConnectPromoStand, CreateStarterpackAltar, DestroyStarterpackAltar, ConnectPromo, GetCrateInfo, IsCrateActive, ConnectCrate, NeedsAutoOpen, ExtraTask, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.SocialsController
+    Init, PendAttributeAsync, UpdateInvite, UpdateCodePrompt, RedeemCode, SwitchTab, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.SocialsController2
+    Init, RedeemCode, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.SpinWheelController
+    Init, angleDiff, FetchTimeLeft, UpdateSpins, ClaimSpinReward, UpdateSpinButton, SpinWheel, SetupSpinWheel, PressSpin, CanBuy, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.SpriteController
+    Init, Task, Task, Task, Task, Task, Task, UpdateVisible, AddConnections, AddSprite, AnimateSprite, Start, Step
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.StrokeScaleController
+    Average, GetScreenRatio, GetInstancePosition, TagRecursive, TagStrokes, GetOriginalThickness, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.TeleportController
+    Init, SetupTeleport, UpdateWinRequirement, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.ToolTipController
+    Init, UpdatePosition, AddFrame, NewToolTip, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.TourneyController
+    Init, CreateInitialGhostEntries, FixPathsAlignment, CalculateEntryPath, SetPlayerDisplayInfo1v1, ToggleTourneyGui, SetFirstBracketParticipants, SetBracketParticipants, PlayerEliminated, Preload1v1IntroGui, Show1v1IntroGui, GetConfigFolder, GetHolderFrame, AddContribution, AddBoost, AddContribution, SetupPrizes, UpdateWins, SelectTourney, SetupTourneySelection, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.TourneyController.AnimatedEntry
+    InitEntry, new, ParentTo, Move, Destroy
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.TourneyController.Entry
+    SetYouLabelVisibility, SetIconImage, InitEntry, GetEntry, new, ToggleVisible, SetIconImage, ParentTo, Destroy
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.TourneyController.GhostEntry
+    SetIconImageBlack, InitEntry, SetIconImage, new, DestroyGhostEntry, ToggleVisible, SetIconImage, ParentTo, Destroy
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.TourneyController.TourneyAnimations
+    EndAnimationProcess, EndAnimationProcessChampionship, StartAnimationProcess, StartAnimationProcess, CancelBackgroundEffects, StartGlowEffects, StartTrophyEffects, InitBackgroundEffects
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.TourneyController.TourneyIntroAnimations
+    ForegroundToggle, GetModel, InitViewports, getRandomShakeIntensity, ShakeUi, MoveSmoke
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.TradeController
+    Init, StartTimer, StopTimer, ErrorMessage, StartTrade, SetReady, FinishTrade, SetCurrency, IncludeItem, ToggleSelected, ItemUpdated, RequestEnded, RequestReceived, RequestDeclined, ChangePlayerStatus, CreatePlayerFrame, PlayerRemoving, SetTradePending, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.UIController
+    Init, HideHUD, ShowHUD, UpdateInput, ToggleShiftlock, GetColor, ScaleLabel, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.VersusController
+    Init, UpdateRewards, CreateRewards, UpdateTeamPoints, ClaimReward, UpdateTeam, Start, UpdateTeamsPoints
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.VotingController
+    Init, StartVoting, EndVoting, UpdateOption, AddOptions, Start
+StarterPlayer.StarterPlayerScripts.Scripts.UserInterface.WaypointsController
+    Init, Start, Step
+StarterPlayer.StarterPlayerScripts.SmartBoneInitializer
+    (no named functions)
+StarterPlayer.StarterPlayerScripts.StartupClient
+    (no named functions)
+TestService.RobloxLSP_Settings
+    (no named functions)
+Workspace.Diva_mx9.CustomShiftLock
+    (no named functions)
+Workspace.Diva_mx9.CustomShiftLock.SmoothShiftLock
+    Init, CharacterAdded, CharacterDiedOrRemoved, IsEnabled, SetMouseState, SetMouseIcon, TransitionLockOffset, ToggleShiftLock
+Workspace.Diva_mx9.CustomShiftLock.SmoothShiftLock.Utils.Maid
+    new, isMaid, __index, __newindex, GiveTask, GivePromise, DoCleaning
+Workspace.Diva_mx9.CustomShiftLock.SmoothShiftLock.Utils.Signal
+    isSignal, new, Fire, Connect, Wait, Destroy
+Workspace.Diva_mx9.CustomShiftLock.SmoothShiftLock.Utils.Spring
+    new, Impulse, TimeSkip, __index, __newindex, _positionVelocity
+Workspace.Emoji
+    change, init
+Workspace.Emoji.GetLines
+    (no named functions)
+Workspace.IMU_Yukira.CustomShiftLock
+    (no named functions)
+Workspace.IMU_Yukira.CustomShiftLock.SmoothShiftLock
+    Init, CharacterAdded, CharacterDiedOrRemoved, IsEnabled, SetMouseState, SetMouseIcon, TransitionLockOffset, ToggleShiftLock
+Workspace.IMU_Yukira.CustomShiftLock.SmoothShiftLock.Utils.Maid
+    new, isMaid, __index, __newindex, GiveTask, GivePromise, DoCleaning
+Workspace.IMU_Yukira.CustomShiftLock.SmoothShiftLock.Utils.Signal
+    isSignal, new, Fire, Connect, Wait, Destroy
+Workspace.IMU_Yukira.CustomShiftLock.SmoothShiftLock.Utils.Spring
+    new, Impulse, TimeSkip, __index, __newindex, _positionVelocity
+Workspace.Jehrinibe.CustomShiftLock
+    (no named functions)
+Workspace.Jehrinibe.CustomShiftLock.SmoothShiftLock
+    Init, CharacterAdded, CharacterDiedOrRemoved, IsEnabled, SetMouseState, SetMouseIcon, TransitionLockOffset, ToggleShiftLock
+Workspace.Jehrinibe.CustomShiftLock.SmoothShiftLock.Utils.Maid
+    new, isMaid, __index, __newindex, GiveTask, GivePromise, DoCleaning
+Workspace.Jehrinibe.CustomShiftLock.SmoothShiftLock.Utils.Signal
+    isSignal, new, Fire, Connect, Wait, Destroy
+Workspace.Jehrinibe.CustomShiftLock.SmoothShiftLock.Utils.Spring
+    new, Impulse, TimeSkip, __index, __newindex, _positionVelocity
+Workspace.Kevin549958.CustomShiftLock
+    (no named functions)
+Workspace.Kevin549958.CustomShiftLock.SmoothShiftLock
+    Init, CharacterAdded, CharacterDiedOrRemoved, IsEnabled, SetMouseState, SetMouseIcon, TransitionLockOffset, ToggleShiftLock
+Workspace.Kevin549958.CustomShiftLock.SmoothShiftLock.Utils.Maid
+    new, isMaid, __index, __newindex, GiveTask, GivePromise, DoCleaning
+Workspace.Kevin549958.CustomShiftLock.SmoothShiftLock.Utils.Signal
+    isSignal, new, Fire, Connect, Wait, Destroy
+Workspace.Kevin549958.CustomShiftLock.SmoothShiftLock.Utils.Spring
+    new, Impulse, TimeSkip, __index, __newindex, _positionVelocity
+Workspace.Luluckas15.CustomShiftLock
+    (no named functions)
+Workspace.Luluckas15.CustomShiftLock.SmoothShiftLock
+    Init, CharacterAdded, CharacterDiedOrRemoved, IsEnabled, SetMouseState, SetMouseIcon, TransitionLockOffset, ToggleShiftLock
+Workspace.Luluckas15.CustomShiftLock.SmoothShiftLock.Utils.Maid
+    new, isMaid, __index, __newindex, GiveTask, GivePromise, DoCleaning
+Workspace.Luluckas15.CustomShiftLock.SmoothShiftLock.Utils.Signal
+    isSignal, new, Fire, Connect, Wait, Destroy
+Workspace.Luluckas15.CustomShiftLock.SmoothShiftLock.Utils.Spring
+    new, Impulse, TimeSkip, __index, __newindex, _positionVelocity
+Workspace.RainBowx3468.CustomShiftLock
+    (no named functions)
+Workspace.RainBowx3468.CustomShiftLock.SmoothShiftLock
+    Init, CharacterAdded, CharacterDiedOrRemoved, IsEnabled, SetMouseState, SetMouseIcon, TransitionLockOffset, ToggleShiftLock
+Workspace.RainBowx3468.CustomShiftLock.SmoothShiftLock.Utils.Maid
+    new, isMaid, __index, __newindex, GiveTask, GivePromise, DoCleaning
+Workspace.RainBowx3468.CustomShiftLock.SmoothShiftLock.Utils.Signal
+    isSignal, new, Fire, Connect, Wait, Destroy
+Workspace.RainBowx3468.CustomShiftLock.SmoothShiftLock.Utils.Spring
+    new, Impulse, TimeSkip, __index, __newindex, _positionVelocity
+Workspace.TopbarPlus.Icon
+    getIcons, getIconByUID, getIcon, setTopbarEnabled, modifyBaseTheme, setDisplayOrder, handleToggle, viewingStarted, viewingEnded, new, setName, setState, cacheInstance, scanChildren, getInstance, getCollective, getInstanceOrCollective, getStateGroup, refreshAppearance, refresh, updateParent, setBehaviour, modifyTheme, modifyChildTheme, removeModification, removeModificationWith, setTheme, setEnabled, select, deselect, notify, clearNotices, disableOverlay, setImage, setLabel, setOrder, setCornerRadius, align, setLeft, setMid, setRight, setWidth, setImageScale, setImageRatio, setTextSize, setTextFont, bindToggleItem, unbindToggleItem, _updateSelectionInstances, _setToggleItemsVisible, bindEvent, unbindEvent, bindToggleKey, unbindToggleKey, call, addToJanitor, lock, unlock, debounce, autoDeselect, oneClick, setCaption, setCaptionHint, leave, joinMenu, setMenu, setFrozenMenu, freezeMenu, joinDropdown, getDropdown, setDropdown, clipOutside, setIndicator, destroy
+Workspace.TopbarPlus.Icon.Attribute
+    (no named functions)
+Workspace.TopbarPlus.Icon.Elements.Caption
+    matchSize, updateHotkey, getCaptionPosition, updateCaret, updatePosition, setCaptionEnabled
+Workspace.TopbarPlus.Icon.Elements.Container
+    updateCenteredHoldersHeight, decideToHideTopbar
+Workspace.TopbarPlus.Icon.Elements.Dropdown
+    updateVisibility, updateMaxIcons
+Workspace.TopbarPlus.Icon.Elements.Indicator
+    selectionChanged, setIndicatorVisible, updateSize
+Workspace.TopbarPlus.Icon.Elements.Menu
+    rightAlignCanvas, updateAlignent, startMenuUpdate, totalChildrenChanged
+Workspace.TopbarPlus.Icon.Elements.Notice
+    updateNotice
+Workspace.TopbarPlus.Icon.Elements.Selection
+    (no named functions)
+Workspace.TopbarPlus.Icon.Elements.Widget
+    getItemWidth, handleLabelAndImageChangesUnstaggered, updateBorderSize
+Workspace.TopbarPlus.Icon.Features.Gamepad
+    getIconFromSelectedObject, updateSelectedObject, checkGamepadEnabled, start, getIconToHighlight, registerButton
+Workspace.TopbarPlus.Icon.Features.Overflow
+    start, getWidth, getAvailableIcons, updateAvailableIcons, getRealXPositions, updateBoundary
+Workspace.TopbarPlus.Icon.Features.Themes
+    getThemeValue, getInstanceValue, getRealInstance, getClippedClone, refresh, apply, getModifications, merge, nowSetIt, updateRecord, modify, remove, removeWith, change, set, statesMatch, updateDetails, generateTheme, rebuild
+Workspace.TopbarPlus.Icon.Features.Themes.Classic
+    (no named functions)
+Workspace.TopbarPlus.Icon.Features.Themes.Default
+    (no named functions)
+Workspace.TopbarPlus.Icon.Packages.GoodSignal
+    acquireRunnerThreadAndCallEventHandler, runEventHandlerInFreeThread, new, Disconnect, __index, __newindex, new, Connect, DisconnectAll, Fire, Wait, Once, __index, __newindex
+Workspace.TopbarPlus.Icon.Packages.Janitor
+    getPromiseReference, new, Is, Add, AddPromise, AddObject, Remove, Get, warnUser, Cleanup, Destroy, Disconnect, __tostring, ChangedFunction, LinkToInstance, LinkToInstances
+Workspace.TopbarPlus.Icon.Reference
+    addToReplicatedStorage, getObject
+Workspace.TopbarPlus.Icon.Utility
+    staggeredCallback, createStagger, round, reverseTable, copyTable, generateUID, setVisible, formatStateName, localPlayerRespawned, getClippedContainer, updateScreenGui, updateVisibility, checkIfOutsideParentXBounds, updateProperty, trackProperty, clipOutside, updateAlignent, makeSelectable, joinFeature
+Workspace.TopbarPlus.Icon.VERSION
+    (no named functions)
+Workspace.TopbarPlus.READ_ME
+    (no named functions)
+Workspace.Z3_Z3T.CustomShiftLock
+    (no named functions)
+Workspace.Z3_Z3T.CustomShiftLock.SmoothShiftLock
+    Init, CharacterAdded, CharacterDiedOrRemoved, IsEnabled, SetMouseState, SetMouseIcon, TransitionLockOffset, ToggleShiftLock
+Workspace.Z3_Z3T.CustomShiftLock.SmoothShiftLock.Utils.Maid
+    new, isMaid, __index, __newindex, GiveTask, GivePromise, DoCleaning
+Workspace.Z3_Z3T.CustomShiftLock.SmoothShiftLock.Utils.Signal
+    isSignal, new, Fire, Connect, Wait, Destroy
+Workspace.Z3_Z3T.CustomShiftLock.SmoothShiftLock.Utils.Spring
+    new, Impulse, TimeSkip, __index, __newindex, _positionVelocity
+Workspace.abd56u1.CustomShiftLock
+    (no named functions)
+Workspace.abd56u1.CustomShiftLock.SmoothShiftLock
+    Init, CharacterAdded, CharacterDiedOrRemoved, IsEnabled, SetMouseState, SetMouseIcon, TransitionLockOffset, ToggleShiftLock
+Workspace.abd56u1.CustomShiftLock.SmoothShiftLock.Utils.Maid
+    new, isMaid, __index, __newindex, GiveTask, GivePromise, DoCleaning
+Workspace.abd56u1.CustomShiftLock.SmoothShiftLock.Utils.Signal
+    isSignal, new, Fire, Connect, Wait, Destroy
+Workspace.abd56u1.CustomShiftLock.SmoothShiftLock.Utils.Spring
+    new, Impulse, TimeSkip, __index, __newindex, _positionVelocity
+Workspace.g1loomz.CustomShiftLock
+    (no named functions)
+Workspace.g1loomz.CustomShiftLock.SmoothShiftLock
+    Init, CharacterAdded, CharacterDiedOrRemoved, IsEnabled, SetMouseState, SetMouseIcon, TransitionLockOffset, ToggleShiftLock
+Workspace.g1loomz.CustomShiftLock.SmoothShiftLock.Utils.Maid
+    new, isMaid, __index, __newindex, GiveTask, GivePromise, DoCleaning
+Workspace.g1loomz.CustomShiftLock.SmoothShiftLock.Utils.Signal
+    isSignal, new, Fire, Connect, Wait, Destroy
+Workspace.g1loomz.CustomShiftLock.SmoothShiftLock.Utils.Spring
+    new, Impulse, TimeSkip, __index, __newindex, _positionVelocity
+Workspace.meme_tokito1.CustomShiftLock
+    (no named functions)
+Workspace.meme_tokito1.CustomShiftLock.SmoothShiftLock
+    Init, CharacterAdded, CharacterDiedOrRemoved, IsEnabled, SetMouseState, SetMouseIcon, TransitionLockOffset, ToggleShiftLock
+Workspace.meme_tokito1.CustomShiftLock.SmoothShiftLock.Utils.Maid
+    new, isMaid, __index, __newindex, GiveTask, GivePromise, DoCleaning
+Workspace.meme_tokito1.CustomShiftLock.SmoothShiftLock.Utils.Signal
+    isSignal, new, Fire, Connect, Wait, Destroy
+Workspace.meme_tokito1.CustomShiftLock.SmoothShiftLock.Utils.Spring
+    new, Impulse, TimeSkip, __index, __newindex, _positionVelocity
+godrat011.CustomShiftLock
+    (no named functions)
+godrat011.CustomShiftLock.SmoothShiftLock
+    Init, CharacterAdded, CharacterDiedOrRemoved, IsEnabled, SetMouseState, SetMouseIcon, TransitionLockOffset, ToggleShiftLock
+godrat011.CustomShiftLock.SmoothShiftLock.Utils.Maid
+    new, isMaid, __index, __newindex, GiveTask, GivePromise, DoCleaning
+godrat011.CustomShiftLock.SmoothShiftLock.Utils.Signal
+    isSignal, new, Fire, Connect, Wait, Destroy
+godrat011.CustomShiftLock.SmoothShiftLock.Utils.Spring
+    new, Impulse, TimeSkip, __index, __newindex, _positionVelocity
