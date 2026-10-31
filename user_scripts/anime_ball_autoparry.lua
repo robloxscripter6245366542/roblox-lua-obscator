@@ -2264,12 +2264,27 @@ AutoDash.threat = function(hrp)
     end
     return nil
 end
+AutoDash.inClash = function()
+    if Clash.server == true or spamStarted then return true end
+    if tick() < Clash.forceUntil then return true end
+    if #Clash.flipTimes >= Clash.MIN_FLIPS then return true end
+    local effects = workspace:FindFirstChild("Effects")
+    return effects ~= nil and effects:GetAttribute("ClashEffect") == true
+end
 track(RunService.Heartbeat:Connect(function()
     if destroyed or not AutoDash.enabled then return end
     local now = tick()
     if now - AutoDash.lastFire < 1.15 then return end     -- the game's dash cooldown is 1.1s
     local ctl = Dash.controller
     if not ctl or type(ctl.ForceDash) ~= "function" or ctl.CanDash == false or ctl.Dashing == true then return end
+    -- Never dash out of a clash: dashing away mid-clash breaks the exchange
+    -- the parry is holding. Any clash signal counts (server StartClash, the
+    -- game's ClashEffect attribute, the clash hold window, ball reversals, or
+    -- Auto Spam currently spamming a clash).
+    if AutoDash.inClash() then
+        setDesc(HUD.AutoDash, string.format("Dashed %d time(s)\nPaused: you're in a clash", AutoDash.count))
+        return
+    end
     local hrp = getPlayerHRP(LocalPlayer)
     if not hrp then return end
     local threatPos, reason = AutoDash.threat(hrp)

@@ -132,7 +132,7 @@ do
 end
 
 print("=== Auto-Dash Away ===")
-local function dashCase(enabled, foeSpeed, startDist, heroVelX)
+local function dashCase(enabled, foeSpeed, startDist, heroVelX, clash)
   local src = enabled and SRC:gsub('AutoDash.enabled    = setting%("AutoDash", false%)', 'AutoDash.enabled = true') or SRC
   local w = assert(build(src, 80)); settle(w)
   local v3,Instance = w.v3,w.Instance
@@ -143,6 +143,12 @@ local function dashCase(enabled, foeSpeed, startDist, heroVelX)
   foe.Character=fchar; foe.CharacterAdded=w.R.newSignal(); foe.CharacterRemoving=w.R.newSignal()
   w.players[#w.players+1]=foe; w.Players.PlayerAdded:Fire(foe)
   w.hrp.AssemblyLinearVelocity=v3(heroVelX or 0,0,0)
+  if clash then
+    -- a real clash always has a ball in play between you
+    local b=Instance.new("Part"); b.Name="ClashBall"; b:SetAttribute("Target","Foe")
+    b.Position=v3(0,5,10); b.AssemblyLinearVelocity=v3(0,0,0); b.Parent=w.Balls
+    w.clashCtl.Server.StartClash()
+  end
   local dt=1/60
   for _=1,90 do
     fhrp.Position=fhrp.Position+v3(0,0,-foeSpeed*dt)
@@ -155,6 +161,8 @@ local n = dashCase(true, 90, 25)
 if n == 1 then ok("foe dashes in at 90 studs/s -> auto-dashed once (cooldown respected)") else bad("dash-in", n.." dashes") end
 n = dashCase(false, 90, 25)
 if n == 0 then ok("toggle off -> never dashes") else bad("off", n.." dashes") end
+n = dashCase(true, 90, 25, 0, true)
+if n == 0 then ok("in a clash (server StartClash) -> never dashes out of it") else bad("clash", n.." dashes") end
 n = dashCase(true, 8, 10)
 if n == 0 then ok("foe just walking nearby (8 studs/s) -> no dash") else bad("walk", n.." dashes") end
 -- Direction: foe rushes in from +Z while you move toward +X. Straight away is
