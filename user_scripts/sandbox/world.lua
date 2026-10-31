@@ -69,10 +69,22 @@ local function build(SRC, pingMs, opts)
   local ballCtl={ Server={ ChangeBallColor=function(name, target)
     if WS:GetAttribute("NoHighlight") then return end
     local b=Balls:FindFirstChild(name); if b and not b:GetAttribute("Invisible") then b:SetAttribute("Target", target) end end } }
+  -- GetBallAsync as decompiled: every call adds ANOTHER Invisible-changed
+  -- connection to the ball (counted in ballCtl.conns).
+  ballCtl.conns=0
+  ballCtl.GetBallAsync=function(name) local b=Balls:FindFirstChild(name)
+    if b then ballCtl.conns=ballCtl.conns+1; ballCtl.CurrentBall=b end return b end
   local swordCtl={ Server={ BlockSuccess=function() end } }
+  -- ClashController as decompiled: StartClash only sets ClashMode when the
+  -- player's "Clash" visual setting is on (ClashEnabled) - the game bug the
+  -- script's client fix works around. Settings default to OFF here.
+  local clashCtl={ ClashMode=false, Settings={ ClashEnabled=false } }
+  clashCtl.Server={ StartClash=function() if clashCtl.Settings.ClashEnabled then clashCtl.ClashMode=true end end,
+                    EndClash=function() clashCtl.ClashMode=false end }
   FW._moduleValue={ Fetch=function(_,n) if n=="SwordService" then return swordProxy end return {} end,
                     Get=function(_,n) if n=="BallController" then return ballCtl end
                                         if n=="SwordController" then return swordCtl end
+                                        if n=="ClashController" then return clashCtl end
                                         if n=="MovementController" then return movement end return nil end }
   local realmath,realtable=math,table
   local envmath=setmetatable({clamp=function(x,l,h) return realmath.max(l,realmath.min(h,x)) end,
@@ -131,7 +143,7 @@ local function build(SRC, pingMs, opts)
   return { R=R,v3=v3,Instance=Instance,Enum=Enum,RunService=RunService,Balls=Balls,heroF=heroF,Eff=Eff,
            Players=Players,players=players,LP=LP,char=char,
            hrp=hrp,char_ref=char,server=server,shieldAt=shieldAt,oneway=oneway,movement=movement,
-           ballCtl=ballCtl,swordCtl=swordCtl,genv=env._genv }
+           ballCtl=ballCtl,swordCtl=swordCtl,clashCtl=clashCtl,genv=env._genv }
 end
 
 return { build=build }

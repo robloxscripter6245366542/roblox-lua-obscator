@@ -90,6 +90,37 @@ for _,ping in ipairs({90,150}) do
   end
 end
 
+print("=== Clash with the game's Clash visual setting OFF ===")
+-- A ball sits 28 studs away (outside point-blank) aimed at the OTHER clasher (not an imminent threat
+-- by itself). The server says a clash started, but with the visual setting off
+-- the game never sets ClashEffect. The script must still hold the clash (fire),
+-- then stop once the server ends it.
+for _,ping in ipairs({60,180}) do
+  local w = assert(build(SRC, ping))
+  local v3,Instance = w.v3,w.Instance
+  settle(w)
+  local b=Instance.new("Part"); b.Name="ClashBall"; b:SetAttribute("Target","Other")
+  b.Position=v3(0,5,28); b.AssemblyLinearVelocity=v3(0,0,0); b.Parent=w.Balls
+  local function frames(n) for _=1,n do w.RunService.Heartbeat:Fire(); w.R.advance(1/60) end end
+  frames(60); local idle = w.server.blocks
+  w.clashCtl.Server.StartClash()
+  frames(60); local during = w.server.blocks - idle
+  w.clashCtl.Server.EndClash()
+  frames(90); local mark = w.server.blocks; frames(60); local after = w.server.blocks - mark
+  local tag = "clash @"..ping.." (effects off)"
+  if idle == 0 and during > 0 and after == 0 then ok(tag.." -> idle 0, held "..during..", stopped after EndClash")
+  else bad(tag, string.format("idle=%d during=%d after=%d", idle, during, after)) end
+end
+
+print("=== GetBallAsync connection leak ===")
+do
+  local w = assert(build(SRC, 60)); settle(w)
+  local b=w.Instance.new("Part"); b.Name="LeakBall"; b.Parent=w.Balls
+  for _=1,200 do w.ballCtl.GetBallAsync("LeakBall") end
+  if w.ballCtl.conns == 1 and w.ballCtl.CurrentBall == b then ok("200 lookups -> 1 connection (was 200)")
+  else bad("GetBallAsync leak", w.ballCtl.conns.." connections") end
+end
+
 print("=== Block result + BlockSuccess hook ===")
 do
   local _, _, w = run(60, "Other", "Hero", true)
@@ -98,7 +129,8 @@ do
   -- unload must restore the game's own functions
   local hooked = w.swordCtl.Server.BlockSuccess
   w.genv.AnimeBallHubUnload()
-  if w.swordCtl.Server.BlockSuccess ~= hooked and w.ballCtl.Server.ChangeBallColor ~= nil then
+  if w.swordCtl.Server.BlockSuccess ~= hooked and w.ballCtl.Server.ChangeBallColor ~= nil
+     and w.clashCtl.Server.StartClash == w.clashCtl.Server.StartClash then
     ok("unload restores BlockSuccess / ChangeBallColor")
   else bad("unload restore", "hook left installed") end
   if before >= 1 then ok("blocks fired before unload ("..before..")") else bad("blocks", "none") end

@@ -150,5 +150,8 @@ exact. The real confirmation is still an in-game run.
   writes the ball's `Target` attribute, so it goes stale. A decoy ball with a
   stale "me" attribute plus my real ball with a stale "them" attribute must
   still get my real ball parried. Also checks that unload restores the hooked
-  `ChangeBallColor` / `SwordController.Server.BlockSuccess`. Run:
+  `ChangeBallColor` / `SwordController.Server.BlockSuccess`. Also covers the
+  client game fixes: a clash with the game's Clash visual setting **off**
+  (the game never sets `ClashEffect` then) must still be held, and
+  `GetBallAsync` must not add a connection per call. Run:
   `lua-5.1.5/src/lua hook_test.lua`. Expected: **ALL HOOK CASES OK**.

@@ -381,6 +381,11 @@ local Clash = {
     -- extra held blocks are harmless (server gates the cooldown).
     GRACE = 0.8,
     forceUntil = 0,
+    -- Server clash state captured straight from ClashController.Server.
+    -- StartClash / EndClash (see the client game fixes). The game only sets its
+    -- own ClashEffect attributes when your "Clash" VISUAL setting is on and
+    -- the map has a BallSpawn, so on its own that signal is often dead.
+    server = false,
 }
 
 -- Keep-moving guard: firing block used to yield the main thread on every
@@ -2011,6 +2016,83 @@ task.spawn(function()
     end
 end)
 
+-- ============================================
+-- CLIENT GAME FIXES (your client only)
+-- ============================================
+-- Bugs in the game's OWN client code (decompiled) that hurt blocking. Each is
+-- patched on this client only and restored on unload. Every patch is
+-- pcall-guarded and skipped if the game's code no longer matches.
+local gameFixes = {}  -- { {tbl, key, original}, ... } restored on unload
+local function patch(tbl, key, replacement)
+    local orig = tbl[key]
+    if type(orig) ~= "function" then return nil end
+    gameFixes[#gameFixes + 1] = { tbl, key, orig }
+    tbl[key] = replacement(orig)
+    return orig
+end
+local function getController(name)
+    for _ = 1, 15 do
+        if destroyed then return nil end
+        local ok, c = pcall(function()
+            return require(ReplicatedStorage:WaitForChild("Framework", 5)):Get(name)
+        end)
+        if ok and type(c) == "table" then return c end
+        task.wait(1)
+    end
+    return nil
+end
+
+-- Fix 1: ClashController.Server.StartClash only flips ClashMode (and so the
+-- ClashEffect attributes) when your "Clash" visual setting is ON, and Step only
+-- applies it on maps that have a BallSpawn. Record the server's real clash
+-- state ourselves so clash holding works with effects off / on any map.
+task.spawn(function()
+    local CC = getController("ClashController")
+    if not CC or destroyed or type(CC.Server) ~= "table" then return end
+    pcall(function()
+        patch(CC.Server, "StartClash", function(orig)
+            return function(...)
+                if not destroyed then Clash.server = true end
+                return orig(...)
+            end
+        end)
+        patch(CC.Server, "EndClash", function(orig)
+            return function(...)
+                if not destroyed then Clash.server = false end
+                return orig(...)
+            end
+        end)
+    end)
+end)
+
+-- Fix 2: BallController.GetBallAsync connects a NEW Invisible-changed handler
+-- to the ball on every call - and it's called for every ball sound, hit effect
+-- and retarget. Over a round that's hundreds of duplicate connections (all
+-- firing at once when the ball goes invisible) = growing lag and frame hitches,
+-- which make parries late. Let the game connect once per ball, then reuse it.
+task.spawn(function()
+    local BC = getController("BallController")
+    if not BC or destroyed then return end
+    pcall(function()
+        local seen = setmetatable({}, { __mode = "k" })
+        patch(BC, "GetBallAsync", function(orig)
+            return function(ref, ...)
+                if ref ~= nil and not destroyed then
+                    local folder = workspace:FindFirstChild("Balls")
+                    local ball = folder and folder:FindFirstChild(tostring(ref))
+                    if ball and seen[ball] then
+                        BC.CurrentBall = ball
+                        return ball
+                    end
+                end
+                local ball = orig(ref, ...)
+                if typeof(ball) == "Instance" then seen[ball] = true end
+                return ball
+            end
+        end)
+    end)
+end)
+
 createVisualSphere()
 createPlayerDetectorSpheres()
 
@@ -2178,9 +2260,14 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
     -- to true during a real clash and clears it on EndClash. That's ground
     -- truth - the velocity-reversal count below is kept only as a fallback for
     -- when those attributes aren't present.
-    local realClash = false
+    -- A clash always has a ball in play; with none left it's over even if the
+    -- server's EndClash never reached us (so a stale flag can't make us spam).
+    if not closestBall then Clash.server = false end
+    local realClash = Clash.server == true
     local effects = workspace:FindFirstChild("Effects")
-    if effects and effects:GetAttribute("ClashEffect") == true then
+    if realClash then
+        -- server said so (settings-independent)
+    elseif effects and effects:GetAttribute("ClashEffect") == true then
         realClash = true
     elseif closestBall and closestBall:GetAttribute("ClashEffect") == true then
         realClash = true
@@ -2637,6 +2724,7 @@ track(LocalPlayer.CharacterRemoving:Connect(function()
     if visualSphere then visualSphere:Destroy() visualSphere = nil end
     clearPlayerDetectorSpheres()
     isHighSpeedMode = false
+    Clash.server = false  -- dying ends your clash
     -- The highlight lives under the (now removed) character's workspace
     -- entry; without this reset the cache holds its last value until the
     -- respawned character rebinds, letting a phantom highlight gate parries
@@ -2759,6 +2847,13 @@ unloadScript = function()
         pcall(function() swordController.Server.BlockSuccess = blockSuccessOriginal end)
     end
     swordController, blockSuccessOriginal = nil, nil
+    -- Undo the client game fixes (newest first).
+    for i = #gameFixes, 1, -1 do
+        local f = gameFixes[i]
+        pcall(function() f[1][f[2]] = f[3] end)
+    end
+    gameFixes = {}
+    Clash.server = false
 
     -- Remove every Instance we spawned: detection sphere, player detectors, labels.
     if visualSphere then pcall(function() visualSphere:Destroy() end) visualSphere = nil end
