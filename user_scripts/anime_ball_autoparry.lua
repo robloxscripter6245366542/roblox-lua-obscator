@@ -1,4 +1,4 @@
--- Anime Ball v2 - Auto Parry / Auto Spam
+-- Anime Ball Hub - Auto Parry / Auto Spam  (WindUI)
 -- Requires: ReplicatedStorage.Framework.RemoteFunction ("SwordService","Block",{camLookY})
 -- Requires: workspace.Balls (folder of ball parts/models) and workspace[Player.Name].Highlight
 
@@ -33,24 +33,27 @@ end
 -- stack two UIs / two sets of Heartbeat loops. No-op on executors without getgenv.
 if getgenv then
     local okEnv, genv = pcall(getgenv)
-    if okEnv and type(genv) == "table" and type(genv.AnimeBallUnload) == "function" then
-        pcall(genv.AnimeBallUnload)
+    if okEnv and type(genv) == "table" then
+        local prev = genv.AnimeBallHubUnload or genv.AnimeBallUnload
+        if type(prev) == "function" then pcall(prev) end
     end
 end
 
--- Load the Leviathan UI shim (a WindUI-compatible adapter over our own
--- NeverZen UI). This makes Anime Ball render in the SAME Leviathan window as
--- the Blade Ball hub, titled "Leviathan — Anime Ball", instead of its own UI.
--- The shim maps WindUI calls onto Leviathan and no-ops anything unmapped.
-local WINDUI_URL = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/user_scripts/leviathan_windui_shim.lua"
--- Executor-agnostic fetch + loadstring: reuse the helpers the universal loader
--- resolved for this executor when present, otherwise fall back through every
--- common HttpGet / request entry point so this works on any executor.
+-- ============================================
+-- UI LIBRARY: WindUI (Footagesus)
+-- ============================================
+-- Real WindUI, fetched from its official release (with a mirror fallback).
+-- Executor-agnostic fetch: reuse a loader-provided HttpGet when present, else
+-- try game:HttpGet, else every common request() entry point.
+local WINDUI_URLS = {
+    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
+    "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua",
+}
 local _genv = (getgenv and getgenv()) or {}
 local function _httpGet(url)
     if type(_genv.LeviathanHttpGet) == "function" then
-        local b = _genv.LeviathanHttpGet(url)
-        if type(b) == "string" and #b > 0 then return b end
+        local okL, b = pcall(_genv.LeviathanHttpGet, url)
+        if okL and type(b) == "string" and #b > 0 then return b end
     end
     local ok, body = pcall(function() return game:HttpGet(url, true) end)
     if ok and type(body) == "string" and #body > 0 then return body end
@@ -58,17 +61,104 @@ local function _httpGet(url)
         or (fluxus and fluxus.request) or _genv.request
     if req then
         local okr, r = pcall(req, { Url = url, Method = "GET" })
-        if okr and r and type(r.Body) == "string" then return r.Body end
+        if okr and type(r) == "table" and type(r.Body) == "string" and #r.Body > 0 then return r.Body end
     end
     return nil
 end
 local _loadstring = loadstring or _genv.loadstring
-local okWindUI, WindUI = pcall(function()
-    local src = _httpGet(WINDUI_URL)
-    return src and _loadstring(src)()
-end)
-if not okWindUI or type(WindUI) ~= "table" then
-    return warn("[AnimeBall] UI library failed to load: " .. tostring(WindUI))
+local WindUI, windErr = nil, "no source"
+for _, url in ipairs(WINDUI_URLS) do
+    local ok, lib = pcall(function()
+        local src = _httpGet(url)
+        if not src then error("download failed") end
+        local fn, cerr = _loadstring(src)
+        if not fn then error(cerr) end
+        return fn()
+    end)
+    if ok and type(lib) == "table" then WindUI = lib break end
+    windErr = lib
+end
+if not WindUI then
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Anime Ball Hub", Text = "WindUI failed to load: " .. tostring(windErr), Duration = 8,
+        })
+    end)
+    return warn("[Anime Ball Hub] WindUI failed to load: " .. tostring(windErr))
+end
+
+-- Notifications are suppressed until the UI is fully built: some WindUI builds
+-- fire each Toggle's callback once on creation, which used to spam a stack of
+-- "Enabled" toasts on every load.
+local uiReady = false
+local function notify(title, content, duration)
+    if not uiReady then return end
+    pcall(function()
+        WindUI:Notify({ Title = title, Content = content, Duration = duration or 3 })
+    end)
+end
+
+-- Paragraph text setter that can never throw. HUD writes happen inside the
+-- parry Heartbeat BEFORE the block decision; an error there (a missing SetDesc
+-- on some WindUI build, a destroyed element after unload) used to abort the
+-- whole frame and silently skip the parry. Also skips redundant writes.
+local hudCache = setmetatable({}, { __mode = "k" })
+local function setDesc(el, text)
+    if not el or hudCache[el] == text then return end
+    hudCache[el] = text
+    pcall(function() el:SetDesc(text) end)
+end
+
+-- ============================================
+-- SETTINGS PERSISTENCE (own JSON file)
+-- ============================================
+-- WindUI's ConfigManager API differs between releases (the old code mixed
+-- :Config and :CreateConfig and never registered elements, so Save/Load did
+-- nothing or errored). We persist our own settings table instead and load it
+-- BEFORE the UI is built, so every element simply starts at the saved value.
+local HttpService = game:GetService("HttpService")
+local CONFIG_FOLDER = "AnimeBallHub"
+local CONFIG_FILE = CONFIG_FOLDER .. "/settings.json"
+local Settings = {}
+local function fsOk() return type(writefile) == "function" and type(readfile) == "function" end
+local function loadSettings()
+    if not fsOk() then return false end
+    local ok, data = pcall(function()
+        if type(isfile) == "function" and not isfile(CONFIG_FILE) then return nil end
+        return HttpService:JSONDecode(readfile(CONFIG_FILE))
+    end)
+    if ok and type(data) == "table" then
+        for k, v in pairs(data) do Settings[k] = v end
+        return true
+    end
+    return false
+end
+local lastSavedJson = nil
+local function saveSettings()
+    if not fsOk() then return false end
+    local ok = pcall(function()
+        local json = HttpService:JSONEncode(Settings)
+        if json == lastSavedJson then return end
+        if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(CONFIG_FOLDER) then
+            makefolder(CONFIG_FOLDER)
+        end
+        writefile(CONFIG_FILE, json)
+        lastSavedJson = json
+    end)
+    return ok
+end
+-- Saved value for `key` if it has the right type, else `default`.
+local function setting(key, default)
+    local v = Settings[key]
+    if type(v) == type(default) then return v end
+    return default
+end
+loadSettings()
+-- Debounced auto-save: any change marks dirty; a background loop writes it once.
+local settingsDirty = false
+local function setSetting(key, value)
+    Settings[key] = value
+    settingsDirty = true
 end
 
 -- "Crimson Clash" color theme
@@ -364,451 +454,286 @@ local ballPosSample = {}      -- [ballInstance] = {pos, time, vel} - motion-deri
 local serverTargetCache = {}  -- [ballInstance] = {target=playerName, time=tick()}
 local SERVER_TARGET_TTL = 2.5 -- seconds a captured target stays trusted before it goes stale
 
--- Previous background/element colors were near-black (#120306, #240A0E) with
--- only a faint red tinge, so behind glass transparency the panel just read
--- as plain dark glass instead of crimson. Bumped to an actual visible
--- crimson-wine hue so the glass itself carries the color, not just the
--- small accent elements (toggles/sliders).
-WindUI:AddTheme({
-    Name = "CrimsonClash",
-    Accent = AccentRed,
-    Dialog = Color3.fromHex("#3D0F19"),
-    Text = Color3.fromHex("#FFE9EE"),
-    Placeholder = Color3.fromHex("#D98FA0"),
-    Background = Color3.fromHex("#2B0A12"),
-    Button = Color3.fromHex("#521624"),
-    Icon = Color3.fromHex("#FFC4D1"),
-    Toggle = AccentRed,
-    Slider = Color3.fromHex("#FF4D5E"),
-    Checkbox = AccentRed,
-    ElementBackground = Color3.fromHex("#451420"),
-    ElementBackgroundTransparency = 0.35,
-})
-WindUI:SetTheme("CrimsonClash")
+-- ============================================
+-- APPLY SAVED SETTINGS
+-- ============================================
+-- Every user-tunable value starts from the saved settings file (if any), so the
+-- UI below is built showing - and the logic runs with - your saved choices.
+autoParryEnabled    = setting("AutoParry", autoParryEnabled)
+autoSpamEnabled     = setting("AutoSpam", autoSpamEnabled)
+Move.keep           = setting("KeepMoving", Move.keep)
+autoUnstick         = setting("AutoUnstick", autoUnstick)
+pingCompEnabled     = setting("PingComp", pingCompEnabled)
+pingAutoEnabled     = setting("PingAuto", pingAutoEnabled)
+pingMultiplier      = math.clamp(setting("PingMultiplier", pingMultiplier), 0, 3)
+predictionHorizon   = math.clamp(setting("PredictionHorizon", predictionHorizon), 0, 5)
+MAX_PING_COMP       = math.clamp(setting("MaxPingComp", MAX_PING_COMP), 0, 150)
+antiCurveEnabled    = setting("AntiCurve", antiCurveEnabled)
+ACCEL_SMOOTHING     = math.clamp(setting("CurveReactivity", ACCEL_SMOOTHING), 0.05, 1)
+panicBurstEnabled   = setting("PanicBurst", panicBurstEnabled)
+PANIC_TTI           = math.clamp(setting("PanicWindow", PANIC_TTI), 0.1, BLOCK_DURATION)
+Dash.aware          = setting("DashAware", Dash.aware)
+Camera.aware        = setting("CameraAware", Camera.aware)
+Clash.enabled       = setting("SmartClash", Clash.enabled)
+showVisualSphere    = setting("ShowParrySphere", showVisualSphere)
+showPlayerDetectors = setting("ShowSpamSphere", showPlayerDetectors)
+showSpeedLabel      = setting("ShowSpeedLabel", showSpeedLabel)
 
--- Custom Anime Ball logo (the full crimson poster - character, ball, cracked
--- "C" emblem and title) instead of a generic Lucide icon. WindUI's Creator.Image
--- natively downloads http(s) URLs and turns them into a usable image via the
--- executor's getcustomasset, so we just point at the self-hosted asset in this
--- repo. If an executor can't load URL images, WindUI silently skips the icon
--- (the window still builds) - safe fallback.
--- Rounded-corner variant (corners baked transparent) so the logo reads rounded
--- everywhere - the big banner AND the small title-bar icon - regardless of how
--- a given executor renders the WindUI corner radius.
+-- WindUI sliders hand back a number on most builds but a string on a few;
+-- coerce so the math below never compares a string to a number.
+local function num(v, fallback)
+    local n = tonumber(v)
+    if n == nil or n ~= n then return fallback end
+    return n
+end
+
+-- ============================================
+-- WINDOW + THEME
+-- ============================================
+pcall(function()
+    WindUI:AddTheme({
+        Name = "CrimsonClash",
+        Accent = AccentRed,
+        Dialog = Color3.fromHex("#3D0F19"),
+        Outline = Color3.fromHex("#FF4D5E"),
+        Text = Color3.fromHex("#FFE9EE"),
+        Placeholder = Color3.fromHex("#D98FA0"),
+        Background = Color3.fromHex("#2B0A12"),
+        Button = Color3.fromHex("#521624"),
+        Icon = Color3.fromHex("#FFC4D1"),
+    })
+    WindUI:SetTheme("CrimsonClash")
+end)
+
 local LOGO_ICON = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/assets/anime_ball_logo_rounded.png"
 
-local Window = WindUI:CreateWindow({
-    Title = "Anime Ball v2 | Crimson Clash",
+local windowConfig = {
+    Title = "Anime Ball Hub",
     Icon = LOGO_ICON,
-    -- Bigger than the default 22 so the full logo actually reads in the title
-    -- bar. 46 fills most of the 52px topbar height without crowding it.
-    IconSize = 46,
-    Folder = "AnimeBallComplete",
-    ToggleKey = Enum.KeyCode.LeftControl,
+    Author = "Auto Parry • Auto Spam",
+    Folder = "AnimeBallHub",
+    Size = UDim2.fromOffset(580, 460),
     Theme = "CrimsonClash",
-
-    Acrylic = true,
     Transparent = true,
-    HidePanelBackground = true,
-    Radius = 20,
-})
-
--- Re-applied after CreateWindow as a safety net in case window construction
--- resets to a built-in default theme.
-WindUI:SetTheme("CrimsonClash")
-Window:SetBackgroundTransparency(0.35)
-
-local Tabs = {
-    Main = Window:Tab({ Title = "Main", Icon = "home" }),
-    Parry = Window:Tab({ Title = "Auto Parry", Icon = "shield" }),
-    Spam = Window:Tab({ Title = "Auto Spam", Icon = "zap" }),
-    Visuals = Window:Tab({ Title = "Visuals", Icon = "eye" }),
-    Stats = Window:Tab({ Title = "Statistics", Icon = "bar-chart" }),
-    Discord = Window:Tab({ Title = "Discord", Icon = "message-circle" })
+    SideBarWidth = 190,
+    ToggleKey = Enum.KeyCode.RightControl,
 }
-
--- ============================================
--- DISCORD TAB
--- ============================================
-
-local DISCORD_INVITE = "https://discord.gg/sA5448GTS"
-
-local DiscordSection = Tabs.Discord:Section({ Title = "Community" })
-
-DiscordSection:Paragraph({
-    Title = "Join the Discord",
-    Desc = DISCORD_INVITE,
-})
-
-DiscordSection:Button({
-    Title = "Copy Invite Link",
-    Desc = "Copies the Discord invite to your clipboard",
-    Callback = function()
-        local ok = pcall(function()
-            if setclipboard then
-                setclipboard(DISCORD_INVITE)
-            elseif toclipboard then
-                toclipboard(DISCORD_INVITE)
-            else
-                error("no clipboard function")
-            end
-        end)
-        WindUI:Notify({
-            Title = ok and "Copied!" or "Copy Failed",
-            Content = ok and ("Invite copied: " .. DISCORD_INVITE)
-                or ("Copy this manually: " .. DISCORD_INVITE),
-            Duration = 5,
-        })
-    end
-})
-
--- Live status paragraph handles, bundled into one table so the Heartbeat
--- closure captures a single upvalue for all of them (Lua 5.1's 60-upvalue
--- function limit).
-local HUD = {}
-
--- Big logo banner across the top of the Main tab. The source art is square, so
--- a 1:1 aspect shows the full logo undistorted (no crop, no stretch) at the
--- panel's full width. pcall-guarded: if an executor's WindUI build has no Image
--- element (or can't load URL images), the banner is simply skipped and the rest
--- of the menu builds normally.
+-- Not every executor can turn a URL into an image; if the window fails to build
+-- with the logo, rebuild it with a stock Lucide icon instead of giving up.
+local okWin, Window = pcall(function() return WindUI:CreateWindow(windowConfig) end)
+if not okWin or type(Window) ~= "table" then
+    windowConfig.Icon = "shield"
+    okWin, Window = pcall(function() return WindUI:CreateWindow(windowConfig) end)
+end
+if not okWin or type(Window) ~= "table" then
+    return warn("[Anime Ball Hub] failed to create window: " .. tostring(Window))
+end
+pcall(function() Window:SetToggleKey(Enum.KeyCode.RightControl) end)
+-- Floating open button (needed on mobile, where there is no keyboard toggle).
 pcall(function()
-    Tabs.Main:Image({
-        Image = LOGO_ICON,
-        AspectRatio = "1:1",
-        Radius = 16,        -- rounded banner corners
+    Window:EditOpenButton({
+        Title = "Anime Ball Hub",
+        Icon = "shield",
+        CornerRadius = UDim.new(0, 12),
+        StrokeThickness = 2,
+        Color = ColorSequence.new(AccentRed, Gold),
+        Draggable = true,
     })
 end)
 
-local FeatureSection = Tabs.Main:Section({ Title = "Feature Control" })
+local Tabs = {
+    Main    = Window:Tab({ Title = "Main",       Icon = "house" }),
+    Parry   = Window:Tab({ Title = "Auto Parry", Icon = "shield" }),
+    Spam    = Window:Tab({ Title = "Auto Spam",  Icon = "zap" }),
+    Visuals = Window:Tab({ Title = "Visuals",    Icon = "eye" }),
+    Stats   = Window:Tab({ Title = "Statistics", Icon = "activity" }),
+    Discord = Window:Tab({ Title = "Discord",    Icon = "message-circle" }),
+}
+pcall(function() Window:SelectTab(1) end)
 
-FeatureSection:Toggle({
-    Flag = "AutoParryMain",
-    Title = "Auto Parry",
-    Desc = "Itself Parry Ball",
-    Value = true,
-    Callback = function(Value)
-        autoParryEnabled = Value
-        WindUI:Notify({
-            Title = "Auto Parry",
-            Content = Value and "Enabled" or "Disabled",
-            Duration = 3
-        })
-    end
-})
+-- Live status paragraph handles, bundled into one table so the Heartbeat
+-- closure captures a single upvalue for all of them.
+local HUD = {}
 
-FeatureSection:Toggle({
-    Flag = "AutoSpamMain",
-    Title = "Auto Spam (Beta)",
-    Desc = "Distance near player",
-    Value = true,
-    Callback = function(Value)
-        autoSpamEnabled = Value
-        WindUI:Notify({
-            Title = "Auto Spam",
-            Content = Value and "Enabled" or "Disabled",
-            Duration = 3
-        })
-    end
-})
+-- Element helpers: every element is added straight to its Tab (supported by
+-- every WindUI release); Section is just a header. Toggle/Slider persist their
+-- value under `key` automatically.
+local function section(tab, title)
+    pcall(function() tab:Section({ Title = title }) end)
+end
+local function toggle(tab, key, title, desc, value, onChange)
+    return tab:Toggle({
+        Title = title, Desc = desc, Value = value,
+        Callback = function(v)
+            v = v and true or false
+            onChange(v)
+            setSetting(key, v)
+        end,
+    })
+end
+local function slider(tab, key, title, desc, min, max, step, value, onChange)
+    return tab:Slider({
+        Title = title, Desc = desc, Step = step,
+        Value = { Min = min, Max = max, Default = value },
+        Callback = function(v)
+            v = math.clamp(num(v, value), min, max)
+            onChange(v)
+            setSetting(key, v)
+        end,
+    })
+end
+local function paragraph(tab, title, desc)
+    return tab:Paragraph({ Title = title, Desc = desc })
+end
 
-FeatureSection:Toggle({
-    Flag = "KeepMoving",
-    Title = "Keep Moving While Blocking",
-    Desc = "Restore your walk speed if a block ever roots you - blocking/parry never interrupts movement",
-    Value = true,
-    Callback = function(Value)
-        Move.keep = Value
-    end
-})
+-- ============================================
+-- MAIN TAB
+-- ============================================
+pcall(function()
+    Tabs.Main:Image({ Image = LOGO_ICON, AspectRatio = "1:1", Radius = 16 })
+end)
 
-FeatureSection:Toggle({
-    Flag = "AutoUnstick",
-    Title = "Auto-Unstick Blocking",
-    Desc = "If a block ever gets stuck (nothing landing while a ball is on you), auto-recover so parrying keeps working",
-    Value = true,
-    Callback = function(Value)
-        autoUnstick = Value
-        WindUI:Notify({
-            Title = "Auto-Unstick",
-            Content = Value and "Enabled" or "Disabled",
-            Duration = 3
-        })
-    end
-})
+section(Tabs.Main, "Feature Control")
+toggle(Tabs.Main, "AutoParry", "Auto Parry", "Automatically parry balls aimed at you", autoParryEnabled, function(v)
+    autoParryEnabled = v
+    notify("Auto Parry", v and "Enabled" or "Disabled")
+end)
+toggle(Tabs.Main, "AutoSpam", "Auto Spam", "Spam block during a real clash", autoSpamEnabled, function(v)
+    autoSpamEnabled = v
+    notify("Auto Spam", v and "Enabled" or "Disabled")
+end)
+toggle(Tabs.Main, "KeepMoving", "Keep Moving While Blocking",
+    "Restore your walk speed if a block ever roots you", Move.keep, function(v)
+    Move.keep = v
+end)
+toggle(Tabs.Main, "AutoUnstick", "Auto-Unstick Blocking",
+    "If blocking gets stuck (nothing landing while a ball is on you), auto-recover", autoUnstick, function(v)
+    autoUnstick = v
+    notify("Auto-Unstick", v and "Enabled" or "Disabled")
+end)
 
-local QuickStatsSection = Tabs.Main:Section({ Title = "Quick Stats" })
-HUD.QuickStats = QuickStatsSection:Paragraph({
-    Title = "Performance",
-    Desc = "Loading..."
-})
+section(Tabs.Main, "Quick Stats")
+HUD.QuickStats = paragraph(Tabs.Main, "Performance", "Loading...")
 
--- Full kill switch. Tears the script down completely: stops both Heartbeat
--- loops, disconnects every hook, restores the game function we patched, removes
--- all visuals and closes this window. Also reachable from the console via
--- getgenv().AnimeBallUnload(). (unloadScript is assigned near the end of the
--- file; the callback captures it, so it's populated by the time you can click.)
-local UnloadSection = Tabs.Main:Section({ Title = "Script Control" })
-UnloadSection:Button({
-    Title = "Unload / Destroy Script",
+-- Full kill switch (also getgenv().AnimeBallHubUnload()). unloadScript is
+-- assigned near the end of the file; the callback reads it at click time.
+section(Tabs.Main, "Script Control")
+Tabs.Main:Button({
+    Title = "Unload Anime Ball Hub",
     Desc = "Stop everything and remove the menu (re-run the loadstring to load again)",
     Callback = function()
         if unloadScript then unloadScript() end
-    end
+    end,
 })
 
-local ParryStatusSection = Tabs.Parry:Section({ Title = "Auto Parry Status" })
+-- ============================================
+-- AUTO PARRY TAB
+-- ============================================
+section(Tabs.Parry, "Auto Parry Status")
+HUD.ParryStatus = paragraph(Tabs.Parry, "Detection Status", "Initializing...")
+HUD.ParryDistance = paragraph(Tabs.Parry, "Distance Info", "Waiting for data...")
 
-HUD.ParryStatus = ParryStatusSection:Paragraph({
-    Title = "Detection Status",
-    Desc = "Initializing..."
-})
+section(Tabs.Parry, "Ping Compensation & Prediction")
+toggle(Tabs.Parry, "PingComp", "Ping Compensation", "Parry earlier when ping is high", pingCompEnabled, function(v)
+    pingCompEnabled = v
+    if not v then currentRequiredLead, currentPingComp = 0, 0 end
+end)
+toggle(Tabs.Parry, "PingAuto", "Auto Strength (by ping)",
+    "Pick the strength from your live ping. Off = use the manual slider", pingAutoEnabled, function(v)
+    pingAutoEnabled = v
+end)
+slider(Tabs.Parry, "PingMultiplier", "Compensation Strength (manual)",
+    "Only used when Auto is OFF. 1.0 = full ping", 0, 3, 0.05, pingMultiplier, function(v)
+    pingMultiplier = v
+end)
+slider(Tabs.Parry, "PredictionHorizon", "Prediction Horizon (s)",
+    "Max look-ahead used for early parry", 0, 5, 0.1, predictionHorizon, function(v)
+    predictionHorizon = v
+end)
+slider(Tabs.Parry, "MaxPingComp", "Max Extra Range (studs)",
+    "Cap on extra detection studs from ping", 0, 150, 1, MAX_PING_COMP, function(v)
+    MAX_PING_COMP = v
+end)
+toggle(Tabs.Parry, "AntiCurve", "Anti-Curve Prediction",
+    "Simulate the ball's curved arc instead of a straight line", antiCurveEnabled, function(v)
+    antiCurveEnabled = v
+end)
+slider(Tabs.Parry, "CurveReactivity", "Curve Reactivity",
+    "Higher = react to new curves faster but jitter more", 0.05, 1, 0.05, ACCEL_SMOOTHING, function(v)
+    ACCEL_SMOOTHING = v
+end)
+toggle(Tabs.Parry, "PanicBurst", "Panic Burst",
+    "Spam block when impact is imminent - catches super fast balls", panicBurstEnabled, function(v)
+    panicBurstEnabled = v
+end)
+slider(Tabs.Parry, "PanicWindow", "Panic Window (s)",
+    "Time-to-impact below this fires the burst. ~0.45 leaves margin inside the 0.6s block", 0.1, BLOCK_DURATION, 0.05, PANIC_TTI, function(v)
+    PANIC_TTI = math.min(v, BLOCK_DURATION)
+end)
+toggle(Tabs.Parry, "DashAware", "Dash-Aware Blocking",
+    "Keep blocking correctly while you dash", Dash.aware, function(v)
+    Dash.aware = v
+end)
+toggle(Tabs.Parry, "CameraAware", "Camera-Aware Blocking",
+    "Predict camera-relative dodges and block through hard camera whips", Camera.aware, function(v)
+    Camera.aware = v
+end)
+HUD.PingInfo = paragraph(Tabs.Parry, "Ping Status", "Measuring...")
 
-HUD.ParryDistance = ParryStatusSection:Paragraph({
-    Title = "Distance Info",
-    Desc = "Waiting for data..."
-})
+-- ============================================
+-- AUTO SPAM TAB
+-- ============================================
+section(Tabs.Spam, "Auto Spam Status")
+toggle(Tabs.Spam, "SmartClash", "Smart Clash Detection",
+    "Only spam during a real clash - not just when standing near someone", Clash.enabled, function(v)
+    Clash.enabled = v
+end)
+HUD.SpamStatus = paragraph(Tabs.Spam, "System Status", "Initializing...")
+HUD.SpamConditions = paragraph(Tabs.Spam, "Detection Status", "Checking conditions...")
 
-local PingSection = Tabs.Parry:Section({ Title = "Ping Compensation & Future Prediction" })
-
-PingSection:Toggle({
-    Flag = "PingCompEnabled",
-    Title = "Ping Compensation",
-    Desc = "Parry earlier when ping is high",
-    Value = true,
-    Callback = function(Value)
-        pingCompEnabled = Value
-        WindUI:Notify({
-            Title = "Ping Compensation",
-            Content = Value and "Enabled" or "Disabled",
-            Duration = 3
-        })
-    end
-})
-
-PingSection:Toggle({
-    Flag = "PingAutoEnabled",
-    Title = "Auto (adjust by your ping)",
-    Desc = "Set the strength automatically from your live ping - more comp the higher it is. Off = use the manual slider below",
-    Value = true,
-    Callback = function(Value)
-        pingAutoEnabled = Value
-        WindUI:Notify({
-            Title = "Auto Ping Compensation",
-            Content = Value and "ON - tuning to your ping" or "OFF - using manual slider",
-            Duration = 3
-        })
-    end
-})
-
-PingSection:Slider({
-    Flag = "PingMultiplier",
-    Title = "Compensation Strength (manual)",
-    Desc = "Only used when Auto is OFF. 1.0 = full ping, higher = parry even earlier",
-    Step = 0.05,
-    Value = { Min = 0, Max = 3, Default = 1.0 },
-    Callback = function(Value)
-        pingMultiplier = Value
-    end
-})
-
-PingSection:Slider({
-    Flag = "PredictionHorizon",
-    Title = "Prediction Horizon (seconds)",
-    Desc = "Max look-ahead into the future used for early parry (0-5s)",
-    Step = 0.1,
-    Value = { Min = 0, Max = 5, Default = 1.5 },
-    Callback = function(Value)
-        predictionHorizon = Value
-    end
-})
-
-PingSection:Slider({
-    Flag = "MaxPingComp",
-    Title = "Max Extra Range (studs)",
-    Desc = "Cap on extra detection studs from ping",
-    Step = 1,
-    Value = { Min = 0, Max = 150, Default = 60 },
-    Callback = function(Value)
-        MAX_PING_COMP = Value
-    end
-})
-
-PingSection:Toggle({
-    Flag = "AntiCurveEnabled",
-    Title = "Anti-Curve Prediction",
-    Desc = "Simulate the ball's actual curved arc instead of a straight line",
-    Value = true,
-    Callback = function(Value)
-        antiCurveEnabled = Value
-    end
-})
-
-PingSection:Slider({
-    Flag = "AccelSmoothing",
-    Title = "Curve Reactivity",
-    Desc = "Higher = react to new curves faster but jitter more",
-    Step = 0.05,
-    Value = { Min = 0.05, Max = 1, Default = 0.35 },
-    Callback = function(Value)
-        ACCEL_SMOOTHING = Value
-    end
-})
-
-PingSection:Toggle({
-    Flag = "PanicBurst",
-    Title = "Panic Burst",
-    Desc = "Spam block every frame when impact is imminent - catches super fast balls",
-    Value = true,
-    Callback = function(Value)
-        panicBurstEnabled = Value
-    end
-})
-
-PingSection:Slider({
-    Flag = "PanicWindow",
-    Title = "Panic Window (seconds)",
-    Desc = "Time-to-impact below this fires block every frame. Best kept below 0.6 (the block's protection): at exactly 0.6 the block expires right at impact with no margin; ~0.45 leaves 0.15s of protection to absorb latency/jitter",
-    Step = 0.05,
-    Value = { Min = 0.1, Max = 0.6, Default = 0.45 },
-    Callback = function(Value)
-        PANIC_TTI = math.min(Value, BLOCK_DURATION)
-    end
-})
-
-PingSection:Toggle({
-    Flag = "DashAware",
-    Title = "Dash-Aware Blocking",
-    Desc = "Keep blocking correctly while you dash - a dash won't cause a missed parry",
-    Value = true,
-    Callback = function(Value)
-        Dash.aware = Value
-    end
-})
-
-HUD.PingInfo = PingSection:Paragraph({
-    Title = "Ping Status",
-    Desc = "Measuring..."
-})
-
-local SpamStatusSection = Tabs.Spam:Section({ Title = "Auto Spam Status" })
-
-SpamStatusSection:Toggle({
-    Flag = "ClashDetect",
-    Title = "Smart Clash Detection",
-    Desc = "Only spam during a real clash (ball rapidly bouncing back and forth) - not just when standing near someone",
-    Value = true,
-    Callback = function(Value)
-        Clash.enabled = Value
-    end
-})
-
-HUD.SpamStatus = SpamStatusSection:Paragraph({
-    Title = "System Status",
-    Desc = "Initializing..."
-})
-
-HUD.SpamConditions = SpamStatusSection:Paragraph({
-    Title = "Detection Status",
-    Desc = "Checking conditions..."
-})
-
-local LiveDetectionSection = Tabs.Spam:Section({ Title = "Live Detection" })
-
-HUD.PlayerDetection = LiveDetectionSection:Paragraph({
-    Title = "Player Detection",
-    Desc = "Scanning..."
-})
-
-HUD.BallDetection = LiveDetectionSection:Paragraph({
-    Title = "Ball Detection",
-    Desc = "Scanning..."
-})
-
-HUD.HighlightDetection = LiveDetectionSection:Paragraph({
-    Title = "Highlight Detection",
-    Desc = "Checking..."
-})
+section(Tabs.Spam, "Live Detection")
+HUD.PlayerDetection = paragraph(Tabs.Spam, "Player Detection", "Scanning...")
+HUD.BallDetection = paragraph(Tabs.Spam, "Ball Detection", "Scanning...")
+HUD.HighlightDetection = paragraph(Tabs.Spam, "Target Detection", "Checking...")
 
 -- ============================================
 -- VISUALS TAB
 -- ============================================
-
-local VisualIndicatorsSection = Tabs.Visuals:Section({ Title = "Visual Indicators" })
-
-VisualIndicatorsSection:Toggle({
-    Flag = "VisualSphere",
-    Title = "Show Parry Detection Sphere",
-    Desc = "Display the auto parry detection range",
-    Value = true,
-    Callback = function(Value)
-        showVisualSphere = Value
-        if not Value and visualSphere then
-            visualSphere.Transparency = 1
-        end
+section(Tabs.Visuals, "Visual Indicators")
+toggle(Tabs.Visuals, "ShowParrySphere", "Show Parry Detection Sphere",
+    "Display the auto parry detection range", showVisualSphere, function(v)
+    showVisualSphere = v
+    if not v and visualSphere then visualSphere.Transparency = 1 end
+end)
+toggle(Tabs.Visuals, "ShowSpamSphere", "Show Spam Detection Spheres",
+    "Display 17 stud spheres around players", showPlayerDetectors, function(v)
+    showPlayerDetectors = v
+    if clearPlayerDetectorSpheres then
+        if v then createPlayerDetectorSpheres() else clearPlayerDetectorSpheres() end
     end
-})
-
-VisualIndicatorsSection:Toggle({
-    Flag = "PlayerDetector",
-    Title = "Show Spam Detection Sphere",
-    Desc = "Display 17 stud spheres around players",
-    Value = true,
-    Callback = function(Value)
-        showPlayerDetectors = Value
-        if not Value then
-            clearPlayerDetectorSpheres()
-        else
-            createPlayerDetectorSpheres()
+end)
+toggle(Tabs.Visuals, "ShowSpeedLabel", "Show Ball Speed Labels",
+    "Display velocity above balls", showSpeedLabel, function(v)
+    showSpeedLabel = v
+    if not v then
+        for _, cache in pairs(billboardCache) do
+            if cache.Billboard then pcall(function() cache.Billboard:Destroy() end) end
         end
+        billboardCache = {}
     end
-})
-
-VisualIndicatorsSection:Toggle({
-    Flag = "SpeedLabel",
-    Title = "Show Ball Speed Labels",
-    Desc = "Display velocity above balls",
-    Value = true,
-    Callback = function(Value)
-        showSpeedLabel = Value
-        if not Value then
-            for _, cache in pairs(billboardCache) do
-                if cache.Billboard then
-                    cache.Billboard:Destroy()
-                end
-            end
-            billboardCache = {}
-        end
-    end
-})
-
-VisualIndicatorsSection:Paragraph({
-    Title = "Color Guide",
-    Desc = "Crimson = Normal Mode\nGold = High Speed Mode\nEmerald = Player Detectors\nAmber = Ball Velocity"
-})
+end)
+paragraph(Tabs.Visuals, "Color Guide",
+    "Crimson = Normal Mode\nGold = High Speed Mode\nEmerald = Player Detectors\nAmber = Ball Velocity")
 
 -- ============================================
 -- STATS TAB
 -- ============================================
+section(Tabs.Stats, "Performance Statistics")
+HUD.ParryStats = paragraph(Tabs.Stats, "Auto Parry Stats", "Waiting for data...")
+HUD.SpamStats = paragraph(Tabs.Stats, "Auto Spam Stats", "Waiting for data...")
+HUD.LiveStats = paragraph(Tabs.Stats, "Live Monitoring", "Monitoring...")
 
-local PerfStatsSection = Tabs.Stats:Section({ Title = "Performance Statistics" })
-
-HUD.ParryStats = PerfStatsSection:Paragraph({
-    Title = "Auto Parry Stats",
-    Desc = "Waiting for data..."
-})
-
-HUD.SpamStats = PerfStatsSection:Paragraph({
-    Title = "Auto Spam Stats",
-    Desc = "Waiting for data..."
-})
-
-HUD.LiveStats = PerfStatsSection:Paragraph({
-    Title = "Live Monitoring",
-    Desc = "Monitoring..."
-})
-
-PerfStatsSection:Button({
+Tabs.Stats:Button({
     Title = "Reset All Statistics",
     Desc = "Reset both parry and spam counters",
     Callback = function()
@@ -817,57 +742,79 @@ PerfStatsSection:Button({
         totalBurstBlocks = 0
         totalSpams = 0
         spamDuration = 0
+        if spamStarted then lastSpamStartTime = tick() end
         blockSent = 0
         blockLanded = 0
         blockRejected = 0
         lastBlockResult = "-"
         totalUnsticks = 0
-        WindUI:Notify({
-            Title = "Stats Reset",
-            Content = "All statistics have been reset",
-            Duration = 3
-        })
-    end
+        notify("Stats Reset", "All statistics have been reset")
+    end,
 })
 
 -- ============================================
 -- CONFIG
 -- ============================================
-
-local ConfigSection = Tabs.Stats:Section({ Title = "Config" })
-local CONFIG_NAME = "default"
-
-ConfigSection:Button({
-    Title = "Save Config",
-    Desc = "Save all current settings",
+section(Tabs.Stats, "Config")
+paragraph(Tabs.Stats, "Auto-Save",
+    fsOk() and ("Settings save automatically to " .. CONFIG_FILE)
+        or "Your executor has no file functions - settings won't persist")
+Tabs.Stats:Button({
+    Title = "Save Config Now",
+    Desc = "Write all current settings to disk",
     Callback = function()
-        local cfg = Window.ConfigManager:Config(CONFIG_NAME)
-        if cfg:Save() then
-            WindUI:Notify({ Title = "Config Saved", Content = "Saved to '" .. CONFIG_NAME .. "'", Duration = 3 })
+        settingsDirty = false
+        if saveSettings() and fsOk() then
+            notify("Config Saved", "Saved to " .. CONFIG_FILE)
+        else
+            notify("Config Not Saved", "Your executor doesn't support writefile")
         end
-    end
+    end,
+})
+Tabs.Stats:Button({
+    Title = "Reset Config",
+    Desc = "Delete saved settings (defaults apply on next load)",
+    Callback = function()
+        Settings = {}
+        settingsDirty = false
+        lastSavedJson = nil
+        pcall(function()
+            if type(delfile) == "function" and (type(isfile) ~= "function" or isfile(CONFIG_FILE)) then
+                delfile(CONFIG_FILE)
+            end
+        end)
+        notify("Config Reset", "Defaults will apply next time you load the hub")
+    end,
 })
 
-ConfigSection:Button({
-    Title = "Load Config",
-    Desc = "Restore saved settings",
-    Callback = function()
-        local cfg = Window.ConfigManager:CreateConfig(CONFIG_NAME)
-        if cfg:Load() then
-            WindUI:Notify({ Title = "Config Loaded", Content = "Loaded '" .. CONFIG_NAME .. "'", Duration = 3 })
-        end
-    end
-})
-
--- Auto-save: load saved settings on startup, then persist them in the
--- background so any change you make is remembered without pressing Save.
+-- Debounced background save: only touches the disk when something changed.
 task.spawn(function()
-    pcall(function() Window.ConfigManager:CreateConfig(CONFIG_NAME):Load() end)
-    while task.wait(3) do
+    while not destroyed do
+        task.wait(2)
         if destroyed then break end
-        pcall(function() Window.ConfigManager:Config(CONFIG_NAME):Save() end)
+        if settingsDirty then
+            settingsDirty = false
+            saveSettings()
+        end
     end
 end)
+
+-- ============================================
+-- DISCORD TAB
+-- ============================================
+local DISCORD_INVITE = "https://discord.gg/sA5448GTS"
+section(Tabs.Discord, "Community")
+paragraph(Tabs.Discord, "Join the Discord", DISCORD_INVITE)
+Tabs.Discord:Button({
+    Title = "Copy Invite Link",
+    Desc = "Copies the Discord invite to your clipboard",
+    Callback = function()
+        local clip = setclipboard or toclipboard or (Clipboard and Clipboard.set)
+        local ok = clip ~= nil and pcall(clip, DISCORD_INVITE)
+        notify(ok and "Copied!" or "Copy Failed",
+            ok and ("Invite copied: " .. DISCORD_INVITE) or ("Copy this manually: " .. DISCORD_INVITE), 5)
+    end,
+})
 
 -- ============================================
 -- VISUALS
@@ -883,6 +830,8 @@ createVisualSphere = function()
     visualSphere.Transparency = 0.7
     visualSphere.CanCollide = false
     visualSphere.CanQuery = false
+    visualSphere.CanTouch = false   -- never trip the map's Touched triggers
+    visualSphere.CastShadow = false
     visualSphere.Anchored = true
     visualSphere.Parent = workspace
 end
@@ -893,7 +842,12 @@ end
 createOrUpdatePlayerDetectorSphere = function(player)
     if not showPlayerDetectors then return end
     local hrp = getPlayerHRP(player)
-    if not hrp then return end
+    if not hrp then
+        -- Dead / not spawned: drop the sphere instead of leaving it frozen in place.
+        local stale = playerDetectorSpheres[player.Name]
+        if stale then stale:Destroy() playerDetectorSpheres[player.Name] = nil end
+        return
+    end
 
     local sphere = playerDetectorSpheres[player.Name]
     if not sphere or not sphere.Parent then
@@ -905,6 +859,8 @@ createOrUpdatePlayerDetectorSphere = function(player)
         sphere.Transparency = 0.7
         sphere.CanCollide = false
         sphere.CanQuery = false
+        sphere.CanTouch = false
+        sphere.CastShadow = false
         sphere.Anchored = true
         sphere.Size = Vector3.new(PLAYER_DETECTOR_DISTANCE * 2, PLAYER_DETECTOR_DISTANCE * 2, PLAYER_DETECTOR_DISTANCE * 2)
         sphere.Parent = workspace
@@ -1335,15 +1291,24 @@ local function purgeDeadBall(ball)
     serverTargetCache[ball] = nil
     ballPartCache[ball] = nil
     ballPosSample[ball] = nil
+    local cached = billboardCache[ball]
+    if cached and cached.Billboard then pcall(function() cached.Billboard:Destroy() end) end
     billboardCache[ball] = nil
 end
 
+-- Only the CURRENT folder is watched: on respawn a new same-named model
+-- appears and the previous folder's connections are dropped (they used to pile
+-- up for every death, and a late ChildRemoved on the dead model could clear the
+-- live highlight flag).
+local highlightConns = {}
 local function bindHighlightFolder(folder)
+    for _, c in ipairs(highlightConns) do pcall(function() c:Disconnect() end) end
+    highlightConns = {}
     hasHighlightCache = folder:FindFirstChild("Highlight") ~= nil
-    track(folder.ChildAdded:Connect(function(child)
+    highlightConns[1] = track(folder.ChildAdded:Connect(function(child)
         if child.Name == "Highlight" then hasHighlightCache = true end
     end))
-    track(folder.ChildRemoved:Connect(function(child)
+    highlightConns[2] = track(folder.ChildRemoved:Connect(function(child)
         if child.Name == "Highlight" then hasHighlightCache = false end
     end))
 end
@@ -1549,8 +1514,8 @@ local lastBlockSendTime = -1
 local function fireBlockRemote(clash)
     local nowT = tick()
     local interval = clash and CLASH_SEND_INTERVAL or BLOCK_SEND_INTERVAL
-    if nowT - lastBlockSendTime < interval then return end
-    if blocksInFlight >= (clash and CLASH_INFLIGHT or 1) then return end
+    if nowT - lastBlockSendTime < interval then return false end
+    if blocksInFlight >= (clash and CLASH_INFLIGHT or 1) then return false end
     lastBlockSendTime = nowT
     blocksInFlight = blocksInFlight + 1
     task.spawn(function()
@@ -1582,6 +1547,7 @@ local function fireBlockRemote(clash)
         end)
         blocksInFlight = blocksInFlight - 1   -- always runs, even on error
     end)
+    return true
 end
 
 -- force=true bypasses the client-side PARRY_COOLDOWN. During a clash / point-
@@ -1594,15 +1560,20 @@ end
 local function executeParry(force)
     local currentTime = tick()
     if not force and currentTime - lastParryTime < PARRY_COOLDOWN then return end
-    lastParryTime = currentTime
-    totalParries = totalParries + 1
-    if isHighSpeedMode then highSpeedParries = highSpeedParries + 1 end
-    fireBlockRemote(force)   -- force = clash/point-blank -> faster clash send rate
+    -- Stats only count blocks that were actually sent (the rate cap used to make
+    -- every throttled frame count as a "parry").
+    if fireBlockRemote(force) then   -- force = clash/point-blank -> faster clash send rate
+        lastParryTime = currentTime
+        totalParries = totalParries + 1
+        if isHighSpeedMode then highSpeedParries = highSpeedParries + 1 end
+    end
 end
 
 local function createSpeedLabel(ball)
     if not showSpeedLabel then return {Billboard = nil, Label = nil} end
-    if billboardCache[ball] then return billboardCache[ball] end
+    local existing = billboardCache[ball]
+    if existing and existing.Billboard and existing.Billboard.Parent then return existing end
+    if existing and existing.Billboard then pcall(function() existing.Billboard:Destroy() end) end
     -- A BillboardGui needs a BasePart to position against. When the ball is a
     -- Model (not a BasePart), parenting straight to it gives the GUI nothing to
     -- anchor to and it renders at the world origin / not at all. Adorn it to the
@@ -1775,9 +1746,10 @@ local function isBallInPlayerRange(ball, distanceRange)
     return false
 end
 
+-- Auto Spam only runs during a clash, so it uses the clash send rate (it used
+-- the slower lone-ball rate before), and only counts blocks actually sent.
 local function executeSpam()
-    fireBlockRemote()
-    totalSpams = totalSpams + 1
+    if fireBlockRemote(true) then totalSpams = totalSpams + 1 end
 end
 
 local function checkPlayerDistance()
@@ -1824,12 +1796,12 @@ end
 task.spawn(function()
     while task.wait(0.5) do
         if destroyed then break end
-        HUD.QuickStats:SetDesc(string.format("- Total Parries: %d (High Speed: %d)\n- Total Spams: %d\n- Auto Parry: %s\n- Auto Spam: %s",
+        setDesc(HUD.QuickStats, string.format("- Total Parries: %d (High Speed: %d)\n- Total Spams: %d\n- Auto Parry: %s\n- Auto Spam: %s",
             totalParries, highSpeedParries, totalSpams,
             autoParryEnabled and "ON" or "OFF",
             autoSpamEnabled and "ON" or "OFF"))
 
-        HUD.ParryStats:SetDesc(string.format("- Total Parries: %d\n- High Speed Parries: %d\n- Burst Blocks: %d\n- High Speed Rate: %.1f%%\n- Current Mode: %s\n- Blocks Sent: %d | Landed: %d | Rejected(cooldown): %d\n- Land Rate: %.0f%% | Last: %s\n- Auto-Unstick: %s (%d recoveries)",
+        setDesc(HUD.ParryStats, string.format("- Total Parries: %d\n- High Speed Parries: %d\n- Burst Blocks: %d\n- High Speed Rate: %.1f%%\n- Current Mode: %s\n- Blocks Sent: %d | Landed: %d | Rejected(cooldown): %d\n- Land Rate: %.0f%% | Last: %s\n- Auto-Unstick: %s (%d recoveries)",
             totalParries, highSpeedParries, totalBurstBlocks,
             totalParries > 0 and (highSpeedParries / totalParries * 100) or 0,
             isHighSpeedMode and "MAX SPEED" or "Normal",
@@ -1845,11 +1817,11 @@ task.spawn(function()
             spamsPerSecond = totalSpams / spamDuration
         end
 
-        HUD.SpamStats:SetDesc(string.format("- Total Spams: %d\n- Total Duration: %.1fs\n- Average Rate: %.1f spam/s\n- Status: %s",
+        setDesc(HUD.SpamStats, string.format("- Total Spams: %d\n- Total Duration: %.1fs\n- Average Rate: %.1f spam/s\n- Status: %s",
             totalSpams, spamDuration, spamsPerSecond, spamStarted and "ACTIVE" or "INACTIVE"))
 
         local livePing = getPing()
-        HUD.PingInfo:SetDesc(string.format("- Current Ping: %.0f ms (smoothed %.0f)\n- Frame Lag: %.0f ms (%.0f FPS)%s\n- Compensation: %s\n- Mode: %s\n- Strength: %.2fx%s\n- Prediction Horizon: %.2fs\n- Last Extra Range: +%.1f studs\n- Last Time-To-Impact: %s",
+        setDesc(HUD.PingInfo, string.format("- Current Ping: %.0f ms (smoothed %.0f)\n- Frame Lag: %.0f ms (%.0f FPS)%s\n- Compensation: %s\n- Mode: %s\n- Strength: %.2fx%s\n- Prediction Horizon: %.2fs\n- Last Extra Range: +%.1f studs\n- Last Time-To-Impact: %s",
             livePing, smoothedPing,
             frameLag * 1000, frameLag > 0 and (1 / frameLag) or 0,
             frameLag >= 0.05 and " (LAGGING - firing early)" or "",
@@ -1955,6 +1927,103 @@ end)
 createVisualSphere()
 createPlayerDetectorSpheres()
 
+-- Parry-range sphere. Recreated whenever it's missing (it is destroyed on
+-- death; the old code only recreated it if the variable was still set, so the
+-- sphere vanished for good after your first death).
+local function updateVisualSphere(humanoidRootPart)
+    if showVisualSphere then
+        if not visualSphere or not visualSphere.Parent then createVisualSphere() end
+        local d = currentParryDistance * 2
+        visualSphere.Size = Vector3.new(d, d, d)
+        visualSphere.Position = humanoidRootPart.Position
+        visualSphere.Transparency = 0.7
+        visualSphere.Color = isHighSpeedMode and Gold or AccentRed
+    elseif visualSphere then
+        visualSphere.Transparency = 1
+    end
+end
+
+-- Auto Spam: split out of the main Heartbeat so that closure stays under Lua
+-- 5.1's 60-upvalue cap (the offline test sandbox runs stock 5.1).
+local function runAutoSpam(amTargeted, clashDetected, realClash, hudTick)
+    if not autoSpamEnabled then
+        if spamStarted then
+            spamDuration = spamDuration + (tick() - lastSpamStartTime)
+            spamStarted = false
+        end
+        if hudTick then
+            setDesc(HUD.SpamStatus, "AUTO SPAM: DISABLED")
+            setDesc(HUD.SpamConditions, "Auto Spam is turned off")
+        end
+        return
+    end
+
+    local playerInRange, closestPlayer, playerDistance = checkPlayerDistance()
+    local ballInRange, ballDistance = checkBallDistance()
+
+    if hudTick then
+        if playerInRange and closestPlayer then
+            setDesc(HUD.PlayerDetection, string.format("Player: %s\nDistance: %.1f studs", closestPlayer.Name, playerDistance))
+        else
+            setDesc(HUD.PlayerDetection, "No players in range")
+        end
+
+        if ballInRange then
+            setDesc(HUD.BallDetection, string.format("Ball Found\nDistance: %.1f studs", ballDistance))
+        else
+            setDesc(HUD.BallDetection, string.format("No ball in range\nClosest: %.1f studs", ballDistance))
+        end
+
+        setDesc(HUD.HighlightDetection, amTargeted and "Targeted (you)" or "Not targeted")
+    end
+
+    -- Start vs. stay conditions differ on purpose:
+    --  * START needs proof this clash is YOURS, not one you're standing next
+    --    to - the highlight plus (with smart detection) real clash reversals,
+    --    so merely jumping around near someone never triggers it.
+    --  * STAY only needs the clash to still be going (reversals continuing)
+    --    OR the ball still nearby - so highlight flicker between the two
+    --    clashers and jump-stretched distances can't drop the spam mid-clash.
+    local spamStartCond, spamStayCond
+    if Clash.enabled then
+        spamStartCond = clashDetected and amTargeted and ballInRange
+        spamStayCond = clashDetected or ballInRange
+    else
+        spamStartCond = playerInRange and ballInRange and amTargeted
+        spamStayCond = ballInRange
+    end
+
+    if spamStartCond and not spamStarted then
+        spamStarted = true
+        lastSpamStartTime = tick()
+    elseif spamStarted and not spamStayCond then
+        spamDuration = spamDuration + (tick() - lastSpamStartTime)
+        spamStarted = false
+    end
+
+    if spamStarted then
+        if hudTick then
+            setDesc(HUD.SpamStatus, "AUTO SPAM: ACTIVE\nSpamming block!")
+            setDesc(HUD.SpamConditions, string.format("Clash: %s | Ball | Highlight\nClashing - all in!",
+                Clash.enabled and (clashDetected and (realClash and "LIVE (game)" or "LIVE (detected)") or "holding") or "off"))
+            setDesc(HUD.LiveStats, string.format("- Parry Status: %s\n- Spam Status: SPAMMING\n- Clash: %s (%d flips/%.1fs)\n- Player: %s (%.1f studs)\n- Ball Distance: %.1f studs\n- Total Spams: %d",
+                autoParryEnabled and "Active" or "Disabled",
+                realClash and "GAME" or (clashDetected and "detected" or "cooling"), #Clash.flipTimes, Clash.WINDOW,
+                closestPlayer and closestPlayer.Name or "Unknown", playerDistance, ballDistance, totalSpams))
+        end
+        executeSpam()
+    elseif hudTick then
+        setDesc(HUD.SpamStatus, "AUTO SPAM: INACTIVE\nWaiting for a clash...")
+        local clashText = Clash.enabled and (clashDetected and "[OK] Clash" or "[--] Clash") or "[off] Clash"
+        local conditionText = clashText .. " | " .. (ballInRange and "[OK] Ball" or "[--] Ball") .. " | " .. (amTargeted and "[OK] Targeted" or "[--] Targeted") .. "\nWaiting for a real clash..."
+        setDesc(HUD.SpamConditions, conditionText)
+        setDesc(HUD.LiveStats, string.format("- Parry Status: %s\n- Spam Status: WAITING\n- Clash Detected: %s (%d flips)\n- Ball in Range: %s\n- Highlight: %s",
+            autoParryEnabled and "Active" or "Disabled",
+            clashDetected and "Yes" or "No", #Clash.flipTimes,
+            ballInRange and "Yes" or "No", amTargeted and "Yes" or "No"))
+    end
+end
+
 local lastUpdateTime = 0
 mainLoopConn = RunService.Heartbeat:Connect(function()
     local currentTime = tick()
@@ -2036,6 +2105,10 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
     if realClash then Clash.forceUntil = currentTime + Clash.GRACE end
     local clashActive = realClash or currentTime < Clash.forceUntil
     local clashDetected = clashActive or (#Clash.flipTimes >= Clash.MIN_FLIPS)
+
+    if hudTick and not (autoParryEnabled and closestBall) then
+        setDesc(HUD.ParryStatus, autoParryEnabled and "Status: ACTIVE - waiting for a ball" or "Status: DISABLED")
+    end
 
     if autoParryEnabled and closestBall then
         local ballInDetectorRange = isBallInPlayerRange(closestBall, PLAYER_DETECTOR_DISTANCE)
@@ -2314,8 +2387,8 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         end
 
         if hudTick then
-            HUD.ParryStatus:SetDesc(string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
-            HUD.ParryDistance:SetDesc(string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Curve: %.1f studs/s^2 | Turn: %.0f deg/s (%s)\n- Camera: %.0f deg/s%s\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Panic Burst: %s\n- Mode: %s\n- Frozen: %s",
+            setDesc(HUD.ParryStatus, string.format("Status: %s", autoParryEnabled and "ACTIVE" or "DISABLED"))
+            setDesc(HUD.ParryDistance, string.format("- Detection Range: %.1f studs\n- Ping Comp: +%.1f studs (%.0f ms, lead %.2fs)\n- Effective Range: %.1f studs\n- Ball Speed: %.1f studs/s (closing: %.1f)\n- Curve: %.1f studs/s^2 | Turn: %.0f deg/s (%s)\n- Camera: %.0f deg/s%s\n- Distance to Ball: %.1f studs\n- Time-To-Impact: %s\n- Panic Burst: %s\n- Mode: %s\n- Frozen: %s",
                 currentParryDistance, pingComp, currentPing, currentRequiredLead, effectiveParryDistance, velocity, closingSpeed,
                 currentCurveAccel, math.deg(currentTurnRate), antiCurveEnabled and "ON" or "OFF",
                 math.deg(Camera.angVel), Camera.angVel >= Camera.WHIP_RATE and " (WHIP)" or "", closestDistance,
@@ -2462,102 +2535,15 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
             -- FIRST block sets a shield that covers impact, later ones are
             -- cooldown-gated by the server and harmless.
             if alwaysFire or ((panicNow or imminentThreat) and coverable and inShieldWindow) then
-                fireBlockRemote(alwaysFire)   -- clash/point-blank -> faster clash send rate
-                totalBurstBlocks = totalBurstBlocks + 1
+                if fireBlockRemote(alwaysFire) then   -- clash/point-blank -> faster clash send rate
+                    totalBurstBlocks = totalBurstBlocks + 1
+                end
             end
         end
     end
 
-    if visualSphere and showVisualSphere then
-        if not visualSphere.Parent then createVisualSphere() end
-        visualSphere.Size = Vector3.new(currentParryDistance * 2, currentParryDistance * 2, currentParryDistance * 2)
-        visualSphere.Position = humanoidRootPart.Position
-        visualSphere.Transparency = 0.7
-        if isHighSpeedMode then
-            visualSphere.Color = Gold
-        else
-            visualSphere.Color = AccentRed
-        end
-    elseif visualSphere then
-        visualSphere.Transparency = 1
-    end
-
-    if not autoSpamEnabled then
-        if spamStarted then
-            spamDuration = spamDuration + (tick() - lastSpamStartTime)
-            spamStarted = false
-        end
-        if hudTick then
-            HUD.SpamStatus:SetDesc("AUTO SPAM: DISABLED")
-            HUD.SpamConditions:SetDesc("Auto Spam is turned off")
-        end
-        return
-    end
-
-    local playerInRange, closestPlayer, playerDistance = checkPlayerDistance()
-    local ballInRange, ballDistance = checkBallDistance()
-
-    if hudTick then
-        if playerInRange and closestPlayer then
-            HUD.PlayerDetection:SetDesc(string.format("Player: %s\nDistance: %.1f studs", closestPlayer.Name, playerDistance))
-        else
-            HUD.PlayerDetection:SetDesc("No players in range")
-        end
-
-        if ballInRange then
-            HUD.BallDetection:SetDesc(string.format("Ball Found\nDistance: %.1f studs", ballDistance))
-        else
-            HUD.BallDetection:SetDesc(string.format("No ball in range\nClosest: %.1f studs", ballDistance))
-        end
-
-        HUD.HighlightDetection:SetDesc(amTargeted and "Targeted (you)" or "Not targeted")
-    end
-
-    -- Start vs. stay conditions differ on purpose:
-    --  * START needs proof this clash is YOURS, not one you're standing next
-    --    to - the highlight plus (with smart detection) real clash reversals,
-    --    so merely jumping around near someone never triggers it.
-    --  * STAY only needs the clash to still be going (reversals continuing)
-    --    OR the ball still nearby - so highlight flicker between the two
-    --    clashers and jump-stretched distances can't drop the spam mid-clash.
-    local spamStartCond, spamStayCond
-    if Clash.enabled then
-        spamStartCond = clashDetected and amTargeted and ballInRange
-        spamStayCond = clashDetected or ballInRange
-    else
-        spamStartCond = playerInRange and ballInRange and amTargeted
-        spamStayCond = ballInRange
-    end
-
-    if spamStartCond and not spamStarted then
-        spamStarted = true
-        lastSpamStartTime = tick()
-    elseif spamStarted and not spamStayCond then
-        spamDuration = spamDuration + (tick() - lastSpamStartTime)
-        spamStarted = false
-    end
-
-    if spamStarted then
-        if hudTick then
-            HUD.SpamStatus:SetDesc("AUTO SPAM: ACTIVE\nSpamming block!")
-            HUD.SpamConditions:SetDesc(string.format("Clash: %s | Ball | Highlight\nClashing - all in!",
-                Clash.enabled and (clashDetected and (realClash and "LIVE (game)" or "LIVE (detected)") or "holding") or "off"))
-            HUD.LiveStats:SetDesc(string.format("- Parry Status: %s\n- Spam Status: SPAMMING\n- Clash: %s (%d flips/%.1fs)\n- Player: %s (%.1f studs)\n- Ball Distance: %.1f studs\n- Total Spams: %d",
-                autoParryEnabled and "Active" or "Disabled",
-                realClash and "GAME" or (clashDetected and "detected" or "cooling"), #Clash.flipTimes, Clash.WINDOW,
-                closestPlayer and closestPlayer.Name or "Unknown", playerDistance, ballDistance, totalSpams))
-        end
-        executeSpam()
-    elseif hudTick then
-        HUD.SpamStatus:SetDesc("AUTO SPAM: INACTIVE\nWaiting for a clash...")
-        local clashText = Clash.enabled and (clashDetected and "[OK] Clash" or "[--] Clash") or "[off] Clash"
-        local conditionText = clashText .. " | " .. (ballInRange and "[OK] Ball" or "[--] Ball") .. " | " .. (amTargeted and "[OK] Targeted" or "[--] Targeted") .. "\nWaiting for a real clash..."
-        HUD.SpamConditions:SetDesc(conditionText)
-        HUD.LiveStats:SetDesc(string.format("- Parry Status: %s\n- Spam Status: WAITING\n- Clash Detected: %s (%d flips)\n- Ball in Range: %s\n- Highlight: %s",
-            autoParryEnabled and "Active" or "Disabled",
-            clashDetected and "Yes" or "No", #Clash.flipTimes,
-            ballInRange and "Yes" or "No", amTargeted and "Yes" or "No"))
-    end
+    updateVisualSphere(humanoidRootPart)
+    runAutoSpam(amTargeted, clashDetected, realClash, hudTick)
 end)
 
 track(LocalPlayer.CharacterRemoving:Connect(function()
@@ -2660,14 +2646,12 @@ unloadScript = function()
     if destroyed then return end
     destroyed = true  -- background loops + the ChangeBallColor hook go inert
 
+    -- Persist any unsaved setting change before tearing down.
+    if settingsDirty then settingsDirty = false; saveSettings() end
+
     -- Notify BEFORE we tear the UI down (the toast survives the window closing).
-    pcall(function()
-        WindUI:Notify({
-            Title = "Anime Ball Unloaded",
-            Content = "All loops, hooks and visuals removed",
-            Duration = 4,
-        })
-    end)
+    notify("Anime Ball Hub Unloaded", "All loops, hooks and visuals removed", 4)
+    uiReady = false
 
     -- Stop both Heartbeat loops - no more per-frame parry/block firing or HUD work.
     if mainLoopConn then pcall(function() mainLoopConn:Disconnect() end) mainLoopConn = nil end
@@ -2693,6 +2677,11 @@ unloadScript = function()
     end
     billboardCache = {}
 
+    -- Drop the ball cache and the highlight watchers.
+    for ball in pairs(ballsCache) do ballsCache[ball] = nil end
+    for _, conn in ipairs(highlightConns) do pcall(function() conn:Disconnect() end) end
+    highlightConns = {}
+
     -- Close the UI window.
     pcall(function() Window:Destroy() end)
 
@@ -2702,22 +2691,25 @@ unloadScript = function()
         if okEnv and type(genv) == "table" then
             genv.AnimeBallLoaded = nil
             genv.AnimeBallUnload = nil
+            genv.AnimeBallHubLoaded = nil
+            genv.AnimeBallHubUnload = nil
         end
     end
 end
 
 -- Expose the unloader globally so it also works from the console
--- (getgenv().AnimeBallUnload()) and so the re-exec guard at the top can find it.
+-- (getgenv().AnimeBallHubUnload()) and so the re-exec guard at the top can find it.
 if getgenv then
     local okEnv, genv = pcall(getgenv)
     if okEnv and type(genv) == "table" then
+        local unload = function() if unloadScript then unloadScript() end end
+        genv.AnimeBallHubLoaded = true
+        genv.AnimeBallHubUnload = unload
+        -- Legacy names kept so older loaders / console habits still work.
         genv.AnimeBallLoaded = true
-        genv.AnimeBallUnload = function() if unloadScript then unloadScript() end end
+        genv.AnimeBallUnload = unload
     end
 end
 
-WindUI:Notify({
-    Title = "Anime Ball Loaded!",
-    Content = "Auto Parry + Ping Compensation ready",
-    Duration = 5
-})
+uiReady = true
+notify("Anime Ball Hub Loaded!", "Auto Parry + Auto Spam ready. RightCtrl toggles the menu.", 5)

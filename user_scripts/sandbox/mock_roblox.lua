@@ -132,7 +132,7 @@ end
 local function stubval(name) return setmetatable({__stub=name}, {__index=function() return function() end end}) end
 local Color3 = { fromHex=function() return stubval("Color3") end, fromRGB=function() return stubval("Color3") end, new=function() return stubval("Color3") end }
 local ColorSequence = { new=function() return stubval("ColorSequence") end }
-local UDim2 = { new=function() return stubval("UDim2") end }
+local UDim2 = { new=function() return stubval("UDim2") end, fromOffset=function() return stubval("UDim2") end, fromScale=function() return stubval("UDim2") end }
 local UDim = { new=function() return stubval("UDim") end }
 
 -- ---------- Enum ----------
@@ -143,7 +143,7 @@ end
 local Enum = {
   PartType = enumfamily({"Ball","Block"}),
   Material = enumfamily({"ForceField","Air","Plastic"}),
-  KeyCode = enumfamily({"LeftControl","F"}),
+  KeyCode = enumfamily({"LeftControl","RightControl","F","End"}),
   ActuatorRelativeTo = enumfamily({"World","Attachment0"}),
   VelocityConstraintMode = enumfamily({"Vector","Line"}),
   Font = enumfamily({"GothamBold","Gotham"}),

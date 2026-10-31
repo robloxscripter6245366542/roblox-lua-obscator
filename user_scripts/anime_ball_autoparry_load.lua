@@ -1,4 +1,4 @@
--- Anime Ball autoparry — robust loader.
+-- Anime Ball Hub — robust loader.
 -- Use this instead of a bare loadstring(game:HttpGet(url))(): it retries the
 -- download on transient network hiccups, reports a clear on-screen message if
 -- it can never fetch / compile / run the script, and never silently no-ops.
@@ -13,12 +13,12 @@ local MAX_TRIES = 4
 local function notify(title, content)
     pcall(function()
         game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "[AnimeBall] " .. title,
+            Title = "[Anime Ball Hub] " .. title,
             Text = content,
             Duration = 6,
         })
     end)
-    warn("[AnimeBall] " .. title .. ": " .. content)
+    warn("[Anime Ball Hub] " .. title .. ": " .. content)
 end
 
 -- Download with retries + exponential backoff (1s, 2s, 4s). HttpGet can throw

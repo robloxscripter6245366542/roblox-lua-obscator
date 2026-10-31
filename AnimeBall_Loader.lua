@@ -50,10 +50,10 @@ local realInstanceNew = Instance.new
 local realWritefile  = rawget(getgenv and getgenv() or _G, "writefile") or writefile
 
 local function notify(text, dur)
-    print("[AnimeBall_Loader] " .. text)
+    print("[Anime Ball Hub] " .. text)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
-            Title = "AnimeBall Loader", Text = text, Duration = dur or 5,
+            Title = "Anime Ball Hub", Text = text, Duration = dur or 5,
         })
     end)
 end
