@@ -2516,6 +2516,28 @@ local function runAutoSpam(amTargeted, clashDetected, realClash, hudTick, recent
     end
 end
 
+-- Is a ball near me (within `radius` studs) in play between me and `otherName`?
+-- True when its target (fresh server capture, else the attribute) is me, them,
+-- or not assigned yet. Used to gate the dash-in pre-shield.
+Clash.NEAR_BALL = 22
+Clash.ballInvolves = function(otherName, myPos, radius)
+    local myName = LocalPlayer.Name
+    for ball in pairs(ballsCache) do
+        if ball.Parent then
+            local bp = getBallPosition(ball)
+            if bp and (bp - myPos).Magnitude <= radius then
+                local target = ball:GetAttribute("Target")
+                local sm = serverTargetCache[ball]
+                if sm ~= nil and (tick() - sm.time) < SERVER_TARGET_TTL then target = sm.target end
+                if type(target) ~= "string" or target == myName or target == otherName then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
 local lastUpdateTime = 0
 mainLoopConn = RunService.Heartbeat:Connect(function()
     local currentTime = tick()
@@ -2976,7 +2998,18 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
                         if od <= 18 then
                             local ov = ohrp.AssemblyLinearVelocity
                             local oClose = od > 1e-3 and ov:Dot(off) / od or 0
-                            if od <= 9 or oClose >= 45 then clashIncoming = true break end
+                            -- Only a pre-shield if a ball near me is actually in
+                            -- play between us (see Clash.ballInvolves): a player
+                            -- merely standing/walking next to me while the ball is
+                            -- elsewhere fired a block every frame (180 in 3s in the
+                            -- sandbox) and kept me on cooldown for the real ball.
+                            -- Dashing at me (>= 45 studs/s) with a ball of ours in
+                            -- play within 34 studs, or standing on top of me (<= 9)
+                            -- with such a ball within 22 studs.
+                            if (oClose >= 45 and Clash.ballInvolves(pl.Name, humanoidRootPart.Position, 34))
+                                or (od <= 9 and Clash.ballInvolves(pl.Name, humanoidRootPart.Position, Clash.NEAR_BALL)) then
+                                clashIncoming = true break
+                            end
                         end
                     end
                 end

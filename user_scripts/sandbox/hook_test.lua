@@ -236,6 +236,43 @@ for _,ping in ipairs({60,150}) do
   if wasted==0 and parried then ok(tag) else bad(tag, "should waste 0 and parry") end
 end
 
+print("=== Not in a clash: someone just standing next to me ===")
+-- A player stands 6 studs from me (lobby crowding / walking past) while the
+-- ball flies around 30 studs away aimed at a THIRD player. Nobody is dashing
+-- into me with their ball, so this is not a clash: my blocks must stay at 0,
+-- and when the ball then comes for me it must be parried.
+for _,ping in ipairs({60,150}) do
+  local w = assert(build(SRC, ping)); settle(w)
+  local v3,Instance,Enum = w.v3,w.Instance,w.Enum
+  local nb=Instance.new("Player"); nb.Name="Neighbour"
+  local nchar=Instance.new("Model"); nchar.Name="Neighbour"
+  local nhrp=Instance.new("Part"); nhrp.Name="HumanoidRootPart"; nhrp.Position=v3(6,5,0); nhrp.AssemblyLinearVelocity=v3(0,0,0); nhrp.Parent=nchar
+  nb.Character=nchar; nb.CharacterAdded=w.R.newSignal(); nb.CharacterRemoving=w.R.newSignal()
+  w.players[#w.players+1]=nb; w.Players.PlayerAdded:Fire(nb)
+  local b=Instance.new("Part"); b.Name="Ball5"
+  local lv=Instance.new("LinearVelocity"); lv.Enabled=true; lv.RelativeTo=Enum.ActuatorRelativeTo.World
+  lv.VelocityConstraintMode=Enum.VelocityConstraintMode.Vector; lv.Parent=b
+  local t=0; local pos=v3(30,5,0); local vel=v3(0,0,0)
+  b.Position=pos; b:SetAttribute("Target","Third"); b.Parent=w.Balls
+  local dt=1/60; local blocks0=w.server.blocks
+  for _=1,180 do   -- ball circles 30 studs away (aimed at someone else)
+    t=t+dt; local np=v3(30*math.cos(t*1.5),5,30*math.sin(t*1.5)); vel=v3((np.X-pos.X)/dt,0,(np.Z-pos.Z)/dt); pos=np
+    b.Position=pos; b.AssemblyLinearVelocity=vel; lv.VectorVelocity=vel
+    w.RunService.Heartbeat:Fire(); w.R.advance(dt)
+  end
+  local wasted=w.server.blocks-blocks0
+  w.ballCtl.Server.ChangeBallColor("Ball5","Hero"); b:SetAttribute("Target","Hero")
+  local to=(w.hrp.Position-pos); local d=to.Magnitude; vel=v3(to.X/d*150,0,to.Z/d*150)
+  local parried=nil
+  for _=1,120 do
+    pos=pos+v3(vel.X*dt,vel.Y*dt,vel.Z*dt); b.Position=pos; b.AssemblyLinearVelocity=vel; lv.VectorVelocity=vel
+    w.RunService.Heartbeat:Fire(); w.R.advance(dt)
+    if (w.hrp.Position-pos).Magnitude<=8 then parried=w.shieldAt(w.R.VTIME()) break end
+  end
+  local tag=string.format("neighbour @%d: wasted %d blocks, my ball %s", ping, wasted, parried and "PARRIED" or "MISSED")
+  if wasted==0 and parried then ok(tag) else bad(tag, "should waste 0 and parry") end
+end
+
 print("=== Block result + BlockSuccess hook ===")
 do
   local _, _, w = run(60, "Other", "Hero", true)
