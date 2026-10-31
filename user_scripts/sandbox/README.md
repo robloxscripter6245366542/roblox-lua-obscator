@@ -143,3 +143,15 @@ The server block model (shield duration, cooldown, whether a whiffed block spend
 the cooldown) is the best reconstruction from the dump, not observed ground
 truth, so treat the *timing* conclusions as strong hypotheses. Crash-detection is
 exact. The real confirmation is still an in-game run.
+
+- **`hook_test.lua`** — the game's server→client calls the script hooks.
+  `BallController.Server.ChangeBallColor(ballName, target)` passes the ball's
+  **name**, and under **NoHighlight** (or for invisible balls) the game never
+  writes the ball's `Target` attribute, so it goes stale. A decoy ball with a
+  stale "me" attribute plus my real ball with a stale "them" attribute must
+  still get my real ball parried. Also checks that unload restores the hooked
+  `ChangeBallColor` / `SwordController.Server.BlockSuccess`. Also covers the
+  client game fixes: a clash with the game's Clash visual setting **off**
+  (the game never sets `ClashEffect` then) must still be held, and
+  `GetBallAsync` must not add a connection per call. Run:
+  `lua-5.1.5/src/lua hook_test.lua`. Expected: **ALL HOOK CASES OK**.

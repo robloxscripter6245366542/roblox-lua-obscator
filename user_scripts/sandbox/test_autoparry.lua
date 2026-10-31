@@ -18,7 +18,7 @@ local function runOne(speed, pingMs)
   function server.block(lookY)
     server.blocks = server.blocks+1; server.log[#server.log+1]={t=R.VTIME()}
     local reg = R.VTIME()+oneway
-    if reg < server.cooldownUntil then return false end
+    if reg < server.cooldownUntil then return nil end
     server.shields[#server.shields+1]={reg, reg+0.6}
     server.cooldownUntil = reg+1.0
     return true

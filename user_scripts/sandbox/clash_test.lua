@@ -17,7 +17,7 @@ local function run(S, Dstart, Dend, dashT, ping, fps, seed)
   -- reset on a successful parry.
   local server={cooldownUntil=0,shields={},blocks=0}
   function server.block() server.blocks=server.blocks+1
-    local reg=R.VTIME()+oneway; if reg<server.cooldownUntil then return false end
+    local reg=R.VTIME()+oneway; if reg<server.cooldownUntil then return nil end
     server.shields[#server.shields+1]={reg,reg+0.6}; server.cooldownUntil=reg+1.0; return true end
   local function shieldAt(t) for _,s in ipairs(server.shields) do if t>=s[1] and t<=s[2] then return true end end return false end
   function server.parryReset() server.cooldownUntil=R.VTIME() end
