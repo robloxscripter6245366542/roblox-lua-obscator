@@ -526,6 +526,7 @@ showPlayerDetectors = setting("ShowSpamSphere", showPlayerDetectors)
 showSpeedLabel      = setting("ShowSpeedLabel", showSpeedLabel)
 GameAP.want         = setting("GameAutoParry", false)
 AutoDash.enabled    = setting("AutoDash", false)
+Clash.retOn         = setting("ReturnPreShield", true)
 AutoDash.range      = math.clamp(setting("AutoDashRange", AutoDash.range), 6, 30)
 AutoDash.closing    = math.clamp(setting("AutoDashClosing", AutoDash.closing), 10, 120)
 AutoDash.angle      = math.clamp(setting("AutoDashAngle", AutoDash.angle), 0, 90)
@@ -799,6 +800,12 @@ toggle(Tabs.Parry, "CameraAware", "Camera-Aware Blocking",
     Camera.aware = v
 end)
 HUD.PingInfo = paragraph(Tabs.Parry, "Ping Status", "Measuring...")
+
+toggle(Tabs.Parry, "ReturnPreShield", "Return Pre-Shield",
+    "When an opponent near you is about to hit the ball, block early if their return would reach you faster than your ping - "
+        .. "so fast close returns are already shielded", Clash.retOn, function(v)
+    Clash.retOn = v
+end)
 
 section(Tabs.Parry, "Auto-Dash Away")
 toggle(Tabs.Parry, "AutoDash", "Auto-Dash Away",
@@ -2371,6 +2378,67 @@ track(RunService.Heartbeat:Connect(function()
     AutoDash.count = AutoDash.count + 1
     AutoDash.lastReason = reason
     setDesc(HUD.AutoDash, string.format("Dashed %d time(s)\nLast: %s", AutoDash.count, reason))
+end))
+
+-- Return Pre-Shield. The fast close-return miss: an opponent near you hits the
+-- ball straight back, and it lands in (gap - hit radius) / speed seconds -
+-- often LESS than your ping, so a block fired after the ball turns can't reach
+-- the server in time (sandbox: 7/12 missed at 120-200 ms). So while a ball
+-- aimed at a nearby opponent is about to reach them, and their return would be
+-- too fast to react to, fire the block now, timed so the 0.6s shield (which
+-- registers half-a-ping after firing) covers the return. One block per
+-- approach; own Heartbeat so it adds nothing to the parry loop.
+Clash.RET_RANGE = 35        -- studs: opponent must be this close for a too-fast return
+Clash.RET_SPEEDUP = 1.25    -- assume the return comes back this much faster (balls speed up per hit)
+Clash.retBall, Clash.retAt, Clash.retCount = nil, 0, 0
+track(RunService.Heartbeat:Connect(function()
+    if destroyed or not Clash.retOn or not autoParryEnabled then return end
+    local hrp = getPlayerHRP(LocalPlayer)
+    if not hrp then return end
+    local now = tick()
+    local myPos = hrp.Position
+    local ping = math.max(smoothedPing, currentPing) / 1000
+    local myName = LocalPlayer.Name
+    for ball in pairs(ballsCache) do
+        if ball.Parent and not (Clash.retBall == ball and now - Clash.retAt < 0.8) then
+            local target = ball:GetAttribute("Target")
+            local sm = serverTargetCache[ball]
+            if sm ~= nil and (now - sm.time) < SERVER_TARGET_TTL then target = sm.target end
+            local ohrp = nil
+            if type(target) == "string" and target ~= myName then
+                for _, pl in ipairs(Players:GetPlayers()) do
+                    if pl.Name == target then ohrp = getPlayerHRP(pl) break end
+                end
+            end
+            if ohrp then
+                local gap = (ohrp.Position - myPos).Magnitude
+                local bp = getBallPosition(ball)
+                if bp and gap <= Clash.RET_RANGE then
+                    local vel = getBallVelocityVector(ball)
+                    local speed = vel.Magnitude
+                    local toP = ohrp.Position - bp
+                    local dP = toP.Magnitude
+                    local closing = dP > 1e-3 and vel:Dot(toP) / dP or 0
+                    if closing > 1 and speed > 1 then
+                        local ttiToP = math.max(dP - EFFECTIVE_HIT_RADIUS, 0) / closing
+                        local returnWindow = math.max(gap - EFFECTIVE_HIT_RADIUS, 0) / (speed * Clash.RET_SPEEDUP)
+                        -- Only when reacting after the turn can't make it, and only
+                        -- once the return falls inside the shield the block buys:
+                        -- arrival (ttiToP + returnWindow) within ping + 0.45s.
+                        if returnWindow < ping + frameLag + 0.1
+                            and (ttiToP + returnWindow) <= ping + 0.45 then
+                            Clash.retBall, Clash.retAt = ball, now
+                            if fireBlockRemote(false) then
+                                Clash.retCount = Clash.retCount + 1
+                                totalBurstBlocks = totalBurstBlocks + 1
+                            end
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
 end))
 
 -- Game's server-side auto parry (see GameAP at the top).
