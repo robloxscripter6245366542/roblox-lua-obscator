@@ -508,19 +508,73 @@ end
 -- ============================================
 -- WINDOW + THEME
 -- ============================================
+-- "Crimson Glass": a see-through crimson window (Acrylic blur + transparent
+-- background) with tinted glass panels, a crimson glow shadow and bright
+-- crimson accents. Every glass surface is a translucent red tint, not grey.
+local GLASS_DEFAULT = 0.4  -- window see-through amount (0 = solid, 0.9 = almost clear)
+local glassTransparency = math.clamp(setting("GlassTransparency", GLASS_DEFAULT), 0, 0.9)
+local function hex(h) return Color3.fromHex(h) end
 pcall(function()
     WindUI:AddTheme({
-        Name = "CrimsonClash",
-        Accent = AccentRed,
-        Dialog = Color3.fromHex("#3D0F19"),
-        Outline = Color3.fromHex("#FF4D5E"),
-        Text = Color3.fromHex("#FFE9EE"),
-        Placeholder = Color3.fromHex("#D98FA0"),
-        Background = Color3.fromHex("#2B0A12"),
-        Button = Color3.fromHex("#521624"),
-        Icon = Color3.fromHex("#FFC4D1"),
+        Name = "CrimsonGlass",
+        -- core palette
+        Accent = hex("#DC143C"),
+        Primary = hex("#FF2E4D"),
+        Background = hex("#3A0A14"),
+        Dialog = hex("#2A0710"),
+        Outline = hex("#FF6B81"),
+        Text = hex("#FFF0F3"),
+        Placeholder = hex("#E8A0AE"),
+        Button = hex("#8B1A2B"),
+        Icon = hex("#FF8FA3"),
+        Hover = hex("#FF4D6A"),
+        White = hex("#FFFFFF"),
+        Black = hex("#000000"),
+        -- controls
+        Toggle = hex("#DC143C"),
+        ToggleBar = hex("#FFFFFF"),
+        Slider = hex("#FF2E4D"),
+        SliderThumb = hex("#FFFFFF"),
+        SliderIcon = hex("#FF8FA3"),
+        Checkbox = hex("#DC143C"),
+        ProgressBar = hex("#FF2E4D"),
+        -- glass surfaces (translucent crimson tints)
+        ElementBackground = hex("#FF3355"),
+        ElementBackgroundTransparency = 0.88,
+        PanelBackground = hex("#FF5A73"),
+        PanelBackgroundTransparency = 0.92,
+        LabelBackground = hex("#FF4D6A"),
+        LabelBackgroundTransparency = 0.9,
+        SectionBox = hex("#FF4D6A"),
+        SectionBoxTransparency = 0.93,
+        SectionBoxBorder = hex("#FF8FA3"),
+        SectionBoxBorderTransparency = 0.6,
+        SectionBoxBackground = hex("#FF3355"),
+        SectionBoxBackgroundTransparency = 0.95,
+        -- tabs
+        TabBackground = hex("#FF4D6A"),
+        TabBackgroundHover = hex("#FF4D6A"),
+        TabBackgroundHoverTransparency = 0.88,
+        TabBackgroundActive = hex("#DC143C"),
+        TabBackgroundActiveTransparency = 0.6,
+        TabBorder = hex("#FF8FA3"),
+        TabBorderTransparencyActive = 0.35,
+        -- window chrome
+        WindowShadow = hex("#DC143C"),   -- crimson glow instead of a black shadow
+        WindowSearchBarBackground = hex("#2A0710"),
+        SearchBarBorder = hex("#FF8FA3"),
+        SearchBarBorderTransparency = 0.6,
+        DropdownBackground = hex("#2A0710"),
+        DropdownTabBorder = hex("#FF8FA3"),
+        Tooltip = hex("#5A0F1E"),
+        -- notifications
+        Notification = hex("#3A0A14"),
+        Notification2 = hex("#DC143C"),
+        Notification2Transparency = 0.85,
+        NotificationBorder = hex("#FF6B81"),
+        NotificationBorderTransparency = 0.5,
     })
-    WindUI:SetTheme("CrimsonClash")
+    WindUI:SetTheme("CrimsonGlass")
 end)
 
 local LOGO_ICON = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/assets/anime_ball_logo_rounded.png"
@@ -531,8 +585,9 @@ local windowConfig = {
     Author = "Auto Parry • Auto Spam",
     Folder = "AnimeBallHub",
     Size = UDim2.fromOffset(580, 460),
-    Theme = "CrimsonClash",
-    Transparent = true,
+    Theme = "CrimsonGlass",
+    Transparent = true,   -- see-through glass background
+    Acrylic = true,       -- blur what's behind the window (frosted glass)
     SideBarWidth = 190,
     ToggleKey = Enum.KeyCode.RightControl,
 }
@@ -547,6 +602,8 @@ if not okWin or type(Window) ~= "table" then
     return warn("[Anime Ball Hub] failed to create window: " .. tostring(Window))
 end
 pcall(function() Window:SetToggleKey(Enum.KeyCode.RightControl) end)
+pcall(function() WindUI:SetTheme("CrimsonGlass") end)  -- re-apply in case the window reset it
+pcall(function() Window:SetBackgroundTransparency(glassTransparency) end)
 -- Floating open button (needed on mobile, where there is no keyboard toggle).
 pcall(function()
     Window:EditOpenButton({
@@ -739,6 +796,12 @@ toggle(Tabs.Visuals, "ShowSpeedLabel", "Show Ball Speed Labels",
         end
         billboardCache = {}
     end
+end)
+section(Tabs.Visuals, "Menu Glass")
+slider(Tabs.Visuals, "GlassTransparency", "Glass Transparency",
+    "How see-through the crimson glass window is (0 = solid)", 0, 0.9, 0.05, glassTransparency, function(v)
+    glassTransparency = v
+    pcall(function() Window:SetBackgroundTransparency(v) end)
 end)
 paragraph(Tabs.Visuals, "Color Guide",
     "Crimson = Normal Mode\nGold = High Speed Mode\nEmerald = Player Detectors\nAmber = Ball Velocity")
