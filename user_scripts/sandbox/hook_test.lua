@@ -131,6 +131,66 @@ do
   if w2.apService.calls == 1 and not w2.apService.enabled then ok("refused by server -> asked once, stays off") else bad("refused", w2.apService.calls.." calls, enabled="..tostring(w2.apService.enabled)) end
 end
 
+print("=== Auto-Dash Away ===")
+local function dashCase(enabled, foeSpeed, startDist, heroVelX, clash)
+  local src = enabled and SRC:gsub('AutoDash.enabled    = setting%("AutoDash", false%)', 'AutoDash.enabled = true') or SRC
+  local w = assert(build(src, 80)); settle(w)
+  local v3,Instance = w.v3,w.Instance
+  local foe=Instance.new("Player"); foe.Name="Foe"
+  local fchar=Instance.new("Model"); fchar.Name="Foe"
+  local fhrp=Instance.new("Part"); fhrp.Name="HumanoidRootPart"; fhrp.Position=v3(0,5,startDist)
+  fhrp.AssemblyLinearVelocity=v3(0,0,-foeSpeed); fhrp.Parent=fchar
+  foe.Character=fchar; foe.CharacterAdded=w.R.newSignal(); foe.CharacterRemoving=w.R.newSignal()
+  w.players[#w.players+1]=foe; w.Players.PlayerAdded:Fire(foe)
+  w.hrp.AssemblyLinearVelocity=v3(heroVelX or 0,0,0)
+  if clash then
+    -- a real clash always has a ball in play between you
+    local b=Instance.new("Part"); b.Name="ClashBall"; b:SetAttribute("Target","Foe")
+    b.Position=v3(0,5,10); b.AssemblyLinearVelocity=v3(0,0,0); b.Parent=w.Balls
+    w.clashCtl.Server.StartClash()
+  end
+  local dt=1/60
+  for _=1,90 do
+    fhrp.Position=fhrp.Position+v3(0,0,-foeSpeed*dt)
+    if fhrp.Position.Z < 2 then foeSpeed=0; fhrp.AssemblyLinearVelocity=v3(0,0,0) end
+    w.RunService.Heartbeat:Fire(); w.R.advance(dt)
+  end
+  return w.movement.dashCount
+end
+local n = dashCase(true, 90, 25)
+if n == 1 then ok("foe dashes in at 90 studs/s -> auto-dashed once (cooldown respected)") else bad("dash-in", n.." dashes") end
+n = dashCase(false, 90, 25)
+if n == 0 then ok("toggle off -> never dashes") else bad("off", n.." dashes") end
+n = dashCase(true, 90, 25, 0, true)
+if n == 0 then ok("in a clash (server StartClash) -> never dashes out of it") else bad("clash", n.." dashes") end
+n = dashCase(true, 8, 10)
+if n == 0 then ok("foe just walking nearby (8 studs/s) -> no dash") else bad("walk", n.." dashes") end
+-- Direction: foe rushes in from +Z while you move toward +X. Straight away is
+-- -Z; at the default 45 deg it leans toward the side you're moving (+X):
+-- expected Move(dir) = (0.707, 0, -0.707).
+do
+  local captured
+  local function run()
+    local src = SRC:gsub('AutoDash.enabled    = setting%("AutoDash", false%)', 'AutoDash.enabled = true')
+    local w = assert(build(src, 80)); settle(w)
+    local hum = w.char:FindFirstChild("Humanoid")
+    hum.Move = function(_, d) captured = d end
+    local v3,Instance = w.v3,w.Instance
+    local foe=Instance.new("Player"); foe.Name="Foe"
+    local fchar=Instance.new("Model"); fchar.Name="Foe"
+    local fhrp=Instance.new("Part"); fhrp.Name="HumanoidRootPart"; fhrp.Position=v3(0,5,20)
+    fhrp.AssemblyLinearVelocity=v3(0,0,-90); fhrp.Parent=fchar
+    foe.Character=fchar; foe.CharacterAdded=w.R.newSignal(); foe.CharacterRemoving=w.R.newSignal()
+    w.players[#w.players+1]=foe; w.Players.PlayerAdded:Fire(foe)
+    w.hrp.AssemblyLinearVelocity=v3(10,0,0)
+    for _=1,20 do fhrp.Position=fhrp.Position+v3(0,0,-1.5); w.RunService.Heartbeat:Fire(); w.R.advance(1/60) end
+  end
+  run()
+  if captured and math.abs(captured.X-0.7071)<0.02 and math.abs(captured.Z+0.7071)<0.02 and math.abs(captured.Y)<1e-6 then
+    ok(string.format("dash angle 45 deg away + toward your movement -> (%.2f, %.2f, %.2f)", captured.X, captured.Y, captured.Z))
+  else bad("dash direction", captured and string.format("(%.2f, %.2f, %.2f)", captured.X, captured.Y, captured.Z) or "Move never called") end
+end
+
 print("=== Block result + BlockSuccess hook ===")
 do
   local _, _, w = run(60, "Other", "Hero", true)

@@ -478,6 +478,15 @@ local resolveBallRef, recordServerTarget  -- defined next to the ChangeBallColor
 -- allowed. A server-side parry has no ping delay at all. Filled in below.
 local GameAP = { want = false, status = "off", setEnabled = nil }
 
+-- Auto-Dash Away: when an opponent rushes into you (or a ball is about to hit
+-- point-blank while your block is still on cooldown) it fires the game's own
+-- dash, angled away from the threat and toward the side you're already moving.
+--   range   = studs: how close a rushing player / ball must be
+--   closing = studs/s: how fast they must be coming at you to count as a rush
+--   angle   = degrees off "straight away" (0 = straight back, 90 = sideways)
+local AutoDash = { enabled = false, range = 14, closing = 35, angle = 45,
+                   lastFire = 0, count = 0, rejectedAt = 0, lastReason = "-" }
+
 -- ============================================
 -- APPLY SAVED SETTINGS
 -- ============================================
@@ -503,6 +512,10 @@ showVisualSphere    = setting("ShowParrySphere", showVisualSphere)
 showPlayerDetectors = setting("ShowSpamSphere", showPlayerDetectors)
 showSpeedLabel      = setting("ShowSpeedLabel", showSpeedLabel)
 GameAP.want         = setting("GameAutoParry", false)
+AutoDash.enabled    = setting("AutoDash", false)
+AutoDash.range      = math.clamp(setting("AutoDashRange", AutoDash.range), 6, 30)
+AutoDash.closing    = math.clamp(setting("AutoDashClosing", AutoDash.closing), 10, 120)
+AutoDash.angle      = math.clamp(setting("AutoDashAngle", AutoDash.angle), 0, 90)
 
 -- WindUI sliders hand back a number on most builds but a string on a few;
 -- coerce so the math below never compares a string to a number.
@@ -772,6 +785,26 @@ toggle(Tabs.Parry, "CameraAware", "Camera-Aware Blocking",
     Camera.aware = v
 end)
 HUD.PingInfo = paragraph(Tabs.Parry, "Ping Status", "Measuring...")
+
+section(Tabs.Parry, "Auto-Dash Away")
+toggle(Tabs.Parry, "AutoDash", "Auto-Dash Away",
+    "Dash away at an angle when a player rushes into you, or a ball is about to hit point-blank while your block is on cooldown. "
+        .. "Uses the game's own dash (1.1s cooldown). Holding W/A/S/D overrides the direction.", AutoDash.enabled, function(v)
+    AutoDash.enabled = v
+end)
+slider(Tabs.Parry, "AutoDashRange", "Dash Trigger Distance (studs)",
+    "How close a rushing player or ball must be", 6, 30, 1, AutoDash.range, function(v)
+    AutoDash.range = v
+end)
+slider(Tabs.Parry, "AutoDashClosing", "Rush Speed (studs/s)",
+    "How fast a player must be coming at you to count as a rush (dash = ~90)", 10, 120, 5, AutoDash.closing, function(v)
+    AutoDash.closing = v
+end)
+slider(Tabs.Parry, "AutoDashAngle", "Dash Angle (degrees)",
+    "0 = straight away from them, 45 = diagonal, 90 = sideways. Side follows the way you're moving", 0, 90, 5, AutoDash.angle, function(v)
+    AutoDash.angle = v
+end)
+HUD.AutoDash = paragraph(Tabs.Parry, "Auto-Dash Status", "Off")
 
 -- ============================================
 -- AUTO SPAM TAB
@@ -1570,6 +1603,7 @@ local function recordBlockResult(ok, result)
     elseif result == nil then
         blockRejected = blockRejected + 1
         lastBlockResult = "rejected"
+        AutoDash.rejectedAt = tick()
     else
         blockLanded = blockLanded + 1
         if result == true then
@@ -2173,6 +2207,104 @@ task.spawn(function()
         end)
     end)
 end)
+
+-- Auto-Dash Away (see AutoDash at the top). Own throttled Heartbeat so it adds
+-- nothing to the parry loop. Direction: straight away from the threat, rotated
+-- by AutoDash.angle toward the side you're already moving (so it keeps your
+-- momentum instead of fighting it).
+AutoDash.dirFor = function(myPos, myVel, threatPos)
+    local away = Vector3.new(myPos.X - threatPos.X, 0, myPos.Z - threatPos.Z)
+    if away.Magnitude < 1e-3 then
+        away = Vector3.new(myVel.X, 0, myVel.Z)
+        if away.Magnitude < 1e-3 then away = Camera.flatDir * -1 end
+    end
+    away = away.Unit
+    local side = Vector3.new(-away.Z, 0, away.X)              -- perpendicular, flat
+    local s = (myVel.X * side.X + myVel.Z * side.Z) >= 0 and 1 or -1
+    local a = math.rad(AutoDash.angle)
+    local dir = away * math.cos(a) + side * (s * math.sin(a))
+    return dir.Magnitude > 1e-3 and dir.Unit or away
+end
+AutoDash.threat = function(hrp)
+    local myPos, myVel = hrp.Position, hrp.AssemblyLinearVelocity
+    -- 1) A player rushing into you (a dash-in clash).
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer then
+            local ohrp = getPlayerHRP(pl)
+            if ohrp then
+                local off = myPos - ohrp.Position
+                local d = off.Magnitude
+                if d > 1e-3 and d <= AutoDash.range then
+                    local closing = (ohrp.AssemblyLinearVelocity - myVel):Dot(off) / d
+                    if closing >= AutoDash.closing then
+                        return ohrp.Position, "rush: " .. pl.Name .. string.format(" (%.0f studs/s)", closing)
+                    end
+                end
+            end
+        end
+    end
+    -- 2) A ball about to hit point-blank while your block was just rejected
+    --    (still on cooldown), so blocking can't save you - dodge instead.
+    if tick() - AutoDash.rejectedAt <= 0.6 then
+        for ball in pairs(ballsCache) do
+            if ball.Parent then
+                local bp = getBallPosition(ball)
+                if bp then
+                    local off = myPos - bp
+                    local d = off.Magnitude
+                    if d > 1e-3 and d <= AutoDash.range then
+                        local closing = getBallVelocityVector(ball):Dot(off) / d
+                        if closing > 0 and (d - EFFECTIVE_HIT_RADIUS) / closing <= 0.35 then
+                            return bp, "ball on cooldown"
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+AutoDash.inClash = function()
+    if Clash.server == true or spamStarted then return true end
+    if tick() < Clash.forceUntil then return true end
+    if #Clash.flipTimes >= Clash.MIN_FLIPS then return true end
+    local effects = workspace:FindFirstChild("Effects")
+    return effects ~= nil and effects:GetAttribute("ClashEffect") == true
+end
+track(RunService.Heartbeat:Connect(function()
+    if destroyed or not AutoDash.enabled then return end
+    local now = tick()
+    if now - AutoDash.lastFire < 1.15 then return end     -- the game's dash cooldown is 1.1s
+    local ctl = Dash.controller
+    if not ctl or type(ctl.ForceDash) ~= "function" or ctl.CanDash == false or ctl.Dashing == true then return end
+    -- Never dash out of a clash: dashing away mid-clash breaks the exchange
+    -- the parry is holding. Any clash signal counts (server StartClash, the
+    -- game's ClashEffect attribute, the clash hold window, ball reversals, or
+    -- Auto Spam currently spamming a clash).
+    if AutoDash.inClash() then
+        setDesc(HUD.AutoDash, string.format("Dashed %d time(s)\nPaused: you're in a clash", AutoDash.count))
+        return
+    end
+    local hrp = getPlayerHRP(LocalPlayer)
+    if not hrp then return end
+    local threatPos, reason = AutoDash.threat(hrp)
+    if not threatPos then return end
+    local dir = AutoDash.dirFor(hrp.Position, hrp.AssemblyLinearVelocity, threatPos)
+    AutoDash.lastFire = now
+    -- The game's Dash reads your MoveDirection (unless W/A/S/D is held), so
+    -- point it at the escape angle, then let the game's own dash fire (keeps
+    -- its animation, replication and cooldown). Separate pcalls: a failed
+    -- Move must never stop the dash itself.
+    pcall(function()
+        local humanoid = hrp.Parent and hrp.Parent:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid:Move(dir, false) end
+    end)
+    AutoDash.lastDir = dir
+    pcall(function() ctl.ForceDash() end)
+    AutoDash.count = AutoDash.count + 1
+    AutoDash.lastReason = reason
+    setDesc(HUD.AutoDash, string.format("Dashed %d time(s)\nLast: %s", AutoDash.count, reason))
+end))
 
 -- Game's server-side auto parry (see GameAP at the top).
 -- (kept as a field, not a local: the main chunk is at Luau's 200-local limit)
