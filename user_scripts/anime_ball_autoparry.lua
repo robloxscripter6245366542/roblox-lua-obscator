@@ -472,6 +472,12 @@ local serverTargetCache = {}  -- [ballInstance] = {target=playerName, time=tick(
 local SERVER_TARGET_TTL = 15
 local resolveBallRef, recordServerTarget  -- defined next to the ChangeBallColor hook
 
+-- The game's own SERVER-SIDE auto parry (AutoParryService, added in the
+-- 2026-10-31 update). The client asks with AutoParryService.SetEnabled:Invoke(bool)
+-- and the server answers with the new state, or nil if your account isn't
+-- allowed. A server-side parry has no ping delay at all. Filled in below.
+local GameAP = { want = false, status = "off", setEnabled = nil }
+
 -- ============================================
 -- APPLY SAVED SETTINGS
 -- ============================================
@@ -496,6 +502,7 @@ Clash.enabled       = setting("SmartClash", Clash.enabled)
 showVisualSphere    = setting("ShowParrySphere", showVisualSphere)
 showPlayerDetectors = setting("ShowSpamSphere", showPlayerDetectors)
 showSpeedLabel      = setting("ShowSpeedLabel", showSpeedLabel)
+GameAP.want         = setting("GameAutoParry", false)
 
 -- WindUI sliders hand back a number on most builds but a string on a few;
 -- coerce so the math below never compares a string to a number.
@@ -511,8 +518,9 @@ end
 -- "Crimson Glass": a see-through crimson window (Acrylic blur + transparent
 -- background) with tinted glass panels, a crimson glow shadow and bright
 -- crimson accents. Every glass surface is a translucent red tint, not grey.
-local GLASS_DEFAULT = 0.4  -- window see-through amount (0 = solid, 0.9 = almost clear)
-local glassTransparency = math.clamp(setting("GlassTransparency", GLASS_DEFAULT), 0, 0.9)
+-- Window see-through amount (0 = solid, 0.9 = almost clear); default 0.4.
+local glassTransparency = math.clamp(setting("GlassTransparency", 0.4), 0, 0.9)
+do -- scoped so the helpers don't count toward the main chunk's 200-local cap
 local function hex(h) return Color3.fromHex(h) end
 pcall(function()
     WindUI:AddTheme({
@@ -576,6 +584,7 @@ pcall(function()
     })
     WindUI:SetTheme("CrimsonGlass")
 end)
+end
 
 local LOGO_ICON = "https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/assets/anime_ball_logo_rounded.png"
 
@@ -686,6 +695,15 @@ toggle(Tabs.Main, "AutoUnstick", "Auto-Unstick Blocking",
     autoUnstick = v
     notify("Auto-Unstick", v and "Enabled" or "Disabled")
 end)
+
+toggle(Tabs.Main, "GameAutoParry", "Game's Server Auto Parry (beta)",
+    "Ask the game's own server-side auto parry (added in the latest update) to parry for you - zero ping delay. "
+        .. "The server decides if your account may use it; status shows below. Script parry keeps running too.",
+    GameAP.want, function(v)
+    GameAP.want = v
+    if GameAP.setEnabled then GameAP.setEnabled(v) end
+end)
+HUD.GameAP = paragraph(Tabs.Main, "Server Auto Parry", "Status: off")
 
 section(Tabs.Main, "Quick Stats")
 HUD.QuickStats = paragraph(Tabs.Main, "Performance", "Loading...")
@@ -2156,6 +2174,44 @@ task.spawn(function()
     end)
 end)
 
+-- Game's server-side auto parry (see GameAP at the top).
+-- (kept as a field, not a local: the main chunk is at Luau's 200-local limit)
+GameAP.statusText = function(text)
+    GameAP.status = text
+    setDesc(HUD.GameAP, "Status: " .. text)
+end
+GameAP.setEnabled = function(on)
+    task.spawn(function()
+        local svc
+        local okFetch = pcall(function()
+            svc = require(ReplicatedStorage:WaitForChild("Framework", 5)):Fetch("AutoParryService")
+        end)
+        if not okFetch or type(svc) ~= "table" or svc.SetEnabled == nil then
+            GameAP.statusText(on and "not available in this server/version" or "off")
+            return
+        end
+        if on then GameAP.statusText("asking the server...") end
+        local ok, result = pcall(function() return svc.SetEnabled:Invoke(on) end)
+        if destroyed and on then
+            pcall(function() svc.SetEnabled:Invoke(false) end)
+            return
+        end
+        if not ok then
+            GameAP.statusText("error: " .. tostring(result))
+        elseif result == nil then
+            GameAP.statusText(on and "REFUSED - the server doesn't allow it for your account" or "off")
+        elseif result == true then
+            GameAP.active = true
+            GameAP.statusText("ON - the server is parrying for you")
+            notify("Server Auto Parry", "Enabled by the game server")
+        else
+            GameAP.active = false
+            GameAP.statusText("off")
+        end
+    end)
+end
+if GameAP.want then GameAP.setEnabled(true) end
+
 createVisualSphere()
 createPlayerDetectorSpheres()
 
@@ -2910,6 +2966,14 @@ unloadScript = function()
         pcall(function() swordController.Server.BlockSuccess = blockSuccessOriginal end)
     end
     swordController, blockSuccessOriginal = nil, nil
+    -- Hand the game's server auto parry back to "off" if we turned it on.
+    if GameAP.active then
+        pcall(function()
+            local svc = require(ReplicatedStorage.Framework):Fetch("AutoParryService")
+            task.spawn(function() pcall(function() svc.SetEnabled:Invoke(false) end) end)
+        end)
+        GameAP.active = false
+    end
     -- Undo the client game fixes (newest first).
     for i = #gameFixes, 1, -1 do
         local f = gameFixes[i]

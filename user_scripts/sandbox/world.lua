@@ -81,7 +81,13 @@ local function build(SRC, pingMs, opts)
   local clashCtl={ ClashMode=false, Settings={ ClashEnabled=false } }
   clashCtl.Server={ StartClash=function() if clashCtl.Settings.ClashEnabled then clashCtl.ClashMode=true end end,
                     EndClash=function() clashCtl.ClashMode=false end }
-  FW._moduleValue={ Fetch=function(_,n) if n=="SwordService" then return swordProxy end return {} end,
+  -- AutoParryService (2026-10-31 update): SetEnabled:Invoke(bool) returns the
+  -- new state, or nil when the server refuses (account not allowed).
+  local apService={ allowed=false, enabled=false, calls=0 }
+  apService.SetEnabled={ Invoke=function(_, on) apService.calls=apService.calls+1
+    if not apService.allowed then return nil end apService.enabled=on and true or false; return apService.enabled end }
+  FW._moduleValue={ Fetch=function(_,n) if n=="SwordService" then return swordProxy end
+                                         if n=="AutoParryService" then return apService end return {} end,
                     Get=function(_,n) if n=="BallController" then return ballCtl end
                                         if n=="SwordController" then return swordCtl end
                                         if n=="ClashController" then return clashCtl end
@@ -143,7 +149,7 @@ local function build(SRC, pingMs, opts)
   return { R=R,v3=v3,Instance=Instance,Enum=Enum,RunService=RunService,Balls=Balls,heroF=heroF,Eff=Eff,
            Players=Players,players=players,LP=LP,char=char,
            hrp=hrp,char_ref=char,server=server,shieldAt=shieldAt,oneway=oneway,movement=movement,
-           ballCtl=ballCtl,swordCtl=swordCtl,clashCtl=clashCtl,genv=env._genv }
+           ballCtl=ballCtl,swordCtl=swordCtl,clashCtl=clashCtl,apService=apService,genv=env._genv }
 end
 
 return { build=build }

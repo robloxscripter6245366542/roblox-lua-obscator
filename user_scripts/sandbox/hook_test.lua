@@ -121,6 +121,16 @@ do
   else bad("GetBallAsync leak", w.ballCtl.conns.." connections") end
 end
 
+print("=== Game's server AutoParryService toggle ===")
+do
+  -- The toggle is off by default: the script must never call the service on its own.
+  local w = assert(build(SRC, 60)); settle(w)
+  if w.apService.calls == 0 then ok("off by default -> service never called") else bad("default", w.apService.calls.." calls") end
+  -- Saved setting ON + server refuses -> asks once, stays off, no crash.
+  local w2 = assert(build(SRC:gsub('GameAP.want         = setting%("GameAutoParry", false%)', 'GameAP.want = true'), 60)); settle(w2)
+  if w2.apService.calls == 1 and not w2.apService.enabled then ok("refused by server -> asked once, stays off") else bad("refused", w2.apService.calls.." calls, enabled="..tostring(w2.apService.enabled)) end
+end
+
 print("=== Block result + BlockSuccess hook ===")
 do
   local _, _, w = run(60, "Other", "Hero", true)
