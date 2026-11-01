@@ -229,3 +229,14 @@ exact. The real confirmation is still an in-game run.
   shield gap**, with 14/18 surviving (every 80 and 126 ms case). The script
   before this fix survives 8/18, and under the default rule it dies right after
   the first parry at every ping, as in the report.
+
+- **`replay_miss6.lua`** — replays the sixth **real** miss report (158 ms): an
+  **ability launch**. Another player's ability holds the ball still (speed 0,
+  its target cleared) about 110–140 studs from you. It then aims the ball at you
+  and shoots it at 450–500 studs/s, starting 30–80° off the line and swinging
+  in. As in the report, the ball reports its launch velocity for up to 0.2 s
+  while still held, its velocity updates at 30 Hz, and you may be moving toward
+  it. Run: `lua-5.1.5/src/lua replay_miss6.lua`. Expected: **15/15 parried**.
+  The script before this fix parries 7/15 and misses the report's own case at
+  158 ms: its turn-rate estimator threw out the 30 Hz heading jumps as
+  "bounces", and the launch looked like a curve that would miss.
