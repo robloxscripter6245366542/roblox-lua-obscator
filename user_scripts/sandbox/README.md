@@ -184,3 +184,8 @@ exact. The real confirmation is still an in-game run.
   `lua-5.1.5/src/lua replay_miss1.lua`. Expected: **9/9 survived** (it was 6/9
   before; the extra block fired at the ball after the parry used up the
   cooldown its return needed).
+
+- **`replay_miss2.lua`** — replays the second **real** miss report (108 ms):
+  a long-range rally with an opponent 45–70 studs away. Run:
+  `lua-5.1.5/src/lua replay_miss2.lua`. Expected: **9/9 survived** (it was
+  3/9, dying after the first parry at 60–70 studs).

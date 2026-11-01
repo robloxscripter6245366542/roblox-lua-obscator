@@ -2062,6 +2062,7 @@ end
 -- Auto Spam only runs during a clash, so it uses the clash send rate (it used
 -- the slower lone-ball rate before), and only counts blocks actually sent.
 local function executeSpam()
+    if Clash.holdAway then return end   -- ball heading away in a long rally (see Clash.holdAway)
     if fireBlockRemote(true) then totalSpams = totalSpams + 1 end
 end
 
@@ -2790,6 +2791,21 @@ Clash.targetOf = function(ball)
     if type(target) ~= "string" then return nil end
     return target
 end
+-- True when the ball's target is another player more than PARTNER_NEAR studs
+-- from me (a long-range rally, not a point-blank clash). Unknown target = false.
+Clash.PARTNER_NEAR = 25
+Clash.partnerFar = function(ball, myPos)
+    local tgt = Clash.targetOf(ball)
+    if not tgt or tgt == LocalPlayer.Name then return false end
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl.Name == tgt then
+            local o = getPlayerHRP(pl)
+            return o ~= nil and (o.Position - myPos).Magnitude > Clash.PARTNER_NEAR
+        end
+    end
+    return false
+end
+Clash.holdAway = false
 Clash.NEAR_BALL = 22
 Clash.ballInvolves = function(otherName, myPos, radius)
     local myName = LocalPlayer.Name
@@ -2901,6 +2917,11 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
     if realClash then Clash.forceUntil = currentTime + Clash.GRACE end
     local clashActive = realClash or currentTime < Clash.forceUntil
     local clashDetected = clashActive or (#Clash.flipTimes >= Clash.MIN_FLIPS)
+    -- Long-range rally hold (real miss report #2): while my clash's ball is
+    -- aimed at a partner who is NOT on top of me, no path may fire - see the
+    -- clashFire note in the parry branch.
+    Clash.holdAway = closestBall ~= nil and clashDetected and not amTargeted
+        and Clash.partnerFar(closestBall, humanoidRootPart.Position)
 
     if hudTick and not (autoParryEnabled and closestBall) then
         setDesc(HUD.ParryStatus, autoParryEnabled and "Status: ACTIVE - waiting for a ball" or "Status: DISABLED")
@@ -3159,7 +3180,7 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
                 -- aimed at someone else - e.g. the instant after my own parry -
                 -- firing here lands a block on nothing and spends the cooldown
                 -- the ball's quick return needs (real miss report #1).
-                and (clashActive or Clash.targetOf(closestBall) == nil
+                and ((clashActive and not Clash.holdAway) or Clash.targetOf(closestBall) == nil
                     or Clash.targetOf(closestBall) == LocalPlayer.Name)
 
             -- Dash-aware: while you're dashing (and briefly after), your
@@ -3256,9 +3277,14 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- point-blank kept firing, one block landed on nothing (the parry had
         -- reset the cooldown), and the ball's quick return found every block
         -- rejected. replay_miss1.lua reproduces it.
+        -- Long-range rally hold (see the clashFire note below). Decided from the
+        -- ball's TARGET, not its motion: right after my parry the server switches
+        -- the target to the opponent while my ping-stale view still shows the
+        -- ball coming in, so a motion check fires too late (sandbox replay).
         local pointBlank = closestBall ~= nil and closestDistance <= (EFFECTIVE_HIT_RADIUS + 11)
             and (surfaceTTI <= shieldLead or velocity == 0)
-            and (amTargeted or clashActive or fastClashHold or Clash.targetOf(closestBall) == nil)
+            and (amTargeted or ((clashActive or fastClashHold) and not Clash.holdAway)
+                or Clash.targetOf(closestBall) == nil)
         -- Clash-incoming PRE-SHIELD. The way you die to "they dash into me and
         -- clash inside me": once the ball is hit from INSIDE you it lands in a few
         -- ms - far under one ping - so reacting to the ball is hopeless. But the
@@ -3319,10 +3345,20 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- (where each parry resets the cooldown, so it stays protected). A lone
         -- ball is handled by the panic burst, which only opens inside the tight
         -- window where the shield actually covers impact.
-        local alwaysFire = clashActive or fastClashHold or pointBlank or clashIncoming
+        -- Long-range rally hold (real miss report #2, 108 ms): in a clash with an
+        -- opponent ~60 studs away, firing nonstop meant the block right after
+        -- each successful parry (which resets the cooldown) was ACCEPTED on a
+        -- ball now flying away, starting a fresh 1s cooldown that was still
+        -- running when their return arrived ~0.5-1s later. So while the ball is
+        -- aimed at a player who is NOT on top of me, hold the clash fire
+        -- (Clash.holdAway, computed above); it resumes the moment the ball is
+        -- aimed at me again. Point-blank clashes (partner within 25 studs) are
+        -- unchanged.
+        local clashFire = (clashActive or fastClashHold) and not Clash.holdAway
+        local alwaysFire = clashFire or pointBlank or clashIncoming
         -- Clash send rate only for a real clash / dash-in; point-blank on a lone
         -- ball uses the normal rate (one accepted block is all it needs).
-        local clashRate = clashActive or fastClashHold or clashIncoming
+        local clashRate = clashFire or clashIncoming
         -- Shield-window gate for a LONE incoming ball. `coverable` uses
         -- coverWindow = ping + BLOCK_DURATION, which is actually TOO EARLY: a
         -- block is only a 0.6s shield that activates ~half-a-ping after we fire,
@@ -3353,7 +3389,7 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- because minThreatArrive is closing-gated too, a sideways/passing ball
         -- still can't open it.
         local inShieldWindow = surfaceArriveTime <= shieldLead or minThreatArrive <= shieldLead
-        if amTargeted or clashActive or imminentThreat or fastClashHold or pointBlank or clashIncoming then
+        if amTargeted or ((clashActive or fastClashHold) and not Clash.holdAway) or imminentThreat or pointBlank or clashIncoming then
             if (withinRange or willArriveInTime or clashIncoming) and (alwaysFire or (coverable and inShieldWindow)) then executeParry(clashRate) end
             -- Fire block every frame while the shield window is open (or mid-clash
             -- / point-blank), so jitter in the estimate can't leave a gap - the
