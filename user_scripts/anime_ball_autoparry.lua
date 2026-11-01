@@ -907,7 +907,7 @@ end
 Clash.event = function(t, what)
     local e = Clash.events
     e[#e + 1] = { t, what }
-    if #e > 60 then table.remove(e, 1) end
+    if #e > 400 then table.remove(e, 1) end
 end
 Clash.buildReport = function(now, cause)
     local function f(x) if x == nil or x ~= x or x >= 1e6 then return "inf" end return string.format("%.2f", x) end
@@ -2298,6 +2298,7 @@ task.spawn(function()
     swordController, blockSuccessOriginal = SC, orig
     SC.Server.BlockSuccess = function(...)
         if not destroyed then
+            pcall(function() Clash.event(tick(), "PARRY CONFIRMED by server") end)
             blockParried = blockParried + 1
             blockLanded = blockLanded + 1
             lastBlockResult = "parried"
@@ -2708,6 +2709,13 @@ end
 -- Is a ball near me (within `radius` studs) in play between me and `otherName`?
 -- True when its target (fresh server capture, else the attribute) is me, them,
 -- or not assigned yet. Used to gate the dash-in pre-shield.
+Clash.targetOf = function(ball)
+    local target = ball:GetAttribute("Target")
+    local sm = serverTargetCache[ball]
+    if sm ~= nil and (tick() - sm.time) < SERVER_TARGET_TTL then target = sm.target end
+    if type(target) ~= "string" then return nil end
+    return target
+end
 Clash.NEAR_BALL = 22
 Clash.ballInvolves = function(otherName, myPos, radius)
     local myName = LocalPlayer.Name
@@ -3072,6 +3080,13 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
                 and closestDistance <= effectiveParryDistance
                 and (worstCaseTTI <= effectivePanicTTI
                     or currentTimeToImpact <= effectivePanicTTI)
+                -- Target-agnostic only while the target is UNKNOWN (first frames,
+                -- not replicated yet) or in a clash. Once the ball is known to be
+                -- aimed at someone else - e.g. the instant after my own parry -
+                -- firing here lands a block on nothing and spends the cooldown
+                -- the ball's quick return needs (real miss report #1).
+                and (clashActive or Clash.targetOf(closestBall) == nil
+                    or Clash.targetOf(closestBall) == LocalPlayer.Name)
 
             -- Dash-aware: while you're dashing (and briefly after), your
             -- position is changing so fast that the "it'll miss me" math is
@@ -3160,8 +3175,16 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- imminent (inside the shield window) OR stationary-on-you (a hovering
         -- pre-serve ball at zero speed) - a real point-blank clash ball is fast
         -- and close, so surfaceTTI is tiny and this still holds.
+        -- ...and only for a ball that is actually a threat to ME: aimed at me,
+        -- not assigned yet (a hovering serve), or part of my real clash. A REAL
+        -- miss (report #1, 153 ms) came from this: right after a successful
+        -- parry the ball switched to another target but stayed within 22 studs,
+        -- point-blank kept firing, one block landed on nothing (the parry had
+        -- reset the cooldown), and the ball's quick return found every block
+        -- rejected. replay_miss1.lua reproduces it.
         local pointBlank = closestBall ~= nil and closestDistance <= (EFFECTIVE_HIT_RADIUS + 11)
             and (surfaceTTI <= shieldLead or velocity == 0)
+            and (amTargeted or clashActive or fastClashHold or Clash.targetOf(closestBall) == nil)
         -- Clash-incoming PRE-SHIELD. The way you die to "they dash into me and
         -- clash inside me": once the ball is hit from INSIDE you it lands in a few
         -- ms - far under one ping - so reacting to the ball is hopeless. But the
@@ -3223,6 +3246,9 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- ball is handled by the panic burst, which only opens inside the tight
         -- window where the shield actually covers impact.
         local alwaysFire = clashActive or fastClashHold or pointBlank or clashIncoming
+        -- Clash send rate only for a real clash / dash-in; point-blank on a lone
+        -- ball uses the normal rate (one accepted block is all it needs).
+        local clashRate = clashActive or fastClashHold or clashIncoming
         -- Shield-window gate for a LONE incoming ball. `coverable` uses
         -- coverWindow = ping + BLOCK_DURATION, which is actually TOO EARLY: a
         -- block is only a 0.6s shield that activates ~half-a-ping after we fire,
@@ -3254,13 +3280,13 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- still can't open it.
         local inShieldWindow = surfaceArriveTime <= shieldLead or minThreatArrive <= shieldLead
         if amTargeted or clashActive or imminentThreat or fastClashHold or pointBlank or clashIncoming then
-            if (withinRange or willArriveInTime or clashIncoming) and (alwaysFire or (coverable and inShieldWindow)) then executeParry(alwaysFire) end
+            if (withinRange or willArriveInTime or clashIncoming) and (alwaysFire or (coverable and inShieldWindow)) then executeParry(clashRate) end
             -- Fire block every frame while the shield window is open (or mid-clash
             -- / point-blank), so jitter in the estimate can't leave a gap - the
             -- FIRST block sets a shield that covers impact, later ones are
             -- cooldown-gated by the server and harmless.
             if alwaysFire or ((panicNow or imminentThreat) and coverable and inShieldWindow) then
-                if fireBlockRemote(alwaysFire) then   -- clash/point-blank -> faster clash send rate
+                if fireBlockRemote(clashRate) then   -- real clash -> faster clash send rate
                     totalBurstBlocks = totalBurstBlocks + 1
                 end
             end

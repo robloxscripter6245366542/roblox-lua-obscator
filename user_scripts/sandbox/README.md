@@ -177,3 +177,10 @@ exact. The real confirmation is still an in-game run.
   60/130/200 ms ping. The return homes on your real position. Run:
   `lua-5.1.5/src/lua move_return_test.lua`. Expected: **36/36 parried** (it was
   33/36 before).
+
+- **`replay_miss1.lua`** — replays the first **real** in-game miss report
+  (153 ms). You parry a slow ball, it switches to another target but drifts
+  near you, and it comes back fast 0.45–0.8 s later. Run:
+  `lua-5.1.5/src/lua replay_miss1.lua`. Expected: **9/9 survived** (it was 6/9
+  before; the extra block fired at the ball after the parry used up the
+  cooldown its return needed).
