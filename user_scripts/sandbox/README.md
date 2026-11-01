@@ -216,3 +216,16 @@ exact. The real confirmation is still an in-game run.
   next block on the first frame the game allows. That block still lands a frame
   later, so nothing can be up in that moment. The script before this fix
   survives **0/27**.
+
+- **`replay_miss5.lua`** — replays the fifth **real** miss report (126 ms): a
+  **slow** long-range rally. The opponent is 60–67 studs away, the ball goes
+  100–126 studs/s, and each round trip takes ~1 s. In the report a shield
+  parried the ball while the ball on screen still showed it 22 studs out, so
+  another block went out. It landed just after the parry, was accepted (a
+  parry resets the cooldown) and started a fresh 1 s cooldown. Every block for
+  the return a second later was refused. Each case runs under both server rules
+  (the default, where a parry resets the cooldown at once, and `shieldLock`). Run:
+  `lua-5.1.5/src/lua replay_miss5.lua`. Expected: **OK: every death was at the
+  shield gap**, with 14/18 surviving (every 80 and 126 ms case). The script
+  before this fix survives 8/18, and under the default rule it dies right after
+  the first parry at every ping, as in the report.
