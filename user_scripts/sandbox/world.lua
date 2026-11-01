@@ -76,6 +76,8 @@ local function build(SRC, pingMs, opts)
   ballCtl.GetBallAsync=function(name) local b=Balls:FindFirstChild(name)
     if b then ballCtl.conns=ballCtl.conns+1; ballCtl.CurrentBall=b end return b end
   local swordCtl={ Server={ BlockSuccess=function() end } }
+  -- AbilityController: the server plays abilities on clients via Server.* calls
+  local abilityCtl={ Server={ Explode=function() end, AbilityEffect=function() end } }
   -- ClashController as decompiled: StartClash only sets ClashMode when the
   -- player's "Clash" visual setting is on (ClashEnabled) - the game bug the
   -- script's client fix works around. Settings default to OFF here.
@@ -92,6 +94,7 @@ local function build(SRC, pingMs, opts)
                     Get=function(_,n) if n=="BallController" then return ballCtl end
                                         if n=="SwordController" then return swordCtl end
                                         if n=="ClashController" then return clashCtl end
+                                        if n=="AbilityController" then return abilityCtl end
                                         if n=="MovementController" then return movement end return nil end }
   local realmath,realtable=math,table
   local envmath=setmetatable({clamp=function(x,l,h) return realmath.max(l,realmath.min(h,x)) end,
@@ -155,7 +158,7 @@ local function build(SRC, pingMs, opts)
   return { R=R,v3=v3,Instance=Instance,Enum=Enum,RunService=RunService,Balls=Balls,heroF=heroF,Eff=Eff,
            Players=Players,players=players,LP=LP,char=char,
            hrp=hrp,char_ref=char,server=server,shieldAt=shieldAt,oneway=oneway,movement=movement,
-           ballCtl=ballCtl,swordCtl=swordCtl,clashCtl=clashCtl,apService=apService,genv=env._genv,files=files }
+           ballCtl=ballCtl,swordCtl=swordCtl,clashCtl=clashCtl,abilityCtl=abilityCtl,apService=apService,genv=env._genv,files=files }
 end
 
 return { build=build }

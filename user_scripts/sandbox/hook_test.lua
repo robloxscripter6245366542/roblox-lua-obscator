@@ -284,13 +284,15 @@ do
   local lv=Instance.new("LinearVelocity"); lv.Enabled=true; lv.RelativeTo=Enum.ActuatorRelativeTo.World
   lv.VelocityConstraintMode=Enum.VelocityConstraintMode.Vector; lv.Parent=b
   b:SetAttribute("Target","Hero"); b.Position=v3(0,5,40); b.AssemblyLinearVelocity=v3(0,0,-150); lv.VectorVelocity=v3(0,0,-150); b.Parent=w.Balls
+  w.abilityCtl.Server.Explode("Villain", "ChronoStasis Activate", true)   -- an ability plays just before the hit
   for _=1,10 do b.Position=b.Position+v3(0,0,-2.5); w.RunService.Heartbeat:Fire(); w.R.advance(1/60) end
   hum.Health = 0; hum.HealthChanged:Fire(0)
   local rep = w.files["AnimeBallHub/miss_reports.txt"] or ""
   local rows = 0
   for line in rep:gmatch("[^\n]+") do if line:match("^%-0%.%d%d +%d") then rows = rows + 1 end end
-  if rep:find("miss report #1", 1, true) and rep:find("-- blocks --", 1, true) and rows >= 5 then
-    ok("hit by a ball aimed at me -> report saved ("..rows.." frame rows)")
+  if rep:find("miss report #1", 1, true) and rep:find("-- blocks --", 1, true) and rows >= 5
+     and rep:find("ABILITY Explode(Villain, ChronoStasis Activate", 1, true) then
+    ok("hit by a ball aimed at me -> report saved ("..rows.." frame rows, ability logged)")
   else bad("miss recorder", "report missing or empty ("..#rep.." chars, "..rows.." rows)") end
   -- a hit with NO ball aimed at me in the last 2s must not be recorded
   local w2 = assert(build(SRC, 60)); settle(w2)
