@@ -65,7 +65,9 @@ block timing that static analysis can't see.
   so `world.lua` hands the script a **yieldable `pcall`** (a Luau semantic,
   reimplemented in pure Lua via a child coroutine that pumps yields through) and
   a **yielding transport** (`build(SRC, ping, {yieldTransport=true})`, a Block
-  call `task.wait`s the round-trip). It then contrasts a **no-guard control**
+  call `task.wait`s half a ping, gets its verdict from the server, then waits
+  the other half to return; it used to wait the whole round trip before the
+  server even registered it, 1.5 pings late). It then contrasts a **no-guard control**
   (fire a yielding block every frame → pending calls pile into a backlog that
   grows with ping — the "clashing is so slow" lag, reproduced) against the **real
   script**. The script paces block sends at a safe ~30/s (`BLOCK_SEND_INTERVAL`),
@@ -195,3 +197,22 @@ exact. The real confirmation is still an in-game run.
   point-blank clash, at 110/170/200 ms. Run:
   `lua-5.1.5/src/lua lagspike_clash.lua`. Expected: **KEPT SENDING THROUGH
   THE SPIKE** (longest gap between sends 0.05 s; it was 0.15–0.22 s before).
+
+- **`replay_miss4.lua`** — replays the fourth **real** miss report (119 ms): a
+  fast long-range rally with an opponent 45–60 studs away. The ball speeds up
+  to 380–420 studs/s and homes in wide loops, so each round trip takes
+  0.23–0.68 s, like the report. Three things from the report are modeled:
+  - The ball on screen trails the real one by half a ping plus ~0.1–0.13 s of
+    interpolation. Its Target attribute trails by half a ping only.
+  - `build(SRC, ping, {shieldLock=true})`: outside a game clash the server
+    **refuses a block while your own shield is up**, even after a parry. In
+    the report every block for 0.6 s after one went up was rejected.
+  - The serve hovers next to the opponent first, which used to leave the parry
+    range stuck small.
+
+  Run: `lua-5.1.5/src/lua replay_miss4.lua`. Expected: **OK: every death was
+  at the shield gap**, with 24/27 surviving. A shield-gap death is one where the
+  ball arrived within 35 ms after your shield ended and the script had sent the
+  next block on the first frame the game allows. That block still lands a frame
+  later, so nothing can be up in that moment. The script before this fix
+  survives **0/27**.

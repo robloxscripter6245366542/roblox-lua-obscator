@@ -399,6 +399,19 @@ local Clash = {
     meAt = -math.huge,
     PART_WINDOW = 1.5,
     NEAR = 15,
+    -- Shield-cover hold (real miss report #4). Our last ACCEPTED shield's window
+    -- on the server's clock (set from each block's reply), whether it already
+    -- covers the ball now aimed at me (covered, worked out each frame), and how
+    -- far the ball we SEE trails the real one beyond half a ping (VIEW_LAG,
+    -- Roblox's interpolation - the report showed ~0.13-0.14s).
+    shieldFrom = 0,
+    shieldTo = 0,
+    acceptedSent = -math.huge,   -- when the block that raised it was SENT
+    covered = false,
+    lockOn = false,              -- shield lock applies (no game clash, nobody on top of me)
+    parryAt = { -math.huge, -math.huge, -math.huge },   -- my last three confirmed parries, newest first
+    CHAIN_GAP = 0.5,             -- rally chain: both recent parry gaps must be this short
+    VIEW_LAG = 0.12,
 }
 
 -- Keep-moving guard: firing block used to yield the main thread on every
@@ -900,9 +913,9 @@ HUD.LiveStats = paragraph(Tabs.Stats, "Live Monitoring", "Monitoring...")
 -- at you, it freezes that history into a text report you can copy and send, so
 -- a real in-game miss can be diagnosed from facts instead of guesses.
 Clash.log, Clash.logN, Clash.events, Clash.misses, Clash.lastReport = {}, 0, {}, 0, nil
-Clash.rec = function(t, d, v, cl, tti, arr, lead, within, cover, inWin, panic, imminent, always, targeted)
+Clash.rec = function(t, d, v, cl, tti, arr, lead, within, cover, inWin, panic, imminent, always, targeted, held)
     Clash.logN = Clash.logN + 1
-    Clash.log[(Clash.logN - 1) % 150 + 1] = { t, d, v, cl, tti, arr, lead, within, cover, inWin, panic, imminent, always, targeted }
+    Clash.log[(Clash.logN - 1) % 150 + 1] = { t, d, v, cl, tti, arr, lead, within, cover, inWin, panic, imminent, always, targeted, held }
 end
 Clash.event = function(t, what)
     local e = Clash.events
@@ -916,7 +929,7 @@ Clash.buildReport = function(now, cause)
         "Anime Ball Hub miss report #" .. Clash.misses .. " (" .. cause .. ")",
         string.format("ping %.0f ms (smoothed %.0f) | frameLag %.0f ms | clashSpeed %d | preShield %s | pingComp %s | antiCurve %s",
             currentPing, smoothedPing, frameLag * 1000, Clash.rate or 0, tostring(Clash.retOn), tostring(pingCompEnabled), tostring(antiCurveEnabled)),
-        "time   dist  speed close  tti   arr   lead  W C S P I A T  (W=withinRange C=coverable S=inShieldWindow P=panic I=imminent A=alwaysFire T=targeted)",
+        "time   dist  speed close  tti   arr   lead  W C S P I A T H  (W=withinRange C=coverable S=inShieldWindow P=panic I=imminent A=alwaysFire T=targeted H=held: my shield already covers it)",
     }
     local rows = {}
     for i = 1, math.min(Clash.logN, 150) do
@@ -925,9 +938,9 @@ Clash.buildReport = function(now, cause)
     end
     table.sort(rows, function(a, c) return a[1] < c[1] end)
     for _, r in ipairs(rows) do
-        lines[#lines + 1] = string.format("%+.2f %5s %5s %5s %5s %5s %5s %s %s %s %s %s %s %s",
+        lines[#lines + 1] = string.format("%+.2f %5s %5s %5s %5s %5s %5s %s %s %s %s %s %s %s %s",
             r[1] - now, f(r[2]), f(r[3]), f(r[4]), f(r[5]), f(r[6]), f(r[7]),
-            b(r[8]), b(r[9]), b(r[10]), b(r[11]), b(r[12]), b(r[13]), b(r[14]))
+            b(r[8]), b(r[9]), b(r[10]), b(r[11]), b(r[12]), b(r[13]), b(r[14]), b(r[15]))
     end
     lines[#lines + 1] = "-- blocks --"
     for _, e in ipairs(Clash.events) do
@@ -1747,8 +1760,16 @@ local function getSwordService()
 end
 -- Records what the server returned for a Block call so the HUD can show whether
 -- our blocks are landing or being rejected on cooldown.
-local function recordBlockResult(ok, result)
+local function recordBlockResult(ok, result, sentAt)
     Clash.event(tick(), "RESULT " .. (not ok and "error" or (result == nil and "rejected" or (result and "parried" or "shield-up"))))
+    -- Remember where our accepted shield sits on the server's clock: it went up
+    -- about half the round trip after we sent it and lasts BLOCK_DURATION.
+    -- Clash.covered (main loop) uses this window - see "Shield-cover hold".
+    if ok and result ~= nil and sentAt then
+        Clash.acceptedSent = sentAt
+        Clash.shieldFrom = sentAt + (tick() - sentAt) / 2
+        Clash.shieldTo = Clash.shieldFrom + BLOCK_DURATION
+    end
     blockSent = blockSent + 1
     if not ok then
         lastBlockResult = "error"
@@ -1796,8 +1817,20 @@ local CLASH_SEND_INTERVAL = 0.009  -- clash: fire every frame, up to ~110/s on a
 local CLASH_INFLIGHT = 2
 local blocksInFlight = 0
 local lastBlockSendTime = -1
-local function fireBlockRemote(clash)
+local function fireBlockRemote(clash, why)
     local nowT = tick()
+    -- Shield lock (real miss report #4): outside a game clash the server refuses
+    -- a block while my own shield is still up - even right after a parry reset
+    -- the cooldown - so one sent within BLOCK_DURATION of the last ACCEPTED one
+    -- lands on that shield and is thrown away, and its reply ties up the send
+    -- slot for a whole round trip (a lone ball allows one block in flight). In
+    -- the sandbox that ate the only block that could have covered a return
+    -- arriving 0.06s after the shield ended. Both travel the same path, so
+    -- sending 0.6s (+10 ms) after the accepted one lands just as it ends, at
+    -- any ping. Never in a game clash: blocks are accepted back-to-back there.
+    if Clash.lockOn and nowT - Clash.acceptedSent < BLOCK_DURATION + 0.01 then
+        return false
+    end
     if clash then
         -- Clash: a token bucket at Clash.rate blocks/s instead of "one per
         -- frame". On a 60 fps client the old per-frame gate capped a clash at
@@ -1836,7 +1869,7 @@ local function fireBlockRemote(clash)
         end
     end
     if clash then Clash.tokens = Clash.tokens - 1 end
-    Clash.event(nowT, clash and "SEND clash" or "SEND")
+    Clash.event(nowT, (clash and "SEND clash" or "SEND") .. (why and (" (" .. why .. ")") or ""))
     lastBlockSendTime = nowT
     blocksInFlight = blocksInFlight + 1
     task.spawn(function()
@@ -1857,14 +1890,14 @@ local function fireBlockRemote(clash)
             local svc = getSwordService()
             if svc then
                 local ok, result = pcall(function() return svc.Block:Invoke(lookY) end)
-                if ok then recordBlockResult(true, result); return end
+                if ok then recordBlockResult(true, result, nowT); return end
                 swordServiceProxy = nil -- proxy went stale; re-fetch next time
             end
             -- Fallback: generic framework RemoteFunction router.
             local ok, result = pcall(function()
                 return ReplicatedStorage.Framework.RemoteFunction:InvokeServer("SwordService", "Block", {lookY})
             end)
-            recordBlockResult(ok, result)
+            recordBlockResult(ok, result, nowT)
         end)
         blocksInFlight = blocksInFlight - 1   -- always runs, even on error
     end)
@@ -2076,6 +2109,7 @@ end
 -- the slower lone-ball rate before), and only counts blocks actually sent.
 local function executeSpam()
     if Clash.holdAway then return end   -- ball heading away in a long rally (see Clash.holdAway)
+    if Clash.covered then return end    -- our shield already covers it (see Shield-cover hold)
     if fireBlockRemote(true) then totalSpams = totalSpams + 1 end
 end
 
@@ -2313,6 +2347,8 @@ task.spawn(function()
     SC.Server.BlockSuccess = function(...)
         if not destroyed then
             pcall(function() Clash.event(tick(), "PARRY CONFIRMED by server") end)
+            -- last three parry times, for the rally chain (Return Pre-Shield)
+            Clash.parryAt[3], Clash.parryAt[2], Clash.parryAt[1] = Clash.parryAt[2], Clash.parryAt[1], tick()
             blockParried = blockParried + 1
             blockLanded = blockLanded + 1
             lastBlockResult = "parried"
@@ -2580,7 +2616,11 @@ end))
 -- approach; own Heartbeat so it adds nothing to the parry loop.
 Clash.RET_RANGE = 35        -- studs: opponent must be this close for a too-fast return
 Clash.RET_SPEEDUP = 1.25    -- assume the return comes back this much faster (balls speed up per hit)
+Clash.FRESH_MAX = 0.35      -- fresh return: block on the target switch when the straight line takes <= this
 Clash.retBall, Clash.retAt, Clash.retCount = nil, 0, 0
+Clash.retPrev, Clash.retPrevAt = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
+Clash.retApp, Clash.retLockApp = setmetatable({}, { __mode = "k" }), nil
+Clash.retWant, Clash.retWantAt, Clash.retWantApp, Clash.retWantUntil = nil, 0, nil, 0
 track(RunService.Heartbeat:Connect(function()
     if destroyed or not Clash.retOn or not autoParryEnabled then return end
     local hrp = getPlayerHRP(LocalPlayer)
@@ -2589,11 +2629,97 @@ track(RunService.Heartbeat:Connect(function()
     local myPos = hrp.Position
     local ping = math.max(smoothedPing, currentPing) / 1000
     local myName = LocalPlayer.Name
+    -- Rally chain. In a rally fast enough that my last two parries came less
+    -- than CHAIN_GAP apart, each 0.6s shield takes at least one return, and
+    -- the ball on screen (half a ping + VIEW_LAG old) is out of step with the
+    -- real one - it shows the ball coming at me while it is at the opponent.
+    -- Nothing that waits to SEE the return can be on time, so send the next
+    -- block the moment the shield lock lets it land: as the current shield
+    -- ends (sandbox: a 0.23s rally at 420 studs/s was lost waiting).
+    local pa = Clash.parryAt
+    if Clash.lockOn and pa[1] - pa[2] <= Clash.CHAIN_GAP and pa[2] - pa[3] <= Clash.CHAIN_GAP
+        and now - pa[1] <= Clash.CHAIN_GAP + 0.1
+        and now - Clash.acceptedSent <= BLOCK_DURATION + 0.3 then
+        if fireBlockRemote(false, "rally chain") then totalBurstBlocks = totalBurstBlocks + 1 end
+    end
+    -- A pre-shield block held back by the shield lock (see below). Dropped once
+    -- its return can no longer be covered, or if I parried since - then the
+    -- shield that was up took that return, and a fresh block would only land
+    -- on a ball flying away (real miss report #4).
+    if Clash.retWant then
+        if now > Clash.retWantUntil or Clash.parryAt[1] > Clash.retWantAt then
+            Clash.retWant = nil
+        elseif fireBlockRemote(false, "pre-shield, held") then
+            Clash.retBall, Clash.retAt, Clash.retLockApp = Clash.retWant, now, Clash.retWantApp
+            Clash.retCount = Clash.retCount + 1
+            totalBurstBlocks = totalBurstBlocks + 1
+            Clash.retWant = nil
+        end
+    end
     for ball in pairs(ballsCache) do
-        if ball.Parent and not (Clash.retBall == ball and now - Clash.retAt < 0.8) then
-            local target = ball:GetAttribute("Target")
-            local sm = serverTargetCache[ball]
-            if sm ~= nil and (now - sm.time) < SERVER_TARGET_TTL then target = sm.target end
+        local target = ball.Parent and ball:GetAttribute("Target") or nil
+        local sm = serverTargetCache[ball]
+        if sm ~= nil and (now - sm.time) < SERVER_TARGET_TTL then target = sm.target end
+        -- One block per APPROACH (each time the ball is sent at an opponent):
+        -- a fixed 0.8s lock still held the NEXT approach in a long rally
+        -- (sandbox: round trips ~0.7s).
+        if type(target) == "string" and target ~= myName then
+            if target ~= Clash.retPrev[ball] or Clash.retPrevAt[ball] == nil
+                or now - Clash.retPrevAt[ball] > 0.1 then
+                Clash.retApp[ball] = (Clash.retApp[ball] or 0) + 1
+            end
+            -- The target reaches me half a ping after the opponent hits, but the
+            -- ball on screen is VIEW_LAG further behind - it is still flying to
+            -- them when the target already says me. Keep treating it as that
+            -- approach for that long, or the pre-shield never gets its turn on
+            -- a far opponent (sandbox: 55 studs at 160 ms).
+            Clash.retPrev[ball], Clash.retPrevAt[ball] = target, now
+        elseif target == myName and Clash.retPrev[ball]
+            and now - Clash.retPrevAt[ball] <= Clash.FRESH_MAX + 0.1 then
+            -- Fresh return: the target just switched from them to me - they hit
+            -- it. That reaches me half a ping after the hit, while the ball on
+            -- screen is another VIEW_LAG behind and may still be looping out
+            -- (sandbox: a 250 studs/s serve launched 150 deg away showed 62 studs
+            -- out, only starting to turn, as the real one landed). The earliest
+            -- it can arrive is the straight line from them; a shield raised for
+            -- that still covers a loop up to ~2x longer, so when that straight
+            -- line is short, block for it now instead of waiting to SEE it.
+            local fromName = Clash.retPrev[ball]
+            local fhrp = nil
+            for _, pl in ipairs(Players:GetPlayers()) do
+                if pl.Name == fromName then fhrp = getPlayerHRP(pl) break end
+            end
+            local bp = fhrp and getBallPosition(ball)
+            local vel = bp and getBallVelocityVector(ball)
+            local speed = vel and vel.Magnitude or 0
+            if bp and speed > 1 and ball.Parent
+                and not (Clash.retBall == ball and Clash.retLockApp == Clash.retApp[ball])
+                and ((fhrp.Position - bp).Magnitude <= 30 or vel:Dot(fhrp.Position - bp) > 0) then
+                local straight = math.max((fhrp.Position - myPos).Magnitude - EFFECTIVE_HIT_RADIUS, 0)
+                    / (speed * Clash.RET_SPEEDUP)
+                local earliest = Clash.retPrevAt[ball] - ping / 2 + straight
+                local latest = earliest + straight * 1.7
+                local covered = Clash.lockOn and earliest >= Clash.shieldFrom - 0.05
+                    and latest <= Clash.shieldTo - frameLag
+                if straight <= Clash.FRESH_MAX and not covered and now + ping / 2 >= earliest - 0.05 then
+                    if fireBlockRemote(false, "fresh return") then
+                        Clash.retBall, Clash.retAt, Clash.retLockApp = ball, now, Clash.retApp[ball]
+                        Clash.retCount = Clash.retCount + 1
+                        totalBurstBlocks = totalBurstBlocks + 1
+                        Clash.retWant = nil
+                    elseif Clash.retWant == nil then
+                        Clash.retWant, Clash.retWantAt, Clash.retWantApp = ball, now, Clash.retApp[ball]
+                        Clash.retWantUntil = latest - ping / 2
+                    end
+                end
+            end
+            -- ...and for VIEW_LAG after the switch the ball on screen is still
+            -- flying to them: keep treating it as that approach.
+            if now - Clash.retPrevAt[ball] <= ping / 2 + Clash.VIEW_LAG + 0.05 then
+                target = fromName
+            end
+        end
+        if ball.Parent and not (Clash.retBall == ball and Clash.retLockApp == Clash.retApp[ball]) then
             local ohrp = nil
             if type(target) == "string" and target ~= myName then
                 for _, pl in ipairs(Players:GetPlayers()) do
@@ -2609,9 +2735,14 @@ track(RunService.Heartbeat:Connect(function()
                 -- react to whenever it can cover the gap within ping + 0.05s, so a
                 -- fixed 35 studs missed farther opponents at high ping (45 studs
                 -- at 200 ms in move_return_test). Capped so far players are ignored.
+                -- The ball on screen also trails the real one by VIEW_LAG (Roblox
+                -- interpolation), and you can only react once it visibly turns, so
+                -- that counts toward "too fast" too (sandbox: a 55-stud return at
+                -- 160 ms was left to the reactive path and arrived 0.04s unblocked).
+                local react = ping + frameLag + 0.05 + Clash.VIEW_LAG
                 local reach = Clash.RET_RANGE
                 if speed > 1 then
-                    reach = math.clamp((ping + frameLag + 0.05) * speed * Clash.RET_SPEEDUP + EFFECTIVE_HIT_RADIUS,
+                    reach = math.clamp(react * speed * Clash.RET_SPEEDUP + EFFECTIVE_HIT_RADIUS,
                         Clash.RET_RANGE, 90)
                 end
                 if bp and gap <= reach then
@@ -2635,12 +2766,36 @@ track(RunService.Heartbeat:Connect(function()
                         -- fire). And only when reacting after the turn truly can't
                         -- make it (ping + a frame + 0.05s); otherwise the normal
                         -- reactive parry handles it without spending the cooldown early.
-                        if returnWindow < ping + frameLag + 0.05
+                        -- When the return lands while the shield I already have
+                        -- is still up, that shield takes it: a block now would be
+                        -- refused, or land as it ends on a ball already flying
+                        -- away and start a fresh 1s cooldown (real miss report
+                        -- #4). Its real arrival = what I see moved forward by
+                        -- half a ping + VIEW_LAG.
+                        -- The return is counted at a THIRD of the ball's speed: a
+                        -- homing return can loop far out and back (sandbox: a 52-stud
+                        -- return at 420 studs/s took 0.28s, 2.3x the straight line),
+                        -- and calling it covered when it isn't is a sure miss.
+                        local retArrive = now - ping / 2 - Clash.VIEW_LAG + ttiToP
+                            + math.max(gap - EFFECTIVE_HIT_RADIUS, 0) / (speed / 3)
+                        local covered = Clash.lockOn and retArrive >= Clash.shieldFrom - 0.05
+                            and retArrive <= Clash.shieldTo - frameLag
+                        if not covered and returnWindow < react
                             and (ttiToP + returnWindow) <= ping + 0.2 then
-                            Clash.retBall, Clash.retAt = ball, now
-                            if fireBlockRemote(false) then
+                            -- Locked only once a block actually went out. One held
+                            -- back (shield lock, rate cap) stays PENDING and goes the
+                            -- moment it can (top of this loop): by the time the lock
+                            -- lets it land, the ball on screen may already have
+                            -- reached them and this check no longer runs (sandbox:
+                            -- a 0.59s rally lost its return that way).
+                            if fireBlockRemote(false, "pre-shield") then
+                                Clash.retBall, Clash.retAt, Clash.retLockApp = ball, now, Clash.retApp[ball]
                                 Clash.retCount = Clash.retCount + 1
                                 totalBurstBlocks = totalBurstBlocks + 1
+                                Clash.retWant = nil
+                            elseif Clash.retWant == nil then
+                                Clash.retWant, Clash.retWantAt, Clash.retWantApp = ball, now, Clash.retApp[ball]
+                                Clash.retWantUntil = retArrive - ping / 2
                             end
                             break
                         end
@@ -2819,6 +2974,20 @@ Clash.partnerFar = function(ball, myPos)
     return false
 end
 Clash.holdAway = false
+-- Distance to the nearest other living player (math.huge if none).
+Clash.nearestOther = function(myPos)
+    local best = math.huge
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer then
+            local o = getPlayerHRP(pl)
+            if o then
+                local d = (o.Position - myPos).Magnitude
+                if d < best then best = d end
+            end
+        end
+    end
+    return best
+end
 Clash.NEAR_BALL = 22
 Clash.ballInvolves = function(otherName, myPos, radius)
     local myName = LocalPlayer.Name
@@ -2935,6 +3104,11 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
     -- clashFire note in the parry branch.
     Clash.holdAway = closestBall ~= nil and clashDetected and not amTargeted
         and Clash.partnerFar(closestBall, humanoidRootPart.Position)
+    Clash.covered = false   -- set again in the parry branch below (Shield-cover hold)
+    -- Shield lock / cover hold only outside a game clash and with nobody within
+    -- PARTNER_NEAR studs (a point-blank exchange keeps firing as before).
+    Clash.lockOn = closestBall ~= nil and not clashActive
+        and Clash.nearestOther(humanoidRootPart.Position) > Clash.PARTNER_NEAR
 
     if hudTick and not (autoParryEnabled and closestBall) then
         setDesc(HUD.ParryStatus, autoParryEnabled and "Status: ACTIVE - waiting for a ball" or "Status: DISABLED")
@@ -2998,6 +3172,19 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
             end
         elseif isAutoParryFrozen then
             currentParryDistance = frozenParryDistance
+        end
+        -- Never below the range this ball's speed calls for (real miss report #4).
+        -- A serve that hovered next to another player froze the range small; the
+        -- freeze then kept overwriting it after launch, and high-speed mode only
+        -- sets MAX on the frame it switches on - so a 380 studs/s ball was
+        -- "out of range" (W=0) at 46 studs. Freezing exists to stop the range
+        -- SHRINKING; growing it never causes a miss.
+        if velocity > 0 then
+            local need = calculateDistance(velocity)
+            if currentParryDistance < need then
+                currentParryDistance = need
+                if isAutoParryFrozen then frozenParryDistance = need end
+            end
         end
 
         -- Ping compensation / future prediction: extend the trigger range so
@@ -3402,7 +3589,53 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- because minThreatArrive is closing-gated too, a sideways/passing ball
         -- still can't open it.
         local inShieldWindow = surfaceArriveTime <= shieldLead or minThreatArrive <= shieldLead
-        if amTargeted or ((clashActive or fastClashHold) and not Clash.holdAway) or imminentThreat or pointBlank or clashIncoming then
+        -- Homing arrival (real miss report #4, 119 ms): a ball aimed at ME that is
+        -- TURNING onto me arrives even while its heading still points well off.
+        -- The arc above keeps turning at the measured rate (a circle) and said
+        -- "misses" (arr=inf) until the ball was 24 studs out at 380 studs/s - one
+        -- frame from impact. So for a ball whose target is me, that is turning
+        -- toward my side (>= 2 rad/s) and already closing at a quarter of its
+        -- speed, also open the window on distance over its closing speed (never
+        -- counted slower than half its raw speed). Not for a ball flying straight
+        -- past (side-then-snap) or circling me (orbit-then-snap): its turn or its
+        -- closing speed is ~0, and firing early on it burns the cooldown before
+        -- it snaps in (test_scenarios caught both).
+        if not inShieldWindow and ballPos and velocity > 0 and closingSpeed >= 0.25 * velocity
+            and ballOmega >= 2 and Clash.targetOf(closestBall) == LocalPlayer.Name then
+            local toMe = humanoidRootPart.Position - ballPos
+            local vhat = ballVel / velocity
+            if ballAccel:Dot(toMe - vhat * toMe:Dot(vhat)) > 0 then
+                inShieldWindow = math.max(closestDistance - EFFECTIVE_HIT_RADIUS, 0)
+                    / math.max(closingSpeed, 0.5 * velocity) <= shieldLead
+            end
+        end
+        -- Shield-cover hold (real miss report #4). In a fast long-range rally the
+        -- ball we see trails the real one by half a ping plus Roblox's
+        -- interpolation, so it still shows "coming at me" after my shield has
+        -- already parried it. Outside a game clash the server refuses a block
+        -- while my shield is up (the report: every block for 0.6s after it went
+        -- up was rejected), and the first one that lands as it ends is accepted
+        -- - on a ball that is already flying away. That fresh block started a
+        -- new 1s cooldown and its shield ran out 0.03s before the opponent's
+        -- return. So when my last accepted shield's window already contains
+        -- the ball's real arrival, nothing fires for it (Auto Spam included);
+        -- the next block is left for the return (Return Pre-Shield / the
+        -- normal window). Real arrival = what I see, moved forward by half a
+        -- ping + VIEW_LAG, at its closing speed. Only while the ball I see is
+        -- really coming at me: just after the opponent's return the target is
+        -- already me but the ball on screen is still the last pass flying
+        -- away, and that is a NEW pass the old shield may not cover (sandbox).
+        -- Never in a game clash (blocks are accepted back-to-back there), nor
+        -- with another player within PARTNER_NEAR studs (point-blank exchange).
+        if Clash.lockOn and velocity > 0 and closingSpeed >= 0.5 * velocity
+            and Clash.targetOf(closestBall) == LocalPlayer.Name then
+            local arrive = currentTime - currentPing / 2000 - Clash.VIEW_LAG
+                + math.max(closestDistance - EFFECTIVE_HIT_RADIUS, 0) / closingSpeed
+            Clash.covered = arrive >= Clash.shieldFrom - 0.05 and arrive <= Clash.shieldTo - frameLag
+        end
+        if Clash.covered then
+            -- held: the shield that is up already takes this ball
+        elseif amTargeted or ((clashActive or fastClashHold) and not Clash.holdAway) or imminentThreat or pointBlank or clashIncoming then
             if (withinRange or willArriveInTime or clashIncoming) and (alwaysFire or (coverable and inShieldWindow)) then executeParry(clashRate) end
             -- Fire block every frame while the shield window is open (or mid-clash
             -- / point-blank), so jitter in the estimate can't leave a gap - the
@@ -3417,7 +3650,7 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- Miss Recorder: one compact row per frame (see Clash.rec).
         Clash.rec(currentTime, closestDistance, velocity, closingSpeed, currentTimeToImpact,
             surfaceArriveTime, shieldLead, withinRange, coverable, inShieldWindow, panicNow,
-            imminentThreat, alwaysFire, amTargeted)
+            imminentThreat, alwaysFire, amTargeted, Clash.covered)
     end
 
     updateVisualSphere(humanoidRootPart)
