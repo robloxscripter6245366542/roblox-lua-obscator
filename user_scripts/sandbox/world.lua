@@ -43,6 +43,7 @@ local function build(SRC, pingMs, opts)
   local char=Instance.new("Model"); char.Name="Hero"
   local hrp=Instance.new("Part"); hrp.Name="HumanoidRootPart"; hrp.Position=v3(0,5,0); hrp.AssemblyLinearVelocity=v3(0,0,0); hrp.Parent=char
   local hum=Instance.new("Humanoid"); hum.WalkSpeed=16; hum.FloorMaterial=Enum.Material.Plastic; hum.Parent=char
+  hum.Health=100; hum.HealthChanged=R.newSignal()
   LP.Character=char; LP.CharacterAdded=R.newSignal(); LP.CharacterRemoving=R.newSignal()
   local players={LP}
   Players.PlayerAdded=R.newSignal(); Players.PlayerRemoving=R.newSignal(); Players.LocalPlayer=LP
@@ -141,6 +142,11 @@ local function build(SRC, pingMs, opts)
   env.os={clock=function() return R.VTIME() end, time=function() return R.VTIME() end}
   env.require=function(x) if type(x)=="table" and x._moduleValue then return x._moduleValue end error("require unknown") end
   env.getgenv=function() return env._genv end; env._genv={}; env.setclipboard=function() end; env.toclipboard=function() end
+  -- in-memory file system so tests can read what the script writes
+  local files={}
+  env.writefile=function(p,c) files[p]=c end; env.appendfile=function(p,c) files[p]=(files[p] or "")..c end
+  env.readfile=function(p) return files[p] end; env.isfile=function(p) return files[p]~=nil end
+  env.isfolder=function() return true end; env.makefolder=function() end
   env.loadstring=function(s,n) local f,e=loadstring(s,n) if not f then return nil,e end setfenv(f,env) return f end
   env._G=env; setmetatable(env,{__index=function() return nil end})
   local chunk=assert(loadstring(SRC,"@autoparry")); setfenv(chunk,env)
@@ -149,7 +155,7 @@ local function build(SRC, pingMs, opts)
   return { R=R,v3=v3,Instance=Instance,Enum=Enum,RunService=RunService,Balls=Balls,heroF=heroF,Eff=Eff,
            Players=Players,players=players,LP=LP,char=char,
            hrp=hrp,char_ref=char,server=server,shieldAt=shieldAt,oneway=oneway,movement=movement,
-           ballCtl=ballCtl,swordCtl=swordCtl,clashCtl=clashCtl,apService=apService,genv=env._genv }
+           ballCtl=ballCtl,swordCtl=swordCtl,clashCtl=clashCtl,apService=apService,genv=env._genv,files=files }
 end
 
 return { build=build }

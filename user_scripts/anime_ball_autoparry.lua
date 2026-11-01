@@ -892,6 +892,77 @@ HUD.ParryStats = paragraph(Tabs.Stats, "Auto Parry Stats", "Waiting for data..."
 HUD.SpamStats = paragraph(Tabs.Stats, "Auto Spam Stats", "Waiting for data...")
 HUD.LiveStats = paragraph(Tabs.Stats, "Live Monitoring", "Monitoring...")
 
+-- ============================================
+-- MISS RECORDER
+-- ============================================
+-- Keeps the last ~2.5s of what the parry saw and decided each frame, plus every
+-- block sent and the server's answer. When you get hit by a ball that was aimed
+-- at you, it freezes that history into a text report you can copy and send, so
+-- a real in-game miss can be diagnosed from facts instead of guesses.
+Clash.log, Clash.logN, Clash.events, Clash.misses, Clash.lastReport = {}, 0, {}, 0, nil
+Clash.rec = function(t, d, v, cl, tti, arr, lead, within, cover, inWin, panic, imminent, always, targeted)
+    Clash.logN = Clash.logN + 1
+    Clash.log[(Clash.logN - 1) % 150 + 1] = { t, d, v, cl, tti, arr, lead, within, cover, inWin, panic, imminent, always, targeted }
+end
+Clash.event = function(t, what)
+    local e = Clash.events
+    e[#e + 1] = { t, what }
+    if #e > 60 then table.remove(e, 1) end
+end
+Clash.buildReport = function(now, cause)
+    local function f(x) if x == nil or x ~= x or x >= 1e6 then return "inf" end return string.format("%.2f", x) end
+    local function b(x) return x and "1" or "0" end
+    local lines = {
+        "Anime Ball Hub miss report #" .. Clash.misses .. " (" .. cause .. ")",
+        string.format("ping %.0f ms (smoothed %.0f) | frameLag %.0f ms | clashSpeed %d | preShield %s | pingComp %s | antiCurve %s",
+            currentPing, smoothedPing, frameLag * 1000, Clash.rate or 0, tostring(Clash.retOn), tostring(pingCompEnabled), tostring(antiCurveEnabled)),
+        "time   dist  speed close  tti   arr   lead  W C S P I A T  (W=withinRange C=coverable S=inShieldWindow P=panic I=imminent A=alwaysFire T=targeted)",
+    }
+    local rows = {}
+    for i = 1, math.min(Clash.logN, 150) do
+        local r = Clash.log[i]
+        if r and now - r[1] <= 1.5 then rows[#rows + 1] = r end
+    end
+    table.sort(rows, function(a, c) return a[1] < c[1] end)
+    for _, r in ipairs(rows) do
+        lines[#lines + 1] = string.format("%+.2f %5s %5s %5s %5s %5s %5s %s %s %s %s %s %s %s",
+            r[1] - now, f(r[2]), f(r[3]), f(r[4]), f(r[5]), f(r[6]), f(r[7]),
+            b(r[8]), b(r[9]), b(r[10]), b(r[11]), b(r[12]), b(r[13]), b(r[14]))
+    end
+    lines[#lines + 1] = "-- blocks --"
+    for _, e in ipairs(Clash.events) do
+        if now - e[1] <= 2.0 then lines[#lines + 1] = string.format("%+.2f %s", e[1] - now, e[2]) end
+    end
+    return table.concat(lines, "\n")
+end
+Clash.onMiss = function(cause)
+    if destroyed or (tick() - Clash.meAt) > 2.0 then return end   -- only balls that were aimed at me
+    Clash.misses = Clash.misses + 1
+    Clash.lastReport = Clash.buildReport(tick(), cause)
+    setDesc(HUD.MissLog, string.format("Misses recorded: %d\nLast: %s - press Copy and paste it to the dev", Clash.misses, cause))
+    pcall(function()
+        if type(appendfile) == "function" and type(isfile) == "function" and isfile(CONFIG_FOLDER .. "/miss_reports.txt") then
+            appendfile(CONFIG_FOLDER .. "/miss_reports.txt", "\n\n" .. Clash.lastReport)
+        elseif type(writefile) == "function" then
+            if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
+            writefile(CONFIG_FOLDER .. "/miss_reports.txt", Clash.lastReport)
+        end
+    end)
+    notify("Miss recorded", "Statistics tab > Copy Last Miss Report, then paste it to the dev", 5)
+end
+section(Tabs.Stats, "Miss Recorder")
+HUD.MissLog = paragraph(Tabs.Stats, "Miss Recorder", "No misses recorded yet. When a ball aimed at you hits you, a report is saved here.")
+Tabs.Stats:Button({
+    Title = "Copy Last Miss Report",
+    Desc = "Copies what the parry saw in the 1.5s before your last miss",
+    Callback = function()
+        if not Clash.lastReport then notify("Miss Recorder", "No miss recorded yet") return end
+        local clip = setclipboard or toclipboard
+        local ok = clip ~= nil and pcall(clip, Clash.lastReport)
+        notify(ok and "Copied" or "Copy failed", ok and "Paste it to the dev" or ("Saved in " .. CONFIG_FOLDER .. "/miss_reports.txt"), 4)
+    end,
+})
+
 Tabs.Stats:Button({
     Title = "Reset All Statistics",
     Desc = "Reset both parry and spam counters",
@@ -1677,6 +1748,7 @@ end
 -- Records what the server returned for a Block call so the HUD can show whether
 -- our blocks are landing or being rejected on cooldown.
 local function recordBlockResult(ok, result)
+    Clash.event(tick(), "RESULT " .. (not ok and "error" or (result == nil and "rejected" or (result and "parried" or "shield-up"))))
     blockSent = blockSent + 1
     if not ok then
         lastBlockResult = "error"
@@ -1751,6 +1823,7 @@ local function fireBlockRemote(clash)
     end
     if blocksInFlight >= cap then return false end
     if clash then Clash.tokens = Clash.tokens - 1 end
+    Clash.event(nowT, clash and "SEND clash" or "SEND")
     lastBlockSendTime = nowT
     blocksInFlight = blocksInFlight + 1
     task.spawn(function()
@@ -3192,12 +3265,40 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
                 end
             end
         end
+        -- Miss Recorder: one compact row per frame (see Clash.rec).
+        Clash.rec(currentTime, closestDistance, velocity, closingSpeed, currentTimeToImpact,
+            surfaceArriveTime, shieldLead, withinRange, coverable, inShieldWindow, panicNow,
+            imminentThreat, alwaysFire, amTargeted)
     end
 
     updateVisualSphere(humanoidRootPart)
     runAutoSpam(amTargeted, clashDetected, realClash, hudTick,
         (currentTime - Clash.meAt) <= Clash.PART_WINDOW)
 end)
+
+-- Miss Recorder: a ball aimed at me just hit me if I die (or lose health)
+-- while a ball targeted me in the last 2s.
+do
+    -- Fully guarded: the recorder is diagnostics only and must never be able
+    -- to break loading or parrying (e.g. a humanoid without HealthChanged).
+    local function watchHumanoid(character)
+        pcall(function()
+            local hum = character and character:WaitForChild("Humanoid", 5)
+            if not hum or not hum.HealthChanged then return end
+            local last = hum.Health
+            track(hum.HealthChanged:Connect(function(h)
+                pcall(function()
+                    if type(h) == "number" and type(last) == "number" and h < last - 1 then
+                        Clash.onMiss(h <= 0 and "died" or "took damage")
+                    end
+                end)
+                last = h
+            end))
+        end)
+    end
+    if LocalPlayer.Character then task.spawn(watchHumanoid, LocalPlayer.Character) end
+    track(LocalPlayer.CharacterAdded:Connect(function(c) task.spawn(watchHumanoid, c) end))
+end
 
 track(LocalPlayer.CharacterRemoving:Connect(function()
     if visualSphere then visualSphere:Destroy() visualSphere = nil end
