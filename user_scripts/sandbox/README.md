@@ -162,3 +162,11 @@ exact. The real confirmation is still an in-game run.
   server in time. The ball reaches the opponent from the side, so no shield is
   up by coincidence. Run: `lua-5.1.5/src/lua return_test.lua`. Expected:
   **12 parried, 0 missed** (it was 5/12 before Return Pre-Shield).
+
+- **`pointblank_hold.lua`** — point-blank clash hold at real ping, using a
+  **yielding** Block transport: each Invoke takes a full round-trip to return.
+  The server is modeled as using up the shield on each parry, so every return
+  needs its own fresh block to have arrived. Run:
+  `lua-5.1.5/src/lua pointblank_hold.lua`. Expected: **ALL RETURNS HELD**. With
+  the old fixed in-flight cap of 2 it held only 36/60 at 200 ms and lost one
+  return at 130 ms.

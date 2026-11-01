@@ -1722,7 +1722,18 @@ local function fireBlockRemote(clash)
     local nowT = tick()
     local interval = clash and CLASH_SEND_INTERVAL or BLOCK_SEND_INTERVAL
     if nowT - lastBlockSendTime < interval then return false end
-    if blocksInFlight >= (clash and CLASH_INFLIGHT or 1) then return false end
+    -- In-flight cap. Each Block:Invoke takes a full round-trip to return, so a
+    -- fixed cap of 2 limited a clash to ~2/RTT blocks reaching the server (about
+    -- 15/s at 130 ms, 10/s at 200 ms) whatever the send interval - and if the
+    -- server uses up the shield on each parry, a point-blank clash drops returns
+    -- (pointblank_hold: 36/60 held at 200 ms). Scale it with ping so ~70/s can
+    -- arrive; CLASH_SEND_INTERVAL still caps the actual send rate under the
+    -- game's 120/s budget, so this never floods.
+    local cap = 1
+    if clash then
+        cap = math.clamp(math.ceil((math.max(smoothedPing, currentPing) / 1000) * 70) + 1, CLASH_INFLIGHT, 12)
+    end
+    if blocksInFlight >= cap then return false end
     lastBlockSendTime = nowT
     blocksInFlight = blocksInFlight + 1
     task.spawn(function()

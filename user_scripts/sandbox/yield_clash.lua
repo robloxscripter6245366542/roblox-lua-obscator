@@ -65,18 +65,23 @@ local function real(ping)
 end
 
 print("=== faithful yielding-server clash: paced fire vs backlog ===")
-print("    peakInflight small (no flood) AND a fresh block for every return, at every ping.")
+print("    send rate under budget (no flood) AND a fresh block for every return, at every ping.")
 local backlogOK, heldOK = true, true
 for _,pg in ipairs({30,90,150,200}) do
   local cPeak = control(pg)
   local rPeak, cov, retCov, landRate = real(pg)
-  if rPeak>5 then backlogOK=false end            -- bounded, nowhere near the flood
+  -- Flood = SENDING too fast, not "many in flight": in-flight is just send rate x
+  -- round-trip (60/s x 0.2s = 12), and a fixed small cap only throttles clash
+  -- throughput at high ping (see pointblank_hold.lua). So: the send rate must stay
+  -- well under the game's 120/s budget, and in-flight must never exceed what a
+  -- plain one-per-frame stream naturally has at that ping (the control's peak).
+  if landRate>100 or rPeak>cPeak+1 then backlogOK=false end
   if cov<0.98 or retCov<0.98 then heldOK=false end
   print(string.format("  ping %3d ms | no-guard backlog peak=%-4d | script peakInflight=%d | %5.1f blocks/s | shield %3.0f%% | per-return %3.0f%%",
     pg, cPeak, rPeak, landRate, cov*100, retCov*100))
 end
 print("")
-if backlogOK then print("OK: block backlog stays small (<=4) - no flood, snappy.")
+if backlogOK then print("OK: send rate under the 120/s budget and no backlog beyond a one-per-frame stream - no flood.")
 else print("FAIL: backlog grew too large - flood returned."); os.exit(1) end
 if heldOK then print("OK: a fresh block covered the ball on EVERY return (persistent AND per-parry shield models) - clash HELD.")
 else print("FAIL: a point-blank return went unshielded (clash lost)."); os.exit(1) end
