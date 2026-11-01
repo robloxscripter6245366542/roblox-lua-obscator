@@ -2441,20 +2441,40 @@ track(RunService.Heartbeat:Connect(function()
             if ohrp then
                 local gap = (ohrp.Position - myPos).Magnitude
                 local bp = getBallPosition(ball)
-                if bp and gap <= Clash.RET_RANGE then
-                    local vel = getBallVelocityVector(ball)
-                    local speed = vel.Magnitude
+                local vel = bp and getBallVelocityVector(ball) or nil
+                local speed = vel and vel.Magnitude or 0
+                -- Range scales with ping and ball speed: a return is too fast to
+                -- react to whenever it can cover the gap within ping + 0.05s, so a
+                -- fixed 35 studs missed farther opponents at high ping (45 studs
+                -- at 200 ms in move_return_test). Capped so far players are ignored.
+                local reach = Clash.RET_RANGE
+                if speed > 1 then
+                    reach = math.clamp((ping + frameLag + 0.05) * speed * Clash.RET_SPEEDUP + EFFECTIVE_HIT_RADIUS,
+                        Clash.RET_RANGE, 90)
+                end
+                if bp and gap <= reach then
                     local toP = ohrp.Position - bp
                     local dP = toP.Magnitude
                     local closing = dP > 1e-3 and vel:Dot(toP) / dP or 0
                     if closing > 1 and speed > 1 then
                         local ttiToP = math.max(dP - EFFECTIVE_HIT_RADIUS, 0) / closing
-                        local returnWindow = math.max(gap - EFFECTIVE_HIT_RADIUS, 0) / (speed * Clash.RET_SPEEDUP)
-                        -- Only when reacting after the turn can't make it, and only
-                        -- once the return falls inside the shield the block buys:
-                        -- arrival (ttiToP + returnWindow) within ping + 0.45s.
-                        if returnWindow < ping + frameLag + 0.1
-                            and (ttiToP + returnWindow) <= ping + 0.45 then
+                        -- Your own movement changes the return time: dashing/jumping
+                        -- IN shortens it, dashing AWAY lengthens it (firing early
+                        -- then would let the shield expire before the ball lands and
+                        -- the cooldown block the real block). Signed, floored so a
+                        -- hard dash away can't make the estimate absurd.
+                        local towardP = (ohrp.Position - myPos)
+                        local myIn = gap > 1e-3 and hrp.AssemblyLinearVelocity:Dot(towardP) / gap or 0
+                        local retClose = math.max(speed * Clash.RET_SPEEDUP + myIn, speed * 0.5)
+                        local returnWindow = math.max(gap - EFFECTIVE_HIT_RADIUS, 0) / retClose
+                        -- Fire as LATE as still covers it: predicted arrival within
+                        -- ping + 0.2s leaves ~0.4s of the 0.6s shield as slack if the
+                        -- return takes longer than predicted (you dash away after we
+                        -- fire). And only when reacting after the turn truly can't
+                        -- make it (ping + a frame + 0.05s); otherwise the normal
+                        -- reactive parry handles it without spending the cooldown early.
+                        if returnWindow < ping + frameLag + 0.05
+                            and (ttiToP + returnWindow) <= ping + 0.2 then
                             Clash.retBall, Clash.retAt = ball, now
                             if fireBlockRemote(false) then
                                 Clash.retCount = Clash.retCount + 1
