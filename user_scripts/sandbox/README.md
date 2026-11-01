@@ -155,3 +155,10 @@ exact. The real confirmation is still an in-game run.
   (the game never sets `ClashEffect` then) must still be held, and
   `GetBallAsync` must not add a connection per call. Run:
   `lua-5.1.5/src/lua hook_test.lua`. Expected: **ALL HOOK CASES OK**.
+
+- **`return_test.lua`** — fast close **returns**: an opponent 15–25 studs away
+  hits the ball straight back at you, 1.2x faster. The return lands in less
+  time than your ping, so a block fired after the ball turns can't reach the
+  server in time. The ball reaches the opponent from the side, so no shield is
+  up by coincidence. Run: `lua-5.1.5/src/lua return_test.lua`. Expected:
+  **12 parried, 0 missed** (it was 5/12 before Return Pre-Shield).
