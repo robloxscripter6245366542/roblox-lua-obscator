@@ -273,6 +273,34 @@ for _,ping in ipairs({60,150}) do
   if wasted==0 and parried then ok(tag) else bad(tag, "should waste 0 and parry") end
 end
 
+print("=== Miss Recorder ===")
+do
+  -- A fast ball aimed at me arrives faster than my ping (unblockable), I take
+  -- damage -> a report must be captured with the frames before the hit.
+  local w = assert(build(SRC, 200)); settle(w)
+  local v3,Instance,Enum = w.v3,w.Instance,w.Enum
+  local hum = w.char:FindFirstChild("Humanoid")
+  local b=Instance.new("Part"); b.Name="MissBall"
+  local lv=Instance.new("LinearVelocity"); lv.Enabled=true; lv.RelativeTo=Enum.ActuatorRelativeTo.World
+  lv.VelocityConstraintMode=Enum.VelocityConstraintMode.Vector; lv.Parent=b
+  b:SetAttribute("Target","Hero"); b.Position=v3(0,5,40); b.AssemblyLinearVelocity=v3(0,0,-150); lv.VectorVelocity=v3(0,0,-150); b.Parent=w.Balls
+  for _=1,10 do b.Position=b.Position+v3(0,0,-2.5); w.RunService.Heartbeat:Fire(); w.R.advance(1/60) end
+  hum.Health = 0; hum.HealthChanged:Fire(0)
+  local rep = w.files["AnimeBallHub/miss_reports.txt"] or ""
+  local rows = 0
+  for line in rep:gmatch("[^\n]+") do if line:match("^%-0%.%d%d +%d") then rows = rows + 1 end end
+  if rep:find("miss report #1", 1, true) and rep:find("-- blocks --", 1, true) and rows >= 5 then
+    ok("hit by a ball aimed at me -> report saved ("..rows.." frame rows)")
+  else bad("miss recorder", "report missing or empty ("..#rep.." chars, "..rows.." rows)") end
+  -- a hit with NO ball aimed at me in the last 2s must not be recorded
+  local w2 = assert(build(SRC, 60)); settle(w2)
+  local hum2 = w2.char:FindFirstChild("Humanoid")
+  for _=1,180 do w2.RunService.Heartbeat:Fire(); w2.R.advance(1/60) end
+  hum2.Health = 50; hum2.HealthChanged:Fire(50)
+  if not w2.files["AnimeBallHub/miss_reports.txt"] then ok("damage with no ball aimed at me -> nothing recorded")
+  else bad("miss recorder", "recorded a non-ball hit") end
+end
+
 print("=== Block result + BlockSuccess hook ===")
 do
   local _, _, w = run(60, "Other", "Hero", true)
