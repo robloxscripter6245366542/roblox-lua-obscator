@@ -527,6 +527,7 @@ showSpeedLabel      = setting("ShowSpeedLabel", showSpeedLabel)
 GameAP.want         = setting("GameAutoParry", false)
 AutoDash.enabled    = setting("AutoDash", false)
 Clash.retOn         = setting("ReturnPreShield", true)
+Clash.rate          = math.clamp(setting("ClashSpeed", 85), 30, 110)
 AutoDash.range      = math.clamp(setting("AutoDashRange", AutoDash.range), 6, 30)
 AutoDash.closing    = math.clamp(setting("AutoDashClosing", AutoDash.closing), 10, 120)
 AutoDash.angle      = math.clamp(setting("AutoDashAngle", AutoDash.angle), 0, 90)
@@ -831,6 +832,11 @@ HUD.AutoDash = paragraph(Tabs.Parry, "Auto-Dash Status", "Off")
 -- AUTO SPAM TAB
 -- ============================================
 section(Tabs.Spam, "Auto Spam Status")
+slider(Tabs.Spam, "ClashSpeed", "Clash Speed (blocks/s)",
+    "How fast it blocks during a clash. The game drops requests above 120/s total and can lock the remote "
+        .. "for ~15s, so above ~100 risks LOSING the clash. 85 = fastest safe default", 30, 110, 5, Clash.rate, function(v)
+    Clash.rate = v
+end)
 toggle(Tabs.Spam, "SmartClash", "Smart Clash Detection",
     "Only spam during a real clash - not just when standing near someone", Clash.enabled, function(v)
     Clash.enabled = v
@@ -1720,8 +1726,18 @@ local blocksInFlight = 0
 local lastBlockSendTime = -1
 local function fireBlockRemote(clash)
     local nowT = tick()
-    local interval = clash and CLASH_SEND_INTERVAL or BLOCK_SEND_INTERVAL
-    if nowT - lastBlockSendTime < interval then return false end
+    if clash then
+        -- Clash: a token bucket at Clash.rate blocks/s instead of "one per
+        -- frame". On a 60 fps client the old per-frame gate capped a clash at
+        -- ~60/s; the bucket lets up to 2 go in one frame so the clash reaches
+        -- the chosen rate (default 85/s) - still under the game's 120/s budget
+        -- and far under its 20-per-0.1s burst limit (bucket holds at most 2).
+        Clash.tokens = math.min(2, (Clash.tokens or 0) + (nowT - (Clash.tokenAt or nowT)) * Clash.rate)
+        Clash.tokenAt = nowT
+        if Clash.tokens < 1 then return false end
+    elseif nowT - lastBlockSendTime < BLOCK_SEND_INTERVAL then
+        return false
+    end
     -- In-flight cap. Each Block:Invoke takes a full round-trip to return, so a
     -- fixed cap of 2 limited a clash to ~2/RTT blocks reaching the server (about
     -- 15/s at 130 ms, 10/s at 200 ms) whatever the send interval - and if the
@@ -1731,9 +1747,10 @@ local function fireBlockRemote(clash)
     -- game's 120/s budget, so this never floods.
     local cap = 1
     if clash then
-        cap = math.clamp(math.ceil((math.max(smoothedPing, currentPing) / 1000) * 70) + 1, CLASH_INFLIGHT, 12)
+        cap = math.clamp(math.ceil((math.max(smoothedPing, currentPing) / 1000) * Clash.rate) + 1, CLASH_INFLIGHT, 16)
     end
     if blocksInFlight >= cap then return false end
+    if clash then Clash.tokens = Clash.tokens - 1 end
     lastBlockSendTime = nowT
     blocksInFlight = blocksInFlight + 1
     task.spawn(function()
