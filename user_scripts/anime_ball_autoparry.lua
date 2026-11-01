@@ -1819,9 +1819,22 @@ local function fireBlockRemote(clash)
     -- game's 120/s budget, so this never floods.
     local cap = 1
     if clash then
-        cap = math.clamp(math.ceil((math.max(smoothedPing, currentPing) / 1000) * Clash.rate) + 1, CLASH_INFLIGHT, 16)
+        cap = math.clamp(math.ceil((math.max(smoothedPing, currentPing) / 1000) * Clash.rate) + 3, CLASH_INFLIGHT, 18)
     end
-    if blocksInFlight >= cap then return false end
+    if blocksInFlight >= cap then
+        -- Lag-spike trickle (real miss report #3, 173 ms): during a point-blank
+        -- clash the server's replies stalled for ~0.2s, the in-flight cap filled
+        -- and sending STOPPED for 0.16s - the ball got through that gap. Raising
+        -- the cap outright is unsafe: if it's the UPLOAD that stalled, every
+        -- queued block lands at once when it clears and the game drops anything
+        -- over 20 per 0.1s (and can lock the remote ~15s). So in a clash, past
+        -- the cap, keep trickling ~20 blocks/s (every 3rd frame at 60 fps), at most 10 extra: the
+        -- shield stays fresh if only replies are late, and a burst on recovery
+        -- stays under the limit.
+        if not clash or blocksInFlight >= cap + 10 or nowT - lastBlockSendTime < 0.04 then
+            return false
+        end
+    end
     if clash then Clash.tokens = Clash.tokens - 1 end
     Clash.event(nowT, clash and "SEND clash" or "SEND")
     lastBlockSendTime = nowT
