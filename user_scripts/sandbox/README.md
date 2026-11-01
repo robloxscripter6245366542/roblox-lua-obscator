@@ -170,3 +170,10 @@ exact. The real confirmation is still an in-game run.
   `lua-5.1.5/src/lua pointblank_hold.lua`. Expected: **ALL RETURNS HELD**. With
   the old fixed in-flight cap of 2 it held only 36/60 at 200 ms and lost one
   return at 130 ms.
+
+- **`move_return_test.lua`** — you **jump and dash** while the opponent hits
+  the ball back at you, outside a clash. The opponent is 30 or 45 studs away.
+  You dash sideways, toward them or away, 0.2 s before or right at the hit, at
+  60/130/200 ms ping. The return homes on your real position. Run:
+  `lua-5.1.5/src/lua move_return_test.lua`. Expected: **36/36 parried** (it was
+  33/36 before).
