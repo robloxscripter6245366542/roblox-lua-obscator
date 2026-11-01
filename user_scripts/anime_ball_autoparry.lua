@@ -2356,6 +2356,80 @@ task.spawn(function()
     end)
 end)
 
+-- Miss Recorder, ability context: log every ability the server plays on this
+-- client (AbilityController.Server.* - e.g. Explode("ChronoStasis Activate"),
+-- AbilityEffect(...)) and the ability-related state changes on balls and
+-- players (Anchored = frozen ball, Invisible, UsingAbility, SlowTime, ...), so
+-- a miss report shows WHICH ability was in play. Logging only; every wrapper
+-- calls the game's original and is restored on unload.
+task.spawn(function()
+    local AC = getController("AbilityController")
+    if not AC or destroyed or type(AC.Server) ~= "table" then return end
+    pcall(function()
+        local names = {}
+        for name, fn in pairs(AC.Server) do
+            if type(fn) == "function" then names[#names + 1] = name end
+        end
+        for _, name in ipairs(names) do
+            patch(AC.Server, name, function(orig)
+                return function(...)
+                    if not destroyed then
+                        local args = { n = select("#", ...), ... }
+                        pcall(function()
+                            local parts = {}
+                            for i = 1, math.min(args.n, 3) do
+                                local a = args[i]
+                                parts[#parts + 1] = typeof(a) == "Instance" and a.Name or tostring(a)
+                            end
+                            Clash.event(tick(), "ABILITY " .. name .. "(" .. table.concat(parts, ", ") .. ")")
+                        end)
+                    end
+                    return orig(...)
+                end
+            end)
+        end
+    end)
+end)
+do
+    local WATCH = { Invisible = true, UsingAbility = true, SlowTime = true, IsTarget = true,
+                    Stunned = true, Frozen = true, ClashEffect = true }
+    local function watchAttrs(inst, label)
+        pcall(function()
+            track(inst.AttributeChanged:Connect(function(attr)
+                if WATCH[attr] or attr:find("Ability") or attr:find("Slow") then
+                    pcall(function() Clash.event(tick(), string.format("%s %s=%s", label, attr, tostring(inst:GetAttribute(attr)))) end)
+                end
+            end))
+        end)
+    end
+    local function watchBall(ball)
+        watchAttrs(ball, "BALL")
+        pcall(function()
+            track(ball:GetPropertyChangedSignal("Anchored"):Connect(function()
+                Clash.event(tick(), "BALL Anchored=" .. tostring(ball.Anchored) .. " (frozen ball)")
+            end))
+        end)
+    end
+    local function watchPlayer(pl)
+        local label = pl == LocalPlayer and "ME" or ("PLAYER " .. pl.Name)
+        watchAttrs(pl, label)
+        if pl.Character then watchAttrs(pl.Character, label) end
+        pcall(function() track(pl.CharacterAdded:Connect(function(c) watchAttrs(c, label) end)) end)
+    end
+    task.spawn(function()
+        pcall(function()
+            local balls = workspace:WaitForChild("Balls", 10)
+            if not balls then return end
+            for _, b in ipairs(balls:GetChildren()) do watchBall(b) end
+            track(balls.ChildAdded:Connect(watchBall))
+        end)
+        pcall(function()
+            for _, pl in ipairs(Players:GetPlayers()) do watchPlayer(pl) end
+            track(Players.PlayerAdded:Connect(watchPlayer))
+        end)
+    end)
+end
+
 -- Fix 2: BallController.GetBallAsync connects a NEW Invisible-changed handler
 -- to the ball on every call - and it's called for every ball sound, hit effect
 -- and retarget. Over a round that's hundreds of duplicate connections (all
