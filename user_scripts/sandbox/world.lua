@@ -24,15 +24,38 @@ local function build(SRC, pingMs, opts)
   -- fresh shield), rejected = refused on cooldown. Mirrors the script's HUD
   -- Blocks Sent / Landed / Rejected counters.
   local server = { cooldownUntil=0, shields={}, blocks=0, landed=0, rejected=0, inflight=0, peakInflight=0 }
+  -- The verdict is decided on the server half a ping after the send (what the
+  -- cooldown/shields are THEN), and with yieldTransport the reply takes the
+  -- other half back. (The yield used to wait the whole round trip first and
+  -- then register half a ping later still - 1.5 pings late.)
+  local function verdict(reg)
+    if reg<server.cooldownUntil then server.rejected=server.rejected+1; return nil end  -- game returns nil on a refused block
+    -- opts.shieldLock: outside a game clash the real server also refuses a block
+    -- while your own shield is still up, even after a parry reset the cooldown
+    -- (real miss report #4: every block for the 0.6s after one went up was
+    -- rejected, and the first to land as it ended was accepted).
+    if opts.shieldLock then
+      for _,sh in ipairs(server.shields) do
+        if reg>=sh[1] and reg<sh[2] then server.rejected=server.rejected+1; return nil end
+      end
+    end
+    server.shields[#server.shields+1]={reg,reg+0.6}; server.cooldownUntil=reg+1.0
+    server.landed=server.landed+1; return true
+  end
   function server.block() server.blocks=server.blocks+1
     server.inflight=server.inflight+1
     if server.inflight>server.peakInflight then server.peakInflight=server.inflight end
-    if opts.yieldTransport then task.wait(oneway*2) end   -- real round-trip yield
+    local res
+    if opts.yieldTransport then
+      task.wait(oneway)                 -- upload
+      res=verdict(R.VTIME())
+      task.wait(oneway)                 -- reply
+    else
+      res=verdict(R.VTIME()+oneway)
+    end
     server.inflight=server.inflight-1
-    local reg=R.VTIME()+oneway
-    if reg<server.cooldownUntil then server.rejected=server.rejected+1; return nil end  -- game returns nil on a refused block
-    server.shields[#server.shields+1]={reg,reg+0.6}; server.cooldownUntil=reg+1.0
-    server.landed=server.landed+1; return true end
+    return res
+  end
   local function shieldAt(t) for _,s in ipairs(server.shields) do if t>=s[1] and t<=s[2] then return true end end return false end
   function server.parryReset() server.cooldownUntil = R.VTIME() end
 
