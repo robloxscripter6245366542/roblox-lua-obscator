@@ -409,6 +409,7 @@ local Clash = {
     acceptedSent = -math.huge,   -- when the block that raised it was SENT
     covered = false,
     farRally = false,            -- no game clash and nobody within PARTNER_NEAR studs
+    lowBall = nil, lowAt = -math.huge,   -- last time the closest ball was slow (launch window)
     parryAt = { -math.huge, -math.huge, -math.huge },   -- my last three parries (when I saw them), newest first
     chainFor = -math.huge,       -- the parry the rally chain last fired for
     CHAIN_GAP = 0.5,             -- rally chain: both recent parry gaps must be this short
@@ -1258,7 +1259,11 @@ local function kinematicVelocity(ball, part, now)
         ballPosSample[ball] = { pos = pos, time = now, vel = Vector3.new() }
         return Vector3.new()
     end
-    if now > s.time + 1e-4 then
+    -- At least half a 60 fps frame apart: two Heartbeat handlers (the parry
+    -- loop and Return Pre-Shield) read a ball in the SAME frame a fraction of a
+    -- millisecond apart, and re-sampling between them read an unmoved position
+    -- over that sliver as speed 0 for the second reader.
+    if now > s.time + 0.008 then
         s.vel = (pos - s.pos) / (now - s.time)
         s.pos, s.time = pos, now
     end
@@ -1366,6 +1371,24 @@ local function updateBallCurvature(ball, vel, now)
     local axis = prev and prev.axis or Vector3.yAxis  -- rotation axis, smoothed
     local speed = vel.Magnitude
     local dir = speed > 1e-3 and (vel / speed) or (prev and prev.dir) or nil
+    -- The ball's velocity replicates ~30 times a second, so on every other
+    -- 60 fps frame it hasn't changed at all and the NEXT frame carries two
+    -- frames' turn at once - read over one frame, a real 9 rad/s homing turn
+    -- looks like 20+ rad/s and was thrown out as a "bounce" below (real miss
+    -- report #6: the turn rate never registered). So an unchanged reading
+    -- leaves the state alone (for up to 0.05s) and the next real change is
+    -- measured over the time it actually took.
+    if prev and (vel - prev.vel).Magnitude < 1e-6 and now - prev.time < 0.05 then
+        return prev.accel, prev.omega or 0, prev.axis
+    end
+    -- A LAUNCH (a held or slow ball suddenly fast - an ability shot, a serve)
+    -- is not a curve: read as delta-v it is a huge one-frame acceleration and
+    -- turn that the smoothing then carried for several frames, so the arc said
+    -- the ball would miss (arr=inf) the whole way in (report #6). Start fresh.
+    if prev and speed > 50 and prev.vel.Magnitude < 0.25 * speed then
+        ballMotionCache[ball] = {vel = vel, accel = Vector3.new(), time = now, dir = dir, omega = 0, axis = prev.axis}
+        return Vector3.new(), 0, prev.axis
+    end
     if prev and now > prev.time then
         local dt = now - prev.time
         local rawAccel = (vel - prev.vel) / dt
@@ -2644,6 +2667,8 @@ Clash.retPrev, Clash.retPrevAt = setmetatable({}, { __mode = "k" }), setmetatabl
 Clash.retApp, Clash.retLockApp = setmetatable({}, { __mode = "k" }), nil
 Clash.retWant, Clash.retWantAt, Clash.retWantApp, Clash.retWantUntil, Clash.retWantArr = nil, 0, nil, 0, 0
 Clash.retLast = setmetatable({}, { __mode = "k" })
+Clash.toMeAt, Clash.heldFor = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
+Clash.fastSpd, Clash.fastAt = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
 track(RunService.Heartbeat:Connect(function()
     if destroyed or not Clash.retOn or not autoParryEnabled then return end
     local hrp = getPlayerHRP(LocalPlayer)
@@ -2697,7 +2722,44 @@ track(RunService.Heartbeat:Connect(function()
         if type(target) == "string" and target ~= myName and Clash.retLast[ball] == myName then
             Clash.noteParry(now)
         end
+        if target == myName and Clash.retLast[ball] ~= myName then Clash.toMeAt[ball] = now end
         Clash.retLast[ball] = target
+        -- Held ability launch (real miss report #6, 158 ms). Another player's
+        -- ability HELD the ball - it read speed 0 - then switched its target to
+        -- me and shot it at ~475 studs/s from ~125 studs.
+        -- The ball on screen is half a ping + VIEW_LAG old, so it still sat
+        -- there at speed 0 when the target said me, and by the time it visibly
+        -- moved a block could no longer land in time. So when a ball that was
+        -- just moving fast is held (under a quarter of that speed) and its
+        -- target switches to me,
+        -- block for the earliest it can arrive at the speed it had: from where
+        -- it is (a held ball's position is current), counted from the switch.
+        -- A hovering serve never qualifies: it was not fast a moment ago.
+        do
+            local bp = ball.Parent and getBallPosition(ball)
+            local bv = bp and getBallVelocityVector(ball)
+            local spd = bv and bv.Magnitude or 0
+            if spd >= 60 then
+                if not (Clash.fastAt[ball] and now - Clash.fastAt[ball] < 0.5 and Clash.fastSpd[ball] > spd) then
+                    Clash.fastSpd[ball] = spd
+                end
+                Clash.fastAt[ball] = now
+            end
+            local fs, fa, toMe = Clash.fastSpd[ball], Clash.fastAt[ball], Clash.toMeAt[ball]
+            if target == myName and bp and fs and fs >= 150 and spd < 0.25 * fs and now - fa <= 2.5
+                and toMe and now - toMe <= Clash.FRESH_MAX + 0.1 and Clash.heldFor[ball] ~= toMe then
+                local straight = math.max((bp - myPos).Magnitude - EFFECTIVE_HIT_RADIUS, 0) / (fs * Clash.RET_SPEEDUP)
+                local earliest = toMe - ping / 2 + straight
+                local covered = Clash.farRally and earliest >= Clash.shieldFrom - 0.05
+                    and earliest + straight * 1.7 <= Clash.shieldTo - frameLag
+                if straight <= Clash.FRESH_MAX and not covered and now + ping / 2 >= earliest - 0.05 then
+                    if fireBlockRemote(false, "held launch") then
+                        Clash.heldFor[ball] = toMe
+                        totalBurstBlocks = totalBurstBlocks + 1
+                    end
+                end
+            end
+        end
         -- One block per APPROACH (each time the ball is sent at an opponent):
         -- a fixed 0.8s lock still held the NEXT approach in a long rally
         -- (sandbox: round trips ~0.7s).
@@ -3638,6 +3700,22 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- past (side-then-snap) or circling me (orbit-then-snap): its turn or its
         -- closing speed is ~0, and firing early on it burns the cooldown before
         -- it snaps in (test_scenarios caught both).
+        -- Launch window (real miss report #6, 158 ms): an ability held the ball
+        -- still, then shot it at me at ~475 studs/s from ~125 studs, starting
+        -- 75 deg off and swinging in. Right after a launch the arc above has
+        -- no curve history to go on and called it a miss (arr=inf) until it
+        -- was one frame out. For 0.4s after a ball aimed at me goes from slow
+        -- (< 40 studs/s) to fast (>= 150), and is closing at a quarter of its
+        -- speed, open the window on distance over its closing speed (never
+        -- counted slower than half its raw speed). A side-then-snap or orbiting
+        -- ball is never slow-then-fast like that, so it is unaffected.
+        if velocity < 40 then Clash.lowBall, Clash.lowAt = closestBall, currentTime end
+        if not inShieldWindow and ballPos and velocity >= 150 and closingSpeed >= 0.25 * velocity
+            and Clash.lowBall == closestBall and currentTime - Clash.lowAt <= 0.4
+            and Clash.targetOf(closestBall) == LocalPlayer.Name then
+            inShieldWindow = math.max(closestDistance - EFFECTIVE_HIT_RADIUS, 0)
+                / math.max(closingSpeed, 0.5 * velocity) <= shieldLead
+        end
         if not inShieldWindow and ballPos and velocity > 0 and closingSpeed >= 0.25 * velocity
             and ballOmega >= 2 and Clash.targetOf(closestBall) == LocalPlayer.Name then
             local toMe = humanoidRootPart.Position - ballPos
