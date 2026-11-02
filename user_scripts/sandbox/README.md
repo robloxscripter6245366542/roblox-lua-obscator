@@ -240,3 +240,17 @@ exact. The real confirmation is still an in-game run.
   The script before this fix parries 7/15 and misses the report's own case at
   158 ms: its turn-rate estimator threw out the 30 Hz heading jumps as
   "bounces", and the launch looked like a curve that would miss.
+
+- **`replay_miss7.lua`** — replays the seventh **real** miss report (134 ms): a
+  **close** rally. The opponent is 30–35 studs away and the ball speeds up to
+  100–125 studs/s. In the report a block landed as the ball reached me and the
+  game answered **"parried"** (an instant parry, with the ball already in
+  range). That uses the block up and leaves no shield, but the script recorded
+  it as a 0.6 s shield. It then held fire for the return 0.43 s later, "my
+  shield already covers it". The sandbox server now answers false ("shield up")
+  for a normal block. A test can set `server.instantNow`; when that says the
+  ball is in range as a block lands, the server answers true and the test hits
+  the ball back on the spot, with no shield left. Run:
+  `lua-5.1.5/src/lua replay_miss7.lua`. Expected: **OK: every death was at the
+  shield gap**, with 16/18 surviving (every 134 and 180 ms case). The script
+  before this fix survives 4/18.

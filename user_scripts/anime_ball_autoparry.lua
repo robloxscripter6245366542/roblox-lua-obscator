@@ -1799,7 +1799,14 @@ local function recordBlockResult(ok, result, sentAt)
     -- Remember where our accepted shield sits on the server's clock: it went up
     -- about half the round trip after we sent it and lasts BLOCK_DURATION.
     -- Clash.covered (main loop) uses this window - see "Shield-cover hold".
-    if ok and result ~= nil and sentAt then
+    -- An INSTANT parry (true: the ball was already in range as the block
+    -- landed) uses the block up on that ball - it leaves NO shield behind (real
+    -- miss report #7: the return 0.43s later found none). Recording it as a
+    -- 0.6s shield made the cover hold sit on its hands for that return. It is
+    -- a parry, though (and a parry resets the cooldown).
+    if ok and result == true then
+        Clash.noteParry(tick())
+    elseif ok and result ~= nil and sentAt then
         Clash.acceptedSent = sentAt
         Clash.shieldFrom = sentAt + (tick() - sentAt) / 2
         Clash.shieldTo = Clash.shieldFrom + BLOCK_DURATION

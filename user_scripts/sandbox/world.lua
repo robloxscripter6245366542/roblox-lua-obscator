@@ -39,8 +39,18 @@ local function build(SRC, pingMs, opts)
         if reg>=sh[1] and reg<sh[2] then server.rejected=server.rejected+1; return nil end
       end
     end
-    server.shields[#server.shields+1]={reg,reg+0.6}; server.cooldownUntil=reg+1.0
-    server.landed=server.landed+1; return true
+    server.landed=server.landed+1; server.cooldownUntil=reg+1.0
+    -- The game answers false = "shield up" for a block, and true = "parried"
+    -- when the ball was already in range as it landed (an INSTANT parry). Real
+    -- miss report #7: an instant parry leaves no shield behind - the return
+    -- 0.43s later found none. A test that models this sets server.instantNow
+    -- (is the ball in range right now?) and hits that ball back itself; the
+    -- block leaves no shield.
+    if server.instantNow and server.instantNow() then
+      return true
+    end
+    server.shields[#server.shields+1]={reg,reg+0.6}
+    return false
   end
   function server.block() server.blocks=server.blocks+1
     server.inflight=server.inflight+1
