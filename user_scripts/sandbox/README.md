@@ -211,7 +211,7 @@ exact. The real confirmation is still an in-game run.
     range stuck small.
 
   Run: `lua-5.1.5/src/lua replay_miss4.lua`. Expected: **OK: every death was
-  at the shield gap**, with 26/27 surviving. A shield-gap death is one where the
+  at the shield gap**, with 25/27 surviving. A shield-gap death is one where the
   script had sent the next block on the first frame the game allows, and
   either the ball arrived within 35 ms after your shield ended (that block
   lands a frame later), or the block landed in the very frame the shield ended
@@ -254,7 +254,7 @@ exact. The real confirmation is still an in-game run.
   ball is in range as a block lands, the server answers true and the test hits
   the ball back on the spot, with no shield left. Run:
   `lua-5.1.5/src/lua replay_miss7.lua`. Expected: **OK: every death was at the
-  shield gap**, with 17/18 surviving (every 134 and 180 ms case). The script
+  shield gap**, with 18/18 surviving. The script
   before this fix survives 4/18.
 
 - **`replay_miss8.lua`** — replays the eighth **real** miss report (159 ms): a
@@ -269,3 +269,19 @@ exact. The real confirmation is still an in-game run.
   shield gap**, with 24/27 surviving (9/9 under the default rule and 9/9
   under consume). The script before this fix survives 13/27, and 0/9 under
   consume.
+
+- **`replay_miss9.lua`** — replays the ninth **real** miss report (156 ms): a
+  **fast close** rally. The opponent is ~28 studs away, the ball reaches 180–220
+  studs/s, and it comes back every ~0.2 s. There is also a **stray ball**
+  ~1400 studs away with no target. Two things in the report:
+  - A ball with no target counted as a threat at any distance. So whenever the
+    rally ball was aimed at the opponent, the parry loop watched the stray ball
+    instead.
+  - The opponent was just past 25 studs, so the long-rally rules applied: hold
+    while the ball flies to them, one block at a time, shield lock and cover
+    hold. Those stop the stream of blocks that holds a fast exchange when a
+    parry uses the shield up.
+
+  Each case runs under the three server rules. Run:
+  `lua-5.1.5/src/lua replay_miss9.lua`. Expected: **27/27 survived**. The script
+  before this fix survives 13/27, and 0/9 when a parry uses the shield up.
