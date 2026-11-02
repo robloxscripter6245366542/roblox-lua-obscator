@@ -39,8 +39,18 @@ local function build(SRC, pingMs, opts)
         if reg>=sh[1] and reg<sh[2] then server.rejected=server.rejected+1; return nil end
       end
     end
-    server.shields[#server.shields+1]={reg,reg+0.6}; server.cooldownUntil=reg+1.0
-    server.landed=server.landed+1; return true
+    server.landed=server.landed+1; server.cooldownUntil=reg+1.0
+    -- The game answers false = "shield up" for a block, and true = "parried"
+    -- when the ball was already in range as it landed (an INSTANT parry). Real
+    -- miss report #7: an instant parry leaves no shield behind - the return
+    -- 0.43s later found none. A test that models this sets server.instantNow
+    -- (is the ball in range right now?) and hits that ball back itself; the
+    -- block leaves no shield.
+    if server.instantNow and server.instantNow() then
+      return true
+    end
+    server.shields[#server.shields+1]={reg,reg+0.6}
+    return false
   end
   function server.block() server.blocks=server.blocks+1
     server.inflight=server.inflight+1
@@ -56,8 +66,23 @@ local function build(SRC, pingMs, opts)
     server.inflight=server.inflight-1
     return res
   end
+  -- A parry by my shield, as the server does it: the cooldown resets now, and
+  -- the game's BlockSuccess reaches the client half a ping later (like every
+  -- server -> client message). Wired up below, once the controllers exist.
+  function server.parried()
+    server.parryReset()
+    if server.onParried then task.delay(oneway, server.onParried) end
+  end
   local function shieldAt(t) for _,s in ipairs(server.shields) do if t>=s[1] and t<=s[2] then return true end end return false end
-  function server.parryReset() server.cooldownUntil = R.VTIME() end
+  -- opts.consume: a shield that parries is USED UP (real miss report #8: a
+  -- shield parried a ball, and the return inside its 0.6s found none).
+  function server.parryReset()
+    local t = R.VTIME()
+    server.cooldownUntil = t
+    if opts.consume then
+      for _,sh in ipairs(server.shields) do if t>=sh[1] and t<=sh[2] then sh[2]=t end end
+    end
+  end
 
   local Players=Instance.new("Players"); local RunService=Instance.new("RunService"); RunService.Heartbeat=R.newSignal()
   local RS=Instance.new("ReplicatedStorage"); local Stats=Instance.new("Stats"); local WS=Instance.new("Workspace"); WS.Gravity=196.2
@@ -99,6 +124,7 @@ local function build(SRC, pingMs, opts)
   ballCtl.GetBallAsync=function(name) local b=Balls:FindFirstChild(name)
     if b then ballCtl.conns=ballCtl.conns+1; ballCtl.CurrentBall=b end return b end
   local swordCtl={ Server={ BlockSuccess=function() end } }
+  server.onParried = function() swordCtl.Server.BlockSuccess(1) end
   -- AbilityController: the server plays abilities on clients via Server.* calls
   local abilityCtl={ Server={ Explode=function() end, AbilityEffect=function() end } }
   -- ClashController as decompiled: StartClash only sets ClashMode when the

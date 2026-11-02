@@ -211,11 +211,13 @@ exact. The real confirmation is still an in-game run.
     range stuck small.
 
   Run: `lua-5.1.5/src/lua replay_miss4.lua`. Expected: **OK: every death was
-  at the shield gap**, with 24/27 surviving. A shield-gap death is one where the
-  ball arrived within 35 ms after your shield ended and the script had sent the
-  next block on the first frame the game allows. That block still lands a frame
-  later, so nothing can be up in that moment. The script before this fix
-  survives **0/27**.
+  at the shield gap**, with 26/27 surviving. A shield-gap death is one where the
+  script had sent the next block on the first frame the game allows, and
+  either the ball arrived within 35 ms after your shield ended (that block
+  lands a frame later), or the block landed in the very frame the shield ended
+  and was refused (the next try is a round trip away). The script before this
+  fix survives **0/27**. My parries reach the script half a ping late here (via
+  `server.parried()`), as they do from the real server.
 
 - **`replay_miss5.lua`** — replays the fifth **real** miss report (126 ms): a
   **slow** long-range rally. The opponent is 60–67 studs away, the ball goes
@@ -226,7 +228,7 @@ exact. The real confirmation is still an in-game run.
   the return a second later was refused. Each case runs under both server rules
   (the default, where a parry resets the cooldown at once, and `shieldLock`). Run:
   `lua-5.1.5/src/lua replay_miss5.lua`. Expected: **OK: every death was at the
-  shield gap**, with 14/18 surviving (every 80 and 126 ms case). The script
+  shield gap**, with 17/18 surviving (every 80 and 126 ms case). The script
   before this fix survives 8/18, and under the default rule it dies right after
   the first parry at every ping, as in the report.
 
@@ -240,3 +242,30 @@ exact. The real confirmation is still an in-game run.
   The script before this fix parries 7/15 and misses the report's own case at
   158 ms: its turn-rate estimator threw out the 30 Hz heading jumps as
   "bounces", and the launch looked like a curve that would miss.
+
+- **`replay_miss7.lua`** — replays the seventh **real** miss report (134 ms): a
+  **close** rally. The opponent is 30–35 studs away and the ball speeds up to
+  100–125 studs/s. In the report a block landed as the ball reached me and the
+  game answered **"parried"** (an instant parry, with the ball already in
+  range). That uses the block up and leaves no shield, but the script recorded
+  it as a 0.6 s shield. It then held fire for the return 0.43 s later, "my
+  shield already covers it". The sandbox server now answers false ("shield up")
+  for a normal block. A test can set `server.instantNow`; when that says the
+  ball is in range as a block lands, the server answers true and the test hits
+  the ball back on the spot, with no shield left. Run:
+  `lua-5.1.5/src/lua replay_miss7.lua`. Expected: **OK: every death was at the
+  shield gap**, with 17/18 surviving (every 134 and 180 ms case). The script
+  before this fix survives 4/18.
+
+- **`replay_miss8.lua`** — replays the eighth **real** miss report (159 ms): a
+  **fast** rally at 255–285 studs/s, with a return every ~0.45 s. In the report a
+  shield parried the ball, and the return 0.45 s later, well inside that
+  shield's 0.6 s, hit me. The **parry had used the shield up**. The script
+  still counted it as up: it held fire (H=1) and its shield lock kept the next
+  block back until too late. Each case runs under three server rules: the
+  default (a parry resets the cooldown and the shield lasts), `shieldLock`, and
+  `{consume=true}` (a shield that parries ends there). Run:
+  `lua-5.1.5/src/lua replay_miss8.lua`. Expected: **OK: every death was at the
+  shield gap**, with 24/27 surviving (9/9 under the default rule and 9/9
+  under consume). The script before this fix survives 13/27, and 0/9 under
+  consume.
