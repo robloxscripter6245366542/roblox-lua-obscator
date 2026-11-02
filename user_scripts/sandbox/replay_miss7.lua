@@ -29,17 +29,26 @@ local function run(ping, gap, offDeg, radius, interp, spd0, lock)
     return false
   end
   local sends = {}
-  do local ob=w.server.block; w.server.block=function(...) sends[#sends+1]=R.VTIME(); return ob(...) end end
-  -- A death "at the shield gap" (see replay_miss4.lua): the ball came within
-  -- 35 ms after my shield ended, and the next block had been sent on the
-  -- first frame the shield lock allows - it still lands a frame later.
+  do local ob=w.server.block; w.server.block=function(...)
+    local sd={R.VTIME(), "pending"}; sends[#sends+1]=sd
+    local r=ob(...); sd[2]=r; return r end end
+  -- A death "at the shield gap" (see replay_miss4.lua): the next block was
+  -- sent on the first frame the shield lock allows, and the ball came within
+  -- 35 ms after my shield ended, or that block landed in the very frame the
+  -- shield ended and was refused.
   local function atGap(t)
     local last
     for _,sh in ipairs(w.server.shields) do if sh[2] <= t and (not last or sh[2] > last[2]) then last = sh end end
-    if not last or t - last[2] > 0.035 then return false end
+    if not last then return false end
     local sentAt = last[1] - w.oneway
-    for _,st in ipairs(sends) do
-      if st >= sentAt + 0.6 and st <= sentAt + 0.6 + 0.035 then return true end
+    for _,sd in ipairs(sends) do
+      local st = sd[1]
+      if st >= sentAt + 0.6 - 0.005 and st <= sentAt + 0.6 + 0.035 then
+        -- sent on the first frame allowed: it lands a frame after the shield
+        -- ends (the ball came in that frame), or in the very frame it ends
+        -- and the game refused it (the next try is a round trip away)
+        if t - last[2] <= 0.035 or sd[2] == nil then return true end
+      end
     end
     return false
   end
@@ -97,12 +106,12 @@ local function run(ping, gap, offDeg, radius, interp, spd0, lock)
     realPos, aimedAtMe = pos, tgtName=="Hero"
     if tgtName=="Hero" and instantHit then
       instantHit = false
-      w.server.parryReset(); w.swordCtl.Server.BlockSuccess(1)
+      w.server.parried()
       parries=parries+1
       tgtName="Foe"; tgtPos=fpos; target("Foe"); dirv=headingToward(pos,fpos,offDeg)
     elseif tgtName=="Hero" and (pos-me).Magnitude<=8 then
       if not w.shieldAt(R.VTIME()) then return false, parries, atGap(R.VTIME()) end
-      w.server.parryReset(); w.swordCtl.Server.BlockSuccess(1)
+      w.server.parried()
       parries=parries+1
       tgtName="Foe"; tgtPos=fpos; target("Foe"); dirv=headingToward(pos,fpos,offDeg)
     elseif tgtName=="Foe" and (pos-fpos).Magnitude<=8 then

@@ -419,6 +419,32 @@ local Clash = {
 -- One parry by me, seen now (from the game's BlockSuccess, or the ball's
 -- target switching from me to someone else). Both arrive half a ping after the
 -- parry, so two sightings within 0.15s are the same parry.
+-- Has my last accepted shield already parried, and is a NEW pass on its way
+-- (a ball's target switched to me after that parry)? Then that shield may be
+-- USED UP: real miss report #8 - a shield parried a ball and the return 0.45s
+-- later, well inside its 0.6s, found no shield. Only for a new pass: the ball
+-- just parried still LOOKS like it is coming (the view is half a ping +
+-- VIEW_LAG old), and a block fired at it lands on a ball flying away.
+-- Whether a parried shield really is gone differs between real reports (#8:
+-- gone; #4: blocks refused for its whole 0.6s), so the server's own answer
+-- decides: the first block sent while such a shield would still be up is a
+-- PROBE. Accepted -> it was used up ("open"); refused -> it is still up
+-- ("held") and that shield's lock and cover hold stay on. Learned once. While
+-- the probe's answer is out, everything else acts as if it is still up (so
+-- the normal block still goes as it ends), with one extra block allowed in
+-- flight so the probe can't take that block's slot.
+Clash.toMeLast = -math.huge
+Clash.postParry = nil      -- nil = not known yet, "open", "held"
+Clash.probeSent = nil
+Clash.lastProbe = false    -- was the last block sent a probe?
+Clash.spentRaw = function()
+    return Clash.parryAt[1] - (Clash.shieldFrom - Clash.acceptedSent) >= Clash.shieldFrom - 0.02
+        and Clash.toMeLast > Clash.parryAt[1]
+end
+-- May my shield be used up? (Callers deciding whether to TRY a block.)
+Clash.shieldSpent = function()
+    return Clash.postParry ~= "held" and Clash.spentRaw()
+end
 Clash.noteParry = function(t)
     local pa = Clash.parryAt
     if t - pa[1] > 0.15 then
@@ -1804,6 +1830,13 @@ local function recordBlockResult(ok, result, sentAt)
     -- miss report #7: the return 0.43s later found none). Recording it as a
     -- 0.6s shield made the cover hold sit on its hands for that return. It is
     -- a parry, though (and a parry resets the cooldown).
+    if sentAt and sentAt == Clash.probeSent then
+        Clash.probeSent = nil
+        if ok then
+            Clash.postParry = result == nil and "held" or "open"
+            Clash.event(tick(), result == nil and "RULE: a parried shield stays up" or "RULE: a parried shield is used up")
+        end
+    end
     if ok and result == true then
         Clash.noteParry(tick())
     elseif ok and result ~= nil and sentAt then
@@ -1875,8 +1908,19 @@ local function fireBlockRemote(clash, why)
     --    (report #4: every block for 0.6s after one went up was rejected).
     -- The shield that is up covers that time anyway; the next block goes as
     -- it ends (sending 0.6s + 10 ms after the accepted one lands just then).
+    -- Once that shield has PARRIED, though, it may be used up (report #8: the
+    -- return 0.45s later found none and this lock held the block until too
+    -- late), so the lock lifts: a block sent then is either needed, or simply
+    -- refused while the shield is still up.
+    local probe = false
     if Clash.farRally and nowT - Clash.acceptedSent < BLOCK_DURATION + 0.01 then
-        return false
+        if Clash.postParry == "open" and Clash.spentRaw() then
+            -- known: a parried shield is used up - send
+        elseif Clash.postParry == nil and Clash.probeSent == nil and Clash.spentRaw() then
+            probe = true
+        else
+            return false
+        end
     end
     if clash then
         -- Clash: a token bucket at Clash.rate blocks/s instead of "one per
@@ -1907,6 +1951,7 @@ local function fireBlockRemote(clash, why)
     if clash and not Clash.farRally then
         cap = math.clamp(math.ceil((math.max(smoothedPing, currentPing) / 1000) * Clash.rate) + 3, CLASH_INFLIGHT, 18)
     end
+    if Clash.probeSent then cap = cap + 1 end   -- the probe must not take the real block's slot
     if blocksInFlight >= cap then
         -- Lag-spike trickle (real miss report #3, 173 ms): during a point-blank
         -- clash the server's replies stalled for ~0.2s, the in-flight cap filled
@@ -1922,6 +1967,8 @@ local function fireBlockRemote(clash, why)
         end
     end
     if clash then Clash.tokens = Clash.tokens - 1 end
+    if probe then Clash.probeSent = nowT end
+    Clash.lastProbe = probe
     Clash.event(nowT, (clash and "SEND clash" or "SEND") .. (why and (" (" .. why .. ")") or ""))
     lastBlockSendTime = nowT
     blocksInFlight = blocksInFlight + 1
@@ -2697,7 +2744,7 @@ track(RunService.Heartbeat:Connect(function()
         and pa[1] - pa[2] <= Clash.CHAIN_GAP and pa[2] - pa[3] <= Clash.CHAIN_GAP
         and now - pa[1] <= Clash.CHAIN_GAP + 0.1 then
         if fireBlockRemote(false, "rally chain") then
-            Clash.chainFor = pa[1]
+            if not Clash.lastProbe then Clash.chainFor = pa[1] end
             totalBurstBlocks = totalBurstBlocks + 1
         end
     end
@@ -2710,10 +2757,12 @@ track(RunService.Heartbeat:Connect(function()
     if Clash.retWant then
         if now > Clash.retWantUntil or Clash.parryAt[1] > Clash.retWantAt
             or (Clash.farRally and Clash.retWantArr >= Clash.shieldFrom - 0.05
-                and Clash.retWantArr <= Clash.shieldTo - frameLag) then
+                and Clash.retWantArr <= Clash.shieldTo - frameLag and not Clash.shieldSpent()) then
             Clash.retWant = nil
         elseif fireBlockRemote(false, "pre-shield, held") then
-            Clash.retBall, Clash.retAt, Clash.retLockApp = Clash.retWant, now, Clash.retWantApp
+            if not Clash.lastProbe then
+                Clash.retBall, Clash.retAt, Clash.retLockApp = Clash.retWant, now, Clash.retWantApp
+            end
             Clash.retCount = Clash.retCount + 1
             totalBurstBlocks = totalBurstBlocks + 1
             Clash.retWant = nil
@@ -2729,7 +2778,10 @@ track(RunService.Heartbeat:Connect(function()
         if type(target) == "string" and target ~= myName and Clash.retLast[ball] == myName then
             Clash.noteParry(now)
         end
-        if target == myName and Clash.retLast[ball] ~= myName then Clash.toMeAt[ball] = now end
+        if target == myName and Clash.retLast[ball] ~= myName then
+            Clash.toMeAt[ball] = now
+            Clash.toMeLast = now
+        end
         Clash.retLast[ball] = target
         -- Held ability launch (real miss report #6, 158 ms). Another player's
         -- ability HELD the ball - it read speed 0 - then switched its target to
@@ -2758,10 +2810,10 @@ track(RunService.Heartbeat:Connect(function()
                 local straight = math.max((bp - myPos).Magnitude - EFFECTIVE_HIT_RADIUS, 0) / (fs * Clash.RET_SPEEDUP)
                 local earliest = toMe - ping / 2 + straight
                 local covered = Clash.farRally and earliest >= Clash.shieldFrom - 0.05
-                    and earliest + straight * 1.7 <= Clash.shieldTo - frameLag
+                    and earliest + straight * 1.7 <= Clash.shieldTo - frameLag and not Clash.shieldSpent()
                 if straight <= Clash.FRESH_MAX and not covered and now + ping / 2 >= earliest - 0.05 then
                     if fireBlockRemote(false, "held launch") then
-                        Clash.heldFor[ball] = toMe
+                        if not Clash.lastProbe then Clash.heldFor[ball] = toMe end
                         totalBurstBlocks = totalBurstBlocks + 1
                     end
                 end
@@ -2807,10 +2859,12 @@ track(RunService.Heartbeat:Connect(function()
                 local earliest = Clash.retPrevAt[ball] - ping / 2 + straight
                 local latest = earliest + straight * 1.7
                 local covered = Clash.farRally and earliest >= Clash.shieldFrom - 0.05
-                    and latest <= Clash.shieldTo - frameLag
+                    and latest <= Clash.shieldTo - frameLag and not Clash.shieldSpent()
                 if straight <= Clash.FRESH_MAX and not covered and now + ping / 2 >= earliest - 0.05 then
                     if fireBlockRemote(false, "fresh return") then
-                        Clash.retBall, Clash.retAt, Clash.retLockApp = ball, now, Clash.retApp[ball]
+                        if not Clash.lastProbe then
+                            Clash.retBall, Clash.retAt, Clash.retLockApp = ball, now, Clash.retApp[ball]
+                        end
                         Clash.retCount = Clash.retCount + 1
                         totalBurstBlocks = totalBurstBlocks + 1
                         Clash.retWant = nil
@@ -2886,7 +2940,7 @@ track(RunService.Heartbeat:Connect(function()
                         local retArrive = now - ping / 2 - Clash.VIEW_LAG + ttiToP
                             + math.max(gap - EFFECTIVE_HIT_RADIUS, 0) / (speed / 3)
                         local covered = Clash.farRally and retArrive >= Clash.shieldFrom - 0.05
-                            and retArrive <= Clash.shieldTo - frameLag
+                            and retArrive <= Clash.shieldTo - frameLag and not Clash.shieldSpent()
                         if not covered and returnWindow < react
                             and (ttiToP + returnWindow) <= ping + 0.2 then
                             -- Locked only once a block actually went out. One held
@@ -2896,7 +2950,9 @@ track(RunService.Heartbeat:Connect(function()
                             -- reached them and this check no longer runs (sandbox:
                             -- a 0.59s rally lost its return that way).
                             if fireBlockRemote(false, "pre-shield") then
-                                Clash.retBall, Clash.retAt, Clash.retLockApp = ball, now, Clash.retApp[ball]
+                                if not Clash.lastProbe then
+                                    Clash.retBall, Clash.retAt, Clash.retLockApp = ball, now, Clash.retApp[ball]
+                                end
                                 Clash.retCount = Clash.retCount + 1
                                 totalBurstBlocks = totalBurstBlocks + 1
                                 Clash.retWant = nil
@@ -3754,7 +3810,13 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
             and Clash.targetOf(closestBall) == LocalPlayer.Name then
             local arrive = currentTime - currentPing / 2000 - Clash.VIEW_LAG
                 + math.max(closestDistance - EFFECTIVE_HIT_RADIUS, 0) / closingSpeed
+            -- Once my shield has parried it may be used up (report #8), so it
+            -- only still counts for a block that would land after it ends -
+            -- one landing while it is (said to be) up is either needed or
+            -- simply refused. A block landing after it ends for a ball due
+            -- before it ends is the report #4 mistake, held either way.
             Clash.covered = arrive >= Clash.shieldFrom - 0.05 and arrive <= Clash.shieldTo - frameLag
+                and (not Clash.shieldSpent() or currentTime + currentPing / 2000 >= Clash.shieldTo - frameLag)
         end
         if Clash.covered then
             -- held: the shield that is up already takes this ball
