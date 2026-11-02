@@ -413,6 +413,8 @@ local Clash = {
     parryAt = { -math.huge, -math.huge, -math.huge },   -- my last three parries (when I saw them), newest first
     chainFor = -math.huge,       -- the parry the rally chain last fired for
     CHAIN_GAP = 0.5,             -- rally chain: both recent parry gaps must be this short
+    FAST_GAP = 0.35,             -- parry gaps this short = a clash, whatever the distance
+    fastRally = false,
     VIEW_LAG = 0.12,
 }
 
@@ -437,9 +439,17 @@ Clash.toMeLast = -math.huge
 Clash.postParry = nil      -- nil = not known yet, "open", "held"
 Clash.probeSent = nil
 Clash.lastProbe = false    -- was the last block sent a probe?
-Clash.spentRaw = function()
+Clash.parriedSince = function()   -- my last accepted shield has parried
     return Clash.parryAt[1] - (Clash.shieldFrom - Clash.acceptedSent) >= Clash.shieldFrom - 0.02
-        and Clash.toMeLast > Clash.parryAt[1]
+end
+Clash.returnSend = false           -- set while Return Pre-Shield is sending (see there)
+Clash.spentRaw = function()
+    -- ...and a NEW pass is on its way - except for Return Pre-Shield (and its
+    -- rally chain), whose blocks are timed for the NEXT return, never aimed at
+    -- the ball just parried: waiting for that ball to visibly come back cost
+    -- 0.17s and the block landed late in the sandbox (rally chain, 156 ms;
+    -- pre-shield, 200 ms).
+    return Clash.parriedSince() and (Clash.returnSend or Clash.toMeLast > Clash.parryAt[1])
 end
 -- May my shield be used up? (Callers deciding whether to TRY a block.)
 Clash.shieldSpent = function()
@@ -2125,7 +2135,18 @@ local function findClosestBall(humanoidRootPart)
                 -- if an invisible ball is actually closing on us, treat it as
                 -- aimed at us regardless of its (possibly stale) Target attr.
                 local invisible = ball:GetAttribute("Invisible") == true
-                if target == myName or target == nil or invisible or serverSaysMe then
+                -- A ball with NO target only counts as a threat while it is near
+                -- or could reach me soon: a stray ball ~1400 studs away with no
+                -- target was preferred over the rally ball aimed at my opponent,
+                -- so the parry loop watched IT, not the ball about to come back
+                -- at me (real miss report #9).
+                local strayFar = false
+                if target == nil and not invisible and distance > 150 then
+                    local v = getBallVelocityVector(ball)
+                    local cl = v:Dot(humanoidRootPart.Position - ballPos) / distance
+                    strayFar = cl <= 0 or distance / cl > 1.5
+                end
+                if (target == myName or (target == nil and not strayFar) or invisible or serverSaysMe) then
                     if distance < threatDist then
                         threatDist = distance
                         threatBall = ball
@@ -2727,6 +2748,16 @@ track(RunService.Heartbeat:Connect(function()
     if destroyed or not Clash.retOn or not autoParryEnabled then return end
     local hrp = getPlayerHRP(LocalPlayer)
     if not hrp then return end
+    -- Every block this handler sends is timed for a RETURN (see Clash.spentRaw).
+    Clash.returnSend = true
+    local ok, err = pcall(Clash.preShieldStep, hrp)
+    Clash.returnSend = false
+    if not ok and not Clash.preShieldErr then
+        Clash.preShieldErr = true   -- report once, don't spam every frame
+        warn("[Anime Ball Hub] Return Pre-Shield error: " .. tostring(err))
+    end
+end))
+Clash.preShieldStep = function(hrp)
     local now = tick()
     local myPos = hrp.Position
     local ping = math.max(smoothedPing, currentPing) / 1000
@@ -2743,7 +2774,8 @@ track(RunService.Heartbeat:Connect(function()
     if Clash.farRally and pa[1] > Clash.chainFor
         and pa[1] - pa[2] <= Clash.CHAIN_GAP and pa[2] - pa[3] <= Clash.CHAIN_GAP
         and now - pa[1] <= Clash.CHAIN_GAP + 0.1 then
-        if fireBlockRemote(false, "rally chain") then
+        local sent = fireBlockRemote(false, "rally chain")
+        if sent then
             if not Clash.lastProbe then Clash.chainFor = pa[1] end
             totalBurstBlocks = totalBurstBlocks + 1
         end
@@ -2854,7 +2886,11 @@ track(RunService.Heartbeat:Connect(function()
             if bp and speed > 1 and ball.Parent
                 and not (Clash.retBall == ball and Clash.retLockApp == Clash.retApp[ball])
                 and ((fhrp.Position - bp).Magnitude <= 30 or vel:Dot(fhrp.Position - bp) > 0) then
-                local straight = math.max((fhrp.Position - myPos).Magnitude - EFFECTIVE_HIT_RADIUS, 0)
+                -- The return starts where THEY parried it - a hit radius out from
+                -- them, toward me - and ends a hit radius out from me (counting
+                -- only my side made a slow 27-stud return look 0.13s later than
+                -- it was, and the block landed with the ball - sandbox).
+                local straight = math.max((fhrp.Position - myPos).Magnitude - 2 * EFFECTIVE_HIT_RADIUS, 0)
                     / (speed * Clash.RET_SPEEDUP)
                 local earliest = Clash.retPrevAt[ball] - ping / 2 + straight
                 local latest = earliest + straight * 1.7
@@ -2967,7 +3003,7 @@ track(RunService.Heartbeat:Connect(function()
             end
         end
     end
-end))
+end
 
 -- Game's server-side auto parry (see GameAP at the top).
 -- (kept as a field, not a local: the main chunk is at Luau's 200-local limit)
@@ -3265,12 +3301,23 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
     -- Long-range rally hold (real miss report #2): while my clash's ball is
     -- aimed at a partner who is NOT on top of me, no path may fire - see the
     -- clashFire note in the parry branch.
-    Clash.holdAway = closestBall ~= nil and clashDetected and not amTargeted
+    -- A FAST exchange - my last parries came FAST_GAP apart or less - is a
+    -- clash whatever the distance (real miss report #9: an opponent ~28 studs
+    -- away, a return every ~0.2s). There the next pass always lands within a
+    -- shield raised right after a parry, so none of the long-rally rules below
+    -- (hold while it flies to them, one block at a time, shield lock, cover
+    -- hold) protects anything - they only stop the stream of blocks that keeps
+    -- one landing right after each parry, which is what holds a clash when a
+    -- parry uses the shield up.
+    local pa = Clash.parryAt
+    Clash.fastRally = pa[1] - pa[2] <= Clash.FAST_GAP and pa[2] - pa[3] <= Clash.FAST_GAP
+        and currentTime - pa[1] <= Clash.FAST_GAP + 0.15
+    Clash.holdAway = closestBall ~= nil and clashDetected and not amTargeted and not Clash.fastRally
         and Clash.partnerFar(closestBall, humanoidRootPart.Position)
     Clash.covered = false   -- set again in the parry branch below (Shield-cover hold)
     -- Shield lock / cover hold only outside a game clash and with nobody within
     -- PARTNER_NEAR studs (a point-blank exchange keeps firing as before).
-    Clash.farRally = closestBall ~= nil and not clashActive
+    Clash.farRally = closestBall ~= nil and not clashActive and not Clash.fastRally
         and Clash.nearestOther(humanoidRootPart.Position) > Clash.PARTNER_NEAR
 
     if hudTick and not (autoParryEnabled and closestBall) then
