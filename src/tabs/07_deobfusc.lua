@@ -13,9 +13,7 @@ local BDDeob = B(dRow1, "Deobfuscate",  UDim2.new(0,116,1,0), nil, C.ACC)
 local BDB64  = B(dRow1, "Base64 Dec",   UDim2.new(0,100,1,0), nil, C.GREY)
 local BDHex  = B(dRow1, "Hex Dec",      UDim2.new(0,80,1,0),  nil, C.GREY)
 local BDChar = B(dRow1, "Chr Dec",      UDim2.new(0,80,1,0),  nil, C.GREY)
-for i, b in {BDDet,BDDeob,BDB64,BDHex,BDChar} do
-    b.LayoutOrder = i; b.TextSize = 11
-end
+styleRow({BDDet,BDDeob,BDB64,BDHex,BDChar})
 hov(BDDet,  C.BLUE, C.BLHV); hov(BDDeob, C.ACC,  C.ACCHV)
 hov(BDB64,  C.GREY, C.GRYHV); hov(BDHex,  C.GREY, C.GRYHV)
 hov(BDChar, C.GREY, C.GRYHV)
@@ -25,7 +23,7 @@ local BDSwap = B(dRow2, "Swap I↔O",  UDim2.new(0,96,1,0),  nil, C.GREY)
 local BDCopy = B(dRow2, "Copy Out",   UDim2.new(0,90,1,0),  nil, C.GREY)
 local BDSave = B(dRow2, "Save Out",   UDim2.new(0,90,1,0),  nil, C.GREY)
 local BDRun  = B(dRow2, "▶ Run Out",  UDim2.new(0,90,1,0),  nil, C.GRN)
-for i, b in {BDSwap,BDCopy,BDSave,BDRun} do b.LayoutOrder=i; b.TextSize=11 end
+styleRow({BDSwap,BDCopy,BDSave,BDRun})
 hov(BDSwap, C.GREY, C.GRYHV); hov(BDCopy, C.GREY, C.GRYHV)
 hov(BDSave, C.GREY, C.GRYHV); hov(BDRun,  C.GRN,  C.GRNHV)
 
@@ -175,9 +173,10 @@ end)
 BDRun.MouseButton1Click:Connect(function()
     local code = DOut.Text
     if trim(code) == "" then DOut.TextColor3=C.RED; DOut.Text="Output is empty."; return end
-    local fn, ce = _ld(code)
-    if not fn then DOut.TextColor3=C.RED; DOut.Text="Compile error:\n"..tostring(ce); return end
-    local ok2, re = pcall(fn)
+    local ok2, err, stage = runCode(code)
     DOut.TextColor3 = ok2 and C.GRN or C.RED
-    DOut.Text = ok2 and "Output executed OK." or "Runtime error:\n" .. tostring(re)
+    if not ok2 then
+        DOut.Text = (stage=="compile" and "Compile error:\n" or "Runtime error:\n")..err; return
+    end
+    DOut.Text = "Output executed OK."
 end)
