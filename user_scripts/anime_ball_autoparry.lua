@@ -1032,13 +1032,13 @@ Tabs.Stats:Button({
 -- when clicked.
 section(Tabs.Stats, "Ball Hit Logger")
 toggle(Tabs.Stats, "BallHitLogger", "Ball Hit Logger",
-    "Record how the ball's speed changes on every hit (any player's hit, not just yours)", Clash.HL.on, function(v)
+    "Record ONE match: how the ball's speed changes on every hit (anyone's). When the match ends it stops and copies it all", Clash.HL.on, function(v)
     Clash.HL.on = v
 end)
-HUD.HitLog = paragraph(Tabs.Stats, "Hit Log", "No hits logged yet. Play a round, then press Copy Ball Hit Log.")
+HUD.HitLog = paragraph(Tabs.Stats, "Hit Log", "Waiting for a match to start...")
 Tabs.Stats:Button({
     Title = "Copy Ball Hit Log",
-    Desc = "Copies every logged hit: speed in/out, % and studs/s added per hit, gaps, flight speed-up",
+    Desc = "Copies the whole recorded match (it is also copied by itself when the match ends)",
     Callback = function()
         local okB, text = pcall(function() return Clash.HL.build() end)
         if not okB or type(text) ~= "string" then
@@ -1055,15 +1055,16 @@ Tabs.Stats:Button({
         local ok = clip ~= nil and pcall(clip, text)
         notify(ok and "Copied" or "Copy failed",
             ok and (#Clash.HL.hits .. " hits copied - paste it to the dev") or ("Saved in " .. CONFIG_FOLDER .. "/ball_hits.txt"), 4)
+        if ok then Clash.HL.copied = true end
     end,
 })
 Tabs.Stats:Button({
-    Title = "Clear Ball Hit Log",
-    Desc = "Start a fresh log",
+    Title = "Record Next Match",
+    Desc = "Throw this log away and record the next match",
     Callback = function()
         if Clash.HL.clear then Clash.HL.clear() end
-        setDesc(HUD.HitLog, "Log cleared. Play a round, then press Copy Ball Hit Log.")
-        notify("Ball Hit Logger", "Log cleared", 3)
+        setDesc(HUD.HitLog, "Waiting for a match to start...")
+        notify("Ball Hit Logger", "Will record the next match", 3)
     end,
 })
 
@@ -2523,14 +2524,18 @@ end)
 -- ============================================
 -- BALL HIT LOGGER
 -- ============================================
--- Records how every ball reacts to every hit, whoever hits it, so the game's
--- speed rules can be read off real play: the speed going in and coming out of
+-- Records ONE match: how every ball reacts to every hit, whoever hits it, so
+-- the game's speed rules can be read off real play: the speed going in and coming out of
 -- each hit, how much each hit adds (% and studs/s), the time between hits,
 -- how much the ball speeds up (or slows) in flight between hits, how far it
--- turns, and how far apart the two players were. Copy Ball Hit Log puts it
--- all on the clipboard (and in AnimeBallHub/ball_hits.txt); also
--- getgenv().AnimeBallHubHitLog() from the console. Read-only: it never
--- touches the parry.
+-- turns, and how far apart the two players were. It starts on the game's
+-- MatchController.Started (or the first hit it sees, if the script was loaded
+-- mid-match) and stops when the match is over: MatchController.Ended and no
+-- ball left for 5s (or no ball at all for 12s). Then it copies the whole
+-- match to the clipboard by itself (and AnimeBallHub/ball_hits.txt) and
+-- records nothing more until Record Next Match. Copy Ball Hit Log copies it
+-- again (or what it has so far); also getgenv().AnimeBallHubHitLog(). Read-
+-- only: it never touches the parry.
 --
 -- A hit = the ball's Target switching to another player. The Target flips
 -- about half a ping after the server's hit, but the ball's velocity on screen
@@ -2539,13 +2544,18 @@ end)
 -- the speeds are read on the frames either side of that.
 do
     local HL = Clash.HL
-    HL.MAX, HL.RALLY_GAP, HL.KEEP = 400, 6, 4
+    HL.MAX, HL.RALLY_GAP, HL.KEEP = 3000, 6, 4   -- MAX: far more hits than any match has
+    HL.END_QUIET, HL.NO_BALL = 5, 12
     HL.clear = function()
         HL.balls = setmetatable({}, { __mode = "k" })   -- [ball] = its samples and hit state
         HL.hits, HL.pending, HL.fx, HL.delays = {}, {}, {}, {}
-        HL.rallies, HL.fxHit, HL.fxRef, HL.fxSeen = 0, 0, 0, false
+        HL.rallies, HL.fxHit, HL.fxRef = 0, 0, 0
         HL.since = tick()
+        -- "armed": waiting for a match; "rec": recording it; "done": recorded
+        HL.mode, HL.startedBy, HL.matchStart, HL.matchEnd = "armed", nil, nil, nil
+        HL.endedAt, HL.endReason, HL.copied, HL.lastBallAt = nil, nil, false, tick()
     end
+    HL.fxSeen = false
     HL.clear()
 
     local function median(list)
@@ -2747,9 +2757,12 @@ do
 
     HL.step = function()
         local now = tick()
+        if HL.mode == "done" then return end   -- one match only
+        local anyBall = false
         for ball in pairs(ballsCache) do
             local part = ball.Parent and getBallPart(ball)
             if part then
+                anyBall = true
                 local B = HL.balls[ball]
                 if not B then
                     B = { s = {}, name = ball.Name, n = 0 }
@@ -2767,7 +2780,10 @@ do
                 if not B.seen then
                     B.seen, B.target = true, target   -- already in play when first seen: not a hit
                 elseif target ~= B.target then
-                    if target then HL.newHit(ball, B, now, B.target, target) end
+                    if target then
+                        if HL.mode == "armed" then HL.begin(now, "its first hit (no match-start signal seen)") end
+                        HL.newHit(ball, B, now, B.target, target)
+                    end
                     B.target = target
                 end
             end
@@ -2777,10 +2793,62 @@ do
             if not HL.measure(h, now) then left[#left + 1] = h end
         end
         HL.pending = left
+        -- the match is over: the game said so and every ball is gone (a new
+        -- ball comes a moment after each kill), or no ball at all for a while
+        if anyBall then HL.lastBallAt = now end
+        if HL.mode == "rec" and #HL.hits > 0 then
+            local quiet = now - HL.lastBallAt
+            if HL.endedAt and quiet >= HL.END_QUIET then
+                HL.finish(now, "the match ended")
+            elseif quiet >= HL.NO_BALL then
+                HL.finish(now, string.format("no ball for %ds", HL.NO_BALL))
+            end
+        end
         if HUD.HitLog and now - (HL.hudAt or 0) >= 0.25 then
             HL.hudAt = now
             setDesc(HUD.HitLog, HL.status())
         end
+    end
+
+    HL.begin = function(now, how)
+        HL.mode, HL.startedBy, HL.matchStart, HL.endedAt, HL.lastBallAt = "rec", how, now, nil, now
+    end
+    -- The match is over: measure what's still waiting, stop recording, and
+    -- copy the whole match.
+    HL.finish = function(now, reason)
+        for _, h in ipairs(HL.pending) do pcall(HL.measure, h, now + 10) end
+        HL.pending = {}
+        HL.mode, HL.endReason, HL.matchEnd = "done", reason, now
+        local okB, text = pcall(HL.build)
+        if okB and type(text) == "string" then
+            pcall(function()
+                if type(writefile) == "function" then
+                    if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
+                    writefile(CONFIG_FOLDER .. "/ball_hits.txt", text)
+                end
+            end)
+            local clip = setclipboard or toclipboard or (Clipboard and Clipboard.set)
+            HL.copied = clip ~= nil and pcall(clip, text) or false
+        end
+        notify("Match recorded", #HL.hits .. " hits"
+            .. (HL.copied and " - copied to your clipboard, paste it to the dev" or " - press Copy Ball Hit Log"), 6)
+        setDesc(HUD.HitLog, HL.status())
+    end
+    HL.onStart = function()
+        local now = tick()
+        if HL.mode == "armed" then
+            HL.begin(now, "the match start")
+        elseif HL.mode == "rec" then
+            if HL.startedBy == "the match start" then
+                HL.finish(now, "the next match started")   -- its end never came through
+            else
+                HL.clear()   -- drop hits from before the match (lobby, training)
+                HL.begin(now, "the match start")
+            end
+        end
+    end
+    HL.onEnd = function()
+        if HL.mode == "rec" then HL.endedAt = tick() end
     end
 
     -- Average change per hit (serves and ability launches from no target left out).
@@ -2812,7 +2880,16 @@ do
             if HL.hits[i].sOut then last = HL.hits[i] break end
         end
         local st = HL.stats()
-        local lines = { string.format("Hits logged: %d in %d rallies", #HL.hits, HL.rallies) }
+        local head
+        if HL.mode == "armed" then
+            head = "Waiting for a match to start..."
+        elseif HL.mode == "rec" then
+            head = string.format("Recording this match: %d hits in %d rallies", #HL.hits, HL.rallies)
+        else
+            head = string.format("Match recorded: %d hits in %d rallies - %s\nPress Record Next Match to log another",
+                #HL.hits, HL.rallies, HL.copied and "copied to your clipboard" or "press Copy Ball Hit Log")
+        end
+        local lines = { head }
         if last then
             lines[#lines + 1] = string.format("Last: %s -> %s  %.0f -> %.0f studs/s (%+.1f%%)",
                 tostring(last.from or "(none)"), tostring(last.to), last.sIn or 0, last.sOut, (last.pct or 0) * 100)
@@ -2830,8 +2907,12 @@ do
         local function nm(x) return tostring(x or "(none)") end
         local L = {}
         local hits = HL.hits
-        L[#L + 1] = string.format("Anime Ball Hub ball hit log | %d hits in %d rallies over %.0fs | ping %.0f ms | me: %s",
-            #hits, HL.rallies, now - HL.since, currentPing, LocalPlayer.Name)
+        local t0 = HL.matchStart or HL.since
+        L[#L + 1] = string.format("Anime Ball Hub ball hit log (one match) | %d hits in %d rallies over %.0fs | ping %.0f ms | me: %s",
+            #hits, HL.rallies, (HL.matchEnd or now) - t0, currentPing, LocalPlayer.Name)
+        L[#L + 1] = string.format("Match: %s | recording started at %s | %s",
+            HL.mode == "done" and "recorded" or (HL.mode == "rec" and "still being recorded (copied before its end)" or "not started yet"),
+            tostring(HL.startedBy or "-"), HL.endReason and ("stopped: " .. HL.endReason) or "not stopped yet")
         L[#L + 1] = string.format("Ball velocity shows a hit %.2fs after its Target flips (median of %d) | game HitEffect calls seen: %d, ReflectEffect: %d%s",
             HL.lag(), #HL.delays, HL.fxHit, HL.fxRef, HL.fxSeen and "" or " (hook not active)")
         local st = HL.stats()
@@ -2884,7 +2965,7 @@ do
             end
         end
         L[#L + 1] = "== Speed after the Nth hit of a rally (average over rallies) =="
-        for n = 1, math.min(maxN, 60) do
+        for n = 1, maxN do
             local b = byN[n]
             if b then
                 local mp = median(b[3])
@@ -2918,13 +2999,12 @@ do
         L[#L + 1] = "== Hits (newest last) =="
         L[#L + 1] = "r   #   time   gap  from         -> to             in   out     +%   +s/s delay  turn  plyrs ball |  flight  start  end  max  min  accel moved | game hit effect"
         L[#L + 1] = "(in/out = speed just before/after the hit; delay = Target flip -> visible turn, ~ = never turned, guessed; turn = deg the heading changed; plyrs = studs between the two players; ball = ball to hitter; flight = the flight this hit started; accel = studs/s per second; moved = avg speed from distance moved; * = flight cut off)"
-        local startI = math.max(1, #hits - 199)
-        for i = startI, #hits do
+        for i = 1, #hits do
             local h = hits[i]
             local sg = h.seg
             if not sg and h.turn and h.B then sg = segment(h.B, h.turn + 0.05, now) end   -- still flying
             L[#L + 1] = string.format("%-3d %-3d %6.2f %5s %-12.12s -> %-12.12s %5s %5s %6s %6s %5s%s %4s %5s %4s | %6s %5s %5s %4s %4s %6s %5s%s | %s",
-                h.rally, h.n, h.t - HL.since, h.gap and string.format("%.2f", h.gap) or "-",
+                h.rally, h.n, h.t - t0, h.gap and string.format("%.2f", h.gap) or "-",
                 nm(h.from), nm(h.to), f0(h.sIn), f0(h.sOut),
                 h.pct and string.format("%+.1f", h.pct * 100) or "-", h.add and string.format("%+.0f", h.add) or "-",
                 f2(h.delay), h.guess and "~" or " ", f0(h.ang), f0(h.pdist), f0(h.bdist),
@@ -2934,7 +3014,7 @@ do
         end
 
         L[#L + 1] = "== Speed around each hit (studs/s at -0.10 -0.05 | 0 +0.05 +0.10 +0.20 +0.30 s from the visible turn) =="
-        for i = math.max(1, #hits - 79), #hits do
+        for i = 1, #hits do
             local h = hits[i]
             if h.trace then L[#L + 1] = string.format("r%d #%d: %s", h.rally, h.n, h.trace) end
         end
@@ -2944,10 +3024,10 @@ do
             if h.attrs then L[#L + 1] = string.format("r%d #%d %s: %s", h.rally, h.n, tostring(h.ball), h.attrs) end
         end
 
-        L[#L + 1] = "== Game effect calls (last 40) =="
-        for i = math.max(1, #HL.fx - 39), #HL.fx do
+        L[#L + 1] = "== Game effect calls =="
+        for i = 1, #HL.fx do
             local e = HL.fx[i]
-            L[#L + 1] = string.format("%7.2f %s(%s)", e.t - HL.since, e.kind, e.text)
+            L[#L + 1] = string.format("%7.2f %s(%s)", e.t - t0, e.kind, e.text)
         end
         return table.concat(L, "\n")
     end
@@ -2967,7 +3047,7 @@ do
         local e = { t = now, kind = kind, text = table.concat(parts, ", "), ball = ball,
             player = kind == "HitEffect" and HL.fmt(args[1]) or nil }
         HL.fx[#HL.fx + 1] = e
-        if #HL.fx > 200 then table.remove(HL.fx, 1) end
+        if #HL.fx > HL.MAX then table.remove(HL.fx, 1) end
         if kind == "HitEffect" then HL.fxHit = HL.fxHit + 1 else HL.fxRef = HL.fxRef + 1 end
         local B = ball and HL.balls[ball]
         local h = B and B.lastHit
@@ -3009,6 +3089,32 @@ do
                 pcall(function() BC.Server[r[1]] = r[2] end)
             end
             restore = {}
+        end
+    end)
+
+    -- The game's MatchController: Started / Ended BindableEvents, fired by the
+    -- server's StartMatch / EndMatch (decompiled).
+    task.spawn(function()
+        local MC
+        for _ = 1, 15 do
+            if destroyed then return end
+            local ok, controller = pcall(function()
+                return require(ReplicatedStorage:WaitForChild("Framework", 5)):Get("MatchController")
+            end)
+            if ok and type(controller) == "table" then
+                MC = controller
+                break
+            end
+            task.wait(1)
+        end
+        if not MC or destroyed then return end
+        for _, pair in ipairs({ { "Started", HL.onStart }, { "Ended", HL.onEnd } }) do
+            pcall(function()
+                track(MC[pair[1]].Event:Connect(function()
+                    if not destroyed and HL.on then pcall(pair[2]) end
+                end))
+                HL.matchSignals = true
+            end)
         end
     end)
 

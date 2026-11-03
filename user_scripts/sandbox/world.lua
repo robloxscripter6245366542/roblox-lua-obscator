@@ -136,6 +136,10 @@ local function build(SRC, pingMs, opts)
   local clashCtl={ ClashMode=false, Settings={ ClashEnabled=false } }
   clashCtl.Server={ StartClash=function() if clashCtl.Settings.ClashEnabled then clashCtl.ClashMode=true end end,
                     EndClash=function() clashCtl.ClashMode=false end }
+  -- MatchController as decompiled: Started / Ended BindableEvents that the
+  -- server's StartMatch / EndMatch fire, and Intermission (the countdown).
+  local matchCtl={ Intermission=false, Started={Event=R.newSignal()}, Ended={Event=R.newSignal()} }
+  matchCtl.Server={ StartMatch=function() matchCtl.Started.Event:Fire() end, EndMatch=function() matchCtl.Ended.Event:Fire() end }
   -- AutoParryService (2026-10-31 update): SetEnabled:Invoke(bool) returns the
   -- new state, or nil when the server refuses (account not allowed).
   local apService={ allowed=false, enabled=false, calls=0 }
@@ -147,7 +151,8 @@ local function build(SRC, pingMs, opts)
                                         if n=="SwordController" then return swordCtl end
                                         if n=="ClashController" then return clashCtl end
                                         if n=="AbilityController" then return abilityCtl end
-                                        if n=="MovementController" then return movement end return nil end }
+                                        if n=="MovementController" then return movement end
+                                        if n=="MatchController" then return matchCtl end return nil end }
   local realmath,realtable=math,table
   local envmath=setmetatable({clamp=function(x,l,h) return realmath.max(l,realmath.min(h,x)) end,
     round=function(x) return realmath.floor(x+0.5) end, sign=function(x) return x>0 and 1 or (x<0 and -1 or 0) end},{__index=realmath})
@@ -210,7 +215,7 @@ local function build(SRC, pingMs, opts)
   return { R=R,v3=v3,Instance=Instance,Enum=Enum,RunService=RunService,Balls=Balls,heroF=heroF,Eff=Eff,
            Players=Players,players=players,LP=LP,char=char,
            hrp=hrp,char_ref=char,server=server,shieldAt=shieldAt,oneway=oneway,movement=movement,
-           ballCtl=ballCtl,swordCtl=swordCtl,clashCtl=clashCtl,abilityCtl=abilityCtl,apService=apService,genv=env._genv,files=files }
+           ballCtl=ballCtl,matchCtl=matchCtl,swordCtl=swordCtl,clashCtl=clashCtl,abilityCtl=abilityCtl,apService=apService,genv=env._genv,files=files }
 end
 
 return { build=build }
