@@ -117,7 +117,10 @@ local function build(SRC, pingMs, opts)
   -- can then call like the server would.
   local ballCtl={ Server={ ChangeBallColor=function(name, target)
     if WS:GetAttribute("NoHighlight") then return end
-    local b=Balls:FindFirstChild(name); if b and not b:GetAttribute("Invisible") then b:SetAttribute("Target", target) end end } }
+    local b=Balls:FindFirstChild(name); if b and not b:GetAttribute("Invisible") then b:SetAttribute("Target", target) end end,
+    -- the hit / reflect effects (sound + VFX) the server fires on every hit:
+    -- HitEffect(playerName, swordName, ballName, pitch, vfx), ReflectEffect(ballName, pitch)
+    HitEffect=function() end, ReflectEffect=function() end } }
   -- GetBallAsync as decompiled: every call adds ANOTHER Invisible-changed
   -- connection to the ball (counted in ballCtl.conns).
   ballCtl.conns=0

@@ -587,6 +587,7 @@ showVisualSphere    = setting("ShowParrySphere", showVisualSphere)
 showPlayerDetectors = setting("ShowSpamSphere", showPlayerDetectors)
 showSpeedLabel      = setting("ShowSpeedLabel", showSpeedLabel)
 GameAP.want         = setting("GameAutoParry", false)
+Clash.HL            = { on = setting("BallHitLogger", true) }   -- Ball Hit Logger (see BALL HIT LOGGER)
 AutoDash.enabled    = setting("AutoDash", false)
 Clash.retOn         = setting("ReturnPreShield", true)
 Clash.rate          = math.clamp(setting("ClashSpeed", 85), 30, 110)
@@ -1022,6 +1023,47 @@ Tabs.Stats:Button({
         local clip = setclipboard or toclipboard
         local ok = clip ~= nil and pcall(clip, Clash.lastReport)
         notify(ok and "Copied" or "Copy failed", ok and "Paste it to the dev" or ("Saved in " .. CONFIG_FOLDER .. "/miss_reports.txt"), 4)
+    end,
+})
+
+-- Ball Hit Logger: how the ball reacts to every hit (speed before/after, how
+-- much each hit adds, time between hits, in-flight speed-up...). The recorder
+-- itself is under BALL HIT LOGGER further down; these callbacks look it up
+-- when clicked.
+section(Tabs.Stats, "Ball Hit Logger")
+toggle(Tabs.Stats, "BallHitLogger", "Ball Hit Logger",
+    "Record how the ball's speed changes on every hit (any player's hit, not just yours)", Clash.HL.on, function(v)
+    Clash.HL.on = v
+end)
+HUD.HitLog = paragraph(Tabs.Stats, "Hit Log", "No hits logged yet. Play a round, then press Copy Ball Hit Log.")
+Tabs.Stats:Button({
+    Title = "Copy Ball Hit Log",
+    Desc = "Copies every logged hit: speed in/out, % and studs/s added per hit, gaps, flight speed-up",
+    Callback = function()
+        local okB, text = pcall(function() return Clash.HL.build() end)
+        if not okB or type(text) ~= "string" then
+            notify("Ball Hit Logger", "Couldn't build the log: " .. tostring(text), 5)
+            return
+        end
+        pcall(function()
+            if type(writefile) == "function" then
+                if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
+                writefile(CONFIG_FOLDER .. "/ball_hits.txt", text)
+            end
+        end)
+        local clip = setclipboard or toclipboard or (Clipboard and Clipboard.set)
+        local ok = clip ~= nil and pcall(clip, text)
+        notify(ok and "Copied" or "Copy failed",
+            ok and (#Clash.HL.hits .. " hits copied - paste it to the dev") or ("Saved in " .. CONFIG_FOLDER .. "/ball_hits.txt"), 4)
+    end,
+})
+Tabs.Stats:Button({
+    Title = "Clear Ball Hit Log",
+    Desc = "Start a fresh log",
+    Callback = function()
+        if Clash.HL.clear then Clash.HL.clear() end
+        setDesc(HUD.HitLog, "Log cleared. Play a round, then press Copy Ball Hit Log.")
+        notify("Ball Hit Logger", "Log cleared", 3)
     end,
 })
 
@@ -2477,6 +2519,509 @@ task.spawn(function()
         return orig(...)
     end
 end)
+
+-- ============================================
+-- BALL HIT LOGGER
+-- ============================================
+-- Records how every ball reacts to every hit, whoever hits it, so the game's
+-- speed rules can be read off real play: the speed going in and coming out of
+-- each hit, how much each hit adds (% and studs/s), the time between hits,
+-- how much the ball speeds up (or slows) in flight between hits, how far it
+-- turns, and how far apart the two players were. Copy Ball Hit Log puts it
+-- all on the clipboard (and in AnimeBallHub/ball_hits.txt); also
+-- getgenv().AnimeBallHubHitLog() from the console. Read-only: it never
+-- touches the parry.
+--
+-- A hit = the ball's Target switching to another player. The Target flips
+-- about half a ping after the server's hit, but the ball's velocity on screen
+-- can show it later, so each hit is pinned to the frame the ball visibly
+-- TURNS (>= 40 deg from one frame to the next) or jumps in speed (>= 8%), and
+-- the speeds are read on the frames either side of that.
+do
+    local HL = Clash.HL
+    HL.MAX, HL.RALLY_GAP, HL.KEEP = 400, 6, 4
+    HL.clear = function()
+        HL.balls = setmetatable({}, { __mode = "k" })   -- [ball] = its samples and hit state
+        HL.hits, HL.pending, HL.fx, HL.delays = {}, {}, {}, {}
+        HL.rallies, HL.fxHit, HL.fxRef, HL.fxSeen = 0, 0, 0, false
+        HL.since = tick()
+    end
+    HL.clear()
+
+    local function median(list)
+        local n = #list
+        if n == 0 then return nil end
+        table.sort(list)
+        if n % 2 == 1 then return list[(n + 1) / 2] end
+        return (list[n / 2] + list[n / 2 + 1]) / 2
+    end
+    HL.median = median
+    local function copy(t)
+        local c = {}
+        for i, v in ipairs(t) do c[i] = v end
+        return c
+    end
+    local function speedsIn(B, t0, t1)
+        local out = {}
+        for _, x in ipairs(B.s) do
+            if x[1] >= t0 and x[1] < t1 then out[#out + 1] = x[2] end
+        end
+        return out
+    end
+    -- the last sample at or before t (or the first one, if all are later)
+    local function sampleAt(B, t)
+        local best
+        for _, x in ipairs(B.s) do
+            if x[1] <= t then best = x else return best or x end
+        end
+        return best
+    end
+    local function angleOf(a, b)
+        if not a or not b or a.Magnitude < 1 or b.Magnitude < 1 then return nil end
+        return math.deg(math.acos(math.clamp(a.Unit:Dot(b.Unit), -1, 1)))
+    end
+    HL.fmt = function(v)
+        local t = typeof(v)
+        if t == "number" then return string.format("%.4g", v) end
+        if t == "string" then return v end
+        if t == "Instance" then return v.Name end
+        if t == "Vector3" then return string.format("(%.1f,%.1f,%.1f)", v.X, v.Y, v.Z) end
+        if t == "boolean" or t == "nil" then return tostring(v) end
+        return t
+    end
+    -- the flip -> visible-turn delay, median of the recent hits
+    HL.lag = function()
+        return median(copy(HL.delays)) or 0.1
+    end
+    local function hrpOf(name)
+        if type(name) ~= "string" then return nil end
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if pl.Name == name then return getPlayerHRP(pl) end
+        end
+        return nil
+    end
+
+    -- A ball's flight between two hits (or since the last one): how long it
+    -- flew, its speed at the start and end, top and lowest speed, how fast it
+    -- sped up (studs/s per second), and its average speed from how far it
+    -- actually moved.
+    local function segment(B, t0, t1)
+        if not B or t1 - t0 < 0.03 then return nil end
+        local first, last, smax, smin, dist, prevPos
+        for _, x in ipairs(B.s) do
+            if x[1] >= t0 and x[1] <= t1 then
+                first = first or x
+                last = x
+                smax = math.max(smax or 0, x[2])
+                smin = math.min(smin or math.huge, x[2])
+                if prevPos then dist = (dist or 0) + (x[4] - prevPos).Magnitude end
+                prevPos = x[4]
+            end
+        end
+        if not first or first == last then return nil end
+        local dur = last[1] - first[1]
+        return {
+            dur = t1 - t0, s0 = first[2], s1 = last[2], smax = smax, smin = smin,
+            acc = dur > 0.05 and (last[2] - first[2]) / dur or nil,
+            moved = dist and dur > 0.05 and dist / dur or nil,
+            partial = B.s[1] and B.s[1][1] > t0 or false,
+        }
+    end
+    HL.segment = segment
+
+    local function attrsOf(ball)
+        local ok, attrs = pcall(function() return ball:GetAttributes() end)
+        if not ok or type(attrs) ~= "table" then return nil end
+        local keys = {}
+        for k in pairs(attrs) do
+            if k ~= "Target" then keys[#keys + 1] = tostring(k) end   -- Target is the from/to columns
+        end
+        table.sort(keys)
+        local parts = {}
+        for _, k in ipairs(keys) do parts[#parts + 1] = k .. "=" .. HL.fmt(attrs[k]) end
+        return table.concat(parts, " ")
+    end
+
+    HL.newHit = function(ball, B, now, from, to)
+        local prev = B.lastHit
+        if not prev or now - prev.t > HL.RALLY_GAP then
+            HL.rallies = HL.rallies + 1
+            B.rally, B.n = HL.rallies, 0
+            prev = nil
+        end
+        B.n = B.n + 1
+        local h = {
+            rally = B.rally, n = B.n, ball = B.name, t = now, from = from, to = to,
+            serve = from == nil, ping = currentPing, B = B, prevHit = prev,
+            gap = prev and now - prev.t or nil,
+        }
+        if prev then prev.nextT = now end
+        local a, b = hrpOf(from), hrpOf(to)
+        if a and b then h.pdist = (a.Position - b.Position).Magnitude end
+        local seen = B.s[#B.s]
+        if seen and a then h.bdist = (seen[4] - a.Position).Magnitude end
+        local at = attrsOf(ball)
+        if at and at ~= B.attrs then h.attrs, B.attrs = at, at end
+        -- the game's own hit effect for this ball, if it arrived first
+        for i = #HL.fx, 1, -1 do
+            local e = HL.fx[i]
+            if now - e.t > 0.5 then break end
+            if e.kind == "HitEffect" and e.ball == ball and e.player == from and not e.used then
+                h.fx, e.used = e.text, true
+                break
+            end
+        end
+        B.lastHit = h
+        HL.hits[#HL.hits + 1] = h
+        if #HL.hits > HL.MAX then table.remove(HL.hits, 1) end
+        HL.pending[#HL.pending + 1] = h
+    end
+
+    -- Pin a hit to the frame the ball visibly reacted, then read its speeds.
+    local TRACE = { -0.1, -0.05, 0, 0.05, 0.1, 0.2, 0.3 }
+    HL.measure = function(h, now)
+        local B = h.B
+        local ph = h.prevHit
+        if not h.turn then
+            -- In a fast rally the ball on screen can still be showing the
+            -- PREVIOUS hit when the Target flips again, so pin that one first
+            -- and only look after its turn.
+            if ph and not ph.turn then return false end
+            local from = h.t - 0.02
+            if ph then from = math.max(from, ph.turn + 0.03) end
+            -- frame to frame: a hit turns the ball (or jumps its speed) in
+            -- one frame, while homing only bends it a few degrees a frame
+            local px
+            for _, x in ipairs(B.s) do
+                if x[1] > h.t + 0.7 or (h.nextT and x[1] > h.nextT + 0.3) then break end
+                if x[1] > from and px then
+                    local ang, ps = angleOf(px[3], x[3]), px[2]
+                    if (ang and ang >= 40)
+                        or (ps < 5 and x[2] >= 20)
+                        or (ps >= 5 and math.abs(x[2] - ps) >= 0.08 * ps) then
+                        h.turn, h.delay = x[1], x[1] - h.t
+                        break
+                    end
+                end
+                px = x
+            end
+            if not h.turn then
+                if now < h.t + 0.7 then return false end
+                h.turn, h.guess = h.t + HL.lag(), true   -- never visibly reacted: assume the usual delay
+            end
+        end
+        if now < h.turn + 0.32 then return false end
+        local before0 = h.turn - 0.12
+        if ph and ph.turn then before0 = math.max(before0, ph.turn + 0.03) end
+        local after1 = h.turn + 0.12
+        if h.nextT then after1 = math.min(after1, h.turn + math.max(0.03, (h.nextT - h.t) * 0.8)) end
+        -- the frame just before the turn and the turn frame itself (a ball
+        -- also speeds up in flight, so reading further out would blur that
+        -- into the hit's own jump)
+        local bl, al = speedsIn(B, before0, h.turn), speedsIn(B, h.turn, after1)
+        h.sIn, h.sOut = bl[#bl], al[1]
+        if h.sIn and h.sOut and h.sIn >= 1 then
+            h.pct, h.add = h.sOut / h.sIn - 1, h.sOut - h.sIn
+        end
+        local vb, va = sampleAt(B, h.turn - 0.02), sampleAt(B, h.turn + 0.05)
+        h.ang = vb and va and angleOf(vb[3], va[3])
+        local tr = {}
+        for i, off in ipairs(TRACE) do
+            local x = sampleAt(B, h.turn + off)
+            tr[i] = x and string.format("%.0f", x[2]) or "-"
+            if off == -0.05 then tr[i] = tr[i] .. " |" end
+        end
+        h.trace = table.concat(tr, " ")
+        -- the flight the PREVIOUS hit started ends at this one
+        if ph and ph.turn and not ph.seg then
+            ph.seg = segment(B, ph.turn + 0.05, h.turn - 0.02)
+            ph.B = nil
+        end
+        h.prevHit = nil
+        if not h.guess then
+            HL.delays[#HL.delays + 1] = h.delay
+            if #HL.delays > 60 then table.remove(HL.delays, 1) end
+        end
+        return true
+    end
+
+    HL.step = function()
+        local now = tick()
+        for ball in pairs(ballsCache) do
+            local part = ball.Parent and getBallPart(ball)
+            if part then
+                local B = HL.balls[ball]
+                if not B then
+                    B = { s = {}, name = ball.Name, n = 0 }
+                    HL.balls[ball] = B
+                end
+                local v = getBallVelocityVector(ball)
+                local sp, pos = v.Magnitude, part.Position
+                local s = B.s
+                -- skip glitched physics (NaN / huge): it would poison the math
+                if sp == sp and sp < 1e5 and pos.X == pos.X and math.abs(pos.X) < 1e7 then
+                    s[#s + 1] = { now, sp, v, pos }
+                end
+                while s[1] and now - s[1][1] > HL.KEEP do table.remove(s, 1) end
+                local target = Clash.targetOf(ball)
+                if not B.seen then
+                    B.seen, B.target = true, target   -- already in play when first seen: not a hit
+                elseif target ~= B.target then
+                    if target then HL.newHit(ball, B, now, B.target, target) end
+                    B.target = target
+                end
+            end
+        end
+        local left = {}
+        for _, h in ipairs(HL.pending) do   -- oldest first: each hit needs the one before pinned
+            if not HL.measure(h, now) then left[#left + 1] = h end
+        end
+        HL.pending = left
+        if HUD.HitLog and now - (HL.hudAt or 0) >= 0.25 then
+            HL.hudAt = now
+            setDesc(HUD.HitLog, HL.status())
+        end
+    end
+
+    -- Average change per hit (serves and ability launches from no target left out).
+    HL.stats = function()
+        local pcts, adds, ups, sames, downs = {}, {}, 0, 0, 0
+        for _, h in ipairs(HL.hits) do
+            if h.pct and not h.serve then
+                pcts[#pcts + 1], adds[#adds + 1] = h.pct * 100, h.add
+                if h.pct > 0.01 then ups = ups + 1 elseif h.pct < -0.01 then downs = downs + 1 else sames = sames + 1 end
+            end
+        end
+        local function mean(t) local x = 0 for _, v in ipairs(t) do x = x + v end return #t > 0 and x / #t or nil end
+        local function sd(t, m)
+            if #t < 2 then return nil end
+            local x = 0 for _, v in ipairs(t) do x = x + (v - m) ^ 2 end
+            return math.sqrt(x / (#t - 1))
+        end
+        local mp, ma = mean(pcts), mean(adds)
+        return {
+            n = #pcts, mp = mp, ma = ma, sp = mp and sd(pcts, mp), sa = ma and sd(adds, ma),
+            medp = median(copy(pcts)), meda = median(copy(adds)),
+            ups = ups, sames = sames, downs = downs,
+        }
+    end
+
+    HL.status = function()
+        local last
+        for i = #HL.hits, 1, -1 do
+            if HL.hits[i].sOut then last = HL.hits[i] break end
+        end
+        local st = HL.stats()
+        local lines = { string.format("Hits logged: %d in %d rallies", #HL.hits, HL.rallies) }
+        if last then
+            lines[#lines + 1] = string.format("Last: %s -> %s  %.0f -> %.0f studs/s (%+.1f%%)",
+                tostring(last.from or "(none)"), tostring(last.to), last.sIn or 0, last.sOut, (last.pct or 0) * 100)
+        end
+        if st.mp then
+            lines[#lines + 1] = string.format("Avg per hit: %+.1f%% (%+.1f studs/s) over %d hits", st.mp, st.ma, st.n)
+        end
+        return table.concat(lines, "\n")
+    end
+
+    HL.build = function()
+        local now = tick()
+        local function f0(x) return x and string.format("%.0f", x) or "-" end
+        local function f2(x) return x and string.format("%.2f", x) or "-" end
+        local function nm(x) return tostring(x or "(none)") end
+        local L = {}
+        local hits = HL.hits
+        L[#L + 1] = string.format("Anime Ball Hub ball hit log | %d hits in %d rallies over %.0fs | ping %.0f ms | me: %s",
+            #hits, HL.rallies, now - HL.since, currentPing, LocalPlayer.Name)
+        L[#L + 1] = string.format("Ball velocity shows a hit %.2fs after its Target flips (median of %d) | game HitEffect calls seen: %d, ReflectEffect: %d%s",
+            HL.lag(), #HL.delays, HL.fxHit, HL.fxRef, HL.fxSeen and "" or " (hook not active)")
+        local st = HL.stats()
+        L[#L + 1] = "== Summary =="
+        if st.mp then
+            L[#L + 1] = string.format("Speed change per hit: avg %+.1f%% (median %+.1f%%) = avg %+.1f studs/s (median %+.1f) over %d hits",
+                st.mp, st.medp, st.ma, st.meda, st.n)
+            L[#L + 1] = string.format("Hits that sped it up: %d, kept it the same (within 1%%): %d, slowed it: %d", st.ups, st.sames, st.downs)
+            if st.sp and st.sa and st.n >= 4 then
+                -- which rule fits: the same % every hit, or the same studs/s every hit?
+                local rp = st.sp / math.max(math.abs(st.mp), 0.1)
+                local ra = st.sa / math.max(math.abs(st.ma), 0.1)
+                L[#L + 1] = string.format("Spread: %.1f%% (%.2fx of the mean) vs %.1f studs/s (%.2fx) -> looks like %s",
+                    st.sp, rp, st.sa, ra,
+                    rp < ra and string.format("the same PERCENT each hit (~%+.1f%%)", st.medp)
+                        or string.format("the same STUDS/S each hit (~%+.1f)", st.meda))
+            end
+        else
+            L[#L + 1] = "No measured hits yet."
+        end
+        local top, topH, accs, gaps = 0, nil, {}, {}
+        for _, h in ipairs(hits) do
+            local sm = math.max(h.sOut or 0, h.seg and h.seg.smax or 0)
+            if sm > top then top, topH = sm, h end
+            if h.seg and h.seg.acc and h.seg.dur >= 0.15 then accs[#accs + 1] = h.seg.acc end
+            if h.gap then gaps[#gaps + 1] = h.gap end
+        end
+        local accMed = median(accs)
+        if accMed then
+            L[#L + 1] = string.format("In flight between hits: median speed-up %+.1f studs/s per second (%d flights of 0.15s+)", accMed, #accs)
+        end
+        if topH then
+            L[#L + 1] = string.format("Top speed seen: %.0f studs/s (rally %d, hit %d)", top, topH.rally, topH.n)
+        end
+        if #gaps > 0 then
+            local g = copy(gaps)
+            table.sort(g)
+            L[#L + 1] = string.format("Time between hits: median %.2fs, shortest %.2fs, longest %.2fs", median(copy(gaps)), g[1], g[#g])
+        end
+
+        -- average speed after the Nth hit of a rally
+        local byN, maxN = {}, 0
+        for _, h in ipairs(hits) do
+            if h.sOut then
+                local b = byN[h.n] or { 0, 0, {} }
+                b[1], b[2] = b[1] + h.sOut, b[2] + 1
+                if h.pct and not h.serve then b[3][#b[3] + 1] = h.pct * 100 end
+                byN[h.n] = b
+                if h.n > maxN then maxN = h.n end
+            end
+        end
+        L[#L + 1] = "== Speed after the Nth hit of a rally (average over rallies) =="
+        for n = 1, math.min(maxN, 60) do
+            local b = byN[n]
+            if b then
+                local mp = median(b[3])
+                L[#L + 1] = string.format("hit %2d: %4.0f studs/s  (%s, %d rallies)", n, b[1] / b[2],
+                    mp and string.format("%+.1f%%", mp) or "serve", b[2])
+            end
+        end
+
+        L[#L + 1] = "== Rallies =="
+        local rl, order = {}, {}
+        for _, h in ipairs(hits) do
+            local r = rl[h.rally]
+            if not r then
+                r = { first = h, n = 0, top = 0 }
+                rl[h.rally] = r
+                order[#order + 1] = h.rally
+            end
+            r.n, r.last = r.n + 1, h
+            r.top = math.max(r.top, h.sOut or 0, h.seg and h.seg.smax or 0)
+        end
+        for _, id in ipairs(order) do
+            local r = rl[id]
+            local s0
+            for _, h in ipairs(hits) do
+                if h.rally == id and h.sOut then s0 = h.sOut break end
+            end
+            L[#L + 1] = string.format("rally %d (ball %s): %d hits in %.1fs, %s -> %s studs/s, top %.0f",
+                id, tostring(r.first.ball), r.n, r.last.t - r.first.t, f0(s0), f0(r.last.sOut), r.top)
+        end
+
+        L[#L + 1] = "== Hits (newest last) =="
+        L[#L + 1] = "r   #   time   gap  from         -> to             in   out     +%   +s/s delay  turn  plyrs ball |  flight  start  end  max  min  accel moved | game hit effect"
+        L[#L + 1] = "(in/out = speed just before/after the hit; delay = Target flip -> visible turn, ~ = never turned, guessed; turn = deg the heading changed; plyrs = studs between the two players; ball = ball to hitter; flight = the flight this hit started; accel = studs/s per second; moved = avg speed from distance moved; * = flight cut off)"
+        local startI = math.max(1, #hits - 199)
+        for i = startI, #hits do
+            local h = hits[i]
+            local sg = h.seg
+            if not sg and h.turn and h.B then sg = segment(h.B, h.turn + 0.05, now) end   -- still flying
+            L[#L + 1] = string.format("%-3d %-3d %6.2f %5s %-12.12s -> %-12.12s %5s %5s %6s %6s %5s%s %4s %5s %4s | %6s %5s %5s %4s %4s %6s %5s%s | %s",
+                h.rally, h.n, h.t - HL.since, h.gap and string.format("%.2f", h.gap) or "-",
+                nm(h.from), nm(h.to), f0(h.sIn), f0(h.sOut),
+                h.pct and string.format("%+.1f", h.pct * 100) or "-", h.add and string.format("%+.0f", h.add) or "-",
+                f2(h.delay), h.guess and "~" or " ", f0(h.ang), f0(h.pdist), f0(h.bdist),
+                sg and f2(sg.dur) or "-", sg and f0(sg.s0) or "-", sg and f0(sg.s1) or "-", sg and f0(sg.smax) or "-",
+                sg and f0(sg.smin) or "-", sg and sg.acc and string.format("%+.0f", sg.acc) or "-", sg and f0(sg.moved) or "-",
+                sg and sg.partial and "*" or " ", h.fx or "-")
+        end
+
+        L[#L + 1] = "== Speed around each hit (studs/s at -0.10 -0.05 | 0 +0.05 +0.10 +0.20 +0.30 s from the visible turn) =="
+        for i = math.max(1, #hits - 79), #hits do
+            local h = hits[i]
+            if h.trace then L[#L + 1] = string.format("r%d #%d: %s", h.rally, h.n, h.trace) end
+        end
+
+        L[#L + 1] = "== Ball attributes (shown when they changed) =="
+        for _, h in ipairs(hits) do
+            if h.attrs then L[#L + 1] = string.format("r%d #%d %s: %s", h.rally, h.n, tostring(h.ball), h.attrs) end
+        end
+
+        L[#L + 1] = "== Game effect calls (last 40) =="
+        for i = math.max(1, #HL.fx - 39), #HL.fx do
+            local e = HL.fx[i]
+            L[#L + 1] = string.format("%7.2f %s(%s)", e.t - HL.since, e.kind, e.text)
+        end
+        return table.concat(L, "\n")
+    end
+
+    -- The game's own effects: the server calls BallController.Server.HitEffect
+    -- (player, sword, ball, pitch, vfx - decompiled) on a hit and
+    -- ReflectEffect(ball, pitch) on a reflect. Logged as they come (and the
+    -- game's function is always called as normal).
+    HL.onFx = function(kind, ...)
+        local n = select("#", ...)
+        local args = { ... }
+        local parts = {}
+        for i = 1, math.min(n, 6) do parts[#parts + 1] = HL.fmt(args[i]) end
+        local now = tick()
+        local ref = kind == "HitEffect" and args[3] or args[1]
+        local ball = resolveBallRef and resolveBallRef(ref) or nil
+        local e = { t = now, kind = kind, text = table.concat(parts, ", "), ball = ball,
+            player = kind == "HitEffect" and HL.fmt(args[1]) or nil }
+        HL.fx[#HL.fx + 1] = e
+        if #HL.fx > 200 then table.remove(HL.fx, 1) end
+        if kind == "HitEffect" then HL.fxHit = HL.fxHit + 1 else HL.fxRef = HL.fxRef + 1 end
+        local B = ball and HL.balls[ball]
+        local h = B and B.lastHit
+        if h and now - h.t <= 0.5 then
+            -- (it can also arrive just BEFORE that hit's Target flip: then the
+            -- flip picks it up, matched by the hitter's name)
+            if kind == "HitEffect" and not h.fx and h.from == e.player then h.fx, e.used = e.text, true end
+            if kind == "ReflectEffect" then h.reflects = (h.reflects or 0) + 1 end
+        end
+    end
+    task.spawn(function()
+        local BC
+        for _ = 1, 15 do
+            if destroyed then return end
+            local ok, controller = pcall(function()
+                return require(ReplicatedStorage:WaitForChild("Framework", 5)):Get("BallController")
+            end)
+            if ok and type(controller) == "table" and type(controller.Server) == "table" then
+                BC = controller
+                break
+            end
+            task.wait(1)
+        end
+        if not BC or destroyed then return end
+        local restore = {}
+        for _, name in ipairs({ "HitEffect", "ReflectEffect" }) do
+            local orig = BC.Server[name]
+            if type(orig) == "function" then
+                restore[#restore + 1] = { name, orig }
+                BC.Server[name] = function(...)
+                    if not destroyed and HL.on then pcall(HL.onFx, name, ...) end
+                    return orig(...)
+                end
+            end
+        end
+        HL.fxSeen = #restore > 0
+        HL.fxRestore = function()
+            for _, r in ipairs(restore) do
+                pcall(function() BC.Server[r[1]] = r[2] end)
+            end
+            restore = {}
+        end
+    end)
+
+    track(RunService.Heartbeat:Connect(function()
+        if destroyed or not HL.on then return end
+        local ok, err = pcall(HL.step)
+        if not ok and not HL.err then
+            HL.err = true   -- report once, don't spam every frame
+            warn("[Anime Ball Hub] Ball Hit Logger error: " .. tostring(err))
+        end
+    end))
+    pcall(function() _genv.AnimeBallHubHitLog = function() return HL.build() end end)
+end
 
 -- ============================================
 -- CLIENT GAME FIXES (your client only)
@@ -4084,6 +4629,7 @@ unloadScript = function()
         pcall(function() swordController.Server.BlockSuccess = blockSuccessOriginal end)
     end
     swordController, blockSuccessOriginal = nil, nil
+    if Clash.HL.fxRestore then pcall(Clash.HL.fxRestore) end
     -- Hand the game's server auto parry back to "off" if we turned it on.
     if GameAP.active then
         pcall(function()
@@ -4124,6 +4670,7 @@ unloadScript = function()
             genv.AnimeBallUnload = nil
             genv.AnimeBallHubLoaded = nil
             genv.AnimeBallHubUnload = nil
+            genv.AnimeBallHubHitLog = nil
         end
     end
 end
