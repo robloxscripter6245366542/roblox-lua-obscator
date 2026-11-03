@@ -309,3 +309,20 @@ exact. The real confirmation is still an in-game run.
   blocked: the ball lands ~0.31 s after the shift, you see it 0.22 s after it,
   and a block takes 0.10 s more to land. The script before this fix parries
   13/24 (Stasis 0/6, Instant Transmission 3/6).
+
+- **`hitlog_test.lua`** — checks the **Ball Hit Logger** (Statistics tab >
+  Copy Ball Hit Log). A rally between you and an opponent follows a known
+  speed rule. Either each hit multiplies the speed by 1.06 or adds 15 studs/s,
+  and the ball also speeds up 18 studs/s every second in flight. The server's
+  `HitEffect` arrives half a ping after each hit. The test reads the log
+  (`getgenv().AnimeBallHubHitLog()`) and checks it gets back:
+  - every hit;
+  - the per-hit change, and which rule it is (the same percent or the same
+    studs/s each hit);
+  - the in-flight speed-up;
+  - each `HitEffect` matched to its hit.
+
+  It runs at pings 90/150/200, including a fast 45-stud rally with ~0.1 s
+  between hits, where the ball on screen still shows the previous hit when the
+  Target flips again. Run: `lua-5.1.5/src/lua hitlog_test.lua` (`SHOW=1`
+  prints the first case's full log). Expected: **6/6 read back correctly**.
