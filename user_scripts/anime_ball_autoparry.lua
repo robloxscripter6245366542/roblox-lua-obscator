@@ -414,6 +414,7 @@ local Clash = {
     chainFor = -math.huge,       -- the parry the rally chain last fired for
     CHAIN_GAP = 0.5,             -- rally chain: both recent parry gaps must be this short
     FAST_GAP = 0.35,             -- parry gaps this short = a clash, whatever the distance
+    CLOSE_RET = 18,              -- an opponent this close returns my parry instantly
     fastRally = false,
     VIEW_LAG = 0.12,
 }
@@ -2744,6 +2745,8 @@ Clash.retWant, Clash.retWantAt, Clash.retWantApp, Clash.retWantUntil, Clash.retW
 Clash.retLast = setmetatable({}, { __mode = "k" })
 Clash.toMeAt, Clash.heldFor = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
 Clash.fastSpd, Clash.fastAt = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
+Clash.frozenSrv, Clash.stasisFor = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
+Clash.STASIS_T = 4.0        -- Stasis holds the ball this long (AbilityInfo)
 track(RunService.Heartbeat:Connect(function()
     if destroyed or not Clash.retOn or not autoParryEnabled then return end
     local hrp = getPlayerHRP(LocalPlayer)
@@ -2848,6 +2851,32 @@ Clash.preShieldStep = function(hrp)
                         if not Clash.lastProbe then Clash.heldFor[ball] = toMe end
                         totalBurstBlocks = totalBurstBlocks + 1
                     end
+                end
+            end
+            -- Stasis ("Stop the ball in mid air for 4 seconds or until parried!"
+            -- - AbilityInfo). A ball aimed at me that was flying and now sits
+            -- frozen near me resumes 4s after it stopped, and from up close it
+            -- lands before I could even SEE it move again (it is half a ping +
+            -- VIEW_LAG old). So block for that moment: the shield goes up just
+            -- before the release. Only while it is still frozen and still aimed
+            -- at me, so an early release (parried out of it) can't waste it.
+            if target == myName and bp and spd < 2 and (bp - myPos).Magnitude <= 150 then
+                if not Clash.frozenSrv[ball] and fa and now - fa <= 1.0 then
+                    -- when it stopped, on the server's clock: an Anchored ball
+                    -- shows it half a ping late, a stopped position VIEW_LAG later
+                    local anchored = false
+                    pcall(function() anchored = getBallPart(ball).Anchored == true end)
+                    Clash.frozenSrv[ball] = now - ping / 2 - (anchored and 0 or Clash.VIEW_LAG)
+                end
+            else
+                Clash.frozenSrv[ball] = nil
+            end
+            local fz = Clash.frozenSrv[ball]
+            if fz and now - fz >= 0.3 and Clash.stasisFor[ball] ~= fz
+                and now + ping / 2 >= fz + Clash.STASIS_T - 0.1 then
+                if fireBlockRemote(false, "stasis") then
+                    if not Clash.lastProbe then Clash.stasisFor[ball] = fz end
+                    totalBurstBlocks = totalBurstBlocks + 1
                 end
             end
         end
@@ -3834,6 +3863,20 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
                 inShieldWindow = math.max(closestDistance - EFFECTIVE_HIT_RADIUS, 0)
                     / math.max(closingSpeed, 0.5 * velocity) <= shieldLead
             end
+        end
+        -- Instant point-blank return (Instant Transmission: "teleports you to
+        -- the player you hit the ball to"; or anyone just standing next to me).
+        -- When a ball aimed at me is in the block window and an opponent is
+        -- within CLOSE_RET studs, my parry sends it straight into them and it
+        -- comes back within a frame or two - and if a parry uses the shield up,
+        -- only a block landing right after my parry can take it. So it is a
+        -- clash already: keep blocks streaming. Decided on TIME, not the ball's
+        -- distance: the ball I see is ~0.17s old, still 40+ studs out as the
+        -- real one arrives (the dash-in check needs it within 34 - sandbox).
+        if not clashIncoming and inShieldWindow and Clash.targetOf(closestBall) == LocalPlayer.Name
+            and Clash.nearestOther(humanoidRootPart.Position) <= Clash.CLOSE_RET then
+            clashIncoming = true
+            alwaysFire, clashRate = true, true
         end
         -- Shield-cover hold (real miss reports #4 and #5). In a long-range rally
         -- the ball we see trails the real one by half a ping plus Roblox's

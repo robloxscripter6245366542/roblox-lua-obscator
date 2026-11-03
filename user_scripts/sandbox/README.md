@@ -285,3 +285,27 @@ exact. The real confirmation is still an in-game run.
   Each case runs under the three server rules. Run:
   `lua-5.1.5/src/lua replay_miss9.lua`. Expected: **27/27 survived**. The script
   before this fix survives 13/27, and 0/9 when a parry uses the shield up.
+
+- **`ability_test.lua`** — ball tricks from the game's own ability list
+  (`AbilityInfo` in the 2026-10-31 dump). Each case aims the ball at you, then
+  an ability changes it:
+  - **Stasis** ("Stop the ball in mid air for 4 seconds or until parried!"):
+    the ball freezes 60 studs out, then carries on at 300 studs/s. From that
+    close it lands before you could even see it move again, so the script
+    times a block for the moment it is released, 4 s after it stopped.
+  - **Time Shift**: the ball reappears ~100 studs away at a new angle and 2x
+    speed.
+  - **Instant Transmission** ("teleports you to the player you hit the ball
+    to"): the hitter appears next to you, so your parry turns into a
+    point-blank return. With an opponent within 18 studs the script now
+    treats the incoming ball as a clash and keeps blocks streaming, even
+    though the ball on screen still looks 40+ studs out.
+  - **Almighty Attraction**: the ball is pulled to a caster next to you, then
+    aimed at you.
+
+  Each case runs at pings 90/150/200, with a parried shield that lasts and one
+  that is used up. Run: `lua-5.1.5/src/lua ability_test.lua`. Expected:
+  **22/24 parried**. The two misses are Time Shift at 200 ms, which can't be
+  blocked: the ball lands ~0.31 s after the shift, you see it 0.22 s after it,
+  and a block takes 0.10 s more to land. The script before this fix parries
+  13/24 (Stasis 0/6, Instant Transmission 3/6).
