@@ -324,5 +324,16 @@ exact. The real confirmation is still an in-game run.
 
   It runs at pings 90/150/200, including a fast 45-stud rally with ~0.1 s
   between hits, where the ball on screen still shows the previous hit when the
-  Target flips again. Run: `lua-5.1.5/src/lua hitlog_test.lua` (`SHOW=1`
-  prints the first case's full log). Expected: **6/6 read back correctly**.
+  Target flips again.
+
+  The logger records **one match**. The test also plays a whole match
+  (`MatchController.Started` / `Ended`, mocked in `world.lua`) and checks:
+  - lobby practice hits before the match are dropped;
+  - every ball of the match is kept (a 230-hit rally, a kill, then a second
+    ball), with no row limit;
+  - when the match ends and the ball is gone, the logger stops and saves (and
+    copies) all of it;
+  - a next match is not recorded until **Record Next Match**.
+
+  Run: `lua-5.1.5/src/lua hitlog_test.lua` (`SHOW=n` prints case n's full
+  log). Expected: **8/8 correct**.
