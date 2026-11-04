@@ -415,6 +415,8 @@ local Clash = {
     CHAIN_GAP = 0.5,             -- rally chain: both recent parry gaps must be this short
     FAST_GAP = 0.35,             -- parry gaps this short = a clash, whatever the distance
     CLOSE_RET = 18,              -- an opponent this close returns my parry instantly
+    FAR_CLASH_T = 0.35,          -- a game clash whose return takes longer than this is a long rally
+    farClash = false,
     fastRally = false,
     VIEW_LAG = 0.12,
 }
@@ -3772,6 +3774,7 @@ Clash.retPrev, Clash.retPrevAt = setmetatable({}, { __mode = "k" }), setmetatabl
 Clash.retApp, Clash.retLockApp = setmetatable({}, { __mode = "k" }), nil
 Clash.retWant, Clash.retWantAt, Clash.retWantApp, Clash.retWantUntil, Clash.retWantArr = nil, 0, nil, 0, 0
 Clash.retLast = setmetatable({}, { __mode = "k" })
+Clash.lastOther = setmetatable({}, { __mode = "k" })   -- [ball] = the last player it was aimed at other than me
 Clash.toMeAt, Clash.heldFor = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
 Clash.fastSpd, Clash.fastAt = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
 Clash.frozenSrv, Clash.stasisFor = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
@@ -4370,13 +4373,40 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
     local pa = Clash.parryAt
     Clash.fastRally = pa[1] - pa[2] <= Clash.FAST_GAP and pa[2] - pa[3] <= Clash.FAST_GAP
         and currentTime - pa[1] <= Clash.FAST_GAP + 0.15
+    -- Far game clash (real miss report #10, 149 ms). Since the game-calls
+    -- listener the server's StartClash reaches the script, and the server
+    -- called a rally with an opponent ~230 studs away a clash. The clash rules
+    -- then fired the moment the ball was aimed back at me: that return looped
+    -- for ~0.8s, the shield ran out 18 ms before the ball hit, and the 1s
+    -- cooldown refused the next block. When my partner in it (the player the
+    -- ball is aimed at, or came from) is so far that the return takes longer
+    -- than FAR_CLASH_T at the ball's speed, it is a long-range rally whatever
+    -- the server calls it: no clash fire, and the long-rally rules time the
+    -- block. (Unknown partner, or a fast exchange: still a clash.)
+    do
+        local tgt = closestBall and Clash.targetOf(closestBall)
+        if tgt and tgt ~= LocalPlayer.Name then Clash.lastOther[closestBall] = tgt end
+        local partner = closestBall and ((tgt and tgt ~= LocalPlayer.Name) and tgt or Clash.lastOther[closestBall])
+        Clash.farClash = false
+        if clashActive and partner and not Clash.fastRally then
+            local phrp
+            for _, pl in ipairs(Players:GetPlayers()) do
+                if pl.Name == partner then phrp = getPlayerHRP(pl) break end
+            end
+            local spd = ballVel and ballVel.Magnitude or 0
+            if phrp and spd > 1 then
+                local d = (phrp.Position - humanoidRootPart.Position).Magnitude
+                Clash.farClash = d > Clash.PARTNER_NEAR and d / spd > Clash.FAR_CLASH_T
+            end
+        end
+    end
     Clash.holdAway = closestBall ~= nil and clashDetected and not amTargeted and not Clash.fastRally
         and Clash.partnerFar(closestBall, humanoidRootPart.Position)
     Clash.covered = false   -- set again in the parry branch below (Shield-cover hold)
     -- Shield lock / cover hold only outside a game clash and with nobody within
     -- PARTNER_NEAR studs (a point-blank exchange keeps firing as before).
-    Clash.farRally = closestBall ~= nil and not clashActive and not Clash.fastRally
-        and Clash.nearestOther(humanoidRootPart.Position) > Clash.PARTNER_NEAR
+    Clash.farRally = closestBall ~= nil and not Clash.fastRally
+        and ((not clashActive and Clash.nearestOther(humanoidRootPart.Position) > Clash.PARTNER_NEAR) or Clash.farClash)
 
     if hudTick and not (autoParryEnabled and closestBall) then
         setDesc(HUD.ParryStatus, autoParryEnabled and "Status: ACTIVE - waiting for a ball" or "Status: DISABLED")
@@ -4822,7 +4852,7 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- (Clash.holdAway, computed above); it resumes the moment the ball is
         -- aimed at me again. Point-blank clashes (partner within 25 studs) are
         -- unchanged.
-        local clashFire = (clashActive or fastClashHold) and not Clash.holdAway
+        local clashFire = (clashActive or fastClashHold) and not Clash.holdAway and not Clash.farClash
         local alwaysFire = clashFire or pointBlank or clashIncoming
         -- Clash send rate only for a real clash / dash-in; point-blank on a lone
         -- ball uses the normal rate (one accepted block is all it needs).
