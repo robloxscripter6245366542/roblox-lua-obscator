@@ -1045,6 +1045,14 @@ Tabs.Stats:Button({
     end,
 })
 Tabs.Stats:Button({
+    Title = "Show Ball Hit Log On Screen",
+    Desc = "If pasting doesn't work (iPad): read it on screen - screenshot it, or tap the text, Select All, Copy",
+    Callback = function()
+        local okV, err = pcall(function() Clash.HL.showViewer() end)
+        if not okV then notify("Ball Hit Logger", "Couldn't show the log: " .. tostring(err), 6) end
+    end,
+})
+Tabs.Stats:Button({
     Title = "Record Next Match",
     Desc = "Throw this log away and record the next match",
     Callback = function()
@@ -3278,8 +3286,8 @@ do
     -- after the last one it starts over. The whole log is also saved to
     -- AnimeBallHub/ball_hits.txt.
     HL.PART = 15000
-    HL.copyPart = function(fresh)
-        if fresh or not HL.partNext or HL.partHits ~= #HL.hits or HL.partMode ~= HL.mode then
+    HL.makeParts = function(fresh)
+        if fresh or not HL.parts or HL.partHits ~= #HL.hits or HL.partMode ~= HL.mode then
             local text = HL.buildSafe()
             pcall(function()
                 if type(writefile) == "function" then
@@ -3300,7 +3308,11 @@ do
             if #cur > 0 then parts[#parts + 1] = table.concat(cur, "\n") end
             HL.parts, HL.partNext, HL.partHits, HL.partMode = parts, 1, #HL.hits, HL.mode
         end
-        local parts, i = HL.parts, HL.partNext
+        return HL.parts
+    end
+    HL.copyPart = function(fresh)
+        HL.makeParts(fresh)
+        local parts, i = HL.parts, HL.partNext or 1
         local n = #parts
         local text = parts[i] or ""
         if n > 1 then
@@ -3323,6 +3335,74 @@ do
         if not fresh then notify("Ball Hit Logger", msg, 6) end
         setDesc(HUD.HitLog, HL.status())
         return msg
+    end
+
+    -- On-screen viewer, for when the clipboard doesn't get through (iPad:
+    -- "Paste wasn't allowed" for text copied from Roblox). Shows the log part
+    -- by part in a big text box: screenshot it (scroll for the rest), or tap
+    -- the text -> Select All -> Copy (Roblox's own text box copy, not the
+    -- executor's clipboard).
+    HL.closeViewer = function()
+        if HL.viewer then pcall(function() HL.viewer.gui:Destroy() end) end
+        HL.viewer = nil
+    end
+    HL.showViewer = function()
+        HL.closeViewer()
+        local parts = HL.makeParts()
+        local v = { parts = parts, i = 1 }
+        local function set(inst, props)
+            for k, val in pairs(props) do pcall(function() inst[k] = val end) end
+            return inst
+        end
+        local function new(class, parent, props)
+            local inst = Instance.new(class)
+            set(inst, props or {})
+            inst.Parent = parent
+            return inst
+        end
+        local dark, light = Color3.fromRGB(14, 14, 18), Color3.fromRGB(235, 235, 240)
+        v.gui = set(Instance.new("ScreenGui"), { Name = "AnimeBallHubHitLog", ResetOnSpawn = false,
+            IgnoreGuiInset = true, DisplayOrder = 10000 })
+        local frame = new("Frame", v.gui, { Size = UDim2.new(0.94, 0, 0.88, 0), Position = UDim2.new(0.03, 0, 0.06, 0),
+            BackgroundColor3 = dark, BackgroundTransparency = 0.02, BorderSizePixel = 0 })
+        v.title = new("TextLabel", frame, { Size = UDim2.new(1, -16, 0, 34), Position = UDim2.new(0, 8, 0, 4),
+            BackgroundTransparency = 1, TextColor3 = light, TextSize = 15, TextWrapped = true,
+            TextXAlignment = Enum.TextXAlignment and Enum.TextXAlignment.Left, Font = Enum.Font.GothamBold })
+        v.scroll = new("ScrollingFrame", frame, { Size = UDim2.new(1, -16, 1, -92), Position = UDim2.new(0, 8, 0, 42),
+            BackgroundColor3 = Color3.fromRGB(24, 24, 30), BorderSizePixel = 0, ScrollBarThickness = 10,
+            CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize and Enum.AutomaticSize.Y })
+        v.box = new("TextBox", v.scroll, { Size = UDim2.new(1, -14, 0, 0), BackgroundTransparency = 1,
+            AutomaticSize = Enum.AutomaticSize and Enum.AutomaticSize.Y, MultiLine = true, ClearTextOnFocus = false,
+            TextEditable = true, TextWrapped = true, TextColor3 = light, TextSize = 13,
+            TextXAlignment = Enum.TextXAlignment and Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment and Enum.TextYAlignment.Top, Font = Enum.Font.Code })
+        local function button(text, x, fn)
+            local b = new("TextButton", frame, { Size = UDim2.new(0.3, -8, 0, 38), Position = UDim2.new(x, 4, 1, -44),
+                BackgroundColor3 = Color3.fromRGB(140, 20, 30), TextColor3 = light, TextSize = 16,
+                Font = Enum.Font.GothamBold, Text = text, AutoButtonColor = true })
+            pcall(function() b.MouseButton1Click:Connect(function() pcall(fn) end) end)
+            return b
+        end
+        v.go = function(i)
+            local n = #v.parts
+            v.i = math.max(1, math.min(i, n))
+            v.box.Text = v.parts[v.i] or ""
+            pcall(function()
+                v.title.Text = string.format("Ball Hit Log - part %d of %d. Screenshot it (scroll for the rest), or tap the text, Select All, Copy", v.i, n)
+            end)
+            pcall(function() v.scroll.CanvasPosition = Vector2.new(0, 0) end)
+        end
+        button("< Previous part", 0.02, function() v.go(v.i - 1) end)
+        button("Next part >", 0.35, function() v.go(v.i + 1) end)
+        button("Close", 0.68, HL.closeViewer)
+        v.go(1)
+        local parent
+        pcall(function() parent = gethui and gethui() end)
+        if not parent then pcall(function() parent = game:GetService("CoreGui") end) end
+        if not parent then pcall(function() parent = LocalPlayer:WaitForChild("PlayerGui", 5) end) end
+        v.gui.Parent = parent
+        HL.viewer = v
+        return v
     end
 
     -- The game's own effects: the server calls BallController.Server.HitEffect
@@ -3422,6 +3502,7 @@ do
     pcall(function()
         _genv.AnimeBallHubHitLog = function() return HL.buildSafe() end   -- the whole log, as text
         _genv.AnimeBallHubCopyHitLog = function() return HL.copyPart() end   -- = the Copy Ball Hit Log button
+        _genv.AnimeBallHubShowHitLog = function() return HL.showViewer() end   -- = the Show Ball Hit Log On Screen button
     end)
 end
 
@@ -5030,6 +5111,7 @@ unloadScript = function()
     end
     swordController, blockSuccessOriginal = nil, nil
     if Clash.HL.fxRestore then pcall(Clash.HL.fxRestore) end
+    if Clash.HL.closeViewer then pcall(Clash.HL.closeViewer) end
     -- Hand the game's server auto parry back to "off" if we turned it on.
     if GameAP.active then
         pcall(function()
@@ -5072,6 +5154,7 @@ unloadScript = function()
             genv.AnimeBallHubUnload = nil
             genv.AnimeBallHubHitLog = nil
             genv.AnimeBallHubCopyHitLog = nil
+            genv.AnimeBallHubShowHitLog = nil
         end
     end
 end
