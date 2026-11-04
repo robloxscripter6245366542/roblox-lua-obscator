@@ -1038,24 +1038,10 @@ end)
 HUD.HitLog = paragraph(Tabs.Stats, "Hit Log", "Waiting for a match to start...")
 Tabs.Stats:Button({
     Title = "Copy Ball Hit Log",
-    Desc = "Copies the whole recorded match (it is also copied by itself when the match ends)",
+    Desc = "Copies the recorded match. A long log comes in parts: press again for the next part",
     Callback = function()
-        local okB, text = pcall(function() return Clash.HL.build() end)
-        if not okB or type(text) ~= "string" then
-            notify("Ball Hit Logger", "Couldn't build the log: " .. tostring(text), 5)
-            return
-        end
-        pcall(function()
-            if type(writefile) == "function" then
-                if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
-                writefile(CONFIG_FOLDER .. "/ball_hits.txt", text)
-            end
-        end)
-        local clip = setclipboard or toclipboard or (Clipboard and Clipboard.set)
-        local ok = clip ~= nil and pcall(clip, text)
-        notify(ok and "Copied" or "Copy failed",
-            ok and (#Clash.HL.hits .. " hits copied - paste it to the dev") or ("Saved in " .. CONFIG_FOLDER .. "/ball_hits.txt"), 4)
-        if ok then Clash.HL.copied = true end
+        local okC, err = pcall(function() Clash.HL.copyPart() end)
+        if not okC then notify("Ball Hit Logger", "Copy failed: " .. tostring(err), 6) end
     end,
 })
 Tabs.Stats:Button({
@@ -2611,6 +2597,7 @@ do
         -- "armed": waiting for a match; "rec": recording it; "done": recorded
         HL.mode, HL.startedBy, HL.matchStart, HL.matchEnd = "armed", nil, nil, nil
         HL.endedAt, HL.endReason, HL.copied, HL.lastBallAt = nil, nil, false, tick()
+        HL.parts, HL.partNext, HL.partMsg = nil, nil, nil
     end
     for _, name in ipairs({ "HitEffect", "ReflectEffect" }) do
         Clash.GC.on["BallController." .. name] = function(...)
@@ -2912,19 +2899,10 @@ do
         for _, h in ipairs(HL.pending) do pcall(HL.measure, h, now + 10) end
         HL.pending = {}
         HL.mode, HL.endReason, HL.matchEnd = "done", reason, now
-        local okB, text = pcall(HL.build)
-        if okB and type(text) == "string" then
-            pcall(function()
-                if type(writefile) == "function" then
-                    if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
-                    writefile(CONFIG_FOLDER .. "/ball_hits.txt", text)
-                end
-            end)
-            local clip = setclipboard or toclipboard or (Clipboard and Clipboard.set)
-            HL.copied = clip ~= nil and pcall(clip, text) or false
-        end
-        notify("Match recorded", #HL.hits .. " hits"
-            .. (HL.copied and " - copied to your clipboard, paste it to the dev" or " - press Copy Ball Hit Log"), 6)
+        HL.partNext = nil
+        local okC, msg = pcall(HL.copyPart, true)
+        notify("Match recorded", #HL.hits .. " hits - "
+            .. (okC and msg or ("press Copy Ball Hit Log (" .. tostring(msg) .. ")")), 8)
         setDesc(HUD.HitLog, HL.status())
     end
     HL.onStart = function()
@@ -3001,7 +2979,7 @@ do
             head = string.format("Recording this match: %d hits in %d rallies", #HL.hits, HL.rallies)
         else
             head = string.format("Match recorded: %d hits in %d rallies - %s\nPress Record Next Match to log another",
-                #HL.hits, HL.rallies, HL.copied and "copied to your clipboard" or "press Copy Ball Hit Log")
+                #HL.hits, HL.rallies, HL.partMsg or (HL.copied and "copied to your clipboard" or "press Copy Ball Hit Log"))
         end
         local lines = { head }
         if last then
@@ -3116,7 +3094,7 @@ do
         end
 
         -- Big changes, grouped by how much they multiplied the speed
-        L[#L + 1] = string.format("== Big speed changes on a hit (over %d%%: abilities or game rules) ==", HL.BIG * 100)
+        L[#L + 1] = string.format("== Big speed changes on a hit (over %.0f%%: abilities or game rules) ==", HL.BIG * 100)
         local bigs = {}
         for _, h in ipairs(hits) do
             if HL.isBig(h) then
@@ -3203,6 +3181,14 @@ do
         end
         if not any then L[#L + 1] = "none" end
 
+        L[#L + 1] = "== Game calls this match (how many of each) =="
+        local keys = {}
+        for k in pairs(HL.callCount) do keys[#keys + 1] = k end
+        table.sort(keys, function(a, b) return HL.callCount[a] > HL.callCount[b] end)
+        local cparts = {}
+        for _, k in ipairs(keys) do cparts[#cparts + 1] = k .. " x" .. HL.callCount[k] end
+        L[#L + 1] = #cparts > 0 and table.concat(cparts, ", ") or "none"
+
         L[#L + 1] = "== Rallies =="
         local rl, order = {}, {}
         for _, h in ipairs(hits) do
@@ -3257,24 +3243,86 @@ do
             if h.pattrs then L[#L + 1] = string.format("r%d #%d %s %s", h.rally, h.n, nm(h.from), h.pattrs) end
         end
 
-        L[#L + 1] = "== Game calls during the match (count, then each one; very frequent ones only counted) =="
-        local keys = {}
-        for k in pairs(HL.callCount) do keys[#keys + 1] = k end
-        table.sort(keys, function(a, b) return HL.callCount[a] > HL.callCount[b] end)
-        local cparts = {}
-        for _, k in ipairs(keys) do cparts[#cparts + 1] = k .. " x" .. HL.callCount[k] end
-        L[#L + 1] = #cparts > 0 and table.concat(cparts, ", ") or "none"
+        -- the rare calls one by one (abilities, clash start/end...); the
+        -- frequent ones are only counted above, or the log gets too long to paste
+        L[#L + 1] = string.format("== Rare game calls (seen %d times or less this match), one by one ==", HL.RARE)
+        local shown = 0
         for _, c in ipairs(HL.calls) do
-            if (HL.callCount[c.key] or 0) <= 300 then
+            if (HL.callCount[c.key] or 0) <= HL.RARE and shown < 400 then
+                shown = shown + 1
                 L[#L + 1] = string.format("%7.2f %s(%s)", c.t - t0, c.key, c.text)
             end
         end
-        L[#L + 1] = "== Game effect calls =="
-        for i = 1, #HL.fx do
-            local e = HL.fx[i]
-            L[#L + 1] = string.format("%7.2f %s(%s)", e.t - t0, e.kind, e.text)
+        if shown == 0 then L[#L + 1] = "none" end
+        return table.concat(L, "\n")
+    end
+    HL.RARE = 40
+
+    -- If the full log ever fails to build (a game update, odd data), still
+    -- give something to paste: every hit, plus the error to send the dev.
+    HL.buildSafe = function()
+        local ok, text = pcall(HL.build)
+        if ok and type(text) == "string" then return text end
+        local L = { "Anime Ball Hub ball hit log - the full log failed: " .. tostring(text),
+                    "rally hit from -> to: in -> out studs/s (gap)" }
+        for _, h in ipairs(HL.hits) do
+            L[#L + 1] = string.format("%s %s %s -> %s: %s -> %s (%s)", tostring(h.rally), tostring(h.n),
+                tostring(h.from), tostring(h.to), tostring(h.sIn and math.floor(h.sIn + 0.5)),
+                tostring(h.sOut and math.floor(h.sOut + 0.5)), tostring(h.gap and math.floor(h.gap * 100 + 0.5) / 100))
         end
         return table.concat(L, "\n")
+    end
+
+    -- Copy the log in parts small enough to paste anywhere (a whole match can
+    -- be tens of thousands of characters). Each press copies the next part;
+    -- after the last one it starts over. The whole log is also saved to
+    -- AnimeBallHub/ball_hits.txt.
+    HL.PART = 15000
+    HL.copyPart = function(fresh)
+        if fresh or not HL.partNext or HL.partHits ~= #HL.hits or HL.partMode ~= HL.mode then
+            local text = HL.buildSafe()
+            pcall(function()
+                if type(writefile) == "function" then
+                    if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
+                    writefile(CONFIG_FOLDER .. "/ball_hits.txt", text)
+                end
+            end)
+            local parts, cur, size = {}, {}, 0
+            for line in (text .. "\n"):gmatch("([^\n]*)\n") do
+                if size + #line + 1 > HL.PART and #cur > 0 then
+                    parts[#parts + 1] = table.concat(cur, "\n")
+                    cur, size = {}, 0
+                end
+                if #line > HL.PART then line = line:sub(1, HL.PART - 20) .. " ...(cut)" end
+                cur[#cur + 1] = line
+                size = size + #line + 1
+            end
+            if #cur > 0 then parts[#parts + 1] = table.concat(cur, "\n") end
+            HL.parts, HL.partNext, HL.partHits, HL.partMode = parts, 1, #HL.hits, HL.mode
+        end
+        local parts, i = HL.parts, HL.partNext
+        local n = #parts
+        local text = parts[i] or ""
+        if n > 1 then
+            text = string.format("[Ball hit log part %d of %d]\n", i, n) .. text
+        end
+        local clip = setclipboard or toclipboard or (Clipboard and Clipboard.set)
+        local ok = clip ~= nil and pcall(clip, text)
+        HL.partNext = i % n + 1
+        local msg
+        if not ok then
+            msg = "copy failed - it is saved in " .. CONFIG_FOLDER .. "/ball_hits.txt"
+        elseif n == 1 then
+            msg = "copied to your clipboard, paste it to the dev"
+        elseif i < n then
+            msg = string.format("copied part %d of %d - paste it, then press Copy Ball Hit Log for part %d", i, n, i + 1)
+        else
+            msg = string.format("copied part %d of %d (the last) - paste it", i, n)
+        end
+        HL.copied, HL.partMsg = ok or HL.copied, msg
+        if not fresh then notify("Ball Hit Logger", msg, 6) end
+        setDesc(HUD.HitLog, HL.status())
+        return msg
     end
 
     -- The game's own effects: the server calls BallController.Server.HitEffect
@@ -3371,7 +3419,10 @@ do
             warn("[Anime Ball Hub] Ball Hit Logger error: " .. tostring(err))
         end
     end))
-    pcall(function() _genv.AnimeBallHubHitLog = function() return HL.build() end end)
+    pcall(function()
+        _genv.AnimeBallHubHitLog = function() return HL.buildSafe() end   -- the whole log, as text
+        _genv.AnimeBallHubCopyHitLog = function() return HL.copyPart() end   -- = the Copy Ball Hit Log button
+    end)
 end
 
 -- ============================================
@@ -5020,6 +5071,7 @@ unloadScript = function()
             genv.AnimeBallHubLoaded = nil
             genv.AnimeBallHubUnload = nil
             genv.AnimeBallHubHitLog = nil
+            genv.AnimeBallHubCopyHitLog = nil
         end
     end
 end

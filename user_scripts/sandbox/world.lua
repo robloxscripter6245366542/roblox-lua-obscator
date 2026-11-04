@@ -228,7 +228,7 @@ local function build(SRC, pingMs, opts)
   env.unpack=unpack; env.math=envmath; env.table=envtable; env.string=string; env.coroutine=coroutine
   env.os={clock=function() return R.VTIME() end, time=function() return R.VTIME() end}
   env.require=function(x) if type(x)=="table" and x._moduleValue then return x._moduleValue end error("require unknown") end
-  env.getgenv=function() return env._genv end; env._genv={}; env.setclipboard=function() end; env.toclipboard=function() end
+  env.getgenv=function() return env._genv end; env._genv={}; env.setclipboard=function(t) env._clip.text=t end; env._clip={}; env.toclipboard=function() end
   -- in-memory file system so tests can read what the script writes
   local files={}
   env.writefile=function(p,c) files[p]=c end; env.appendfile=function(p,c) files[p]=(files[p] or "")..c end
@@ -242,7 +242,7 @@ local function build(SRC, pingMs, opts)
   return { R=R,v3=v3,Instance=Instance,Enum=Enum,RunService=RunService,Balls=Balls,heroF=heroF,Eff=Eff,
            Players=Players,players=players,LP=LP,char=char,
            hrp=hrp,char_ref=char,server=server,shieldAt=shieldAt,oneway=oneway,movement=movement,
-           ballCtl=ballCtl,matchCtl=matchCtl,swordCtl=swordCtl,serverCall=serverCall,fwRemote=fwRemote,clashCtl=clashCtl,abilityCtl=abilityCtl,apService=apService,genv=env._genv,files=files }
+           ballCtl=ballCtl,matchCtl=matchCtl,swordCtl=swordCtl,serverCall=serverCall,fwRemote=fwRemote,clashCtl=clashCtl,abilityCtl=abilityCtl,apService=apService,genv=env._genv,files=files,clip=env._clip }
 end
 
 return { build=build }

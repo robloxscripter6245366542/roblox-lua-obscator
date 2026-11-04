@@ -341,6 +341,12 @@ exact. The real confirmation is still an in-game run.
   inside the hit reading), list every ×0.46 slow as a big change (left out of
   the averages), and not report a false "set to" speed.
 
+  The match cases also check the copy. A whole match is too long to paste in
+  one go, so it comes in parts of up to 15,000 characters. Part 1 (the
+  summary, the big changes and the clash streaks) is copied by itself at the
+  match end, and each **Copy Ball Hit Log** press copies the next part. The
+  parts must join back into the saved `ball_hits.txt` exactly.
+
   Run: `lua-5.1.5/src/lua hitlog_test.lua` (`SHOW=n` prints case n's full
   log). Expected: **10/10 correct**.
 
