@@ -335,5 +335,11 @@ exact. The real confirmation is still an in-game run.
     copies) all of it;
   - a next match is not recorded until **Record Next Match**.
 
+  A third part replays the mix the first real match log showed: +1.5 studs/s
+  a hit, plus a ×0.457 slow now and then. The log must call it "the same
+  STUDS/S each hit" at +1.5 (after taking out the frame of in-flight speed-up
+  inside the hit reading), list every ×0.46 slow as a big change (left out of
+  the averages), and not report a false "set to" speed.
+
   Run: `lua-5.1.5/src/lua hitlog_test.lua` (`SHOW=n` prints case n's full
-  log). Expected: **8/8 correct**.
+  log). Expected: **10/10 correct**.

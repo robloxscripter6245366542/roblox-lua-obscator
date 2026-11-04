@@ -67,8 +67,12 @@ local function playRally(w, name, rule, spd0, hitsWanted, keepBall)
     pos=pos+dirv*(spd*dt)
     if (pos-tgtPos).Magnitude<=8 then
       -- hit back (whoever it was aimed at), off the line so it curves in
-      spd = rule=="mult" and spd*1.06 or spd+(rule=="add" and 15 or 0.3)
       hits=hits+1
+      if rule=="mult" then spd=spd*1.06
+      elseif rule=="add" then spd=spd+15
+      elseif rule=="real" then   -- like the real match log: +1.5 a hit, and a x0.457 slow now and then
+        if hits%6==0 then spd=spd*0.457 else spd=spd+1.5 end
+      else spd=spd+0.3 end
       -- the server's hit effect reaches the client half a ping later
       local who, pitch = tgtName, 1 + hits/20
       R.task.delay(w.oneway, function() w.ballCtl.Server.HitEffect(who, "Katana", name, pitch, nil) end)
@@ -129,6 +133,24 @@ for _,c in ipairs({
       rule, ping, gap, tostring(logged), hits, tostring(avgP), tostring(avgA), tostring(acc), tostring(rulePick),
       tostring(fxN), fxRows, ok and "OK" or "WRONG"))
   end
+end
+
+print("\n=== Ball Hit Logger: a real-match mix (+1.5 a hit, some x0.46 slows) ===")
+for _,ping in ipairs({90, 180}) do
+  local w=newWorld(ping, 60)
+  local _,hits=playRally(w, "LogBall", "real", 120, 30, true)
+  local rep=log(w) or ""
+  total=total+1
+  if tonumber(os.getenv("SHOW") or "")==total then print(rep) end
+  local rulePick=rep:match("looks like the same (%u+)")
+  local perHit=num(rep, "between those two frames: ~([%+%-][%d%.]+)")
+  local slows=num(rep, "x0%.4%d x(%d+) %(by")
+  local want=math.floor(hits/6)   -- every 6th hit
+  local fake=rep:match("Set to ~")   -- the slows land on similar speeds, but from similar ones: not a "set to"
+  local ok = rulePick=="STUDS" and perHit and math.abs(perHit-1.5)<=0.3 and slows==want and not fake
+  if ok then good=good+1 end
+  print(string.format("  ping %3d: %d hits -> rule %s, %s studs/s per normal hit, x0.46 slows found %s/%d -> %s",
+    ping, hits, tostring(rulePick), tostring(perHit), tostring(slows), want, ok and "OK" or "WRONG"))
 end
 
 print("\n=== Ball Hit Logger: records ONE whole match, then stops and copies it ===")

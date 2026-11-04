@@ -2549,7 +2549,7 @@ do
     HL.clear = function()
         HL.balls = setmetatable({}, { __mode = "k" })   -- [ball] = its samples and hit state
         HL.hits, HL.pending, HL.fx, HL.delays = {}, {}, {}, {}
-        HL.rallies, HL.fxHit, HL.fxRef = 0, 0, 0
+        HL.rallies, HL.fxHit, HL.fxRef, HL.pAttrs = 0, 0, 0, {}
         HL.since = tick()
         -- "armed": waiting for a match; "rec": recording it; "done": recorded
         HL.mode, HL.startedBy, HL.matchStart, HL.matchEnd = "armed", nil, nil, nil
@@ -2631,7 +2631,7 @@ do
         if not first or first == last then return nil end
         local dur = last[1] - first[1]
         return {
-            dur = t1 - t0, s0 = first[2], s1 = last[2], smax = smax, smin = smin,
+            dur = last[1] - t0 + 0.05, s0 = first[2], s1 = last[2], smax = smax, smin = smin,
             acc = dur > 0.05 and (last[2] - first[2]) / dur or nil,
             moved = dist and dur > 0.05 and dist / dur or nil,
             partial = B.s[1] and B.s[1][1] > t0 or false,
@@ -2672,6 +2672,20 @@ do
         if seen and a then h.bdist = (seen[4] - a.Position).Magnitude end
         local at = attrsOf(ball)
         if at and at ~= B.attrs then h.attrs, B.attrs = at, at end
+        -- the hitter's own attributes (equipped sword, ability state...):
+        -- shown when they changed since that player's last hit
+        if type(from) == "string" then
+            for _, pl in ipairs(Players:GetPlayers()) do
+                if pl.Name == from then
+                    local pa, ca = attrsOf(pl), pl.Character and attrsOf(pl.Character)
+                    if (pa and pa ~= "") or (ca and ca ~= "") then
+                        local str = "player: " .. (pa or "-") .. " | character: " .. (ca or "-")
+                        if str ~= HL.pAttrs[from] then h.pattrs, HL.pAttrs[from] = str, str end
+                    end
+                    break
+                end
+            end
+        end
         -- the game's own hit effect for this ball, if it arrived first
         for i = #HL.fx, 1, -1 do
             local e = HL.fx[i]
@@ -2722,7 +2736,7 @@ do
         end
         if now < h.turn + 0.32 then return false end
         local before0 = h.turn - 0.12
-        if ph and ph.turn then before0 = math.max(before0, ph.turn + 0.03) end
+        if ph and ph.turn then before0 = math.max(before0, ph.turn + 0.01) end
         local after1 = h.turn + 0.12
         if h.nextT then after1 = math.min(after1, h.turn + math.max(0.03, (h.nextT - h.t) * 0.8)) end
         -- the frame just before the turn and the turn frame itself (a ball
@@ -2730,6 +2744,8 @@ do
         -- into the hit's own jump)
         local bl, al = speedsIn(B, before0, h.turn), speedsIn(B, h.turn, after1)
         h.sIn, h.sOut = bl[#bl], al[1]
+        local xb = sampleAt(B, h.turn - 1e-4)
+        h.dtIO = xb and xb[1] < h.turn and h.turn - xb[1] or nil   -- time between those two frames
         if h.sIn and h.sOut and h.sIn >= 1 then
             h.pct, h.add = h.sOut / h.sIn - 1, h.sOut - h.sIn
         end
@@ -2852,13 +2868,33 @@ do
     end
 
     -- Average change per hit (serves and ability launches from no target left out).
+    -- A hit that changes the speed by more than this is an ability or a game
+    -- rule (x0.46, x2, reset to 100... in real play), not the normal per-hit
+    -- change: it is listed on its own and kept out of the averages.
+    HL.BIG = 0.15
+    HL.isBig = function(h)
+        return h.pct and not h.serve and math.abs(h.pct) > HL.BIG
+    end
     HL.stats = function()
-        local pcts, adds, ups, sames, downs = {}, {}, 0, 0, 0
+        local pcts, adds, ups, sames, downs, big = {}, {}, 0, 0, 0, 0
+        local n, sx, sy, sxx, sxy = 0, 0, 0, 0, 0
         for _, h in ipairs(HL.hits) do
-            if h.pct and not h.serve then
+            if HL.isBig(h) then
+                big = big + 1
+            elseif h.pct and not h.serve then
                 pcts[#pcts + 1], adds[#adds + 1] = h.pct * 100, h.add
                 if h.pct > 0.01 then ups = ups + 1 elseif h.pct < -0.01 then downs = downs + 1 else sames = sames + 1 end
+                n, sx, sy, sxx, sxy = n + 1, sx + h.sIn, sy + h.add, sxx + h.sIn * h.sIn, sxy + h.sIn * h.add
             end
+        end
+        -- studs/s added = a + b * speed: a fixed amount per hit shows as a
+        -- (b ~ 0), a fixed percent as b (a ~ 0)
+        local fitA, fitB, fitX
+        local den = n * sxx - sx * sx
+        if n >= 4 and den > 1e-6 then
+            fitB = (n * sxy - sx * sy) / den
+            fitA = (sy - fitB * sx) / n
+            fitX = sx / n
         end
         local function mean(t) local x = 0 for _, v in ipairs(t) do x = x + v end return #t > 0 and x / #t or nil end
         local function sd(t, m)
@@ -2870,7 +2906,8 @@ do
         return {
             n = #pcts, mp = mp, ma = ma, sp = mp and sd(pcts, mp), sa = ma and sd(adds, ma),
             medp = median(copy(pcts)), meda = median(copy(adds)),
-            ups = ups, sames = sames, downs = downs,
+            ups = ups, sames = sames, downs = downs, big = big,
+            fitA = fitA, fitB = fitB, fitX = fitX,
         }
     end
 
@@ -2918,18 +2955,9 @@ do
         local st = HL.stats()
         L[#L + 1] = "== Summary =="
         if st.mp then
-            L[#L + 1] = string.format("Speed change per hit: avg %+.1f%% (median %+.1f%%) = avg %+.1f studs/s (median %+.1f) over %d hits",
-                st.mp, st.medp, st.ma, st.meda, st.n)
-            L[#L + 1] = string.format("Hits that sped it up: %d, kept it the same (within 1%%): %d, slowed it: %d", st.ups, st.sames, st.downs)
-            if st.sp and st.sa and st.n >= 4 then
-                -- which rule fits: the same % every hit, or the same studs/s every hit?
-                local rp = st.sp / math.max(math.abs(st.mp), 0.1)
-                local ra = st.sa / math.max(math.abs(st.ma), 0.1)
-                L[#L + 1] = string.format("Spread: %.1f%% (%.2fx of the mean) vs %.1f studs/s (%.2fx) -> looks like %s",
-                    st.sp, rp, st.sa, ra,
-                    rp < ra and string.format("the same PERCENT each hit (~%+.1f%%)", st.medp)
-                        or string.format("the same STUDS/S each hit (~%+.1f)", st.meda))
-            end
+            L[#L + 1] = string.format("Speed change per normal hit: avg %+.1f%% (median %+.1f%%) = avg %+.1f studs/s (median %+.1f) over %d hits (%d big changes listed below, left out)",
+                st.mp, st.medp, st.ma, st.meda, st.n, st.big)
+            L[#L + 1] = string.format("Normal hits that sped it up: %d, kept it the same (within 1%%): %d, slowed it: %d", st.ups, st.sames, st.downs)
         else
             L[#L + 1] = "No measured hits yet."
         end
@@ -2941,8 +2969,42 @@ do
             if h.gap then gaps[#gaps + 1] = h.gap end
         end
         local accMed = median(accs)
+        if st.fitA then
+            -- which rule fits: the same studs/s every hit (a), or the same % (b)?
+            local perc = math.abs(st.fitB * st.fitX) > math.abs(st.fitA)
+            local dts = {}
+            for _, h in ipairs(hits) do
+                if h.dtIO and h.pct and not HL.isBig(h) then dts[#dts + 1] = h.dtIO end
+            end
+            local dt = median(dts)
+            local net = ""
+            if not perc and accMed and dt then
+                net = string.format("; without the in-flight speed-up over the %.3fs between those two frames: ~%+.1f",
+                    dt, st.fitA - accMed * dt)
+            end
+            L[#L + 1] = string.format("Fit: studs/s added = %+.2f %+.4f x speed -> looks like %s%s",
+                st.fitA, st.fitB,
+                perc and string.format("the same PERCENT each hit (~%+.1f%%)", st.fitB * 100)
+                    or string.format("the same STUDS/S each hit (~%+.1f)", st.fitA), net)
+        end
         if accMed then
             L[#L + 1] = string.format("In flight between hits: median speed-up %+.1f studs/s per second (%d flights of 0.15s+)", accMed, #accs)
+            local bands, parts = { 0, 50, 100, 200, 400, math.huge }, {}
+            for i = 1, #bands - 1 do
+                local inBand = {}
+                for _, h in ipairs(hits) do
+                    local sg = h.seg
+                    if sg and sg.acc and sg.dur >= 0.15 then
+                        local mid = (sg.s0 + sg.s1) / 2
+                        if mid >= bands[i] and mid < bands[i + 1] then inBand[#inBand + 1] = sg.acc end
+                    end
+                end
+                if #inBand > 0 then
+                    parts[#parts + 1] = string.format("%s: %+.0f (%d)",
+                        bands[i + 1] == math.huge and (bands[i] .. "+") or (bands[i] .. "-" .. bands[i + 1]), median(inBand), #inBand)
+                end
+            end
+            L[#L + 1] = "  by speed (studs/s: median speed-up per second (flights)): " .. table.concat(parts, ", ")
         end
         if topH then
             L[#L + 1] = string.format("Top speed seen: %.0f studs/s (rally %d, hit %d)", top, topH.rally, topH.n)
@@ -2970,9 +3032,90 @@ do
             if b then
                 local mp = median(b[3])
                 L[#L + 1] = string.format("hit %2d: %4.0f studs/s  (%s, %d rallies)", n, b[1] / b[2],
-                    mp and string.format("%+.1f%%", mp) or "serve", b[2])
+                    mp and string.format("%+.1f%%", mp) or (n == 1 and "serve" or "change not measured"), b[2])
             end
         end
+
+        -- Big changes, grouped by how much they multiplied the speed
+        L[#L + 1] = string.format("== Big speed changes on a hit (over %d%%: abilities or game rules) ==", HL.BIG * 100)
+        local bigs = {}
+        for _, h in ipairs(hits) do
+            if HL.isBig(h) then
+                bigs[#bigs + 1] = h
+                L[#L + 1] = string.format("r%d #%d %s -> %s: %.0f -> %.0f studs/s (x%.2f)",
+                    h.rally, h.n, nm(h.from), nm(h.to), h.sIn, h.sOut, h.sOut / h.sIn)
+            end
+        end
+        if #bigs > 0 then
+            local sorted = copy(bigs)
+            table.sort(sorted, function(a, b) return a.sOut / a.sIn < b.sOut / b.sIn end)
+            local groups, cur = {}, nil
+            for _, h in ipairs(sorted) do
+                local r = h.sOut / h.sIn
+                if cur and r <= cur.r0 * 1.03 then
+                    cur.n, cur.sum = cur.n + 1, cur.sum + r
+                    cur.who[nm(h.from)] = true
+                else
+                    cur = { r0 = r, n = 1, sum = r, who = { [nm(h.from)] = true } }
+                    groups[#groups + 1] = cur
+                end
+            end
+            table.sort(groups, function(a, b) return a.n > b.n end)
+            local parts = {}
+            for _, g in ipairs(groups) do
+                local who = {}
+                for k in pairs(g.who) do who[#who + 1] = k end
+                table.sort(who)
+                parts[#parts + 1] = string.format("x%.2f x%d (by %s)", g.sum / g.n, g.n, table.concat(who, ", "))
+            end
+            L[#L + 1] = "Grouped: " .. table.concat(parts, "; ")
+            -- the same speed after very different ones: set to a fixed value
+            -- (only when the speeds going in were very different)
+            local outs = {}
+            for _, h in ipairs(bigs) do
+                local k = math.floor(h.sOut / 2 + 0.5) * 2
+                local o = outs[k] or { n = 0, lo = math.huge, hi = 0 }
+                o.n, o.lo, o.hi = o.n + 1, math.min(o.lo, h.sIn), math.max(o.hi, h.sIn)
+                outs[k] = o
+            end
+            for k, o in pairs(outs) do
+                if o.n >= 2 and o.hi >= o.lo * 1.3 then
+                    L[#L + 1] = string.format("Set to ~%d studs/s %d times (from %.0f-%.0f)", k, o.n, o.lo, o.hi)
+                end
+            end
+        else
+            L[#L + 1] = "none"
+        end
+
+        -- Clash streaks: runs of hits less than 0.35s apart
+        L[#L + 1] = "== Clash streaks (6+ hits each less than 0.35s apart) =="
+        local i, any = 1, false
+        while i <= #hits do
+            local j = i
+            while j + 1 <= #hits and hits[j + 1].rally == hits[i].rally and hits[j + 1].gap and hits[j + 1].gap <= 0.35 do
+                j = j + 1
+            end
+            if j - i + 1 >= 6 then
+                any = true
+                local who, list = {}, {}
+                for k = i, j do
+                    for _, p in ipairs({ hits[k].from, hits[k].to }) do
+                        if p and not who[p] then who[p] = true; list[#list + 1] = p end
+                    end
+                end
+                local nx = hits[j + 1]
+                local after = "rally ended"
+                if nx and nx.rally == hits[i].rally then
+                    after = string.format("then %s -> %s after %.2fs, %s -> %s studs/s",
+                        nm(nx.from), nm(nx.to), nx.gap or 0, f0(nx.sIn), f0(nx.sOut))
+                end
+                L[#L + 1] = string.format("r%d #%d-#%d: %d hits in %.2fs between %s, %s -> %s studs/s; %s",
+                    hits[i].rally, hits[i].n, hits[j].n, j - i + 1, hits[j].t - hits[i].t, table.concat(list, ", "),
+                    f0(hits[i].sOut), f0(hits[j].sOut), after)
+            end
+            i = j + 1
+        end
+        if not any then L[#L + 1] = "none" end
 
         L[#L + 1] = "== Rallies =="
         local rl, order = {}, {}
@@ -3022,6 +3165,10 @@ do
         L[#L + 1] = "== Ball attributes (shown when they changed) =="
         for _, h in ipairs(hits) do
             if h.attrs then L[#L + 1] = string.format("r%d #%d %s: %s", h.rally, h.n, tostring(h.ball), h.attrs) end
+        end
+        L[#L + 1] = "== Hitter attributes (shown when they changed since that player's last hit) =="
+        for _, h in ipairs(hits) do
+            if h.pattrs then L[#L + 1] = string.format("r%d #%d %s %s", h.rally, h.n, nm(h.from), h.pattrs) end
         end
 
         L[#L + 1] = "== Game effect calls =="
