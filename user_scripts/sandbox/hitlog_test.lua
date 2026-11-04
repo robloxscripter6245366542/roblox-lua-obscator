@@ -191,6 +191,18 @@ for _,ping in ipairs({90, 180}) do
     partsOk = nParts >= 2 and okSize and table.concat(got, "\n") == file
       and first:find("== Summary ==", 1, true) ~= nil and first:find("== Big speed changes", 1, true) ~= nil
   end
+  -- the on-screen viewer (for when pasting doesn't work) shows the same parts
+  local viewOk = false
+  do
+    local okV, v = pcall(w.genv.AnimeBallHubShowHitLog)
+    if okV and type(v)=="table" and v.box and #v.parts == nParts then
+      local seen = { v.box.Text }
+      for i = 2, nParts do v.go(i); seen[#seen+1] = v.box.Text end
+      v.go(nParts + 5)   -- past the end stays on the last part
+      viewOk = table.concat(seen, "\n") == file and v.i == nParts and v.gui.Parent ~= nil
+    end
+  end
+  partsOk = partsOk and viewOk
   local practice = file:match("Practice") ~= nil
   -- a next match without Record Next Match: nothing more is recorded
   w.matchCtl.Server.StartMatch()
@@ -199,7 +211,7 @@ for _,ping in ipairs({90, 180}) do
   local afterHits=num(after, "| (%d+) hits in")
   local ok = stillRec and fileHits==h1+h2 and rows==h1+h2 and stopped and not practice and afterHits==h1+h2 and partsOk
   total=total+1; if ok then good=good+1 end
-  print(string.format("  ping %3d: match had %d + %d hits -> saved %s hits (%d table rows), stopped at the end: %s, practice dropped: %s, next match ignored: %s, copied in %d pasteable parts: %s -> %s",
+  print(string.format("  ping %3d: match had %d + %d hits -> saved %s hits (%d table rows), stopped at the end: %s, practice dropped: %s, next match ignored: %s, copied in %d pasteable parts (and shown on screen): %s -> %s",
     ping, h1, h2, tostring(fileHits), rows, tostring(stopped), tostring(not practice), tostring(afterHits==h1+h2), nParts, tostring(partsOk), ok and "OK" or "WRONG"))
 end
 print(string.format("\n=== %d/%d correct ===", good, total))

@@ -345,7 +345,12 @@ exact. The real confirmation is still an in-game run.
   one go, so it comes in parts of up to 15,000 characters. Part 1 (the
   summary, the big changes and the clash streaks) is copied by itself at the
   match end, and each **Copy Ball Hit Log** press copies the next part. The
-  parts must join back into the saved `ball_hits.txt` exactly.
+  parts must join back into the saved `ball_hits.txt` exactly. Pasting text
+  copied from Roblox can fail ("Paste wasn't allowed" on iPad), so **Show Ball
+  Hit Log On Screen** shows the same parts in a big text box with Previous /
+  Next / Close buttons. You can screenshot it, or use Roblox's own text box
+  Select All → Copy. The test pages through it and checks it shows exactly
+  the same text.
 
   Run: `lua-5.1.5/src/lua hitlog_test.lua` (`SHOW=n` prints case n's full
   log). Expected: **10/10 correct**.
