@@ -343,3 +343,29 @@ exact. The real confirmation is still an in-game run.
 
   Run: `lua-5.1.5/src/lua hitlog_test.lua` (`SHOW=n` prints case n's full
   log). Expected: **10/10 correct**.
+
+- **`game_calls_test.lua`** — server calls delivered **the live game's way**.
+  The game's Framework sends every server → client call over one RemoteEvent
+  (`ReplicatedStorage.Framework.RemoteEvent`, `OnClientEvent(controller,
+  method, args)`). Its client dispatcher (`ReplicatedExecute`, decompiled)
+  then calls a copy of each controller's `Server` functions made when the
+  game loaded. So a script that replaces `BallController.Server.X` afterwards
+  is never called in the live game. The real match log saw 0 `HitEffect`
+  calls in 186 hits, and `BlockSuccess` never fired in any real miss report.
+
+  `w.serverCall(controller, method, ...)` (in `world.lua`) delivers a call
+  that way: the original function, plus the remote event. The test checks
+  that the script still:
+  - parries a ball whose real target only comes as `ChangeBallColor`
+    (NoHighlight decoy);
+  - holds a clash the server started with the game's Clash effects off, and
+    stops when it ends;
+  - logs the ability played and the server's parry confirmation in a miss
+    report;
+  - logs `HitEffect` in the Ball Hit Log;
+  - handles a call that arrives both ways only once.
+
+  Run: `lua-5.1.5/src/lua game_calls_test.lua`. Expected: **10 passed**. The
+  script before this fix passes 1/10. Any suite can also run with the
+  server's parry confirmations delivered this way: `LIVE_DISPATCH=1 lua
+  <suite>.lua` (every suite gives the same results).

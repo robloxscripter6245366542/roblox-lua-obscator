@@ -2425,8 +2425,61 @@ recordServerTarget = function(ball, name, stamp)
     ballsCache[ball] = true
 end
 
--- Hook BallController.Server.ChangeBallColor to capture the SERVER's real target
--- for each ball the instant it retargets. The server invokes this every time a
+-- ============================================
+-- GAME CALLS (server -> client)
+-- ============================================
+-- The game's Framework sends every server -> client call over ONE RemoteEvent,
+-- ReplicatedStorage.Framework.RemoteEvent: OnClientEvent(controller, method,
+-- args) (FireAllClients / FireClient in Framework.ProcessCall, decompiled).
+-- Its client dispatcher (ReplicatedExecute) then calls a COPY of each
+-- controller's Server functions that it made when the game loaded (its
+-- "functionSet") - NOT controller.Server[method]. So replacing
+-- BallController.Server.X later is never called in the live game: the real
+-- match log saw 0 HitEffect calls in 186 hits, and the BlockSuccess hook
+-- never fired in any real miss report. Listening to that remote ourselves
+-- sees every call, on any executor, without touching the game.
+-- The Server.* table hooks stay too (wherever the table IS used, e.g. the
+-- sandbox). Both go through deliver(), so each call is handled once: once a
+-- method's table hook has fired, the remote leaves that method to it.
+Clash.GC = { on = {}, onAny = {}, hookAt = {}, remoteAt = {}, counts = {}, total = 0, live = false }
+Clash.GC.deliver = function(src, name, method, ...)
+    if destroyed or type(name) ~= "string" or type(method) ~= "string" then return end
+    local GC, key, now = Clash.GC, name .. "." .. method, tick()
+    if src == "remote" then
+        GC.total = GC.total + 1
+        GC.counts[key] = (GC.counts[key] or 0) + 1
+        if GC.tap then pcall(GC.tap, name, method, ...) end   -- the Ball Hit Logger's record
+        if GC.hookAt[key] then return end    -- the table hook handles this method here
+        GC.remoteAt[key] = now
+    else
+        GC.hookAt[key] = true
+        if GC.remoteAt[key] and now - GC.remoteAt[key] < 0.1 then return end   -- the remote already did this call
+    end
+    local fn = GC.on[key]
+    if fn then pcall(fn, ...) end
+    local any = GC.onAny[name]
+    if any then pcall(any, method, ...) end
+end
+task.spawn(function()
+    local fw = ReplicatedStorage:WaitForChild("Framework", 30)
+    local re = fw and fw:WaitForChild("RemoteEvent", 30)
+    if destroyed or not re then return end
+    local up = table.unpack or unpack
+    track(re.OnClientEvent:Connect(function(name, method, args)
+        if destroyed then return end
+        Clash.GC.live = true
+        pcall(function()
+            if type(args) == "table" then
+                Clash.GC.deliver("remote", name, method, up(args, 1, tonumber(args.n) or #args))
+            else
+                Clash.GC.deliver("remote", name, method, args)
+            end
+        end)
+    end))
+end)
+
+-- BallController ChangeBallColor: the SERVER's real target for each ball the
+-- instant it retargets. The server invokes this every time a
 -- ball is (re)assigned, and for INVISIBLE balls it runs this callback but bails
 -- before writing the Target attribute - so this is the only client-visible truth
 -- for an invisible ball's target. We record it into serverTargetCache, which
@@ -2455,7 +2508,11 @@ task.spawn(function()
     ballColorOriginal = orig
     BC.Server.ChangeBallColor = function(...)
         -- Once unloaded, behave as the untouched game function.
-        if destroyed then return orig(...) end
+        if not destroyed then Clash.GC.deliver("hook", "BallController", "ChangeBallColor", ...) end
+        return orig(...)
+    end
+end)
+Clash.GC.on["BallController.ChangeBallColor"] = function(...)
         -- Real signature (decompiled BallController): ChangeBallColor(ballName,
         -- targetName, customColor). The FIRST arg is the ball's NAME inside
         -- workspace.Balls (the game resolves it with Balls:WaitForChild(name)),
@@ -2483,9 +2540,7 @@ task.spawn(function()
                 end
             end)
         end
-        return orig(...)
-    end
-end)
+end
 
 -- Hook SwordController.Server.BlockSuccess: the server calls it every time one
 -- of our blocks actually PARRIES a ball. That's the only ground truth for "the
@@ -2510,16 +2565,17 @@ task.spawn(function()
     local orig = SC.Server.BlockSuccess
     swordController, blockSuccessOriginal = SC, orig
     SC.Server.BlockSuccess = function(...)
-        if not destroyed then
-            pcall(function() Clash.event(tick(), "PARRY CONFIRMED by server") end)
-            Clash.noteParry(tick())
-            blockParried = blockParried + 1
-            blockLanded = blockLanded + 1
-            lastBlockResult = "parried"
-        end
+        if not destroyed then Clash.GC.deliver("hook", "SwordController", "BlockSuccess", ...) end
         return orig(...)
     end
 end)
+Clash.GC.on["SwordController.BlockSuccess"] = function()
+    pcall(function() Clash.event(tick(), "PARRY CONFIRMED by server") end)
+    Clash.noteParry(tick())
+    blockParried = blockParried + 1
+    blockLanded = blockLanded + 1
+    lastBlockResult = "parried"
+end
 
 -- ============================================
 -- BALL HIT LOGGER
@@ -2550,12 +2606,33 @@ do
         HL.balls = setmetatable({}, { __mode = "k" })   -- [ball] = its samples and hit state
         HL.hits, HL.pending, HL.fx, HL.delays = {}, {}, {}, {}
         HL.rallies, HL.fxHit, HL.fxRef, HL.pAttrs = 0, 0, 0, {}
+        HL.calls, HL.callN, HL.callCount = {}, 0, {}
         HL.since = tick()
         -- "armed": waiting for a match; "rec": recording it; "done": recorded
         HL.mode, HL.startedBy, HL.matchStart, HL.matchEnd = "armed", nil, nil, nil
         HL.endedAt, HL.endReason, HL.copied, HL.lastBallAt = nil, nil, false, tick()
     end
-    HL.fxSeen = false
+    for _, name in ipairs({ "HitEffect", "ReflectEffect" }) do
+        Clash.GC.on["BallController." .. name] = function(...)
+            if HL.on and HL.mode ~= "done" then HL.onFx(name, ...) end
+        end
+    end
+    -- Every game call during the match (abilities, clashes, effects...), so a
+    -- big speed change can be matched to what the server did right then.
+    -- ChangeBallColor (= the target changes, already the hits) and the hit /
+    -- reflect effects (their own section) are only counted.
+    local SKIP = { ["BallController.ChangeBallColor"] = true, ["BallController.HitEffect"] = true,
+                   ["BallController.ReflectEffect"] = true }
+    Clash.GC.tap = function(name, method, ...)
+        if not HL.on or HL.mode ~= "rec" then return end
+        local key = name .. "." .. method
+        HL.callN = HL.callN + 1
+        HL.callCount[key] = (HL.callCount[key] or 0) + 1
+        if SKIP[key] or #HL.calls >= HL.MAX then return end
+        local n, args, parts = select("#", ...), { ... }, {}
+        for i = 1, math.min(n, 6) do parts[#parts + 1] = HL.fmt(args[i]) end
+        HL.calls[#HL.calls + 1] = { t = tick(), key = key, text = table.concat(parts, ", ") }
+    end
     HL.clear()
 
     local function median(list)
@@ -2950,8 +3027,10 @@ do
         L[#L + 1] = string.format("Match: %s | recording started at %s | %s",
             HL.mode == "done" and "recorded" or (HL.mode == "rec" and "still being recorded (copied before its end)" or "not started yet"),
             tostring(HL.startedBy or "-"), HL.endReason and ("stopped: " .. HL.endReason) or "not stopped yet")
-        L[#L + 1] = string.format("Ball velocity shows a hit %.2fs after its Target flips (median of %d) | game HitEffect calls seen: %d, ReflectEffect: %d%s",
-            HL.lag(), #HL.delays, HL.fxHit, HL.fxRef, HL.fxSeen and "" or " (hook not active)")
+        L[#L + 1] = string.format("Ball velocity shows a hit %.2fs after its Target flips (median of %d) | game HitEffect calls seen: %d, ReflectEffect: %d",
+            HL.lag(), #HL.delays, HL.fxHit, HL.fxRef)
+        L[#L + 1] = string.format("Game calls through the Framework remote: %s, %d this match (%d since load)",
+            Clash.GC.live and "listening" or "NOT seen yet", HL.callN, Clash.GC.total)
         local st = HL.stats()
         L[#L + 1] = "== Summary =="
         if st.mp then
@@ -3042,8 +3121,15 @@ do
         for _, h in ipairs(hits) do
             if HL.isBig(h) then
                 bigs[#bigs + 1] = h
-                L[#L + 1] = string.format("r%d #%d %s -> %s: %.0f -> %.0f studs/s (x%.2f)",
-                    h.rally, h.n, nm(h.from), nm(h.to), h.sIn, h.sOut, h.sOut / h.sIn)
+                local around = {}
+                for _, c in ipairs(HL.calls) do
+                    if c.t >= h.t - 0.6 and c.t <= h.t + 0.2 and #around < 4 then
+                        around[#around + 1] = string.format("%s(%s) %+.2fs", c.key, c.text, c.t - h.t)
+                    end
+                end
+                L[#L + 1] = string.format("r%d #%d %s -> %s: %.0f -> %.0f studs/s (x%.2f)%s",
+                    h.rally, h.n, nm(h.from), nm(h.to), h.sIn, h.sOut, h.sOut / h.sIn,
+                    #around > 0 and (" | game calls around it: " .. table.concat(around, "; ")) or "")
             end
         end
         if #bigs > 0 then
@@ -3171,6 +3257,18 @@ do
             if h.pattrs then L[#L + 1] = string.format("r%d #%d %s %s", h.rally, h.n, nm(h.from), h.pattrs) end
         end
 
+        L[#L + 1] = "== Game calls during the match (count, then each one; very frequent ones only counted) =="
+        local keys = {}
+        for k in pairs(HL.callCount) do keys[#keys + 1] = k end
+        table.sort(keys, function(a, b) return HL.callCount[a] > HL.callCount[b] end)
+        local cparts = {}
+        for _, k in ipairs(keys) do cparts[#cparts + 1] = k .. " x" .. HL.callCount[k] end
+        L[#L + 1] = #cparts > 0 and table.concat(cparts, ", ") or "none"
+        for _, c in ipairs(HL.calls) do
+            if (HL.callCount[c.key] or 0) <= 300 then
+                L[#L + 1] = string.format("%7.2f %s(%s)", c.t - t0, c.key, c.text)
+            end
+        end
         L[#L + 1] = "== Game effect calls =="
         for i = 1, #HL.fx do
             local e = HL.fx[i]
@@ -3225,12 +3323,12 @@ do
             if type(orig) == "function" then
                 restore[#restore + 1] = { name, orig }
                 BC.Server[name] = function(...)
-                    if not destroyed and HL.on then pcall(HL.onFx, name, ...) end
+                    if not destroyed then Clash.GC.deliver("hook", "BallController", name, ...) end
                     return orig(...)
                 end
             end
         end
-        HL.fxSeen = #restore > 0
+        HL.fxHooked = #restore > 0
         HL.fxRestore = function()
             for _, r in ipairs(restore) do
                 pcall(function() BC.Server[r[1]] = r[2] end)
@@ -3310,20 +3408,19 @@ task.spawn(function()
     local CC = getController("ClashController")
     if not CC or destroyed or type(CC.Server) ~= "table" then return end
     pcall(function()
-        patch(CC.Server, "StartClash", function(orig)
-            return function(...)
-                if not destroyed then Clash.server = true end
-                return orig(...)
-            end
-        end)
-        patch(CC.Server, "EndClash", function(orig)
-            return function(...)
-                if not destroyed then Clash.server = false end
-                return orig(...)
-            end
-        end)
+        for _, m in ipairs({ "StartClash", "EndClash" }) do
+            patch(CC.Server, m, function(orig)
+                return function(...)
+                    if not destroyed then Clash.GC.deliver("hook", "ClashController", m, ...) end
+                    return orig(...)
+                end
+            end)
+        end
     end)
 end)
+
+Clash.GC.on["ClashController.StartClash"] = function() Clash.server = true end
+Clash.GC.on["ClashController.EndClash"] = function() Clash.server = false end
 
 -- Miss Recorder, ability context: log every ability the server plays on this
 -- client (AbilityController.Server.* - e.g. Explode("ChronoStasis Activate"),
@@ -3342,23 +3439,22 @@ task.spawn(function()
         for _, name in ipairs(names) do
             patch(AC.Server, name, function(orig)
                 return function(...)
-                    if not destroyed then
-                        local args = { n = select("#", ...), ... }
-                        pcall(function()
-                            local parts = {}
-                            for i = 1, math.min(args.n, 3) do
-                                local a = args[i]
-                                parts[#parts + 1] = typeof(a) == "Instance" and a.Name or tostring(a)
-                            end
-                            Clash.event(tick(), "ABILITY " .. name .. "(" .. table.concat(parts, ", ") .. ")")
-                        end)
-                    end
+                    if not destroyed then Clash.GC.deliver("hook", "AbilityController", name, ...) end
                     return orig(...)
                 end
             end)
         end
     end)
 end)
+Clash.GC.onAny["AbilityController"] = function(method, ...)
+    local args = { n = select("#", ...), ... }
+    local parts = {}
+    for i = 1, math.min(args.n, 3) do
+        local a = args[i]
+        parts[#parts + 1] = typeof(a) == "Instance" and a.Name or tostring(a)
+    end
+    Clash.event(tick(), "ABILITY " .. method .. "(" .. table.concat(parts, ", ") .. ")")
+end
 do
     local WATCH = { Invisible = true, UsingAbility = true, SlowTime = true, IsTarget = true,
                     Stunned = true, Frozen = true, ClashEffect = true }
