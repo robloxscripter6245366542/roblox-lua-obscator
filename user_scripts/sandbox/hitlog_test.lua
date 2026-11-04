@@ -174,15 +174,32 @@ for _,ping in ipairs({90, 180}) do
   local rows=0
   for line in file:gmatch("[^\n]+") do if line:match("^%d+%s+%d+%s+%-?%d") then rows=rows+1 end end
   local stopped = file:match("stopped: the match ended") ~= nil
+  -- copied in parts small enough to paste: part 1 (the summary) by itself
+  -- at the match end, the rest one per Copy press; together the whole log
+  local partsOk, nParts = false, 0
+  do
+    local first = w.clip.text or ""
+    nParts = tonumber(first:match("^%[Ball hit log part 1 of (%d+)%]")) or 0
+    local got, okSize = {}, true
+    local cur = first
+    for i = 1, nParts do
+      if i > 1 then w.genv.AnimeBallHubCopyHitLog(); cur = w.clip.text or "" end
+      local body = cur:gsub("^%[Ball hit log part %d+ of %d+%]\n", "")
+      if #body > 15000 then okSize = false end
+      got[#got+1] = body
+    end
+    partsOk = nParts >= 2 and okSize and table.concat(got, "\n") == file
+      and first:find("== Summary ==", 1, true) ~= nil and first:find("== Big speed changes", 1, true) ~= nil
+  end
   local practice = file:match("Practice") ~= nil
   -- a next match without Record Next Match: nothing more is recorded
   w.matchCtl.Server.StartMatch()
   playRally(w, "Ball", "add", 120, 8)
   local after=log(w) or ""
   local afterHits=num(after, "| (%d+) hits in")
-  local ok = stillRec and fileHits==h1+h2 and rows==h1+h2 and stopped and not practice and afterHits==h1+h2
+  local ok = stillRec and fileHits==h1+h2 and rows==h1+h2 and stopped and not practice and afterHits==h1+h2 and partsOk
   total=total+1; if ok then good=good+1 end
-  print(string.format("  ping %3d: match had %d + %d hits -> saved %s hits (%d table rows), stopped at the end: %s, practice dropped: %s, next match ignored: %s -> %s",
-    ping, h1, h2, tostring(fileHits), rows, tostring(stopped), tostring(not practice), tostring(afterHits==h1+h2), ok and "OK" or "WRONG"))
+  print(string.format("  ping %3d: match had %d + %d hits -> saved %s hits (%d table rows), stopped at the end: %s, practice dropped: %s, next match ignored: %s, copied in %d pasteable parts: %s -> %s",
+    ping, h1, h2, tostring(fileHits), rows, tostring(stopped), tostring(not practice), tostring(afterHits==h1+h2), nParts, tostring(partsOk), ok and "OK" or "WRONG"))
 end
 print(string.format("\n=== %d/%d correct ===", good, total))
