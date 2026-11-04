@@ -59,4 +59,17 @@ for _,ping in ipairs({60,130,200}) do
     print(string.format("  ping %3d  return every %.2fs -> held %3d/%3d returns  (%d blocks sent in 4s)",ping,RET,h,tot,b))
   end
 end
+-- A very fast clash (a return every 0.033s, like a real 220-hit one) at high
+-- ping: Auto Spam must still get a block out EVERY frame (>= 60/s at 60 fps).
+-- The in-flight cap used to stop at 18, which slowed it to 50/s at 350 ms.
+print("\n=== Very fast clash at high ping: a block every frame? ===")
+local everyFrame=true
+for _,ping in ipairs({160,350,450}) do
+  local h,tot,b=run(ping,0.033)
+  local rate=b/4
+  if h<tot then allHeld=false end
+  if rate<60 then everyFrame=false end
+  print(string.format("  ping %3d  return every 0.033s -> held %3d/%3d returns, %.0f blocks/s%s",ping,h,tot,rate,rate<60 and "  (< 1 a frame!)" or ""))
+end
 print(allHeld and "\nALL RETURNS HELD" or "\nSOME RETURNS DROPPED")
+print(everyFrame and "A BLOCK EVERY FRAME AT EVERY PING" or "FRAMES WITHOUT A BLOCK AT HIGH PING")

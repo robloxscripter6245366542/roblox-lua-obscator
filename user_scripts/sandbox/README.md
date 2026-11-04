@@ -75,7 +75,10 @@ block timing that static analysis can't see.
   while staying far under the game's own rate limiter (120/s global, 20 per 0.1 s
   burst — flooding it gets the block dropped / circuit-broken and loses the
   clash). Scored under **both** shield models — persistent 0.6 s shield
-  *and* shield-consumed-per-parry. Run: `lua-5.1.5/src/lua yield_clash.lua`.
+  *and* shield-consumed-per-parry. It runs at 30 to 400 ms ping. The backlog
+  bound is the steady number in flight, the send rate × (round trip + the
+  frame until a reply is handled), plus 2. Run:
+  `lua-5.1.5/src/lua yield_clash.lua`.
   Expected: **no-guard backlog grows with ping; the script stays at a small
   backlog with 100% coverage on every return (clash HELD).**
 
@@ -172,6 +175,13 @@ exact. The real confirmation is still an in-game run.
   `lua-5.1.5/src/lua pointblank_hold.lua`. Expected: **ALL RETURNS HELD**. With
   the old fixed in-flight cap of 2 it held only 36/60 at 200 ms and lost one
   return at 130 ms.
+
+  It also plays a very fast clash: a return every 0.033 s, like a real
+  220-hit clash, at 160, 350 and 450 ms ping. Auto Spam must still send at
+  least one block a frame (60/s or more) at every one of those pings, so
+  expected: **A BLOCK EVERY FRAME AT EVERY PING**. With the in-flight cap
+  topping out at 18 it slowed to 50/s at 350 ms and 40/s at 450 ms; it now
+  tops out at 32 (80/s and 69/s).
 
 - **`move_return_test.lua`** — you **jump and dash** while the opponent hits
   the ball back at you, outside a clash. The opponent is 30 or 45 studs away.

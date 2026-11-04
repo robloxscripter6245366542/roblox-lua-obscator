@@ -1997,7 +1997,10 @@ local function fireBlockRemote(clash, why)
     -- One at a time, the reply says my shield is up before the next can go.
     local cap = 1
     if clash and not Clash.farRally then
-        cap = math.clamp(math.ceil((math.max(smoothedPing, currentPing) / 1000) * Clash.rate) + 3, CLASH_INFLIGHT, 18)
+        -- (up to 32: with 18 the cap itself slowed a clash at high ping -
+        -- 50/s at 350 ms, 40/s at 450 ms - below one block a frame, so frames
+        -- went out with no block; 32 keeps one a frame up to ~450 ms)
+        cap = math.clamp(math.ceil((math.max(smoothedPing, currentPing) / 1000) * Clash.rate) + 3, CLASH_INFLIGHT, 32)
     end
     if Clash.probeSent then cap = cap + 1 end   -- the probe must not take the real block's slot
     if blocksInFlight >= cap then
