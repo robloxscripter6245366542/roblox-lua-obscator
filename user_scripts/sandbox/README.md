@@ -296,6 +296,26 @@ exact. The real confirmation is still an in-game run.
   `lua-5.1.5/src/lua replay_miss9.lua`. Expected: **27/27 survived**. The script
   before this fix survives 13/27, and 0/9 when a parry uses the shield up.
 
+- **`replay_miss10.lua`** — replays the tenth **real** miss report (149 ms):
+  a long-range rally that the **server called a clash**. The opponent is
+  ~150-170 studs away and the ball goes ~400 studs/s. Each hit sends the ball
+  on almost straight away, and it loops back on a wide turn, so a return takes
+  ~0.7-0.8 s.
+
+  Since the game-calls listener, the server's `StartClash` reaches the script.
+  It is delivered here the live game's way (`w.serverCall`). The clash rules
+  then fired the instant the ball was aimed back at you. On a return that took
+  ~0.79 s, that shield ran out 18 ms before the ball hit, and the 1 s cooldown
+  refused the next block. Now a game clash whose partner is so far that the
+  return takes longer than `Clash.FAR_CLASH_T` (0.35 s at the ball's speed) is
+  handled as a long-range rally: no clash fire, and the long-rally rules time
+  the block.
+
+  Each case runs under the three server rules at 100/149/200 ms. Run:
+  `lua-5.1.5/src/lua replay_miss10.lua`. Expected: **30/36 survived**; the
+  script before this fix survives 17/36. The 6 deaths left are one loop
+  shape, whose returns grew to just over what one shield covers.
+
 - **`ability_test.lua`** — ball tricks from the game's own ability list
   (`AbilityInfo` in the 2026-10-31 dump). Each case aims the ball at you, then
   an ability changes it:
