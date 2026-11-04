@@ -67,7 +67,7 @@ end
 print("=== faithful yielding-server clash: paced fire vs backlog ===")
 print("    send rate under budget (no flood) AND a fresh block for every return, at every ping.")
 local backlogOK, heldOK = true, true
-for _,pg in ipairs({30,90,150,200}) do
+for _,pg in ipairs({30,90,150,200,300,400}) do
   local cPeak = control(pg)
   local rPeak, cov, retCov, landRate = real(pg)
   -- Flood = SENDING too fast, not "many in flight": in-flight is just send rate x
@@ -75,9 +75,10 @@ for _,pg in ipairs({30,90,150,200}) do
   -- throughput at high ping (see pointblank_hold.lua). So: the send rate must stay
   -- well under the game's 120/s budget, and in-flight must never exceed what that
   -- send rate naturally has in flight at this ping.
-  -- (in-flight at a steady send rate is rate x round-trip; anything beyond that
-  -- +2 would be a real backlog piling up)
-  if landRate>100 or rPeak>math.ceil(landRate*pg/1000)+2 then backlogOK=false end
+  -- (in-flight at a steady send rate is rate x (round-trip + the frame until
+  -- the reply is handled); anything beyond that +2 would be a real backlog
+  -- piling up)
+  if landRate>100 or rPeak>math.ceil(landRate*(pg/1000+1/60))+2 then backlogOK=false end
   if cov<0.98 or retCov<0.98 then heldOK=false end
   print(string.format("  ping %3d ms | no-guard backlog peak=%-4d | script peakInflight=%d | %5.1f blocks/s | shield %3.0f%% | per-return %3.0f%%",
     pg, cPeak, rPeak, landRate, cov*100, retCov*100))
