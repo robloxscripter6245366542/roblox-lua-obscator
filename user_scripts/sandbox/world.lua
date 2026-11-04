@@ -15,6 +15,9 @@ local MOCK = HERE.."mock_roblox.lua"
 -- backlog). Default (no opts) keeps the fast synchronous transport.
 local function build(SRC, pingMs, opts)
   opts = opts or {}
+  -- LIVE_DISPATCH=1 runs any suite with the server's BlockSuccess delivered
+  -- the live game's way (see opts.liveDispatch)
+  if os.getenv("LIVE_DISPATCH") then opts.liveDispatch = true end
   local R = dofile(MOCK)
   local v3,CFrame,Enum,Instance,task = R.v3,R.CFrame,R.Enum,R.Instance,R.task
   local oneway = pingMs/1000/2
@@ -127,7 +130,12 @@ local function build(SRC, pingMs, opts)
   ballCtl.GetBallAsync=function(name) local b=Balls:FindFirstChild(name)
     if b then ballCtl.conns=ballCtl.conns+1; ballCtl.CurrentBall=b end return b end
   local swordCtl={ Server={ BlockSuccess=function() end } }
-  server.onParried = function() swordCtl.Server.BlockSuccess(1) end
+  -- opts.liveDispatch: the server's BlockSuccess arrives the way the live game
+  -- delivers it (w.serverCall below), not through the Server table.
+  local serverCall
+  server.onParried = function()
+    if opts.liveDispatch then serverCall("SwordController", "BlockSuccess", 1) else swordCtl.Server.BlockSuccess(1) end
+  end
   -- AbilityController: the server plays abilities on clients via Server.* calls
   local abilityCtl={ Server={ Explode=function() end, AbilityEffect=function() end } }
   -- ClashController as decompiled: StartClash only sets ClashMode when the
@@ -145,6 +153,25 @@ local function build(SRC, pingMs, opts)
   local apService={ allowed=false, enabled=false, calls=0 }
   apService.SetEnabled={ Invoke=function(_, on) apService.calls=apService.calls+1
     if not apService.allowed then return nil end apService.enabled=on and true or false; return apService.enabled end }
+  -- The LIVE game's dispatcher (Framework.ReplicatedExecute, decompiled) calls a
+  -- COPY of each controller's Server functions made when the game loads (its
+  -- functionSet), and every call arrives over Framework.RemoteEvent's
+  -- OnClientEvent(name, method, args). w.serverCall(name, method, ...) delivers
+  -- a call the way the live game does: the ORIGINAL function (a script's later
+  -- Server.X replacement is never called) plus the remote event a script can
+  -- listen to. (Tests that call w.ballCtl.Server.X(...) directly use the table.)
+  local fwRemote=Instance.new("RemoteEvent"); fwRemote.Name="RemoteEvent"; fwRemote.Parent=FW
+  fwRemote.OnClientEvent=R.newSignal()
+  local functionSet={}
+  for name,ctl in pairs({BallController=ballCtl, SwordController=swordCtl, ClashController=clashCtl,
+                         AbilityController=abilityCtl, MatchController=matchCtl}) do
+    local set={}; for k,f in pairs(ctl.Server) do set[k]=f end; functionSet[name]=set
+  end
+  function serverCall(name, method, ...)
+    local f=functionSet[name] and functionSet[name][method]
+    if f then f(...) end
+    fwRemote.OnClientEvent:Fire(name, method, {n=select("#",...), ...})
+  end
   FW._moduleValue={ Fetch=function(_,n) if n=="SwordService" then return swordProxy end
                                          if n=="AutoParryService" then return apService end return {} end,
                     Get=function(_,n) if n=="BallController" then return ballCtl end
@@ -215,7 +242,7 @@ local function build(SRC, pingMs, opts)
   return { R=R,v3=v3,Instance=Instance,Enum=Enum,RunService=RunService,Balls=Balls,heroF=heroF,Eff=Eff,
            Players=Players,players=players,LP=LP,char=char,
            hrp=hrp,char_ref=char,server=server,shieldAt=shieldAt,oneway=oneway,movement=movement,
-           ballCtl=ballCtl,matchCtl=matchCtl,swordCtl=swordCtl,clashCtl=clashCtl,abilityCtl=abilityCtl,apService=apService,genv=env._genv,files=files }
+           ballCtl=ballCtl,matchCtl=matchCtl,swordCtl=swordCtl,serverCall=serverCall,fwRemote=fwRemote,clashCtl=clashCtl,abilityCtl=abilityCtl,apService=apService,genv=env._genv,files=files }
 end
 
 return { build=build }
