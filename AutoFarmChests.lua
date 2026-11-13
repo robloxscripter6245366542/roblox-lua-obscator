@@ -73,26 +73,66 @@ local function partOf(inst)
     if inst:IsA("Model") then return inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart") end
     return nil
 end
+local CollectionService = game:GetService("CollectionService")
+
+-- read a breakable's id no matter the exact attribute name
 local function idOf(b)
-    return b:GetAttribute("BreakableID") or b:GetAttribute("BreakableUID")
+    local attrs = b:GetAttributes()
+    -- exact common names first
+    local v = attrs.BreakableID or attrs.BreakableUID or attrs.BreakableUniqueID
+    if v ~= nil then return v end
+    -- any attribute whose key looks like a breakable id / uid
+    for k, val in pairs(attrs) do
+        local lk = k:lower()
+        if lk:find("breakable",1,true) and (lk:find("id",1,true) or lk:find("uid",1,true)) then return val end
+    end
+    -- else any "breakable*" attribute value at all (lets us at least detect it)
+    for k, val in pairs(attrs) do
+        if k:lower():find("breakable",1,true) then return val end
+    end
+    return nil
 end
 
--- ── find breakables (primary: workspace.__THINGS.Breakables) ─────────────────
-local function breakFolder()
-    local things = Workspace:FindFirstChild("__THINGS")
-    return things and things:FindFirstChild("Breakables")
+-- does this instance look like a breakable/chest?
+local function isBreakable(d)
+    local attrs = d:GetAttributes()
+    for k in pairs(attrs) do
+        if k:lower():find("breakable",1,true) then return true end
+    end
+    local n = d.Name:lower()
+    if n:find("breakable",1,true) or n:find("chest",1,true) or n:find("crate",1,true) then return true end
+    return false
 end
+
+-- walk up to the owning Model (so we score/teleport the whole chest, not a sub-part)
+local function ownerModel(d)
+    local m = d
+    while m and m.Parent and m.Parent ~= Workspace do
+        if m:IsA("Model") and idOf(m) ~= nil then return m end
+        m = m.Parent
+    end
+    return (d:IsA("Model") and d) or d
+end
+
 local function scanBreakables()
     local out, seen = {}, {}
-    local folder = breakFolder()
-    if folder then
-        for _, d in ipairs(folder:GetDescendants()) do
-            if idOf(d) ~= nil and not seen[d] then seen[d] = true; table.insert(out, d) end
+    local function add(d)
+        local b = (idOf(d) ~= nil) and d or ownerModel(d)
+        if b and not seen[b] then seen[b] = true; table.insert(out, b) end
+    end
+    -- 1) CollectionService tags that commonly mark interactables/breakables
+    for _, tag in ipairs({ "Breakable","Breakables","Interactable","Chest","Chests","BreakableModel" }) do
+        local ok, tagged = pcall(function() return CollectionService:GetTagged(tag) end)
+        if ok and tagged then
+            for _, d in ipairs(tagged) do
+                if d:IsDescendantOf(Workspace) and isBreakable(d) then add(d) end
+            end
         end
     end
-    if #out == 0 then  -- fallback: anything in the world carrying a BreakableID
+    -- 2) full workspace sweep for anything breakable-ish
+    if #out == 0 then
         for _, d in ipairs(Workspace:GetDescendants()) do
-            if idOf(d) ~= nil and not seen[d] then seen[d] = true; table.insert(out, d) end
+            if isBreakable(d) then add(d) end
         end
     end
     -- keep only ones still alive
@@ -276,15 +316,32 @@ end
 local function diagnostics()
     requires()
     print("──────── Auto Farm Chests diagnostics ────────")
-    local folder = breakFolder()
-    print("workspace.__THINGS.Breakables folder:", folder and folder:GetFullName() or "NOT FOUND")
+    -- how many instances carry ANY breakable-ish attribute, and what keys
+    local withAttr, sampleKeys = 0, {}
+    for _, d in ipairs(Workspace:GetDescendants()) do
+        for k in pairs(d:GetAttributes()) do
+            if k:lower():find("breakable",1,true) then
+                withAttr = withAttr + 1
+                if #sampleKeys < 12 then sampleKeys[k] = true end
+                break
+            end
+        end
+    end
+    local keyList = {}
+    for k in pairs(sampleKeys) do table.insert(keyList, k) end
+    print("instances with a 'breakable' attribute:", withAttr)
+    print("attribute keys seen:", (#keyList>0) and table.concat(keyList, ", ") or "(none)")
+    for _, tag in ipairs({ "Breakable","Breakables","Interactable","Chest","Chests" }) do
+        local ok, tg = pcall(function() return CollectionService:GetTagged(tag) end)
+        if ok and tg and #tg>0 then print("tag '"..tag.."':", #tg, "tagged") end
+    end
     local list = scanBreakables()
-    print("breakables found:", #list)
+    print("breakables found by scanner:", #list)
     for i=1, math.min(5,#list) do
         local b=list[i]
-        print(string.format("  [%d] %s  class=%s id=%s hp=%s", i, b.Name,
-            tostring(b:GetAttribute("BreakableClass")), tostring(idOf(b)),
-            tostring(b:GetAttribute("health") or b:GetAttribute("Health"))))
+        local keys = {}
+        for k,v in pairs(b:GetAttributes()) do table.insert(keys, k.."="..tostring(v)) end
+        print(string.format("  [%d] %s  (%s)", i, b:GetFullName(), table.concat(keys, " ")))
     end
     print("Network resolved:", Network~=nil, " PlayerPet:", PlayerPet~=nil, " BreakableFrontend:", BreakFront~=nil)
     if Network then
