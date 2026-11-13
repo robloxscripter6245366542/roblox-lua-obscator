@@ -72,6 +72,11 @@ const Market = (() => {
       if (!all[b.listingId] || all[b.listingId].sellerId !== s.id) fail("Listing not found");
       delete all[b.listingId]; write(K.listings, all); return { ok: true };
     },
+    profile(b) {
+      const u = read(K.sellers, {})[b.id];
+      if (!u) fail("User not found");
+      return { user: pub(u), listings: demo.list().listings.filter((l) => l.sellerId === u.id), reviews: [] };
+    },
     adminSellers() {
       const listings = Object.values(read(K.listings, {}));
       return {
@@ -97,8 +102,9 @@ const Market = (() => {
 
   // ---------- remote backend ----------
   async function remote(action, body = {}) {
-    const isGet = action === "list" || action === "icons";
-    const r = await fetch(isGet ? `${API}?action=${action}` : API, isGet ? {} : {
+    const isGet = action === "list" || action === "icons" || action === "profile";
+    const qs = action === "profile" ? `&id=${encodeURIComponent(body.id || "")}` : "";
+    const r = await fetch(isGet ? `${API}?action=${action}${qs}` : API, isGet ? {} : {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...body }),
     });
     const j = await r.json().catch(() => ({ error: "Bad server response" }));
@@ -106,8 +112,12 @@ const Market = (() => {
     return j;
   }
 
+  const NEEDS_SERVER = "Buying, wallets and payouts need the server. Run “node shop-site/dev-server.js” on your computer, or deploy the site.";
   async function call(action, body = {}) {
-    if (mode === "demo") return demo[action](body);
+    if (mode === "demo") {
+      if (!demo[action]) fail(NEEDS_SERVER);
+      return demo[action](body);
+    }
     return remote(action, body);
   }
 
@@ -152,9 +162,22 @@ const Market = (() => {
       write(K.session, { sellerId: r.seller.id, token: r.token, name: r.seller.name });
       return r.seller;
     },
+    get canPay() { return mode === "remote"; },
+    NEEDS_SERVER,
     me: () => call("me", withSession()),
     post: (data) => call("post", withSession(data)),
     remove: (listingId) => call("remove", withSession({ listingId })),
+    profile: (id) => call("profile", { id }),
+    updateProfile: (data) => call("updateProfile", withSession(data)),
+    // buying & orders
+    checkout: (listingId, method) => call("checkout", withSession({ listingId, method })),
+    myOrders: () => call("myOrders", withSession()),
+    order: (orderId) => call("order", withSession({ orderId })),
+    orderAction: (action, orderId, data = {}) => call(action, withSession({ orderId, ...data })),
+    // wallet
+    stripeConnect: () => call("stripeConnect", withSession()),
+    stripeStatus: () => call("stripeStatus", withSession()),
+    payout: (data) => call("payout", withSession(data)),
     // admin
     adminKey: () => read(K.admin, ""),
     setAdminKey: (k) => write(K.admin, k || null),

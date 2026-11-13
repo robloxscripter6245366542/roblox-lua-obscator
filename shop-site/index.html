@@ -40,6 +40,7 @@
   </header>
 
   <main class="wrap" id="main">
+   <div id="marketView">
     <div class="filterbar" id="filterbar" hidden>
       <div class="crumbs" id="crumbs"></div>
       <div class="filter-right">
@@ -73,13 +74,19 @@
         <span class="badge risk">Risky</span>
         <p><b>Unverified seller.</b> Nobody has checked them — trade at your own risk.</p>
       </div>
+      <div class="trust-card">
+        <span class="badge escrow">Escrow</span>
+        <p><b>Your money is held</b> until you confirm you got your item. Problem? Staff can refund you.</p>
+      </div>
     </section>
+   </div>
+   <div id="pageView" hidden></div>
   </main>
 
   <footer class="foot">
     <div class="wrap foot-inner">
       <a href="./" class="brand small"><img src="logo.svg" alt="" width="26" height="26" /><span>Vaultix</span></a>
-      <span class="foot-note">Vaultix doesn't hold payments. Always check a seller's badge before you pay.</span>
+      <span class="foot-note">Payments are held until the buyer confirms delivery. Card details are handled by Stripe, never by Vaultix.</span>
       <a href="admin.html" class="foot-link">Staff</a>
     </div>
   </footer>
@@ -88,12 +95,12 @@
 
   <dialog id="joinDlg" class="dlg">
     <form class="dlg-body" id="joinForm" method="dialog" novalidate>
-      <div class="dlg-head"><h2>Become a seller</h2><button class="x" value="cancel" formnovalidate aria-label="Close">×</button></div>
-      <p class="muted">New sellers start as <span class="badge risk sm">Risky</span> until staff verify you.</p>
-      <label>Seller name<input name="name" required minlength="3" maxlength="24" placeholder="e.g. kai_trades" /></label>
-      <label>How buyers contact you<input name="contact" required minlength="3" maxlength="80" placeholder="Discord, email, etc." /></label>
+      <div class="dlg-head"><h2>Create your account</h2><button class="x" value="cancel" formnovalidate aria-label="Close">×</button></div>
+      <p class="muted">One account to buy and sell. New sellers start as <span class="badge risk sm">Risky</span> until staff verify you.</p>
+      <label>Username<input name="name" required minlength="3" maxlength="24" placeholder="e.g. kai_trades" /></label>
+      <label>Contact (only shown to people you trade with)<input name="contact" required minlength="3" maxlength="80" placeholder="Discord, email, etc." /></label>
       <p class="form-err" id="joinErr" role="alert"></p>
-      <button class="btn sell wide" type="submit" value="default">Create seller account</button>
+      <button class="btn sell wide" type="submit" value="default">Create account</button>
     </form>
   </dialog>
 
@@ -120,18 +127,22 @@
         <label>Price (USD)<input name="price" type="number" required min="0.01" max="10000" step="0.01" placeholder="0.00" /></label>
         <label><span>Original price <span class="opt">(optional)</span></span><input name="wasPrice" type="number" min="0.01" max="100000" step="0.01" placeholder="Shows a discount" /></label>
       </div>
+      <label>In stock<input name="stock" type="number" min="1" max="999" step="1" value="1" /></label>
       <label>Description<textarea name="description" required minlength="10" maxlength="1000" rows="4" placeholder="What's included, how you deliver it, any warranty."></textarea></label>
       <p class="form-err" id="postErr" role="alert"></p>
       <button class="btn sell wide" type="submit" value="default">Publish listing</button>
     </form>
   </dialog>
 
-  <dialog id="meDlg" class="dlg"><div class="dlg-body" id="meBody"></div></dialog>
+
+  <div class="drawer-back" id="drawerBack" hidden></div>
+  <aside class="drawer" id="drawer" aria-label="Profile" aria-hidden="true" tabindex="-1"><div id="drawerBody"></div></aside>
 
   <div class="toast" id="toast" role="status"></div>
 
   <script src="games.js"></script>
   <script src="data.js"></script>
   <script src="app.js"></script>
+  <script src="account.js"></script>
 </body>
 </html>

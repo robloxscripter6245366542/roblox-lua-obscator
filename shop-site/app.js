@@ -10,7 +10,7 @@ const badge = (s, sm) => s && s.verified
 const CHEVRON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
 const PERSON = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>`;
 
-const state = { listings: [], icons: {}, cat: null, game: null, q: "", verifiedOnly: false, sort: "new", browseAll: false, me: null };
+const state = { listings: [], icons: {}, cat: null, game: null, q: "", verifiedOnly: false, sort: "new", browseAll: false, me: null, wallet: null, payouts: [], fees: { pct: 0.03, fixed: 0.3, commission: 0.05 } };
 const OTHER = "__other";
 
 /* ---------- game art ----------
@@ -73,7 +73,7 @@ function card(l) {
         <span class="was">${off ? money(l.wasPrice) : ""}</span>
         <span class="now${off ? " deal" : ""}"><b>${money(l.price)}</b>${off ? `<span class="off">-${off}%</span>` : ""}</span>
       </span>
-      <span class="card-seller"><span>@${esc(l.seller.name)}</span>${badge(l.seller, true)}</span>
+      <span class="card-seller"><span class="seller-link" data-user="${esc(l.seller.id)}">@${esc(l.seller.name)}</span>${badge(l.seller, true)}</span>
     </span>
   </button>`;
 }
@@ -204,6 +204,8 @@ $("#verifiedOnly").addEventListener("change", (e) => { state.verifiedOnly = e.ta
 $("#sort").addEventListener("change", (e) => { state.sort = e.target.value; render(); });
 $("#sections").addEventListener("click", (e) => {
   if (e.target.closest("#seeAll")) { state.browseAll = true; render(); window.scrollTo({ top: 0 }); return; }
+  const who = e.target.closest("[data-user]");
+  if (who) { e.stopPropagation(); openProfile(who.dataset.user); return; }
   const c = e.target.closest("[data-id]"); if (!c) return;
   const l = state.listings.find((x) => x.id === c.dataset.id); if (l) openListing(l);
 });
@@ -213,11 +215,10 @@ function openListing(l) {
   pushRecent(l.id);
   const s = l.seller, off = pctOff(l);
   const trust = s.verified
-    ? `<div class="safe"><b>Verified seller.</b> Vaultix staff checked this seller. Still only pay the way you agreed in writing.</div>`
+    ? `<div class="safe"><b>Verified seller.</b> Vaultix staff checked this seller. Your payment is still held until you confirm delivery.</div>`
     : `<div class="warn">
         <b>Risky — this seller is not verified.</b>
-        <span>Nobody has checked who they are. If they scam you, there's no one to get your money back.</span>
-        <ul><li>Don't pay first with gift cards or crypto.</li><li>Use a middleman or a payment method with buyer protection.</li><li>Prefer a verified seller if one has the same item.</li></ul>
+        <span>Nobody has checked who they are. Your payment is held in escrow, so report a problem before confirming if anything is wrong.</span>
       </div>`;
   $("#viewBody").innerHTML = `
     <div class="dlg-head">
@@ -229,15 +230,14 @@ function openListing(l) {
     ${trust}
     <p class="desc">${esc(l.description)}</p>
     <dl class="meta">
-      <dt>Seller</dt><dd>@${esc(s.name)} ${badge(s, true)}</dd>
-      <dt>Member since</dt><dd>${date(s.createdAt)}</dd>
-      <dt>Active listings</dt><dd>${state.listings.filter((x) => x.seller.id === s.id).length}</dd>
+      <dt>Seller</dt><dd><button class="link-btn" data-user="${esc(s.id)}" type="button">@${esc(s.name)}</button> ${badge(s, true)}</dd>
+      <dt>Rating</dt><dd>${s.reviews ? `${s.positive}% positive · ${s.reviews} review${s.reviews === 1 ? "" : "s"}` : "No reviews yet"} · ${s.sales || 0} sale${s.sales === 1 ? "" : "s"}</dd>
+      <dt>In stock</dt><dd>${l.stock ?? 1}</dd>
       <dt>Listed</dt><dd>${date(l.createdAt)}</dd>
     </dl>
-    <div id="contactSlot"><button class="btn ${s.verified ? "sell" : "danger"} wide" id="revealContact" type="button">${s.verified ? "Contact seller" : "I understand the risk — show contact"}</button></div>`;
-  $("#revealContact").addEventListener("click", () => {
-    $("#contactSlot").innerHTML = `<p class="muted" style="margin-bottom:6px">Contact @${esc(s.name)}</p><div class="contact">${esc(s.contact)}</div>`;
-  });
+    ${state.me && state.me.id === s.id
+      ? `<p class="muted">This is your listing.</p>`
+      : `<a class="btn sell wide" href="#/checkout/${esc(l.id)}" data-close>Buy now · ${money(l.price)}</a>`}`;
   $("#viewDlg").showModal();
   if (!browsing()) render(); // refresh "Recently viewed"
 }
@@ -245,8 +245,10 @@ function openListing(l) {
 /* ---------- account ---------- */
 async function loadMe() {
   if (!Market.session()) { state.me = null; return renderAvatar(); }
-  try { state.me = (await Market.me()).seller; }
-  catch (e) { if (e.status === 401 || /signed in/.test(e.message)) Market.signOut(); state.me = null; }
+  try {
+    const r = await Market.me();
+    state.me = r.seller; state.wallet = r.wallet || null; state.payouts = r.payouts || [];
+  } catch (e) { if (e.status === 401 || /sign in|signed in/.test(e.message)) Market.signOut(); state.me = null; }
   renderAvatar();
 }
 function renderAvatar() {
@@ -255,7 +257,7 @@ function renderAvatar() {
   a.setAttribute("aria-label", me ? `Your seller account @${me.name}` : "Sign up as a seller");
 }
 
-$("#accountBtn").addEventListener("click", () => (state.me ? openMe() : openJoin()));
+$("#accountBtn").addEventListener("click", () => (state.me ? openAccount() : openJoin()));
 $("#sellBtn").addEventListener("click", startSell);
 $("#emptySell").addEventListener("click", startSell);
 
@@ -273,7 +275,7 @@ $("#joinForm").addEventListener("submit", async (e) => {
   try {
     state.me = await Market.register(f.elements.name.value, f.elements.contact.value);
     renderAvatar(); $("#joinDlg").close();
-    toast("Seller account created. You're marked Risky until staff verify you.");
+    toast("Account created. As a seller you're marked Risky until staff verify you.");
     if (afterJoin) afterJoin();
   } catch (err) { $("#joinErr").textContent = err.message; }
   btn.disabled = false;
@@ -345,40 +347,11 @@ $("#postForm").addEventListener("submit", async (e) => {
     await Market.post({
       game: other ? el.gameOther.value : el.game.value, image: other ? picData : undefined,
       category: el.category.value, title: el.title.value,
-      price: el.price.value, wasPrice: el.wasPrice.value, description: el.description.value,
+      price: el.price.value, wasPrice: el.wasPrice.value, stock: el.stock.value, description: el.description.value,
     });
     $("#postDlg").close(); toast("Listing published."); await refresh();
   } catch (err) { $("#postErr").textContent = err.message; }
   btn.disabled = false;
-});
-
-function openMe() {
-  const me = state.me, mine = state.listings.filter((l) => l.seller.id === me.id);
-  $("#meBody").innerHTML = `
-    <div class="dlg-head"><h2>@${esc(me.name)}</h2><button class="x" data-close aria-label="Close">×</button></div>
-    <p>Status: ${badge(me)}</p>
-    ${me.verified
-      ? `<div class="safe"><b>You're verified.</b> Buyers see a green Verified badge on all your listings.</div>`
-      : `<div class="warn"><b>Your listings show as Risky.</b><span>To get verified, send the site owner your seller ID below. Once they check you, your badge turns green.</span></div>
-         <p class="muted">Seller ID</p><div class="contact" style="user-select:all">${esc(me.id)}</div>`}
-    <p class="muted">Your listings (${mine.length})</p>
-    <div class="mine">${mine.length ? mine.map((l) => `
-      <div class="mine-item"><span>${esc(l.game)} · ${esc(l.title)} · ${money(l.price)}</span><button class="btn danger" data-del="${esc(l.id)}" type="button">Delete</button></div>`).join("")
-      : `<p class="muted">No listings yet.</p>`}</div>
-    <div class="btnrow"><button class="btn sell" id="meSell" type="button">New listing</button><button class="btn ghost" id="signOut" type="button">Sign out</button></div>
-    <p class="muted" style="font-size:.82rem">Your seller login is saved only in this browser. If you sign out, you can't sign back in to this account.</p>`;
-  $("#meSell").addEventListener("click", () => { $("#meDlg").close(); openPost(); });
-  $("#signOut").addEventListener("click", () => {
-    if (!confirm("Sign out? You won't be able to sign back in to this seller account.")) return;
-    Market.signOut(); state.me = null; renderAvatar(); $("#meDlg").close();
-  });
-  $("#meDlg").showModal();
-}
-$("#meBody").addEventListener("click", async (e) => {
-  const b = e.target.closest("[data-del]"); if (!b) return;
-  if (!confirm("Delete this listing?")) return;
-  try { await Market.remove(b.dataset.del); await refresh(); openMe(); toast("Listing deleted."); }
-  catch (err) { toast(err.message); }
 });
 
 /* ---------- dialogs ---------- */
@@ -394,15 +367,17 @@ function toast(msg) {
   clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2800);
 }
 async function refresh() {
-  try { state.listings = (await Market.list()).listings; } catch (e) { toast(e.message); }
+  try { const r = await Market.list(); state.listings = r.listings; if (r.fees) state.fees = r.fees; } catch (e) { toast(e.message); }
   render();
 }
 
 (async () => {
   renderAvatar(); render();
-  state.listings = (await Market.init()).listings;
+  const first = await Market.init();
+  state.listings = first.listings; if (first.fees) state.fees = first.fees;
   $("#demoBar").hidden = Market.mode !== "demo";
   render();
-  Market.icons().then((icons) => { state.icons = icons; render(); });
+  Market.icons().then((icons) => { state.icons = icons; render(); rerenderPage(); });
   await loadMe();
+  startRouter(); // account.js
 })();
