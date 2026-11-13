@@ -54,11 +54,12 @@ function stopPoll() { if (poll) { clearTimeout(poll); poll = null; } }
 /* ============================== checkout ============================== */
 let payMethod = "card";
 const METHODS = [
-  { id: "card", label: "Credit or debit card", api: "card", tags: ["VISA", "Mastercard", "AMEX", "Discover", "+ more"] },
-  { id: "apple", label: "Apple Pay", api: "card", tags: ["Apple Pay"] },
-  { id: "google", label: "Google Pay", api: "card", tags: ["Google Pay"] },
-  { id: "crypto", label: "Cryptocurrency", api: "crypto", tags: ["USDC", "stablecoins"] },
-  { id: "balance", label: "Vaultix balance", api: "balance", tags: [] },
+  { id: "card", label: "Credit or debit card", api: "card", logos: ["visa", "mastercard", "americanexpress", "discover", "jcb", "dinersclub"] },
+  { id: "apple", label: "Apple Pay", api: "card", logos: ["applepay"] },
+  { id: "google", label: "Google Pay", api: "card", logos: ["googlepay"] },
+  // Stripe's crypto checkout takes USDC stablecoins, so no BTC/ETH logos here.
+  { id: "crypto", label: "Cryptocurrency", api: "crypto", tags: ["USDC"], note: "Stablecoins via Stripe" },
+  { id: "balance", label: "Vaultix balance", api: "balance", logos: [] },
 ];
 
 function renderCheckout() {
@@ -101,12 +102,13 @@ function renderCheckout() {
         <div class="pm-list" role="radiogroup" aria-label="Payment method">
           ${METHODS.map((x) => {
             const disabled = x.id === "balance" && (!state.me || bal < r2(l.price));
-            const extra = x.id === "balance" ? `<span class="muted small">${state.me ? `${money(bal)} available` : "Sign in to use"}</span>` : "";
+            const extra = x.id === "balance" ? `<span class="muted small">${state.me ? `${money(bal)} available` : "Sign in to use"}</span>`
+              : x.note ? `<span class="muted small">${x.note}</span>` : "";
             return `<label class="pm${payMethod === x.id ? " on" : ""}${disabled ? " is-disabled" : ""}">
               <input type="radio" name="pm" value="${x.id}" ${payMethod === x.id ? "checked" : ""} ${disabled ? "disabled" : ""} />
               <span class="pm-dot" aria-hidden="true"></span>
               <span class="pm-label">${x.label}${extra}</span>
-              <span class="pm-tags">${x.tags.map((t) => `<span class="ptag">${t}</span>`).join("")}</span>
+              <span class="pm-tags">${(x.logos || []).map(payLogo).join("")}${(x.tags || []).map((t) => `<span class="ptag">${t}</span>`).join("")}${x.id === "balance" ? `<span class="plogo vx"><img src="logo.svg" alt="" /></span>` : ""}</span>
             </label>`;
           }).join("")}
         </div>
@@ -442,6 +444,11 @@ function walletTab(me, w) {
     bank: `<label>Bank details<textarea name="details" rows="3" maxlength="300" placeholder="Account holder, IBAN or account number, SWIFT/BIC, bank name, country"></textarea></label>`,
   }[payoutMethod];
   const labels = { stripe: "Bank / debit card (Stripe)", paypal: "PayPal", crypto: "Crypto", bank: "Bank transfer" };
+  const BANK = `<span class="plogo sm" style="background:#2a2f3f" role="img" aria-label="Bank"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M12 2 2 7v2h20V7L12 2zm-7 9v7h3v-7H5zm5.5 0v7h3v-7h-3zM16 11v7h3v-7h-3zM2 20v2h20v-2H2z"/></svg></span>`;
+  const plogos = {
+    stripe: payLogo("stripe"), paypal: payLogo("paypal"), bank: BANK,
+    crypto: ["tether", "bitcoin", "ethereum", "litecoin"].map(payLogo).join(""),
+  };
   return `
     <div class="wallet">
       <div class="wcard main"><span class="muted small">Available</span><b>${money(w.available)}</b></div>
@@ -452,7 +459,7 @@ function walletTab(me, w) {
     <h3 class="dh">Withdraw</h3>
     <form class="dform" id="payoutForm">
       <div class="pchoice" role="radiogroup" aria-label="Payout method">${Object.entries(labels).map(([k, t]) => `
-        <label class="${payoutMethod === k ? "on" : ""}"><input type="radio" name="pmethod" value="${k}" ${payoutMethod === k ? "checked" : ""} />${t}</label>`).join("")}</div>
+        <label class="${payoutMethod === k ? "on" : ""}"><input type="radio" name="pmethod" value="${k}" ${payoutMethod === k ? "checked" : ""} /><span class="pc-text">${t}<span class="pc-logos">${plogos[k]}</span></span></label>`).join("")}</div>
       ${field}
       <label>Amount (min $10)<span class="amt"><input name="amount" type="number" min="10" step="0.01" max="${Math.max(0, w.available)}" placeholder="0.00" /><button class="btn ghost sm" data-max type="button">Max</button></span></label>
       <p class="form-err" id="payoutErr" role="alert"></p>

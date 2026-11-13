@@ -371,6 +371,8 @@ async function refresh() {
   render();
 }
 
+$("#footPay").innerHTML = ["visa", "mastercard", "americanexpress", "discover", "applepay", "googlepay"].map(payLogo).join("");
+
 (async () => {
   renderAvatar(); render();
   const first = await Market.init();
