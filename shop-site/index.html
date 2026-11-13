@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vaultix — Digital Goods Store</title>
+  <meta name="description" content="Vaultix: instant-delivery accounts, keys and digital goods." />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="nav">
+    <div class="container nav-inner">
+      <a href="#" class="brand" aria-label="Vaultix home">
+        <img src="logo.svg" alt="" width="36" height="36" />
+        <span>VAULTIX</span>
+      </a>
+      <nav class="nav-links" id="navLinks">
+        <a href="#shop">Shop</a>
+        <a href="#how">How it works</a>
+        <a href="#reviews">Reviews</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="icon-btn" id="cartBtn" aria-label="Open cart">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 7H6"/></svg>
+          <span class="badge" id="cartCount">0</span>
+        </button>
+        <button class="icon-btn menu-btn" id="menuBtn" aria-label="Menu">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- HERO -->
+    <section class="hero container">
+      <div class="hero-copy">
+        <span class="pill"><span class="dot"></span> Instant delivery · 24/7</span>
+        <h1>Level up with <span class="grad">premium digital goods</span></h1>
+        <p class="lead">Stacked accounts, license keys, in-game items and boosting — delivered to your inbox in seconds. Secure checkout, full warranty on every order.</p>
+        <div class="hero-cta">
+          <a href="#shop" class="btn btn-primary">Browse the shop</a>
+          <a href="#how" class="btn btn-ghost">How it works</a>
+        </div>
+        <ul class="stats">
+          <li><strong>48k+</strong><span>Orders delivered</span></li>
+          <li><strong>4.9/5</strong><span>Avg. rating</span></li>
+          <li><strong>&lt;30s</strong><span>Delivery time</span></li>
+        </ul>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="orb"></div>
+        <img src="logo.svg" alt="" class="hero-logo" />
+        <div class="float-card fc1"><span class="fc-ico">⚡</span><div><b>Order #48213</b><small>Delivered in 12s</small></div></div>
+        <div class="float-card fc2"><span class="fc-ico">🛡️</span><div><b>Warranty active</b><small>30-day coverage</small></div></div>
+      </div>
+    </section>
+
+    <!-- SHOP -->
+    <section id="shop" class="container section">
+      <div class="section-head">
+        <div>
+          <h2>Shop</h2>
+          <p class="muted">Pick a category or search for what you need.</p>
+        </div>
+        <div class="search">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="search" type="search" placeholder="Search products…" aria-label="Search products" />
+        </div>
+      </div>
+      <div class="filters" id="filters" role="tablist"></div>
+      <div class="grid" id="grid"></div>
+      <p class="empty" id="empty" hidden>No products match your search.</p>
+    </section>
+
+    <!-- HOW -->
+    <section id="how" class="container section">
+      <h2 class="center">How it works</h2>
+      <div class="steps">
+        <div class="step"><span class="step-n">1</span><h3>Choose</h3><p>Browse the catalog and add what you want to your cart.</p></div>
+        <div class="step"><span class="step-n">2</span><h3>Pay securely</h3><p>Check out with card, PayPal or crypto. Encrypted end to end.</p></div>
+        <div class="step"><span class="step-n">3</span><h3>Get it instantly</h3><p>Your details land in your email and order page within seconds.</p></div>
+      </div>
+    </section>
+
+    <!-- REVIEWS -->
+    <section id="reviews" class="container section">
+      <h2 class="center">Loved by players</h2>
+      <div class="reviews">
+        <figure class="review"><div class="stars">★★★★★</div><blockquote>Got my account in like 10 seconds. Everything was exactly as listed.</blockquote><figcaption>— Kai R.</figcaption></figure>
+        <figure class="review"><div class="stars">★★★★★</div><blockquote>Support swapped my key within minutes when I typed the wrong email. 10/10.</blockquote><figcaption>— Mia T.</figcaption></figure>
+        <figure class="review"><div class="stars">★★★★★</div><blockquote>Cleanest store I've used. Checkout was smooth and fast.</blockquote><figcaption>— Leo S.</figcaption></figure>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" class="container section narrow">
+      <h2 class="center">FAQ</h2>
+      <details><summary>How fast is delivery?</summary><p>Most orders are delivered automatically in under 30 seconds. Services like boosting start within 1 hour.</p></details>
+      <details><summary>What if something doesn't work?</summary><p>Every product includes a warranty. Open a ticket and we'll replace it or refund you.</p></details>
+      <details><summary>Which payment methods do you accept?</summary><p>Credit/debit card, PayPal, Apple Pay, Google Pay and major cryptocurrencies.</p></details>
+      <details><summary>Do I need an account to buy?</summary><p>No — just an email address. We send everything there.</p></details>
+    </section>
+
+    <!-- CTA -->
+    <section class="container section">
+      <div class="cta-band">
+        <div>
+          <h2>Get 10% off your first order</h2>
+          <p class="muted">Join the newsletter for drops, restocks and promo codes.</p>
+        </div>
+        <form class="newsletter" id="newsletter">
+          <input type="email" required placeholder="you@email.com" aria-label="Email" />
+          <button class="btn btn-primary" type="submit">Subscribe</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand"><img src="logo.svg" alt="" width="28" height="28" /><span>VAULTIX</span></div>
+      <p class="muted small">© <span id="year"></span> Vaultix. All rights reserved.</p>
+      <div class="footer-links"><a href="#faq">Support</a><a href="#">Terms</a><a href="#">Privacy</a></div>
+    </div>
+  </footer>
+
+  <!-- CART DRAWER -->
+  <div class="overlay" id="overlay" hidden></div>
+  <aside class="drawer" id="drawer" aria-label="Shopping cart" aria-hidden="true">
+    <div class="drawer-head">
+      <h3>Your cart</h3>
+      <button class="icon-btn" id="closeCart" aria-label="Close cart">✕</button>
+    </div>
+    <div class="drawer-body" id="cartItems"></div>
+    <div class="drawer-foot">
+      <div class="row"><span>Subtotal</span><strong id="subtotal">$0.00</strong></div>
+      <button class="btn btn-primary block" id="checkoutBtn">Checkout</button>
+    </div>
+  </aside>
+
+  <!-- CHECKOUT MODAL -->
+  <div class="modal" id="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button class="icon-btn modal-close" id="closeModal" aria-label="Close">✕</button>
+      <div id="checkoutForm">
+        <h3 id="modalTitle">Checkout</h3>
+        <p class="muted small" id="modalTotal"></p>
+        <form id="payForm">
+          <label>Email for delivery<input type="email" required placeholder="you@email.com" /></label>
+          <label>Payment method
+            <select>
+              <option>Card</option><option>PayPal</option><option>Crypto</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" required /> I agree to the terms of sale</label>
+          <button class="btn btn-primary block" type="submit">Pay now</button>
+        </form>
+      </div>
+      <div id="checkoutDone" hidden class="done">
+        <div class="done-ico">✓</div>
+        <h3>Order placed!</h3>
+        <p class="muted">Order <b id="orderId"></b> confirmed. Your items are on their way to your inbox.</p>
+        <button class="btn btn-ghost" id="doneBtn">Keep shopping</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
