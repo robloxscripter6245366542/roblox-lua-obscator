@@ -3,7 +3,8 @@
 // it falls back to DEMO mode: everything is saved in this browser only.
 const Market = (() => {
   const API = window.VAULTIX_API || "/api/market";
-  const CATEGORIES = ["Accounts", "Keys", "Items", "Services", "Other"];
+  const CATEGORIES = ["Currency", "Accounts", "Top ups", "Items", "Boosting", "Gift cards"];
+  const GAMES = ["Roblox", "Blox Fruits", "Murder Mystery 2", "Adopt Me", "Pet Simulator 99", "Blade Ball", "Grow a Garden", "Fortnite", "Minecraft", "Valorant", "GTA V", "Pokemon Go", "Clash of Clans", "Steam"];
   const K = { sellers: "vx-demo-sellers", listings: "vx-demo-listings", session: "vx-session", admin: "vx-admin-key" };
   let mode = "remote";
 
@@ -49,11 +50,15 @@ const Market = (() => {
       const s = demo.auth(b);
       const price = Math.round(Number(b.price) * 100) / 100;
       if (!(price > 0 && price <= 10000)) fail("Price must be between 0.01 and 10000");
+      if (!CATEGORIES.includes(b.category)) fail("Pick a category");
+      const was = Math.round(Number(b.wasPrice) * 100) / 100;
       const l = {
         id: rid("l_"), sellerId: s.id,
+        game: text(b.game, "Game", 2, 30),
         title: text(b.title, "Title", 3, 70),
         description: text(b.description, "Description", 10, 1000),
-        price, category: CATEGORIES.includes(b.category) ? b.category : "Other", createdAt: Date.now(),
+        price, wasPrice: was > price && was <= 100000 ? was : null,
+        category: b.category, createdAt: Date.now(),
       };
       const all = read(K.listings, {}); all[l.id] = l; write(K.listings, all);
       return { listing: { ...l, seller: pub(s) } };
@@ -121,6 +126,7 @@ const Market = (() => {
 
   return {
     CATEGORIES,
+    GAMES,
     init,
     get mode() { return mode; },
     list: () => call("list"),

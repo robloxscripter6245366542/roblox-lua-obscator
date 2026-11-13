@@ -1,6 +1,6 @@
 # Vaultix Market
 
-A marketplace where anyone can sign up as a seller and post listings (accounts, keys, items, services).
+A game marketplace where anyone can sign up as a seller and post listings in six categories: Currency, Accounts, Top ups, Items, Boosting and Gift cards. Each listing names a game and can show an original price, which adds a discount tag.
 It starts **empty**: there are no built-in products.
 
 ## How trust works

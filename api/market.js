@@ -17,7 +17,7 @@ const crypto = require('crypto')
 
 const SELLERS = 'mkt:sellers'
 const LISTINGS = 'mkt:listings'
-const CATEGORIES = ['Accounts', 'Keys', 'Items', 'Services', 'Other']
+const CATEGORIES = ['Currency', 'Accounts', 'Top ups', 'Items', 'Boosting', 'Gift cards']
 const MAX_LISTINGS_PER_SELLER = 50
 
 async function redis(cmd) {
@@ -112,14 +112,17 @@ const actions = {
     if (mine.length >= MAX_LISTINGS_PER_SELLER) throw bad('Listing limit reached')
     const price = Math.round(Number(b.price) * 100) / 100
     if (!(price > 0 && price <= 10000)) throw bad('Price must be between 0.01 and 10000')
-    const category = CATEGORIES.includes(b.category) ? b.category : 'Other'
+    if (!CATEGORIES.includes(b.category)) throw bad('Pick a category')
+    const was = Math.round(Number(b.wasPrice) * 100) / 100
     const listing = {
       id: newId('l_'),
       sellerId: s.id,
+      game: str(b.game, 'Game', 2, 30),
       title: str(b.title, 'Title', 3, 70),
       description: str(b.description, 'Description', 10, 1000),
       price,
-      category,
+      wasPrice: was > price && was <= 100000 ? was : null,
+      category: b.category,
       createdAt: Date.now(),
     }
     await put(LISTINGS, listing)

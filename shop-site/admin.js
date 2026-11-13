@@ -21,7 +21,7 @@ function render() {
       <td>${s.listings}</td>
       <td>${s.verified ? '<span class="badge ok sm">Verified</span>' : '<span class="badge risk sm">Risky</span>'}</td>
       <td><div class="acts">
-        <button class="btn ${s.verified ? "ghost" : ""}" data-verify="${esc(s.id)}" data-to="${!s.verified}" type="button">${s.verified ? "Remove verification" : "Verify"}</button>
+        <button class="btn ${s.verified ? "ghost" : "sell"}" data-verify="${esc(s.id)}" data-to="${!s.verified}" type="button">${s.verified ? "Remove verification" : "Verify"}</button>
         <button class="btn danger" data-ban="${esc(s.id)}" type="button">Ban</button>
       </div></td>
     </tr>`).join("");
