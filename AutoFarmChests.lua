@@ -50,6 +50,8 @@ S.running     = true
 S.hopDelay    = S.hopDelay   or 0.6
 S.openBoxes   = S.openBoxes  or false
 S.hoverStuds  = S.hoverStuds or 4
+S.maxDist     = S.maxDist    or 2500     -- never teleport farther than this (stay in map)
+S.teleport    = (S.teleport ~= false)    -- teleport onto chests; off = farm only chests near you
 S.captured    = S.captured   or nil      -- { calls = {...} } learned break calls
 S.version     = (S.version or 0) + 1
 
@@ -72,6 +74,20 @@ local function partOf(inst)
     if inst:IsA("BasePart") then return inst end
     if inst:IsA("Model") then return inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart") end
     return nil
+end
+
+-- a chest position is only usable if it's finite, not the origin, and near us
+local function validPos(pos)
+    if not pos then return false end
+    if pos ~= pos then return false end                       -- NaN
+    if pos.Magnitude < 1 then return false end                -- (0,0,0) template
+    if math.abs(pos.Y) > 100000 then return false end         -- absurd height = out of map
+    return true
+end
+local function distFromMe(pos)
+    local r = root()
+    if not r then return math.huge end
+    return (pos - r.Position).Magnitude
 end
 local CollectionService = game:GetService("CollectionService")
 
@@ -157,9 +173,16 @@ end
 local function pickBest(list)
     local best, bs
     for _, b in ipairs(list) do
-        if partOf(b) then
-            local s = scoreOf(b)
-            if not bs or s>bs then best, bs = b, s end
+        local p = partOf(b)
+        if p and validPos(p.Position) then
+            local d = distFromMe(p.Position)
+            if d <= S.maxDist then
+                -- tier/chest score first; among equals the NEAREST wins, and
+                -- distance gently lowers score so we never cross the map for a
+                -- marginally-better chest.
+                local s = scoreOf(b) - d * 0.05
+                if not bs or s>bs then best, bs = b, s end
+            end
         end
     end
     return best
@@ -297,11 +320,22 @@ local function bestEffortTarget(b)
     end
 end
 
--- ── teleport onto a chest ────────────────────────────────────────────────────
+-- ── teleport onto a chest (safe: never off the map) ──────────────────────────
 local function hopTo(b)
+    if not S.teleport then return true end              -- teleport disabled: farm in place
     local c, p = character(), partOf(b)
     if not (c and p) then return false end
-    pcall(function() c:PivotTo(CFrame.new(p.Position + Vector3.new(0, S.hoverStuds, 0))) end)
+    local pos = p.Position
+    if not validPos(pos) then return false end          -- refuse bad / off-map targets
+    if distFromMe(pos) > S.maxDist then return false end -- never fling across the map
+    -- land on the chest's top surface, not inside it or in the void
+    local topY = pos.Y + p.Size.Y/2
+    if b:IsA("Model") then
+        local ok, _, sz = pcall(function() return b:GetBoundingBox() end)
+        if ok and sz then topY = pos.Y + sz.Y/2 end
+    end
+    local dest = Vector3.new(pos.X, topY + math.max(2, S.hoverStuds), pos.Z)
+    pcall(function() c:PivotTo(CFrame.new(dest)) end)
     return true
 end
 
@@ -389,9 +423,16 @@ label("📦 Auto Farm Chests", 20, Color3.fromRGB(140,230,160))
 local status = label("LEARN: click any chest once", 30, Color3.fromRGB(255,210,120))
 
 local autoBtn  = button("Auto Farm: ON", Color3.fromRGB(190,60,60))
+local tpBtn    = button("Teleport: ON (stays in map)", Color3.fromRGB(60,110,180))
 local boxBtn   = button("Open Lootboxes: OFF", Color3.fromRGB(70,75,90))
 local speedBtn = button("Hop speed: Normal", Color3.fromRGB(55,60,74))
 local diagBtn  = button("Diagnostics (F9 console)", Color3.fromRGB(60,70,90))
+
+tpBtn.Activated:Connect(function()
+    S.teleport = not S.teleport
+    tpBtn.Text = "Teleport: "..(S.teleport and "ON (stays in map)" or "OFF (farm nearby)")
+    tpBtn.BackgroundColor3 = S.teleport and Color3.fromRGB(60,110,180) or Color3.fromRGB(70,75,90)
+end)
 
 local function setAuto(on)
     S.auto=on; autoBtn.Text="Auto Farm: "..(on and "ON" or "OFF")
