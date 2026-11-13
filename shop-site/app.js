@@ -1,124 +1,261 @@
-// Vaultix Market — public marketplace UI
+// Vaultix Market — storefront UI
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const money = (n) => "$" + Number(n).toFixed(2);
+const money = (n) => "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const date = (t) => new Date(t).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+const pctOff = (l) => (l.wasPrice > l.price ? Math.round((1 - l.price / l.wasPrice) * 100) : 0);
 const badge = (s, sm) => s && s.verified
   ? `<span class="badge ok${sm ? " sm" : ""}">Verified</span>`
   : `<span class="badge risk${sm ? " sm" : ""}">Risky</span>`;
+const CHEVRON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
+const PERSON = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>`;
 
-const state = { listings: [], cat: "All", q: "", verifiedOnly: false, sort: "new", me: null };
+const state = { listings: [], icons: {}, cat: null, game: null, q: "", verifiedOnly: false, sort: "new", browseAll: false, me: null };
+const OTHER = "__other";
 
-/* ---------- catalogue ---------- */
-function renderTabs() {
-  $("#tabs").innerHTML = ["All", ...Market.CATEGORIES].map((c) =>
-    `<button class="tab" role="tab" data-cat="${c}" aria-selected="${c === state.cat}">${c}</button>`).join("");
+/* ---------- game art ----------
+   1. seller's own picture (games not in games.js)
+   2. official game icon (looked up by the API)
+   3. coloured monogram if neither is available or an image fails to load */
+function monogram(game) {
+  const name = String(game || "?");
+  let h = 0;
+  for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const hue = h % 360;
+  const words = name.trim().split(/\s+/);
+  const mono = (words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2)).toUpperCase();
+  return `<span class="gtile" style="background:linear-gradient(135deg,hsl(${hue} 70% 52%),hsl(${(hue + 40) % 360} 65% 38%))">${esc(mono)}</span>`;
+}
+const isSteam = (game) => { const g = Market.Games.find(game); return !!(g && g.steam); };
+const img = (src, cls, game) => `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-game="${esc(game)}" data-cls="${cls}" />`;
+// Small square tile (card meta row, menus, detail header)
+function gameTile(game) {
+  const icon = state.icons[game];
+  return icon ? img(icon, "gtile", game) : monogram(game);
+}
+// Big art at the top of a card
+function cardArt(l) {
+  const own = Market.imageUrl(l);
+  if (own) return img(own, "art-cover", l.game);
+  const icon = state.icons[l.game];
+  if (icon) return img(icon, isSteam(l.game) ? "art-cover" : "gtile art-icon", l.game);
+  return monogram(l.game).replace('class="gtile"', 'class="gtile art-icon"');
+}
+// Broken image -> monogram
+document.addEventListener("error", (e) => {
+  const el = e.target;
+  if (el.tagName !== "IMG" || el.dataset.game == null) return;
+  const t = document.createElement("span");
+  t.innerHTML = monogram(el.dataset.game);
+  const m = t.firstChild;
+  if ((el.dataset.cls || "").includes("art")) m.classList.add("art-icon");
+  el.replaceWith(m);
+}, true);
+
+/* ---------- recently viewed (per browser) ---------- */
+const RECENT = "vx-recent";
+const getRecent = () => { try { return JSON.parse(localStorage.getItem(RECENT)) || []; } catch { return []; } };
+function pushRecent(id) {
+  const r = [id, ...getRecent().filter((x) => x !== id)].slice(0, 12);
+  try { localStorage.setItem(RECENT, JSON.stringify(r)); } catch {}
 }
 
-function visible() {
+/* ---------- cards ---------- */
+function card(l) {
+  const off = pctOff(l);
+  return `
+  <button class="card" data-id="${esc(l.id)}" type="button">
+    <span class="card-top">${cardArt(l)}${badge(l.seller, true)}</span>
+    <span class="card-body">
+      <span class="card-meta">${gameTile(l.game)}<span>${esc(l.game)} · ${esc(l.category)}</span></span>
+      <span class="card-title">${esc(l.title)}</span>
+      <span class="card-price">
+        <span class="was">${off ? money(l.wasPrice) : ""}</span>
+        <span class="now${off ? " deal" : ""}"><b>${money(l.price)}</b>${off ? `<span class="off">-${off}%</span>` : ""}</span>
+      </span>
+      <span class="card-seller"><span>@${esc(l.seller.name)}</span>${badge(l.seller, true)}</span>
+    </span>
+  </button>`;
+}
+const section = (title, items, opts = {}) => `
+  <section class="sec">
+    <div class="sec-head"><h2>${esc(title)}</h2>${opts.action || ""}</div>
+    <div class="${opts.row ? "row" : "grid"}">${items.map(card).join("")}</div>
+  </section>`;
+
+/* ---------- filtering ---------- */
+const browsing = () => !!(state.cat || state.game || state.q.trim() || state.browseAll);
+
+function filtered() {
   const q = state.q.trim().toLowerCase();
   const out = state.listings.filter((l) =>
-    (state.cat === "All" || l.category === state.cat) &&
+    (!state.cat || l.category === state.cat) &&
+    (!state.game || l.game.toLowerCase() === state.game.toLowerCase()) &&
     (!state.verifiedOnly || l.seller.verified) &&
-    (!q || `${l.title} ${l.description} ${l.seller.name}`.toLowerCase().includes(q)));
-  if (state.sort === "low") out.sort((a, b) => a.price - b.price);
-  else if (state.sort === "high") out.sort((a, b) => b.price - a.price);
-  else out.sort((a, b) => b.createdAt - a.createdAt);
-  return out;
+    (!q || `${l.title} ${l.game} ${l.category} ${l.description} ${l.seller.name}`.toLowerCase().includes(q)));
+  const by = {
+    new: (a, b) => b.createdAt - a.createdAt,
+    low: (a, b) => a.price - b.price,
+    high: (a, b) => b.price - a.price,
+    deal: (a, b) => pctOff(b) - pctOff(a) || b.createdAt - a.createdAt,
+  }[state.sort];
+  return out.sort(by);
 }
 
-function renderGrid() {
-  const list = visible();
-  const total = state.listings.length;
-  const filtered = total > 0 && list.length === 0;
-  $("#count").textContent = total ? `${list.length} of ${total} listing${total === 1 ? "" : "s"}` : "";
-  $("#empty").hidden = list.length > 0;
-  $("#emptyKicker").textContent = filtered ? "No matches" : "00 listings";
-  $("#emptyTitle").textContent = filtered ? "No listings match." : "Nothing for sale yet.";
-  $("#emptyText").textContent = filtered
-    ? (state.verifiedOnly ? "No verified sellers have listings here yet. Try turning off “Verified sellers only”." : "Try a different search or category.")
-    : "This market just opened. Be the first to post a listing.";
-  $("#emptySell").hidden = filtered;
-  $("#grid").innerHTML = list.map((l) => `
-    <button class="item ${l.seller.verified ? "is-ok" : "is-risk"}" data-id="${esc(l.id)}" type="button">
-      <span class="mono item-cat">${esc(l.category)}</span>
-      <h3>${esc(l.title)}</h3>
-      <p class="item-desc">${esc(l.description)}</p>
-      <span class="item-foot">
-        <span class="price">${money(l.price)}</span>
-        <span class="seller"><span class="seller-name">@${esc(l.seller.name)}</span>${badge(l.seller, true)}</span>
-      </span>
-    </button>`).join("");
+function render() {
+  renderCats();
+  const all = state.listings;
+  const browse = browsing();
+  $("#filterbar").hidden = !browse;
+  let html = "";
+
+  if (browse) {
+    const chips = [];
+    if (state.cat) chips.push(`<span class="chip">${esc(state.cat)}<button data-clear="cat" aria-label="Remove ${esc(state.cat)} filter">×</button></span>`);
+    if (state.game) chips.push(`<span class="chip">${esc(state.game)}<button data-clear="game" aria-label="Remove ${esc(state.game)} filter">×</button></span>`);
+    if (state.q.trim()) chips.push(`<span class="chip">“${esc(state.q.trim())}”<button data-clear="q" aria-label="Clear search">×</button></span>`);
+    $("#crumbs").innerHTML = `<button class="link-btn" data-clear="all" type="button">← Home</button>${chips.join("")}`;
+    const list = filtered();
+    const title = [state.game, state.cat].filter(Boolean).join(" · ") || (state.q.trim() ? "Search results" : "All listings");
+    if (list.length) html = section(`${title} (${list.length})`, list);
+    setEmpty(list.length === 0, all.length === 0
+      ? ["Nothing for sale yet", "This market just opened. Be the first to post a listing.", true]
+      : ["No listings match", state.verifiedOnly ? "No verified sellers here yet. Try turning off “Verified sellers only”." : "Try another game, category or search.", false]);
+  } else {
+    if (all.length) {
+      const verified = all.filter((l) => l.seller.verified).slice(0, 12);
+      const recent = getRecent().map((id) => all.find((l) => l.id === id)).filter(Boolean);
+      const deals = all.filter((l) => pctOff(l) > 0).sort((a, b) => pctOff(b) - pctOff(a)).slice(0, 12);
+      if (verified.length) html += section("From verified sellers", verified, { row: true });
+      if (deals.length) html += section("Best deals", deals, { row: true });
+      if (recent.length) html += section("Recently viewed", recent, { row: true });
+      html += section("Latest listings", all.slice(0, 24), {
+        action: all.length > 24 ? `<button class="link-btn" id="seeAll" type="button">See all ${all.length}</button>` : "",
+      });
+    }
+    setEmpty(all.length === 0, ["Nothing for sale yet", "This market just opened. Be the first to post a listing.", true]);
+  }
+  $("#sections").innerHTML = html;
 }
 
-async function refresh() {
-  try {
-    const r = await Market.list();
-    state.listings = r.listings;
-  } catch (e) { toast(e.message); }
-  renderGrid();
+function setEmpty(show, [title, text, canSell]) {
+  $("#empty").hidden = !show;
+  $("#emptyTitle").textContent = title;
+  $("#emptyText").textContent = text;
+  $("#emptySell").hidden = !canSell;
 }
 
-$("#tabs").addEventListener("click", (e) => {
+/* ---------- category bar + dropdown ---------- */
+function renderCats() {
+  $("#cats").innerHTML = Market.CATEGORIES.map((c) =>
+    `<button class="cat${state.cat === c ? " active" : ""}" data-cat="${esc(c)}" aria-haspopup="true" aria-expanded="${openCat === c}" type="button">${esc(c)}${CHEVRON}</button>`).join("");
+}
+
+let openCat = null;
+function openMenu(btn) {
+  const cat = btn.dataset.cat;
+  if (openCat === cat) return closeMenu();
+  openCat = cat;
+  const inCat = state.listings.filter((l) => l.category === cat);
+  const games = {};
+  for (const l of inCat) games[l.game] = (games[l.game] || 0) + 1;
+  const names = Object.keys(games).sort((a, b) => games[b] - games[a] || a.localeCompare(b));
+  const m = $("#catMenu");
+  m.innerHTML = `
+    <button class="menu-all" data-pick-cat="${esc(cat)}" type="button">All ${esc(cat)} <span class="count">${inCat.length}</span></button>
+    ${names.length
+      ? names.map((g) => `<button data-pick-cat="${esc(cat)}" data-pick-game="${esc(g)}" type="button"><span style="display:flex;align-items:center;gap:10px">${gameTile(g)}${esc(g)}</span><span class="count">${games[g]}</span></button>`).join("")
+      : `<p>No ${esc(cat.toLowerCase())} listings yet.</p>`}`;
+  const r = btn.getBoundingClientRect(), top = $(".top").getBoundingClientRect();
+  m.hidden = false;
+  m.style.top = `${r.bottom - top.top + 4}px`;
+  m.style.left = `${Math.max(16, Math.min(r.left, window.innerWidth - m.offsetWidth - 16))}px`;
+  renderCats();
+}
+function closeMenu() {
+  if (!openCat) return;
+  openCat = null; $("#catMenu").hidden = true; renderCats();
+}
+
+$("#cats").addEventListener("click", (e) => {
   const b = e.target.closest("[data-cat]"); if (!b) return;
-  state.cat = b.dataset.cat; renderTabs(); renderGrid();
+  e.stopPropagation(); // the bar re-renders, so the outside-click check below would see a detached target
+  openMenu(b);
 });
-$("#search").addEventListener("input", (e) => { state.q = e.target.value; renderGrid(); });
-$("#verifiedOnly").addEventListener("change", (e) => { state.verifiedOnly = e.target.checked; renderGrid(); });
-$("#sort").addEventListener("change", (e) => { state.sort = e.target.value; renderGrid(); });
+$("#cats").addEventListener("scroll", closeMenu);
+$("#catMenu").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-pick-cat]"); if (!b) return;
+  state.cat = b.dataset.pickCat; state.game = b.dataset.pickGame || null;
+  closeMenu(); render(); window.scrollTo({ top: 0 });
+});
+document.addEventListener("click", (e) => { if (!e.target.closest("#catMenu, #cats")) closeMenu(); });
+window.addEventListener("resize", closeMenu);
+
+$("#crumbs").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-clear]"); if (!b) return;
+  const k = b.dataset.clear;
+  if (k === "all") { state.cat = state.game = null; state.q = ""; state.browseAll = false; $("#search").value = ""; }
+  else if (k === "q") { state.q = ""; $("#search").value = ""; }
+  else state[k] = null;
+  render();
+});
+$("#search").addEventListener("input", (e) => { state.q = e.target.value; render(); });
+$("#verifiedOnly").addEventListener("change", (e) => { state.verifiedOnly = e.target.checked; render(); });
+$("#sort").addEventListener("change", (e) => { state.sort = e.target.value; render(); });
+$("#sections").addEventListener("click", (e) => {
+  if (e.target.closest("#seeAll")) { state.browseAll = true; render(); window.scrollTo({ top: 0 }); return; }
+  const c = e.target.closest("[data-id]"); if (!c) return;
+  const l = state.listings.find((x) => x.id === c.dataset.id); if (l) openListing(l);
+});
 
 /* ---------- listing detail ---------- */
-$("#grid").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-id]"); if (!b) return;
-  const l = state.listings.find((x) => x.id === b.dataset.id); if (l) openListing(l);
-});
-
 function openListing(l) {
-  const s = l.seller;
+  pushRecent(l.id);
+  const s = l.seller, off = pctOff(l);
   const trust = s.verified
     ? `<div class="safe"><b>Verified seller.</b> Vaultix staff checked this seller. Still only pay the way you agreed in writing.</div>`
     : `<div class="warn">
-        <b>Risky: this seller is not verified.</b>
-        <span>Nobody has checked who they are. If they scam you, there is no one to get your money back.</span>
-        <ul>
-          <li>Don't pay first with gift cards or crypto.</li>
-          <li>Use a middleman or payment with buyer protection.</li>
-          <li>Prefer a verified seller if one has the same item.</li>
-        </ul>
+        <b>Risky — this seller is not verified.</b>
+        <span>Nobody has checked who they are. If they scam you, there's no one to get your money back.</span>
+        <ul><li>Don't pay first with gift cards or crypto.</li><li>Use a middleman or a payment method with buyer protection.</li><li>Prefer a verified seller if one has the same item.</li></ul>
       </div>`;
   $("#viewBody").innerHTML = `
     <div class="dlg-head">
-      <div><p class="mono muted">${esc(l.category)} · listed ${date(l.createdAt)}</p><h2>${esc(l.title)}</h2></div>
+      <div class="view-top">${gameTile(l.game)}<div><p class="muted">${esc(l.game)} · ${esc(l.category)}</p><h2>${esc(l.title)}</h2></div></div>
       <button class="x" data-close aria-label="Close">×</button>
     </div>
-    <p class="price">${money(l.price)}</p>
+    ${Market.imageUrl(l) ? `<img class="view-pic" src="${esc(Market.imageUrl(l))}" alt="Picture of ${esc(l.title)}" />` : ""}
+    <div class="view-price"><b>${money(l.price)}</b>${off ? `<s>${money(l.wasPrice)}</s><span class="off">-${off}%</span>` : ""}</div>
     ${trust}
     <p class="desc">${esc(l.description)}</p>
     <dl class="meta">
       <dt>Seller</dt><dd>@${esc(s.name)} ${badge(s, true)}</dd>
       <dt>Member since</dt><dd>${date(s.createdAt)}</dd>
-      <dt>Listings</dt><dd>${state.listings.filter((x) => x.seller.id === s.id).length}</dd>
+      <dt>Active listings</dt><dd>${state.listings.filter((x) => x.seller.id === s.id).length}</dd>
+      <dt>Listed</dt><dd>${date(l.createdAt)}</dd>
     </dl>
-    <div id="contactSlot"><button class="btn wide" id="revealContact" type="button">${s.verified ? "Contact seller" : "I understand the risk — show contact"}</button></div>`;
+    <div id="contactSlot"><button class="btn ${s.verified ? "sell" : "danger"} wide" id="revealContact" type="button">${s.verified ? "Contact seller" : "I understand the risk — show contact"}</button></div>`;
   $("#revealContact").addEventListener("click", () => {
-    $("#contactSlot").innerHTML = `<p class="mono muted" style="margin-bottom:6px">Contact @${esc(s.name)}</p><div class="contact">${esc(s.contact)}</div>`;
+    $("#contactSlot").innerHTML = `<p class="muted" style="margin-bottom:6px">Contact @${esc(s.name)}</p><div class="contact">${esc(s.contact)}</div>`;
   });
   $("#viewDlg").showModal();
+  if (!browsing()) render(); // refresh "Recently viewed"
 }
 
 /* ---------- account ---------- */
 async function loadMe() {
-  const sess = Market.session();
-  if (!sess) { state.me = null; return renderAccountBtn(); }
+  if (!Market.session()) { state.me = null; return renderAvatar(); }
   try { state.me = (await Market.me()).seller; }
   catch (e) { if (e.status === 401 || /signed in/.test(e.message)) Market.signOut(); state.me = null; }
-  renderAccountBtn();
+  renderAvatar();
 }
-function renderAccountBtn() {
-  $("#accountBtn").textContent = state.me ? `@${state.me.name}` : "Sign up";
+function renderAvatar() {
+  const a = $("#accountBtn"), me = state.me;
+  a.innerHTML = me ? `${esc(me.name[0].toUpperCase())}<span class="dot ${me.verified ? "ok" : "risk"}"></span>` : PERSON;
+  a.setAttribute("aria-label", me ? `Your seller account @${me.name}` : "Sign up as a seller");
 }
 
-$("#accountBtn").addEventListener("click", () => state.me ? openMe() : openJoin());
+$("#accountBtn").addEventListener("click", () => (state.me ? openMe() : openJoin()));
 $("#sellBtn").addEventListener("click", startSell);
 $("#emptySell").addEventListener("click", startSell);
 
@@ -128,7 +265,6 @@ function openJoin(next) {
   afterJoin = typeof next === "function" ? next : null;
   $("#joinErr").textContent = ""; $("#joinForm").reset(); $("#joinDlg").showModal();
 }
-
 $("#joinForm").addEventListener("submit", async (e) => {
   if (e.submitter && e.submitter.value === "cancel") return;
   e.preventDefault();
@@ -136,50 +272,105 @@ $("#joinForm").addEventListener("submit", async (e) => {
   btn.disabled = true; $("#joinErr").textContent = "";
   try {
     state.me = await Market.register(f.elements.name.value, f.elements.contact.value);
-    renderAccountBtn(); $("#joinDlg").close();
+    renderAvatar(); $("#joinDlg").close();
     toast("Seller account created. You're marked Risky until staff verify you.");
     if (afterJoin) afterJoin();
   } catch (err) { $("#joinErr").textContent = err.message; }
   btn.disabled = false;
 });
 
-function openPost() {
-  $("#postCat").innerHTML = Market.CATEGORIES.map((c) => `<option>${c}</option>`).join("");
-  $("#postErr").textContent = ""; $("#postForm").reset(); $("#postDlg").showModal();
+let picData = null;
+function resetPic() {
+  picData = null;
+  $("#picInput").value = "";
+  $("#picPreview").hidden = true; $("#picPreview").removeAttribute("src");
+  $("#picHint").hidden = false;
 }
+function toggleOther() {
+  const other = $("#postGame").value === OTHER;
+  $("#otherGame").hidden = !other;
+  $("#postForm").elements.gameOther.required = other;
+}
+function openPost() {
+  $("#postCat").innerHTML = Market.CATEGORIES.map((c) => `<option>${esc(c)}</option>`).join("");
+  const G = Market.Games.GAMES;
+  const group = (label, list) => `<optgroup label="${label}">${list.map((g) => `<option>${esc(g.name)}</option>`).join("")}</optgroup>`;
+  $("#postGame").innerHTML = `<option value="" disabled selected>Choose a game</option>`
+    + group("Roblox", G.filter((g) => g.roblox || g.name === "Roblox"))
+    + group("Mobile & cross-platform", G.filter((g) => g.apple && g.name !== "Roblox" && g.name !== "Steam"))
+    + group("PC", G.filter((g) => g.steam || g.name === "Steam"))
+    + `<option value="${OTHER}">Other game (not listed)…</option>`;
+  $("#postErr").textContent = "";
+  $("#postForm").reset();
+  resetPic();
+  if (state.cat) $("#postCat").value = state.cat;
+  if (state.game) {
+    const known = Market.Games.find(state.game);
+    $("#postGame").value = known ? known.name : OTHER;
+    if (!known) $("#postForm").elements.gameOther.value = state.game;
+  }
+  toggleOther();
+  $("#postDlg").showModal();
+}
+$("#postGame").addEventListener("change", toggleOther);
+
+// Shrink the picture in the browser (max 640px, JPEG) so uploads stay small.
+$("#picInput").addEventListener("change", async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  $("#postErr").textContent = "";
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { resetPic(); $("#postErr").textContent = "Use a PNG, JPG or WebP picture."; return; }
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 640 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    let q = 0.85, url = c.toDataURL("image/jpeg", q);
+    while (url.length > 260000 && q > 0.4) { q -= 0.1; url = c.toDataURL("image/jpeg", q); } // ~190 KB of bytes
+    if (url.length > 270000) throw new Error("too big");
+    picData = url;
+    $("#picPreview").src = url; $("#picPreview").hidden = false; $("#picHint").hidden = true;
+  } catch { resetPic(); $("#postErr").textContent = "Couldn't read that picture. Try another one."; }
+});
 $("#postForm").addEventListener("submit", async (e) => {
   if (e.submitter && e.submitter.value === "cancel") return;
   e.preventDefault();
-  const f = e.target, btn = f.querySelector("[type=submit]");
+  const el = e.target.elements, btn = e.target.querySelector("[type=submit]");
   btn.disabled = true; $("#postErr").textContent = "";
   try {
-    const el = f.elements;
-    await Market.post({ title: el.title.value, price: el.price.value, category: el.category.value, description: el.description.value });
+    const other = el.game.value === OTHER;
+    if (!el.game.value) throw new Error("Choose a game");
+    if (other && !picData) throw new Error("Add a picture for your game");
+    await Market.post({
+      game: other ? el.gameOther.value : el.game.value, image: other ? picData : undefined,
+      category: el.category.value, title: el.title.value,
+      price: el.price.value, wasPrice: el.wasPrice.value, description: el.description.value,
+    });
     $("#postDlg").close(); toast("Listing published."); await refresh();
   } catch (err) { $("#postErr").textContent = err.message; }
   btn.disabled = false;
 });
 
 function openMe() {
-  const me = state.me;
-  const mine = state.listings.filter((l) => l.seller.id === me.id);
+  const me = state.me, mine = state.listings.filter((l) => l.seller.id === me.id);
   $("#meBody").innerHTML = `
     <div class="dlg-head"><h2>@${esc(me.name)}</h2><button class="x" data-close aria-label="Close">×</button></div>
     <p>Status: ${badge(me)}</p>
     ${me.verified
-      ? `<div class="safe">You're verified. Buyers see a green Verified badge on all your listings.</div>`
-      : `<div class="warn"><b>Your listings show as Risky.</b><span>To get verified, send the site owner your seller ID below. Once they check you, the badge turns green.</span></div>
-         <p class="mono muted">Seller ID</p><div class="contact idbox">${esc(me.id)}</div>`}
-    <p class="mono muted">Your listings (${mine.length})</p>
+      ? `<div class="safe"><b>You're verified.</b> Buyers see a green Verified badge on all your listings.</div>`
+      : `<div class="warn"><b>Your listings show as Risky.</b><span>To get verified, send the site owner your seller ID below. Once they check you, your badge turns green.</span></div>
+         <p class="muted">Seller ID</p><div class="contact" style="user-select:all">${esc(me.id)}</div>`}
+    <p class="muted">Your listings (${mine.length})</p>
     <div class="mine">${mine.length ? mine.map((l) => `
-      <div class="mine-item"><span>${esc(l.title)} · ${money(l.price)}</span><button class="btn danger" data-del="${esc(l.id)}" type="button">Delete</button></div>`).join("")
+      <div class="mine-item"><span>${esc(l.game)} · ${esc(l.title)} · ${money(l.price)}</span><button class="btn danger" data-del="${esc(l.id)}" type="button">Delete</button></div>`).join("")
       : `<p class="muted">No listings yet.</p>`}</div>
-    <div class="row"><button class="btn" id="meSell" type="button">New listing</button><button class="btn ghost" id="signOut" type="button">Sign out</button></div>
-    <p class="muted" style="font-size:.82rem">Signing out on this device can't be undone — your seller login is stored only in this browser.</p>`;
+    <div class="btnrow"><button class="btn sell" id="meSell" type="button">New listing</button><button class="btn ghost" id="signOut" type="button">Sign out</button></div>
+    <p class="muted" style="font-size:.82rem">Your seller login is saved only in this browser. If you sign out, you can't sign back in to this account.</p>`;
   $("#meSell").addEventListener("click", () => { $("#meDlg").close(); openPost(); });
   $("#signOut").addEventListener("click", () => {
-    if (!confirm("Sign out? You won't be able to sign back in to this seller account from this browser.")) return;
-    Market.signOut(); state.me = null; renderAccountBtn(); $("#meDlg").close();
+    if (!confirm("Sign out? You won't be able to sign back in to this seller account.")) return;
+    Market.signOut(); state.me = null; renderAvatar(); $("#meDlg").close();
   });
   $("#meDlg").showModal();
 }
@@ -190,12 +381,11 @@ $("#meBody").addEventListener("click", async (e) => {
   catch (err) { toast(err.message); }
 });
 
-/* ---------- dialogs: close buttons + click outside ---------- */
-document.querySelectorAll("dialog").forEach((d) => {
-  d.addEventListener("click", (e) => {
-    if (e.target === d || e.target.closest("[data-close]")) d.close();
-  });
-});
+/* ---------- dialogs ---------- */
+document.querySelectorAll("dialog").forEach((d) => d.addEventListener("click", (e) => {
+  if (e.target === d || e.target.closest("[data-close]")) d.close();
+}));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
 
 /* ---------- misc ---------- */
 let tt;
@@ -203,13 +393,16 @@ function toast(msg) {
   const t = $("#toast"); t.textContent = msg; t.classList.add("show");
   clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2800);
 }
-$("#year").textContent = new Date().getFullYear();
+async function refresh() {
+  try { state.listings = (await Market.list()).listings; } catch (e) { toast(e.message); }
+  render();
+}
 
 (async () => {
-  renderTabs();
-  const r = await Market.init();
-  state.listings = r.listings;
+  renderAvatar(); render();
+  state.listings = (await Market.init()).listings;
   $("#demoBar").hidden = Market.mode !== "demo";
-  renderGrid();
+  render();
+  Market.icons().then((icons) => { state.icons = icons; render(); });
   await loadMe();
 })();
