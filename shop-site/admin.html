@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Vaultix Staff</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .panel { padding: 40px 0; }
+    .panel h1 { font-size: 2rem; letter-spacing: -.03em; margin: 0 0 6px; }
+    .login { display: flex; gap: 8px; max-width: 460px; margin-top: 20px; }
+    .login input { flex: 1; height: 40px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); }
+    table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: .92rem; }
+    th { text-align: left; font: 500 .75rem var(--mono); text-transform: uppercase; color: var(--ink-2); padding: 8px 10px; border-bottom: 1px solid var(--ink); }
+    td { padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; word-break: break-word; }
+    td .btn { height: 32px; padding: 0 10px; font-size: .82rem; }
+    .acts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+    .filter { margin-top: 20px; max-width: 320px; height: 38px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); width: 100%; }
+    @media (max-width: 700px) {
+      thead { display: none; }
+      tr { display: grid; grid-template-columns: 1fr; padding: 10px 0; border-bottom: 1px solid var(--line); }
+      td { border: 0; padding: 4px 0; }
+      .acts { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-bar" id="demoBar" hidden>Demo mode — showing sellers saved in this browser only. No admin key needed.</div>
+  <header class="top">
+    <div class="wrap top-inner">
+      <a href="./" class="brand"><img src="logo.svg" alt="" width="30" height="30" /><span>Vaultix</span></a>
+      <span class="mono muted">Staff</span>
+      <div class="top-actions"><a class="btn ghost" href="./" style="display:inline-flex;align-items:center;text-decoration:none">Back to market</a></div>
+    </div>
+  </header>
+
+  <main class="wrap panel">
+    <h1>Seller verification</h1>
+    <p class="muted">Verified sellers get a green badge. Everyone else shows as Risky.</p>
+
+    <form class="login" id="login">
+      <input type="password" id="key" placeholder="Admin key" autocomplete="current-password" aria-label="Admin key" />
+      <button class="btn" type="submit">Unlock</button>
+    </form>
+    <p class="form-err" id="err" role="alert"></p>
+
+    <div id="table" hidden>
+      <input class="filter" id="filter" type="search" placeholder="Find seller by name or ID" aria-label="Find seller" />
+      <table>
+        <thead><tr><th>Seller</th><th>Contact</th><th>Joined</th><th>Listings</th><th>Status</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p class="muted" id="none" hidden style="margin-top:20px">No sellers yet.</p>
+    </div>
+  </main>
+
+  <div class="toast" id="toast" role="status"></div>
+  <script src="data.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

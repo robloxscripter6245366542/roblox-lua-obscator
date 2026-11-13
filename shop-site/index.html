@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vaultix Market</title>
+  <meta name="description" content="Buy and sell accounts, keys and items. Verified sellers are checked by staff; unverified sellers are marked risky." />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="demo-bar" id="demoBar" hidden>
+    Demo mode — the server isn't set up yet, so listings are saved in this browser only.
+  </div>
+
+  <header class="top">
+    <div class="wrap top-inner">
+      <a href="./" class="brand" aria-label="Vaultix Market home">
+        <img src="logo.svg" alt="" width="30" height="30" />
+        <span>Vaultix</span>
+      </a>
+      <label class="search">
+        <span class="sr">Search listings</span>
+        <input id="search" type="search" placeholder="Search listings" autocomplete="off" />
+      </label>
+      <div class="top-actions">
+        <button class="btn ghost" id="accountBtn" type="button">Sign up</button>
+        <button class="btn" id="sellBtn" type="button">Sell</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="intro">
+      <h1>A marketplace where you can see who you're trading with.</h1>
+      <div class="legend">
+        <div class="legend-item">
+          <span class="badge ok">Verified</span>
+          <p>Staff checked this seller. Safer to trade with.</p>
+        </div>
+        <div class="legend-item">
+          <span class="badge risk">Risky</span>
+          <p>Unverified seller. Nobody has checked them, so trade at your own risk.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="toolbar" aria-label="Filters">
+      <div class="tabs" id="tabs" role="tablist"></div>
+      <div class="toolbar-right">
+        <label class="switch">
+          <input type="checkbox" id="verifiedOnly" />
+          <span class="track" aria-hidden="true"></span>
+          Verified sellers only
+        </label>
+        <select id="sort" aria-label="Sort listings">
+          <option value="new">Newest</option>
+          <option value="low">Price: low to high</option>
+          <option value="high">Price: high to low</option>
+        </select>
+      </div>
+    </section>
+
+    <p class="count mono" id="count"></p>
+    <section class="grid" id="grid" aria-live="polite"></section>
+
+    <section class="empty" id="empty" hidden>
+      <p class="mono empty-k" id="emptyKicker">00 listings</p>
+      <h2 id="emptyTitle">Nothing for sale yet.</h2>
+      <p id="emptyText">This market just opened. Be the first to post a listing.</p>
+      <button class="btn" id="emptySell" type="button">Post a listing</button>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-inner">
+      <span class="mono">© <span id="year"></span> Vaultix Market</span>
+      <span class="foot-note">Vaultix doesn't hold payments. Always check a seller's badge before you pay.</span>
+      <a href="admin.html" class="mono">Staff</a>
+    </div>
+  </footer>
+
+  <!-- Listing detail -->
+  <dialog id="viewDlg" class="dlg">
+    <div class="dlg-body" id="viewBody"></div>
+  </dialog>
+
+  <!-- Sign up -->
+  <dialog id="joinDlg" class="dlg">
+    <form class="dlg-body" id="joinForm" method="dialog" novalidate>
+      <div class="dlg-head"><h2>Become a seller</h2><button class="x" value="cancel" formnovalidate aria-label="Close">×</button></div>
+      <p class="muted">New sellers start as <span class="badge risk sm">Risky</span> until staff verify you.</p>
+      <label>Seller name<input name="name" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_.\-]+" placeholder="e.g. kai_trades" /></label>
+      <label>How buyers contact you<input name="contact" required minlength="3" maxlength="80" placeholder="Discord, email, etc." /></label>
+      <p class="form-err" id="joinErr" role="alert"></p>
+      <button class="btn wide" type="submit" value="default">Create seller account</button>
+    </form>
+  </dialog>
+
+  <!-- Post listing -->
+  <dialog id="postDlg" class="dlg">
+    <form class="dlg-body" id="postForm" method="dialog" novalidate>
+      <div class="dlg-head"><h2>New listing</h2><button class="x" value="cancel" formnovalidate aria-label="Close">×</button></div>
+      <label>Title<input name="title" required minlength="3" maxlength="70" placeholder="What are you selling?" /></label>
+      <div class="two">
+        <label>Price (USD)<input name="price" type="number" required min="0.01" max="10000" step="0.01" placeholder="0.00" /></label>
+        <label>Category<select name="category" id="postCat"></select></label>
+      </div>
+      <label>Description<textarea name="description" required minlength="10" maxlength="1000" rows="5" placeholder="What's included, how you deliver it, any warranty."></textarea></label>
+      <p class="form-err" id="postErr" role="alert"></p>
+      <button class="btn wide" type="submit" value="default">Publish listing</button>
+    </form>
+  </dialog>
+
+  <!-- My account -->
+  <dialog id="meDlg" class="dlg">
+    <div class="dlg-body" id="meBody"></div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
