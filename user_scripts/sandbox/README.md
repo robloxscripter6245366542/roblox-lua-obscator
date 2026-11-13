@@ -316,6 +316,46 @@ exact. The real confirmation is still an in-game run.
   script before this fix survives 17/36. The 6 deaths left are one loop
   shape, whose returns grew to just over what one shield covers.
 
+- **`replay_miss11.lua`** — replays the eleventh **real** miss report (123 ms):
+  a **slow clash**. The opponent is ~24 studs away and the ball goes ~75
+  studs/s. In the report the ball circled them for ~0.4 s before they hit it
+  back (it stayed 23-29 studs from you while aimed at them), and you dashed
+  away from the return, so it took ~0.87 s from your parry. A block from the
+  clash stream landed right after your parry. It started a fresh 1 s cooldown
+  with a 0.6 s shield, the return came after that shield, and every block
+  after it was refused.
+
+  Here the opponent **holds** the ball (it circles them) for 0.35-0.45 s
+  before each return, you may dash away after each of their hits, and the
+  server calls it a clash at the serve, after your 2nd parry, or never. Four
+  things sent the block that lands right after a parry:
+  - clash fire, Auto Spam (which outlives the clash once started), the
+    point-blank net and the "ball about to hit" check all fired in any clash,
+    even on a ball my shield already covered or one aimed at them;
+  - the shield-cover hold only applied with the opponent over 25 studs away;
+  - the Return Pre-Shield assumed they hit the ball back the moment it
+    reaches them, so its shield ran out during their hold;
+  - one pre-shield per approach: a return parried within 0.1 s did not
+    count as a new approach, so the next one got no pre-shield.
+
+  Now the script measures how long each opponent holds a ball you parried to
+  them before hitting it back (`Clash.foeSlow`). With an opponent who holds
+  it, a slow exchange (your last two parries 0.6 s or more apart), or a
+  straight return slower than a ping, a clash farther than 18 studs is timed
+  instead of spammed (the long-rally rules). The pre-shield is timed for the
+  end of their usual hold, and the cover hold also applies 18-25 studs away
+  outside a clash.
+
+  Their **first** hold can't be known in advance. Until they have held the
+  ball once, a block for an instant return is the right call (from 24 studs
+  it lands before you could react), and its shield runs out during the hold.
+  The replay counts those deaths separately. Each case runs under the three
+  server rules at 100/123/180 ms. Run: `lua-5.1.5/src/lua replay_miss11.lua`.
+  Expected: **OK: every death was at the shield gap or on their first hold**,
+  23/45 survived. The script before this fix survives 4/45 and fails (4
+  deaths it could have blocked). The report's own shape (straight returns
+  while you dash away) is survived in all 9 cases; before, 3/9.
+
 - **`ability_test.lua`** — ball tricks from the game's own ability list
   (`AbilityInfo` in the 2026-10-31 dump). Each case aims the ball at you, then
   an ability changes it:

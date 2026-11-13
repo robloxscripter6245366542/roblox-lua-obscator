@@ -416,6 +416,10 @@ local Clash = {
     FAST_GAP = 0.35,             -- parry gaps this short = a clash, whatever the distance
     CLOSE_RET = 18,              -- an opponent this close returns my parry instantly
     FAR_CLASH_T = 0.35,          -- a game clash whose return takes longer than this is a long rally
+    REACT_PAD = 0.08,            -- slow clash: a straight return longer than ping + this is timed, not spammed
+    SLOW_GAP = 0.6,              -- slow clash: my last two parries this far apart (or more) = a slow exchange
+    HOLD_SKIP = 0.25,            -- an opponent who held the ball this long before hitting it back is "slow"
+    HOLD_MEM = 10,               -- ...for this many seconds after it was seen
     farClash = false,
     fastRally = false,
     VIEW_LAG = 0.12,
@@ -2274,6 +2278,7 @@ end
 local function executeSpam()
     if Clash.holdAway then return end   -- ball heading away in a long rally (see Clash.holdAway)
     if Clash.covered then return end    -- our shield already covers it (see Shield-cover hold)
+    if Clash.farClash then return end   -- a slow or long-range clash: blocks are timed (see Clash.farClash)
     if fireBlockRemote(true) then totalSpams = totalSpams + 1 end
 end
 
@@ -3779,6 +3784,20 @@ Clash.toMeAt, Clash.heldFor = setmetatable({}, { __mode = "k" }), setmetatable({
 Clash.fastSpd, Clash.fastAt = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
 Clash.frozenSrv, Clash.stasisFor = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
 Clash.STASIS_T = 4.0        -- Stasis holds the ball this long (AbilityInfo)
+-- How long each opponent held the ball before hitting it at me (real miss
+-- report #11): from the ball (as I see it) reaching their hit radius to its
+-- target switching to me. Both views trail by about the same half ping, so
+-- the difference is their hold (minus up to VIEW_LAG: an under-estimate; 0
+-- when they hit it before it visibly got there). Only for a ball I parried
+-- to them - a serve waiting next to them is not their hold (sandbox: that
+-- slowed the pre-shield for a whole fast rally) - and every return updates it.
+Clash.nearFoeAt = setmetatable({}, { __mode = "k" })
+Clash.appFromMe = setmetatable({}, { __mode = "k" })
+Clash.foeHold, Clash.foeHoldAt = {}, {}
+Clash.foeSlow = function(name, now)
+    local h = name and Clash.foeHold[name]
+    return h ~= nil and h >= Clash.HOLD_SKIP and now - Clash.foeHoldAt[name] <= Clash.HOLD_MEM
+end
 track(RunService.Heartbeat:Connect(function()
     if destroyed or not Clash.retOn or not autoParryEnabled then return end
     local hrp = getPlayerHRP(LocalPlayer)
@@ -3842,12 +3861,18 @@ Clash.preShieldStep = function(hrp)
         -- A ball that was aimed at me and is now aimed at someone else was
         -- parried by me. The game's own BlockSuccess signal never showed up in
         -- the real miss reports, so this is how parries are noticed there.
-        if type(target) == "string" and target ~= myName and Clash.retLast[ball] == myName then
+        local fromMe = type(target) == "string" and target ~= myName and Clash.retLast[ball] == myName
+        if fromMe then
             Clash.noteParry(now)
         end
         if target == myName and Clash.retLast[ball] ~= myName then
             Clash.toMeAt[ball] = now
             Clash.toMeLast = now
+            local from, nf = Clash.retLast[ball], Clash.nearFoeAt[ball]
+            if type(from) == "string" and Clash.appFromMe[ball] then
+                Clash.foeHold[from], Clash.foeHoldAt[from] = nf and now - nf or 0, now
+            end
+            Clash.nearFoeAt[ball], Clash.appFromMe[ball] = nil, nil
         end
         Clash.retLast[ball] = target
         -- Held ability launch (real miss report #6, 158 ms). Another player's
@@ -3916,9 +3941,31 @@ Clash.preShieldStep = function(hrp)
         -- a fixed 0.8s lock still held the NEXT approach in a long rally
         -- (sandbox: round trips ~0.7s).
         if type(target) == "string" and target ~= myName then
+            -- (a switch from me always starts one: in a quick exchange the
+            -- ball can be aimed at me for under 0.1s - sandbox, report #11)
             if target ~= Clash.retPrev[ball] or Clash.retPrevAt[ball] == nil
-                or now - Clash.retPrevAt[ball] > 0.1 then
+                or now - Clash.retPrevAt[ball] > 0.1 or fromMe then
                 Clash.retApp[ball] = (Clash.retApp[ball] or 0) + 1
+                Clash.nearFoeAt[ball] = nil
+                if fromMe then
+                    Clash.appFromMe[ball] = true
+                elseif target ~= Clash.retPrev[ball] then
+                    Clash.appFromMe[ball] = nil
+                end
+            end
+            if not Clash.nearFoeAt[ball] then
+                local bp = ball.Parent and getBallPosition(ball)
+                if bp then
+                    for _, pl in ipairs(Players:GetPlayers()) do
+                        if pl.Name == target then
+                            local o = getPlayerHRP(pl)
+                            if o and (o.Position - bp).Magnitude <= EFFECTIVE_HIT_RADIUS then
+                                Clash.nearFoeAt[ball] = now
+                            end
+                            break
+                        end
+                    end
+                end
             end
             -- The target reaches me half a ping after the opponent hits, but the
             -- ball on screen is VIEW_LAG further behind - it is still flying to
@@ -4007,8 +4054,22 @@ Clash.preShieldStep = function(hrp)
                     local toP = ohrp.Position - bp
                     local dP = toP.Magnitude
                     local closing = dP > 1e-3 and vel:Dot(toP) / dP or 0
-                    if closing > 1 and speed > 1 then
-                        local ttiToP = math.max(dP - EFFECTIVE_HIT_RADIUS, 0) / closing
+                    -- An opponent seen HOLDING the ball before hitting it back
+                    -- (real miss report #11: ~0.4-0.5s): the return comes
+                    -- that much later than "as it reaches them", so a block
+                    -- timed for that ran out before it, and its fresh 1s
+                    -- cooldown refused every block after. Time it for the end
+                    -- of their usual hold instead - also while they hold it
+                    -- (the ball circling them is not closing on them).
+                    local holdLeft, inHold = 0, false
+                    if Clash.foeSlow(target, now) then
+                        local nf = Clash.nearFoeAt[ball]
+                        inHold = nf ~= nil
+                        holdLeft = math.max(Clash.foeHold[target] - (nf and now - nf or 0), 0)
+                    end
+                    if (closing > 1 or inHold) and speed > 1 then
+                        local ttiToP = closing > 1 and math.max(dP - EFFECTIVE_HIT_RADIUS, 0) / closing or 0
+                        ttiToP = ttiToP + holdLeft
                         -- Your own movement changes the return time: dashing/jumping
                         -- IN shortens it, dashing AWAY lengthens it (firing early
                         -- then would let the shield expire before the ball lands and
@@ -4383,12 +4444,24 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
     -- than FAR_CLASH_T at the ball's speed, it is a long-range rally whatever
     -- the server calls it: no clash fire, and the long-rally rules time the
     -- block. (Unknown partner, or a fast exchange: still a clash.)
+    -- Slow clash (real miss report #11, 123 ms): a ~75 studs/s ball between me
+    -- and a player ~24 studs away, in clash fire. They held the ball ~0.4s
+    -- before each return and I dashed away from it. A block in the clash
+    -- stream landed right after my parry and started a fresh 1s cooldown; the
+    -- return took ~0.87s, that shield ran out first and every block after was
+    -- refused. Clash fire is only needed when a return can land before a block
+    -- I send on seeing it could. So it is timed instead (the long-rally rules)
+    -- whenever the straight return - from their hit radius to mine - takes
+    -- longer than a ping plus REACT_PAD, or the exchange is SLOW: my last two
+    -- parries SLOW_GAP or more apart, or this opponent was seen holding the
+    -- ball (Clash.foeSlow) - with them farther than CLOSE_RET (an instant
+    -- return keeps the point-blank and dash-in nets).
     do
         local tgt = closestBall and Clash.targetOf(closestBall)
         if tgt and tgt ~= LocalPlayer.Name then Clash.lastOther[closestBall] = tgt end
         local partner = closestBall and ((tgt and tgt ~= LocalPlayer.Name) and tgt or Clash.lastOther[closestBall])
         Clash.farClash = false
-        if clashActive and partner and not Clash.fastRally then
+        if partner and not Clash.fastRally then
             local phrp
             for _, pl in ipairs(Players:GetPlayers()) do
                 if pl.Name == partner then phrp = getPlayerHRP(pl) break end
@@ -4396,7 +4469,16 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
             local spd = ballVel and ballVel.Magnitude or 0
             if phrp and spd > 1 then
                 local d = (phrp.Position - humanoidRootPart.Position).Magnitude
-                Clash.farClash = d > Clash.PARTNER_NEAR and d / spd > Clash.FAR_CLASH_T
+                local straight = math.max(d - 2 * EFFECTIVE_HIT_RADIUS, 0) / spd
+                local react = math.max(smoothedPing, currentPing) / 1000 + Clash.REACT_PAD
+                local slowTempo = Clash.parryAt[1] - Clash.parryAt[2] >= Clash.SLOW_GAP
+                    and currentTime - Clash.parryAt[1] <= 3
+                -- (an opponent seen holding the ball counts with or without
+                -- a clash: Auto Spam, once started, outlives the clash)
+                Clash.farClash = ((clashActive or clashDetected)
+                    and ((clashActive and d > Clash.PARTNER_NEAR and d / spd > Clash.FAR_CLASH_T)
+                        or straight > react or (slowTempo and d > Clash.CLOSE_RET)))
+                    or (Clash.foeSlow(partner, currentTime) and d > Clash.CLOSE_RET)
             end
         end
     end
@@ -4678,7 +4760,7 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
                 -- aimed at someone else - e.g. the instant after my own parry -
                 -- firing here lands a block on nothing and spends the cooldown
                 -- the ball's quick return needs (real miss report #1).
-                and ((clashActive and not Clash.holdAway) or Clash.targetOf(closestBall) == nil
+                and ((clashActive and not Clash.holdAway and not Clash.farClash) or Clash.targetOf(closestBall) == nil
                     or Clash.targetOf(closestBall) == LocalPlayer.Name)
 
             -- Dash-aware: while you're dashing (and briefly after), your
@@ -4781,7 +4863,7 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- ball coming in, so a motion check fires too late (sandbox replay).
         local pointBlank = closestBall ~= nil and closestDistance <= (EFFECTIVE_HIT_RADIUS + 11)
             and (surfaceTTI <= shieldLead or velocity == 0)
-            and (amTargeted or ((clashActive or fastClashHold) and not Clash.holdAway)
+            and (amTargeted or ((clashActive or fastClashHold) and not Clash.holdAway and not Clash.farClash)
                 or Clash.targetOf(closestBall) == nil)
         -- Clash-incoming PRE-SHIELD. The way you die to "they dash into me and
         -- clash inside me": once the ball is hit from INSIDE you it lands in a few
@@ -4955,7 +5037,14 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         -- away, and that is a NEW pass the old shield may not cover (sandbox).
         -- Never in a game clash (blocks are accepted back-to-back there), nor
         -- with another player within PARTNER_NEAR studs (point-blank exchange).
-        if Clash.farRally and velocity > 0 and closingSpeed >= 0.5 * velocity
+        -- Also with an opponent 18-25 studs away outside any clash (real miss
+        -- report #11): the point-blank net kept firing at a ball my shield
+        -- already covered, one block landed right after the parry, and its
+        -- shield ran out before their slow return. Closer than CLOSE_RET (an
+        -- instant return) or in a fast exchange, blocks keep streaming.
+        local nearSlow = not Clash.farRally and not Clash.fastRally and not clashDetected
+            and Clash.nearestOther(humanoidRootPart.Position) > Clash.CLOSE_RET
+        if (Clash.farRally or nearSlow) and velocity > 0 and closingSpeed >= 0.5 * velocity
             and Clash.targetOf(closestBall) == LocalPlayer.Name then
             local arrive = currentTime - currentPing / 2000 - Clash.VIEW_LAG
                 + math.max(closestDistance - EFFECTIVE_HIT_RADIUS, 0) / closingSpeed
@@ -4969,7 +5058,8 @@ mainLoopConn = RunService.Heartbeat:Connect(function()
         end
         if Clash.covered then
             -- held: the shield that is up already takes this ball
-        elseif amTargeted or ((clashActive or fastClashHold) and not Clash.holdAway) or imminentThreat or pointBlank or clashIncoming then
+        elseif amTargeted or ((clashActive or fastClashHold) and not Clash.holdAway and not Clash.farClash)
+            or imminentThreat or pointBlank or clashIncoming then
             if (withinRange or willArriveInTime or clashIncoming) and (alwaysFire or (coverable and inShieldWindow)) then executeParry(clashRate) end
             -- Fire block every frame while the shield window is open (or mid-clash
             -- / point-blank), so jitter in the estimate can't leave a gap - the
