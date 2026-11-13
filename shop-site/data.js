@@ -4,7 +4,7 @@
 const Market = (() => {
   const API = window.VAULTIX_API || "/api/market";
   const CATEGORIES = ["Currency", "Accounts", "Top ups", "Items", "Boosting", "Gift cards"];
-  const GAMES = ["Roblox", "Blox Fruits", "Murder Mystery 2", "Adopt Me", "Pet Simulator 99", "Blade Ball", "Grow a Garden", "Fortnite", "Minecraft", "Valorant", "GTA V", "Pokemon Go", "Clash of Clans", "Steam"];
+  const Games = window.VAULTIX_GAMES; // from games.js
   const K = { sellers: "vx-demo-sellers", listings: "vx-demo-listings", session: "vx-session", admin: "vx-admin-key" };
   let mode = "remote";
 
@@ -52,9 +52,13 @@ const Market = (() => {
       if (!(price > 0 && price <= 10000)) fail("Price must be between 0.01 and 10000");
       if (!CATEGORIES.includes(b.category)) fail("Pick a category");
       const was = Math.round(Number(b.wasPrice) * 100) / 100;
+      const known = Games.find(b.game);
+      const image = known ? null : b.image;
+      if (!known && !/^data:image\/(jpeg|png|webp);base64,/.test(image || "")) fail("Add a picture for games that are not in the list");
       const l = {
         id: rid("l_"), sellerId: s.id,
-        game: text(b.game, "Game", 2, 30),
+        game: known ? known.name : text(b.game, "Game", 2, 30),
+        hasImage: !!image, image: image || null,
         title: text(b.title, "Title", 3, 70),
         description: text(b.description, "Description", 10, 1000),
         price, wasPrice: was > price && was <= 100000 ? was : null,
@@ -93,8 +97,8 @@ const Market = (() => {
 
   // ---------- remote backend ----------
   async function remote(action, body = {}) {
-    const isList = action === "list";
-    const r = await fetch(isList ? `${API}?action=list` : API, isList ? {} : {
+    const isGet = action === "list" || action === "icons";
+    const r = await fetch(isGet ? `${API}?action=${action}` : API, isGet ? {} : {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...body }),
     });
     const j = await r.json().catch(() => ({ error: "Bad server response" }));
@@ -126,8 +130,19 @@ const Market = (() => {
 
   return {
     CATEGORIES,
-    GAMES,
+    Games,
     init,
+    // Icon per catalogue game: { [name]: url }. Falls back to just the fixed Steam images.
+    async icons() {
+      if (mode === "remote") {
+        try { return (await remote("icons")).icons || {}; } catch {}
+      }
+      const out = {};
+      for (const g of Games.GAMES) if (g.steam) out[g.name] = Games.steamIcon(g.steam);
+      return out;
+    },
+    // URL of a seller-uploaded picture
+    imageUrl: (l) => (l.image ? l.image : l.hasImage && mode === "remote" ? `${API}?action=image&id=${encodeURIComponent(l.id)}` : null),
     get mode() { return mode; },
     list: () => call("list"),
     session,

@@ -15,10 +15,20 @@ It starts **empty**: there are no built-in products.
 - Buyers can switch on **Verified sellers only** to hide risky listings.
 - Vaultix doesn't handle payments. Buyers contact the seller directly.
 
+## Game pictures
+
+- Games listed in `games.js` (about 40: popular Roblox games, Fortnite, Minecraft, Pokemon Go, GTA V, and more) show their **official icon**.
+  The API looks icons up live (Roblox thumbnails, App Store and Steam) and caches them, because Roblox icon links expire.
+- For any other game, the seller picks **"Other game"**, types the name and **uploads their own picture**. The browser shrinks it,
+  and the server only accepts real JPEG, PNG or WebP files up to 200 KB.
+- To add a game, add a row to `games.js` with its Roblox universe ID, App Store app ID or Steam app ID.
+- Game names, logos and icons belong to their owners. They're shown only to identify which game a listing is for.
+
 ## Files
 
 - `index.html`, `app.js`: the market
 - `admin.html`, `admin.js`: the Staff page (verify / ban sellers). It's linked as "Staff" in the footer.
+- `games.js`: the game list (used by both the page and the API)
 - `data.js`: talks to the API, or uses demo mode if the API isn't available
 - `styles.css`, `logo.svg`, `favicon.svg`
 - `../api/market.js`: the server (a Vercel serverless function)

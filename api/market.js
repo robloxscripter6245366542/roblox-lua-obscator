@@ -12,11 +12,21 @@
 //  Env vars (Vercel):
 //   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN   storage (required)
 //   MARKET_ADMIN_KEY                                    admin password (required for admin)
+//
+//  Images
+//   - Games in shop-site/games.js use their official icon (?action=icons, looked up live and
+//     cached, because Roblox icon URLs expire).
+//   - Any other game is "Other": the seller must upload their own picture (JPEG/PNG/WebP, max
+//     ~200 KB, already resized in the browser). It is served from ?action=image&id=<listingId>.
 // ============================================================================
 const crypto = require('crypto')
+const { GAMES, find: findGame, steamIcon } = require('../shop-site/games.js')
 
 const SELLERS = 'mkt:sellers'
 const LISTINGS = 'mkt:listings'
+const IMAGES = 'mkt:images'
+const MAX_IMAGE_BYTES = 200 * 1024
+const ICON_TTL_MS = 6 * 60 * 60 * 1000
 const CATEGORIES = ['Currency', 'Accounts', 'Top ups', 'Items', 'Boosting', 'Gift cards']
 const MAX_LISTINGS_PER_SELLER = 50
 
@@ -58,6 +68,47 @@ function str(v, name, min, max) {
   const s = typeof v === 'string' ? v.trim() : ''
   if (s.length < min || s.length > max) throw bad(`${name} must be ${min}-${max} characters`)
   return s
+}
+
+// Validate an uploaded picture: a data URL whose bytes really are JPEG, PNG or WebP (no SVG/HTML).
+function parseImage(dataUrl) {
+  const m = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/.exec(String(dataUrl || ''))
+  if (!m) throw bad('Picture must be a JPEG, PNG or WebP image')
+  const buf = Buffer.from(m[2], 'base64')
+  if (buf.length > MAX_IMAGE_BYTES) throw bad('Picture is too large (max 200 KB)')
+  const magic = {
+    jpeg: buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff,
+    png: buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+    webp: buf.slice(0, 4).toString('latin1') === 'RIFF' && buf.slice(8, 12).toString('latin1') === 'WEBP',
+  }
+  if (!magic[m[1]]) throw bad('Picture file is not a valid image')
+  return { type: `image/${m[1]}`, data: m[2] }
+}
+
+// Official game icons, looked up live and cached per server instance.
+let iconCache = { at: 0, icons: null }
+async function loadIcons() {
+  if (iconCache.icons && Date.now() - iconCache.at < ICON_TTL_MS) return iconCache.icons
+  const icons = {}
+  const getJson = (url) => fetch(url, { signal: AbortSignal.timeout(6000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+  const rbx = GAMES.filter((g) => g.roblox), apl = GAMES.filter((g) => g.apple)
+  const [rj, aj] = await Promise.all([
+    rbx.length ? getJson(`https://thumbnails.roblox.com/v1/games/icons?universeIds=${rbx.map((g) => g.roblox).join(',')}&size=256x256&format=Png&isCircular=false`) : null,
+    apl.length ? getJson(`https://itunes.apple.com/lookup?country=us&id=${apl.map((g) => g.apple).join(',')}`) : null,
+  ])
+  for (const t of (rj && rj.data) || []) {
+    const g = rbx.find((x) => x.roblox === t.targetId)
+    if (g && t.state === 'Completed' && /^https:\/\/[a-z0-9.-]+\.rbxcdn\.com\//.test(t.imageUrl)) icons[g.name] = t.imageUrl
+  }
+  for (const a of (aj && aj.results) || []) {
+    const g = apl.find((x) => x.apple === a.trackId)
+    const url = a.artworkUrl512 || a.artworkUrl100
+    if (g && /^https:\/\/[a-z0-9.-]+\.mzstatic\.com\//.test(url)) icons[g.name] = url.replace(/\/\d+x\d+bb\.(jpg|png)$/, '/256x256bb.jpg')
+  }
+  for (const g of GAMES) if (g.steam) icons[g.name] = steamIcon(g.steam)
+  // Only cache a complete-ish answer, so a temporary outage is retried on the next request.
+  if (Object.keys(icons).length >= GAMES.length * 0.8) iconCache = { at: Date.now(), icons }
+  return icons
 }
 
 // What the public sees about a seller (no contact hash, no token)
@@ -114,10 +165,15 @@ const actions = {
     if (!(price > 0 && price <= 10000)) throw bad('Price must be between 0.01 and 10000')
     if (!CATEGORIES.includes(b.category)) throw bad('Pick a category')
     const was = Math.round(Number(b.wasPrice) * 100) / 100
+    const known = findGame(b.game)
+    // Listed games use their official icon; any other game needs the seller's own picture.
+    const image = known ? null : b.image ? parseImage(b.image) : null
+    if (!known && !image) throw bad('Add a picture for games that are not in the list')
     const listing = {
       id: newId('l_'),
       sellerId: s.id,
-      game: str(b.game, 'Game', 2, 30),
+      game: known ? known.name : str(b.game, 'Game', 2, 30),
+      hasImage: !!image,
       title: str(b.title, 'Title', 3, 70),
       description: str(b.description, 'Description', 10, 1000),
       price,
@@ -125,6 +181,7 @@ const actions = {
       category: b.category,
       createdAt: Date.now(),
     }
+    if (image) await redis(['HSET', IMAGES, listing.id, JSON.stringify(image)])
     await put(LISTINGS, listing)
     return { listing: { ...listing, seller: publicSeller(s) } }
   },
@@ -134,6 +191,7 @@ const actions = {
     const l = await getOne(LISTINGS, String(b.listingId || ''))
     if (!l || l.sellerId !== s.id) throw bad('Listing not found', 404)
     await redis(['HDEL', LISTINGS, l.id])
+    await redis(['HDEL', IMAGES, l.id])
     return { ok: true }
   },
 
@@ -161,7 +219,10 @@ const actions = {
     authAdmin(b)
     const id = String(b.sellerId || '')
     const listings = (await getAll(LISTINGS)).filter((l) => l.sellerId === id)
-    for (const l of listings) await redis(['HDEL', LISTINGS, l.id])
+    for (const l of listings) {
+      await redis(['HDEL', LISTINGS, l.id])
+      await redis(['HDEL', IMAGES, l.id])
+    }
     await redis(['HDEL', SELLERS, id])
     return { ok: true, removedListings: listings.length }
   },
@@ -169,16 +230,36 @@ const actions = {
   async adminRemove(b) {
     authAdmin(b)
     await redis(['HDEL', LISTINGS, String(b.listingId || '')])
+    await redis(['HDEL', IMAGES, String(b.listingId || '')])
     return { ok: true }
   },
 }
+
+const GET_ACTIONS = ['list', 'icons', 'image']
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store')
   try {
     const body = req.method === 'POST' ? (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {}) : {}
     const action = req.method === 'GET' ? (req.query && req.query.action) || 'list' : body.action
-    if (req.method === 'GET' && action !== 'list') throw bad('Use POST', 405)
+    if (req.method === 'GET' && !GET_ACTIONS.includes(action)) throw bad('Use POST', 405)
+
+    if (req.method === 'GET' && action === 'icons') {
+      res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=21600, stale-while-revalidate=86400')
+      return res.status(200).json({ icons: await loadIcons() })
+    }
+    if (req.method === 'GET' && action === 'image') {
+      const raw = await redis(['HGET', IMAGES, String((req.query && req.query.id) || '')])
+      if (!raw) throw bad('Not found', 404)
+      const img = JSON.parse(raw)
+      res.setHeader('Content-Type', img.type)
+      res.setHeader('X-Content-Type-Options', 'nosniff')
+      res.setHeader('Content-Security-Policy', "default-src 'none'")
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable') // listing images never change
+      res.statusCode = 200
+      return res.end(Buffer.from(img.data, 'base64'))
+    }
+
     if (req.method !== 'GET' && req.method !== 'POST') throw bad('Method not allowed', 405)
     const fn = Object.prototype.hasOwnProperty.call(actions, action) && actions[action]
     if (!fn) throw bad('Unknown action', 404)

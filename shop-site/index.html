@@ -101,14 +101,24 @@
     <form class="dlg-body" id="postForm" method="dialog" novalidate>
       <div class="dlg-head"><h2>New listing</h2><button class="x" value="cancel" formnovalidate aria-label="Close">×</button></div>
       <div class="two">
-        <label>Game<input name="game" list="gameList" required minlength="2" maxlength="30" placeholder="e.g. Blox Fruits" /></label>
+        <label>Game<select name="game" id="postGame" required></select></label>
         <label>Category<select name="category" id="postCat"></select></label>
       </div>
-      <datalist id="gameList"></datalist>
+      <div class="other-game" id="otherGame" hidden>
+        <label>Game name<input name="gameOther" maxlength="30" placeholder="Which game?" /></label>
+        <div class="pic">
+          <label class="pic-drop" id="picDrop">
+            <input type="file" id="picInput" accept="image/png,image/jpeg,image/webp" />
+            <img id="picPreview" alt="" hidden />
+            <span id="picHint">Add a picture</span>
+          </label>
+          <p class="muted pic-note">This game isn't in our list, so add your own picture. It's shown on your listing. PNG, JPG or WebP.</p>
+        </div>
+      </div>
       <label>Title<input name="title" required minlength="3" maxlength="70" placeholder="e.g. Dragon Permanent" /></label>
       <div class="two">
         <label>Price (USD)<input name="price" type="number" required min="0.01" max="10000" step="0.01" placeholder="0.00" /></label>
-        <label>Original price <span class="opt">optional</span><input name="wasPrice" type="number" min="0.01" max="100000" step="0.01" placeholder="Shows a discount" /></label>
+        <label><span>Original price <span class="opt">(optional)</span></span><input name="wasPrice" type="number" min="0.01" max="100000" step="0.01" placeholder="Shows a discount" /></label>
       </div>
       <label>Description<textarea name="description" required minlength="10" maxlength="1000" rows="4" placeholder="What's included, how you deliver it, any warranty."></textarea></label>
       <p class="form-err" id="postErr" role="alert"></p>
@@ -120,6 +130,7 @@
 
   <div class="toast" id="toast" role="status"></div>
 
+  <script src="games.js"></script>
   <script src="data.js"></script>
   <script src="app.js"></script>
 </body>

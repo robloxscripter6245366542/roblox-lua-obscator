@@ -261,3 +261,26 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .card-seller { font-size: .8rem; }
   .sec-head h2 { font-size: 1.35rem; }
 }
+
+/* ---------- game art & pictures ---------- */
+img.gtile { object-fit: cover; background: var(--card-top); }
+.card-top { overflow: hidden; }
+.card-top .art-icon { width: 96px; height: 96px; border-radius: 20px; font-size: 2rem; box-shadow: 0 8px 22px -8px rgba(0, 0, 0, .6); }
+.card-top .art-cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.card-top .badge { z-index: 1; backdrop-filter: blur(6px); background-color: rgba(16, 17, 23, .72); }
+.view-pic { width: 100%; max-height: 300px; object-fit: cover; border-radius: 10px; background: var(--card-top); }
+
+.other-game { display: grid; gap: 12px; padding: 14px; border: 1px dashed var(--line); border-radius: 10px; }
+.pic { display: flex; gap: 14px; align-items: center; }
+.pic-drop {
+  position: relative; flex-shrink: 0; width: 112px; height: 112px; border-radius: 12px; overflow: hidden; cursor: pointer;
+  display: grid !important; place-items: center; background: var(--bg); border: 1px dashed var(--muted);
+  color: var(--muted); font-size: .82rem; text-align: center;
+}
+.pic-drop:hover { border-color: var(--brand); color: var(--text); }
+.pic-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.pic-drop img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.pic-note { font-size: .84rem; }
+@media (max-width: 640px) {
+  .card-top .art-icon { width: 68px; height: 68px; border-radius: 15px; font-size: 1.4rem; }
+}

@@ -10,10 +10,14 @@ const badge = (s, sm) => s && s.verified
 const CHEVRON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
 const PERSON = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>`;
 
-const state = { listings: [], cat: null, game: null, q: "", verifiedOnly: false, sort: "new", browseAll: false, me: null };
+const state = { listings: [], icons: {}, cat: null, game: null, q: "", verifiedOnly: false, sort: "new", browseAll: false, me: null };
+const OTHER = "__other";
 
-/* ---------- game tiles: a coloured monogram per game (no third-party logos) ---------- */
-function gameTile(game) {
+/* ---------- game art ----------
+   1. seller's own picture (games not in games.js)
+   2. official game icon (looked up by the API)
+   3. coloured monogram if neither is available or an image fails to load */
+function monogram(game) {
   const name = String(game || "?");
   let h = 0;
   for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
@@ -22,6 +26,31 @@ function gameTile(game) {
   const mono = (words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2)).toUpperCase();
   return `<span class="gtile" style="background:linear-gradient(135deg,hsl(${hue} 70% 52%),hsl(${(hue + 40) % 360} 65% 38%))">${esc(mono)}</span>`;
 }
+const isSteam = (game) => { const g = Market.Games.find(game); return !!(g && g.steam); };
+const img = (src, cls, game) => `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-game="${esc(game)}" data-cls="${cls}" />`;
+// Small square tile (card meta row, menus, detail header)
+function gameTile(game) {
+  const icon = state.icons[game];
+  return icon ? img(icon, "gtile", game) : monogram(game);
+}
+// Big art at the top of a card
+function cardArt(l) {
+  const own = Market.imageUrl(l);
+  if (own) return img(own, "art-cover", l.game);
+  const icon = state.icons[l.game];
+  if (icon) return img(icon, isSteam(l.game) ? "art-cover" : "gtile art-icon", l.game);
+  return monogram(l.game).replace('class="gtile"', 'class="gtile art-icon"');
+}
+// Broken image -> monogram
+document.addEventListener("error", (e) => {
+  const el = e.target;
+  if (el.tagName !== "IMG" || el.dataset.game == null) return;
+  const t = document.createElement("span");
+  t.innerHTML = monogram(el.dataset.game);
+  const m = t.firstChild;
+  if ((el.dataset.cls || "").includes("art")) m.classList.add("art-icon");
+  el.replaceWith(m);
+}, true);
 
 /* ---------- recently viewed (per browser) ---------- */
 const RECENT = "vx-recent";
@@ -36,7 +65,7 @@ function card(l) {
   const off = pctOff(l);
   return `
   <button class="card" data-id="${esc(l.id)}" type="button">
-    <span class="card-top">${gameTile(l.game)}${badge(l.seller, true)}</span>
+    <span class="card-top">${cardArt(l)}${badge(l.seller, true)}</span>
     <span class="card-body">
       <span class="card-meta">${gameTile(l.game)}<span>${esc(l.game)} · ${esc(l.category)}</span></span>
       <span class="card-title">${esc(l.title)}</span>
@@ -195,6 +224,7 @@ function openListing(l) {
       <div class="view-top">${gameTile(l.game)}<div><p class="muted">${esc(l.game)} · ${esc(l.category)}</p><h2>${esc(l.title)}</h2></div></div>
       <button class="x" data-close aria-label="Close">×</button>
     </div>
+    ${Market.imageUrl(l) ? `<img class="view-pic" src="${esc(Market.imageUrl(l))}" alt="Picture of ${esc(l.title)}" />` : ""}
     <div class="view-price"><b>${money(l.price)}</b>${off ? `<s>${money(l.wasPrice)}</s><span class="off">-${off}%</span>` : ""}</div>
     ${trust}
     <p class="desc">${esc(l.description)}</p>
@@ -249,24 +279,72 @@ $("#joinForm").addEventListener("submit", async (e) => {
   btn.disabled = false;
 });
 
+let picData = null;
+function resetPic() {
+  picData = null;
+  $("#picInput").value = "";
+  $("#picPreview").hidden = true; $("#picPreview").removeAttribute("src");
+  $("#picHint").hidden = false;
+}
+function toggleOther() {
+  const other = $("#postGame").value === OTHER;
+  $("#otherGame").hidden = !other;
+  $("#postForm").elements.gameOther.required = other;
+}
 function openPost() {
-  $("#postCat").innerHTML = Market.CATEGORIES.map((c) => `<option${c === state.cat ? " selected" : ""}>${esc(c)}</option>`).join("");
-  const games = [...new Set([...Market.GAMES, ...state.listings.map((l) => l.game)])].sort();
-  $("#gameList").innerHTML = games.map((g) => `<option value="${esc(g)}"></option>`).join("");
+  $("#postCat").innerHTML = Market.CATEGORIES.map((c) => `<option>${esc(c)}</option>`).join("");
+  const G = Market.Games.GAMES;
+  const group = (label, list) => `<optgroup label="${label}">${list.map((g) => `<option>${esc(g.name)}</option>`).join("")}</optgroup>`;
+  $("#postGame").innerHTML = `<option value="" disabled selected>Choose a game</option>`
+    + group("Roblox", G.filter((g) => g.roblox || g.name === "Roblox"))
+    + group("Mobile & cross-platform", G.filter((g) => g.apple && g.name !== "Roblox" && g.name !== "Steam"))
+    + group("PC", G.filter((g) => g.steam || g.name === "Steam"))
+    + `<option value="${OTHER}">Other game (not listed)…</option>`;
   $("#postErr").textContent = "";
   $("#postForm").reset();
+  resetPic();
   if (state.cat) $("#postCat").value = state.cat;
-  if (state.game) $("#postForm").elements.game.value = state.game;
+  if (state.game) {
+    const known = Market.Games.find(state.game);
+    $("#postGame").value = known ? known.name : OTHER;
+    if (!known) $("#postForm").elements.gameOther.value = state.game;
+  }
+  toggleOther();
   $("#postDlg").showModal();
 }
+$("#postGame").addEventListener("change", toggleOther);
+
+// Shrink the picture in the browser (max 640px, JPEG) so uploads stay small.
+$("#picInput").addEventListener("change", async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  $("#postErr").textContent = "";
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { resetPic(); $("#postErr").textContent = "Use a PNG, JPG or WebP picture."; return; }
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 640 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    let q = 0.85, url = c.toDataURL("image/jpeg", q);
+    while (url.length > 260000 && q > 0.4) { q -= 0.1; url = c.toDataURL("image/jpeg", q); } // ~190 KB of bytes
+    if (url.length > 270000) throw new Error("too big");
+    picData = url;
+    $("#picPreview").src = url; $("#picPreview").hidden = false; $("#picHint").hidden = true;
+  } catch { resetPic(); $("#postErr").textContent = "Couldn't read that picture. Try another one."; }
+});
 $("#postForm").addEventListener("submit", async (e) => {
   if (e.submitter && e.submitter.value === "cancel") return;
   e.preventDefault();
   const el = e.target.elements, btn = e.target.querySelector("[type=submit]");
   btn.disabled = true; $("#postErr").textContent = "";
   try {
+    const other = el.game.value === OTHER;
+    if (!el.game.value) throw new Error("Choose a game");
+    if (other && !picData) throw new Error("Add a picture for your game");
     await Market.post({
-      game: el.game.value, category: el.category.value, title: el.title.value,
+      game: other ? el.gameOther.value : el.game.value, image: other ? picData : undefined,
+      category: el.category.value, title: el.title.value,
       price: el.price.value, wasPrice: el.wasPrice.value, description: el.description.value,
     });
     $("#postDlg").close(); toast("Listing published."); await refresh();
@@ -325,5 +403,6 @@ async function refresh() {
   state.listings = (await Market.init()).listings;
   $("#demoBar").hidden = Market.mode !== "demo";
   render();
+  Market.icons().then((icons) => { state.icons = icons; render(); });
   await loadMe();
 })();
