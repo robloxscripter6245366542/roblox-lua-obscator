@@ -39,6 +39,12 @@ function route() {
     if (state.me) Market.stripeStatus().catch(() => {}).then(loadMe).then(() => openAccount("wallet"));
     return;
   }
+  if (name === "cards") {
+    history.replaceState(null, "", location.pathname + location.search);
+    page = null; showMarket();
+    if (state.me) { savedCards = null; openAccount("cards"); }
+    return;
+  }
   page = (name === "checkout" || name === "order") && id ? { name, id } : null;
   if (page) showPage(); else showMarket();
 }
@@ -54,6 +60,17 @@ function stopPoll() { if (poll) { clearTimeout(poll); poll = null; } }
 
 /* ============================== checkout ============================== */
 let payMethod = "card";
+// Cards the buyer saved with Stripe (brand + last 4 only). null = not loaded yet.
+let savedCards = null;
+const BRAND_LOGO = { visa: "visa", mastercard: "mastercard", amex: "americanexpress", discover: "discover", jcb: "jcb", diners: "dinersclub" };
+const brandName = (b) => ({ visa: "Visa", mastercard: "Mastercard", amex: "Amex", discover: "Discover", jcb: "JCB", diners: "Diners", unionpay: "UnionPay" }[b] || "Card");
+const cardLogo = (b) => (BRAND_LOGO[b] ? payLogo(BRAND_LOGO[b]) : `<span class="ptag">${esc(brandName(b))}</span>`);
+async function loadCards() {
+  if (!state.me || !Market.canPay) { savedCards = []; return savedCards; }
+  try { savedCards = (await Market.cards()).cards || []; } catch { savedCards = []; }
+  return savedCards;
+}
+const isSaved = () => payMethod.startsWith("saved:");
 const METHODS = [
   { id: "card", label: "Credit or debit card", api: "card", logos: ["visa", "mastercard", "americanexpress", "discover", "jcb", "dinersclub"] },
   { id: "apple", label: "Apple Pay", api: "card", logos: ["applepay"] },
@@ -71,9 +88,11 @@ function renderCheckout() {
     return;
   }
   const s = l.seller, mine = state.me && state.me.id === s.id;
-  const m = METHODS.find((x) => x.id === payMethod) || METHODS[0];
+  if (savedCards === null && state.me) { savedCards = []; loadCards().then(() => { if (page && page.name === "checkout") renderCheckout(); }); }
+  const m = isSaved() ? { api: "card" } : METHODS.find((x) => x.id === payMethod) || METHODS[0];
   const fee = feeFor(l.price, m.api), total = r2(l.price + fee);
   const bal = state.wallet ? state.wallet.available : 0;
+  const cards = savedCards || [];
   v.innerHTML = `
     <a class="back" href="#/">← Back to market</a>
     <div class="co">
@@ -100,7 +119,20 @@ function renderCheckout() {
           <input type="checkbox" id="riskOk" />
           <span><b>This seller is not verified.</b> Nobody has checked who they are. Your money is held until you confirm delivery, but check everything before you confirm.</span>
         </label>`}
-        <h2 class="sub">Payment method</h2>
+        ${cards.length ? `
+        <h2 class="sub">Your saved cards</h2>
+        <div class="pm-list" role="radiogroup" aria-label="Saved cards">
+          ${cards.map((c) => {
+            const val = `saved:${c.id}`;
+            return `<label class="pm saved${payMethod === val ? " on" : ""}">
+              <input type="radio" name="pm" value="${esc(val)}" ${payMethod === val ? "checked" : ""} />
+              <span class="pm-dot" aria-hidden="true"></span>
+              <span class="pm-label">•••• ${esc(c.last4)}<span class="one-click">Pay in one click!</span></span>
+              <span class="pm-tags">${cardLogo(c.brand)}</span>
+            </label>`;
+          }).join("")}
+        </div>
+        <h2 class="sub">Other payment methods</h2>` : `<h2 class="sub">Payment method</h2>`}
         <div class="pm-list" role="radiogroup" aria-label="Payment method">
           ${METHODS.map((x) => {
             const disabled = x.id === "balance" && (!state.me || bal < r2(l.price));
@@ -114,7 +146,10 @@ function renderCheckout() {
             </label>`;
           }).join("")}
         </div>
-        <p class="secure">🔒 ${m.api === "balance" ? "Paid instantly from your Vaultix balance. No fee." : "You'll enter your payment details on Stripe's secure page. Vaultix never sees your card number."}</p>
+        <p class="secure">🔒 ${m.api === "balance" ? "Paid instantly from your Vaultix balance. No fee."
+          : isSaved() ? "Charged to your saved card through Stripe. Your bank may ask you to confirm."
+          : payMethod === "card" ? "You'll enter your card on Stripe's secure page, where you can tick “save my card” for one-click payments next time. Vaultix never sees your card number."
+          : "You'll enter your payment details on Stripe's secure page. Vaultix never sees your card number."}</p>
       </div>
       <aside class="co-sum">
         <section class="panel sticky">
@@ -151,10 +186,13 @@ async function pay() {
   if (!state.me) return openJoin(() => { renderCheckout(); pay(); });
   if (!l.seller.verified && !($("#riskOk") || {}).checked) { err.textContent = "Tick the box to confirm you understand this seller isn't verified."; return; }
   if (!Market.canPay) { err.textContent = Market.NEEDS_SERVER; return; }
-  const m = METHODS.find((x) => x.id === payMethod) || METHODS[0];
-  const btn = $("#payBtn"); btn.disabled = true; btn.textContent = "Starting secure checkout…";
+  const saved = isSaved();
+  const m = saved ? null : METHODS.find((x) => x.id === payMethod) || METHODS[0];
+  const btn = $("#payBtn"); btn.disabled = true; btn.textContent = saved ? "Paying…" : "Starting secure checkout…";
   try {
-    const r = await Market.checkout(l.id, m.api);
+    const r = saved
+      ? await Market.checkout(l.id, "saved", { paymentMethod: payMethod.slice(6) })
+      : await Market.checkout(l.id, m.api);
     if (r.url) { location.href = r.url; return; } // Stripe hosted checkout
     await Promise.all([refresh(), loadMe()]);
     location.hash = `#/order/${r.orderId}`;
@@ -421,7 +459,7 @@ async function openAccount(tab) {
 function renderAccount() {
   const me = state.me; if (!me) return closeDrawer();
   const w = state.wallet;
-  const tabs = [["orders", "Purchases"], ["sales", "Sales"], ["wallet", "Wallet"], ["listings", "Listings"], ["profile", "Profile"]];
+  const tabs = [["orders", "Purchases"], ["sales", "Sales"], ["wallet", "Wallet"], ["cards", "Cards"], ["listings", "Listings"], ["profile", "Profile"]];
   $("#drawerBody").innerHTML = `
     <div class="drawer-head">
       ${avatarHtml(me, "lg")}
@@ -448,6 +486,16 @@ function accountTab() {
     return `${todo ? `<div class="safe"><b>${todo} order${todo === 1 ? "" : "s"} waiting for you to deliver.</b></div>` : ""}<div class="dlist">${orderRows(s, "seller")}</div>`;
   }
   if (accTab === "wallet") return walletTab(me, w);
+  if (accTab === "cards") {
+    if (!Market.canPay) return `<div class="warn"><b>Needs the server.</b><span>${esc(Market.NEEDS_SERVER)}</span></div>`;
+    if (savedCards === null) { loadCards().then(() => { if (accTab === "cards") renderAccount(); }); return `<p class="muted">Loading your cards…</p>`; }
+    return `
+      <p class="muted small">Saved cards let you pay in one click at checkout. Your card details are stored by Stripe. Vaultix only sees the brand and the last 4 digits.</p>
+      <div class="dlist">${savedCards.length ? savedCards.map((c) => `
+        <div class="drow">${cardLogo(c.brand)}<span class="drow-t"><b>${esc(brandName(c.brand))} •••• ${esc(c.last4)}</b><span class="muted small">Expires ${String(c.expMonth || "").padStart(2, "0")}/${String(c.expYear || "").slice(-2)}</span></span><button class="btn danger sm" data-remove-card="${esc(c.id)}" type="button">Remove</button></div>`).join("")
+        : `<p class="muted small">No saved cards yet. Tick “save my card” when you pay, or add one here.</p>`}</div>
+      <button class="btn sell wide" data-add-card type="button">+ Add a card</button>`;
+  }
   if (accTab === "listings") {
     const mine = state.listings.filter((l) => l.seller.id === me.id);
     return `<button class="btn sell wide" data-new-listing type="button">+ New listing</button>
@@ -533,7 +581,19 @@ $("#drawer").addEventListener("click", async (e) => {
   }
   if (e.target.closest("#signOut")) {
     if (!confirm("Sign out? You won't be able to sign back in to this account.")) return;
-    Market.signOut(); state.me = null; state.wallet = null; myOrders = null; renderAvatar(); closeDrawer(); render();
+    Market.signOut(); state.me = null; state.wallet = null; myOrders = null; savedCards = null; payMethod = "card"; renderAvatar(); closeDrawer(); render();
+    return;
+  }
+  const rc = e.target.closest("[data-remove-card]");
+  if (rc) {
+    if (!confirm("Remove this card? You can add it again any time.")) return;
+    try { await Market.removeCard(rc.dataset.removeCard); await loadCards(); renderAccount(); toast("Card removed."); } catch (ex) { toast(ex.message); }
+    return;
+  }
+  const ac = e.target.closest("[data-add-card]");
+  if (ac) {
+    ac.disabled = true; ac.textContent = "Opening Stripe…";
+    try { location.href = (await Market.addCard()).url; } catch (ex) { toast(ex.message); ac.disabled = false; ac.textContent = "+ Add a card"; }
     return;
   }
   if (e.target.closest("[data-max]")) { const f = $("#payoutForm"); f.elements.amount.value = Math.max(0, state.wallet.available).toFixed(2); return; }

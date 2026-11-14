@@ -2,7 +2,8 @@
 //  Stripe webhook for Vaultix Market.
 //  In the Stripe dashboard add an endpoint https://<your-site>/api/stripe-webhook with events:
 //    checkout.session.completed, checkout.session.async_payment_succeeded,
-//    checkout.session.async_payment_failed, checkout.session.expired, account.updated
+//    checkout.session.async_payment_failed, checkout.session.expired, account.updated,
+//    payment_intent.succeeded, payment_intent.payment_failed
 //  and put its signing secret in STRIPE_WEBHOOK_SECRET.
 //  Every request is checked against that secret, so nobody can fake a "paid" event.
 // ============================================================================
@@ -57,6 +58,14 @@ async function handler(req, res) {
       case 'checkout.session.async_payment_failed':
       case 'checkout.session.expired':
         if (orderId) await internal.markExpired(orderId)
+        break
+      // One-click payments with a saved card (Checkout payments also send this; markPaid ignores repeats).
+      case 'payment_intent.succeeded':
+        if (orderId) await internal.markPaid(orderId, obj.id)
+        break
+      case 'payment_intent.payment_failed':
+        // Only one-click saved-card orders: on Stripe's checkout page the buyer can still retry.
+        if (orderId) await internal.markSavedCardFailed(orderId)
         break
       case 'account.updated':
         await internal.onStripeAccount(obj.id, obj.payouts_enabled)
