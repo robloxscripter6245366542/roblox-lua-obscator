@@ -63,6 +63,8 @@ const Market = (() => {
         description: text(b.description, "Description", 10, 1000),
         price, wasPrice: was > price && was <= 100000 ? was : null,
         category: b.category, createdAt: Date.now(),
+        delivery: b.delivery === "instant" ? "instant" : "manual",
+        stock: b.delivery === "instant" ? (b.logins || []).length || 1 : Math.max(1, Math.floor(Number(b.stock) || 1)),
       };
       const all = read(K.listings, {}); all[l.id] = l; write(K.listings, all);
       return { listing: { ...l, seller: pub(s) } };

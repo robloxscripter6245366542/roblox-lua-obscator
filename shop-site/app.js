@@ -65,7 +65,7 @@ function card(l) {
   const off = pctOff(l);
   return `
   <button class="card" data-id="${esc(l.id)}" type="button">
-    <span class="card-top">${cardArt(l)}${badge(l.seller, true)}</span>
+    <span class="card-top">${cardArt(l)}${badge(l.seller, true)}${l.delivery === "instant" ? `<span class="instant-tag">⚡ Instant</span>` : ""}</span>
     <span class="card-body">
       <span class="card-meta">${gameTile(l.game)}<span>${esc(l.game)} · ${esc(l.category)}</span></span>
       <span class="card-title">${esc(l.title)}</span>
@@ -232,6 +232,7 @@ function openListing(l) {
     <dl class="meta">
       <dt>Seller</dt><dd><button class="link-btn" data-user="${esc(s.id)}" type="button">@${esc(s.name)}</button> ${badge(s, true)}</dd>
       <dt>Rating</dt><dd>${s.reviews ? `${s.positive}% positive · ${s.reviews} review${s.reviews === 1 ? "" : "s"}` : "No reviews yet"} · ${s.sales || 0} sale${s.sales === 1 ? "" : "s"}</dd>
+      <dt>Delivery</dt><dd>${l.delivery === "instant" ? "⚡ Instant: the login appears on your order page right after you pay" : "The seller delivers in your order chat"}</dd>
       <dt>In stock</dt><dd>${l.stock ?? 1}</dd>
       <dt>Listed</dt><dd>${date(l.createdAt)}</dd>
     </dl>
@@ -293,6 +294,49 @@ function toggleOther() {
   $("#otherGame").hidden = !other;
   $("#postForm").elements.gameOther.required = other;
 }
+/* ---------- instant delivery logins ---------- */
+let instantTouched = false;
+function loginRow() {
+  const d = document.createElement("div");
+  d.className = "login-row";
+  d.innerHTML = `
+    <div class="login-row-head"><b class="small">Account <span class="n"></span></b><button type="button" class="x sm" data-remove-login aria-label="Remove this account">×</button></div>
+    <div class="two">
+      <input data-f="login" maxlength="120" placeholder="Username / login *" autocomplete="off" />
+      <input data-f="password" maxlength="200" placeholder="Password *" autocomplete="new-password" />
+      <input data-f="email" maxlength="120" placeholder="Email (optional)" autocomplete="off" />
+      <input data-f="emailPassword" maxlength="200" placeholder="Email password (optional)" autocomplete="new-password" />
+    </div>
+    <input data-f="notes" maxlength="300" placeholder="Notes for the buyer (optional), e.g. recovery codes, 2FA info" autocomplete="off" />`;
+  return d;
+}
+function renumberLogins() {
+  const rows = [...document.querySelectorAll("#loginRows .login-row")];
+  rows.forEach((r, i) => { r.querySelector(".n").textContent = i + 1; r.querySelector("[data-remove-login]").hidden = rows.length === 1; });
+}
+function setInstant(on) {
+  $("#instantOn").checked = on;
+  $("#loginRows").hidden = $("#addLogin").hidden = $("#loginNote").hidden = !on;
+  $("#stockLabel").hidden = on;
+  if (on && !$("#loginRows").children.length) { $("#loginRows").append(loginRow()); renumberLogins(); }
+}
+$("#instantOn").addEventListener("change", (e) => { instantTouched = true; setInstant(e.target.checked); });
+$("#addLogin").addEventListener("click", () => {
+  if ($("#loginRows").children.length >= 50) return toast("Up to 50 accounts per listing.");
+  $("#loginRows").append(loginRow()); renumberLogins();
+  $("#loginRows").lastElementChild.querySelector("input").focus();
+});
+$("#loginRows").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-remove-login]"); if (!b) return;
+  b.closest(".login-row").remove(); renumberLogins();
+});
+$("#postCat").addEventListener("change", (e) => { if (!instantTouched) setInstant(e.target.value === "Accounts"); });
+function collectLogins() {
+  return [...document.querySelectorAll("#loginRows .login-row")].map((r) => {
+    const o = {}; r.querySelectorAll("[data-f]").forEach((i) => (o[i.dataset.f] = i.value.trim())); return o;
+  }).filter((o) => Object.values(o).some(Boolean));
+}
+
 function openPost() {
   $("#postCat").innerHTML = Market.CATEGORIES.map((c) => `<option>${esc(c)}</option>`).join("");
   const G = Market.Games.GAMES;
@@ -306,6 +350,9 @@ function openPost() {
   $("#postForm").reset();
   resetPic();
   if (state.cat) $("#postCat").value = state.cat;
+  instantTouched = false;
+  $("#loginRows").innerHTML = "";
+  setInstant($("#postCat").value === "Accounts");
   if (state.game) {
     const known = Market.Games.find(state.game);
     $("#postGame").value = known ? known.name : OTHER;
@@ -344,7 +391,12 @@ $("#postForm").addEventListener("submit", async (e) => {
     const other = el.game.value === OTHER;
     if (!el.game.value) throw new Error("Choose a game");
     if (other && !picData) throw new Error("Add a picture for your game");
+    const instant = $("#instantOn").checked;
+    const logins = instant ? collectLogins() : undefined;
+    if (instant && !logins.length) throw new Error("Add at least one account login, or turn off instant delivery.");
+    if (instant && logins.some((x) => !x.login || !x.password)) throw new Error("Each account needs a username and a password.");
     await Market.post({
+      delivery: instant ? "instant" : "manual", logins,
       game: other ? el.gameOther.value : el.game.value, image: other ? picData : undefined,
       category: el.category.value, title: el.title.value,
       price: el.price.value, wasPrice: el.wasPrice.value, stock: el.stock.value, description: el.description.value,

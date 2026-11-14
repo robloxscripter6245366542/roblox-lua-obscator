@@ -482,3 +482,21 @@ div.drow { cursor: default; }
 .plogo[title="Apple Pay"] svg { width: 42px; height: 28px; }
 .plogo[title="Discover"] svg { width: 44px; height: 26px; }
 .plogo[title="American Express"] svg { width: 28px; height: 22px; }
+
+/* ======================= instant delivery ======================= */
+.instant-tag { position: absolute; top: 12px; left: 12px; z-index: 1; padding: 4px 9px; border-radius: 6px; font: 700 .72rem/1.2 var(--mono); color: #ffd84d; background: rgba(16, 17, 23, .78); backdrop-filter: blur(6px); }
+.instant-inline { color: #ffd84d; }
+.instant { display: grid; gap: 10px; padding: 14px; border-radius: 10px; border: 1px solid rgba(255, 216, 77, .35); background: rgba(255, 216, 77, .05); }
+.check-row { flex-direction: row !important; align-items: flex-start; gap: 10px !important; cursor: pointer; color: var(--text) !important; }
+.check-row input { width: 18px !important; height: 18px; margin-top: 2px; accent-color: #ffd84d; flex-shrink: 0; }
+.check-row > span { display: grid; gap: 2px; font-weight: 400; }
+.login-rows { display: grid; gap: 10px; }
+.login-row { display: grid; gap: 8px; padding: 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
+.login-row-head { display: flex; justify-content: space-between; align-items: center; }
+.x.sm { font-size: 1.3rem; }
+.login-panel { border-color: rgba(255, 216, 77, .4); }
+.creds { display: grid; gap: 8px; }
+.cred { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); }
+.cred-k { width: 120px; color: var(--muted); font-size: .85rem; flex-shrink: 0; }
+.cred-v { flex: 1; min-width: 0; font: .95rem var(--mono); word-break: break-all; }
+@media (max-width: 640px) { .cred-k { width: 100%; } }
