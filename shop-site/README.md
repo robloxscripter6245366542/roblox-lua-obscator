@@ -84,7 +84,7 @@ The local dev server doesn't send real emails: it prints them and lists them at 
 
 ## Buying, escrow and payouts
 
-1. **Checkout:** the buyer picks card, Apple Pay, Google Pay, crypto or their Vaultix balance. Card, wallet and crypto payments happen on **Stripe's hosted checkout page**, so Vaultix never sees card numbers.
+1. **Checkout:** the buyer picks card, Apple Pay, Google Pay, crypto or their Vaultix balance. Card, wallet and crypto payments happen on **Stripe's hosted checkout page**, so Vaultix never sees card numbers. Stripe only gets the order number ("Vaultix Market order o_…"), not the game or listing title; the item is shown on the buyer's Vaultix order page.
 2. **Escrow:** Vaultix holds the money. The order page has a status tracker and a chat between buyer and seller.
 3. **Delivery:** the seller adds the delivery details (login, trade info, code…), which only the buyer can see.
 4. **Release:** the buyer confirms and leaves a 👍/👎 review, and the seller's share (price minus commission) becomes withdrawable. If the buyer doesn't respond, the order confirms itself 3 days after delivery.

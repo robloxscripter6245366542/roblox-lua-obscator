@@ -165,6 +165,9 @@ function feesFor(price, method) {
   const commission = r2(price * COMMISSION_PCT)
   return { price, fee, total: r2(price + fee), commission, sellerNet: r2(price - commission) }
 }
+// What Stripe (and the buyer's Stripe receipt) calls a purchase: the order number only, never the
+// game or listing title. Staff match it to the order on the Staff page.
+const stripeLabel = (order) => `Vaultix Market order ${order.id}`
 function siteUrl(req) {
   if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/$/, '')
   const h = (req && req.headers) || {}
@@ -757,7 +760,7 @@ const actions = {
           amount: cents(money.total), currency: 'usd', customer: u.stripeCustomer, payment_method: pm.id,
           confirm: 'true', metadata: { orderId: order.id },
           return_url: `${site}/#/order/${order.id}`,
-          description: `${l.game} · ${l.title}`.slice(0, 200),
+          description: stripeLabel(order),
         }, `saved-${order.id}`)
       } catch (e) {
         order.status = 'cancelled'; order.cancelledAt = Date.now(); await put(ORDERS, order)
@@ -786,7 +789,7 @@ const actions = {
       success_url: `${site}/#/order/${order.id}`,
       cancel_url: `${site}/#/checkout/${l.id}`,
       line_items: [
-        { quantity: 1, price_data: { currency: 'usd', unit_amount: cents(money.price), product_data: { name: `${l.game} · ${l.title}`.slice(0, 200) } } },
+        { quantity: 1, price_data: { currency: 'usd', unit_amount: cents(money.price), product_data: { name: stripeLabel(order) } } },
         { quantity: 1, price_data: { currency: 'usd', unit_amount: cents(money.fee), product_data: { name: 'Payment fee' } } },
       ],
       metadata: { orderId: order.id },
