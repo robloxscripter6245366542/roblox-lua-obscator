@@ -69,7 +69,7 @@ function card(l) {
   <button class="card" data-id="${esc(l.id)}" type="button">
     <span class="card-top">${cardArt(l)}${badge(l.seller, true)}${l.delivery === "instant" ? `<span class="instant-tag">⚡ Instant</span>` : ""}</span>
     <span class="card-body">
-      <span class="card-meta">${gameTile(l.game)}<span>${esc(l.game)} · ${esc(l.category)}</span></span>
+      <span class="card-meta">${gameTile(l.game)}<span>${esc(l.game)} · ${esc(l.category)}</span>${l.checked ? `<span class="chk" title="Staff tested this listing">✓ Checked</span>` : ""}</span>
       <span class="card-title">${esc(l.title)}</span>
       <span class="card-price">
         <span class="was">${off ? money(l.wasPrice) : ""}</span>
@@ -234,6 +234,7 @@ function openListing(l) {
     <dl class="meta">
       <dt>Seller</dt><dd><button class="link-btn" data-user="${esc(s.id)}" type="button">@${esc(s.name)}</button> ${badge(s, true)}</dd>
       <dt>Rating</dt><dd>${s.reviews ? `${s.positive}% positive · ${s.reviews} review${s.reviews === 1 ? "" : "s"}` : "No reviews yet"} · ${s.sales || 0} sale${s.sales === 1 ? "" : "s"}</dd>
+      <dt>Staff check</dt><dd>${l.checked ? `<span class="chk">✓ Staff checked</span> on ${date(l.checkedAt)}` : "Not checked by staff yet"}</dd>
       <dt>Delivery</dt><dd>${l.delivery === "instant" ? "⚡ Instant: the login appears on your order page right after you pay" : "The seller delivers in your order chat"}</dd>
       <dt>In stock</dt><dd>${l.stock ?? 1}</dd>
       <dt>Listed</dt><dd>${date(l.createdAt)}</dd>

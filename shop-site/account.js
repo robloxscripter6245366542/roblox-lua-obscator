@@ -85,6 +85,7 @@ function renderCheckout() {
             <div class="co-item-text">
               <p class="muted">${esc(l.game)} · ${esc(l.category)}</p>
               <h2>${esc(l.title)}</h2>
+              ${l.checked ? `<p class="small"><span class="chk">✓ Staff checked</span> <span class="muted">Vaultix staff tested this listing</span></p>` : ""}
               <p class="muted small">${l.delivery === "instant" ? "<b class=\"instant-inline\">⚡ Instant delivery</b>: the login appears on your order page right after you pay" : "Delivery: the seller delivers in your order chat"} · ${l.stock ?? 1} in stock</p>
             </div>
           </div>
