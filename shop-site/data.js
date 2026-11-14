@@ -159,8 +159,8 @@ const Market = (() => {
     list: () => call("list"),
     session,
     signOut: () => write(K.session, null),
-    async register(name, contact) {
-      const r = await call("register", { name, contact });
+    async register(name, contact, adminKey) {
+      const r = await call("register", { name, contact, adminKey: adminKey || undefined });
       write(K.session, { sellerId: r.seller.id, token: r.token, name: r.seller.name });
       return r.seller;
     },
@@ -183,6 +183,10 @@ const Market = (() => {
     // admin
     adminKey: () => read(K.admin, ""),
     setAdminKey: (k) => write(K.admin, k || null),
-    admin: (action, body = {}) => call(action, { ...body, adminKey: read(K.admin, "") }),
+    // Staff actions: signed-in owner account, or the admin key typed on the Staff page.
+    admin: (action, body = {}) => {
+      const s = session() || {};
+      return call(action, { ...body, adminKey: read(K.admin, "") || undefined, ownerId: s.sellerId, ownerToken: s.token });
+    },
   };
 })();

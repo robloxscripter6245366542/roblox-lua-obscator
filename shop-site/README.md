@@ -34,6 +34,13 @@ It starts **empty**: there are no built-in products.
 - `styles.css`, `logo.svg`, `favicon.svg`
 - `../api/market.js`: the server (a Vercel serverless function)
 
+## Site owner
+
+- The username **Kaitrades** is the site owner. To change or add owners, set `MARKET_OWNERS` to a comma-separated list of usernames.
+- Owner usernames are **reserved**. When someone types one in the sign-up form, a **Staff password** box appears, and the account is only created if the password matches `MARKET_ADMIN_KEY`. So nobody else can take the name.
+- The owner account gets a 👑 **Owner** badge and is always verified. It can't be banned or unverified, and it opens the **Staff page** without typing the password (via "Open Staff page" in the account menu).
+- **To claim it on your live site:** once the database is set up, click the account icon, sign up as `Kaitrades`, and enter your `MARKET_ADMIN_KEY` as the staff password.
+
 ## Instant delivery (accounts, codes)
 
 - When posting (it's switched on by default for **Accounts**), the seller ticks **⚡ Instant delivery** and adds one login per account: username and password, plus optional email, email password and notes. The stock is the number of logins.

@@ -15,9 +15,10 @@ const year = (t) => new Date(t).getFullYear();
 const when = (t) => new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const r2 = (n) => Math.round(n * 100) / 100;
 const feeFor = (price, method) => (method === "balance" ? 0 : r2(price * state.fees.pct + state.fees.fixed));
-const avatarHtml = (u, cls = "") => `<span class="pavatar ${cls}">${esc((u.name || "?")[0].toUpperCase())}${u.verified ? `<span class="pv ok">✓</span>` : ""}</span>`;
+const avatarHtml = (u, cls = "") => `<span class="pavatar ${cls}${u.owner ? " owner" : ""}">${esc((u.name || "?")[0].toUpperCase())}${u.owner ? `<span class="pv owner">👑</span>` : u.verified ? `<span class="pv ok">✓</span>` : ""}</span>`;
 function sellerChips(s) {
   return `<span class="chips">
+    ${s.owner ? `<span class="chip-s owner">👑 Site owner</span>` : ""}
     ${s.verified ? `<span class="chip-s ok">✓ Verified since ${year(s.verifiedAt || s.createdAt)}</span>` : `<span class="chip-s risk">! Risky · not verified</span>`}
     <span class="chip-s">👍 ${s.reviews ? `${s.positive}% positive` : "No ratings yet"}</span>
     <span class="chip-s">★ ${s.reviews || 0} review${s.reviews === 1 ? "" : "s"}</span>
@@ -426,6 +427,7 @@ function renderAccount() {
       <div><h2>@${esc(me.name)}</h2><p class="small">${badge(me, true)} ${w ? `<span class="muted">· Balance</span> <b>${money(w.available)}</b>` : ""}</p></div>
       <button class="x" data-drawer-close aria-label="Close">×</button>
     </div>
+    ${me.owner ? `<div class="drawer-pad owner-bar"><a class="btn owner wide" href="admin.html">🛡 Open Staff page</a></div>` : ""}
     <nav class="dtabs" role="tablist">${tabs.map(([k, t]) => `<button role="tab" aria-selected="${accTab === k}" data-tab="${k}" type="button">${t}</button>`).join("")}</nav>
     <div class="drawer-pad">${accountTab()}</div>`;
 }
@@ -454,7 +456,9 @@ function accountTab() {
   }
   // profile
   return `
-    ${me.verified
+    ${me.owner
+      ? `<div class="safe"><b>👑 You're the site owner.</b> You're always verified and can verify sellers, settle orders and approve withdrawals on the Staff page.</div>`
+      : me.verified
       ? `<div class="safe"><b>You're verified</b> since ${date(me.verifiedAt || me.createdAt)}. Buyers see a green badge on your listings.</div>`
       : `<div class="warn"><b>Your listings show as Risky.</b><span>To get verified, send the site owner your user ID below.</span></div>`}
     <p class="muted small">User ID</p><div class="contact" style="user-select:all">${esc(me.id)}</div>
