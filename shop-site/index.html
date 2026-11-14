@@ -99,6 +99,7 @@
       <div class="dlg-head"><h2>Create your account</h2><button class="x" value="cancel" formnovalidate aria-label="Close">×</button></div>
       <p class="muted">One account to buy and sell. New sellers start as <span class="badge risk sm">Risky</span> until staff verify you.</p>
       <label>Username<input name="name" required minlength="3" maxlength="24" placeholder="e.g. kai_trades" /></label>
+      <label id="ownerKeyRow" hidden>Staff password <span class="opt">(this username is reserved for the site owner)</span><input name="ownerKey" type="password" autocomplete="current-password" /></label>
       <label>Contact (only shown to people you trade with)<input name="contact" required minlength="3" maxlength="80" placeholder="Discord, email, etc." /></label>
       <p class="form-err" id="joinErr" role="alert"></p>
       <button class="btn sell wide" type="submit" value="default">Create account</button>

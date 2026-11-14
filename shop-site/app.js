@@ -4,13 +4,15 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const money = (n) => "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const date = (t) => new Date(t).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 const pctOff = (l) => (l.wasPrice > l.price ? Math.round((1 - l.price / l.wasPrice) * 100) : 0);
-const badge = (s, sm) => s && s.verified
+const badge = (s, sm) => s && s.owner
+  ? `<span class="badge owner${sm ? " sm" : ""}">Owner</span>`
+  : s && s.verified
   ? `<span class="badge ok${sm ? " sm" : ""}">Verified</span>`
   : `<span class="badge risk${sm ? " sm" : ""}">Risky</span>`;
 const CHEVRON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
 const PERSON = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>`;
 
-const state = { listings: [], icons: {}, cat: null, game: null, q: "", verifiedOnly: false, sort: "new", browseAll: false, me: null, wallet: null, payouts: [], fees: { pct: 0.03, fixed: 0.3, commission: 0.05 } };
+const state = { owners: [], listings: [], icons: {}, cat: null, game: null, q: "", verifiedOnly: false, sort: "new", browseAll: false, me: null, wallet: null, payouts: [], fees: { pct: 0.03, fixed: 0.3, commission: 0.05 } };
 const OTHER = "__other";
 
 /* ---------- game art ----------
@@ -254,7 +256,7 @@ async function loadMe() {
 }
 function renderAvatar() {
   const a = $("#accountBtn"), me = state.me;
-  a.innerHTML = me ? `${esc(me.name[0].toUpperCase())}<span class="dot ${me.verified ? "ok" : "risk"}"></span>` : PERSON;
+  a.innerHTML = me ? `${esc(me.name[0].toUpperCase())}<span class="dot ${me.owner ? "owner" : me.verified ? "ok" : "risk"}"></span>` : PERSON;
   a.setAttribute("aria-label", me ? `Your seller account @${me.name}` : "Sign up as a seller");
 }
 
@@ -266,17 +268,21 @@ let afterJoin = null;
 function startSell() { state.me ? openPost() : openJoin(openPost); }
 function openJoin(next) {
   afterJoin = typeof next === "function" ? next : null;
-  $("#joinErr").textContent = ""; $("#joinForm").reset(); $("#joinDlg").showModal();
+  $("#joinErr").textContent = ""; $("#joinForm").reset(); $("#ownerKeyRow").hidden = true; $("#joinDlg").showModal();
 }
+// Owner usernames are reserved: ask for the staff password when one is typed.
+$("#joinForm").elements.name.addEventListener("input", (e) => {
+  $("#ownerKeyRow").hidden = !state.owners.includes(e.target.value.trim().toLowerCase());
+});
 $("#joinForm").addEventListener("submit", async (e) => {
   if (e.submitter && e.submitter.value === "cancel") return;
   e.preventDefault();
   const f = e.target, btn = f.querySelector("[type=submit]");
   btn.disabled = true; $("#joinErr").textContent = "";
   try {
-    state.me = await Market.register(f.elements.name.value, f.elements.contact.value);
+    state.me = await Market.register(f.elements.name.value, f.elements.contact.value, $("#ownerKeyRow").hidden ? "" : f.elements.ownerKey.value);
     renderAvatar(); $("#joinDlg").close();
-    toast("Account created. As a seller you're marked Risky until staff verify you.");
+    toast(state.me.owner ? "Welcome, owner 👑 You're verified and can open the Staff page from your account menu." : "Account created. As a seller you're marked Risky until staff verify you.");
     if (afterJoin) afterJoin();
   } catch (err) { $("#joinErr").textContent = err.message; }
   btn.disabled = false;
@@ -419,7 +425,7 @@ function toast(msg) {
   clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2800);
 }
 async function refresh() {
-  try { const r = await Market.list(); state.listings = r.listings; if (r.fees) state.fees = r.fees; } catch (e) { toast(e.message); }
+  try { const r = await Market.list(); state.listings = r.listings; if (r.fees) state.fees = r.fees; if (r.owners) state.owners = r.owners; } catch (e) { toast(e.message); }
   render();
 }
 
@@ -428,7 +434,7 @@ $("#footPay").innerHTML = ["visa", "mastercard", "americanexpress", "discover", 
 (async () => {
   renderAvatar(); render();
   const first = await Market.init();
-  state.listings = first.listings; if (first.fees) state.fees = first.fees;
+  state.listings = first.listings; if (first.fees) state.fees = first.fees; if (first.owners) state.owners = first.owners;
   $("#demoBar").hidden = Market.mode !== "demo";
   render();
   Market.icons().then((icons) => { state.icons = icons; render(); rerenderPage(); });

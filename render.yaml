@@ -28,6 +28,9 @@ services:
       # Staff page password: pick a long random one.
       - key: MARKET_ADMIN_KEY
         sync: false
+      # Owner usernames (reserved; claiming one needs MARKET_ADMIN_KEY).
+      - key: MARKET_OWNERS
+        value: Kaitrades
       # Encrypts account logins for instant delivery. Long random string; never change it later.
       - key: MARKET_ENCRYPTION_KEY
         sync: false

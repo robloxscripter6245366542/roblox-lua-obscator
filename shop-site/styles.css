@@ -500,3 +500,14 @@ div.drow { cursor: default; }
 .cred-k { width: 120px; color: var(--muted); font-size: .85rem; flex-shrink: 0; }
 .cred-v { flex: 1; min-width: 0; font: .95rem var(--mono); word-break: break-all; }
 @media (max-width: 640px) { .cred-k { width: 100%; } }
+
+/* ======================= owner ======================= */
+.badge.owner { color: #ffd84d; background: rgba(255, 216, 77, .15); }
+.badge.owner::before { content: "👑"; }
+.chip-s.owner { background: rgba(255, 216, 77, .16); color: #ffd84d; }
+.avatar .dot.owner { background: #ffd84d; }
+.pavatar.owner { background: linear-gradient(135deg, #f5b400, #ff7a00); }
+.pv.owner { background: #16171c; font-size: .7rem; }
+.btn.owner { background: rgba(255, 216, 77, .14); border-color: rgba(255, 216, 77, .5); color: #ffd84d; }
+.btn.owner:hover { background: rgba(255, 216, 77, .22); }
+.owner-bar { padding-top: 12px; padding-bottom: 0; }

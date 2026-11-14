@@ -19,6 +19,7 @@ function toast(msg) {
   clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 2800);
 }
 
+let quiet = false; // first automatic try (signed-in owner): don't show an error if it fails
 async function load() {
   $("#err").textContent = "";
   try {
@@ -32,7 +33,7 @@ async function load() {
     render();
   } catch (e) {
     $("#app").hidden = true; $("#login").hidden = false;
-    $("#err").textContent = e.message;
+    if (!quiet) $("#err").textContent = e.message;
     if (e.status === 401) Market.setAdminKey("");
   }
 }
@@ -60,10 +61,10 @@ function sellersView() {
           <td>${day(s.createdAt)}</td>
           <td>${s.sales || 0} sales${s.reviews ? `<br><span class="small">${s.positive}% of ${s.reviews}</span>` : ""}<br><span class="small">${s.listings} listing(s)</span></td>
           <td>${s.balance !== undefined ? money(s.balance) : "–"}</td>
-          <td>${s.verified ? '<span class="badge ok sm">Verified</span>' : '<span class="badge risk sm">Risky</span>'}</td>
-          <td><div class="acts">
+          <td>${s.owner ? '<span class="badge owner sm">Owner</span>' : s.verified ? '<span class="badge ok sm">Verified</span>' : '<span class="badge risk sm">Risky</span>'}</td>
+          <td><div class="acts">${s.owner ? '<span class="small">Site owner</span>' : `
             <button class="btn ${s.verified ? "ghost" : "sell"}" data-verify="${esc(s.id)}" data-to="${!s.verified}" type="button">${s.verified ? "Remove verification" : "Verify"}</button>
-            <button class="btn danger" data-ban="${esc(s.id)}" type="button">Ban</button>
+            <button class="btn danger" data-ban="${esc(s.id)}" type="button">Ban</button>`}
           </div></td>
         </tr>`).join("")}</tbody>
     </table>
@@ -164,4 +165,5 @@ $("#view").addEventListener("click", async (e) => {
   await Market.init();
   $("#demoBar").hidden = Market.mode !== "demo";
   if (Market.mode === "demo" || Market.adminKey()) load();
+  else if (Market.session()) { quiet = true; await load(); quiet = false; } // owner account: no password needed
 })();

@@ -24,6 +24,9 @@
 //   MARKET_ADMIN_KEY                                    staff password (required for admin)
 //   STRIPE_SECRET_KEY                                   Stripe key (sk_test_… while testing)
 //   STRIPE_WEBHOOK_SECRET                               signing secret for api/stripe-webhook
+//   MARKET_OWNERS                                       owner usernames, comma-separated (default "Kaitrades").
+//                                                       Signing up with one needs MARKET_ADMIN_KEY, so nobody
+//                                                       else can grab the name. Owners get staff powers.
 //   MARKET_ENCRYPTION_KEY                               encrypts account logins (instant delivery). If
 //                                                       unset, a key is derived from MARKET_ADMIN_KEY,
 //                                                       so don't change that key once logins are stored.
@@ -66,6 +69,8 @@ const CRYPTO_NETWORKS = ['USDT (TRC20)', 'USDT (ERC20)', 'BTC', 'ETH', 'LTC']
 const PAYOUT_METHODS = ['stripe', 'paypal', 'crypto', 'bank']
 const MAX_LOGINS = 50
 const credsKey = (listingId) => `mkt:creds:${listingId}`
+const OWNER_NAMES = String(process.env.MARKET_OWNERS ?? 'Kaitrades').split(',').map((n) => n.trim().toLowerCase()).filter(Boolean)
+const isOwnerName = (name) => OWNER_NAMES.includes(String(name || '').toLowerCase())
 
 /* ------------------------------ storage ------------------------------ */
 async function redis(cmd) {
@@ -240,7 +245,7 @@ function statsFor(userId, orders) {
 function publicUser(u, orders) {
   if (!u) return null
   return {
-    id: u.id, name: u.name, bio: u.bio || '', verified: !!u.verified, verifiedAt: u.verifiedAt || null,
+    id: u.id, name: u.name, bio: u.bio || '', verified: !!u.verified, verifiedAt: u.verifiedAt || null, owner: !!u.owner,
     createdAt: u.createdAt, ...(orders ? statsFor(u.id, orders) : {}),
   }
 }
@@ -249,10 +254,20 @@ async function authUser(body) {
   if (!u || !body.token || sha(body.token) !== u.tokenHash) throw bad('Please sign in again', 401)
   return u
 }
-function authAdmin(body) {
+function adminKeyOk(given) {
   const key = process.env.MARKET_ADMIN_KEY
   if (!key) throw bad('MARKET_ADMIN_KEY is not set on the server', 503)
-  if (!body.adminKey || !safeEq(body.adminKey, key)) throw bad('Wrong admin key', 401)
+  return !!given && safeEq(given, key)
+}
+// Staff actions: the admin key, or a signed-in owner account (ownerId + ownerToken; separate
+// from sellerId, which some staff actions use for the user being acted on).
+async function authAdmin(body) {
+  if (body.ownerId && body.ownerToken) {
+    const u = await getOne(SELLERS, body.ownerId)
+    if (u && u.owner && sha(body.ownerToken) === u.tokenHash) return u
+  }
+  if (!adminKeyOk(body.adminKey)) throw bad(body.adminKey ? 'Wrong admin key' : 'Enter the admin key, or sign in as the owner', 401)
+  return null
 }
 
 /* ------------------------------ orders & wallet ------------------------------ */
@@ -375,7 +390,7 @@ async function listPublic() {
 /* ------------------------------ actions ------------------------------ */
 const actions = {
   async list() {
-    return { listings: await listPublic(), fees: { pct: FEE_PCT, fixed: FEE_FIXED, commission: COMMISSION_PCT } }
+    return { listings: await listPublic(), fees: { pct: FEE_PCT, fixed: FEE_FIXED, commission: COMMISSION_PCT }, owners: OWNER_NAMES }
   },
 
   async profile(b) {
@@ -399,8 +414,12 @@ const actions = {
     const contact = str(b.contact, 'Contact', 3, 80)
     const users = await getAll(SELLERS)
     if (users.some((s) => s.name.toLowerCase() === name.toLowerCase())) throw bad('That name is taken', 409)
+    // Owner usernames are reserved: claiming one needs the staff password.
+    const owner = isOwnerName(name)
+    if (owner && !adminKeyOk(b.adminKey)) throw bad('This username is reserved for the site owner. Enter the staff password to claim it.', 403)
     const token = crypto.randomBytes(24).toString('hex')
-    const u = { id: newId('s_'), name, contact, bio: '', verified: false, createdAt: Date.now(), tokenHash: sha(token) }
+    const now = Date.now()
+    const u = { id: newId('s_'), name, contact, bio: '', verified: owner, verifiedAt: owner ? now : null, owner, createdAt: now, tokenHash: sha(token) }
     await put(SELLERS, u)
     return { seller: publicUser(u), token }
   },
@@ -634,7 +653,7 @@ const actions = {
 
   // ---- admin ----
   async adminSellers(b) {
-    authAdmin(b)
+    await authAdmin(b)
     const [users, listings, orders, payouts] = await Promise.all([getAll(SELLERS), getAll(LISTINGS), loadOrders(), getAll(PAYOUTS)])
     return {
       sellers: users
@@ -648,9 +667,10 @@ const actions = {
   },
 
   async verify(b) {
-    authAdmin(b)
+    await authAdmin(b)
     const s = await getOne(SELLERS, b.sellerId)
     if (!s) throw bad('Seller not found', 404)
+    if (s.owner && !b.verified) throw bad('Owners are always verified')
     s.verified = !!b.verified
     s.verifiedAt = s.verified ? s.verifiedAt || Date.now() : null
     await put(SELLERS, s)
@@ -658,8 +678,10 @@ const actions = {
   },
 
   async banSeller(b) {
-    authAdmin(b)
+    await authAdmin(b)
     const id = String(b.sellerId || '')
+    const target = await getOne(SELLERS, id)
+    if (target && target.owner) throw bad("Owners can't be banned")
     const orders = await loadOrders()
     if (orders.some((o) => (o.sellerId === id || o.buyerId === id) && ['paid', 'delivered', 'disputed'].includes(o.status))) {
       throw bad('This user has open orders. Refund or release them first.')
@@ -671,21 +693,21 @@ const actions = {
   },
 
   async adminRemove(b) {
-    authAdmin(b)
+    await authAdmin(b)
     const l = await getOne(LISTINGS, b.listingId)
     if (l) { l.stock = 0; l.removed = true; await put(LISTINGS, l); await redis(['DEL', credsKey(l.id)]) }
     return { ok: true }
   },
 
   async adminOrders(b) {
-    authAdmin(b)
+    await authAdmin(b)
     const [orders, users] = await Promise.all([loadOrders(), getAll(SELLERS)])
     return { orders: orders.sort((a, c) => c.createdAt - a.createdAt).map((o) => orderView(o, users, null)) }
   },
 
   // Settle an order: refund the buyer, or release the money to the seller.
   async resolve(b) {
-    authAdmin(b)
+    await authAdmin(b)
     const o = (await loadOrders()).find((x) => x.id === b.orderId)
     if (!o || !['paid', 'delivered', 'disputed'].includes(o.status)) throw bad('Only open orders can be settled')
     if (b.decision === 'refund') await refundOrder(o, String(b.note || 'Refunded by staff').slice(0, 200))
@@ -695,7 +717,7 @@ const actions = {
   },
 
   async adminPayouts(b) {
-    authAdmin(b)
+    await authAdmin(b)
     const [payouts, users] = await Promise.all([getAll(PAYOUTS), getAll(SELLERS)])
     return {
       payouts: payouts.sort((a, c) => c.createdAt - a.createdAt)
@@ -706,7 +728,7 @@ const actions = {
   // Approve (pay) or reject a withdrawal. Stripe payouts are transferred automatically;
   // PayPal / crypto / bank are sent by staff, then marked paid here.
   async payoutDecision(b) {
-    authAdmin(b)
+    await authAdmin(b)
     const p = await getOne(PAYOUTS, b.payoutId)
     if (!p || p.status !== 'requested') throw bad('This payout was already handled')
     if (b.decision === 'reject') {
