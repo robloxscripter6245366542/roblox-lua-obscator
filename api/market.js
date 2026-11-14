@@ -120,6 +120,22 @@ async function getOne(key, id) {
 }
 const put = (key, obj) => redis(['HSET', key, obj.id, JSON.stringify(obj)])
 
+// One change at a time per wallet / listing / request. Two requests sent at the same moment
+// (easy from the browser's dev tools) could otherwise both pass a balance or stock check before
+// either was saved, and spend the same money, or sell the same item, twice. The lock expires by
+// itself after 15s, so a crashed request can't block anyone for long.
+async function withLock(name, fn) {
+  const key = `mkt:lock:${name}`, me = crypto.randomBytes(8).toString('hex')
+  for (let i = 0; ; i++) {
+    if (await redis(['SET', key, me, 'NX', 'PX', '15000'])) break
+    if (i >= 40) throw bad('Busy with another request. Try again in a moment.', 409)
+    await new Promise((r) => setTimeout(r, 75))
+  }
+  try { return await fn() } finally {
+    try { if ((await redis(['GET', key])) === me) await redis(['DEL', key]) } catch {}
+  }
+}
+
 /* ------------------------------ helpers ------------------------------ */
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex')
 const newId = (p) => p + crypto.randomBytes(6).toString('hex')
@@ -416,7 +432,8 @@ function depositMethods(set) {
   return [...(set.bank ? ['bank'] : []), ...CRYPTO_NETWORKS.filter((n) => set.crypto[n]).map((n) => `crypto:${n}`)]
 }
 const depositRef = () => 'VX-' + crypto.randomBytes(4).toString('hex').toUpperCase().slice(0, 6)
-async function changeStock(listingId, delta) {
+// Callers that already hold the listing's lock use stockChange; everyone else changeStock.
+async function stockChange(listingId, delta) {
   const l = await getOne(LISTINGS, listingId)
   if (!l) return null
   l.stock = Math.max(0, (l.stock ?? 1) + delta)
@@ -424,6 +441,7 @@ async function changeStock(listingId, delta) {
   await put(LISTINGS, l)
   return l
 }
+const changeStock = (listingId, delta) => withLock(`listing:${listingId}`, () => stockChange(listingId, delta))
 async function refundOrder(o, reason) {
   if (o.method !== 'balance' && o.paymentIntent) {
     await stripe('POST', '/refunds', { payment_intent: o.paymentIntent, metadata: { orderId: o.id } }, `refund-${o.id}`)
@@ -449,6 +467,9 @@ async function autoDeliver(o, l) {
 }
 // Mark an order paid and take the item out of stock (auto-delivering logins when there are any).
 async function fulfil(o) {
+  return withLock(`listing:${o.listingId}`, () => fulfilLocked(o))
+}
+async function fulfilLocked(o) {
   const l = await getOne(LISTINGS, o.listingId)
   o.paidAt = Date.now()
   const soldOut = async () => { o.status = 'paid'; o.stockTaken = false; await refundOrder(o, 'Sold out before your payment finished'); return o }
@@ -457,7 +478,7 @@ async function fulfil(o) {
     if (!(await autoDeliver(o, l))) return soldOut()
     o.stockTaken = true
   } else {
-    await changeStock(o.listingId, -1)
+    await stockChange(o.listingId, -1)
     o.stockTaken = true
     o.status = 'paid'
   }
@@ -465,11 +486,14 @@ async function fulfil(o) {
   return o
 }
 // Called by the Stripe webhook when a checkout is paid.
+// Stripe can send the same event twice at once, so one order is marked paid only once.
 async function markPaid(orderId, paymentIntent) {
-  const o = await getOne(ORDERS, orderId)
-  if (!o || o.status !== 'pending') return o
-  o.paymentIntent = paymentIntent || o.paymentIntent
-  return fulfil(o)
+  return withLock(`order:${orderId}`, async () => {
+    const o = await getOne(ORDERS, orderId)
+    if (!o || o.status !== 'pending') return o
+    o.paymentIntent = paymentIntent || o.paymentIntent
+    return fulfil(o)
+  })
 }
 async function markExpired(orderId) {
   const o = await getOne(ORDERS, orderId)
@@ -769,10 +793,13 @@ const actions = {
       ...money, method, status: 'pending', createdAt: Date.now(), messages: [], acceptedFinal: true,
     }
     if (method === 'balance') {
-      const [orders, payouts, deposits] = await Promise.all([loadOrders(), getAll(PAYOUTS), getAll(DEPOSITS)])
-      if (walletFor(u.id, orders, payouts, deposits).available < money.total) throw bad('Not enough balance')
-      await fulfil(order)
-      return { orderId: order.id }
+      // Check the balance and save the order as one step (see withLock).
+      return withLock(`wallet:${u.id}`, async () => {
+        const [orders, payouts, deposits] = await Promise.all([loadOrders(), getAll(PAYOUTS), getAll(DEPOSITS)])
+        if (walletFor(u.id, orders, payouts, deposits).available < money.total) throw bad('Not enough balance')
+        await fulfil(order)
+        return { orderId: order.id }
+      })
     }
     const site = siteUrl(req)
     if (method === 'saved' && !taxOn()) {
@@ -980,16 +1007,19 @@ const actions = {
     } else {
       details = str(b.details, 'Bank details', 10, 300)
     }
-    const [orders, payouts, deposits] = await Promise.all([loadOrders(), getAll(PAYOUTS), getAll(DEPOSITS)])
-    const w = walletFor(u.id, orders, payouts, deposits)
-    if (amount > w.withdrawable) {
-      throw bad(w.credit > 0 && amount <= w.available
-        ? `You can withdraw up to $${Math.max(w.withdrawable, 0).toFixed(2)}. Added funds can only be spent on Vaultix, not withdrawn.`
-        : 'That’s more than your available balance')
-    }
-    const p = { id: newId('p_'), userId: u.id, amount, method: b.method, details, status: 'requested', createdAt: Date.now() }
-    await put(PAYOUTS, p)
-    return { payout: p }
+    // Check the balance and save the request as one step (see withLock).
+    return withLock(`wallet:${u.id}`, async () => {
+      const [orders, payouts, deposits] = await Promise.all([loadOrders(), getAll(PAYOUTS), getAll(DEPOSITS)])
+      const w = walletFor(u.id, orders, payouts, deposits)
+      if (amount > w.withdrawable) {
+        throw bad(w.credit > 0 && amount <= w.available
+          ? `You can withdraw up to $${Math.max(w.withdrawable, 0).toFixed(2)}. Added funds can only be spent on Vaultix, not withdrawn.`
+          : 'That’s more than your available balance')
+      }
+      const p = { id: newId('p_'), userId: u.id, amount, method: b.method, details, status: 'requested', createdAt: Date.now() }
+      await put(PAYOUTS, p)
+      return { payout: p }
+    })
   },
 
   // ---- add funds ----
@@ -1196,19 +1226,22 @@ const actions = {
   // Credit the amount that actually arrived (it can differ from what they asked for), or reject.
   async depositDecision(b) {
     const staff = await authAdmin(b)
-    const d = await getOne(DEPOSITS, b.depositId)
-    if (!d || !['waiting', 'sent'].includes(d.status)) throw bad('This request was already handled')
-    if (b.decision === 'credit') {
-      const amount = r2(Number(b.amount ?? d.amount))
-      if (!(amount > 0 && amount <= MAX_DEPOSIT * 2)) throw bad('Enter the amount that arrived')
-      d.status = 'credited'; d.credited = amount
-    } else if (b.decision === 'reject') {
-      d.status = 'rejected'
-    } else throw bad('Choose credit or reject')
-    d.note = String(b.note || '').slice(0, 200)
-    d.decidedAt = Date.now(); d.decidedBy = staff ? staff.name : 'staff'
-    await put(DEPOSITS, d)
-    return { deposit: d }
+    // One decision per request, even if staff click twice at once (see withLock).
+    return withLock(`deposit:${b.depositId}`, async () => {
+      const d = await getOne(DEPOSITS, b.depositId)
+      if (!d || !['waiting', 'sent'].includes(d.status)) throw bad('This request was already handled')
+      if (b.decision === 'credit') {
+        const amount = r2(Number(b.amount ?? d.amount))
+        if (!(amount > 0 && amount <= MAX_DEPOSIT * 2)) throw bad('Enter the amount that arrived')
+        d.status = 'credited'; d.credited = amount
+      } else if (b.decision === 'reject') {
+        d.status = 'rejected'
+      } else throw bad('Choose credit or reject')
+      d.note = String(b.note || '').slice(0, 200)
+      d.decidedAt = Date.now(); d.decidedBy = staff ? staff.name : 'staff'
+      await put(DEPOSITS, d)
+      return { deposit: d }
+    })
   },
 
   async adminSetDeposit(b) {

@@ -39,7 +39,16 @@ if (FAKE_EMAIL) process.env.RESEND_API_KEY = 're_fake_dev'
 let db = {}
 try { db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')) } catch {}
 const save = () => fs.writeFileSync(DB_FILE, JSON.stringify(db))
+const locks = {} // SET NX PX / GET for api/market.js's locks (not saved to the file)
 function redisCmd([cmd, key, ...a]) {
+  if (cmd === 'SET') {
+    const cur = locks[key], px = a.indexOf('PX')
+    if (a.includes('NX') && cur && cur.exp > Date.now()) return null
+    locks[key] = { v: a[0], exp: px >= 0 ? Date.now() + Number(a[px + 1]) : Infinity }
+    return 'OK'
+  }
+  if (cmd === 'GET') { const cur = locks[key]; return cur && cur.exp > Date.now() ? cur.v : null }
+  if (cmd === 'DEL' && key in locks) { delete locks[key]; return 1 }
   if (['RPUSH', 'LPOP', 'LLEN', 'LRANGE', 'LREM'].includes(cmd)) {
     const l = (db[key] = Array.isArray(db[key]) ? db[key] : [])
     if (cmd === 'RPUSH') { l.push(...a); save(); return l.length }
