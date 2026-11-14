@@ -496,12 +496,64 @@ async function markPaid(orderId, paymentIntent) {
   })
 }
 async function markExpired(orderId) {
-  const o = await getOne(ORDERS, orderId)
-  if (o && o.status === 'pending') { o.status = 'cancelled'; o.cancelledAt = Date.now(); await put(ORDERS, o) }
+  return withLock(`order:${orderId}`, async () => {
+    const o = await getOne(ORDERS, orderId)
+    if (o && o.status === 'pending') { o.status = 'cancelled'; o.cancelledAt = Date.now(); await put(ORDERS, o) }
+    return o
+  })
 }
 async function markSavedCardFailed(orderId) {
-  const o = await getOne(ORDERS, orderId)
-  if (o && o.status === 'pending' && o.method === 'saved') { o.status = 'cancelled'; o.cancelledAt = Date.now(); await put(ORDERS, o) }
+  return withLock(`order:${orderId}`, async () => {
+    const o = await getOne(ORDERS, orderId)
+    if (o && o.status === 'pending' && o.method === 'saved') { o.status = 'cancelled'; o.cancelledAt = Date.now(); await put(ORDERS, o) }
+    return o
+  })
+}
+// ---- payment status straight from Stripe ----
+// The webhook normally says when a payment finishes. If it's missing or set up wrong, orders
+// still update: an order waiting for payment is checked with Stripe when someone opens it.
+const SYNC_EVERY_MS = 8000
+async function syncPayment(o) {
+  if (!o || o.status !== 'pending' || !process.env.STRIPE_SECRET_KEY) return o
+  if (!o.stripeSession && !(o.method === 'saved' && o.paymentIntent)) return o
+  try {
+    // At most one check per order every few seconds, across all server instances.
+    if (!(await redis(['SET', `mkt:sync:${o.id}`, '1', 'NX', 'PX', String(SYNC_EVERY_MS)]))) return o
+    if (o.stripeSession) {
+      const s = await stripe('GET', `/checkout/sessions/${encodeURIComponent(o.stripeSession)}`)
+      if (s.payment_status === 'paid') return (await markPaid(o.id, s.payment_intent)) || o
+      if (s.status === 'expired') return (await markExpired(o.id)) || o
+    } else {
+      const pi = await stripe('GET', `/payment_intents/${encodeURIComponent(o.paymentIntent)}`)
+      if (pi.status === 'succeeded') return (await markPaid(o.id, pi.id)) || o
+      if (['canceled', 'requires_payment_method'].includes(pi.status)) return (await markSavedCardFailed(o.id)) || o
+    }
+  } catch (e) { console.error('payment check', o.id, e.message) }
+  return o
+}
+// Check the newest orders that are still waiting for payment (a few at a time, so a page load
+// never turns into dozens of Stripe calls). Returns the list with those orders updated.
+async function syncPending(orders, max = 10) {
+  const waiting = orders.filter((o) => o.status === 'pending').sort((a, c) => c.createdAt - a.createdAt).slice(0, max)
+  if (!waiting.length) return orders
+  const fresh = new Map((await Promise.all(waiting.map(syncPayment))).map((o) => [o.id, o]))
+  return orders.map((o) => fresh.get(o.id) || o)
+}
+// The webhook notes when Stripe last reached it, so the Staff page can show whether it works.
+const WEBHOOK_OK = 'webhookOk', WEBHOOK_BAD = 'webhookBad'
+async function webhookSeen(ok, type) {
+  await redis(['HSET', SETTINGS, ok ? WEBHOOK_OK : WEBHOOK_BAD, JSON.stringify(ok ? { at: Date.now(), type: String(type || '').slice(0, 80) } : { at: Date.now() })])
+}
+async function webhookStatus() {
+  const [ok, badSig] = await Promise.all([redis(['HGET', SETTINGS, WEBHOOK_OK]), redis(['HGET', SETTINGS, WEBHOOK_BAD])])
+  const parse = (v) => { try { return v ? JSON.parse(v) : null } catch { return null } }
+  const key = process.env.STRIPE_SECRET_KEY || ''
+  return {
+    cards: !!key,
+    stripeMode: key.startsWith('sk_test_') || key.startsWith('rk_test_') ? 'test' : key ? 'live' : null,
+    secretSet: !!String(process.env.STRIPE_WEBHOOK_SECRET || '').trim(),
+    lastEvent: parse(ok), lastBadSignature: parse(badSig),
+  }
 }
 // Sellers get paid through Stripe Connect (Accounts v2, "recipient" accounts). They can receive
 // money once Stripe marks their stripe_transfers capability active.
@@ -882,13 +934,13 @@ const actions = {
   async myOrders(b) {
     const u = await authUser(b)
     const [orders, users] = await Promise.all([loadOrders(), getAll(SELLERS)])
-    const mine = orders.filter((o) => o.buyerId === u.id || o.sellerId === u.id).sort((a, c) => c.createdAt - a.createdAt)
-    return { orders: mine.map((o) => orderView(o, users, u.id)) }
+    const mine = await syncPending(orders.filter((o) => o.buyerId === u.id || o.sellerId === u.id), 5)
+    return { orders: mine.sort((a, c) => c.createdAt - a.createdAt).map((o) => orderView(o, users, u.id)) }
   },
 
   async order(b) {
     const { u, o } = await participantOrder(b)
-    return { order: orderView(o, await getAll(SELLERS), u.id) }
+    return { order: orderView(await syncPayment(o), await getAll(SELLERS), u.id) }
   },
 
   async deliver(b) {
@@ -1183,8 +1235,9 @@ const actions = {
 
   async adminOrders(b) {
     await authAdmin(b)
-    const [orders, users] = await Promise.all([loadOrders(), getAll(SELLERS)])
-    return { orders: orders.sort((a, c) => c.createdAt - a.createdAt).map((o) => orderView(o, users, null)) }
+    const [loaded, users] = await Promise.all([loadOrders(), getAll(SELLERS)])
+    const [orders, webhook] = await Promise.all([syncPending(loaded), webhookStatus()])
+    return { orders: orders.sort((a, c) => c.createdAt - a.createdAt).map((o) => orderView(o, users, null)), webhook }
   },
 
   // Settle an order: refund the buyer, or release the money to the seller.
@@ -1322,4 +1375,4 @@ async function handler(req, res) {
 
 module.exports = handler
 // Used by api/stripe-webhook.js
-module.exports.internal = { markPaid, markExpired, markSavedCardFailed, onStripeAccount }
+module.exports.internal = { markPaid, markExpired, markSavedCardFailed, onStripeAccount, webhookSeen }
