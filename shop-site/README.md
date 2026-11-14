@@ -99,7 +99,7 @@ Added funds can be **spent but not withdrawn**: otherwise anyone could pass mone
 3. **Delivery:** the seller adds the delivery details (login, trade info, code…), which only the buyer can see.
 4. **Release:** the buyer confirms and leaves a 👍/👎 review, and the seller's share (price minus commission) becomes withdrawable. If the buyer doesn't respond, the order confirms itself 3 days after delivery.
 5. **All sales are final once delivered.** At checkout the buyer must tick "I understand there are no refunds once the item is delivered". After delivery the buyer can't report a problem and staff can't refund; the buyer must check the item straight away. **Before delivery** the buyer can still report that the seller isn't delivering, and staff can **refund** them (or the seller can refund). This protects buyers from scam sellers who take the money and never deliver, which would otherwise end up as chargebacks. Staff can always **release** money to the seller.
-6. **Wallet:** shows available, pending and earned money. The balance can be spent at checkout (no fee) or withdrawn by **bank or debit card (Stripe Connect)**, **PayPal**, **crypto (USDT/BTC/ETH/LTC)** or **bank transfer**. Staff approve every withdrawal. Stripe withdrawals are transferred automatically; for the others, staff send the money themselves and click "Mark as sent".
+6. **Wallet:** shows available, pending and earned money. The balance can be spent at checkout (no fee) or withdrawn by **bank or debit card (Stripe Connect)**, **PayPal**, **crypto (USDT/BTC/ETH/LTC)** or **bank transfer**. Stripe withdrawals up to $200 per seller a day (`MARKET_AUTO_PAYOUT_MAX`) are sent automatically, with no staff step. Bigger ones, and any Stripe refuses (for example before the money is available in your Stripe balance), wait on the Staff page. For PayPal, crypto and bank transfer, staff send the money themselves and click "Mark as sent".
 7. **Profiles:** clicking any seller opens a side panel with their badge, "Verified since", % positive, reviews, sales and listings. Your own panel has your purchases, sales, wallet, listings and profile settings.
 
 Fees (change them with env vars): the buyer pays a payment fee of 3% + $0.30 (none when paying by balance), and the seller pays a 5% commission.
@@ -129,7 +129,7 @@ Vaultix follows Stripe's current best practices:
 
 - **Payments:** Stripe Checkout with *dynamic payment methods*, so the code doesn't list payment methods. Turn cards, Apple Pay, Google Pay, crypto and others on or off in Stripe → Settings → Payment methods.
 - **Saved cards:** buyers get a Stripe Customer; Checkout offers "save my card", and one-click pay uses a PaymentIntent.
-- **Seller payouts (Connect):** sellers get an Accounts v2 *recipient* account with the Express dashboard. Vaultix keeps the money in escrow and sends each seller's share with a transfer once the staff approve the withdrawal.
+- **Seller payouts (Connect):** sellers get an Accounts v2 *recipient* account with the Express dashboard. Vaultix keeps the money in escrow and sends each seller's share with a transfer when they withdraw: automatically up to the daily limit, otherwise once staff approve it.
 - **The API version is pinned** (`2026-10-28.endive`, change it with `STRIPE_API_VERSION`), and webhook signatures are always checked.
 
 Steps:
@@ -163,7 +163,7 @@ The site and API run as one small Node server (`shop-site/server.js`). `render.y
      `checkout.session.expired`, `account.updated`, `payment_intent.succeeded` and `payment_intent.payment_failed`. Copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
    - In Stripe, turn on **Connect** and complete the platform profile (see "Stripe setup" step 3), and turn on Apple Pay, Google Pay and Crypto under payment methods.
 4. Optional settings: `RESEND_API_KEY` and `MARKET_EMAIL_FROM` ("forgot password" emails, see "Emails" above), `SITE_URL` (only needed with a custom domain), `MARKET_FEE_PCT` (default 3), `MARKET_FEE_FIXED` (default 0.30),
-   `MARKET_COMMISSION_PCT` (default 5).
+   `MARKET_COMMISSION_PCT` (default 5), `MARKET_AUTO_PAYOUT_MAX` (default 200; dollars per seller per day sent to Stripe without staff, 0 = staff approve every withdrawal).
 
 Render redeploys automatically whenever `main` changes. You can also run the production server yourself with `node shop-site/server.js`.
 
@@ -177,4 +177,4 @@ This is handy for trying it out, but other people won't see your listings.
 
 - **Stripe's rules:** Stripe (and PayPal) don't allow selling game accounts, or in-game currency/items for games you don't run. If they find out, they can close your account and hold the money. Check their restricted businesses list, or use a payment provider that allows gaming marketplaces, before switching to live keys.
 - **Holding other people's money** (escrow and payouts) can need a licence or registration where you live. Check before going live.
-- Withdrawals are approved by hand on purpose, so staff can catch fraud such as a stolen card buying something to cash out.
+- Small Stripe withdrawals go out automatically. That's convenient, but it means nobody looks before money leaves: someone with a stolen card could buy their own listing from a second account and cash out, and when the card owner disputes the payment, you pay it back. Keep `MARKET_AUTO_PAYOUT_MAX` low, or set it to 0 to approve every withdrawal by hand.

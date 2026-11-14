@@ -269,7 +269,7 @@ async function renderOrder() {
             <p class="muted small">Paid with ${o.method === "balance" ? "Vaultix balance" : o.method === "crypto" ? "crypto (Stripe)" : "card / wallet (Stripe)"}</p>`
           : `
             <div class="sum-row"><span>Sale price</span><b>${money(o.price)}</b></div>
-            <div class="sum-row"><span>Vaultix fee (${Math.round(state.fees.commission * 100)}%)</span><b>−${money(o.commission)}</b></div>
+            <div class="sum-row"><span>Vaultix fee (${Math.round(o.price ? (o.commission / o.price) * 100 : state.fees.commission * 100)}%)</span><b>−${money(o.commission)}</b></div>
             <div class="sum-row total"><span>You receive</span><b>${money(o.sellerNet)}</b></div>
             <p class="muted small">Added to your balance when the buyer confirms.</p>`}
           <div class="party">
@@ -592,9 +592,10 @@ function addFundsSection() {
 function walletTab(me, w) {
   if (!w) return `<p class="muted">Couldn't load your wallet.</p>`;
   const stripeOk = me.stripeConnected && me.stripeReady;
+  const autoMax = Number(state.fees.autoPayout) || 0;
   const field = {
     stripe: stripeOk
-      ? `<div class="safe small">Bank or debit card connected through Stripe. Withdrawals are sent there after staff approve them.</div>`
+      ? `<div class="safe small">Bank or debit card connected through Stripe. ${autoMax > 0 ? `Withdrawals up to ${money(autoMax)} a day are sent there straight away.` : "Withdrawals are sent there after staff approve them."}</div>`
       : `<p class="muted small">Add your bank account or debit card on Stripe's secure page. Vaultix never sees the numbers.</p><button class="btn ghost" data-stripe-connect type="button">${me.stripeConnected ? "Finish Stripe setup" : "Connect bank or debit card"}</button>`,
     paypal: `<label>PayPal email<input name="details" type="email" maxlength="120" placeholder="you@example.com" /></label>`,
     crypto: `<div class="two"><label>Coin & network<select name="network">${["USDT (TRC20)", "USDT (ERC20)", "BTC", "ETH", "LTC"].map((n) => `<option>${n}</option>`).join("")}</select></label>
@@ -624,8 +625,10 @@ function walletTab(me, w) {
       <label>Amount (min $10${w.credit > 0 ? `, up to ${money(Math.max(w.withdrawable, 0))}` : ""})<span class="amt"><input name="amount" type="number" min="10" step="0.01" max="${Math.max(0, w.withdrawable)}" placeholder="0.00" /><button class="btn ghost sm" data-max type="button">Max</button></span></label>
       ${w.credit > 0 ? `<p class="muted small">Added funds can only be spent on Vaultix, not withdrawn.</p>` : ""}
       <p class="form-err" id="payoutErr" role="alert"></p>
-      <button class="btn sell" type="submit" ${payoutMethod === "stripe" && !stripeOk ? "disabled" : ""}>Request withdrawal</button>
-      <p class="muted small">Staff check every withdrawal before it's sent, usually within 1–2 days.</p>
+      <button class="btn sell" type="submit" ${payoutMethod === "stripe" && !stripeOk ? "disabled" : ""}>${payoutMethod === "stripe" && autoMax > 0 ? "Withdraw" : "Request withdrawal"}</button>
+      <p class="muted small">${payoutMethod === "stripe" && autoMax > 0
+        ? `Sent straight away, up to ${money(autoMax)} a day. Bigger withdrawals are checked by staff first, usually within 1–2 days.`
+        : "Staff send PayPal, crypto and bank withdrawals by hand, usually within 1–2 days."}</p>
     </form>
     <h3 class="dh">History</h3>
     <div class="dlist">${state.payouts.length ? state.payouts.map((p) => `
@@ -723,12 +726,14 @@ $("#drawer").addEventListener("submit", async (e) => {
     $("#payoutErr").textContent = "";
     try {
       btn.disabled = true;
-      await Market.payout({
+      const r = await Market.payout({
         method: payoutMethod, amount: f.elements.amount.value,
         details: f.elements.details ? f.elements.details.value : "",
         network: f.elements.network ? f.elements.network.value : undefined,
       });
-      await loadMe(); toast("Withdrawal requested. Staff will process it soon."); renderAccount();
+      await loadMe();
+      toast(r && r.payout && r.payout.status === "paid" ? "Sent! Stripe pays it into your bank, usually within a few days." : "Withdrawal requested. Staff will process it soon.");
+      renderAccount();
     } catch (ex) { $("#payoutErr").textContent = ex.message; btn.disabled = false; }
   }
 });

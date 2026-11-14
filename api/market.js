@@ -39,6 +39,9 @@
 //                                                       only delivers to your own Resend login email)
 //   MARKET_FEE_PCT / MARKET_FEE_FIXED                   buyer payment fee (default 3% + $0.30)
 //   MARKET_COMMISSION_PCT                               cut taken from sellers (default 5%)
+//   MARKET_AUTO_PAYOUT_MAX                              Stripe withdrawals up to this many $ per seller per
+//                                                       24 h are sent automatically, no staff needed (default
+//                                                       200; 0 = staff approve every withdrawal)
 //
 //  Add funds (no card needed)
 //   - A signed-in user asks to add $5-$2,000 by bank transfer or crypto, gets the owner's payment
@@ -88,6 +91,7 @@ const FEE_FIXED = Number(process.env.MARKET_FEE_FIXED ?? 0.3)
 const COMMISSION_PCT = Number(process.env.MARKET_COMMISSION_PCT ?? 5) / 100
 const CRYPTO_NETWORKS = ['USDT (TRC20)', 'USDT (ERC20)', 'BTC', 'ETH', 'LTC']
 const PAYOUT_METHODS = ['stripe', 'paypal', 'crypto', 'bank']
+const AUTO_PAYOUT_MAX = Math.max(0, Number(process.env.MARKET_AUTO_PAYOUT_MAX ?? 200) || 0)
 const MAX_LOGINS = 50
 const credsKey = (listingId) => `mkt:creds:${listingId}`
 const OWNER_NAMES = String(process.env.MARKET_OWNERS ?? 'Kaitrades').split(',').map((n) => n.trim().toLowerCase()).filter(Boolean)
@@ -269,7 +273,7 @@ async function stripe(method, path, params, idempotencyKey) {
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey
   const r = await fetch(`https://api.stripe.com${v2 ? '' : '/v1'}${path}`, { method, headers, body })
   const j = await r.json().catch(() => ({}))
-  if (!r.ok) throw bad((j.error && j.error.message) || 'Payment provider error', 502)
+  if (!r.ok) throw Object.assign(bad((j.error && j.error.message) || 'Payment provider error', 502), { stripeStatus: r.status })
   return j
 }
 // Stripe Tax: off unless STRIPE_TAX=on. Only turn it on after adding a tax registration in
@@ -514,6 +518,29 @@ async function onStripeAccount(accountId) {
   const u = (await getAll(SELLERS)).find((x) => x.stripeAccount === accountId)
   if (u) { u.stripeReady = await payoutReady(accountId); await put(SELLERS, u) }
 }
+// ---- automatic withdrawals ----
+// Stripe withdrawals go out straight away, up to AUTO_PAYOUT_MAX per seller per 24 h. Anything
+// bigger, PayPal / crypto / bank (sent by hand), or a transfer Stripe refuses waits for staff.
+const DAY_MS = 24 * 60 * 60 * 1000
+function autoPayoutLeft(userId, payouts) {
+  const used = sum(payouts.filter((p) => p.userId === userId && p.auto && Date.now() - p.processedAt < DAY_MS).map((p) => p.amount))
+  return r2(AUTO_PAYOUT_MAX - used)
+}
+async function sendAutoPayout(u, p) {
+  try {
+    const t = await stripe('POST', '/transfers', { amount: cents(p.amount), currency: 'usd', destination: u.stripeAccount, metadata: { payoutId: p.id } }, p.autoKey)
+    Object.assign(p, { status: 'paid', auto: true, transferId: t.id, processedAt: Date.now(), note: 'Sent automatically' })
+    delete p.autoKey
+  } catch (e) {
+    // Stripe answered "no" (e.g. not enough available balance yet): nothing was sent, so staff can
+    // retry with a fresh request. Otherwise (timeout, Stripe error 5xx) the transfer MAY have gone
+    // through: autoKey stays, so a staff approval repeats this exact request and Stripe won't pay twice.
+    if (e.stripeStatus >= 400 && e.stripeStatus < 500) delete p.autoKey
+    p.autoError = String(e.message || 'failed').slice(0, 200)
+    console.error('auto payout', p.id, p.autoError)
+  }
+  await put(PAYOUTS, p)
+}
 // ---- saved cards (Stripe Customer) ----
 async function ensureCustomer(u) {
   if (u.stripeCustomer) return u.stripeCustomer
@@ -574,7 +601,7 @@ async function listPublic() {
 /* ------------------------------ actions ------------------------------ */
 const actions = {
   async list() {
-    return { listings: await listPublic(), fees: { pct: FEE_PCT, fixed: FEE_FIXED, commission: COMMISSION_PCT }, owners: OWNER_NAMES, emailReset: emailOn() }
+    return { listings: await listPublic(), fees: { pct: FEE_PCT, fixed: FEE_FIXED, commission: COMMISSION_PCT, autoPayout: AUTO_PAYOUT_MAX }, owners: OWNER_NAMES, emailReset: emailOn() }
   },
 
   async profile(b) {
@@ -723,7 +750,7 @@ const actions = {
     return {
       seller: { ...publicUser(u, orders), contact: u.contact, email: u.email || '', hasPassword: !!u.pw, stripeConnected: !!u.stripeAccount, stripeReady: !!u.stripeReady },
       wallet: walletFor(u.id, orders, payouts, deposits),
-      payouts: payouts.filter((p) => p.userId === u.id).sort((a, c) => c.createdAt - a.createdAt),
+      payouts: payouts.filter((p) => p.userId === u.id).sort((a, c) => c.createdAt - a.createdAt).map(({ autoKey, autoError, ...p }) => p),
     }
   },
 
@@ -1017,8 +1044,12 @@ const actions = {
           : 'That’s more than your available balance')
       }
       const p = { id: newId('p_'), userId: u.id, amount, method: b.method, details, status: 'requested', createdAt: Date.now() }
-      await put(PAYOUTS, p)
-      return { payout: p }
+      const auto = p.method === 'stripe' && amount <= autoPayoutLeft(u.id, payouts)
+      if (auto) p.autoKey = `payout-auto-${p.id}`
+      await put(PAYOUTS, p) // saved first: if the transfer call dies, the request still exists
+      if (auto) await sendAutoPayout(u, p)
+      const { autoKey, autoError, ...view } = p
+      return { payout: view }
     })
   },
 
@@ -1272,8 +1303,9 @@ const actions = {
         const u = await getOne(SELLERS, p.userId)
         if (!u || !u.stripeAccount) throw bad('User has no Stripe account')
         if (!(await payoutReady(u.stripeAccount))) throw bad('This seller has not finished Stripe setup yet, so Stripe can not pay them')
-        const t = await stripe('POST', '/transfers', { amount: cents(p.amount), currency: 'usd', destination: u.stripeAccount, metadata: { payoutId: p.id } }, `payout-${p.id}`)
-        p.transferId = t.id
+        // Same key as an unfinished automatic attempt, so Stripe never pays the same withdrawal twice.
+        const t = await stripe('POST', '/transfers', { amount: cents(p.amount), currency: 'usd', destination: u.stripeAccount, metadata: { payoutId: p.id } }, p.autoKey || `payout-${p.id}`)
+        p.transferId = t.id; delete p.autoKey
       }
       p.status = 'paid'; p.note = String(b.note || '').slice(0, 200)
     } else throw bad('Choose paid or reject')
