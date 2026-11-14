@@ -13,7 +13,6 @@
 //    STRIPE_WEBHOOK_SECRET to the secret it prints.
 //  - Staff page password: MARKET_ADMIN_KEY (default "admin").
 // ============================================================================
-const http = require('http')
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
@@ -88,9 +87,6 @@ global.fetch = async (url, opts = {}) => {
   return realFetch(url, opts)
 }
 
-const market = require('../api/market.js')
-const webhook = require('../api/stripe-webhook.js')
-
 async function sendWebhook(type, object) {
   const payload = JSON.stringify({ id: 'evt_' + crypto.randomBytes(8).toString('hex'), type, data: { object } })
   const t = Math.floor(Date.now() / 1000)
@@ -139,39 +135,12 @@ async function devRoutes(req, res, u) {
   return false
 }
 
-/* ---------------- server ---------------- */
-const TYPES = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' }
-http.createServer(async (req, res) => {
-  const u = new URL(req.url, `http://localhost:${PORT}`)
-  try {
-    if (u.pathname.startsWith('/__dev/')) { if ((await devRoutes(req, res, u)) !== false) return }
-    if (u.pathname === '/api/stripe-webhook') return webhook(req, res)
-    if (u.pathname === '/api/market') {
-      let raw = ''
-      req.on('data', (c) => (raw += c))
-      req.on('end', () => {
-        req.query = Object.fromEntries(u.searchParams)
-        try { req.body = raw ? JSON.parse(raw) : {} } catch { req.body = {} }
-        res.status = (c) => { res.statusCode = c; return res }
-        res.json = (o) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(o)) }
-        market(req, res)
-      })
-      return
-    }
-    const rel = u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname.slice(1))
-    const file = path.resolve(ROOT, rel)
-    if (!file.startsWith(ROOT + path.sep) || path.basename(file).startsWith('.') || file.endsWith('dev-server.js')) { res.statusCode = 404; return res.end() }
-    fs.readFile(file, (e, d) => {
-      if (e) { res.statusCode = 404; return res.end('Not found') }
-      res.setHeader('Content-Type', TYPES[path.extname(file)] || 'application/octet-stream')
-      res.end(d)
-    })
-  } catch (e) {
-    console.error(e); res.statusCode = 500; res.end('Server error')
-  }
-}).listen(PORT, () => {
-  console.log(`Vaultix dev server: http://localhost:${PORT}`)
-  console.log(`  data file : ${DB_FILE}`)
-  console.log(`  Stripe    : ${FAKE_STRIPE ? 'FAKE (test pages, no real Stripe)' : 'real Stripe test mode'}`)
-  console.log(`  staff key : ${process.env.MARKET_ADMIN_KEY}`)
-})
+/* ---------------- server (shared with production: server.js) ---------------- */
+require('./server.js')
+  .createServer({ extraRoutes: (req, res, u) => (u.pathname.startsWith('/__dev/') ? devRoutes(req, res, u) : false) })
+  .listen(PORT, () => {
+    console.log(`Vaultix dev server: http://localhost:${PORT}`)
+    console.log(`  data file : ${DB_FILE}`)
+    console.log(`  Stripe    : ${FAKE_STRIPE ? 'FAKE (test pages, no real Stripe)' : 'real Stripe test mode'}`)
+    console.log(`  staff key : ${process.env.MARKET_ADMIN_KEY}`)
+  })

@@ -29,6 +29,7 @@ It starts **empty**: there are no built-in products.
 - `index.html`, `app.js`: the market
 - `admin.html`, `admin.js`: the Staff page (verify / ban sellers). It's linked as "Staff" in the footer.
 - `games.js`: the game list (used by both the page and the API)
+- `server.js`: the production server (site + API in one process); `dev-server.js` runs it with test data and a fake Stripe
 - `data.js`: talks to the API, or uses demo mode if the API isn't available
 - `styles.css`, `logo.svg`, `favicon.svg`
 - `../api/market.js`: the server (a Vercel serverless function)
@@ -55,21 +56,27 @@ Open http://localhost:8787. The test data is saved in `shop-site/.dev-data.json`
 Without `STRIPE_SECRET_KEY`, a **pretend Stripe** shows test "Pay" and "Finish setup" pages, so you can try buying, delivery, the wallet and withdrawals end to end.
 With a real `sk_test_…` key it uses Stripe test mode. Forward webhooks with `stripe listen --forward-to localhost:8787/api/stripe-webhook`.
 
-## Going live
+## Going live (Render, free)
 
-1. Create a free Upstash Redis database at https://upstash.com and copy its REST URL and token.
-2. In your Vercel project settings, add these environment variables:
-   - `UPSTASH_REDIS_REST_URL`
-   - `UPSTASH_REDIS_REST_TOKEN`
-   - `MARKET_ADMIN_KEY`: a long random password. You type it into the Staff page.
-   - `STRIPE_SECRET_KEY`: from the Stripe dashboard. Use `sk_test_…` until you're ready.
-   - `STRIPE_WEBHOOK_SECRET`: in Stripe → Developers → Webhooks, add `https://<your-site>/api/stripe-webhook` with the events
+The site and API run as one small Node server (`shop-site/server.js`). `render.yaml` at the repo root tells Render how to run it.
+
+1. **Put it online.** Sign up at https://render.com with GitHub, then go to **New → Blueprint**, pick this repository and click **Apply**.
+   You can leave the settings empty for now. Your site is then live at `https://vaultix.onrender.com`, or `https://vaultix-xxxx.onrender.com` if that name is taken.
+   It starts in **demo mode**.
+   On the free plan the site goes to sleep after 15 minutes without visitors, and the next visit takes about a minute to wake it up.
+2. **Database.** Create a free Redis database at https://upstash.com. In Render → your service → **Environment**, set
+   `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, plus `MARKET_ADMIN_KEY` (a long random password for the Staff page).
+   Buyers and sellers now share one real market.
+3. **Payments (Stripe test mode).**
+   - Set `STRIPE_SECRET_KEY` (`sk_test_…`).
+   - In Stripe → Developers → Webhooks, add `https://<your-site>.onrender.com/api/stripe-webhook` with the events
      `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`,
-     `checkout.session.expired` and `account.updated`, then copy its signing secret here.
-   - Optional: `SITE_URL`, `MARKET_FEE_PCT` (default 3), `MARKET_FEE_FIXED` (default 0.30), `MARKET_COMMISSION_PCT` (default 5).
-   - In Stripe, turn on **Connect** (for seller payouts), and turn on Apple Pay, Google Pay and Crypto under payment methods.
-3. Deploy this repo with `shop-site` as the site's output folder, so `/api/market` and the pages are on the same domain.
-   (The current `vercel.json` publishes `granite-lock/out` instead. Use a separate Vercel project for the market, or change that file.)
+     `checkout.session.expired` and `account.updated`. Copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
+   - In Stripe, turn on **Connect** (for seller payouts) and turn on Apple Pay, Google Pay and Crypto under payment methods.
+4. Optional settings: `SITE_URL` (only needed with a custom domain), `MARKET_FEE_PCT` (default 3), `MARKET_FEE_FIXED` (default 0.30),
+   `MARKET_COMMISSION_PCT` (default 5).
+
+Render redeploys automatically whenever `main` changes. You can also run the production server yourself with `node shop-site/server.js`.
 
 ## Demo mode
 
