@@ -97,7 +97,9 @@ module.exports = { createServer }
 
 if (require.main === module) {
   const port = Number(process.env.PORT || 10000)
-  const missing = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'MARKET_ADMIN_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'].filter((k) => !process.env[k])
+  const missing = ['MARKET_ADMIN_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'].filter((k) => !process.env[k])
+  if (!(process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL)) missing.unshift('UPSTASH_REDIS_REST_URL (or KV_REST_API_URL)')
+  if (!(process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN)) missing.unshift('UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_TOKEN)')
   createServer().listen(port, () => {
     console.log(`Vaultix running on port ${port}`)
     if (missing.length) console.log(`Not set yet: ${missing.join(', ')} — the site runs in demo mode until the database is set, and payments need the Stripe keys.`)
