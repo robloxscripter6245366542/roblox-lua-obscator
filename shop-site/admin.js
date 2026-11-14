@@ -60,7 +60,7 @@ function sellersView() {
       <tbody>${list.map((s) => `
         <tr>
           <td><b>@${esc(s.name)}</b><br><span class="mono small">${esc(s.id)}</span></td>
-          <td>${esc(s.contact)}</td>
+          <td>${esc(s.contact)}${s.email ? `<br><span class="small">${esc(s.email)}</span>` : ""}${s.hasPassword ? "" : `<br><span class="small">no password yet</span>`}</td>
           <td>${day(s.createdAt)}</td>
           <td>${s.sales || 0} sales${s.reviews ? `<br><span class="small">${s.positive}% of ${s.reviews}</span>` : ""}<br><span class="small">${s.listings} listing(s)</span></td>
           <td>${s.balance !== undefined ? money(s.balance) : "–"}</td>
@@ -68,6 +68,7 @@ function sellersView() {
           <td><div class="acts">${s.owner ? '<span class="small">Site owner</span>' : `
             <button class="btn ${s.verified ? "ghost" : "sell"}" data-verify="${esc(s.id)}" data-to="${!s.verified}" type="button">${s.verified ? "Remove verification" : "Verify"}</button>
             <button class="btn danger" data-ban="${esc(s.id)}" type="button">Ban</button>`}
+            <button class="btn ghost" data-reset-pw="${esc(s.id)}" data-name="${esc(s.name)}" type="button">Reset password</button>
           </div></td>
         </tr>`).join("")}</tbody>
     </table>
@@ -136,7 +137,7 @@ function ordersView() {
           <td>${money(o.total)}<br><span class="small">seller gets ${money(o.sellerNet)} · ${esc(o.method)}</span></td>
           <td>${pill(o.status)}</td>
           <td><div class="acts">${open.includes(o.status) ? `
-            <button class="btn danger" data-resolve="${esc(o.id)}" data-decision="refund" type="button">Refund buyer</button>
+            ${o.deliveredAt ? `<span class="small">Delivered: sale is final</span>` : `<button class="btn danger" data-resolve="${esc(o.id)}" data-decision="refund" type="button">Refund buyer</button>`}
             <button class="btn sell" data-resolve="${esc(o.id)}" data-decision="release" type="button">Release to seller</button>` : ""}
           </div></td>
         </tr>`).join("")}</tbody>
@@ -180,7 +181,14 @@ $("#view").addEventListener("click", async (e) => {
   const r = e.target.closest("[data-resolve]"), p = e.target.closest("[data-payout]");
   const lg = e.target.closest("[data-logins]"), ck = e.target.closest("[data-check]");
   const bl = e.target.closest("[data-bad-login]"), rl = e.target.closest("[data-remove-listing]");
+  const rp = e.target.closest("[data-reset-pw]");
   try {
+    if (rp) {
+      if (!confirm(`Reset @${rp.dataset.name}'s password? Only do this after checking it's really them (e.g. message them on their contact). They'll be signed out everywhere.`)) return;
+      const r = await Market.admin("adminResetPassword", { sellerId: rp.dataset.resetPw });
+      prompt(`Temporary password for @${rp.dataset.name}. Send it to them privately and tell them to change it under Profile:`, r.tempPassword);
+      return load();
+    }
     if (lg) {
       const id = lg.dataset.logins;
       if (openLogins[id]) delete openLogins[id];

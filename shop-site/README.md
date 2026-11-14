@@ -10,7 +10,8 @@ It starts **empty**: there are no built-in products.
 | **Verified** (green) | The site owner checked this seller on the Staff page. |
 | **Risky** (red) | Every new seller starts here. Buyers see a warning and have to click "I understand the risk" before the seller's contact details are shown. |
 
-- Signing up gives the seller a secret token that's saved in their browser. Only that browser can post or delete that seller's listings, so nobody can post under someone else's name.
+- **Accounts:** sign up with a username, email and password (at least 8 characters). Sign in on any device with your email or username. Passwords are stored as salted scrypt hashes, never in plain text, and 8 wrong tries lock the account for 15 minutes. Each device gets its own sign-in token; changing the password signs out every other device.
+- **Forgot password:** there's no email service yet, so staff use **Reset password** on the Staff page (after checking it's really that person) and send them the temporary password. Older accounts made before passwords existed can add an email and password under account menu → Profile.
 - Only someone with the admin key can verify, unverify or ban sellers. Banning also deletes all of that seller's listings.
 - Buyers can switch on **Verified sellers only** to hide risky listings.
 - Payments are held in escrow (see below). Contact details are only shown to the other side of an order and to staff.
@@ -69,7 +70,7 @@ It starts **empty**: there are no built-in products.
 2. **Escrow:** Vaultix holds the money. The order page has a status tracker and a chat between buyer and seller.
 3. **Delivery:** the seller adds the delivery details (login, trade info, code…), which only the buyer can see.
 4. **Release:** the buyer confirms and leaves a 👍/👎 review, and the seller's share (price minus commission) becomes withdrawable. If the buyer doesn't respond, the order confirms itself 3 days after delivery.
-5. **Problems:** the buyer can report a problem, which holds the money. Staff then **refund** the buyer or **release** the money to the seller on the Staff page. A seller who can't deliver can refund the buyer themselves.
+5. **All sales are final once delivered.** At checkout the buyer must tick "I understand there are no refunds once the item is delivered". After delivery the buyer can't report a problem and staff can't refund; the buyer must check the item straight away. **Before delivery** the buyer can still report that the seller isn't delivering, and staff can **refund** them (or the seller can refund). This protects buyers from scam sellers who take the money and never deliver, which would otherwise end up as chargebacks. Staff can always **release** money to the seller.
 6. **Wallet:** shows available, pending and earned money. The balance can be spent at checkout (no fee) or withdrawn by **bank or debit card (Stripe Connect)**, **PayPal**, **crypto (USDT/BTC/ETH/LTC)** or **bank transfer**. Staff approve every withdrawal. Stripe withdrawals are transferred automatically; for the others, staff send the money themselves and click "Mark as sent".
 7. **Profiles:** clicking any seller opens a side panel with their badge, "Verified since", % positive, reviews, sales and listings. Your own panel has your purchases, sales, wallet, listings and profile settings.
 
@@ -91,7 +92,7 @@ With a real `sk_test_…` key it uses Stripe test mode. Forward webhooks with `s
    Vercel adds `KV_REST_API_URL` and `KV_REST_API_TOKEN` for you, and the site accepts those names as well as `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`.
 2. In **Settings → Environment Variables**, add `MARKET_ADMIN_KEY` (your staff password) and `MARKET_ENCRYPTION_KEY` (a long random string; never change it later).
 3. **Redeploy:** Deployments → ⋯ → Redeploy. The black "Demo mode" bar disappears once the database is connected.
-4. Sign up as **Kaitrades** with your `MARKET_ADMIN_KEY` in the Staff password box to become the owner.
+4. Sign up as **Kaitrades** with your `MARKET_ADMIN_KEY` in the Staff password box to become the owner. If you already did that before passwords existed, open account menu → Profile and add an email and password, so you can sign in on any device.
 5. **Stripe** (card payments, saved cards, seller payouts): follow "Stripe setup" below, using `https://vaultix-market.vercel.app/api/stripe-webhook` as the webhook URL.
 
 ## Stripe setup

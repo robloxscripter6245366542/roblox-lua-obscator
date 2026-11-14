@@ -267,10 +267,21 @@ $("#emptySell").addEventListener("click", startSell);
 
 let afterJoin = null;
 function startSell() { state.me ? openPost() : openJoin(openPost); }
-function openJoin(next) {
-  afterJoin = typeof next === "function" ? next : null;
-  $("#joinErr").textContent = ""; $("#joinForm").reset(); $("#ownerKeyRow").hidden = true; $("#joinDlg").showModal();
+let joinMode = "signup";
+function setJoinMode(m) {
+  joinMode = m;
+  document.querySelectorAll("[data-join-mode]").forEach((b) => b.classList.toggle("on", b.dataset.joinMode === m));
+  $(".join-signup").hidden = m !== "signup"; $(".join-signin").hidden = m !== "signin";
+  $("#joinTitle").textContent = m === "signup" ? "Create your account" : "Sign in";
+  $("#joinBtn").textContent = m === "signup" ? "Create account" : "Sign in";
+  $("#joinErr").textContent = "";
 }
+function openJoin(next, mode) {
+  afterJoin = typeof next === "function" ? next : null;
+  $("#joinErr").textContent = ""; $("#joinForm").reset(); $("#ownerKeyRow").hidden = true;
+  setJoinMode(mode || "signup"); $("#joinDlg").showModal();
+}
+document.querySelectorAll("[data-join-mode]").forEach((b) => b.addEventListener("click", () => setJoinMode(b.dataset.joinMode)));
 // Owner usernames are reserved: ask for the staff password when one is typed.
 $("#joinForm").elements.name.addEventListener("input", (e) => {
   $("#ownerKeyRow").hidden = !state.owners.includes(e.target.value.trim().toLowerCase());
@@ -281,9 +292,18 @@ $("#joinForm").addEventListener("submit", async (e) => {
   const f = e.target, btn = f.querySelector("[type=submit]");
   btn.disabled = true; $("#joinErr").textContent = "";
   try {
-    state.me = await Market.register(f.elements.name.value, f.elements.contact.value, $("#ownerKeyRow").hidden ? "" : f.elements.ownerKey.value);
-    renderAvatar(); $("#joinDlg").close();
-    toast(state.me.owner ? "Welcome, owner 👑 You're verified and can open the Staff page from your account menu." : "Account created. As a seller you're marked Risky until staff verify you.");
+    const el = f.elements;
+    if (joinMode === "signin") {
+      await Market.login(el.login.value, el.loginPassword.value);
+      await loadMe(); $("#joinDlg").close();
+      toast(`Welcome back, ${state.me ? state.me.name : ""}!`);
+    } else {
+      if (!el.name.value.trim()) throw new Error("Pick a username.");
+      if (el.password.value.length < 8) throw new Error("Password must be at least 8 characters.");
+      state.me = await Market.register(el.name.value, el.contact.value, el.email.value, el.password.value, $("#ownerKeyRow").hidden ? "" : el.ownerKey.value);
+      await loadMe(); $("#joinDlg").close();
+      toast(state.me.owner ? "Welcome, owner 👑 You're verified and can open the Staff page from your account menu." : "Account created. As a seller you're marked Risky until staff verify you.");
+    }
     if (afterJoin) afterJoin();
   } catch (err) { $("#joinErr").textContent = err.message; }
   btn.disabled = false;
