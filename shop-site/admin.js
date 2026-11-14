@@ -153,7 +153,7 @@ function ordersView() {
 function payoutsView() {
   if (Market.mode !== "remote") return `<p class="muted" style="margin-top:16px">Payouts need the server.</p>`;
   return `
-    <p class="muted small" style="margin-top:16px">Stripe withdrawals are transferred automatically when you approve them. For PayPal, crypto and bank transfers, send the money yourself first, then click “Mark as sent”.</p>
+    <p class="muted small" style="margin-top:16px">Stripe withdrawals go out by themselves (up to the daily limit set by MARKET_AUTO_PAYOUT_MAX). Bigger ones, and any Stripe refused, wait here and are transferred when you approve them. For PayPal, crypto and bank transfers, send the money yourself first, then click “Mark as sent”.</p>
     <table>
       <thead><tr><th>User</th><th>Amount</th><th>Method & details</th><th>Status</th><th></th></tr></thead>
       <tbody>${data.payouts.map((p) => `
@@ -161,7 +161,7 @@ function payoutsView() {
           <td><b>@${esc(p.user)}</b><br><span class="small">${day(p.createdAt)}</span></td>
           <td><b>${money(p.amount)}</b></td>
           <td>${esc(METHOD[p.method] || p.method)}<div class="detail mono">${esc(p.details)}</div>${p.transferId ? `<span class="small mono">${esc(p.transferId)}</span>` : ""}</td>
-          <td>${pill(p.status === "paid" ? "completed" : p.status).replace("Completed", "Sent")}${p.note ? `<br><span class="small">${esc(p.note)}</span>` : ""}</td>
+          <td>${pill(p.status === "paid" ? "completed" : p.status).replace("Completed", "Sent")}${p.note ? `<br><span class="small">${esc(p.note)}</span>` : ""}${p.status === "requested" && p.autoError ? `<br><span class="small">Automatic send failed: ${esc(p.autoError)}</span>` : ""}${p.status === "requested" && p.autoKey ? `<br><span class="small"><b>Check Stripe → Transfers first:</b> the automatic send may have gone through. Approving within 24 hours won't pay twice; rejecting won't undo it.</span>` : ""}</td>
           <td><div class="acts">${p.status === "requested" ? `
             <button class="btn ghost" data-payout="${esc(p.id)}" data-decision="reject" type="button">Reject</button>
             <button class="btn sell" data-payout="${esc(p.id)}" data-decision="paid" type="button">${p.method === "stripe" ? "Approve & transfer" : "Mark as sent"}</button>` : ""}
