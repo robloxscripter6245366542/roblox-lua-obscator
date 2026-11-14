@@ -75,6 +75,16 @@ The local dev server doesn't send real emails: it prints them and lists them at 
 - **Remove bad login** deletes a login that doesn't work (stock goes down by one). **Remove listing** takes the whole listing down and deletes its unsold logins.
 - **✓ Mark checked** adds a **"✓ Checked"** badge to the listing card, its details and checkout, so buyers can see staff tested it.
 
+## Add funds (no card needed)
+
+People without a card can top up their Vaultix balance by **bank transfer or crypto**, then spend it at checkout (no payment fee).
+
+1. On the **Staff page → Add funds**, fill in where people should send money: your bank details and/or a crypto address per network (USDT TRC20/ERC20, BTC, ETH, LTC). Leave a box empty to turn that method off.
+2. A user opens **Wallet → Add funds**, enters $5–$2,000 and picks a method. They get your details and a reference code (e.g. `VX-042F3F`) to put in the transfer note, send the money, and tap **I've sent it** (with the sender name or transaction ID).
+3. On **Staff page → Add funds**, check the money really arrived, then click **Add to balance** and enter the amount that arrived (or **Reject**). Nothing is added automatically.
+
+Added funds can be **spent but not withdrawn**: otherwise anyone could pass money through Vaultix. Purchases use added funds first, then sales earnings; only sales earnings can be withdrawn. A user can have at most 3 open requests.
+
 ## Saved cards (one-click pay)
 
 - On Stripe's checkout page, buyers can tick **"Save my card"**. They can also add or remove cards in the account menu → **Cards**.

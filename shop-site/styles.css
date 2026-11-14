@@ -204,6 +204,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .dlg p { margin: 0; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-err { color: var(--risk); font-size: .88rem; min-height: 1.2em; }
+.fund-box { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin: 10px 0; background: var(--card-top); }
+.fund-box p { margin: 6px 0; }
 .form-ok { color: var(--ok, #3ccf7a); font-size: .9rem; line-height: 1.4; margin: 4px 0 0; }
 
 .view-top { display: flex; align-items: center; gap: 14px; }

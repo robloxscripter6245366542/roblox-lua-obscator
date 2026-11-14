@@ -202,6 +202,11 @@ const Market = (() => {
     orderAction: (action, orderId, data = {}) => call(action, withSession({ orderId, ...data })),
     // wallet
     stripeConnect: () => call("stripeConnect", withSession()),
+    // add funds (bank transfer / crypto, checked by staff; spend-only)
+    deposits: () => call("deposits", withSession()),
+    depositCreate: (amount, method) => call("depositCreate", withSession({ amount, method })),
+    depositSent: (depositId, proof) => call("depositSent", withSession({ depositId, proof })),
+    depositCancel: (depositId) => call("depositCancel", withSession({ depositId })),
     stripeStatus: () => call("stripeStatus", withSession()),
     payout: (data) => call("payout", withSession(data)),
     // admin
