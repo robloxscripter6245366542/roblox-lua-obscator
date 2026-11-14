@@ -523,3 +523,12 @@ div.drow { cursor: default; }
 .pm.saved.on .pm-dot { border-color: #ffd84d; }
 .pm.saved.on .pm-dot::after { background: #ffd84d; }
 .drow .plogo { flex-shrink: 0; }
+
+/* ======================= sign in / sales final ======================= */
+.seg { display: flex; gap: 4px; background: var(--panel-2, rgba(255,255,255,.05)); border-radius: 10px; padding: 4px; margin: 4px 0 12px; }
+.seg button { flex: 1; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 600; padding: 8px; border-radius: 8px; cursor: pointer; opacity: .7; }
+.seg button.on { background: rgba(255, 255, 255, .1); opacity: 1; }
+.final-ok { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0 4px; font-size: .9rem; line-height: 1.35; cursor: pointer; }
+.final-ok input { margin-top: 3px; flex-shrink: 0; width: 18px; height: 18px; }
+.final-note { margin-top: 10px; opacity: .85; }
+h3.sub { margin: 20px 0 8px; font-size: 1rem; }

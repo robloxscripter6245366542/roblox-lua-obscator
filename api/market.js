@@ -262,9 +262,47 @@ function publicUser(u, orders) {
     createdAt: u.createdAt, ...(orders ? statsFor(u.id, orders) : {}),
   }
 }
+// ---- passwords & sign-in tokens ----
+// Passwords are stored as scrypt hashes with a random salt; never in plain text.
+const SCRYPT = { N: 16384, r: 8, p: 1 }
+function hashPassword(pw) {
+  const salt = crypto.randomBytes(16)
+  const h = crypto.scryptSync(String(pw), salt, 32, SCRYPT)
+  return `scrypt$${salt.toString('hex')}$${h.toString('hex')}`
+}
+function checkPassword(pw, stored) {
+  const [kind, salt, hex] = String(stored || 'scrypt$00$00').split('$')
+  if (kind !== 'scrypt') return false
+  const want = Buffer.from(hex, 'hex')
+  const got = crypto.scryptSync(String(pw), Buffer.from(salt, 'hex'), 32, SCRYPT)
+  return want.length === got.length && crypto.timingSafeEqual(want, got)
+}
+const DUMMY_HASH = hashPassword('not-a-real-password')
+function validPassword(pw) {
+  if (typeof pw !== 'string' || pw.length < 8) throw bad('Password must be at least 8 characters')
+  if (pw.length > 128) throw bad('Password is too long')
+  return pw
+}
+function validEmail(v) {
+  const e = typeof v === 'string' ? v.trim().toLowerCase() : ''
+  if (e.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) throw bad('Enter a valid email address')
+  return e
+}
+// Each device that signs in gets its own token; we keep only their hashes (newest 10).
+function tokenOk(u, token) {
+  if (!u || !token) return false
+  const h = sha(token)
+  return h === u.tokenHash || (u.tokens || []).includes(h)
+}
+function newToken(u) {
+  const token = crypto.randomBytes(24).toString('hex')
+  u.tokens = [sha(token), ...(u.tokens || [])].slice(0, 10)
+  return token
+}
+const MAX_FAILS = 8, LOCK_MS = 15 * 60 * 1000
 async function authUser(body) {
   const u = await getOne(SELLERS, body.sellerId)
-  if (!u || !body.token || sha(body.token) !== u.tokenHash) throw bad('Please sign in again', 401)
+  if (!tokenOk(u, body.token)) throw bad('Please sign in again', 401)
   return u
 }
 function adminKeyOk(given) {
@@ -277,7 +315,7 @@ function adminKeyOk(given) {
 async function authAdmin(body) {
   if (body.ownerId && body.ownerToken) {
     const u = await getOne(SELLERS, body.ownerId)
-    if (u && u.owner && sha(body.ownerToken) === u.tokenHash) return u
+    if (u && u.owner && tokenOk(u, body.ownerToken)) return u
   }
   if (!adminKeyOk(body.adminKey)) throw bad(body.adminKey ? 'Wrong admin key' : 'Enter the admin key, or sign in as the owner', 401)
   return null
@@ -461,23 +499,75 @@ const actions = {
     const name = str(b.name, 'Name', 3, 24)
     if (!/^[A-Za-z0-9_.-]+$/.test(name)) throw bad('Name can only use letters, numbers, _ . -')
     const contact = str(b.contact, 'Contact', 3, 80)
+    const email = validEmail(b.email)
+    validPassword(b.password)
     const users = await getAll(SELLERS)
     if (users.some((s) => s.name.toLowerCase() === name.toLowerCase())) throw bad('That name is taken', 409)
+    if (users.some((s) => s.email === email)) throw bad('That email already has an account. Sign in instead.', 409)
     // Owner usernames are reserved: claiming one needs the staff password.
     const owner = isOwnerName(name)
     if (owner && !adminKeyOk(b.adminKey)) throw bad('This username is reserved for the site owner. Enter the staff password to claim it.', 403)
-    const token = crypto.randomBytes(24).toString('hex')
     const now = Date.now()
-    const u = { id: newId('s_'), name, contact, bio: '', verified: owner, verifiedAt: owner ? now : null, owner, createdAt: now, tokenHash: sha(token) }
+    const u = { id: newId('s_'), name, contact, email, pw: hashPassword(b.password), bio: '', verified: owner, verifiedAt: owner ? now : null, owner, createdAt: now }
+    const token = newToken(u)
     await put(SELLERS, u)
     return { seller: publicUser(u), token }
+  },
+
+  // Sign in on any device with email (or username) + password.
+  async login(b) {
+    const id = typeof b.login === 'string' ? b.login.trim().toLowerCase() : ''
+    if (!id || typeof b.password !== 'string' || !b.password) throw bad('Enter your email or username and your password')
+    const u = (await getAll(SELLERS)).find((x) => x.email === id || x.name.toLowerCase() === id)
+    if (u && u.lockUntil > Date.now()) throw bad('Too many wrong passwords. Try again in 15 minutes.', 429)
+    // Always run the password check, so a wrong username takes as long as a wrong password.
+    const ok = checkPassword(b.password, (u && u.pw) || DUMMY_HASH) && !!(u && u.pw)
+    if (!ok) {
+      if (u) {
+        u.fails = (u.fails || 0) + 1
+        if (u.fails >= MAX_FAILS) { u.lockUntil = Date.now() + LOCK_MS; u.fails = 0 }
+        await put(SELLERS, u)
+      }
+      throw bad(u && !u.pw ? 'This account has no password yet. Sign in on the device you made it on and add one under Profile.' : 'Wrong email/username or password', 401)
+    }
+    u.fails = 0; u.lockUntil = 0
+    const token = newToken(u)
+    await put(SELLERS, u)
+    return { seller: publicUser(u), token }
+  },
+
+  // Signs this device out (its token stops working).
+  async logout(b) {
+    const u = await authUser(b)
+    const h = sha(b.token)
+    u.tokens = (u.tokens || []).filter((x) => x !== h)
+    if (u.tokenHash === h) delete u.tokenHash
+    await put(SELLERS, u)
+    return { ok: true }
+  },
+
+  // Add or change the account's email and password.
+  async setLogin(b) {
+    const u = await authUser(b)
+    if (u.pw && !checkPassword(b.currentPassword || '', u.pw)) throw bad('Your current password is wrong', 401)
+    if (b.email !== undefined && b.email !== '') {
+      const email = validEmail(b.email)
+      if ((await getAll(SELLERS)).some((x) => x.id !== u.id && x.email === email)) throw bad('That email is used by another account', 409)
+      u.email = email
+    }
+    if (b.password) u.pw = hashPassword(validPassword(b.password))
+    if (!u.email || !u.pw) throw bad('Add both an email and a password')
+    // Changing the password signs out every other device.
+    if (b.password) { u.tokens = [sha(b.token)]; delete u.tokenHash }
+    await put(SELLERS, u)
+    return { ok: true }
   },
 
   async me(b) {
     const u = await authUser(b)
     const [orders, payouts] = await Promise.all([loadOrders(), getAll(PAYOUTS)])
     return {
-      seller: { ...publicUser(u, orders), contact: u.contact, stripeConnected: !!u.stripeAccount, stripeReady: !!u.stripeReady },
+      seller: { ...publicUser(u, orders), contact: u.contact, email: u.email || '', hasPassword: !!u.pw, stripeConnected: !!u.stripeAccount, stripeReady: !!u.stripeReady },
       wallet: walletFor(u.id, orders, payouts),
       payouts: payouts.filter((p) => p.userId === u.id).sort((a, c) => c.createdAt - a.createdAt),
     }
@@ -540,12 +630,13 @@ const actions = {
     const l = await getOne(LISTINGS, b.listingId)
     if (!l || (l.stock ?? 1) < 1) throw bad('This listing is sold out or was removed', 404)
     if (l.sellerId === u.id) throw bad("You can't buy your own listing")
+    if (b.acceptFinal !== true) throw bad('Please confirm you understand all sales are final (no refunds once delivered)')
     const method = ['card', 'crypto', 'balance', 'saved'].includes(b.method) ? b.method : 'card'
     const money = feesFor(l.price, method)
     const order = {
       id: newId('o_'), listingId: l.id, buyerId: u.id, sellerId: l.sellerId,
       title: l.title, game: l.game, category: l.category, hasImage: !!l.hasImage,
-      ...money, method, status: 'pending', createdAt: Date.now(), messages: [],
+      ...money, method, status: 'pending', createdAt: Date.now(), messages: [], acceptedFinal: true,
     }
     if (method === 'balance') {
       const [orders, payouts] = await Promise.all([loadOrders(), getAll(PAYOUTS)])
@@ -675,7 +766,8 @@ const actions = {
   async dispute(b) {
     const { u, o } = await participantOrder(b)
     if (o.buyerId !== u.id) throw bad('Only the buyer can report a problem')
-    if (!['paid', 'delivered'].includes(o.status)) throw bad('This order can’t be disputed now')
+    if (o.status === 'delivered' || o.deliveredAt) throw bad('All sales are final once the item is delivered, so this order can’t be refunded. Message the seller if you need help.')
+    if (o.status !== 'paid') throw bad('This order can’t be disputed now')
     o.status = 'disputed'; o.dispute = { reason: str(b.reason, 'Reason', 5, 500), at: Date.now() }
     await put(ORDERS, o)
     return { ok: true }
@@ -772,7 +864,7 @@ const actions = {
     return {
       sellers: users
         .map((s) => ({
-          ...publicUser(s, orders), contact: s.contact,
+          ...publicUser(s, orders), contact: s.contact, email: s.email || '', hasPassword: !!s.pw,
           listings: listings.filter((l) => l.sellerId === s.id && (l.stock ?? 1) > 0).length,
           balance: walletFor(s.id, orders, payouts).available,
         }))
@@ -859,6 +951,17 @@ const actions = {
     return { ok: true }
   },
 
+  // Forgot password: staff set a temporary password and give it to the user (after checking it's them).
+  async adminResetPassword(b) {
+    await authAdmin(b)
+    const u = await getOne(SELLERS, b.sellerId)
+    if (!u) throw bad('User not found', 404)
+    const temp = crypto.randomBytes(9).toString('base64').replace(/[^A-Za-z0-9]/g, 'x')
+    u.pw = hashPassword(temp); u.tokens = []; delete u.tokenHash; u.fails = 0; u.lockUntil = 0
+    await put(SELLERS, u)
+    return { tempPassword: temp }
+  },
+
   async adminOrders(b) {
     await authAdmin(b)
     const [orders, users] = await Promise.all([loadOrders(), getAll(SELLERS)])
@@ -870,7 +973,10 @@ const actions = {
     await authAdmin(b)
     const o = (await loadOrders()).find((x) => x.id === b.orderId)
     if (!o || !['paid', 'delivered', 'disputed'].includes(o.status)) throw bad('Only open orders can be settled')
-    if (b.decision === 'refund') await refundOrder(o, String(b.note || 'Refunded by staff').slice(0, 200))
+    if (b.decision === 'refund') {
+      if (o.deliveredAt) throw bad('All sales are final: this order was delivered, so it can’t be refunded')
+      await refundOrder(o, String(b.note || 'Refunded by staff').slice(0, 200))
+    }
     else if (b.decision === 'release') { o.status = 'completed'; o.completedAt = Date.now(); o.releasedByStaff = true; await put(ORDERS, o) }
     else throw bad('Choose refund or release')
     return { ok: true }

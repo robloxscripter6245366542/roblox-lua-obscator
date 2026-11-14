@@ -159,11 +159,22 @@ const Market = (() => {
     list: () => call("list"),
     session,
     signOut: () => write(K.session, null),
-    async register(name, contact, adminKey) {
-      const r = await call("register", { name, contact, adminKey: adminKey || undefined });
+    async register(name, contact, email, password, adminKey) {
+      const r = await call("register", { name, contact, email, password, adminKey: adminKey || undefined });
       write(K.session, { sellerId: r.seller.id, token: r.token, name: r.seller.name });
       return r.seller;
     },
+    async login(login, password) {
+      const r = await call("login", { login, password });
+      write(K.session, { sellerId: r.seller.id, token: r.token, name: r.seller.name });
+      return r.seller;
+    },
+    // Ends this device's sign-in on the server too (ignored if the server can't be reached).
+    async logout() {
+      if (mode === "remote" && session()) await call("logout", withSession()).catch(() => {});
+      write(K.session, null);
+    },
+    setLogin: (data) => call("setLogin", withSession(data)),
     get canPay() { return mode === "remote"; },
     NEEDS_SERVER,
     me: () => call("me", withSession()),

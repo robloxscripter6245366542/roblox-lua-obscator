@@ -76,7 +76,7 @@
       </div>
       <div class="trust-card">
         <span class="badge escrow">Escrow</span>
-        <p><b>Your money is held</b> until you confirm you got your item. Problem? Staff can refund you.</p>
+        <p><b>Your money is held</b> until the seller delivers. Never delivered? Staff refund you. <b>All sales are final once delivered.</b></p>
       </div>
     </section>
    </div>
@@ -96,13 +96,27 @@
 
   <dialog id="joinDlg" class="dlg">
     <form class="dlg-body" id="joinForm" method="dialog" novalidate>
-      <div class="dlg-head"><h2>Create your account</h2><button class="x" value="cancel" formnovalidate aria-label="Close">×</button></div>
-      <p class="muted">One account to buy and sell. New sellers start as <span class="badge risk sm">Risky</span> until staff verify you.</p>
-      <label>Username<input name="name" required minlength="3" maxlength="24" placeholder="e.g. kai_trades" /></label>
-      <label id="ownerKeyRow" hidden>Staff password <span class="opt">(this username is reserved for the site owner)</span><input name="ownerKey" type="password" autocomplete="current-password" /></label>
-      <label>Contact (only shown to people you trade with)<input name="contact" required minlength="3" maxlength="80" placeholder="Discord, email, etc." /></label>
+      <div class="dlg-head"><h2 id="joinTitle">Create your account</h2><button class="x" value="cancel" formnovalidate aria-label="Close">×</button></div>
+      <div class="seg" role="tablist" aria-label="Sign in or create account">
+        <button type="button" role="tab" data-join-mode="signup" class="on" value="mode">Create account</button>
+        <button type="button" role="tab" data-join-mode="signin" value="mode">Sign in</button>
+      </div>
+      <div class="join-signup">
+        <p class="muted">One account to buy and sell. New sellers start as <span class="badge risk sm">Risky</span> until staff verify you.</p>
+        <label>Username<input name="name" minlength="3" maxlength="24" placeholder="e.g. kai_trades" autocomplete="username" /></label>
+        <label>Email<input name="email" type="email" maxlength="120" placeholder="you@example.com" autocomplete="email" /></label>
+        <label>Password <span class="opt">(at least 8 characters)</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" /></label>
+        <label id="ownerKeyRow" hidden>Staff password <span class="opt">(this username is reserved for the site owner)</span><input name="ownerKey" type="password" autocomplete="off" /></label>
+        <label>Contact (only shown to people you trade with)<input name="contact" minlength="3" maxlength="80" placeholder="Discord, email, etc." /></label>
+      </div>
+      <div class="join-signin" hidden>
+        <p class="muted">Sign in on any device with your email or username and password.</p>
+        <label>Email or username<input name="login" maxlength="120" autocomplete="username" /></label>
+        <label>Password<input name="loginPassword" type="password" maxlength="128" autocomplete="current-password" /></label>
+        <p class="muted small">Forgot your password? Message the site owner from your contact details and staff will give you a temporary one.</p>
+      </div>
       <p class="form-err" id="joinErr" role="alert"></p>
-      <button class="btn sell wide" type="submit" value="default">Create account</button>
+      <button class="btn sell wide" type="submit" value="default" id="joinBtn">Create account</button>
     </form>
   </dialog>
 

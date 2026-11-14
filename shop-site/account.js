@@ -158,12 +158,12 @@ function renderCheckout() {
           <div class="sum-row"><span>Payment fee <span class="tip" title="Covers card and payment processing. ${Math.round(state.fees.pct * 1000) / 10}% + ${money(state.fees.fixed)}. No fee when paying with your balance.">?</span></span><b>${money(fee)}</b></div>
           <div class="sum-row total"><span>Total</span><b>${money(total)}</b></div>
           <button class="btn pay wide" id="payBtn" type="button" ${mine ? "disabled" : ""}>🔒 ${mine ? "This is your listing" : `Pay ${money(total)}`}</button>
+          <label class="final-ok"><input type="checkbox" id="finalOk" /> <span><b>All sales are final.</b> I understand there are <b>no refunds once the item is delivered</b>, and it's my job to check it straight away.</span></label>
           <p class="form-err" id="payErr" role="alert"></p>
-          <p class="muted small">By placing an order you agree that Vaultix holds your payment until you confirm delivery or staff settle a dispute.</p>
           <ul class="promise">
-            <li><b>We don't pay the seller until you're happy.</b><span>Your money is held while the seller delivers.</span></li>
-            <li><b>Not delivered? Get a refund.</b><span>Report a problem and staff will review the order.</span></li>
-            <li><b>3 days to check your item.</b><span>After delivery the order confirms itself unless you report a problem.</span></li>
+            <li><b>The seller is paid after delivery.</b><span>Vaultix holds your money while the seller delivers.</span></li>
+            <li><b>Never delivered? Your money back.</b><span>If the seller doesn't deliver, report it before delivery and staff will refund you.</span></li>
+            <li><b>No refunds after delivery.</b><span>Check the item as soon as it arrives. The order confirms itself 3 days after delivery.</span></li>
           </ul>
         </section>
       </aside>
@@ -185,14 +185,15 @@ async function pay() {
   const err = $("#payErr"); err.textContent = "";
   if (!state.me) return openJoin(() => { renderCheckout(); pay(); });
   if (!l.seller.verified && !($("#riskOk") || {}).checked) { err.textContent = "Tick the box to confirm you understand this seller isn't verified."; return; }
+  if (!($("#finalOk") || {}).checked) { err.textContent = "Tick the box to confirm you understand all sales are final."; return; }
   if (!Market.canPay) { err.textContent = Market.NEEDS_SERVER; return; }
   const saved = isSaved();
   const m = saved ? null : METHODS.find((x) => x.id === payMethod) || METHODS[0];
   const btn = $("#payBtn"); btn.disabled = true; btn.textContent = saved ? "Paying…" : "Starting secure checkout…";
   try {
     const r = saved
-      ? await Market.checkout(l.id, "saved", { paymentMethod: payMethod.slice(6) })
-      : await Market.checkout(l.id, m.api);
+      ? await Market.checkout(l.id, "saved", { paymentMethod: payMethod.slice(6), acceptFinal: true })
+      : await Market.checkout(l.id, m.api, { acceptFinal: true });
     if (r.url) { location.href = r.url; return; } // Stripe hosted checkout
     await Promise.all([refresh(), loadMe()]);
     location.hash = `#/order/${r.orderId}`;
@@ -284,18 +285,19 @@ function orderActions(o, buyer) {
     </div>
     <textarea id="reviewText" maxlength="300" rows="2" placeholder="Leave a short review (optional)"></textarea>
     <button class="btn sell" data-order-act="${label}" type="button">${label === "confirm" ? "Confirm & release payment" : "Post review"}</button>`;
-  const problem = `<details class="problem"><summary>Report a problem</summary>
-      <textarea id="disputeText" maxlength="500" rows="3" placeholder="What went wrong? Staff will read this and the chat."></textarea>
-      <button class="btn danger" data-order-act="dispute" type="button">Report problem & hold payment</button></details>`;
+  const problem = `<details class="problem"><summary>The seller isn't delivering</summary>
+      <textarea id="disputeText" maxlength="500" rows="3" placeholder="What's wrong? Staff will read this and the chat."></textarea>
+      <button class="btn danger" data-order-act="dispute" type="button">Report & hold payment</button></details>`;
+  const finalNote = `<p class="small final-note">🔒 All sales are final: no refunds after delivery. Message the seller in the chat if something isn't right.</p>`;
   if (buyer) {
     switch (o.status) {
       case "pending": return `<h2>Waiting for payment…</h2><p class="muted">If you just paid, this page updates by itself in a few seconds.</p><button class="btn ghost" data-order-act="cancel" type="button">Cancel order</button>`;
       case "paid": return `<h2>The seller is preparing your order</h2><p class="muted">Your money is held by Vaultix. Use the chat below to give the seller anything they need (e.g. your username).</p>${problem}`;
       case "delivered": return o.autoDelivered
-        ? `<h2>Your login is ready ⚡</h2><p class="muted">Log in with the details below and check everything. Change the password (and email, if included) right away. If it all works, confirm to release the money to the seller.</p>${reviewForm("confirm")}${problem}${auto}`
-        : `<h2>Did you get everything?</h2><p class="muted">Check the delivery details below. Confirming releases the money to the seller.</p>${reviewForm("confirm")}${problem}${auto}`;
+        ? `<h2>Your login is ready ⚡</h2><p class="muted">Log in with the details below and check everything. Change the password (and email, if included) right away. Then confirm to release the money to the seller.</p>${reviewForm("confirm")}${finalNote}${auto}`
+        : `<h2>Did you get everything?</h2><p class="muted">Check the delivery details below. Confirming releases the money to the seller.</p>${reviewForm("confirm")}${finalNote}${auto}`;
       case "completed": return o.review ? `<h2>Order complete 🎉</h2><p class="muted">Thanks for your review.</p>` : `<h2>Order complete 🎉</h2><p class="muted">How was the seller?</p>${reviewForm("review")}`;
-      case "disputed": return `<h2>Problem reported</h2><p class="muted">Staff are reviewing your order. Your payment is on hold until they refund you or release it.</p><p class="small">You said: “${esc(o.dispute ? o.dispute.reason : "")}”</p>`;
+      case "disputed": return `<h2>Not delivered: reported</h2><p class="muted">Staff are reviewing your order. Your payment is on hold until they refund you or the seller delivers.</p><p class="small">You said: “${esc(o.dispute ? o.dispute.reason : "")}”</p>`;
       case "refunded": return `<h2>Refunded</h2><p class="muted">${esc(o.refundReason || "This order was refunded.")} ${o.method === "balance" ? "The money is back in your balance." : "Stripe returns the money to your payment method, usually within 5–10 days."}</p>`;
       default: return `<h2>Order cancelled</h2><p class="muted">No payment was taken.</p>`;
     }
@@ -516,8 +518,16 @@ function accountTab() {
       <label>Bio <span class="opt">shown on your profile</span><textarea name="bio" maxlength="160" rows="2">${esc(me.bio || "")}</textarea></label>
       <button class="btn sell" type="submit">Save</button>
     </form>
+    <h3 class="sub">${me.hasPassword ? "Email & password" : "Add an email & password"}</h3>
+    ${me.hasPassword ? "" : `<div class="warn"><b>Your account only works in this browser.</b><span>Add an email and password so you can sign in on any device and never lose your account.</span></div>`}
+    <form class="dform" id="loginForm">
+      <label>Email<input name="email" type="email" maxlength="120" value="${esc(me.email || "")}" autocomplete="email" /></label>
+      ${me.hasPassword ? `<label>Current password<input name="currentPassword" type="password" maxlength="128" autocomplete="current-password" /></label>` : ""}
+      <label>${me.hasPassword ? "New password <span class=\"opt\">(leave empty to keep it)</span>" : "Password <span class=\"opt\">(at least 8 characters)</span>"}<input name="password" type="password" maxlength="128" autocomplete="new-password" /></label>
+      <button class="btn sell" type="submit">${me.hasPassword ? "Update" : "Save email & password"}</button>
+    </form>
     <div class="btnrow"><button class="btn ghost" data-user="${esc(me.id)}" type="button">View public profile</button><button class="btn danger" id="signOut" type="button">Sign out</button></div>
-    <p class="muted small">Your login is saved only in this browser. If you sign out you can't sign back in to this account.</p>`;
+    ${me.hasPassword ? `<p class="muted small">Signed in with ${esc(me.email)}. You can sign in on any device.</p>` : `<p class="muted small">Without a password, signing out loses this account.</p>`}`;
 }
 
 let payoutMethod = "stripe";
@@ -580,8 +590,8 @@ $("#drawer").addEventListener("click", async (e) => {
     return;
   }
   if (e.target.closest("#signOut")) {
-    if (!confirm("Sign out? You won't be able to sign back in to this account.")) return;
-    Market.signOut(); state.me = null; state.wallet = null; myOrders = null; savedCards = null; payMethod = "card"; renderAvatar(); closeDrawer(); render();
+    if (!state.me.hasPassword && !confirm("You haven't added a password, so you won't be able to sign back in. Sign out anyway?")) return;
+    await Market.logout(); state.me = null; state.wallet = null; myOrders = null; savedCards = null; payMethod = "card"; renderAvatar(); closeDrawer(); render();
     return;
   }
   const rc = e.target.closest("[data-remove-card]");
@@ -612,6 +622,16 @@ $("#drawer").addEventListener("submit", async (e) => {
   if (f.id === "profileForm") {
     try { btn.disabled = true; await Market.updateProfile({ contact: f.elements.contact.value, bio: f.elements.bio.value }); await loadMe(); toast("Profile saved."); renderAccount(); }
     catch (ex) { toast(ex.message); btn.disabled = false; }
+  }
+  if (f.id === "loginForm") {
+    const el = f.elements;
+    try {
+      btn.disabled = true;
+      if (!state.me.hasPassword && el.password.value.length < 8) throw new Error("Password must be at least 8 characters.");
+      await Market.setLogin({ email: el.email.value, password: el.password.value || undefined, currentPassword: el.currentPassword ? el.currentPassword.value : undefined });
+      await loadMe(); toast("Saved. You can now sign in on any device."); renderAccount();
+    } catch (ex) { toast(ex.message); btn.disabled = false; }
+    return;
   }
   if (f.id === "payoutForm") {
     $("#payoutErr").textContent = "";
