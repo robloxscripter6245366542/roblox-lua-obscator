@@ -11,10 +11,28 @@ It starts **empty**: there are no built-in products.
 | **Risky** (red) | Every new seller starts here. Buyers see a warning and have to click "I understand the risk" before the seller's contact details are shown. |
 
 - **Accounts:** sign up with a username, email and password (at least 8 characters). Sign in on any device with your email or username. Passwords are stored as salted scrypt hashes, never in plain text, and 8 wrong tries lock the account for 15 minutes. Each device gets its own sign-in token; changing the password signs out every other device.
-- **Forgot password:** there's no email service yet, so staff use **Reset password** on the Staff page (after checking it's really that person) and send them the temporary password. Older accounts made before passwords existed can add an email and password under account menu → Profile.
+- **Forgot password:** "Forgot your password?" under Sign in emails a link to the account's email. The link works once, for 30 minutes, and lets you pick a new password; saving it signs out every other device and unlocks a locked account. The page gives the same answer whether or not an email has an account, so nobody can use it to find out who's signed up. At most 1 email a minute and 5 an hour go to one account. Emails need `RESEND_API_KEY` (see "Emails" below).
+- **Change notices:** when a password is changed, or the account's email is changed (the old address is told), Vaultix emails a notice with a "wasn't you?" reset link, so a stolen account doesn't go unnoticed.
+- **Without email set up**, or for an older account that has no email, "Forgot your password?" tells people to message the site owner; staff use **Reset password** on the Staff page (after checking it's really that person) and send them a temporary password. Older accounts made before passwords existed can add an email and password under account menu → Profile.
 - Only someone with the admin key can verify, unverify or ban sellers. Banning also deletes all of that seller's listings.
 - Buyers can switch on **Verified sellers only** to hide risky listings.
 - Payments are held in escrow (see below). Contact details are only shown to the other side of an order and to staff.
+
+## Emails (forgot password)
+
+Vaultix sends emails through [Resend](https://resend.com) (free for 3,000 emails a month).
+
+1. Sign up at resend.com. Under **Domains**, add a domain you own and add the DNS records it shows, so emails don't land in spam.
+2. Under **API Keys**, create a key with "Sending access".
+3. On the server (Vercel: Settings → Environment Variables; Render: Environment), set:
+   - `RESEND_API_KEY`: the key (`re_…`).
+   - `MARKET_EMAIL_FROM`: the sender, e.g. `Vaultix <no-reply@your-domain.com>`, using the domain from step 1.
+   - `SITE_URL`: your site's address, e.g. `https://vaultix-market.vercel.app`. Reset links are built from this (on Vercel and Render the site's own address is used if it's missing; never the address a request claims to come from).
+4. Redeploy.
+
+Without a verified domain, Resend only delivers to the email you signed up to Resend with, which is fine for a test but not for real users.
+Without `RESEND_API_KEY`, everything else works and "Forgot your password?" points people to staff.
+The local dev server doesn't send real emails: it prints them and lists them at http://localhost:8787/__dev/mail.
 
 ## Game pictures
 
@@ -90,7 +108,7 @@ With a real `sk_test_…` key it uses Stripe test mode. Forward webhooks with `s
 
 1. **Database (one click):** in Vercel open the **vaultix-market** project, go to the **Storage** tab, click **Create Database**, and choose **Upstash → Redis** (free plan). Connect it to the vaultix-market project.
    Vercel adds `KV_REST_API_URL` and `KV_REST_API_TOKEN` for you, and the site accepts those names as well as `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`.
-2. In **Settings → Environment Variables**, add `MARKET_ADMIN_KEY` (your staff password) and `MARKET_ENCRYPTION_KEY` (a long random string; never change it later).
+2. In **Settings → Environment Variables**, add `MARKET_ADMIN_KEY` (your staff password) and `MARKET_ENCRYPTION_KEY` (a long random string; never change it later). For "forgot password" emails, also add `RESEND_API_KEY`, `MARKET_EMAIL_FROM` and `SITE_URL` (see "Emails" above).
 3. **Redeploy:** Deployments → ⋯ → Redeploy. The black "Demo mode" bar disappears once the database is connected.
 4. Sign up as **Kaitrades** with your `MARKET_ADMIN_KEY` in the Staff password box to become the owner. If you already did that before passwords existed, open account menu → Profile and add an email and password, so you can sign in on any device.
 5. **Stripe** (card payments, saved cards, seller payouts): follow "Stripe setup" below, using `https://vaultix-market.vercel.app/api/stripe-webhook` as the webhook URL.
@@ -134,7 +152,7 @@ The site and API run as one small Node server (`shop-site/server.js`). `render.y
      `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`,
      `checkout.session.expired`, `account.updated`, `payment_intent.succeeded` and `payment_intent.payment_failed`. Copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
    - In Stripe, turn on **Connect** and complete the platform profile (see "Stripe setup" step 3), and turn on Apple Pay, Google Pay and Crypto under payment methods.
-4. Optional settings: `SITE_URL` (only needed with a custom domain), `MARKET_FEE_PCT` (default 3), `MARKET_FEE_FIXED` (default 0.30),
+4. Optional settings: `RESEND_API_KEY` and `MARKET_EMAIL_FROM` ("forgot password" emails, see "Emails" above), `SITE_URL` (only needed with a custom domain), `MARKET_FEE_PCT` (default 3), `MARKET_FEE_FIXED` (default 0.30),
    `MARKET_COMMISSION_PCT` (default 5).
 
 Render redeploys automatically whenever `main` changes. You can also run the production server yourself with `node shop-site/server.js`.

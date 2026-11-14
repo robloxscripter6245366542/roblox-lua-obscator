@@ -31,8 +31,16 @@ let page = null;
 let poll = null;
 function startRouter() { window.addEventListener("hashchange", route); route(); }
 function route() {
-  const [name, id] = location.hash.replace(/^#\/?/, "").split("?")[0].split("/");
+  const [name, id, extra] = location.hash.replace(/^#\/?/, "").split("?")[0].split("/");
   stopPoll();
+  // Emailed "reset your password" link, and the "wasn't you?" link in change notices. The token is
+  // taken out of the address bar straight away so it doesn't stay in the history.
+  if (name === "reset" || name === "forgot") {
+    history.replaceState(null, "", location.pathname + location.search);
+    page = null; showMarket();
+    if (name === "reset" && id && extra) openReset(id, extra); else openJoin(null, "forgot");
+    return;
+  }
   if (name === "wallet") {
     history.replaceState(null, "", location.pathname + location.search);
     page = null; showMarket();

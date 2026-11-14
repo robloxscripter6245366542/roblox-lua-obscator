@@ -34,6 +34,11 @@ services:
       # Encrypts account logins for instant delivery. Long random string; never change it later.
       - key: MARKET_ENCRYPTION_KEY
         sync: false
+      # "Forgot password" emails (resend.com). Without them, staff reset passwords by hand.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MARKET_EMAIL_FROM
+        sync: false
       # Stripe (use sk_test_… keys while testing).
       - key: STRIPE_SECRET_KEY
         sync: false

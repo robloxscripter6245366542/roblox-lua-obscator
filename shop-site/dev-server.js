@@ -12,6 +12,8 @@
 //    `stripe listen --forward-to localhost:8787/api/stripe-webhook` and set
 //    STRIPE_WEBHOOK_SECRET to the secret it prints.
 //  - Staff page password: MARKET_ADMIN_KEY (default "admin").
+//  - Without RESEND_API_KEY, emails ("forgot password" links, change notices) aren't sent: they're
+//    printed here and listed at http://localhost:8787/__dev/mail so you can click the links.
 // ============================================================================
 const fs = require('fs')
 const path = require('path')
@@ -21,6 +23,7 @@ const PORT = Number(process.env.PORT || 8787)
 const ROOT = __dirname
 const DB_FILE = process.env.DEV_DB || path.join(ROOT, '.dev-data.json')
 const FAKE_STRIPE = !process.env.STRIPE_SECRET_KEY
+const FAKE_EMAIL = !process.env.RESEND_API_KEY
 
 process.env.UPSTASH_REDIS_REST_URL = 'http://dev-redis.local'
 process.env.UPSTASH_REDIS_REST_TOKEN = 'dev'
@@ -30,6 +33,7 @@ if (FAKE_STRIPE) {
   process.env.STRIPE_SECRET_KEY = 'sk_test_fake_dev'
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_fake_dev'
 }
+if (FAKE_EMAIL) process.env.RESEND_API_KEY = 're_fake_dev'
 
 /* ---------------- fake Upstash (file-backed hashes) ---------------- */
 let db = {}
@@ -111,6 +115,7 @@ function fakeStripe(url, opts) {
   return json({ error: { message: `dev fake Stripe: ${opts.method} ${p} not supported` } }, 400)
 }
 
+const devMail = [] // fake outbox (newest first), shown at /__dev/mail
 const realFetch = global.fetch
 global.fetch = async (url, opts = {}) => {
   const u = String(url)
@@ -118,6 +123,12 @@ global.fetch = async (url, opts = {}) => {
     try { return json({ result: redisCmd(JSON.parse(opts.body)) }) } catch (e) { return json({ error: e.message }, 400) }
   }
   if (FAKE_STRIPE && u.startsWith('https://api.stripe.com/')) return fakeStripe(u, { method: opts.method || 'GET', body: opts.body })
+  if (FAKE_EMAIL && u === 'https://api.resend.com/emails') {
+    const m = JSON.parse(opts.body)
+    devMail.unshift({ at: new Date().toISOString(), to: m.to.join(', '), subject: m.subject, text: m.text })
+    console.log(`\n[dev email] to ${m.to.join(', ')}: ${m.subject}\n${m.text}\n`)
+    return json({ id: 'email_dev_' + crypto.randomBytes(6).toString('hex') })
+  }
   return realFetch(url, opts)
 }
 
@@ -137,6 +148,14 @@ button{width:100%;height:46px;border:0;border-radius:8px;font-size:16px;font-wei
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 async function devRoutes(req, res, u) {
+  if (u.pathname === '/__dev/mail') {
+    if (u.searchParams.get('format') === 'json') { res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify(devMail)) }
+    res.setHeader('Content-Type', 'text/html')
+    const link = (t) => esc(t).replace(/(https?:\/\/\S+)/g, '<a href="$1">$1</a>')
+    return res.end(page('Dev outbox', `<span class="tag">FAKE EMAIL · DEV ONLY</span><h1>Emails the site sent</h1>
+      ${devMail.length ? devMail.map((m) => `<div style="border-top:1px solid #333;padding:10px 0"><b>${esc(m.subject)}</b><br><small>to ${esc(m.to)} · ${esc(m.at)}</small>
+        ${m.text.split('\n\n').map((l) => `<p>${link(l)}</p>`).join('')}</div>`).join('') : '<p>Nothing yet. Use "Forgot your password?" on the site.</p>'}`))
+  }
   if (u.pathname === '/__dev/stripe-checkout') {
     const s = fake.sessions[u.searchParams.get('session')]
     if (!s) { res.statusCode = 404; return res.end('Unknown session') }
@@ -204,5 +223,6 @@ require('./server.js')
     console.log(`Vaultix dev server: http://localhost:${PORT}`)
     console.log(`  data file : ${DB_FILE}`)
     console.log(`  Stripe    : ${FAKE_STRIPE ? 'FAKE (test pages, no real Stripe)' : 'real Stripe test mode'}`)
+    console.log(`  email     : ${FAKE_EMAIL ? `FAKE (printed here and at http://localhost:${PORT}/__dev/mail)` : 'real (Resend)'}`)
     console.log(`  staff key : ${process.env.MARKET_ADMIN_KEY}`)
   })

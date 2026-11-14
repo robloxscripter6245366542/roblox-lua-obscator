@@ -32,6 +32,11 @@
 //                                                       unset, a key is derived from MARKET_ADMIN_KEY,
 //                                                       so don't change that key once logins are stored.
 //   SITE_URL                                            optional, e.g. https://vaultix.example
+//   RESEND_API_KEY                                      sends "forgot password" emails (resend.com). Without it,
+//                                                       staff reset passwords by hand on the Staff page.
+//   MARKET_EMAIL_FROM                                   sender, e.g. "Vaultix <no-reply@your-domain.com>" (a domain
+//                                                       verified in Resend; default onboarding@resend.dev, which
+//                                                       only delivers to your own Resend login email)
 //   MARKET_FEE_PCT / MARKET_FEE_FIXED                   buyer payment fee (default 3% + $0.30)
 //   MARKET_COMMISSION_PCT                               cut taken from sellers (default 5%)
 //
@@ -300,6 +305,46 @@ function newToken(u) {
   return token
 }
 const MAX_FAILS = 8, LOCK_MS = 15 * 60 * 1000
+
+// ---- email (forgot password) ----
+// Sent through Resend's HTTP API when RESEND_API_KEY is set. Without it the site still works and
+// "Forgot password" tells people to ask staff, who reset it on the Staff page.
+const RESET_MS = 30 * 60 * 1000 // a reset link works for 30 minutes
+const emailOn = () => !!process.env.RESEND_API_KEY
+async function sendEmail(to, subject, lines) {
+  const text = lines.join('\n\n')
+  const html = lines.map((l) => {
+    const e = l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    return `<p>${e.replace(/(https?:\/\/\S+)/g, '<a href="$1">$1</a>')}</p>`
+  }).join('')
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: process.env.MARKET_EMAIL_FROM || 'Vaultix <onboarding@resend.dev>', to: [to], subject, text, html }),
+    signal: AbortSignal.timeout(10000),
+  }).catch(() => null)
+  if (!r || !r.ok) {
+    console.error('Email failed:', r ? r.status : 'network', r ? await r.text().catch(() => '') : '')
+    throw bad('Could not send the email right now. Try again in a minute.', 502)
+  }
+}
+// Links in emails always point at our own site: SITE_URL, or the address Vercel / Render give the
+// site. Never a Host header from the request, which someone could fake to get links to their site.
+function emailBase() {
+  const v = process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL
+    || (process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`)
+  if (!v) throw bad('Set SITE_URL on the server so emailed links point at your site', 503)
+  return v.replace(/\/$/, '')
+}
+// "Your password was changed" / "your email was changed" notices, so a takeover doesn't go unnoticed.
+// Best effort: a failed notice never blocks the change itself.
+async function notify(to, subject, line) {
+  if (!emailOn() || !to) return
+  try {
+    await sendEmail(to, subject, [line,
+      `If this wasn't you, reset your password now at ${emailBase()}/#/forgot and message the site owner.`])
+  } catch {}
+}
 async function authUser(body) {
   const u = await getOne(SELLERS, body.sellerId)
   if (!tokenOk(u, body.token)) throw bad('Please sign in again', 401)
@@ -477,7 +522,7 @@ async function listPublic() {
 /* ------------------------------ actions ------------------------------ */
 const actions = {
   async list() {
-    return { listings: await listPublic(), fees: { pct: FEE_PCT, fixed: FEE_FIXED, commission: COMMISSION_PCT }, owners: OWNER_NAMES }
+    return { listings: await listPublic(), fees: { pct: FEE_PCT, fixed: FEE_FIXED, commission: COMMISSION_PCT }, owners: OWNER_NAMES, emailReset: emailOn() }
   },
 
   async profile(b) {
@@ -546,10 +591,63 @@ const actions = {
     return { ok: true }
   },
 
+  // Forgot password: email a one-time link (works for 30 minutes) to the account's email.
+  // For an email address the answer is the same whether or not it has an account, so this can't be
+  // used to find out who's signed up. (Usernames are public anyway.)
+  async forgotPassword(b) {
+    if (!emailOn()) return { emailOff: true }
+    const id = typeof b.login === 'string' ? b.login.trim().toLowerCase() : ''
+    if (!id) throw bad('Enter your email or username')
+    const u = (await getAll(SELLERS)).find((x) => x.email === id || x.name.toLowerCase() === id)
+    if (u && !u.email && u.name.toLowerCase() === id) {
+      throw bad('This account has no email yet. Sign in on the device you made it on and add one under Profile, or message the site owner.')
+    }
+    if (u && u.email) {
+      const now = Date.now()
+      // At most one email a minute and 5 an hour per account, so nobody can flood someone's inbox.
+      const recent = (u.resetSent || []).filter((t) => now - t < 60 * 60 * 1000)
+      if (recent.length < 5 && !(recent[0] && now - recent[0] < 60 * 1000)) {
+        const token = crypto.randomBytes(32).toString('hex')
+        u.reset = { hash: sha(token), exp: now + RESET_MS }
+        u.resetSent = [now, ...recent]
+        await put(SELLERS, u)
+        await sendEmail(u.email, 'Reset your Vaultix password', [
+          `Hi ${u.name},`,
+          'Someone (hopefully you) asked to reset the password for your Vaultix account. Open this link to choose a new one. It works for 30 minutes and only once:',
+          `${emailBase()}/#/reset/${u.id}/${token}`,
+          "If you didn't ask for this, ignore this email. Your password stays the same.",
+        ])
+      }
+    }
+    return { sent: true }
+  },
+
+  // Set a new password from the emailed link. Signs out every device, then signs this one in.
+  async resetPassword(b) {
+    const u = await getOne(SELLERS, b.userId)
+    const r = u && u.reset
+    if (!r || typeof b.resetToken !== 'string' || !safeEq(sha(b.resetToken), r.hash)) {
+      throw bad('This reset link is not valid (it may have been used already). Ask for a new one.')
+    }
+    if (Date.now() > r.exp) {
+      delete u.reset
+      await put(SELLERS, u)
+      throw bad('This reset link has expired. Ask for a new one.')
+    }
+    u.pw = hashPassword(validPassword(b.password))
+    delete u.reset; delete u.tokenHash
+    u.tokens = []; u.fails = 0; u.lockUntil = 0
+    const token = newToken(u)
+    await put(SELLERS, u)
+    await notify(u.email, 'Your Vaultix password was changed', `Hi ${u.name}, the password for your Vaultix account was just changed with a reset link, and every device was signed out.`)
+    return { seller: publicUser(u), token }
+  },
+
   // Add or change the account's email and password.
   async setLogin(b) {
     const u = await authUser(b)
     if (u.pw && !checkPassword(b.currentPassword || '', u.pw)) throw bad('Your current password is wrong', 401)
+    const oldEmail = u.email, hadPw = !!u.pw
     if (b.email !== undefined && b.email !== '') {
       const email = validEmail(b.email)
       if ((await getAll(SELLERS)).some((x) => x.id !== u.id && x.email === email)) throw bad('That email is used by another account', 409)
@@ -557,9 +655,13 @@ const actions = {
     }
     if (b.password) u.pw = hashPassword(validPassword(b.password))
     if (!u.email || !u.pw) throw bad('Add both an email and a password')
-    // Changing the password signs out every other device.
-    if (b.password) { u.tokens = [sha(b.token)]; delete u.tokenHash }
+    // Changing the password signs out every other device (and cancels any reset link).
+    if (b.password) { u.tokens = [sha(b.token)]; delete u.tokenHash; delete u.reset }
+    if (u.email !== oldEmail) delete u.reset
     await put(SELLERS, u)
+    // Tell the old address when the email changes, and the account when its password changes.
+    if (oldEmail && u.email !== oldEmail) await notify(oldEmail, 'Your Vaultix email was changed', `Hi ${u.name}, the email on your Vaultix account was changed from this address to ${u.email}.`)
+    else if (b.password && hadPw) await notify(u.email, 'Your Vaultix password was changed', `Hi ${u.name}, the password for your Vaultix account was just changed, and every other device was signed out.`)
     return { ok: true }
   },
 
@@ -951,13 +1053,14 @@ const actions = {
     return { ok: true }
   },
 
-  // Forgot password: staff set a temporary password and give it to the user (after checking it's them).
+  // Forgot password without email (no RESEND_API_KEY, or an old account with no email): staff set a
+  // temporary password and give it to the user, after checking it's really them.
   async adminResetPassword(b) {
     await authAdmin(b)
     const u = await getOne(SELLERS, b.sellerId)
     if (!u) throw bad('User not found', 404)
     const temp = crypto.randomBytes(9).toString('base64').replace(/[^A-Za-z0-9]/g, 'x')
-    u.pw = hashPassword(temp); u.tokens = []; delete u.tokenHash; u.fails = 0; u.lockUntil = 0
+    u.pw = hashPassword(temp); u.tokens = []; delete u.tokenHash; delete u.reset; u.fails = 0; u.lockUntil = 0
     await put(SELLERS, u)
     return { tempPassword: temp }
   },
