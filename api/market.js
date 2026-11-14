@@ -20,7 +20,8 @@
 //     PayPal, crypto or bank transfer (staff send these by hand and mark them paid).
 //
 //  Env vars (Vercel):
-//   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN   storage (required)
+//   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN   storage (required). The names Vercel's Storage
+//                                                       tab sets (KV_REST_API_URL / KV_REST_API_TOKEN) work too.
 //   MARKET_ADMIN_KEY                                    staff password (required for admin)
 //   STRIPE_SECRET_KEY                                   Stripe key (sk_test_… while testing)
 //   STRIPE_WEBHOOK_SECRET                               signing secret for api/stripe-webhook
@@ -74,8 +75,8 @@ const isOwnerName = (name) => OWNER_NAMES.includes(String(name || '').toLowerCas
 
 /* ------------------------------ storage ------------------------------ */
 async function redis(cmd) {
-  const base = process.env.UPSTASH_REDIS_REST_URL
-  const tok = process.env.UPSTASH_REDIS_REST_TOKEN
+  const base = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL
+  const tok = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN
   if (!base || !tok) throw Object.assign(new Error('Storage not configured'), { status: 503 })
   const r = await fetch(base, {
     method: 'POST',

@@ -78,6 +78,14 @@ Open http://localhost:8787. The test data is saved in `shop-site/.dev-data.json`
 Without `STRIPE_SECRET_KEY`, a **pretend Stripe** shows test "Pay" and "Finish setup" pages, so you can try buying, delivery, the wallet and withdrawals end to end.
 With a real `sk_test_…` key it uses Stripe test mode. Forward webhooks with `stripe listen --forward-to localhost:8787/api/stripe-webhook`.
 
+## Going live on Vercel (vaultix-market.vercel.app)
+
+1. **Database (one click):** in Vercel open the **vaultix-market** project, go to the **Storage** tab, click **Create Database**, and choose **Upstash → Redis** (free plan). Connect it to the vaultix-market project.
+   Vercel adds `KV_REST_API_URL` and `KV_REST_API_TOKEN` for you, and the site accepts those names as well as `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`.
+2. In **Settings → Environment Variables**, add `MARKET_ADMIN_KEY` (your staff password) and `MARKET_ENCRYPTION_KEY` (a long random string; never change it later).
+3. **Redeploy:** Deployments → ⋯ → Redeploy. The black "Demo mode" bar disappears once the database is connected.
+4. Sign up as **Kaitrades** with your `MARKET_ADMIN_KEY` in the Staff password box to become the owner.
+
 ## Going live (Render, free)
 
 The site and API run as one small Node server (`shop-site/server.js`). `render.yaml` at the repo root tells Render how to run it.
