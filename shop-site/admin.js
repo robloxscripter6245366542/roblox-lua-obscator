@@ -85,6 +85,7 @@ function ordersView() {
           <td><b>${esc(o.title)}</b><br><span class="small">${esc(o.game)} · ${esc(o.category)}</span><br><span class="mono small">${esc(o.id)} · ${day(o.createdAt)}</span>
             ${o.dispute ? `<div class="detail"><b>Buyer's problem:</b> ${esc(o.dispute.reason)}</div>` : ""}
             ${o.delivery ? `<details><summary class="small">Delivery details</summary><div class="detail">${esc(o.delivery)}</div></details>` : ""}
+            ${o.login && !o.login.error ? `<details><summary class="small">⚡ Login given to buyer</summary><div class="detail mono">${esc(["Username: " + o.login.login, "Password: " + o.login.password, o.login.email && "Email: " + o.login.email, o.login.emailPassword && "Email password: " + o.login.emailPassword, o.login.notes && "Notes: " + o.login.notes].filter(Boolean).join("\n"))}</div></details>` : ""}
             ${(o.messages || []).length ? `<details><summary class="small">Chat (${o.messages.length})</summary><div class="detail">${o.messages.map((m) => `${esc(m.from)}: ${esc(m.text)}`).join("\n")}</div></details>` : ""}
           </td>
           <td>@${esc(o.buyer ? o.buyer.name : "?")} → @${esc(o.seller ? o.seller.name : "?")}</td>

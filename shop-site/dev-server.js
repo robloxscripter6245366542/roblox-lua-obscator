@@ -36,6 +36,13 @@ let db = {}
 try { db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')) } catch {}
 const save = () => fs.writeFileSync(DB_FILE, JSON.stringify(db))
 function redisCmd([cmd, key, ...a]) {
+  if (['RPUSH', 'LPOP', 'LLEN'].includes(cmd)) {
+    const l = (db[key] = Array.isArray(db[key]) ? db[key] : [])
+    if (cmd === 'RPUSH') { l.push(...a); save(); return l.length }
+    if (cmd === 'LPOP') { const v = l.length ? l.shift() : null; save(); return v }
+    return l.length
+  }
+  if (cmd === 'DEL') { const had = key in db; delete db[key]; save(); return had ? 1 : 0 }
   const h = (db[key] = db[key] || {})
   switch (cmd) {
     case 'HGETALL': return Object.entries(h).flat()

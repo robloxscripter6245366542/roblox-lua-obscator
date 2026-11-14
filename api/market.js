@@ -24,9 +24,20 @@
 //   MARKET_ADMIN_KEY                                    staff password (required for admin)
 //   STRIPE_SECRET_KEY                                   Stripe key (sk_test_… while testing)
 //   STRIPE_WEBHOOK_SECRET                               signing secret for api/stripe-webhook
+//   MARKET_ENCRYPTION_KEY                               encrypts account logins (instant delivery). If
+//                                                       unset, a key is derived from MARKET_ADMIN_KEY,
+//                                                       so don't change that key once logins are stored.
 //   SITE_URL                                            optional, e.g. https://vaultix.example
 //   MARKET_FEE_PCT / MARKET_FEE_FIXED                   buyer payment fee (default 3% + $0.30)
 //   MARKET_COMMISSION_PCT                               cut taken from sellers (default 5%)
+//
+//  Instant delivery (accounts, codes…)
+//   - The seller enters one login per item when posting. Each is encrypted (AES-256-GCM) and kept in
+//     a Redis list mkt:creds:<listingId>; stock = number of logins left. They are never sent in
+//     listings or profiles.
+//   - When an order is paid, one login is popped (LPOP is atomic, so two buyers never get the same
+//     one) and attached to the order, still encrypted. Only that order's buyer, seller and staff
+//     can see it. The money stays in escrow until the buyer confirms the login works.
 //
 //  Images
 //   - Games in shop-site/games.js use their official icon (?action=icons, looked up live and
@@ -53,6 +64,8 @@ const FEE_FIXED = Number(process.env.MARKET_FEE_FIXED ?? 0.3)
 const COMMISSION_PCT = Number(process.env.MARKET_COMMISSION_PCT ?? 5) / 100
 const CRYPTO_NETWORKS = ['USDT (TRC20)', 'USDT (ERC20)', 'BTC', 'ETH', 'LTC']
 const PAYOUT_METHODS = ['stripe', 'paypal', 'crypto', 'bank']
+const MAX_LOGINS = 50
+const credsKey = (listingId) => `mkt:creds:${listingId}`
 
 /* ------------------------------ storage ------------------------------ */
 async function redis(cmd) {
@@ -96,6 +109,41 @@ function str(v, name, min, max) {
   if (s.length < min || s.length > max) throw bad(`${name} must be ${min}-${max} characters`)
   return s
 }
+// ---- encryption for account logins ----
+function encKey() {
+  const k = process.env.MARKET_ENCRYPTION_KEY || (process.env.MARKET_ADMIN_KEY && `vaultix-admin:${process.env.MARKET_ADMIN_KEY}`)
+  if (!k) throw bad('Instant delivery needs MARKET_ENCRYPTION_KEY (or MARKET_ADMIN_KEY) on the server', 503)
+  return crypto.createHash('sha256').update(k).digest()
+}
+function encrypt(obj) {
+  const iv = crypto.randomBytes(12)
+  const c = crypto.createCipheriv('aes-256-gcm', encKey(), iv)
+  const ct = Buffer.concat([c.update(JSON.stringify(obj), 'utf8'), c.final()])
+  return Buffer.concat([iv, c.getAuthTag(), ct]).toString('base64')
+}
+function decrypt(b64) {
+  try {
+    const buf = Buffer.from(String(b64), 'base64')
+    const d = crypto.createDecipheriv('aes-256-gcm', encKey(), buf.subarray(0, 12))
+    d.setAuthTag(buf.subarray(12, 28))
+    return JSON.parse(Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString('utf8'))
+  } catch (e) {
+    if (e.status) throw e
+    return null // wrong key or damaged data
+  }
+}
+// Validate the logins a seller enters for instant delivery.
+function parseLogins(list) {
+  if (!Array.isArray(list) || !list.length) throw bad('Add at least one account login')
+  if (list.length > MAX_LOGINS) throw bad(`You can add up to ${MAX_LOGINS} logins per listing`)
+  const opt = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
+  return list.map((x, i) => {
+    const login = opt(x && x.login, 120), password = opt(x && x.password, 200)
+    if (!login || !password) throw bad(`Login ${i + 1}: enter a username and password`)
+    return { login, password, email: opt(x.email, 120), emailPassword: opt(x.emailPassword, 200), notes: opt(x.notes, 300) }
+  })
+}
+
 function feesFor(price, method) {
   const fee = method === 'balance' ? 0 : r2(price * FEE_PCT + FEE_FIXED)
   const commission = r2(price * COMMISSION_PCT)
@@ -241,25 +289,48 @@ async function refundOrder(o, reason) {
   if (o.method !== 'balance' && o.paymentIntent) {
     await stripe('POST', '/refunds', { payment_intent: o.paymentIntent, metadata: { orderId: o.id } }, `refund-${o.id}`)
   }
+  // Did this order take an item out of stock? (Older orders have no flag: they did once paid.)
+  const took = o.stockTaken !== undefined ? o.stockTaken : ['paid', 'delivered', 'disputed'].includes(o.status)
   o.status = 'refunded'; o.refundedAt = Date.now(); o.refundReason = reason
   await put(ORDERS, o)
-  await changeStock(o.listingId, +1)
+  // A login the buyer has already seen can't be sold again, so it doesn't go back into stock.
+  if (took && !o.autoDelivered) await changeStock(o.listingId, +1)
+}
+// Paid order on an instant-delivery listing: hand over one login right away.
+async function autoDeliver(o, l) {
+  const enc = await redis(['LPOP', credsKey(l.id)])
+  const left = Number(await redis(['LLEN', credsKey(l.id)])) || 0
+  const fresh = await getOne(LISTINGS, l.id)
+  if (fresh) { fresh.stock = left; fresh.sold = (fresh.sold || 0) + (enc ? 1 : 0); await put(LISTINGS, fresh) }
+  if (!enc) return false
+  o.loginEnc = enc
+  o.autoDelivered = true
+  o.status = 'delivered'; o.deliveredAt = Date.now()
+  return true
+}
+// Mark an order paid and take the item out of stock (auto-delivering logins when there are any).
+async function fulfil(o) {
+  const l = await getOne(LISTINGS, o.listingId)
+  o.paidAt = Date.now()
+  const soldOut = async () => { o.status = 'paid'; o.stockTaken = false; await refundOrder(o, 'Sold out before your payment finished'); return o }
+  if (!l || (l.stock ?? 1) < 1) return soldOut()
+  if (l.delivery === 'instant') {
+    if (!(await autoDeliver(o, l))) return soldOut()
+    o.stockTaken = true
+  } else {
+    await changeStock(o.listingId, -1)
+    o.stockTaken = true
+    o.status = 'paid'
+  }
+  await put(ORDERS, o)
+  return o
 }
 // Called by the Stripe webhook when a checkout is paid.
 async function markPaid(orderId, paymentIntent) {
   const o = await getOne(ORDERS, orderId)
   if (!o || o.status !== 'pending') return o
   o.paymentIntent = paymentIntent || o.paymentIntent
-  const l = await getOne(LISTINGS, o.listingId)
-  if (!l || (l.stock ?? 1) < 1) {
-    o.paidAt = Date.now()
-    await refundOrder(o, 'Sold out before your payment finished')
-    return o
-  }
-  await changeStock(o.listingId, -1)
-  o.status = 'paid'; o.paidAt = Date.now()
-  await put(ORDERS, o)
-  return o
+  return fulfil(o)
 }
 async function markExpired(orderId) {
   const o = await getOne(ORDERS, orderId)
@@ -274,8 +345,11 @@ function orderView(o, users, viewerId) {
   const byId = (id) => users.find((u) => u.id === id)
   const buyer = byId(o.buyerId), seller = byId(o.sellerId)
   const role = viewerId === o.buyerId ? 'buyer' : viewerId === o.sellerId ? 'seller' : 'staff'
+  const { loginEnc, ...rest } = o
+  let login = null
+  if (loginEnc) { try { login = decrypt(loginEnc) || { error: 'Could not read this login. Contact staff.' } } catch { login = { error: 'Server encryption key is missing. Contact staff.' } } }
   return {
-    ...o, role,
+    ...rest, role, login,
     buyer: buyer ? { id: buyer.id, name: buyer.name, contact: buyer.contact } : null,
     seller: seller ? { ...publicUser(seller), contact: seller.contact } : null,
     autoCompleteAt: o.status === 'delivered' ? o.deliveredAt + AUTO_COMPLETE_MS : null,
@@ -356,7 +430,9 @@ const actions = {
     const price = r2(Number(b.price))
     if (!(price >= 1 && price <= 10000)) throw bad('Price must be between 1 and 10000')
     if (!CATEGORIES.includes(b.category)) throw bad('Pick a category')
-    const stock = b.stock === undefined || b.stock === '' ? 1 : Math.floor(Number(b.stock))
+    const instant = b.delivery === 'instant'
+    const logins = instant ? parseLogins(b.logins) : null
+    const stock = instant ? logins.length : b.stock === undefined || b.stock === '' ? 1 : Math.floor(Number(b.stock))
     if (!(stock >= 1 && stock <= 999)) throw bad('Stock must be between 1 and 999')
     const was = r2(Number(b.wasPrice))
     const known = findGame(b.game)
@@ -370,9 +446,10 @@ const actions = {
       description: str(b.description, 'Description', 10, 1000),
       price, wasPrice: was > price && was <= 100000 ? was : null,
       category: b.category, stock, sold: 0,
-      delivery: b.delivery === 'instant' ? 'instant' : 'manual',
+      delivery: instant ? 'instant' : 'manual',
       createdAt: Date.now(),
     }
+    if (instant) await redis(['RPUSH', credsKey(listing.id), ...logins.map(encrypt)])
     if (image) await redis(['HSET', IMAGES, listing.id, JSON.stringify(image)])
     await put(LISTINGS, listing)
     return { listing: { ...listing, seller: publicUser(s) } }
@@ -385,6 +462,7 @@ const actions = {
     if (!l || l.sellerId !== s.id) throw bad('Listing not found', 404)
     l.stock = 0; l.removed = true
     await put(LISTINGS, l)
+    await redis(['DEL', credsKey(l.id)])
     return { ok: true }
   },
 
@@ -404,9 +482,7 @@ const actions = {
     if (method === 'balance') {
       const [orders, payouts] = await Promise.all([loadOrders(), getAll(PAYOUTS)])
       if (walletFor(u.id, orders, payouts).available < money.total) throw bad('Not enough balance')
-      await changeStock(l.id, -1)
-      order.status = 'paid'; order.paidAt = Date.now()
-      await put(ORDERS, order)
+      await fulfil(order)
       return { orderId: order.id }
     }
     const site = siteUrl(req)
@@ -589,7 +665,7 @@ const actions = {
       throw bad('This user has open orders. Refund or release them first.')
     }
     const listings = (await getAll(LISTINGS)).filter((l) => l.sellerId === id)
-    for (const l of listings) { l.stock = 0; l.removed = true; await put(LISTINGS, l) }
+    for (const l of listings) { l.stock = 0; l.removed = true; await put(LISTINGS, l); await redis(['DEL', credsKey(l.id)]) }
     await redis(['HDEL', SELLERS, id])
     return { ok: true, removedListings: listings.length }
   },
@@ -597,7 +673,7 @@ const actions = {
   async adminRemove(b) {
     authAdmin(b)
     const l = await getOne(LISTINGS, b.listingId)
-    if (l) { l.stock = 0; l.removed = true; await put(LISTINGS, l) }
+    if (l) { l.stock = 0; l.removed = true; await put(LISTINGS, l); await redis(['DEL', credsKey(l.id)]) }
     return { ok: true }
   },
 

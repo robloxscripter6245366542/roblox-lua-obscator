@@ -128,7 +128,13 @@
         <label>Price (USD)<input name="price" type="number" required min="0.01" max="10000" step="0.01" placeholder="0.00" /></label>
         <label><span>Original price <span class="opt">(optional)</span></span><input name="wasPrice" type="number" min="0.01" max="100000" step="0.01" placeholder="Shows a discount" /></label>
       </div>
-      <label>In stock<input name="stock" type="number" min="1" max="999" step="1" value="1" /></label>
+      <div class="instant">
+        <label class="check-row"><input type="checkbox" id="instantOn" /><span><b>⚡ Instant delivery</b><span class="muted">Add the account login now. Each buyer gets one automatically right after paying.</span></span></label>
+        <div class="login-rows" id="loginRows" hidden></div>
+        <button type="button" class="btn ghost sm" id="addLogin" hidden>+ Add another account</button>
+        <p class="muted small" id="loginNote" hidden>🔒 Logins are encrypted. Only the buyer of each order and staff can see them. Your stock is the number of logins you add.</p>
+      </div>
+      <label id="stockLabel">In stock<input name="stock" type="number" min="1" max="999" step="1" value="1" /></label>
       <label>Description<textarea name="description" required minlength="10" maxlength="1000" rows="4" placeholder="What's included, how you deliver it, any warranty."></textarea></label>
       <p class="form-err" id="postErr" role="alert"></p>
       <button class="btn sell wide" type="submit" value="default">Publish listing</button>

@@ -84,7 +84,7 @@ function renderCheckout() {
             <div class="co-item-text">
               <p class="muted">${esc(l.game)} · ${esc(l.category)}</p>
               <h2>${esc(l.title)}</h2>
-              <p class="muted small">Delivery: the seller delivers in your order chat · ${l.stock ?? 1} in stock</p>
+              <p class="muted small">${l.delivery === "instant" ? "<b class=\"instant-inline\">⚡ Instant delivery</b>: the login appears on your order page right after you pay" : "Delivery: the seller delivers in your order chat"} · ${l.stock ?? 1} in stock</p>
             </div>
           </div>
           <div class="co-seller">
@@ -191,6 +191,7 @@ async function renderOrder() {
     <div class="co">
       <div class="co-main">
         <section class="panel">${orderActions(o, buyer)}</section>
+        ${o.login ? loginPanel(o, buyer) : ""}
         ${o.delivery ? `<section class="panel"><h2>Delivery details</h2><pre class="delivery">${esc(o.delivery)}</pre><p class="muted small">Delivered ${when(o.deliveredAt)}</p></section>` : ""}
         ${o.review ? `<section class="panel"><h2>Buyer's review</h2><p>${o.review.positive ? "👍 Positive" : "👎 Negative"}${o.review.text ? ` — “${esc(o.review.text)}”` : ""}</p></section>` : ""}
         <section class="panel chat">
@@ -250,7 +251,9 @@ function orderActions(o, buyer) {
     switch (o.status) {
       case "pending": return `<h2>Waiting for payment…</h2><p class="muted">If you just paid, this page updates by itself in a few seconds.</p><button class="btn ghost" data-order-act="cancel" type="button">Cancel order</button>`;
       case "paid": return `<h2>The seller is preparing your order</h2><p class="muted">Your money is held by Vaultix. Use the chat below to give the seller anything they need (e.g. your username).</p>${problem}`;
-      case "delivered": return `<h2>Did you get everything?</h2><p class="muted">Check the delivery details below. Confirming releases the money to the seller.</p>${reviewForm("confirm")}${problem}${auto}`;
+      case "delivered": return o.autoDelivered
+        ? `<h2>Your login is ready ⚡</h2><p class="muted">Log in with the details below and check everything. Change the password (and email, if included) right away. If it all works, confirm to release the money to the seller.</p>${reviewForm("confirm")}${problem}${auto}`
+        : `<h2>Did you get everything?</h2><p class="muted">Check the delivery details below. Confirming releases the money to the seller.</p>${reviewForm("confirm")}${problem}${auto}`;
       case "completed": return o.review ? `<h2>Order complete 🎉</h2><p class="muted">Thanks for your review.</p>` : `<h2>Order complete 🎉</h2><p class="muted">How was the seller?</p>${reviewForm("review")}`;
       case "disputed": return `<h2>Problem reported</h2><p class="muted">Staff are reviewing your order. Your payment is on hold until they refund you or release it.</p><p class="small">You said: “${esc(o.dispute ? o.dispute.reason : "")}”</p>`;
       case "refunded": return `<h2>Refunded</h2><p class="muted">${esc(o.refundReason || "This order was refunded.")} ${o.method === "balance" ? "The money is back in your balance." : "Stripe returns the money to your payment method, usually within 5–10 days."}</p>`;
@@ -262,13 +265,48 @@ function orderActions(o, buyer) {
     case "paid": return `<h2>Deliver the order</h2><p class="muted">The buyer has paid and Vaultix is holding the money. Send the item, then add the details here (login, trade info, codes…). Only the buyer can see them.</p>
       <textarea id="deliverText" maxlength="2000" rows="4" placeholder="e.g. Username: … / Password: … / Traded to …"></textarea>
       <div class="btnrow"><button class="btn sell" data-order-act="deliver" type="button">Mark as delivered</button><button class="btn danger" data-order-act="refund" type="button">Can't deliver — refund buyer</button></div>`;
-    case "delivered": return `<h2>Waiting for the buyer to confirm</h2><p class="muted">You'll get ${money(o.sellerNet)} added to your balance when they confirm.</p>${auto}`;
+    case "delivered": return `<h2>${o.autoDelivered ? "Delivered automatically ⚡" : "Waiting for the buyer to confirm"}</h2><p class="muted">${o.autoDelivered ? "The buyer got one of your logins (shown below) as soon as they paid. " : ""}You'll get ${money(o.sellerNet)} added to your balance when they confirm.</p>${auto}`;
     case "completed": return `<h2>Sale complete 🎉</h2><p class="muted">${money(o.sellerNet)} was added to your balance.</p>`;
     case "disputed": return `<h2>The buyer reported a problem</h2><p class="small">“${esc(o.dispute ? o.dispute.reason : "")}”</p><p class="muted">Staff will review the chat and decide. Explain what happened in the chat, or refund the buyer yourself.</p><button class="btn danger" data-order-act="refund" type="button">Refund buyer</button>`;
     case "refunded": return `<h2>Refunded</h2><p class="muted">${esc(o.refundReason || "This order was refunded.")}</p>`;
     default: return `<h2>Order cancelled</h2><p class="muted">The buyer didn't complete payment.</p>`;
   }
 }
+
+function loginPanel(o, buyer) {
+  const L = o.login;
+  if (L.error) return `<section class="panel"><h2>Account login</h2><div class="warn"><b>Can't show the login.</b><span>${esc(L.error)}</span></div></section>`;
+  const row = (label, value, secret) => !value ? "" : `
+    <div class="cred">
+      <span class="cred-k">${label}</span>
+      <code class="cred-v${secret ? " secret" : ""}" data-value="${esc(value)}">${secret ? "••••••••" : esc(value)}</code>
+      ${secret ? `<button class="btn ghost sm" data-reveal type="button">Show</button>` : ""}
+      <button class="btn ghost sm" data-copy="${esc(value)}" type="button">Copy</button>
+    </div>`;
+  return `<section class="panel login-panel">
+    <h2>${buyer ? "Your account login" : "Login given to the buyer"}</h2>
+    <div class="creds">
+      ${row("Username", L.login)}${row("Password", L.password, true)}
+      ${row("Email", L.email)}${row("Email password", L.emailPassword, true)}
+    </div>
+    ${L.notes ? `<p class="small"><b>Notes:</b> ${esc(L.notes)}</p>` : ""}
+    ${buyer ? `<p class="muted small">🔒 Only you and the seller can see this. Change the password straight away so the account is only yours.</p>` : ""}
+  </section>`;
+}
+$("#pageView").addEventListener("click", async (e) => {
+  const c = e.target.closest("[data-copy]");
+  if (c) {
+    try { await navigator.clipboard.writeText(c.dataset.copy); toast("Copied."); } catch { toast("Couldn't copy. Select the text instead."); }
+    return;
+  }
+  const r = e.target.closest("[data-reveal]");
+  if (r) {
+    const v = r.parentElement.querySelector(".cred-v");
+    const shown = r.textContent === "Hide";
+    v.textContent = shown ? "••••••••" : v.dataset.value;
+    r.textContent = shown ? "Show" : "Hide";
+  }
+});
 
 async function orderAction(act, btn) {
   const id = page.id;

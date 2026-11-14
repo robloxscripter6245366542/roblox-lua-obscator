@@ -28,6 +28,9 @@ services:
       # Staff page password: pick a long random one.
       - key: MARKET_ADMIN_KEY
         sync: false
+      # Encrypts account logins for instant delivery. Long random string; never change it later.
+      - key: MARKET_ENCRYPTION_KEY
+        sync: false
       # Stripe (use sk_test_… keys while testing).
       - key: STRIPE_SECRET_KEY
         sync: false

@@ -34,6 +34,14 @@ It starts **empty**: there are no built-in products.
 - `styles.css`, `logo.svg`, `favicon.svg`
 - `../api/market.js`: the server (a Vercel serverless function)
 
+## Instant delivery (accounts, codes)
+
+- When posting (it's switched on by default for **Accounts**), the seller ticks **⚡ Instant delivery** and adds one login per account: username and password, plus optional email, email password and notes. The stock is the number of logins.
+- Logins are **encrypted** (AES-256-GCM) before they're stored. They never appear in listings or profiles. Only the buyer of that order, the seller and staff can see them.
+- The moment an order is paid, the next login is handed out (each one goes to exactly one buyer) and shown on the buyer's order page with **Show** and **Copy** buttons.
+- The money still stays in escrow. The buyer checks the login and confirms, or reports a problem if it doesn't work. A refunded login is not put back on sale.
+- Set `MARKET_ENCRYPTION_KEY` (a long random string) on the server. If it's missing, a key is made from `MARKET_ADMIN_KEY`. **Don't change whichever key you use once logins are stored**, or they can't be read anymore.
+
 ## Buying, escrow and payouts
 
 1. **Checkout:** the buyer picks card, Apple Pay, Google Pay, crypto or their Vaultix balance. Card, wallet and crypto payments happen on **Stripe's hosted checkout page**, so Vaultix never sees card numbers.
@@ -65,7 +73,8 @@ The site and API run as one small Node server (`shop-site/server.js`). `render.y
    It starts in **demo mode**.
    On the free plan the site goes to sleep after 15 minutes without visitors, and the next visit takes about a minute to wake it up.
 2. **Database.** Create a free Redis database at https://upstash.com. In Render → your service → **Environment**, set
-   `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, plus `MARKET_ADMIN_KEY` (a long random password for the Staff page).
+   `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, plus `MARKET_ADMIN_KEY` (a long random password for the Staff page)
+   and `MARKET_ENCRYPTION_KEY` (another long random string, used to encrypt account logins; never change it later).
    Buyers and sellers now share one real market.
 3. **Payments (Stripe test mode).**
    - Set `STRIPE_SECRET_KEY` (`sk_test_…`).
