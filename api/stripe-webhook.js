@@ -4,6 +4,8 @@
 //    checkout.session.completed, checkout.session.async_payment_succeeded,
 //    checkout.session.async_payment_failed, checkout.session.expired, account.updated,
 //    payment_intent.succeeded, payment_intent.payment_failed
+//  Optional (seller payouts become ready sooner): an event destination for the v2 event
+//    v2.core.account[configuration.recipient].capability_status_updated
 //  and put its signing secret in STRIPE_WEBHOOK_SECRET.
 //  Every request is checked against that secret, so nobody can fake a "paid" event.
 // ============================================================================
@@ -68,9 +70,11 @@ async function handler(req, res) {
         if (orderId) await internal.markSavedCardFailed(orderId)
         break
       case 'account.updated':
-        await internal.onStripeAccount(obj.id, obj.payouts_enabled)
+        await internal.onStripeAccount(obj.id)
         break
       default:
+        // Accounts v2 "thin" events, e.g. v2.core.account[configuration.recipient].capability_status_updated
+        if (/^v2\.core\.account/.test(evt.type) && evt.related_object && evt.related_object.id) await internal.onStripeAccount(evt.related_object.id)
         break
     }
   } catch (e) {

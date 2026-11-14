@@ -92,6 +92,28 @@ With a real `sk_test_…` key it uses Stripe test mode. Forward webhooks with `s
 2. In **Settings → Environment Variables**, add `MARKET_ADMIN_KEY` (your staff password) and `MARKET_ENCRYPTION_KEY` (a long random string; never change it later).
 3. **Redeploy:** Deployments → ⋯ → Redeploy. The black "Demo mode" bar disappears once the database is connected.
 4. Sign up as **Kaitrades** with your `MARKET_ADMIN_KEY` in the Staff password box to become the owner.
+5. **Stripe** (card payments, saved cards, seller payouts): follow "Stripe setup" below, using `https://vaultix-market.vercel.app/api/stripe-webhook` as the webhook URL.
+
+## Stripe setup
+
+Vaultix follows Stripe's current best practices:
+
+- **Payments:** Stripe Checkout with *dynamic payment methods*, so the code doesn't list payment methods. Turn cards, Apple Pay, Google Pay, crypto and others on or off in Stripe → Settings → Payment methods.
+- **Saved cards:** buyers get a Stripe Customer; Checkout offers "save my card", and one-click pay uses a PaymentIntent.
+- **Seller payouts (Connect):** sellers get an Accounts v2 *recipient* account with the Express dashboard. Vaultix keeps the money in escrow and sends each seller's share with a transfer once the staff approve the withdrawal.
+- **The API version is pinned** (`2026-10-28.endive`, change it with `STRIPE_API_VERSION`), and webhook signatures are always checked.
+
+Steps:
+
+1. **Use a test key first.** In Stripe (Test mode on) go to Developers → API keys. A **restricted key** (`rk_test_…`) is safer than the secret key: give it write access to Checkout Sessions, Customers, PaymentIntents, PaymentMethods, Refunds, Transfers, Connect Accounts/Account Links and read access to Tax. Put it in `STRIPE_SECRET_KEY`.
+2. **Webhook:** Developers → Webhooks → Add endpoint `https://<your-site>/api/stripe-webhook` with the 7 events listed in "Going live (Render)" step 3. Copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
+3. **Connect (needed for seller payouts):** open Stripe → Connect and finish setup. Then go to **Settings → Connect → Platform profile** (https://dashboard.stripe.com/settings/connect/platform-profile) and complete the **loss-liability acknowledgement**. Because Vaultix holds money in escrow, Stripe requires the platform to accept responsibility for refunds/disputes it can't recover from sellers. Until this is done, "Connect with Stripe" shows an error.
+4. **Stripe Tax (optional):** Tax is **off** by default. To turn it on: Stripe → Tax → Settings → set your business (head office) address and a default product tax code; then Tax → Registrations → add every place you're registered to collect tax; then set `STRIPE_TAX=on`. Without a registration Stripe collects **no** tax even when it's "on". With tax on, one-click payments go through Stripe's checkout page instead (it still shows saved cards), so tax can be added. Ask a tax advisor which registrations you need.
+5. Redeploy.
+
+Notes:
+- Prices are in USD. If your Stripe account settles in another currency (for example AED), add a USD bank account or turn on USD settlement in Stripe, or seller transfers in USD can fail for lack of USD balance.
+- Paying sellers in other countries from your platform depends on Stripe's cross-border payout rules for your country.
 
 ## Going live (Render, free)
 
@@ -110,7 +132,7 @@ The site and API run as one small Node server (`shop-site/server.js`). `render.y
    - In Stripe → Developers → Webhooks, add `https://<your-site>.onrender.com/api/stripe-webhook` with the events
      `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`,
      `checkout.session.expired`, `account.updated`, `payment_intent.succeeded` and `payment_intent.payment_failed`. Copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
-   - In Stripe, turn on **Connect** (for seller payouts) and turn on Apple Pay, Google Pay and Crypto under payment methods.
+   - In Stripe, turn on **Connect** and complete the platform profile (see "Stripe setup" step 3), and turn on Apple Pay, Google Pay and Crypto under payment methods.
 4. Optional settings: `SITE_URL` (only needed with a custom domain), `MARKET_FEE_PCT` (default 3), `MARKET_FEE_FIXED` (default 0.30),
    `MARKET_COMMISSION_PCT` (default 5).
 
