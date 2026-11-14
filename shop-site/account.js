@@ -70,7 +70,13 @@ function stopPoll() { if (poll) { clearTimeout(poll); poll = null; } }
 let payMethod = "card";
 // Cards the buyer saved with Stripe (brand + last 4 only). null = not loaded yet.
 let savedCards = null;
-const BRAND_LOGO = { visa: "visa", mastercard: "mastercard", amex: "americanexpress", discover: "discover", jcb: "jcb", diners: "dinersclub" };
+// Add funds: ways to pay in, where to send it, and my requests. null = not loaded yet.
+let depositInfo = null;
+async function loadDeposits() {
+  try { depositInfo = await Market.deposits(); } catch { depositInfo = { methods: [], deposits: [] }; }
+  return depositInfo;
+}
+const depositMethodName = (m) => (m === "bank" ? "Bank transfer" : m.replace(/^crypto:/, ""));const BRAND_LOGO = { visa: "visa", mastercard: "mastercard", amex: "americanexpress", discover: "discover", jcb: "jcb", diners: "dinersclub" };
 const brandName = (b) => ({ visa: "Visa", mastercard: "Mastercard", amex: "Amex", discover: "Discover", jcb: "JCB", diners: "Diners", unionpay: "UnionPay" }[b] || "Card");
 const cardLogo = (b) => (BRAND_LOGO[b] ? payLogo(BRAND_LOGO[b]) : `<span class="ptag">${esc(brandName(b))}</span>`);
 async function loadCards() {
@@ -144,7 +150,7 @@ function renderCheckout() {
         <div class="pm-list" role="radiogroup" aria-label="Payment method">
           ${METHODS.map((x) => {
             const disabled = x.id === "balance" && (!state.me || bal < r2(l.price));
-            const extra = x.id === "balance" ? `<span class="muted small">${state.me ? `${money(bal)} available` : "Sign in to use"}</span>`
+            const extra = x.id === "balance" ? `<span class="muted small">${state.me ? `${money(bal)} available${bal < r2(l.price) ? ` · <a href="#/wallet" class="link-btn">Add funds</a>` : ""}` : "Sign in to use"}</span>`
               : x.note ? `<span class="muted small">${x.note}</span>` : "";
             return `<label class="pm${payMethod === x.id ? " on" : ""}${disabled ? " is-disabled" : ""}">
               <input type="radio" name="pm" value="${x.id}" ${payMethod === x.id ? "checked" : ""} ${disabled ? "disabled" : ""} />
@@ -460,6 +466,7 @@ async function openProfile(id) {
 let accTab = "orders";
 let myOrders = null;
 async function openAccount(tab) {
+  depositInfo = null; // re-read add-funds requests (staff may have added one)
   if (!state.me) return openJoin();
   accTab = tab || accTab;
   openDrawer(`<div class="drawer-pad"><p class="muted">Loading…</p></div>`);
@@ -539,6 +546,49 @@ function accountTab() {
 }
 
 let payoutMethod = "stripe";
+// "Add funds": no card needed. People send a bank transfer or crypto to the owner's details,
+// staff check it arrived and add it. Spend-only (can't be withdrawn).
+function addFundsSection() {
+  const head = `<h3 class="dh">Add funds</h3>`;
+  if (depositInfo === null) { loadDeposits().then(() => { if (accTab === "wallet") renderAccount(); }); return `${head}<p class="muted small">Loading…</p>`; }
+  const ds = depositInfo.deposits || [];
+  const open = ds.filter((d) => d.status === "waiting" || d.status === "sent");
+  const done = ds.filter((d) => !open.includes(d)).slice(0, 5);
+  const how = (d) => d.method === "bank" ? "bank transfer" : `${esc(d.network)} (on the ${esc(d.network)} network only)`;
+  const openCards = open.map((d) => d.status === "waiting" ? `
+    <div class="fund-box">
+      <p><b>Send ${money(d.amount)} by ${how(d)}</b></p>
+      <p class="muted small">${d.method === "bank" ? "To this account:" : `Send ${money(d.amount)} worth of ${esc(d.network)} to this address:`}</p>
+      <div class="contact" style="user-select:all;white-space:pre-wrap">${esc(d.sendTo)}</div>
+      <p class="small">Reference: <b class="mono" style="user-select:all">${esc(d.ref)}</b>${d.method === "bank" ? " (put it in the transfer note, so staff can match your payment)" : ""}</p>
+      ${d.method === "crypto" ? `<p class="muted small">Crypto sent on the wrong network or to a wrong address can't be recovered. Staff add the dollar value that arrives.</p>` : ""}
+      <form class="dform" id="depositSentForm" data-deposit="${esc(d.id)}">
+        <label>${d.method === "bank" ? "Name on the account you sent from" : "Transaction ID (hash)"} <span class="opt">(helps staff find it)</span><input name="proof" maxlength="200" autocomplete="off" /></label>
+        <div class="btnrow"><button class="btn sell" type="submit">I've sent it</button><button class="btn ghost" data-deposit-cancel="${esc(d.id)}" type="button">Cancel</button></div>
+      </form>
+    </div>` : `
+    <div class="fund-box">
+      <p><b>${money(d.amount)} by ${d.method === "bank" ? "bank transfer" : esc(d.network)}</b> <span class="pill info">Being checked</span></p>
+      <p class="muted small">Staff are checking your payment (reference ${esc(d.ref)}). It's added to your balance once it arrives, usually within a day.</p>
+      <button class="btn ghost sm" data-deposit-cancel="${esc(d.id)}" type="button">Cancel request</button>
+    </div>`).join("");
+  const form = !depositInfo.methods.length
+    ? `<p class="muted small">Adding funds isn't available yet.</p>`
+    : open.length >= 3 ? "" : `
+    <form class="dform" id="depositForm">
+      <div class="two">
+        <label>Amount (USD)<input name="amount" type="number" min="${depositInfo.min}" max="${depositInfo.max}" step="0.01" placeholder="${depositInfo.min}.00" required /></label>
+        <label>Send by<select name="method">${depositInfo.methods.map((m) => `<option value="${esc(m)}">${esc(depositMethodName(m))}</option>`).join("")}</select></label>
+      </div>
+      <button class="btn sell" type="submit">Get payment details</button>
+      <p class="muted small">No card needed. Staff add the money once it arrives. Added funds can be spent on Vaultix but not withdrawn.</p>
+    </form>`;
+  const PILLS = { credited: `<span class="pill ok">Added</span>`, rejected: `<span class="pill muted">Rejected</span>`, cancelled: `<span class="pill muted">Cancelled</span>` };
+  const history = done.length ? `<div class="dlist">${done.map((d) => `
+    <div class="drow"><span class="drow-t"><b>${money(d.status === "credited" ? d.credited : d.amount)} · ${d.method === "bank" ? "Bank transfer" : esc(d.network)}</b><span class="muted small">${esc(d.ref)} · ${date(d.createdAt)}${d.note ? ` · ${esc(d.note)}` : ""}</span></span>${PILLS[d.status] || ""}</div>`).join("")}</div>` : "";
+  return head + openCards + form + history;
+}
+
 function walletTab(me, w) {
   if (!w) return `<p class="muted">Couldn't load your wallet.</p>`;
   const stripeOk = me.stripeConnected && me.stripeReady;
@@ -560,17 +610,19 @@ function walletTab(me, w) {
   };
   return `
     <div class="wallet">
-      <div class="wcard main"><span class="muted small">Available</span><b>${money(w.available)}</b></div>
+      <div class="wcard main"><span class="muted small">Available</span><b>${money(w.available)}</b>${w.credit > 0 ? `<span class="muted small">${money(Math.max(w.withdrawable, 0))} withdrawable · ${money(w.credit)} added funds</span>` : ""}</div>
       <div class="wcard"><span class="muted small">Pending</span><b>${money(w.pending)}</b><span class="muted small">in open orders</span></div>
       <div class="wcard"><span class="muted small">Total earned</span><b>${money(w.earned)}</b></div>
     </div>
-    <p class="muted small">You can spend your balance at checkout (no payment fee) or withdraw it.</p>
+    <p class="muted small">You can spend your balance at checkout (no payment fee). Sales earnings can also be withdrawn.</p>
+    ${addFundsSection()}
     <h3 class="dh">Withdraw</h3>
     <form class="dform" id="payoutForm">
       <div class="pchoice" role="radiogroup" aria-label="Payout method">${Object.entries(labels).map(([k, t]) => `
         <label class="${payoutMethod === k ? "on" : ""}"><input type="radio" name="pmethod" value="${k}" ${payoutMethod === k ? "checked" : ""} /><span class="pc-text">${t}<span class="pc-logos">${plogos[k]}</span></span></label>`).join("")}</div>
       ${field}
-      <label>Amount (min $10)<span class="amt"><input name="amount" type="number" min="10" step="0.01" max="${Math.max(0, w.available)}" placeholder="0.00" /><button class="btn ghost sm" data-max type="button">Max</button></span></label>
+      <label>Amount (min $10${w.credit > 0 ? `, up to ${money(Math.max(w.withdrawable, 0))}` : ""})<span class="amt"><input name="amount" type="number" min="10" step="0.01" max="${Math.max(0, w.withdrawable)}" placeholder="0.00" /><button class="btn ghost sm" data-max type="button">Max</button></span></label>
+      ${w.credit > 0 ? `<p class="muted small">Added funds can only be spent on Vaultix, not withdrawn.</p>` : ""}
       <p class="form-err" id="payoutErr" role="alert"></p>
       <button class="btn sell" type="submit" ${payoutMethod === "stripe" && !stripeOk ? "disabled" : ""}>Request withdrawal</button>
       <p class="muted small">Staff check every withdrawal before it's sent, usually within 1–2 days.</p>
@@ -584,7 +636,7 @@ function walletTab(me, w) {
 $("#drawer").addEventListener("click", async (e) => {
   if (e.target.closest("[data-drawer-close]")) return closeDrawer();
   const t = e.target.closest("[data-tab]");
-  if (t) { accTab = t.dataset.tab; return renderAccount(); }
+  if (t) { accTab = t.dataset.tab; if (accTab === "wallet") depositInfo = null; return renderAccount(); }
   const a = e.target.closest("[data-account]");
   if (a) return openAccount(a.dataset.account);
   const l = e.target.closest("[data-listing]");
@@ -599,7 +651,7 @@ $("#drawer").addEventListener("click", async (e) => {
   }
   if (e.target.closest("#signOut")) {
     if (!state.me.hasPassword && !confirm("You haven't added a password, so you won't be able to sign back in. Sign out anyway?")) return;
-    await Market.logout(); state.me = null; state.wallet = null; myOrders = null; savedCards = null; payMethod = "card"; renderAvatar(); closeDrawer(); render();
+    await Market.logout(); state.me = null; state.wallet = null; myOrders = null; savedCards = null; depositInfo = null; payMethod = "card"; renderAvatar(); closeDrawer(); render();
     return;
   }
   const rc = e.target.closest("[data-remove-card]");
@@ -614,7 +666,13 @@ $("#drawer").addEventListener("click", async (e) => {
     try { location.href = (await Market.addCard()).url; } catch (ex) { toast(ex.message); ac.disabled = false; ac.textContent = "+ Add a card"; }
     return;
   }
-  if (e.target.closest("[data-max]")) { const f = $("#payoutForm"); f.elements.amount.value = Math.max(0, state.wallet.available).toFixed(2); return; }
+  if (e.target.closest("[data-max]")) { const f = $("#payoutForm"); f.elements.amount.value = Math.max(0, state.wallet.withdrawable ?? state.wallet.available).toFixed(2); return; }
+  const dcan = e.target.closest("[data-deposit-cancel]");
+  if (dcan) {
+    if (!confirm("Cancel this request? If you already sent the money, keep it open so staff can add it.")) return;
+    try { await Market.depositCancel(dcan.dataset.depositCancel); await loadDeposits(); renderAccount(); toast("Request cancelled."); } catch (ex) { toast(ex.message); }
+    return;
+  }
   const sc = e.target.closest("[data-stripe-connect]");
   if (sc) {
     sc.disabled = true; sc.textContent = "Opening Stripe…";
@@ -638,6 +696,26 @@ $("#drawer").addEventListener("submit", async (e) => {
       if (!state.me.hasPassword && el.password.value.length < 8) throw new Error("Password must be at least 8 characters.");
       await Market.setLogin({ email: el.email.value, password: el.password.value || undefined, currentPassword: el.currentPassword ? el.currentPassword.value : undefined });
       await loadMe(); toast("Saved. You can now sign in on any device."); renderAccount();
+    } catch (ex) { toast(ex.message); btn.disabled = false; }
+    return;
+  }
+  if (f.id === "depositForm") {
+    try {
+      btn.disabled = true;
+      const amount = Number(f.elements.amount.value);
+      if (!(amount >= (depositInfo.min || 5))) throw new Error(`Add at least ${money(depositInfo.min || 5)}.`);
+      await Market.depositCreate(amount, f.elements.method.value);
+      await loadDeposits(); renderAccount();
+      toast("Now send the money using the details shown.");
+    } catch (ex) { toast(ex.message); btn.disabled = false; }
+    return;
+  }
+  if (f.id === "depositSentForm") {
+    try {
+      btn.disabled = true;
+      await Market.depositSent(f.dataset.deposit, f.elements.proof.value);
+      await loadDeposits(); renderAccount();
+      toast("Thanks! Staff will add it to your balance once it arrives.");
     } catch (ex) { toast(ex.message); btn.disabled = false; }
     return;
   }

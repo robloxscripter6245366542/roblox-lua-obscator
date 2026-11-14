@@ -40,6 +40,13 @@
 //   MARKET_FEE_PCT / MARKET_FEE_FIXED                   buyer payment fee (default 3% + $0.30)
 //   MARKET_COMMISSION_PCT                               cut taken from sellers (default 5%)
 //
+//  Add funds (no card needed)
+//   - A signed-in user asks to add $5-$2,000 by bank transfer or crypto, gets the owner's payment
+//     details (set on the Staff page) and a reference code, sends the money and taps "I've sent it".
+//   - Staff check it arrived and credit the amount received (or reject). Nothing is automatic.
+//   - Added funds can be SPENT on Vaultix but not withdrawn, so nobody can pass money through the
+//     site. Purchases use added funds first, then sales earnings.
+//
 //  Saved cards
 //   - Card numbers are stored by Stripe, never here. Each user gets a Stripe Customer; on Stripe's
 //     checkout page they can tick "save card". We only keep the customer id and show brand + last 4.
@@ -67,6 +74,9 @@ const LISTINGS = 'mkt:listings'
 const IMAGES = 'mkt:images'
 const ORDERS = 'mkt:orders'
 const PAYOUTS = 'mkt:payouts'
+const DEPOSITS = 'mkt:deposits'
+const SETTINGS = 'mkt:settings'
+const MIN_DEPOSIT = 5, MAX_DEPOSIT = 2000, MAX_OPEN_DEPOSITS = 3
 const MAX_IMAGE_BYTES = 200 * 1024
 const ICON_TTL_MS = 6 * 60 * 60 * 1000
 const CATEGORIES = ['Currency', 'Accounts', 'Top ups', 'Items', 'Boosting', 'Gift cards']
@@ -381,7 +391,9 @@ async function loadOrders() {
   }
   return orders
 }
-function walletFor(userId, orders, payouts) {
+// available = what can be spent; withdrawable = the part that can be taken out (sales earnings).
+// Added funds (credited deposits) are spend-only, and purchases use them first.
+function walletFor(userId, orders, payouts, deposits = []) {
   const sold = orders.filter((o) => o.sellerId === userId)
   const earned = sum(sold.filter((o) => o.status === 'completed').map((o) => o.sellerNet))
   const pending = sum(sold.filter((o) => ['paid', 'delivered', 'disputed'].includes(o.status)).map((o) => o.sellerNet))
@@ -389,8 +401,21 @@ function walletFor(userId, orders, payouts) {
   const mine = payouts.filter((p) => p.userId === userId)
   const withdrawn = sum(mine.filter((p) => p.status === 'paid').map((p) => p.amount))
   const requested = sum(mine.filter((p) => p.status === 'requested').map((p) => p.amount))
-  return { available: r2(earned - spent - withdrawn - requested), pending, earned, spent, withdrawn, requested }
+  const added = sum(deposits.filter((d) => d.userId === userId && d.status === 'credited').map((d) => d.credited))
+  const credit = r2(Math.max(added - spent, 0))
+  const withdrawable = r2(earned - Math.max(spent - added, 0) - withdrawn - requested)
+  return { available: r2(withdrawable + credit), withdrawable, credit, added, pending, earned, spent, withdrawn, requested }
 }
+// Where people send money to add funds (set by staff on the Staff page).
+async function depositSettings() {
+  const v = await redis(['HGET', SETTINGS, 'deposit'])
+  const d = v ? JSON.parse(v) : {}
+  return { bank: d.bank || '', crypto: d.crypto || {} }
+}
+function depositMethods(set) {
+  return [...(set.bank ? ['bank'] : []), ...CRYPTO_NETWORKS.filter((n) => set.crypto[n]).map((n) => `crypto:${n}`)]
+}
+const depositRef = () => 'VX-' + crypto.randomBytes(4).toString('hex').toUpperCase().slice(0, 6)
 async function changeStock(listingId, delta) {
   const l = await getOne(LISTINGS, listingId)
   if (!l) return null
@@ -670,10 +695,10 @@ const actions = {
 
   async me(b) {
     const u = await authUser(b)
-    const [orders, payouts] = await Promise.all([loadOrders(), getAll(PAYOUTS)])
+    const [orders, payouts, deposits] = await Promise.all([loadOrders(), getAll(PAYOUTS), getAll(DEPOSITS)])
     return {
       seller: { ...publicUser(u, orders), contact: u.contact, email: u.email || '', hasPassword: !!u.pw, stripeConnected: !!u.stripeAccount, stripeReady: !!u.stripeReady },
-      wallet: walletFor(u.id, orders, payouts),
+      wallet: walletFor(u.id, orders, payouts, deposits),
       payouts: payouts.filter((p) => p.userId === u.id).sort((a, c) => c.createdAt - a.createdAt),
     }
   },
@@ -744,8 +769,8 @@ const actions = {
       ...money, method, status: 'pending', createdAt: Date.now(), messages: [], acceptedFinal: true,
     }
     if (method === 'balance') {
-      const [orders, payouts] = await Promise.all([loadOrders(), getAll(PAYOUTS)])
-      if (walletFor(u.id, orders, payouts).available < money.total) throw bad('Not enough balance')
+      const [orders, payouts, deposits] = await Promise.all([loadOrders(), getAll(PAYOUTS), getAll(DEPOSITS)])
+      if (walletFor(u.id, orders, payouts, deposits).available < money.total) throw bad('Not enough balance')
       await fulfil(order)
       return { orderId: order.id }
     }
@@ -955,23 +980,81 @@ const actions = {
     } else {
       details = str(b.details, 'Bank details', 10, 300)
     }
-    const [orders, payouts] = await Promise.all([loadOrders(), getAll(PAYOUTS)])
-    if (amount > walletFor(u.id, orders, payouts).available) throw bad('That’s more than your available balance')
+    const [orders, payouts, deposits] = await Promise.all([loadOrders(), getAll(PAYOUTS), getAll(DEPOSITS)])
+    const w = walletFor(u.id, orders, payouts, deposits)
+    if (amount > w.withdrawable) {
+      throw bad(w.credit > 0 && amount <= w.available
+        ? `You can withdraw up to $${Math.max(w.withdrawable, 0).toFixed(2)}. Added funds can only be spent on Vaultix, not withdrawn.`
+        : 'That’s more than your available balance')
+    }
     const p = { id: newId('p_'), userId: u.id, amount, method: b.method, details, status: 'requested', createdAt: Date.now() }
     await put(PAYOUTS, p)
     return { payout: p }
   },
 
+  // ---- add funds ----
+  // The ways to add funds, where to send the money, and my requests.
+  async deposits(b) {
+    const u = await authUser(b)
+    const [set, all] = await Promise.all([depositSettings(), getAll(DEPOSITS)])
+    return {
+      methods: depositMethods(set), bank: set.bank, crypto: set.crypto, min: MIN_DEPOSIT, max: MAX_DEPOSIT,
+      deposits: all.filter((d) => d.userId === u.id).sort((a, c) => c.createdAt - a.createdAt),
+    }
+  },
+
+  async depositCreate(b) {
+    const u = await authUser(b)
+    const amount = r2(Number(b.amount))
+    if (!(amount >= MIN_DEPOSIT && amount <= MAX_DEPOSIT)) throw bad(`Add between $${MIN_DEPOSIT} and $${MAX_DEPOSIT.toLocaleString('en-US')}`)
+    const [set, all] = await Promise.all([depositSettings(), getAll(DEPOSITS)])
+    if (!depositMethods(set).includes(b.method)) throw bad('Choose how you’ll send the money')
+    if (all.filter((d) => d.userId === u.id && ['waiting', 'sent'].includes(d.status)).length >= MAX_OPEN_DEPOSITS) {
+      throw bad('You already have 3 requests waiting. Finish or cancel one first.')
+    }
+    const crypt = b.method.startsWith('crypto:')
+    const d = {
+      id: newId('d_'), userId: u.id, amount, method: crypt ? 'crypto' : 'bank', network: crypt ? b.method.slice(7) : null,
+      // where to send it, saved with the request so later changes to the settings don't affect it
+      sendTo: crypt ? set.crypto[b.method.slice(7)] : set.bank,
+      ref: depositRef(), status: 'waiting', createdAt: Date.now(),
+    }
+    await put(DEPOSITS, d)
+    return { deposit: d }
+  },
+
+  // "I've sent it", with an optional transaction ID or sender name for staff to match.
+  async depositSent(b) {
+    const u = await authUser(b)
+    const d = await getOne(DEPOSITS, b.depositId)
+    if (!d || d.userId !== u.id) throw bad('Request not found', 404)
+    if (d.status !== 'waiting') throw bad('This request was already handled')
+    d.status = 'sent'; d.sentAt = Date.now()
+    d.proof = typeof b.proof === 'string' ? b.proof.trim().slice(0, 200) : ''
+    await put(DEPOSITS, d)
+    return { deposit: d }
+  },
+
+  async depositCancel(b) {
+    const u = await authUser(b)
+    const d = await getOne(DEPOSITS, b.depositId)
+    if (!d || d.userId !== u.id) throw bad('Request not found', 404)
+    if (!['waiting', 'sent'].includes(d.status)) throw bad('This request was already handled')
+    d.status = 'cancelled'; d.cancelledAt = Date.now()
+    await put(DEPOSITS, d)
+    return { deposit: d }
+  },
+
   // ---- admin ----
   async adminSellers(b) {
     await authAdmin(b)
-    const [users, listings, orders, payouts] = await Promise.all([getAll(SELLERS), getAll(LISTINGS), loadOrders(), getAll(PAYOUTS)])
+    const [users, listings, orders, payouts, deposits] = await Promise.all([getAll(SELLERS), getAll(LISTINGS), loadOrders(), getAll(PAYOUTS), getAll(DEPOSITS)])
     return {
       sellers: users
         .map((s) => ({
           ...publicUser(s, orders), contact: s.contact, email: s.email || '', hasPassword: !!s.pw,
           listings: listings.filter((l) => l.sellerId === s.id && (l.stock ?? 1) > 0).length,
-          balance: walletFor(s.id, orders, payouts).available,
+          balance: walletFor(s.id, orders, payouts, deposits).available,
         }))
         .sort((a, c) => c.createdAt - a.createdAt),
     }
@@ -1095,6 +1178,52 @@ const actions = {
       payouts: payouts.sort((a, c) => c.createdAt - a.createdAt)
         .map((p) => ({ ...p, user: (users.find((u) => u.id === p.userId) || {}).name || '(deleted)' })),
     }
+  },
+
+  // Add-funds requests, and where people send the money.
+  async adminDeposits(b) {
+    await authAdmin(b)
+    const [deposits, users, set] = await Promise.all([getAll(DEPOSITS), getAll(SELLERS), depositSettings()])
+    const order = { sent: 0, waiting: 1 }
+    return {
+      settings: set,
+      deposits: deposits
+        .sort((a, c) => (order[a.status] ?? 2) - (order[c.status] ?? 2) || c.createdAt - a.createdAt)
+        .map((d) => ({ ...d, user: (users.find((u) => u.id === d.userId) || {}).name || '(deleted)' })),
+    }
+  },
+
+  // Credit the amount that actually arrived (it can differ from what they asked for), or reject.
+  async depositDecision(b) {
+    const staff = await authAdmin(b)
+    const d = await getOne(DEPOSITS, b.depositId)
+    if (!d || !['waiting', 'sent'].includes(d.status)) throw bad('This request was already handled')
+    if (b.decision === 'credit') {
+      const amount = r2(Number(b.amount ?? d.amount))
+      if (!(amount > 0 && amount <= MAX_DEPOSIT * 2)) throw bad('Enter the amount that arrived')
+      d.status = 'credited'; d.credited = amount
+    } else if (b.decision === 'reject') {
+      d.status = 'rejected'
+    } else throw bad('Choose credit or reject')
+    d.note = String(b.note || '').slice(0, 200)
+    d.decidedAt = Date.now(); d.decidedBy = staff ? staff.name : 'staff'
+    await put(DEPOSITS, d)
+    return { deposit: d }
+  },
+
+  async adminSetDeposit(b) {
+    await authAdmin(b)
+    const bank = typeof b.bank === 'string' ? b.bank.trim().slice(0, 400) : ''
+    const cryptoIn = (b.crypto && typeof b.crypto === 'object') ? b.crypto : {}
+    const out = {}
+    for (const n of CRYPTO_NETWORKS) {
+      const a = typeof cryptoIn[n] === 'string' ? cryptoIn[n].trim() : ''
+      if (!a) continue
+      if (a.length < 20 || a.length > 120 || !/^[A-Za-z0-9:]+$/.test(a)) throw bad(`The ${n} address doesn’t look right`)
+      out[n] = a
+    }
+    await redis(['HSET', SETTINGS, 'deposit', JSON.stringify({ bank, crypto: out })])
+    return { settings: { bank, crypto: out } }
   },
 
   // Approve (pay) or reject a withdrawal. Stripe payouts are transferred automatically;

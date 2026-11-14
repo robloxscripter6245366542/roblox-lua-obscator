@@ -1,4 +1,4 @@
-// Vaultix staff page: verify sellers, settle disputed orders, approve withdrawals.
+// Vaultix staff page: verify sellers, settle disputed orders, approve withdrawals, add funds.
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const money = (n) => "$" + Number(n || 0).toFixed(2);
@@ -7,11 +7,13 @@ const PILL = {
   pending: ["Awaiting payment", "wait"], paid: ["Paid", "info"], delivered: ["Delivered", "info"], completed: ["Completed", "ok"],
   disputed: ["Disputed", "risk"], refunded: ["Refunded", "muted"], cancelled: ["Cancelled", "muted"],
   requested: ["Requested", "wait"], rejected: ["Rejected", "muted"],
+  waiting: ["Not sent yet", "muted"], sent: ["Says it's sent", "wait"], credited: ["Added", "ok"],
 };
+const CRYPTO_NETWORKS = ["USDT (TRC20)", "USDT (ERC20)", "BTC", "ETH", "LTC"];
 const pill = (s) => { const [t, k] = PILL[s] || [s, "muted"]; return `<span class="pill ${k}">${esc(t)}</span>`; };
 const METHOD = { stripe: "Bank / card (Stripe)", paypal: "PayPal", crypto: "Crypto", bank: "Bank transfer" };
 
-const data = { sellers: [], orders: [], payouts: [], listings: [] };
+const data = { sellers: [], orders: [], payouts: [], listings: [], deposits: [], depositSettings: { bank: "", crypto: {} } };
 const openLogins = {}; // listingId -> decrypted logins shown in the Listings tab
 let tab = "sellers", orderFilter = "open", q = "";
 
@@ -29,6 +31,8 @@ async function load() {
       data.orders = (await Market.admin("adminOrders")).orders;
       data.listings = (await Market.admin("adminListings")).listings;
       data.payouts = (await Market.admin("adminPayouts")).payouts;
+      const dep = await Market.admin("adminDeposits");
+      data.deposits = dep.deposits; data.depositSettings = dep.settings;
     }
     $("#app").hidden = false;
     $("#login").hidden = true;
@@ -44,9 +48,10 @@ function render() {
   const disputes = data.orders.filter((o) => o.status === "disputed").length;
   const requests = data.payouts.filter((p) => p.status === "requested").length;
   const toCheck = data.listings.filter((l) => !l.checked).length;
-  $("#tabs").innerHTML = [["sellers", "Sellers", 0], ["listings", "Listings", toCheck], ["orders", "Orders", disputes], ["payouts", "Payouts", requests]]
+  const toAdd = data.deposits.filter((d) => d.status === "sent").length;
+  $("#tabs").innerHTML = [["sellers", "Sellers", 0], ["listings", "Listings", toCheck], ["orders", "Orders", disputes], ["payouts", "Payouts", requests], ["deposits", "Add funds", toAdd]]
     .map(([k, t, n]) => `<button role="tab" data-tab="${k}" aria-selected="${tab === k}" type="button">${t}${n ? `<span class="count">${n}</span>` : ""}</button>`).join("");
-  $("#view").innerHTML = tab === "sellers" ? sellersView() : tab === "listings" ? listingsView() : tab === "orders" ? ordersView() : payoutsView();
+  $("#view").innerHTML = tab === "sellers" ? sellersView() : tab === "listings" ? listingsView() : tab === "orders" ? ordersView() : tab === "deposits" ? depositsView() : payoutsView();
   const f = $("#filter"); if (f) { f.value = q; }
 }
 
@@ -166,6 +171,46 @@ function payoutsView() {
     ${data.payouts.length ? "" : `<p class="muted">No withdrawals yet.</p>`}`;
 }
 
+function depositsView() {
+  if (Market.mode !== "remote") return `<p class="muted" style="margin-top:16px">Adding funds needs the server.</p>`;
+  const set = data.depositSettings;
+  return `
+    <p class="muted small" style="margin-top:16px">People without a card send a bank transfer or crypto to the details below, then tap “I've sent it”. Check the money really arrived (match the reference code or transaction ID), then click <b>Add to balance</b> with the amount that arrived. Added funds can be spent on Vaultix but not withdrawn.</p>
+    <table>
+      <thead><tr><th>User</th><th>Amount</th><th>How & proof</th><th>Status</th><th></th></tr></thead>
+      <tbody>${data.deposits.map((d) => `
+        <tr>
+          <td><b>@${esc(d.user)}</b><br><span class="small">${day(d.createdAt)}</span></td>
+          <td><b>${money(d.status === "credited" ? d.credited : d.amount)}</b>${d.status === "credited" && d.credited !== d.amount ? `<br><span class="small">asked ${money(d.amount)}</span>` : ""}</td>
+          <td>${d.method === "bank" ? "Bank transfer" : esc(d.network)}<div class="detail mono">Ref ${esc(d.ref)}${d.proof ? `<br>${d.method === "bank" ? "From" : "Tx"}: ${esc(d.proof)}` : ""}</div></td>
+          <td>${pill(d.status)}${d.note ? `<br><span class="small">${esc(d.note)}</span>` : ""}</td>
+          <td><div class="acts">${["waiting", "sent"].includes(d.status) ? `
+            <button class="btn ghost" data-deposit="${esc(d.id)}" data-decision="reject" type="button">Reject</button>
+            <button class="btn sell" data-deposit="${esc(d.id)}" data-decision="credit" data-amount="${d.amount}" type="button">Add to balance</button>` : ""}
+          </div></td>
+        </tr>`).join("")}</tbody>
+    </table>
+    ${data.deposits.length ? "" : `<p class="muted">No requests yet.</p>`}
+    <h3 style="margin-top:28px">Where people send the money</h3>
+    <p class="muted small">Leave a box empty to turn that method off. Requests already made keep the details they were given.</p>
+    <form id="depositSettings" class="dform" style="max-width:640px">
+      <label>Bank transfer details<textarea name="bank" rows="3" maxlength="400" placeholder="Account holder, IBAN or account number, SWIFT/BIC, bank name">${esc(set.bank)}</textarea></label>
+      ${CRYPTO_NETWORKS.map((n) => `<label>${esc(n)} address<input name="crypto:${esc(n)}" maxlength="120" value="${esc(set.crypto[n] || "")}" autocomplete="off" /></label>`).join("")}
+      <button class="btn sell" type="submit">Save</button>
+    </form>`;
+}
+
+$("#view").addEventListener("submit", async (e) => {
+  if (e.target.id !== "depositSettings") return;
+  e.preventDefault();
+  const f = e.target, crypto = {};
+  for (const n of CRYPTO_NETWORKS) crypto[n] = f.elements[`crypto:${n}`].value;
+  try {
+    await Market.admin("adminSetDeposit", { bank: f.elements.bank.value, crypto });
+    toast("Saved."); await load();
+  } catch (err) { toast(err.message); }
+});
+
 $("#login").addEventListener("submit", (e) => {
   e.preventDefault();
   Market.setAdminKey($("#key").value);
@@ -181,8 +226,23 @@ $("#view").addEventListener("click", async (e) => {
   const r = e.target.closest("[data-resolve]"), p = e.target.closest("[data-payout]");
   const lg = e.target.closest("[data-logins]"), ck = e.target.closest("[data-check]");
   const bl = e.target.closest("[data-bad-login]"), rl = e.target.closest("[data-remove-listing]");
-  const rp = e.target.closest("[data-reset-pw]");
+  const rp = e.target.closest("[data-reset-pw]"), dp = e.target.closest("[data-deposit]");
   try {
+    if (dp) {
+      const d = data.deposits.find((x) => x.id === dp.dataset.deposit);
+      if (dp.dataset.decision === "credit") {
+        const amt = prompt(`How much arrived from @${d ? d.user : "user"}? (asked for ${money(dp.dataset.amount)}) This is added to their balance.`, Number(dp.dataset.amount).toFixed(2));
+        if (amt === null) return;
+        await Market.admin("depositDecision", { depositId: dp.dataset.deposit, decision: "credit", amount: Number(amt) });
+        toast("Added to their balance.");
+      } else {
+        const note = prompt("Reason for rejecting (shown to the user):", "Payment not received");
+        if (note === null) return;
+        await Market.admin("depositDecision", { depositId: dp.dataset.deposit, decision: "reject", note });
+        toast("Request rejected.");
+      }
+      return load();
+    }
     if (rp) {
       if (!confirm(`Reset @${rp.dataset.name}'s password? Only do this after checking it's really them (e.g. message them on their contact). They'll be signed out everywhere.`)) return;
       const r = await Market.admin("adminResetPassword", { sellerId: rp.dataset.resetPw });
