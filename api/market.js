@@ -35,6 +35,11 @@
 //   MARKET_FEE_PCT / MARKET_FEE_FIXED                   buyer payment fee (default 3% + $0.30)
 //   MARKET_COMMISSION_PCT                               cut taken from sellers (default 5%)
 //
+//  Saved cards
+//   - Card numbers are stored by Stripe, never here. Each user gets a Stripe Customer; on Stripe's
+//     checkout page they can tick "save card". We only keep the customer id and show brand + last 4.
+//   - Paying with a saved card creates a PaymentIntent for that card (3-D Secure handled by Stripe).
+//
 //  Instant delivery (accounts, codes…)
 //   - The seller enters one login per item when posting. Each is encrypted (AES-256-GCM) and kept in
 //     a Redis list mkt:creds:<listingId>; stock = number of logins left. They are never sent in
@@ -352,10 +357,39 @@ async function markExpired(orderId) {
   const o = await getOne(ORDERS, orderId)
   if (o && o.status === 'pending') { o.status = 'cancelled'; o.cancelledAt = Date.now(); await put(ORDERS, o) }
 }
+async function markSavedCardFailed(orderId) {
+  const o = await getOne(ORDERS, orderId)
+  if (o && o.status === 'pending' && o.method === 'saved') { o.status = 'cancelled'; o.cancelledAt = Date.now(); await put(ORDERS, o) }
+}
 async function onStripeAccount(accountId, payoutsEnabled) {
   const u = (await getAll(SELLERS)).find((x) => x.stripeAccount === accountId)
   if (u) { u.stripeReady = !!payoutsEnabled; await put(SELLERS, u) }
 }
+// ---- saved cards (Stripe Customer) ----
+async function ensureCustomer(u) {
+  if (u.stripeCustomer) return u.stripeCustomer
+  const c = await stripe('POST', '/customers', { name: u.name, metadata: { userId: u.id } }, `cust-${u.id}`)
+  u.stripeCustomer = c.id
+  await put(SELLERS, u)
+  return c.id
+}
+const cardView = (pm) => ({
+  id: pm.id, brand: (pm.card && pm.card.brand) || 'card', last4: (pm.card && pm.card.last4) || '????',
+  expMonth: pm.card && pm.card.exp_month, expYear: pm.card && pm.card.exp_year,
+})
+async function listCards(u) {
+  if (!u.stripeCustomer) return []
+  const r = await stripe('GET', `/customers/${u.stripeCustomer}/payment_methods?type=card&limit=10`)
+  return (r.data || []).map(cardView)
+}
+// A saved card may only be used or removed by the user it belongs to.
+async function ownCard(u, pmId) {
+  if (!u.stripeCustomer || !/^pm_[A-Za-z0-9_]+$/.test(String(pmId || ''))) throw bad('Card not found', 404)
+  const pm = await stripe('GET', `/payment_methods/${pmId}`)
+  if (pm.customer !== u.stripeCustomer) throw bad('Card not found', 404)
+  return pm
+}
+
 // Order as seen by its buyer / seller (contact of the other side included).
 function orderView(o, users, viewerId) {
   const byId = (id) => users.find((u) => u.id === id)
@@ -492,7 +526,7 @@ const actions = {
     const l = await getOne(LISTINGS, b.listingId)
     if (!l || (l.stock ?? 1) < 1) throw bad('This listing is sold out or was removed', 404)
     if (l.sellerId === u.id) throw bad("You can't buy your own listing")
-    const method = ['card', 'crypto', 'balance'].includes(b.method) ? b.method : 'card'
+    const method = ['card', 'crypto', 'balance', 'saved'].includes(b.method) ? b.method : 'card'
     const money = feesFor(l.price, method)
     const order = {
       id: newId('o_'), listingId: l.id, buyerId: u.id, sellerId: l.sellerId,
@@ -506,8 +540,38 @@ const actions = {
       return { orderId: order.id }
     }
     const site = siteUrl(req)
+    if (method === 'saved') {
+      // One-click payment with a card the buyer saved before.
+      const pm = await ownCard(u, b.paymentMethod)
+      await put(ORDERS, order)
+      let pi
+      try {
+        pi = await stripe('POST', '/payment_intents', {
+          amount: cents(money.total), currency: 'usd', customer: u.stripeCustomer, payment_method: pm.id,
+          confirm: 'true', payment_method_types: ['card'], metadata: { orderId: order.id },
+          return_url: `${site}/#/order/${order.id}`,
+          description: `${l.game} · ${l.title}`.slice(0, 200),
+        }, `saved-${order.id}`)
+      } catch (e) {
+        order.status = 'cancelled'; order.cancelledAt = Date.now(); await put(ORDERS, order)
+        throw bad(/declin/i.test(e.message) ? e.message : `Payment failed: ${e.message}`, 402)
+      }
+      order.paymentIntent = pi.id
+      await put(ORDERS, order)
+      if (pi.status === 'succeeded') { await markPaid(order.id, pi.id); return { orderId: order.id } }
+      if (pi.status === 'requires_action' && pi.next_action && pi.next_action.redirect_to_url) {
+        return { orderId: order.id, url: pi.next_action.redirect_to_url.url } // bank's 3-D Secure check
+      }
+      if (pi.status === 'processing') return { orderId: order.id }
+      order.status = 'cancelled'; order.cancelledAt = Date.now(); await put(ORDERS, order)
+      throw bad('Your card was declined. Try another card.', 402)
+    }
+    const customer = method === 'card' ? await ensureCustomer(u) : undefined
     const session = await stripe('POST', '/checkout/sessions', {
       mode: 'payment',
+      customer,
+      // Lets the buyer tick "save my card" on Stripe's page, and shows cards they saved before.
+      saved_payment_method_options: customer ? { payment_method_save: 'enabled' } : undefined,
       client_reference_id: order.id,
       success_url: `${site}/#/order/${order.id}`,
       cancel_url: `${site}/#/checkout/${l.id}`,
@@ -523,6 +587,32 @@ const actions = {
     order.stripeSession = session.id
     await put(ORDERS, order)
     return { orderId: order.id, url: session.url }
+  },
+
+  // ---- saved cards ----
+  async cards(b) {
+    const u = await authUser(b)
+    return { cards: await listCards(u) }
+  },
+
+  // Stripe's secure page in "setup" mode: save a card without buying anything.
+  async addCard(b, req) {
+    const u = await authUser(b)
+    const customer = await ensureCustomer(u)
+    const site = siteUrl(req)
+    const session = await stripe('POST', '/checkout/sessions', {
+      mode: 'setup', customer, currency: 'usd', payment_method_types: ['card'],
+      success_url: `${site}/#/cards`, cancel_url: `${site}/#/cards`,
+      metadata: { userId: u.id },
+    })
+    return { url: session.url }
+  },
+
+  async removeCard(b) {
+    const u = await authUser(b)
+    const pm = await ownCard(u, b.paymentMethod)
+    await stripe('POST', `/payment_methods/${pm.id}/detach`, {})
+    return { ok: true }
   },
 
   async myOrders(b) {
@@ -834,4 +924,4 @@ async function handler(req, res) {
 
 module.exports = handler
 // Used by api/stripe-webhook.js
-module.exports.internal = { markPaid, markExpired, onStripeAccount }
+module.exports.internal = { markPaid, markExpired, markSavedCardFailed, onStripeAccount }

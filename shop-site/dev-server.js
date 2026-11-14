@@ -56,7 +56,14 @@ function redisCmd([cmd, key, ...a]) {
 }
 
 /* ---------------- fake Stripe ---------------- */
-const fake = { sessions: {}, accounts: {} }
+const fake = { sessions: {}, accounts: {}, customers: {}, pms: {}, intents: {} }
+// Test cards like Stripe's: 4242 works, 3155 asks for a 3-D Secure check, 0002 is declined.
+const TEST_CARDS = { '4242': 'visa', '4444': 'mastercard', '3155': 'visa', '0002': 'visa' }
+function newPm(customer, last4) {
+  const pm = { id: 'pm_test_' + crypto.randomBytes(8).toString('hex'), customer: customer || null, card: { brand: TEST_CARDS[last4] || 'visa', last4, exp_month: 12, exp_year: 2030 } }
+  fake.pms[pm.id] = pm
+  return pm
+}
 const json = (obj, status = 200) => ({ ok: status < 400, status, json: async () => obj })
 function parseForm(body) {
   const out = {}
@@ -76,6 +83,22 @@ function fakeStripe(url, opts) {
     s.url = `${process.env.SITE_URL}/__dev/stripe-checkout?session=${s.id}`
     fake.sessions[s.id] = s
     return json(s)
+  }
+  if (p === '/customers' && opts.method === 'POST') { const c = { id: id('cus_test_') }; fake.customers[c.id] = c; return json(c) }
+  if (/^\/customers\/[^/]+\/payment_methods$/.test(p)) { const cid = p.split('/')[2]; return json({ data: Object.values(fake.pms).filter((m) => m.customer === cid) }) }
+  if (/^\/payment_methods\/[^/]+\/detach$/.test(p)) { const m = fake.pms[p.split('/')[2]]; if (!m) return json({ error: { message: 'No such payment method' } }, 404); m.customer = null; return json(m) }
+  if (/^\/payment_methods\/[^/]+$/.test(p)) { const m = fake.pms[p.split('/')[2]]; return m ? json(m) : json({ error: { message: 'No such payment method' } }, 404) }
+  if (p === '/payment_intents' && opts.method === 'POST') {
+    const m = fake.pms[body.payment_method]
+    if (!m || m.customer !== body.customer) return json({ error: { message: 'No such payment method' } }, 400)
+    if (m.card.last4 === '0002') return json({ error: { message: 'Your card was declined.' } }, 402)
+    const pi = { id: id('pi_test_'), amount: Number(body.amount), metadata: body.metadata || {}, status: 'succeeded' }
+    if (m.card.last4 === '3155') {
+      pi.status = 'requires_action'
+      pi.next_action = { redirect_to_url: { url: `${process.env.SITE_URL}/__dev/stripe-3ds?pi=${pi.id}&return=${encodeURIComponent(body.return_url)}` } }
+    }
+    fake.intents[pi.id] = pi
+    return json(pi)
   }
   if (/^\/checkout\/sessions\/[^/]+\/expire$/.test(p)) return json({ id: p.split('/')[3], status: 'expired' })
   if (p === '/refunds') return json({ id: id('re_test_'), status: 'succeeded', payment_intent: body.payment_intent })
@@ -116,18 +139,46 @@ async function devRoutes(req, res, u) {
     const s = fake.sessions[u.searchParams.get('session')]
     if (!s) { res.statusCode = 404; return res.end('Unknown session') }
     const method = (s.payment_method_types || {})[0] === 'crypto' ? 'crypto' : 'card / Apple Pay / Google Pay'
+    const cardPick = `<select name="card" id="card" style="width:100%;height:42px;margin-top:8px">
+        <option value="4242">Visa •••• 4242 (works)</option><option value="4444">Mastercard •••• 4444 (works)</option>
+        <option value="3155">Visa •••• 3155 (asks for 3-D Secure)</option><option value="0002">Visa •••• 0002 (declined later)</option></select>`
     res.setHeader('Content-Type', 'text/html')
+    if (s.mode === 'setup') {
+      return res.end(page('Save a card', `<span class="tag">FAKE STRIPE · DEV ONLY</span><h1>Save a card</h1>
+        <p>Stands in for Stripe's secure page. Pick a test card to save. Nothing is charged.</p>
+        <form method="post" action="/__dev/stripe-pay"><input type="hidden" name="session" value="${esc(s.id)}">${cardPick}<button class="pay" id="pay">Save card (test)</button></form>
+        <a href="${esc(s.cancel_url)}"><button class="no">Cancel</button></a>`))
+    }
+    const canSave = s.customer && s.saved_payment_method_options && s.saved_payment_method_options.payment_method_save === 'enabled'
     return res.end(page('Test checkout', `<span class="tag">FAKE STRIPE · DEV ONLY</span><h1>Pay $${(s.amount_total / 100).toFixed(2)}</h1>
       <p>This stands in for Stripe's secure checkout page (${esc(method)}). No card is charged.</p>
-      <form method="post" action="/__dev/stripe-pay"><input type="hidden" name="session" value="${esc(s.id)}"><button class="pay" id="pay">Pay (test)</button></form>
+      <form method="post" action="/__dev/stripe-pay"><input type="hidden" name="session" value="${esc(s.id)}">
+        ${canSave ? `${cardPick}<label style="display:flex;gap:8px;margin-top:12px;align-items:center"><input type="checkbox" name="save" id="save" value="1"> Save my card for future purchases</label>` : ''}
+        <button class="pay" id="pay">Pay (test)</button></form>
       <a href="${esc(s.cancel_url)}"><button class="no">Cancel</button></a>`))
   }
   if (u.pathname === '/__dev/stripe-pay' && req.method === 'POST') {
     const body = await new Promise((r) => { let d = ''; req.on('data', (c) => (d += c)); req.on('end', () => r(d)) })
-    const s = fake.sessions[new URLSearchParams(body).get('session')]
+    const form = new URLSearchParams(body)
+    const s = fake.sessions[form.get('session')]
     if (!s) { res.statusCode = 404; return res.end('Unknown session') }
+    if (s.mode === 'setup') { newPm(s.customer, form.get('card') || '4242'); res.statusCode = 303; res.setHeader('Location', s.success_url); return res.end() }
+    if (form.get('save') && s.customer) newPm(s.customer, form.get('card') || '4242')
     await sendWebhook('checkout.session.completed', { id: s.id, object: 'checkout.session', payment_status: 'paid', payment_intent: s.payment_intent, client_reference_id: s.client_reference_id, metadata: s.metadata })
     res.statusCode = 303; res.setHeader('Location', s.success_url); return res.end()
+  }
+  if (u.pathname === '/__dev/stripe-3ds') {
+    const pi = fake.intents[u.searchParams.get('pi')], ret = u.searchParams.get('return')
+    if (!pi) { res.statusCode = 404; return res.end('Unknown payment') }
+    if (req.method === 'POST') {
+      pi.status = 'succeeded'
+      await sendWebhook('payment_intent.succeeded', { id: pi.id, object: 'payment_intent', status: 'succeeded', metadata: pi.metadata })
+      res.statusCode = 303; res.setHeader('Location', ret); return res.end()
+    }
+    res.setHeader('Content-Type', 'text/html')
+    return res.end(page('Bank check', `<span class="tag">FAKE BANK · DEV ONLY</span><h1>Confirm it's you</h1>
+      <p>Stands in for your bank's 3-D Secure check.</p>
+      <form method="post"><button class="pay" id="approve">Approve (test)</button></form>`))
   }
   if (u.pathname === '/__dev/stripe-onboard') {
     const acct = u.searchParams.get('acct'), ret = u.searchParams.get('return')

@@ -56,6 +56,13 @@ It starts **empty**: there are no built-in products.
 - **Remove bad login** deletes a login that doesn't work (stock goes down by one). **Remove listing** takes the whole listing down and deletes its unsold logins.
 - **✓ Mark checked** adds a **"✓ Checked"** badge to the listing card, its details and checkout, so buyers can see staff tested it.
 
+## Saved cards (one-click pay)
+
+- On Stripe's checkout page, buyers can tick **"Save my card"**. They can also add or remove cards in the account menu → **Cards**.
+- Next time, checkout shows **"Your saved cards"** (e.g. VISA •••• 4242 · *Pay in one click!*). Paying charges that card straight away. If the bank wants a security check (3-D Secure), Stripe shows it.
+- **Card numbers are stored by Stripe, never by Vaultix.** The database only keeps each user's Stripe customer id. The site shows just the brand, the last 4 digits and the expiry date.
+- Users can only pay with or remove their own cards.
+
 ## Buying, escrow and payouts
 
 1. **Checkout:** the buyer picks card, Apple Pay, Google Pay, crypto or their Vaultix balance. Card, wallet and crypto payments happen on **Stripe's hosted checkout page**, so Vaultix never sees card numbers.
@@ -102,7 +109,7 @@ The site and API run as one small Node server (`shop-site/server.js`). `render.y
    - Set `STRIPE_SECRET_KEY` (`sk_test_…`).
    - In Stripe → Developers → Webhooks, add `https://<your-site>.onrender.com/api/stripe-webhook` with the events
      `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`,
-     `checkout.session.expired` and `account.updated`. Copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
+     `checkout.session.expired`, `account.updated`, `payment_intent.succeeded` and `payment_intent.payment_failed`. Copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
    - In Stripe, turn on **Connect** (for seller payouts) and turn on Apple Pay, Google Pay and Crypto under payment methods.
 4. Optional settings: `SITE_URL` (only needed with a custom domain), `MARKET_FEE_PCT` (default 3), `MARKET_FEE_FIXED` (default 0.30),
    `MARKET_COMMISSION_PCT` (default 5).

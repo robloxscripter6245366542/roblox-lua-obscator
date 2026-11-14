@@ -172,7 +172,11 @@ const Market = (() => {
     profile: (id) => call("profile", { id }),
     updateProfile: (data) => call("updateProfile", withSession(data)),
     // buying & orders
-    checkout: (listingId, method) => call("checkout", withSession({ listingId, method })),
+    checkout: (listingId, method, extra = {}) => call("checkout", withSession({ listingId, method, ...extra })),
+    // saved cards (stored by Stripe; we only see brand + last 4)
+    cards: () => call("cards", withSession()),
+    addCard: () => call("addCard", withSession()),
+    removeCard: (paymentMethod) => call("removeCard", withSession({ paymentMethod })),
     myOrders: () => call("myOrders", withSession()),
     order: (orderId) => call("order", withSession({ orderId })),
     orderAction: (action, orderId, data = {}) => call(action, withSession({ orderId, ...data })),
