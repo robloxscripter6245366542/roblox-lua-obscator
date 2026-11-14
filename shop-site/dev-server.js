@@ -36,10 +36,12 @@ let db = {}
 try { db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')) } catch {}
 const save = () => fs.writeFileSync(DB_FILE, JSON.stringify(db))
 function redisCmd([cmd, key, ...a]) {
-  if (['RPUSH', 'LPOP', 'LLEN'].includes(cmd)) {
+  if (['RPUSH', 'LPOP', 'LLEN', 'LRANGE', 'LREM'].includes(cmd)) {
     const l = (db[key] = Array.isArray(db[key]) ? db[key] : [])
     if (cmd === 'RPUSH') { l.push(...a); save(); return l.length }
     if (cmd === 'LPOP') { const v = l.length ? l.shift() : null; save(); return v }
+    if (cmd === 'LRANGE') { const s = Number(a[0]), e = Number(a[1]); return l.slice(s, e === -1 ? undefined : e + 1) }
+    if (cmd === 'LREM') { const i = l.indexOf(a[1]); if (i < 0) return 0; l.splice(i, 1); save(); return 1 }
     return l.length
   }
   if (cmd === 'DEL') { const had = key in db; delete db[key]; save(); return had ? 1 : 0 }

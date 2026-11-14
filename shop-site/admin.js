@@ -11,7 +11,8 @@ const PILL = {
 const pill = (s) => { const [t, k] = PILL[s] || [s, "muted"]; return `<span class="pill ${k}">${esc(t)}</span>`; };
 const METHOD = { stripe: "Bank / card (Stripe)", paypal: "PayPal", crypto: "Crypto", bank: "Bank transfer" };
 
-const data = { sellers: [], orders: [], payouts: [] };
+const data = { sellers: [], orders: [], payouts: [], listings: [] };
+const openLogins = {}; // listingId -> decrypted logins shown in the Listings tab
 let tab = "sellers", orderFilter = "open", q = "";
 
 function toast(msg) {
@@ -26,6 +27,7 @@ async function load() {
     data.sellers = (await Market.admin("adminSellers")).sellers;
     if (Market.mode === "remote") {
       data.orders = (await Market.admin("adminOrders")).orders;
+      data.listings = (await Market.admin("adminListings")).listings;
       data.payouts = (await Market.admin("adminPayouts")).payouts;
     }
     $("#app").hidden = false;
@@ -41,9 +43,10 @@ async function load() {
 function render() {
   const disputes = data.orders.filter((o) => o.status === "disputed").length;
   const requests = data.payouts.filter((p) => p.status === "requested").length;
-  $("#tabs").innerHTML = [["sellers", "Sellers", 0], ["orders", "Orders", disputes], ["payouts", "Payouts", requests]]
+  const toCheck = data.listings.filter((l) => !l.checked).length;
+  $("#tabs").innerHTML = [["sellers", "Sellers", 0], ["listings", "Listings", toCheck], ["orders", "Orders", disputes], ["payouts", "Payouts", requests]]
     .map(([k, t, n]) => `<button role="tab" data-tab="${k}" aria-selected="${tab === k}" type="button">${t}${n ? `<span class="count">${n}</span>` : ""}</button>`).join("");
-  $("#view").innerHTML = tab === "sellers" ? sellersView() : tab === "orders" ? ordersView() : payoutsView();
+  $("#view").innerHTML = tab === "sellers" ? sellersView() : tab === "listings" ? listingsView() : tab === "orders" ? ordersView() : payoutsView();
   const f = $("#filter"); if (f) { f.value = q; }
 }
 
@@ -69,6 +72,46 @@ function sellersView() {
         </tr>`).join("")}</tbody>
     </table>
     ${list.length ? "" : `<p class="muted">${data.sellers.length ? "No users match." : "No users yet."}</p>`}`;
+}
+
+function listingsView() {
+  if (Market.mode !== "remote") return `<p class="muted" style="margin-top:16px">Listing checks need the server.</p>`;
+  const badgeFor = (s) => !s ? "" : s.owner ? '<span class="badge owner sm">Owner</span>' : s.verified ? '<span class="badge ok sm">Verified</span>' : '<span class="badge risk sm">Risky</span>';
+  return `
+    <p class="muted small" style="margin-top:16px">Check listings are real before buyers pay. For ⚡ instant-delivery accounts, open the stored logins and try them. Mark a listing checked to give it a “✓ Staff checked” badge, remove a login that doesn't work, or take the listing down. Unchecked listings are shown first.</p>
+    <table>
+      <thead><tr><th>Listing</th><th>Seller</th><th>Price / stock</th><th>Status</th><th></th></tr></thead>
+      <tbody>${data.listings.map((l) => `
+        <tr>
+          <td><b>${esc(l.title)}</b><br><span class="small">${esc(l.game)} · ${esc(l.category)} · ${l.delivery === "instant" ? "⚡ instant" : "manual delivery"}</span>
+            <details><summary class="small">Description</summary><div class="detail">${esc(l.description)}</div></details>
+            ${openLogins[l.id] ? loginsBlock(l) : ""}
+          </td>
+          <td>@${esc(l.seller ? l.seller.name : "?")}<br>${badgeFor(l.seller)}</td>
+          <td>${money(l.price)}<br><span class="small">${l.stock} in stock</span></td>
+          <td>${l.checked ? `<span class="pill ok">✓ Checked</span><br><span class="small">by @${esc(l.checkedBy || "staff")} · ${day(l.checkedAt)}</span>` : `<span class="pill wait">Not checked</span>`}</td>
+          <td><div class="acts">
+            ${l.delivery === "instant" ? `<button class="btn ghost" data-logins="${esc(l.id)}" type="button">${openLogins[l.id] ? "Hide logins" : "🔍 View logins"}</button>` : ""}
+            <button class="btn ${l.checked ? "ghost" : "sell"}" data-check="${esc(l.id)}" data-to="${!l.checked}" type="button">${l.checked ? "Uncheck" : "✓ Mark checked"}</button>
+            <button class="btn danger" data-remove-listing="${esc(l.id)}" type="button">Remove listing</button>
+          </div></td>
+        </tr>`).join("")}</tbody>
+    </table>
+    ${data.listings.length ? "" : `<p class="muted">No listings for sale.</p>`}`;
+}
+function loginsBlock(l) {
+  const list = openLogins[l.id];
+  if (!list.length) return `<div class="detail">No logins left in stock.</div>`;
+  return `<div class="logins">${list.map((x, i) => x.error ? `<div class="detail">Login ${i + 1}: ${esc(x.error)}</div>` : `
+    <div class="login-card">
+      <div class="mono small">
+        <b>Login ${i + 1}</b><br>
+        Username: ${esc(x.login)}<br>Password: ${esc(x.password)}
+        ${x.email ? `<br>Email: ${esc(x.email)}` : ""}${x.emailPassword ? `<br>Email password: ${esc(x.emailPassword)}` : ""}
+        ${x.notes ? `<br>Notes: ${esc(x.notes)}` : ""}
+      </div>
+      <button class="btn danger" data-bad-login="${esc(l.id)}" data-ref="${esc(x.ref)}" type="button">Remove bad login</button>
+    </div>`).join("")}</div>`;
 }
 
 function ordersView() {
@@ -135,7 +178,34 @@ $("#view").addEventListener("change", (e) => { if (e.target.id === "orderFilter"
 $("#view").addEventListener("click", async (e) => {
   const v = e.target.closest("[data-verify]"), b = e.target.closest("[data-ban]");
   const r = e.target.closest("[data-resolve]"), p = e.target.closest("[data-payout]");
+  const lg = e.target.closest("[data-logins]"), ck = e.target.closest("[data-check]");
+  const bl = e.target.closest("[data-bad-login]"), rl = e.target.closest("[data-remove-listing]");
   try {
+    if (lg) {
+      const id = lg.dataset.logins;
+      if (openLogins[id]) delete openLogins[id];
+      else openLogins[id] = (await Market.admin("adminLogins", { listingId: id })).logins;
+      return render();
+    }
+    if (ck) {
+      await Market.admin("adminCheck", { listingId: ck.dataset.check, checked: ck.dataset.to === "true" });
+      toast(ck.dataset.to === "true" ? "Marked as checked. Buyers now see “✓ Staff checked”." : "Check removed.");
+      return load();
+    }
+    if (bl) {
+      if (!confirm("Remove this login? It won't be sold, and stock goes down by one.")) return;
+      const res = await Market.admin("adminRemoveLogin", { listingId: bl.dataset.badLogin, ref: bl.dataset.ref });
+      openLogins[bl.dataset.badLogin] = (await Market.admin("adminLogins", { listingId: bl.dataset.badLogin })).logins;
+      toast(`Login removed. ${res.stock} left in stock.`);
+      return load();
+    }
+    if (rl) {
+      if (!confirm("Take this listing down? Any unsold logins in it are deleted.")) return;
+      await Market.admin("adminRemove", { listingId: rl.dataset.removeListing });
+      delete openLogins[rl.dataset.removeListing];
+      toast("Listing removed.");
+      return load();
+    }
     if (v) {
       await Market.admin("verify", { sellerId: v.dataset.verify, verified: v.dataset.to === "true" });
       toast(v.dataset.to === "true" ? "Seller verified." : "Verification removed.");

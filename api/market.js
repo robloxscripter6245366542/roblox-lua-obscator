@@ -692,6 +692,52 @@ const actions = {
     return { ok: true, removedListings: listings.length }
   },
 
+  // ---- staff: review listings ----
+  async adminListings(b) {
+    await authAdmin(b)
+    const [listings, users] = await Promise.all([getAll(LISTINGS), getAll(SELLERS)])
+    return {
+      listings: listings
+        .filter((l) => (l.stock ?? 1) > 0)
+        .map((l) => ({ ...l, stock: l.stock ?? 1, seller: publicUser(users.find((u) => u.id === l.sellerId)) }))
+        .sort((a, c) => Number(!!a.checked) - Number(!!c.checked) || c.createdAt - a.createdAt),
+    }
+  },
+
+  // Decrypt the logins still waiting to be sold, so staff can try them.
+  // Each comes with a ref (its stored form) used to remove that exact login.
+  async adminLogins(b) {
+    const staff = await authAdmin(b)
+    const l = await getOne(LISTINGS, b.listingId)
+    if (!l) throw bad('Listing not found', 404)
+    const raw = (await redis(['LRANGE', credsKey(l.id), '0', '-1'])) || []
+    l.lastReviewedAt = Date.now(); l.lastReviewedBy = staff ? staff.name : 'staff'
+    await put(LISTINGS, l)
+    return { logins: raw.map((ref) => ({ ref, ...(decrypt(ref) || { error: 'Could not read this login' }) })) }
+  },
+
+  async adminRemoveLogin(b) {
+    await authAdmin(b)
+    const l = await getOne(LISTINGS, b.listingId)
+    if (!l) throw bad('Listing not found', 404)
+    const removed = Number(await redis(['LREM', credsKey(l.id), '1', String(b.ref || '')])) || 0
+    if (!removed) throw bad('That login was already sold or removed')
+    l.stock = Number(await redis(['LLEN', credsKey(l.id)])) || 0
+    await put(LISTINGS, l)
+    return { ok: true, stock: l.stock }
+  },
+
+  async adminCheck(b) {
+    const staff = await authAdmin(b)
+    const l = await getOne(LISTINGS, b.listingId)
+    if (!l) throw bad('Listing not found', 404)
+    l.checked = !!b.checked
+    l.checkedAt = l.checked ? Date.now() : null
+    l.checkedBy = l.checked ? (staff ? staff.name : 'staff') : null
+    await put(LISTINGS, l)
+    return { ok: true }
+  },
+
   async adminRemove(b) {
     await authAdmin(b)
     const l = await getOne(LISTINGS, b.listingId)

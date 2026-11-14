@@ -49,6 +49,13 @@ It starts **empty**: there are no built-in products.
 - The money still stays in escrow. The buyer checks the login and confirms, or reports a problem if it doesn't work. A refunded login is not put back on sale.
 - Set `MARKET_ENCRYPTION_KEY` (a long random string) on the server. If it's missing, a key is made from `MARKET_ADMIN_KEY`. **Don't change whichever key you use once logins are stored**, or they can't be read anymore.
 
+## Checking listings are real (Staff → Listings)
+
+- The Staff page has a **Listings** tab with everything for sale. Unchecked listings come first, and the tab shows how many are waiting.
+- For ⚡ instant-delivery accounts, **🔍 View logins** opens the logins that haven't sold yet, so you can try them. Only staff and the owner can see them.
+- **Remove bad login** deletes a login that doesn't work (stock goes down by one). **Remove listing** takes the whole listing down and deletes its unsold logins.
+- **✓ Mark checked** adds a **"✓ Checked"** badge to the listing card, its details and checkout, so buyers can see staff tested it.
+
 ## Buying, escrow and payouts
 
 1. **Checkout:** the buyer picks card, Apple Pay, Google Pay, crypto or their Vaultix balance. Card, wallet and crypto payments happen on **Stripe's hosted checkout page**, so Vaultix never sees card numbers.
