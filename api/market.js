@@ -219,21 +219,28 @@ function formEncode(obj, prefix = '', out = []) {
   }
   return out
 }
+// Pinned so Stripe changes can't silently change responses. Update it on purpose, after testing.
+const STRIPE_VERSION = process.env.STRIPE_API_VERSION || '2026-10-28.endive'
+// path '/x' calls the v1 API (form-encoded); '/v2/...' calls the v2 API (JSON).
 async function stripe(method, path, params, idempotencyKey) {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) throw bad('Card payments are not set up yet (STRIPE_SECRET_KEY missing)', 503)
-  const headers = { Authorization: `Bearer ${key}` }
+  const v2 = path.startsWith('/v2/')
+  const headers = { Authorization: `Bearer ${key}`, 'Stripe-Version': STRIPE_VERSION }
   let body
   if (params) {
-    headers['Content-Type'] = 'application/x-www-form-urlencoded'
-    body = new URLSearchParams(formEncode(params)).toString()
+    if (v2) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(params) }
+    else { headers['Content-Type'] = 'application/x-www-form-urlencoded'; body = new URLSearchParams(formEncode(params)).toString() }
   }
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey
-  const r = await fetch(`https://api.stripe.com/v1${path}`, { method, headers, body })
+  const r = await fetch(`https://api.stripe.com${v2 ? '' : '/v1'}${path}`, { method, headers, body })
   const j = await r.json().catch(() => ({}))
   if (!r.ok) throw bad((j.error && j.error.message) || 'Payment provider error', 502)
   return j
 }
+// Stripe Tax: off unless STRIPE_TAX=on. Only turn it on after adding a tax registration in
+// Stripe (Tax -> Registrations), otherwise Stripe silently collects no tax.
+const taxOn = () => /^(on|1|true|yes)$/i.test(process.env.STRIPE_TAX || '')
 
 /* ------------------------------ users ------------------------------ */
 function statsFor(userId, orders) {
@@ -361,9 +368,16 @@ async function markSavedCardFailed(orderId) {
   const o = await getOne(ORDERS, orderId)
   if (o && o.status === 'pending' && o.method === 'saved') { o.status = 'cancelled'; o.cancelledAt = Date.now(); await put(ORDERS, o) }
 }
-async function onStripeAccount(accountId, payoutsEnabled) {
+// Sellers get paid through Stripe Connect (Accounts v2, "recipient" accounts). They can receive
+// money once Stripe marks their stripe_transfers capability active.
+async function payoutReady(accountId) {
+  const a = await stripe('GET', `/v2/core/accounts/${accountId}?include=configuration.recipient`)
+  const t = (((((a.configuration || {}).recipient || {}).capabilities || {}).stripe_balance || {}).stripe_transfers) || {}
+  return t.status === 'active'
+}
+async function onStripeAccount(accountId) {
   const u = (await getAll(SELLERS)).find((x) => x.stripeAccount === accountId)
-  if (u) { u.stripeReady = !!payoutsEnabled; await put(SELLERS, u) }
+  if (u) { u.stripeReady = await payoutReady(accountId); await put(SELLERS, u) }
 }
 // ---- saved cards (Stripe Customer) ----
 async function ensureCustomer(u) {
@@ -540,7 +554,7 @@ const actions = {
       return { orderId: order.id }
     }
     const site = siteUrl(req)
-    if (method === 'saved') {
+    if (method === 'saved' && !taxOn()) {
       // One-click payment with a card the buyer saved before.
       const pm = await ownCard(u, b.paymentMethod)
       await put(ORDERS, order)
@@ -548,7 +562,7 @@ const actions = {
       try {
         pi = await stripe('POST', '/payment_intents', {
           amount: cents(money.total), currency: 'usd', customer: u.stripeCustomer, payment_method: pm.id,
-          confirm: 'true', payment_method_types: ['card'], metadata: { orderId: order.id },
+          confirm: 'true', metadata: { orderId: order.id },
           return_url: `${site}/#/order/${order.id}`,
           description: `${l.game} · ${l.title}`.slice(0, 200),
         }, `saved-${order.id}`)
@@ -566,22 +580,24 @@ const actions = {
       order.status = 'cancelled'; order.cancelledAt = Date.now(); await put(ORDERS, order)
       throw bad('Your card was declined. Try another card.', 402)
     }
-    const customer = method === 'card' ? await ensureCustomer(u) : undefined
+    const customer = await ensureCustomer(u)
     const session = await stripe('POST', '/checkout/sessions', {
       mode: 'payment',
       customer,
+      integration_identifier: 'vaultix-market-qkzvbrtm',
+      automatic_tax: taxOn() ? { enabled: true } : undefined,
+      customer_update: taxOn() ? { address: 'auto', name: 'auto' } : undefined,
       // Lets the buyer tick "save my card" on Stripe's page, and shows cards they saved before.
-      saved_payment_method_options: customer ? { payment_method_save: 'enabled' } : undefined,
+      saved_payment_method_options: { payment_method_save: 'enabled' },
       client_reference_id: order.id,
       success_url: `${site}/#/order/${order.id}`,
       cancel_url: `${site}/#/checkout/${l.id}`,
-      payment_method_types: [method === 'crypto' ? 'crypto' : 'card'],
       line_items: [
         { quantity: 1, price_data: { currency: 'usd', unit_amount: cents(money.price), product_data: { name: `${l.game} · ${l.title}`.slice(0, 200) } } },
         { quantity: 1, price_data: { currency: 'usd', unit_amount: cents(money.fee), product_data: { name: 'Payment fee' } } },
       ],
       metadata: { orderId: order.id },
-      payment_intent_data: method === 'crypto' ? undefined : { metadata: { orderId: order.id } },
+      payment_intent_data: { metadata: { orderId: order.id } },
       expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
     }, `checkout-${order.id}`)
     order.stripeSession = session.id
@@ -601,7 +617,7 @@ const actions = {
     const customer = await ensureCustomer(u)
     const site = siteUrl(req)
     const session = await stripe('POST', '/checkout/sessions', {
-      mode: 'setup', customer, currency: 'usd', payment_method_types: ['card'],
+      mode: 'setup', customer, currency: 'usd',
       success_url: `${site}/#/cards`, cancel_url: `${site}/#/cards`,
       metadata: { userId: u.id },
     })
@@ -694,14 +710,22 @@ const actions = {
   async stripeConnect(b, req) {
     const u = await authUser(b)
     if (!u.stripeAccount) {
-      const a = await stripe('POST', '/accounts', { type: 'express', capabilities: { transfers: { requested: true } }, metadata: { userId: u.id } }, `acct-${u.id}`)
+      // Marketplace setup: Vaultix takes the payment and holds it in escrow, then transfers the
+      // seller's share. Sellers get Stripe's light Express dashboard.
+      const a = await stripe('POST', '/v2/core/accounts', {
+        display_name: u.name.slice(0, 100),
+        dashboard: 'express',
+        defaults: { responsibilities: { fees_collector: 'application', losses_collector: 'application' } },
+        configuration: { recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } } },
+        metadata: { userId: u.id },
+      }, `acct2-${u.id}`)
       u.stripeAccount = a.id
       await put(SELLERS, u)
     }
     const site = siteUrl(req)
-    const link = await stripe('POST', '/account_links', {
-      account: u.stripeAccount, type: 'account_onboarding',
-      refresh_url: `${site}/#/wallet`, return_url: `${site}/#/wallet`,
+    const link = await stripe('POST', '/v2/core/account_links', {
+      account: u.stripeAccount,
+      use_case: { type: 'account_onboarding', account_onboarding: { configurations: ['recipient'], refresh_url: `${site}/#/wallet`, return_url: `${site}/#/wallet` } },
     })
     return { url: link.url }
   },
@@ -709,8 +733,7 @@ const actions = {
   async stripeStatus(b) {
     const u = await authUser(b)
     if (!u.stripeAccount) return { ready: false }
-    const a = await stripe('GET', `/accounts/${u.stripeAccount}`)
-    u.stripeReady = !!a.payouts_enabled
+    u.stripeReady = await payoutReady(u.stripeAccount)
     await put(SELLERS, u)
     return { ready: u.stripeReady }
   },
@@ -874,6 +897,7 @@ const actions = {
       if (p.method === 'stripe') {
         const u = await getOne(SELLERS, p.userId)
         if (!u || !u.stripeAccount) throw bad('User has no Stripe account')
+        if (!(await payoutReady(u.stripeAccount))) throw bad('This seller has not finished Stripe setup yet, so Stripe can not pay them')
         const t = await stripe('POST', '/transfers', { amount: cents(p.amount), currency: 'usd', destination: u.stripeAccount, metadata: { payoutId: p.id } }, `payout-${p.id}`)
         p.transferId = t.id
       }

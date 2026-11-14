@@ -76,7 +76,7 @@ function parseForm(body) {
 }
 function fakeStripe(url, opts) {
   const p = new URL(url).pathname.replace(/^\/v1/, '')
-  const body = parseForm(opts.body)
+  const body = String(opts.body || '').startsWith('{') ? JSON.parse(opts.body) : parseForm(opts.body)
   const id = (pre) => pre + crypto.randomBytes(8).toString('hex')
   if (p === '/checkout/sessions' && opts.method === 'POST') {
     const s = { id: id('cs_test_'), ...body, payment_intent: id('pi_test_'), amount_total: Object.values(body.line_items || {}).reduce((a, li) => a + Number(li.price_data.unit_amount), 0) }
@@ -102,9 +102,11 @@ function fakeStripe(url, opts) {
   }
   if (/^\/checkout\/sessions\/[^/]+\/expire$/.test(p)) return json({ id: p.split('/')[3], status: 'expired' })
   if (p === '/refunds') return json({ id: id('re_test_'), status: 'succeeded', payment_intent: body.payment_intent })
-  if (p === '/accounts' && opts.method === 'POST') { const a = { id: id('acct_test_'), payouts_enabled: false }; fake.accounts[a.id] = a; return json(a) }
-  if (/^\/accounts\/[^/]+$/.test(p)) { const a = fake.accounts[p.split('/')[2]] || { id: p.split('/')[2], payouts_enabled: true }; return json(a) }
-  if (p === '/account_links') return json({ url: `${process.env.SITE_URL}/__dev/stripe-onboard?acct=${body.account}&return=${encodeURIComponent(body.return_url)}` })
+  // Connect, Accounts v2 (recipient accounts)
+  const v2acct = (a) => ({ id: a.id, configuration: { recipient: { capabilities: { stripe_balance: { stripe_transfers: { status: a.ready ? 'active' : 'restricted' } } } } } })
+  if (p === '/v2/core/accounts' && opts.method === 'POST') { const a = { id: id('acct_test_'), ready: false }; fake.accounts[a.id] = a; return json(v2acct(a)) }
+  if (/^\/v2\/core\/accounts\/[^/]+$/.test(p)) { const aid = p.split('/')[4]; return json(v2acct(fake.accounts[aid] || { id: aid, ready: true })) }
+  if (p === '/v2/core/account_links') { const ao = body.use_case.account_onboarding; return json({ url: `${process.env.SITE_URL}/__dev/stripe-onboard?acct=${body.account}&return=${encodeURIComponent(ao.return_url)}` }) }
   if (p === '/transfers') return json({ id: id('tr_test_'), amount: Number(body.amount), destination: body.destination })
   return json({ error: { message: `dev fake Stripe: ${opts.method} ${p} not supported` } }, 400)
 }
@@ -183,8 +185,8 @@ async function devRoutes(req, res, u) {
   if (u.pathname === '/__dev/stripe-onboard') {
     const acct = u.searchParams.get('acct'), ret = u.searchParams.get('return')
     if (req.method === 'POST') {
-      fake.accounts[acct] = { id: acct, payouts_enabled: true }
-      await sendWebhook('account.updated', { id: acct, object: 'account', payouts_enabled: true })
+      fake.accounts[acct] = { id: acct, ready: true }
+      await sendWebhook('account.updated', { id: acct, object: 'account' })
       res.statusCode = 303; res.setHeader('Location', ret); return res.end()
     }
     res.setHeader('Content-Type', 'text/html')
