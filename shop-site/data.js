@@ -169,6 +169,15 @@ const Market = (() => {
       write(K.session, { sellerId: r.seller.id, token: r.token, name: r.seller.name });
       return r.seller;
     },
+    // Forgot password: the server emails a reset link (emailOff when the site has no email set up;
+    // demo accounts only live in this browser, so there's nothing to email).
+    forgotPassword: (login) => (mode === "remote" ? call("forgotPassword", { login }) : Promise.resolve({ emailOff: true })),
+    // New password from an emailed link; signs this device in.
+    async resetPassword(userId, resetToken, password) {
+      const r = await call("resetPassword", { userId, resetToken, password });
+      write(K.session, { sellerId: r.seller.id, token: r.token, name: r.seller.name });
+      return r.seller;
+    },
     // Ends this device's sign-in on the server too (ignored if the server can't be reached).
     async logout() {
       if (mode === "remote" && session()) await call("logout", withSession()).catch(() => {});

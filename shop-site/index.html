@@ -113,8 +113,19 @@
         <p class="muted">Sign in on any device with your email or username and password.</p>
         <label>Email or username<input name="login" maxlength="120" autocomplete="username" /></label>
         <label>Password<input name="loginPassword" type="password" maxlength="128" autocomplete="current-password" /></label>
-        <p class="muted small">Forgot your password? Message the site owner from your contact details and staff will give you a temporary one.</p>
+        <p class="small"><button class="link-btn" type="button" data-join-mode="forgot">Forgot your password?</button></p>
       </div>
+      <div class="join-forgot" hidden>
+        <p class="muted" id="forgotHelp">Enter your email or username. We'll email you a link to choose a new password. It works for 30 minutes.</p>
+        <label id="forgotRow">Email or username<input name="forgotLogin" maxlength="120" autocomplete="username" /></label>
+        <p class="muted small"><button class="link-btn" type="button" data-join-mode="signin">← Back to sign in</button></p>
+      </div>
+      <div class="join-reset" hidden>
+        <p class="muted">Pick a new password for your account. Any other device that's signed in will be signed out.</p>
+        <label>New password <span class="opt">(at least 8 characters)</span><input name="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" /></label>
+        <label>Type it again<input name="newPassword2" type="password" maxlength="128" autocomplete="new-password" /></label>
+      </div>
+      <p class="form-ok" id="joinOk" role="status" hidden></p>
       <p class="form-err" id="joinErr" role="alert"></p>
       <button class="btn sell wide" type="submit" value="default" id="joinBtn">Create account</button>
     </form>

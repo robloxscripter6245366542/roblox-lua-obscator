@@ -12,7 +12,7 @@ const badge = (s, sm) => s && s.owner
 const CHEVRON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
 const PERSON = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>`;
 
-const state = { owners: [], listings: [], icons: {}, cat: null, game: null, q: "", verifiedOnly: false, sort: "new", browseAll: false, me: null, wallet: null, payouts: [], fees: { pct: 0.03, fixed: 0.3, commission: 0.05 } };
+const state = { owners: [], listings: [], icons: {}, cat: null, game: null, q: "", verifiedOnly: false, sort: "new", browseAll: false, me: null, emailReset: false, wallet: null, payouts: [], fees: { pct: 0.03, fixed: 0.3, commission: 0.05 } };
 const OTHER = "__other";
 
 /* ---------- game art ----------
@@ -268,18 +268,40 @@ $("#emptySell").addEventListener("click", startSell);
 let afterJoin = null;
 function startSell() { state.me ? openPost() : openJoin(openPost); }
 let joinMode = "signup";
+let resetLink = null; // { id, token } from an emailed "reset your password" link
+const JOIN = {
+  signup: ["Create your account", "Create account"],
+  signin: ["Sign in", "Sign in"],
+  forgot: ["Reset your password", "Email me a link"],
+  reset: ["Choose a new password", "Save new password"],
+};
 function setJoinMode(m) {
   joinMode = m;
-  document.querySelectorAll("[data-join-mode]").forEach((b) => b.classList.toggle("on", b.dataset.joinMode === m));
-  $(".join-signup").hidden = m !== "signup"; $(".join-signin").hidden = m !== "signin";
-  $("#joinTitle").textContent = m === "signup" ? "Create your account" : "Sign in";
-  $("#joinBtn").textContent = m === "signup" ? "Create account" : "Sign in";
-  $("#joinErr").textContent = "";
+  document.querySelectorAll(".seg [data-join-mode]").forEach((b) => b.classList.toggle("on", b.dataset.joinMode === m));
+  $("#joinForm .seg").hidden = m === "forgot" || m === "reset";
+  for (const k of Object.keys(JOIN)) $(`.join-${k}`).hidden = k !== m;
+  $("#joinTitle").textContent = JOIN[m][0];
+  $("#joinBtn").textContent = JOIN[m][1];
+  $("#joinErr").textContent = ""; $("#joinOk").hidden = true;
+  // Without email on the server, "forgot password" means asking staff.
+  const off = m === "forgot" && !state.emailReset;
+  $("#forgotRow").hidden = off; $("#joinBtn").hidden = off;
+  $("#forgotHelp").textContent = off
+    ? (Market.mode === "demo"
+      ? "Demo mode keeps accounts in this browser only, so there's no password to reset by email."
+      : "Message the site owner from your contact details. After checking it's really you, staff will give you a temporary password.")
+    : "Enter your email or username. We'll email you a link to choose a new password. It works for 30 minutes.";
+  if (m === "forgot") { const l = $("#joinForm").elements.login.value; if (l) $("#joinForm").elements.forgotLogin.value = l; }
 }
 function openJoin(next, mode) {
   afterJoin = typeof next === "function" ? next : null;
   $("#joinErr").textContent = ""; $("#joinForm").reset(); $("#ownerKeyRow").hidden = true;
   setJoinMode(mode || "signup"); $("#joinDlg").showModal();
+}
+// Opened from the emailed link (#/reset/<user id>/<token>), see route() in account.js.
+function openReset(id, token) {
+  resetLink = { id, token };
+  openJoin(null, "reset");
 }
 document.querySelectorAll("[data-join-mode]").forEach((b) => b.addEventListener("click", () => setJoinMode(b.dataset.joinMode)));
 // Owner usernames are reserved: ask for the staff password when one is typed.
@@ -293,7 +315,26 @@ $("#joinForm").addEventListener("submit", async (e) => {
   btn.disabled = true; $("#joinErr").textContent = "";
   try {
     const el = f.elements;
-    if (joinMode === "signin") {
+    if (joinMode === "forgot") {
+      if (!el.forgotLogin.value.trim()) throw new Error("Enter your email or username.");
+      const r = await Market.forgotPassword(el.forgotLogin.value);
+      if (r.emailOff) { state.emailReset = false; setJoinMode("forgot"); }
+      else {
+        $("#joinOk").textContent = "If an account matches, we've sent a link to its email. It works for 30 minutes. Check your spam folder too.";
+        $("#joinOk").hidden = false; btn.textContent = "Send again";
+      }
+      btn.disabled = false;
+      return;
+    }
+    if (joinMode === "reset") {
+      if (!resetLink) throw new Error("Open the link from your email again.");
+      if (el.newPassword.value.length < 8) throw new Error("Password must be at least 8 characters.");
+      if (el.newPassword.value !== el.newPassword2.value) throw new Error("The two passwords don't match.");
+      await Market.resetPassword(resetLink.id, resetLink.token, el.newPassword.value);
+      resetLink = null;
+      await loadMe(); $("#joinDlg").close();
+      toast("Password changed. You're signed in.");
+    } else if (joinMode === "signin") {
       await Market.login(el.login.value, el.loginPassword.value);
       await loadMe(); $("#joinDlg").close();
       toast(`Welcome back, ${state.me ? state.me.name : ""}!`);
@@ -456,6 +497,7 @@ $("#footPay").innerHTML = ["visa", "mastercard", "americanexpress", "discover", 
   renderAvatar(); render();
   const first = await Market.init();
   state.listings = first.listings; if (first.fees) state.fees = first.fees; if (first.owners) state.owners = first.owners;
+  state.emailReset = !!first.emailReset;
   $("#demoBar").hidden = Market.mode !== "demo";
   render();
   Market.icons().then((icons) => { state.icons = icons; render(); rerenderPage(); });
