@@ -1,4 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#3d6bff"/>
-  <path d="M15 25 30 46 50 14" fill="none" stroke="#fff" stroke-width="8.5" stroke-linecap="square"/>
+  <defs>
+    <linearGradient id="vx-gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff5b0"/><stop offset=".45" stop-color="#ffd23f"/><stop offset="1" stop-color="#ff9a00"/>
+    </linearGradient>
+    <linearGradient id="vx-body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2e2712"/><stop offset="1" stop-color="#0b0904"/>
+    </linearGradient>
+    <linearGradient id="vx-shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="17" fill="url(#vx-body)"/>
+  <!-- vault dial -->
+  <circle cx="32" cy="33" r="22" fill="none" stroke="url(#vx-gold)" stroke-width="2.2" stroke-dasharray="2.4 3.4" opacity=".85"/>
+  <circle cx="32" cy="33" r="17.5" fill="none" stroke="url(#vx-gold)" stroke-width="1.2" opacity=".45"/>
+  <!-- V -->
+  <path d="M20.5 23.5 32 44.5 43.5 23.5" fill="none" stroke="url(#vx-gold)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="12.2" r="2.2" fill="#ffd23f"/>
+  <!-- glass shine -->
+  <path d="M6 17A11 11 0 0 1 17 6h30a11 11 0 0 1 11 11v6C44 30 20 30 6 25z" fill="url(#vx-shine)"/>
 </svg>
