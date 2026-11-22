@@ -43,8 +43,10 @@ local C = {
     noDashCd=false, infAdrenaline=false, spamBoost=false, boostInterval=0.2,
     -- combat
     autoTackle=false, autoDodge=false, tackleRange=120, dodgeRange=35, faceTarget=false,
+    dodgeStrafe=true, dodgeJump=false, dodgePredict=true, dodgeCooldown=0.35,
     -- economy
-    autoCrates=false, autoQuests=false, autoRewards=false, autoEquipBest=false, econInterval=1.0,
+    autoFarm=false, autoCrates=false, autoQuests=false, autoRewards=false, autoEquipBest=false, econInterval=1.0,
+    autoRejoin=false,
     -- collectibles
     autoCandy=false, autoGems=false, autoPumpkin=false, collectRange=400, collectTP=false,
     -- esp
@@ -315,45 +317,110 @@ CombatTab:Toggle({ Title="Face Target", Desc="Turn your character toward the tar
     Value=C.faceTarget, Callback=function(v) C.faceTarget=v end })
 
 CombatTab:Section({ Title="Runner — auto dodge" })
-CombatTab:Toggle({ Title="Auto Dodge", Desc="Boost away when a catcher gets close.",
+CombatTab:Toggle({ Title="Auto Dodge", Desc="React when a catcher closes in / starts a tackle.",
     Value=C.autoDodge, Callback=function(v) C.autoDodge=v end })
 CombatTab:Slider({ Title="Dodge Range (studs)",
     Value={ Min=10, Max=120, Default=C.dodgeRange }, Step=5,
     Callback=function(v) C.dodgeRange=v end })
+CombatTab:Toggle({ Title="Predict Incoming Tackle", Desc="Only dodge when the catcher is actually closing on you (TackleActive / closing velocity).",
+    Value=C.dodgePredict, Callback=function(v) C.dodgePredict=v end })
+CombatTab:Toggle({ Title="Strafe Dodge", Desc="Sidestep perpendicular instead of straight back (harder to catch).",
+    Value=C.dodgeStrafe, Callback=function(v) C.dodgeStrafe=v end })
+CombatTab:Toggle({ Title="Dodge Jump", Desc="Also hop while dodging.",
+    Value=C.dodgeJump, Callback=function(v) C.dodgeJump=v end })
+CombatTab:Slider({ Title="Dodge Cooldown (ms)", Desc="Min gap between dodges.",
+    Value={ Min=100, Max=1000, Default=math.floor(C.dodgeCooldown*1000) }, Step=25,
+    Callback=function(v) C.dodgeCooldown=v/1000 end })
 
 CombatTab:Section({ Title="Manual" })
 CombatTab:Button({ Title="Tackle / Boost Now", Callback=function()
     fireRemote("BoostRequest"); fireRemote("BladeBallEvent") end })
 
 -- combat loop
+local _lastPos = {}        -- player -> last HRP position (for closing-velocity prediction)
+local _lastDodge = 0
+local _tackleAccum = 0
 task.spawn(function()
     while true do
-        task.wait(0.12)
-        local root=hrp(); if not root then continue end
-        local role=myRole()
+        local dt = task.wait(0.05)
+        local root=hrp(); local h=hum(); if not root then continue end
+
         if C.autoTackle then
-            local target = nearestPlayer(C.tackleRange, "Runner") or nearestPlayer(C.tackleRange)
-            if target and target.Character then
-                local th=target.Character:FindFirstChild("HumanoidRootPart")
-                if th then
-                    if C.faceTarget then
-                        pcall(function() root.CFrame=CFrame.lookAt(root.Position, Vector3.new(th.Position.X,root.Position.Y,th.Position.Z)) end)
+            _tackleAccum = _tackleAccum + (dt or 0.05)
+            if _tackleAccum >= 0.1 then
+                _tackleAccum = 0
+                local target = nearestPlayer(C.tackleRange, "Runner") or nearestPlayer(C.tackleRange)
+                if target and target.Character then
+                    local th=target.Character:FindFirstChild("HumanoidRootPart")
+                    if th then
+                        if C.faceTarget then
+                            pcall(function() root.CFrame=CFrame.lookAt(root.Position, Vector3.new(th.Position.X,root.Position.Y,th.Position.Z)) end)
+                        end
+                        if not fireRemote("BoostRequest") then fireRemote("BladeBallEvent") end
                     end
-                    if not fireRemote("BoostRequest") then fireRemote("BladeBallEvent") end
                 end
             end
         end
+
         if C.autoDodge then
             local catcher, d = nearestPlayer(C.dodgeRange, "Catcher")
-            if catcher and catcher.Character then
-                local ch=catcher.Character:FindFirstChild("HumanoidRootPart")
-                if ch then
-                    local away=(root.Position-ch.Position)
-                    if away.Magnitude>0 and C.faceTarget then
-                        pcall(function() root.CFrame=CFrame.lookAt(root.Position, root.Position+away.Unit) end)
+            -- fall back to nearest player if roles aren't exposed as strings
+            if not catcher then catcher, d = nearestPlayer(C.dodgeRange) end
+            local ch = catcher and catcher.Character and catcher.Character:FindFirstChild("HumanoidRootPart")
+            if ch then
+                -- closing-velocity prediction
+                local prev = _lastPos[catcher]
+                local closing = true
+                if C.dodgePredict then
+                    closing = false
+                    local toMe = (root.Position - ch.Position)
+                    if toMe.Magnitude > 0 and prev then
+                        local vel = (ch.Position - prev) / (dt or 0.05)
+                        -- catcher moving toward me?
+                        if vel:Dot(toMe.Unit) > 6 then closing = true end
                     end
+                    -- or they're mid-tackle / we're being caught
+                    local function attr(inst,k) local ok2,v=pcall(function() return inst:GetAttribute(k) end) return ok2 and v end
+                    if attr(catcher,"TackleActive") or attr(catcher.Character,"TackleActive")
+                       or attr(LP,"Caught") or attr(LP,"TackleActive") then closing = true end
+                end
+                if closing and (os.clock() - _lastDodge) >= C.dodgeCooldown then
+                    _lastDodge = os.clock()
+                    local away = (root.Position - ch.Position)
+                    local dir
+                    if away.Magnitude > 0 then
+                        away = away.Unit
+                        if C.dodgeStrafe then
+                            -- perpendicular sidestep, pick the side that opens distance vs their facing
+                            local perp = away:Cross(Vector3.new(0,1,0))
+                            if perp.Magnitude > 0 then
+                                perp = perp.Unit
+                                local lv = ch.CFrame.LookVector
+                                -- step to whichever perpendicular is less aligned with their look
+                                if (perp:Dot(lv)) > (-perp:Dot(lv)) then perp = -perp end
+                                dir = (perp + away*0.5)
+                                if dir.Magnitude>0 then dir = dir.Unit end
+                            else dir = away end
+                        else
+                            dir = away
+                        end
+                        if C.faceTarget then
+                            pcall(function() root.CFrame=CFrame.lookAt(root.Position, root.Position+dir) end)
+                        end
+                        -- client nudge in dodge direction (reliable), then fire boost/dodge remotes
+                        pcall(function() root.CFrame = root.CFrame + dir * 4 end)
+                    end
+                    if h and C.dodgeJump then h:ChangeState(Enum.HumanoidStateType.Jumping) end
                     if not fireRemote("BoostRequest") then fireRemote("PerfectDodge") end
                 end
+            end
+        end
+
+        -- update position cache for next-frame velocity
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LP and p.Character then
+                local hh = p.Character:FindFirstChild("HumanoidRootPart")
+                if hh then _lastPos[p] = hh.Position end
             end
         end
     end
@@ -362,6 +429,12 @@ end)
 -- ═══════════════════════════════════════════════════════════════════
 --  ECONOMY  (server — best-effort command-dispatch)
 -- ═══════════════════════════════════════════════════════════════════
+EconTab:Section({ Title="★ Master" })
+EconTab:Toggle({ Title="AUTO FARM (everything)", Desc="One switch: crates + quests + level rewards + all collectibles (candy/gems/pumpkin).",
+    Value=C.autoFarm, Callback=function(v) C.autoFarm=v end })
+EconTab:Toggle({ Title="Auto Rejoin on Match End", Desc="Hop to a fresh server when a round ends (keeps farming lobbies).",
+    Value=C.autoRejoin, Callback=function(v) C.autoRejoin=v end })
+
 EconTab:Section({ Title="Auto farm (fires the game's own remotes)" })
 EconTab:Toggle({ Title="Auto Open Crates", Desc="CrateEvent / CrateRollEvent.",
     Value=C.autoCrates, Callback=function(v) C.autoCrates=v end })
@@ -401,14 +474,27 @@ end
 
 task.spawn(function()
     while true do
-        if C.autoCrates then
+        if C.autoFarm or C.autoCrates then
             tryVerbs("CrateEvent", {"Open","OpenCrate","Roll"})
             tryVerbs("CrateRollEvent", {"Roll","Open"})
         end
-        if C.autoQuests then tryVerbs("QuestEvent", {"ClaimAll","Claim","Complete"}) end
-        if C.autoRewards then tryVerbs("LevelRewardEvent", {"ClaimAll","Claim"}) end
+        if C.autoFarm or C.autoQuests then tryVerbs("QuestEvent", {"ClaimAll","Claim","Complete"}) end
+        if C.autoFarm or C.autoRewards then tryVerbs("LevelRewardEvent", {"ClaimAll","Claim"}) end
         if C.autoEquipBest then equipBestGear() end
         task.wait(C.econInterval)
+    end
+end)
+
+-- auto-rejoin on match end (InMatch true -> false)
+task.spawn(function()
+    local was = LP:GetAttribute("InMatch")
+    while true do
+        task.wait(1)
+        local now = LP:GetAttribute("InMatch")
+        if C.autoRejoin and was and not now then
+            pcall(function() TeleportService:Teleport(game.PlaceId, LP) end)
+        end
+        was = now
     end
 end)
 
@@ -452,9 +538,9 @@ task.spawn(function()
         task.wait(0.25)
         local root=hrp(); if not root then continue end
         local jobs={}
-        if C.autoCandy then jobs[#jobs+1]={ {"candy","corn"}, {"CandyCornEvent"} } end
-        if C.autoGems  then jobs[#jobs+1]={ {"gem"},          {"GemEvent"} } end
-        if C.autoPumpkin then jobs[#jobs+1]={ {"pumpkin"},    {"PumpkinHuntEvent","PumpkinEvent"} } end
+        if C.autoFarm or C.autoCandy then jobs[#jobs+1]={ {"candy","corn"}, {"CandyCornEvent"} } end
+        if C.autoFarm or C.autoGems  then jobs[#jobs+1]={ {"gem"},          {"GemEvent"} } end
+        if C.autoFarm or C.autoPumpkin then jobs[#jobs+1]={ {"pumpkin"},    {"PumpkinHuntEvent","PumpkinEvent"} } end
         for _, job in ipairs(jobs) do
             local parts=collectiblesMatching(job[1])
             for _, part in ipairs(parts) do
