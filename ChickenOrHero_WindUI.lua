@@ -162,34 +162,81 @@ local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
 ))()
 
+-- clean, cohesive dark theme (graphite + warm amber accent)
+pcall(function()
+    WindUI:AddTheme({
+        Name        = "CleanDark",
+        Accent      = "#f5a524",   -- amber accent (matches the drumstick)
+        Dialog      = "#15171c",
+        Outline     = "#262a33",
+        Text        = "#eceef2",
+        Placeholder = "#8b909a",
+        Background  = "#0e1014",   -- near-black graphite
+        Button      = "#191c22",
+        Icon        = "#f5a524",
+    })
+    WindUI:SetTheme("CleanDark")
+end)
+
 local Window = WindUI:CreateWindow({
     Title        = "Chicken or Hero",
     Icon         = "drumstick",
-    Author       = "OP Hub • WindUI",
+    Author       = "OP Hub",
     Folder       = "ChickenOrHero_WindUI",
-    Size         = UDim2.fromOffset(620, 480),
+    Size         = UDim2.fromOffset(640, 496),
     Transparent  = true,
-    Theme        = "Dark",
-    SideBarWidth = 200,
+    Theme        = "CleanDark",
+    SideBarWidth = 184,
 })
 pcall(function() Window:SetTransparent(true) end)
+pcall(function() Window:EditOpenButton({ Title="Chicken or Hero", Icon="drumstick" }) end)
 
 local nRemotes = indexRemotes()
 WindUI:Notify({
     Title="Chicken or Hero • OP Hub",
-    Content=("Loaded. %d remotes indexed. Role: %s"):format(nRemotes, tostring(myRole() or "lobby")),
+    Content=("Loaded cleanly — %d remotes indexed. Role: %s"):format(nRemotes, tostring(myRole() or "lobby")),
     Duration=6, Icon="check",
 })
 
-local MoveTab    = Window:Tab({ Title="Movement",     Icon="wind" })
-local CombatTab  = Window:Tab({ Title="Combat",       Icon="swords" })
-local EconTab    = Window:Tab({ Title="Economy",      Icon="gift" })
-local CollectTab = Window:Tab({ Title="Collect",      Icon="candy" })
-local VisualTab  = Window:Tab({ Title="Visuals",      Icon="eye" })
-local PlayerTab  = Window:Tab({ Title="Player",       Icon="user" })
-local ServerTab  = Window:Tab({ Title="Server",       Icon="server" })
-local RemoteTab  = Window:Tab({ Title="Remotes",      Icon="radio" })
-local MiscTab    = Window:Tab({ Title="Misc",         Icon="settings" })
+-- ── Tabs (Home dashboard first) ─────────────────────────────────────
+local HomeTab    = Window:Tab({ Title="Home",     Icon="home" })
+local MoveTab    = Window:Tab({ Title="Movement", Icon="wind" })
+local CombatTab  = Window:Tab({ Title="Combat",   Icon="swords" })
+local EconTab    = Window:Tab({ Title="Economy",  Icon="gift" })
+local CollectTab = Window:Tab({ Title="Collect",  Icon="candy" })
+local VisualTab  = Window:Tab({ Title="Visuals",  Icon="eye" })
+local PlayerTab  = Window:Tab({ Title="Player",   Icon="user" })
+local ServerTab  = Window:Tab({ Title="Server",   Icon="server" })
+local RemoteTab  = Window:Tab({ Title="Remotes",  Icon="radio" })
+local MiscTab    = Window:Tab({ Title="Misc",     Icon="settings" })
+
+-- ═══════════════════════════════════════════════════════════════════
+--  HOME  —  dashboard / quick access to headline features
+-- ═══════════════════════════════════════════════════════════════════
+HomeTab:Section({ Title="Chicken or Hero • OP Hub" })
+HomeTab:Paragraph({
+    Title="Quick access",
+    Desc="The essentials are one tap away here. Full options live in the tabs on the left. "
+       .."Press RightShift to hide/show the menu.",
+})
+HomeTab:Toggle({ Title="Auto Dodge (never caught)", Icon="shield",
+    Value=C.autoDodge, Callback=function(v) C.autoDodge=v end })
+HomeTab:Toggle({ Title="Auto Farm (everything)", Icon="gift",
+    Value=C.autoFarm, Callback=function(v) C.autoFarm=v end })
+HomeTab:Toggle({ Title="Fly", Icon="wind",
+    Value=C.flyOn, Callback=function(v) C.flyOn=v end })
+HomeTab:Toggle({ Title="WalkSpeed", Icon="zap",
+    Value=C.speedOn, Callback=function(v) C.speedOn=v end })
+HomeTab:Toggle({ Title="Player ESP", Icon="eye",
+    Value=C.espOn, Callback=function(v) C.espOn=v end })
+HomeTab:Section({ Title="Status" })
+HomeTab:Button({ Title="Refresh Stats", Icon="refresh-cw", Callback=function()
+    local parts={}
+    for _, k in ipairs({"GameRole","InMatch","Coins","Gems","Gold","CandyCorn"}) do
+        parts[#parts+1]=k.."="..tostring(LP:GetAttribute(k))
+    end
+    WindUI:Notify({ Title="Your stats", Content=table.concat(parts,"   "), Duration=7, Icon="user" })
+end })
 
 -- ═══════════════════════════════════════════════════════════════════
 --  MOVEMENT  (client-side = reliable)
