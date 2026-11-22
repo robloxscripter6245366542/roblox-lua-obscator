@@ -53,6 +53,7 @@ local hookmetamethod_fn    = hookmetamethod
 local getnamecallmethod_fn = getnamecallmethod
 local checkcaller_fn       = checkcaller
 local setclipboard_fn      = setclipboard or toclipboard or (writeclipboard)
+local loadstring_fn        = loadstring
 local gethui_fn            = gethui
 local LocalPlayer          = Players.LocalPlayer
 
@@ -200,6 +201,7 @@ local function buildScript(remote, method, argList, argCount, retText)
         lines[#lines + 1] = "local remote = " .. path
         if method:lower():find("invoke") then
             lines[#lines + 1] = "local result = remote:" .. method .. "()"
+            lines[#lines + 1] = "print(result)"
         else
             lines[#lines + 1] = "remote:" .. method .. "()"
         end
@@ -212,9 +214,10 @@ local function buildScript(remote, method, argList, argCount, retText)
         lines[#lines + 1] = ""
         lines[#lines + 1] = "local remote = " .. path
         if method:lower():find("invoke") then
-            lines[#lines + 1] = "local result = remote:" .. method .. "(unpack(args))"
+            lines[#lines + 1] = "local result = remote:" .. method .. "(table.unpack(args))"
+            lines[#lines + 1] = "print(result)"
         else
-            lines[#lines + 1] = "remote:" .. method .. "(unpack(args))"
+            lines[#lines + 1] = "remote:" .. method .. "(table.unpack(args))"
         end
     end
 
@@ -349,8 +352,18 @@ local header = mk("TextLabel", {
     Parent = right, BackgroundColor3 = COLOR.panel, BorderSizePixel = 0,
     Size = UDim2.new(1, 0, 0, 30), Font = Enum.Font.GothamMedium, TextSize = 13,
     TextColor3 = COLOR.text, TextXAlignment = Enum.TextXAlignment.Left,
+    TextTruncate = Enum.TextTruncate.AtEnd,
     Text = "  Select a remote on the left",
 }, { corner(8) })
+
+-- Run / Execute: re-fire the remote shown in the panel (edit args first if you like)
+local runBtn = mk("TextButton", {
+    Parent = header, AutoButtonColor = true,
+    Size = UDim2.new(0, 66, 0, 22), Position = UDim2.new(1, -138, 0.5, -11),
+    BackgroundColor3 = COLOR.good, BorderSizePixel = 0,
+    Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = Color3.fromRGB(12, 30, 18),
+    Text = "Execute", Visible = false,
+}, { corner(6) })
 
 local copyBtn = mk("TextButton", {
     Parent = header, AutoButtonColor = true,
@@ -366,7 +379,7 @@ local codeBox = mk("TextBox", {
     Font = Enum.Font.Code, TextSize = 13, TextColor3 = COLOR.text,
     TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
     MultiLine = true, ClearTextOnFocus = false, TextWrapped = false,
-    Text = "", TextEditable = false,
+    Text = "", TextEditable = true,   -- editable so you can tweak args before Execute
 }, { corner(8), pad(8) })
 
 -- Dragging -----------------------------------------------------------
@@ -410,6 +423,7 @@ local function selectTab(key)
     if not t then return end
     header.Text = ("  %s   :%s()   x%d"):format(t.shortName, t.method, t.count)
     copyBtn.Visible = true
+    runBtn.Visible = true
     codeBox.Text = t.code
     -- highlight
     for k, v in pairs(tabs) do
@@ -475,6 +489,7 @@ local function record(remote, method, argList, argCount, retText)
     t.count = t.count + 1
     t.badge.Text = t.count > 9999 and "9k+" or ("x" .. t.count)
     t.code = buildScript(remote, method, argList, argCount, retText)
+    t.remote, t.lastArgs, t.argCount = remote, argList, argCount   -- for direct replay
 
     -- Only repaint the code panel if this tab is the one on screen.
     if selectedKey == key then
@@ -549,6 +564,7 @@ local function doClear()
     tabs, selectedKey, uniqueCount = {}, nil, 0
     header.Text = "  Select a remote on the left"
     copyBtn.Visible = false
+    runBtn.Visible = false
     codeBox.Text = ""
     refreshCounter()
 end
@@ -562,6 +578,47 @@ copyBtn.MouseButton1Click:Connect(function()
     else
         notify("Clipboard not available on this executor.")
     end
+end)
+
+-- Execute: re-fire the remote for the open tab.
+-- Prefers running the (possibly edited) snippet in the box via loadstring, so
+-- you can tweak the args first; falls back to a direct replay with the last
+-- captured args if the executor has no loadstring. Runs on our own thread, so
+-- checkcaller() is true and the spy ignores it (no self-spam in the tabs).
+runBtn.MouseButton1Click:Connect(function()
+    if not (selectedKey and tabs[selectedKey]) then return end
+    local t = tabs[selectedKey]
+    runBtn.Text = "..."
+
+    local ran, result
+    if loadstring_fn then
+        local fn, compileErr = loadstring_fn(codeBox.Text)
+        if not fn then
+            notify("Compile error: " .. tostring(compileErr))
+            runBtn.Text = "Execute"
+            return
+        end
+        ran, result = pcall(fn)
+    else
+        -- direct replay with the last captured args
+        ran, result = pcall(function()
+            local n = t.argCount or 0
+            if t.method:lower():find("invoke") then
+                return t.remote[t.method](t.remote, table.unpack(t.lastArgs or {}, 1, n))
+            else
+                t.remote[t.method](t.remote, table.unpack(t.lastArgs or {}, 1, n))
+            end
+        end)
+    end
+
+    if ran then
+        notify(("Executed :%s() on %s"):format(t.method, t.shortName))
+        runBtn.Text = "Sent"
+    else
+        notify("Execute error: " .. tostring(result))
+        runBtn.Text = "Error"
+    end
+    task.delay(1.2, function() if runBtn then runBtn.Text = "Execute" end end)
 end)
 
 local function setVisible(v) main.Visible = v end
