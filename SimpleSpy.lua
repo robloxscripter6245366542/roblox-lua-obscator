@@ -28,6 +28,9 @@ local CONFIG = {
     MaxStringLen = 5000,
     MaxDepth     = 6,
     ToggleKey    = Enum.KeyCode.RightShift,
+    Acrylic      = true,    -- translucent, see-through glass panels
+    Blur         = true,    -- frosted blur behind the window (acrylic feel)
+    BlurSize     = 18,      -- strength of the frosted blur
 }
 
 --// Executor fns (safe)
@@ -177,6 +180,13 @@ local C = {
     sub    = Color3.fromRGB(150, 155, 170),
     badge  = Color3.fromRGB(255, 160, 70),
 }
+-- acrylic transparency levels (0 = opaque when Acrylic is off)
+local T = {
+    main  = CONFIG.Acrylic and 0.22 or 0,   -- window body
+    bar   = CONFIG.Acrylic and 0.15 or 0,   -- title bar
+    panel = CONFIG.Acrylic and 0.28 or 0,   -- list + code panels
+    row   = CONFIG.Acrylic and 0.12 or 0,   -- call rows
+}
 local function mk(cls, props, kids)
     local o = Instance.new(cls)
     for k, v in pairs(props or {}) do o[k] = v end
@@ -202,18 +212,37 @@ pcall(function()
 end)
 if not screen.Parent then screen.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
+-- frosted blur behind the window (lives in Lighting; toggled with visibility, removed on Stop)
+local Lighting = game:GetService("Lighting")
+local blur
+pcall(function()  -- clear a blur left by a previous run
+    local old = Lighting:FindFirstChild("SimpleSpyBlur")
+    if old then old:Destroy() end
+end)
+if CONFIG.Blur then
+    pcall(function()
+        blur = mk("BlurEffect", { Name = "SimpleSpyBlur", Size = CONFIG.BlurSize, Parent = Lighting })
+    end)
+end
+
 local main = mk("Frame", {
     Name = "Main", Parent = screen,
     Size = UDim2.new(0, 580, 0, 360), Position = UDim2.new(0.5, -290, 0.5, -180),
-    BackgroundColor3 = C.bg, BorderSizePixel = 0, Active = true,
+    BackgroundColor3 = C.bg, BackgroundTransparency = T.main, BorderSizePixel = 0, Active = true,
 }, { corner(12) })
 mk("UIStroke", { Color = C.rowSel, Thickness = 1.5, Transparency = 0.3, Parent = main })
 
+-- show/hide helper that also drives the blur
+local function setVisible(v)
+    main.Visible = v
+    if blur then blur.Enabled = v end
+end
+
 -- title bar
 local bar = mk("Frame", { Parent = main, Size = UDim2.new(1, 0, 0, 36),
-    BackgroundColor3 = C.panel, BorderSizePixel = 0 }, { corner(12) })
+    BackgroundColor3 = C.panel, BackgroundTransparency = T.bar, BorderSizePixel = 0 }, { corner(12) })
 mk("Frame", { Parent = bar, Size = UDim2.new(1, 0, 0, 12), Position = UDim2.new(0, 0, 1, -12),
-    BackgroundColor3 = C.panel, BorderSizePixel = 0 })
+    BackgroundColor3 = C.panel, BackgroundTransparency = T.bar, BorderSizePixel = 0 })
 -- accent line under the title bar
 mk("Frame", { Parent = bar, Size = UDim2.new(1, 0, 0, 2), Position = UDim2.new(0, 0, 1, 0),
     BackgroundColor3 = C.accent, BorderSizePixel = 0 })
@@ -246,7 +275,7 @@ local body = mk("Frame", { Parent = main, BackgroundTransparency = 1,
 -- left: list of calls
 local list = mk("ScrollingFrame", { Name = "List", Parent = body,
     Position = UDim2.new(0, 8, 0, 6), Size = UDim2.new(0, 210, 1, -14),
-    BackgroundColor3 = C.panel, BorderSizePixel = 0, ScrollBarThickness = 4,
+    BackgroundColor3 = C.panel, BackgroundTransparency = T.panel, BorderSizePixel = 0, ScrollBarThickness = 4,
     ScrollBarImageColor3 = C.accent, CanvasSize = UDim2.new(0, 0, 0, 0),
     AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollingDirection = Enum.ScrollingDirection.Y },
     { corner(8), padding(6),
@@ -259,6 +288,7 @@ local right = mk("Frame", { Parent = body, BackgroundTransparency = 1,
 
 -- code viewer: a clipping, scrolling container so long remotes never spill out
 local codeScroll = mk("ScrollingFrame", { Parent = right, BackgroundColor3 = C.panel,
+    BackgroundTransparency = T.panel,
     BorderSizePixel = 0, Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(1, 0, 1, -34),
     ClipsDescendants = true, ScrollBarThickness = 5, ScrollBarImageColor3 = C.accent,
     CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
@@ -321,7 +351,8 @@ local function makeRow(key, name, method)
     order = order + 1
     unique = unique + 1
     local btn = mk("TextButton", { Parent = list, LayoutOrder = -order, AutoButtonColor = true,
-        Size = UDim2.new(1, 0, 0, 42), BackgroundColor3 = C.row, BorderSizePixel = 0, Text = "" },
+        Size = UDim2.new(1, 0, 0, 42), BackgroundColor3 = C.row, BackgroundTransparency = T.row,
+        BorderSizePixel = 0, Text = "" },
         { corner(6) })
     local incoming = (method == "OnClientEvent")
     mk("TextLabel", { Parent = btn, BackgroundTransparency = 1,
@@ -506,14 +537,19 @@ recvBtn.MouseButton1Click:Connect(function()
     notify("Incoming (server->you) logging " .. (CONFIG.LogIncoming and "ON" or "OFF"))
 end)
 
-hideBtn.MouseButton1Click:Connect(function() main.Visible = false end)
+hideBtn.MouseButton1Click:Connect(function() setVisible(false) end)
 UserInputService.InputBegan:Connect(function(i, gpe)
-    if not gpe and i.KeyCode == CONFIG.ToggleKey then main.Visible = not main.Visible end
+    if not gpe and i.KeyCode == CONFIG.ToggleKey then setVisible(not main.Visible) end
 end)
 
-genv.SimpleSpy_Toggle = function() main.Visible = not main.Visible end
+genv.SimpleSpy_Toggle = function() setVisible(not main.Visible) end
 genv.SimpleSpy_Clear  = doClear
-genv.SimpleSpy_Stop   = function() active = false; pcall(function() screen:Destroy() end) notify("Stopped.") end
+genv.SimpleSpy_Stop   = function()
+    active = false
+    pcall(function() screen:Destroy() end)
+    if blur then pcall(function() blur:Destroy() end) end
+    notify("Stopped.")
+end
 
 -- ============================================================
 refreshCounter()
