@@ -22,6 +22,8 @@ local StarterGui       = game:GetService("StarterGui")
 
 --// Config
 local CONFIG = {
+    LogOutgoing  = true,    -- remotes YOU send to the server (FireServer/InvokeServer)
+    LogIncoming  = true,    -- remotes the SERVER fires to you (FireClient/FireAllClients)
     MaxRows      = 250,     -- hard cap on unique rows (dedupe keeps it low)
     MaxStringLen = 5000,
     MaxDepth     = 6,
@@ -119,6 +121,25 @@ end
 
 local function buildScript(remote, method, args, count, retText)
     local path = instancePath(remote) or ('nil --[[ "%s" ]]'):format(remote.Name)
+
+    -- Incoming: the SERVER fired this remote to us (FireClient/FireAllClients),
+    -- received on OnClientEvent. Show the args it sent + a listener you can run.
+    if method == "OnClientEvent" then
+        local lines = { "-- " .. remote.ClassName .. "  |  OnClientEvent  (received FROM server)", "" }
+        if count > 0 then
+            lines[#lines + 1] = "-- the server sent these args:"
+            lines[#lines + 1] = "local args = {"
+            for i = 1, count do lines[#lines + 1] = "    " .. toLua(args[i], 0) .. "," end
+            lines[#lines + 1] = "}"
+            lines[#lines + 1] = ""
+        end
+        lines[#lines + 1] = "local remote = " .. path
+        lines[#lines + 1] = "remote.OnClientEvent:Connect(function(...)"
+        lines[#lines + 1] = '    print("[recv]", ...)'
+        lines[#lines + 1] = "end)"
+        return table.concat(lines, "\n")
+    end
+
     local isInvoke = method:lower():find("invoke") ~= nil
     local lines = { "-- " .. remote.ClassName .. "  |  :" .. method .. "()", "" }
     if count == 0 then
@@ -208,6 +229,7 @@ local function topBtn(txt, xoff, col)
         Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = C.text, Text = txt },
         { corner(6) })
 end
+local recvBtn  = topBtn("Recv",  -156, CONFIG.LogIncoming and C.good or C.row)
 local clearBtn = topBtn("Clear", -106)
 local hideBtn  = topBtn("Hide",  -56)
 
@@ -288,10 +310,13 @@ local function makeRow(key, name, method)
     local btn = mk("TextButton", { Parent = list, LayoutOrder = -order, AutoButtonColor = true,
         Size = UDim2.new(1, 0, 0, 42), BackgroundColor3 = C.row, BorderSizePixel = 0, Text = "" },
         { corner(6) })
+    local incoming = (method == "OnClientEvent")
     mk("TextLabel", { Parent = btn, BackgroundTransparency = 1,
         Position = UDim2.new(0, 8, 0, 5), Size = UDim2.new(1, -48, 0, 16),
-        Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = C.accent,
-        TextXAlignment = Enum.TextXAlignment.Left, Text = ":" .. method .. "()" })
+        Font = Enum.Font.GothamBold, TextSize = 12,
+        TextColor3 = incoming and C.good or C.accent,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Text = incoming and ("RECV  " .. method) or (":" .. method .. "()") })
     mk("TextLabel", { Parent = btn, BackgroundTransparency = 1,
         Position = UDim2.new(0, 8, 0, 22), Size = UDim2.new(1, -48, 0, 15),
         Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.text,
@@ -346,7 +371,7 @@ local function installHook()
     end
     local ok, err = pcall(function()
         oldNamecall = hookmetamethod_fn(game, "__namecall", function(self, ...)
-            if active and not (checkcaller_fn and checkcaller_fn()) then
+            if active and CONFIG.LogOutgoing and not (checkcaller_fn and checkcaller_fn()) then
                 local m = getnamecallmethod_fn()
                 if FIRE[m] and typeof(self) == "Instance" then
                     local a, c = { ... }, select("#", ...)
@@ -366,6 +391,55 @@ local function installHook()
     end)
     if not ok then notify("Hook failed: " .. tostring(err)) return false end
     return true
+end
+
+-- ============================================================
+--  incoming capture  (remotes the SERVER fires to you)
+--
+--  FireServer/InvokeServer are things YOU send, caught by __namecall above.
+--  FireClient / FireAllClients arrive on each remote's OnClientEvent, which
+--  __namecall never sees. So we connect a listener to every RemoteEvent and
+--  log when the server fires it — this is the half that catches remotes that
+--  "run on their own" / are driven by the server or other scripts.
+--  (RemoteFunction OnClientInvoke allows only one callback, so it can't be
+--  watched passively without hijacking the game's own handler; skipped.)
+-- ============================================================
+local connectedIncoming = setmetatable({}, { __mode = "k" })  -- remote -> true
+
+local function connectIncoming(remote)
+    if connectedIncoming[remote] then return end
+    local cn = remote.ClassName
+    if cn ~= "RemoteEvent" and cn ~= "UnreliableRemoteEvent" then return end
+    connectedIncoming[remote] = true
+    pcall(function()
+        remote.OnClientEvent:Connect(function(...)
+            if active and CONFIG.LogIncoming then
+                local a, c = { ... }, select("#", ...)
+                pcall(record, remote, "OnClientEvent", a, c, nil)
+            end
+        end)
+    end)
+end
+
+local function startIncoming()
+    -- existing remotes
+    pcall(function()
+        for _, inst in ipairs(game:GetDescendants()) do
+            local cn = inst.ClassName
+            if cn == "RemoteEvent" or cn == "UnreliableRemoteEvent" then
+                connectIncoming(inst)
+            end
+        end
+    end)
+    -- remotes created later
+    pcall(function()
+        game.DescendantAdded:Connect(function(inst)
+            local ok2, cn = pcall(function() return inst.ClassName end)
+            if ok2 and (cn == "RemoteEvent" or cn == "UnreliableRemoteEvent") then
+                connectIncoming(inst)
+            end
+        end)
+    end)
 end
 
 -- ============================================================
@@ -413,6 +487,12 @@ runBtn.MouseButton1Click:Connect(function()
     task.delay(1.2, function() if runBtn then runBtn.Text = "Execute" end end)
 end)
 
+recvBtn.MouseButton1Click:Connect(function()
+    CONFIG.LogIncoming = not CONFIG.LogIncoming
+    recvBtn.BackgroundColor3 = CONFIG.LogIncoming and C.good or C.row
+    notify("Incoming (server->you) logging " .. (CONFIG.LogIncoming and "ON" or "OFF"))
+end)
+
 hideBtn.MouseButton1Click:Connect(function() main.Visible = false end)
 UserInputService.InputBegan:Connect(function(i, gpe)
     if not gpe and i.KeyCode == CONFIG.ToggleKey then main.Visible = not main.Visible end
@@ -425,5 +505,6 @@ genv.SimpleSpy_Stop   = function() active = false; pcall(function() screen:Destr
 -- ============================================================
 refreshCounter()
 local ok = installHook()
-notify(ok and "Spying. One row per remote; spam collapses into xN. RightShift to toggle."
-           or "GUI up, but this executor can't hook namecall.")
+startIncoming()   -- catch server->client remotes (the half __namecall can't see)
+notify(ok and "Spying both ways: FireServer (you) + OnClientEvent (server). Spam collapses into xN. RightShift to toggle."
+           or "GUI up (incoming capture active), but this executor can't hook namecall for outgoing.")
