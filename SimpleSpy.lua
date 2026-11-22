@@ -371,7 +371,8 @@ local function makeRow(key, name, method)
         Position = UDim2.new(1, -40, 0.5, -10), Size = UDim2.new(0, 34, 0, 20),
         Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = Color3.fromRGB(25, 20, 10), Text = "x1" },
         { corner(10) })
-    local r = { button = btn, badge = badge, count = 0, method = method, shortName = name, code = "" }
+    local r = { button = btn, badge = badge, count = 0, method = method, shortName = name,
+                code = "", incoming = incoming }
     rows[key] = r
     btn.MouseButton1Click:Connect(function() selectRow(key) end)
     refreshCounter()
@@ -512,6 +513,15 @@ end)
 runBtn.MouseButton1Click:Connect(function()
     if not (selected and rows[selected]) then return end
     local r = rows[selected]
+
+    -- Incoming (RECV) rows are server->you; there's nothing to fire from here.
+    if r.incoming then
+        notify("This is an INCOMING remote (server->you). Nothing to fire here - pick a blue :FireServer() row to replay.")
+        runBtn.Text = "RECV only"
+        task.delay(1.4, function() if runBtn then runBtn.Text = "Execute" end end)
+        return
+    end
+
     runBtn.Text = "..."
     local ran, result
     if loadstring_fn then
