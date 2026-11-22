@@ -204,22 +204,28 @@ if not screen.Parent then screen.Parent = LocalPlayer:WaitForChild("PlayerGui") 
 
 local main = mk("Frame", {
     Name = "Main", Parent = screen,
-    Size = UDim2.new(0, 540, 0, 330), Position = UDim2.new(0.5, -270, 0.5, -165),
+    Size = UDim2.new(0, 580, 0, 360), Position = UDim2.new(0.5, -290, 0.5, -180),
     BackgroundColor3 = C.bg, BorderSizePixel = 0, Active = true,
-}, { corner(10) })
-mk("UIStroke", { Color = C.row, Thickness = 1, Parent = main })
+}, { corner(12) })
+mk("UIStroke", { Color = C.rowSel, Thickness = 1.5, Transparency = 0.3, Parent = main })
 
 -- title bar
-local bar = mk("Frame", { Parent = main, Size = UDim2.new(1, 0, 0, 34),
-    BackgroundColor3 = C.panel, BorderSizePixel = 0 }, { corner(10) })
+local bar = mk("Frame", { Parent = main, Size = UDim2.new(1, 0, 0, 36),
+    BackgroundColor3 = C.panel, BorderSizePixel = 0 }, { corner(12) })
 mk("Frame", { Parent = bar, Size = UDim2.new(1, 0, 0, 12), Position = UDim2.new(0, 0, 1, -12),
     BackgroundColor3 = C.panel, BorderSizePixel = 0 })
+-- accent line under the title bar
+mk("Frame", { Parent = bar, Size = UDim2.new(1, 0, 0, 2), Position = UDim2.new(0, 0, 1, 0),
+    BackgroundColor3 = C.accent, BorderSizePixel = 0 })
+-- accent dot before the title
+mk("Frame", { Parent = bar, Size = UDim2.new(0, 10, 0, 10), Position = UDim2.new(0, 12, 0.5, -5),
+    BackgroundColor3 = C.accent, BorderSizePixel = 0 }, { corner(5) })
 mk("TextLabel", { Parent = bar, BackgroundTransparency = 1,
-    Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.5, 0, 1, 0),
+    Position = UDim2.new(0, 30, 0, 0), Size = UDim2.new(0.5, 0, 1, 0),
     Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = C.text,
     TextXAlignment = Enum.TextXAlignment.Left, Text = "SimpleSpy" })
 local counter = mk("TextLabel", { Parent = bar, BackgroundTransparency = 1,
-    Position = UDim2.new(1, -150, 0, 0), Size = UDim2.new(0, 90, 1, 0),
+    Position = UDim2.new(1, -312, 0, 0), Size = UDim2.new(0, 150, 1, 0),
     Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = C.sub,
     TextXAlignment = Enum.TextXAlignment.Right, Text = "0 remotes" })
 local function topBtn(txt, xoff, col)
@@ -235,28 +241,35 @@ local hideBtn  = topBtn("Hide",  -56)
 
 -- body
 local body = mk("Frame", { Parent = main, BackgroundTransparency = 1,
-    Position = UDim2.new(0, 0, 0, 34), Size = UDim2.new(1, 0, 1, -34) })
+    Position = UDim2.new(0, 0, 0, 38), Size = UDim2.new(1, 0, 1, -38) })
 
 -- left: list of calls
 local list = mk("ScrollingFrame", { Name = "List", Parent = body,
-    Position = UDim2.new(0, 8, 0, 6), Size = UDim2.new(0, 200, 1, -14),
+    Position = UDim2.new(0, 8, 0, 6), Size = UDim2.new(0, 210, 1, -14),
     BackgroundColor3 = C.panel, BorderSizePixel = 0, ScrollBarThickness = 4,
     ScrollBarImageColor3 = C.accent, CanvasSize = UDim2.new(0, 0, 0, 0),
     AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollingDirection = Enum.ScrollingDirection.Y },
     { corner(8), padding(6),
+      mk("UIStroke", { Color = C.row, Thickness = 1 }),
       mk("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }) })
 
 -- right: code + buttons
 local right = mk("Frame", { Parent = body, BackgroundTransparency = 1,
-    Position = UDim2.new(0, 216, 0, 6), Size = UDim2.new(1, -224, 1, -14) })
+    Position = UDim2.new(0, 226, 0, 6), Size = UDim2.new(1, -234, 1, -14) })
 
-local codeBox = mk("TextBox", { Parent = right, BackgroundColor3 = C.panel, BorderSizePixel = 0,
-    Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(1, 0, 1, -34),
+-- code viewer: a clipping, scrolling container so long remotes never spill out
+local codeScroll = mk("ScrollingFrame", { Parent = right, BackgroundColor3 = C.panel,
+    BorderSizePixel = 0, Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(1, 0, 1, -34),
+    ClipsDescendants = true, ScrollBarThickness = 5, ScrollBarImageColor3 = C.accent,
+    CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    ScrollingDirection = Enum.ScrollingDirection.Y },
+    { corner(8), padding(8), mk("UIStroke", { Color = C.row, Thickness = 1 }) })
+local codeBox = mk("TextBox", { Parent = codeScroll, BackgroundTransparency = 1, BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
     Font = Enum.Font.Code, TextSize = 13, TextColor3 = C.text,
     TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
-    MultiLine = true, ClearTextOnFocus = false, TextWrapped = false,
-    Text = "-- fire a remote in-game and it shows up here", TextEditable = true },
-    { corner(8), padding(8) })
+    MultiLine = true, ClearTextOnFocus = false, TextWrapped = true,
+    Text = "-- fire a remote in-game and it shows up here", TextEditable = true })
 
 local function actBtn(txt, scaleX, posX, col, tcol)
     return mk("TextButton", { Parent = right, AutoButtonColor = true,
