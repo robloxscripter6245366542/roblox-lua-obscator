@@ -43,7 +43,20 @@ local checkcaller_fn    = checkcaller
 local setclipboard_fn   = setclipboard or toclipboard or writeclipboard
 local loadstring_fn     = loadstring
 local gethui_fn         = gethui
+local getcallingscript_fn = getcallingscript
 local LocalPlayer       = Players.LocalPlayer
+
+local function scriptName(inst)
+    if typeof(inst) ~= "Instance" then return nil end
+    local ok, p = pcall(function() return inst:GetFullName() end)
+    return (ok and p) or inst.Name
+end
+
+local function callingScript()
+    if not getcallingscript_fn then return nil end
+    local ok, s = pcall(getcallingscript_fn)
+    return ok and s or nil
+end
 
 local function notify(t)
     print("[SimpleSpy] " .. t)
@@ -124,7 +137,7 @@ toLua = function(v, depth)
     end
 end
 
-local function buildScript(remote, method, args, count, retText)
+local function buildScript(remote, method, args, count, retText, src)
     local path = instancePath(remote) or ('nil --[[ "%s" ]]'):format(remote.Name)
 
     -- Incoming: the SERVER fired this remote to us (FireClient/FireAllClients),
@@ -146,7 +159,9 @@ local function buildScript(remote, method, args, count, retText)
     end
 
     local isInvoke = method:lower():find("invoke") ~= nil
-    local lines = { "-- " .. remote.ClassName .. "  |  :" .. method .. "()", "" }
+    local lines = { "-- " .. remote.ClassName .. "  |  :" .. method .. "()" }
+    if src then lines[#lines + 1] = "-- fired from: " .. src end
+    lines[#lines + 1] = ""
     if count == 0 then
         lines[#lines + 1] = "local remote = " .. path
         lines[#lines + 1] = isInvoke and ("local result = remote:" .. method .. "()") or ("remote:" .. method .. "()")
@@ -353,7 +368,7 @@ local function makeRow(key, name, method)
     order = order + 1
     unique = unique + 1
     local btn = mk("TextButton", { Parent = list, LayoutOrder = -order, AutoButtonColor = true,
-        Size = UDim2.new(1, 0, 0, 42), BackgroundColor3 = C.row, BackgroundTransparency = T.row,
+        Size = UDim2.new(1, 0, 0, 54), BackgroundColor3 = C.row, BackgroundTransparency = T.row,
         BorderSizePixel = 0, Text = "" },
         { corner(6) })
     local incoming = (method == "OnClientEvent")
@@ -364,22 +379,28 @@ local function makeRow(key, name, method)
         TextXAlignment = Enum.TextXAlignment.Left,
         Text = incoming and ("RECV  " .. method) or (":" .. method .. "()") })
     mk("TextLabel", { Parent = btn, BackgroundTransparency = 1,
-        Position = UDim2.new(0, 8, 0, 22), Size = UDim2.new(1, -48, 0, 15),
+        Position = UDim2.new(0, 8, 0, 21), Size = UDim2.new(1, -48, 0, 15),
         Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.text,
         TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Text = name })
+    -- 3rd line: which script fired it
+    local srcLabel = mk("TextLabel", { Parent = btn, BackgroundTransparency = 1,
+        Position = UDim2.new(0, 8, 0, 36), Size = UDim2.new(1, -16, 0, 14),
+        Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = C.sub,
+        TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        Text = incoming and "from: server" or "from: ?" })
     local badge = mk("TextLabel", { Parent = btn, BackgroundColor3 = C.badge, BorderSizePixel = 0,
-        Position = UDim2.new(1, -40, 0.5, -10), Size = UDim2.new(0, 34, 0, 20),
+        Position = UDim2.new(1, -40, 0, 6), Size = UDim2.new(0, 34, 0, 20),
         Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = Color3.fromRGB(25, 20, 10), Text = "x1" },
         { corner(10) })
-    local r = { button = btn, badge = badge, count = 0, method = method, shortName = name,
-                code = "", incoming = incoming }
+    local r = { button = btn, badge = badge, srcLabel = srcLabel, count = 0, method = method,
+                shortName = name, code = "", incoming = incoming }
     rows[key] = r
     btn.MouseButton1Click:Connect(function() selectRow(key) end)
     refreshCounter()
     return r
 end
 
-local function record(remote, method, args, argCount, retText)
+local function record(remote, method, args, argCount, retText, src)
     local ok, key = pcall(function() return remote:GetDebugId(0) .. "::" .. method end)
     if not ok then key = tostring(remote) .. "::" .. method end
     local r = rows[key]
@@ -389,7 +410,12 @@ local function record(remote, method, args, argCount, retText)
     end
     r.count = r.count + 1
     r.badge.Text = r.count > 9999 and "9k+" or ("x" .. r.count)
-    r.code = buildScript(remote, method, args, argCount, retText)
+    local srcPath = src and scriptName(src) or (r.incoming and "server" or nil)
+    r.code = buildScript(remote, method, args, argCount, retText, srcPath)
+    if srcPath then
+        -- show just the script's own name on the row (full path stays in the code panel)
+        r.srcLabel.Text = "from: " .. (srcPath:match("[^%.]+$") or srcPath)
+    end
     r.remote, r.args, r.argCount = remote, args, argCount
     r.button.LayoutOrder = -(order + r.count)   -- bump most-recently-fired toward the top
     if selected == key then codeBox.Text = r.code end
@@ -422,14 +448,16 @@ local function installHook()
                 local m = getnamecallmethod_fn()
                 if FIRE[m] and typeof(self) == "Instance" then
                     local a, c = { ... }, select("#", ...)
-                    pcall(record, self, m, a, c, nil)
+                    local src = callingScript()
+                    pcall(record, self, m, a, c, nil, src)
                     return oldNamecall(self, ...)
                 elseif INVK[m] and typeof(self) == "Instance" then
                     local a, c = { ... }, select("#", ...)
+                    local src = callingScript()
                     local res = { oldNamecall(self, ...) }
                     local rt = ""
                     pcall(function() rt = serializeReturn(res) end)
-                    pcall(record, self, m, a, c, rt)
+                    pcall(record, self, m, a, c, rt, src)
                     return table.unpack(res)
                 end
             end
