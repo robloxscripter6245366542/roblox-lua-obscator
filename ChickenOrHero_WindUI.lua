@@ -42,9 +42,9 @@ local C = {
     infJump=false, flyOn=false, flySpeed=70, noclip=false,
     noDashCd=false, infAdrenaline=false, spamBoost=false, boostInterval=0.2,
     -- combat / dodge
-    autoTackle=false, autoDodge=false, tackleRange=120, dodgeRange=35, faceTarget=false,
+    autoTackle=false, autoDodge=false, tackleRange=120, dodgeRange=90, faceTarget=false,
     dodgeStrafe=true, dodgeJump=false, dodgePredict=false, dodgeCooldown=0.35,
-    dodgeSafe=45,
+    dodgeSafe=35,
     dodgeThreats=true, threatRadius=75, threatSpeed=12,   -- universal: barrels/balls/chasers/projectiles (all modes)
     -- game modes
     autoMapVote=false, autoModeFire=false, modeInterval=0.5,
@@ -135,19 +135,34 @@ end
 --  CHARACTER HELPERS
 -- ═══════════════════════════════════════════════════════════════════
 local function char()  return LP.Character end
-local function hum()   local c=char(); return c and c:FindFirstChildOfClass("Humanoid") end
-local function hrp()   local c=char(); return c and c:FindFirstChild("HumanoidRootPart") end
-local function roleOf(plr) return plr:GetAttribute("GameRole") end
-local function myRole() return LP:GetAttribute("GameRole") end
+local function hum()
+    local c=char(); if not c then return nil end
+    return c:FindFirstChildOfClass("Humanoid")
+end
+-- tolerant root resolver: this game may use a custom rig, so don't assume "HumanoidRootPart"
+local function rootOf(c)
+    if not c then return nil end
+    local h = c:FindFirstChildOfClass("Humanoid")
+    if h and h.RootPart then return h.RootPart end
+    return c:FindFirstChild("HumanoidRootPart")
+        or c.PrimaryPart
+        or c:FindFirstChild("Torso") or c:FindFirstChild("UpperTorso")
+        or c:FindFirstChild("Root") or c:FindFirstChild("Base")
+        or c:FindFirstChildWhichIsA("BasePart")
+end
+local function hrp() return rootOf(char()) end
+local function roleOf(plr) return plr:GetAttribute("GameRole") or plr:GetAttribute("Role") end
+local function myRole() return roleOf(LP) end
 
 local function nearestPlayer(maxDist, filterRole)
     local myHrp = hrp(); if not myHrp then return nil end
     local best, bestD = nil, maxDist or math.huge
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LP and p.Character then
-            local h = p.Character:FindFirstChild("HumanoidRootPart")
+            local h = rootOf(p.Character)
             local ph = p.Character:FindFirstChildOfClass("Humanoid")
-            if h and ph and ph.Health > 0 then
+            local alive = (not ph) or ph.Health > 0   -- don't require a Humanoid (custom rigs)
+            if h and alive then
                 if (not filterRole) or roleOf(p) == filterRole then
                     local d = (h.Position - myHrp.Position).Magnitude
                     if d < bestD then best, bestD = p, d end
@@ -928,6 +943,45 @@ RemoteTab:Button({ Title="FireServer", Callback=function()
 -- ═══════════════════════════════════════════════════════════════════
 --  MISC
 -- ═══════════════════════════════════════════════════════════════════
+MiscTab:Section({ Title="Diagnostics" })
+MiscTab:Paragraph({ Title="Stuck? Run this",
+    Desc="Prints what the hub sees at runtime (your root part, nearest player, role, remotes). "
+       .."Copy it to me and I can wire the exact calls this game needs." })
+MiscTab:Button({ Title="Run Diagnostics (print + copy)", Icon="bug", Callback=function()
+    local c=char(); local root=hrp(); local h=hum()
+    local np,nd=nearestPlayer(1000)
+    local L={}
+    L[#L+1]="=== Chicken or Hero Hub Diagnostics ==="
+    L[#L+1]="character: "..tostring(c and c.Name)
+    L[#L+1]="root part: "..tostring(root and (root.Name.." @"..tostring(root.ClassName)))
+    L[#L+1]="humanoid: "..tostring(h and true)
+    L[#L+1]="my GameRole attr: "..tostring(myRole())
+    L[#L+1]="my InMatch attr: "..tostring(LP:GetAttribute("InMatch"))
+    L[#L+1]="players in server: "..#Players:GetPlayers()
+    L[#L+1]="nearest player: "..tostring(np and np.Name).."  dist="..tostring(nd and math.floor(nd)).."  role="..tostring(np and roleOf(np))
+    -- list attributes on your character/player so we can see the real keys
+    local akeys={}
+    for k,v in pairs(LP:GetAttributes()) do akeys[#akeys+1]=k.."="..tostring(v) end
+    L[#L+1]="player attrs: "..(#akeys>0 and table.concat(akeys,", ") or "(none)")
+    if c then
+        local ck={}
+        for k,v in pairs(c:GetAttributes()) do ck[#ck+1]=k end
+        L[#L+1]="character attrs: "..(#ck>0 and table.concat(ck,", ") or "(none)")
+    end
+    L[#L+1]="remotes indexed: "..#RemoteIndex
+    for i=1,math.min(12,#RemoteIndex) do L[#L+1]="  "..RemoteIndex[i].class.."  "..RemoteIndex[i].path end
+    local text=table.concat(L,"\n")
+    print(text)
+    if setclipboard then pcall(setclipboard, text) end
+    WindUI:Notify({ Title="Diagnostics", Content="Printed to console + copied. Send it over.", Duration=8, Icon="bug" })
+end })
+MiscTab:Button({ Title="Test: Teleport Up 10 (does client move stick?)", Icon="move-up", Callback=function()
+    local root=hrp()
+    if root then pcall(function() root.CFrame = root.CFrame + Vector3.new(0,10,0) end)
+        WindUI:Notify({ Title="Test", Content="Nudged up 10. If you snap back, the server controls movement.", Duration=6, Icon="move-up" })
+    else WindUI:Notify({ Title="Test", Content="No root part found — that's why movement features fail.", Duration=7, Icon="x" }) end
+end })
+
 MiscTab:Section({ Title="UI" })
 MiscTab:Keybind({ Title="Toggle UI", Value="RightShift", Callback=function()
     pcall(function() Window:Toggle() end) end })
