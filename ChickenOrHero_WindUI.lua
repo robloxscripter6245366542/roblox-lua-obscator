@@ -41,10 +41,13 @@ local C = {
     jumpPowerOn=false, jumpPower=90,
     infJump=false, flyOn=false, flySpeed=70, noclip=false,
     noDashCd=false, infAdrenaline=false, spamBoost=false, boostInterval=0.2,
-    -- combat
-    autoTackle=false, autoDodge=false, tackleRange=120, dodgeRange=35, faceTarget=false,
+    -- combat / dodge
+    autoTackle=false, autoDodge=false, tackleRange=120, dodgeRange=90, faceTarget=false,
     dodgeStrafe=true, dodgeJump=false, dodgePredict=false, dodgeCooldown=0.35,
-    dodgeSafe=45,
+    dodgeSafe=35,
+    dodgeThreats=true, threatRadius=75, threatSpeed=12,   -- universal: barrels/balls/chasers/projectiles (all modes)
+    -- game modes
+    autoMapVote=false, autoModeFire=false, modeInterval=0.5,
     -- economy
     autoFarm=false, autoCrates=false, autoQuests=false, autoRewards=false, autoEquipBest=false, econInterval=1.0,
     autoRejoin=false,
@@ -132,19 +135,34 @@ end
 --  CHARACTER HELPERS
 -- ═══════════════════════════════════════════════════════════════════
 local function char()  return LP.Character end
-local function hum()   local c=char(); return c and c:FindFirstChildOfClass("Humanoid") end
-local function hrp()   local c=char(); return c and c:FindFirstChild("HumanoidRootPart") end
-local function roleOf(plr) return plr:GetAttribute("GameRole") end
-local function myRole() return LP:GetAttribute("GameRole") end
+local function hum()
+    local c=char(); if not c then return nil end
+    return c:FindFirstChildOfClass("Humanoid")
+end
+-- tolerant root resolver: this game may use a custom rig, so don't assume "HumanoidRootPart"
+local function rootOf(c)
+    if not c then return nil end
+    local h = c:FindFirstChildOfClass("Humanoid")
+    if h and h.RootPart then return h.RootPart end
+    return c:FindFirstChild("HumanoidRootPart")
+        or c.PrimaryPart
+        or c:FindFirstChild("Torso") or c:FindFirstChild("UpperTorso")
+        or c:FindFirstChild("Root") or c:FindFirstChild("Base")
+        or c:FindFirstChildWhichIsA("BasePart")
+end
+local function hrp() return rootOf(char()) end
+local function roleOf(plr) return plr:GetAttribute("GameRole") or plr:GetAttribute("Role") end
+local function myRole() return roleOf(LP) end
 
 local function nearestPlayer(maxDist, filterRole)
     local myHrp = hrp(); if not myHrp then return nil end
     local best, bestD = nil, maxDist or math.huge
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LP and p.Character then
-            local h = p.Character:FindFirstChild("HumanoidRootPart")
+            local h = rootOf(p.Character)
             local ph = p.Character:FindFirstChildOfClass("Humanoid")
-            if h and ph and ph.Health > 0 then
+            local alive = (not ph) or ph.Health > 0   -- don't require a Humanoid (custom rigs)
+            if h and alive then
                 if (not filterRole) or roleOf(p) == filterRole then
                     local d = (h.Position - myHrp.Position).Magnitude
                     if d < bestD then best, bestD = p, d end
@@ -202,6 +220,7 @@ WindUI:Notify({
 local HomeTab    = Window:Tab({ Title="Home",     Icon="home" })
 local MoveTab    = Window:Tab({ Title="Movement", Icon="wind" })
 local CombatTab  = Window:Tab({ Title="Combat",   Icon="swords" })
+local ModesTab   = Window:Tab({ Title="Modes",    Icon="gamepad-2" })
 local EconTab    = Window:Tab({ Title="Economy",  Icon="gift" })
 local CollectTab = Window:Tab({ Title="Collect",  Icon="candy" })
 local VisualTab  = Window:Tab({ Title="Visuals",  Icon="eye" })
@@ -377,6 +396,11 @@ CombatTab:Toggle({ Title="Strafe Dodge", Desc="Sidestep perpendicular instead of
     Value=C.dodgeStrafe, Callback=function(v) C.dodgeStrafe=v end })
 CombatTab:Toggle({ Title="Dodge Jump", Desc="Also hop while dodging.",
     Value=C.dodgeJump, Callback=function(v) C.dodgeJump=v end })
+CombatTab:Toggle({ Title="Dodge All Threats (every mode)", Desc="Also sidestep barrels, dodgeballs, chasers, bombs & any incoming projectile — not just catchers. Covers Crossy Road / Donkey Kong / Dodgeball / boss modes.",
+    Value=C.dodgeThreats, Callback=function(v) C.dodgeThreats=v end })
+CombatTab:Slider({ Title="Threat Detect Radius (studs)", Desc="How far out to watch for moving hazards.",
+    Value={ Min=20, Max=200, Default=C.threatRadius }, Step=5,
+    Callback=function(v) C.threatRadius=v end })
 CombatTab:Toggle({ Title="Prediction Mode (optional)", Desc="OFF = full real dodging, never miss (default). ON = only react to incoming tackles.",
     Value=C.dodgePredict, Callback=function(v) C.dodgePredict=v end })
 CombatTab:Slider({ Title="Prediction Cooldown (ms)", Desc="Only used when Prediction Mode is ON.",
@@ -387,10 +411,48 @@ CombatTab:Section({ Title="Manual" })
 CombatTab:Button({ Title="Tackle / Boost Now", Callback=function()
     fireRemote("BoostRequest"); fireRemote("BladeBallEvent") end })
 
--- combat loop
-local _lastPos = {}        -- player -> last HRP position (for closing-velocity prediction)
+-- combat / universal-dodge loop
+local _lastPos   = {}      -- player -> last HRP position (closing-velocity prediction)
+local _threatPos = {}      -- threat part -> last position (velocity for CFrame-moved hazards)
 local _lastDodge = 0
 local _tackleAccum = 0
+
+-- Universal threat scan: barrels, dodgeballs, chasers, bombs, projectiles — every mode.
+local THREAT_PATTERNS = { "barrel","dodgeball","chaser","bomb","projectile","spike",
+    "car","train","traffic","boulder","saw","laser","missile","arrow","obstacle","hazard" }
+local _threatCache = {}
+local _threatT = 0
+local function refreshThreats()
+    local out = {}
+    for _, d in ipairs(Workspace:GetDescendants()) do
+        if d:IsA("BasePart") then
+            local nm = d.Name:lower()
+            for _, pat in ipairs(THREAT_PATTERNS) do
+                if nm:find(pat) then out[#out+1] = d break end
+            end
+        end
+    end
+    _threatCache = out
+end
+local function threatVel(part, dt)
+    local prev = _threatPos[part]
+    if prev then return (part.Position - prev) / math.max(dt or 0.05, 0.001) end
+    local ok2, v = pcall(function() return part.AssemblyLinearVelocity end)
+    return (ok2 and v) or Vector3.zero
+end
+local function nearestThreat(fromPos, radius, speedMin, dt)
+    local best, bd
+    for _, part in ipairs(_threatCache) do
+        if part.Parent then
+            local d = (part.Position - fromPos).Magnitude
+            if d <= radius and d < (bd or math.huge) then
+                if threatVel(part, dt).Magnitude >= speedMin or d <= 12 then best, bd = part, d end
+            end
+        end
+    end
+    return best, bd
+end
+
 task.spawn(function()
     while true do
         local dt = task.wait(0.05)
@@ -414,39 +476,46 @@ task.spawn(function()
         end
 
         if C.autoDodge then
-            local catcher, d = nearestPlayer(C.dodgeRange, "Catcher")
-            -- fall back to nearest player if roles aren't exposed as strings
-            if not catcher then catcher, d = nearestPlayer(C.dodgeRange) end
+            -- pick the most imminent hazard: nearest catcher/player OR nearest moving threat part
+            local tgtPos, tgtRef, tgtDist, isPart
+            local catcher, cd = nearestPlayer(C.dodgeRange, "Catcher")
+            if not catcher then catcher, cd = nearestPlayer(C.dodgeRange) end
             local ch = catcher and catcher.Character and catcher.Character:FindFirstChild("HumanoidRootPart")
-            if ch then
-                -- dodge direction (strafe-aware): mostly away, biased to their weak side
-                local away = (root.Position - ch.Position)
-                local dir = Vector3.new(0,0,1)
-                if away.Magnitude > 0 then
-                    away = away.Unit
-                    if C.dodgeStrafe then
-                        local perp = away:Cross(Vector3.new(0,1,0))
-                        if perp.Magnitude > 0 then
-                            perp = perp.Unit
-                            local lv = ch.CFrame.LookVector
-                            if (perp:Dot(lv)) > (-perp:Dot(lv)) then perp = -perp end
-                            dir = (perp + away*0.6); if dir.Magnitude>0 then dir=dir.Unit end
-                        else dir = away end
-                    else dir = away end
+            if ch then tgtPos, tgtDist, tgtRef = ch.Position, cd, ch.CFrame.LookVector end
+            if C.dodgeThreats then
+                local part, pd = nearestThreat(root.Position, C.threatRadius, C.threatSpeed, dt)
+                if part and (not tgtDist or pd < tgtDist) then
+                    tgtPos, tgtDist, isPart = part.Position, pd, true
+                    local v = threatVel(part, dt)
+                    tgtRef = (v.Magnitude > 1 and v) or (root.Position - part.Position)
                 end
+            end
 
-                if C.dodgePredict then
-                    -- optional reactive mode (closing velocity / tackle flags) with cooldown
-                    local prev = _lastPos[catcher]
-                    local closing = false
-                    local toMe = (root.Position - ch.Position)
-                    if toMe.Magnitude > 0 and prev then
-                        local vel = (ch.Position - prev) / (dt or 0.05)
-                        if vel:Dot(toMe.Unit) > 6 then closing = true end
+            if tgtPos then
+                local away = (root.Position - tgtPos)
+                away = (away.Magnitude > 0) and away.Unit or Vector3.new(0,0,1)
+                local dir = away
+                if C.dodgeStrafe then
+                    -- sidestep perpendicular to the hazard's travel direction (leave its lane)
+                    local refv = (tgtRef and tgtRef.Magnitude > 0) and tgtRef.Unit or (-away)
+                    local perp = refv:Cross(Vector3.new(0,1,0))
+                    if perp.Magnitude > 0 then
+                        perp = perp.Unit
+                        if perp:Dot(away) < 0 then perp = -perp end
+                        dir = (perp + away*0.5); if dir.Magnitude > 0 then dir = dir.Unit end
                     end
-                    local function attr(inst,k) local ok2,v=pcall(function() return inst:GetAttribute(k) end) return ok2 and v end
-                    if attr(catcher,"TackleActive") or attr(catcher.Character,"TackleActive")
-                       or attr(LP,"Caught") or attr(LP,"TackleActive") then closing = true end
+                end
+                -- tighter ring for projectiles, full keep-distance for catchers
+                local safe = isPart and math.max(10, C.dodgeSafe*0.6) or C.dodgeSafe
+
+                if C.dodgePredict and not isPart then
+                    local prev = _lastPos[catcher]; local closing = false
+                    local toMe = (root.Position - tgtPos)
+                    if toMe.Magnitude > 0 and prev then
+                        if ((tgtPos - prev)/(dt or 0.05)):Dot(toMe.Unit) > 6 then closing = true end
+                    end
+                    local function attr(i,k) local ok3,val=pcall(function() return i:GetAttribute(k) end) return ok3 and val end
+                    if attr(catcher,"TackleActive") or attr(LP,"Caught") or attr(LP,"TackleActive") then closing = true end
                     if closing and (os.clock() - _lastDodge) >= C.dodgeCooldown then
                         _lastDodge = os.clock()
                         if C.faceTarget then pcall(function() root.CFrame=CFrame.lookAt(root.Position, root.Position+dir) end) end
@@ -454,31 +523,78 @@ task.spawn(function()
                         if h and C.dodgeJump then h:ChangeState(Enum.HumanoidStateType.Jumping) end
                         if not fireRemote("BoostRequest") then fireRemote("PerfectDodge") end
                     end
-                else
-                    -- FULL REAL DODGE (no prediction, no miss): every tick, keep the
-                    -- catcher outside Keep-Distance by snapping to a safe ring around them.
-                    if (d or math.huge) < C.dodgeSafe then
-                        local target = ch.Position + dir * C.dodgeSafe
-                        target = Vector3.new(target.X, root.Position.Y, target.Z)
-                        local faceP = C.faceTarget and ch.Position or (target + root.CFrame.LookVector)
-                        pcall(function()
-                            root.CFrame = CFrame.new(target, Vector3.new(faceP.X, target.Y, faceP.Z))
-                            root.AssemblyLinearVelocity = Vector3.zero
-                        end)
-                        if h and C.dodgeJump then h:ChangeState(Enum.HumanoidStateType.Jumping) end
-                        fireRemote("BoostRequest")
-                    end
+                elseif (tgtDist or math.huge) < safe then
+                    -- FULL REAL DODGE (no miss): snap outside the safe ring every tick
+                    local target = tgtPos + dir * safe
+                    target = Vector3.new(target.X, root.Position.Y, target.Z)
+                    local faceP = C.faceTarget and tgtPos or (target + root.CFrame.LookVector)
+                    pcall(function()
+                        root.CFrame = CFrame.new(target, Vector3.new(faceP.X, target.Y, faceP.Z))
+                        root.AssemblyLinearVelocity = Vector3.zero
+                    end)
+                    if h and C.dodgeJump then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+                    fireRemote("BoostRequest")
                 end
             end
         end
 
-        -- update position cache for next-frame velocity
+        -- refresh threat cache occasionally (cheap: name-matched parts only)
+        _threatT = _threatT + (dt or 0.05)
+        if C.dodgeThreats and _threatT >= 0.4 then _threatT = 0; pcall(refreshThreats) end
+        -- update velocity caches for next tick
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LP and p.Character then
                 local hh = p.Character:FindFirstChild("HumanoidRootPart")
                 if hh then _lastPos[p] = hh.Position end
             end
         end
+        _threatPos = {}
+        for _, part in ipairs(_threatCache) do if part.Parent then _threatPos[part] = part.Position end end
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════════
+--  GAME MODES  (works across every minigame the game rotates)
+-- ═══════════════════════════════════════════════════════════════════
+local MODE_EVENTS = {
+    "CrossyRoadEvent","DonkeyKongEvent","DodgeballEvent","FootballEvent","TeamEvent",
+    "BladeBallEvent","FallenKingEvent","OutbreakEvent","BloodMoonEvent","HauntEvent",
+    "PumpkinHuntEvent","PumpkinEvent","CarouselEvent","RescueEvent",
+}
+ModesTab:Section({ Title="Universal survival" })
+ModesTab:Paragraph({ Title="Covers every mode",
+    Desc="Chicken or Hero rotates through Catch/Chase, Crossy Road, Donkey Kong, Dodgeball, "
+       .."Football, Blade Ball, Fallen King (boss), Outbreak, Blood Moon & Halloween events. "
+       .."The one thing that wins them all: never get hit. Enable the two below and you survive "
+       .."every mode automatically." })
+ModesTab:Toggle({ Title="Auto Dodge (never caught)", Icon="shield",
+    Value=C.autoDodge, Callback=function(v) C.autoDodge=v end })
+ModesTab:Toggle({ Title="Dodge All Threats (barrels/balls/chasers/bombs)", Icon="alert-triangle",
+    Value=C.dodgeThreats, Callback=function(v) C.dodgeThreats=v end })
+
+ModesTab:Section({ Title="Auto participate" })
+ModesTab:Toggle({ Title="Auto Map Vote", Desc="Vote the moment the map-vote opens.",
+    Value=C.autoMapVote, Callback=function(v) C.autoMapVote=v end })
+ModesTab:Toggle({ Title="Auto Ready / Fire Mode Events", Desc="Fire every rotating mode's remote on an interval (best-effort auto-ready / auto-action).",
+    Value=C.autoModeFire, Callback=function(v) C.autoModeFire=v end })
+ModesTab:Slider({ Title="Mode Fire Interval (ms)",
+    Value={ Min=200, Max=3000, Default=math.floor(C.modeInterval*1000) }, Step=100,
+    Callback=function(v) C.modeInterval=v/1000 end })
+ModesTab:Button({ Title="Fire All Mode Events Now", Callback=function()
+    for _, ev in ipairs(MODE_EVENTS) do fireRemote(ev) end
+end })
+
+-- mode participation loop
+task.spawn(function()
+    while true do
+        if C.autoMapVote then
+            tryVerbs("MapVoteEvent", {"Vote","Cast","Pick"}, 1)
+            fireRemote("MapVoteEvent", 1)
+        end
+        if C.autoModeFire then
+            for _, ev in ipairs(MODE_EVENTS) do fireRemote(ev) end
+        end
+        task.wait((C.autoMapVote or C.autoModeFire) and C.modeInterval or 0.5)
     end
 end)
 
@@ -537,6 +653,10 @@ task.spawn(function()
         if C.autoFarm or C.autoQuests then tryVerbs("QuestEvent", {"ClaimAll","Claim","Complete"}) end
         if C.autoFarm or C.autoRewards then tryVerbs("LevelRewardEvent", {"ClaimAll","Claim"}) end
         if C.autoEquipBest then equipBestGear() end
+        if C.autoFarm then
+            -- master farm also auto-claims/participates across every rotating mode
+            for _, ev in ipairs(MODE_EVENTS) do tryVerbs(ev, {"Claim","Reward","Ready","Collect"}) end
+        end
         task.wait(C.econInterval)
     end
 end)
@@ -823,6 +943,45 @@ RemoteTab:Button({ Title="FireServer", Callback=function()
 -- ═══════════════════════════════════════════════════════════════════
 --  MISC
 -- ═══════════════════════════════════════════════════════════════════
+MiscTab:Section({ Title="Diagnostics" })
+MiscTab:Paragraph({ Title="Stuck? Run this",
+    Desc="Prints what the hub sees at runtime (your root part, nearest player, role, remotes). "
+       .."Copy it to me and I can wire the exact calls this game needs." })
+MiscTab:Button({ Title="Run Diagnostics (print + copy)", Icon="bug", Callback=function()
+    local c=char(); local root=hrp(); local h=hum()
+    local np,nd=nearestPlayer(1000)
+    local L={}
+    L[#L+1]="=== Chicken or Hero Hub Diagnostics ==="
+    L[#L+1]="character: "..tostring(c and c.Name)
+    L[#L+1]="root part: "..tostring(root and (root.Name.." @"..tostring(root.ClassName)))
+    L[#L+1]="humanoid: "..tostring(h and true)
+    L[#L+1]="my GameRole attr: "..tostring(myRole())
+    L[#L+1]="my InMatch attr: "..tostring(LP:GetAttribute("InMatch"))
+    L[#L+1]="players in server: "..#Players:GetPlayers()
+    L[#L+1]="nearest player: "..tostring(np and np.Name).."  dist="..tostring(nd and math.floor(nd)).."  role="..tostring(np and roleOf(np))
+    -- list attributes on your character/player so we can see the real keys
+    local akeys={}
+    for k,v in pairs(LP:GetAttributes()) do akeys[#akeys+1]=k.."="..tostring(v) end
+    L[#L+1]="player attrs: "..(#akeys>0 and table.concat(akeys,", ") or "(none)")
+    if c then
+        local ck={}
+        for k,v in pairs(c:GetAttributes()) do ck[#ck+1]=k end
+        L[#L+1]="character attrs: "..(#ck>0 and table.concat(ck,", ") or "(none)")
+    end
+    L[#L+1]="remotes indexed: "..#RemoteIndex
+    for i=1,math.min(12,#RemoteIndex) do L[#L+1]="  "..RemoteIndex[i].class.."  "..RemoteIndex[i].path end
+    local text=table.concat(L,"\n")
+    print(text)
+    if setclipboard then pcall(setclipboard, text) end
+    WindUI:Notify({ Title="Diagnostics", Content="Printed to console + copied. Send it over.", Duration=8, Icon="bug" })
+end })
+MiscTab:Button({ Title="Test: Teleport Up 10 (does client move stick?)", Icon="move-up", Callback=function()
+    local root=hrp()
+    if root then pcall(function() root.CFrame = root.CFrame + Vector3.new(0,10,0) end)
+        WindUI:Notify({ Title="Test", Content="Nudged up 10. If you snap back, the server controls movement.", Duration=6, Icon="move-up" })
+    else WindUI:Notify({ Title="Test", Content="No root part found — that's why movement features fail.", Duration=7, Icon="x" }) end
+end })
+
 MiscTab:Section({ Title="UI" })
 MiscTab:Keybind({ Title="Toggle UI", Value="RightShift", Callback=function()
     pcall(function() Window:Toggle() end) end })
