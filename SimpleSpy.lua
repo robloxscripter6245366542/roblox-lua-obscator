@@ -29,8 +29,10 @@ local CONFIG = {
     MaxDepth     = 6,
     ToggleKey    = Enum.KeyCode.RightShift,
     Acrylic      = true,    -- translucent, see-through glass panels
-    Blur         = true,    -- frosted blur behind the window (acrylic feel)
-    BlurSize     = 18,      -- strength of the frosted blur
+    Blur         = false,   -- frosted blur. NOTE: Roblox can only blur the WHOLE
+                            -- screen (global BlurEffect), not just behind the
+                            -- window, so this fogs the game too. Off by default.
+    BlurSize     = 12,      -- strength of the frosted blur (if Blur = true)
 }
 
 --// Executor fns (safe)
