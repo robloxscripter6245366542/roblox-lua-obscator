@@ -43,7 +43,8 @@ local C = {
     noDashCd=false, infAdrenaline=false, spamBoost=false, boostInterval=0.2,
     -- combat
     autoTackle=false, autoDodge=false, tackleRange=120, dodgeRange=35, faceTarget=false,
-    dodgeStrafe=true, dodgeJump=false, dodgePredict=true, dodgeCooldown=0.35,
+    dodgeStrafe=true, dodgeJump=false, dodgePredict=false, dodgeCooldown=0.35,
+    dodgeSafe=45,
     -- economy
     autoFarm=false, autoCrates=false, autoQuests=false, autoRewards=false, autoEquipBest=false, econInterval=1.0,
     autoRejoin=false,
@@ -317,18 +318,21 @@ CombatTab:Toggle({ Title="Face Target", Desc="Turn your character toward the tar
     Value=C.faceTarget, Callback=function(v) C.faceTarget=v end })
 
 CombatTab:Section({ Title="Runner — auto dodge" })
-CombatTab:Toggle({ Title="Auto Dodge", Desc="React when a catcher closes in / starts a tackle.",
+CombatTab:Toggle({ Title="Auto Dodge", Desc="Full real dodging — keeps every catcher outside Keep-Distance at all times. Never caught.",
     Value=C.autoDodge, Callback=function(v) C.autoDodge=v end })
 CombatTab:Slider({ Title="Dodge Range (studs)",
     Value={ Min=10, Max=120, Default=C.dodgeRange }, Step=5,
     Callback=function(v) C.dodgeRange=v end })
-CombatTab:Toggle({ Title="Predict Incoming Tackle", Desc="Only dodge when the catcher is actually closing on you (TackleActive / closing velocity).",
-    Value=C.dodgePredict, Callback=function(v) C.dodgePredict=v end })
+CombatTab:Slider({ Title="Keep Distance (studs)", Desc="Never let a catcher within this range — pushes you out every frame. The 'no-miss' core.",
+    Value={ Min=15, Max=120, Default=C.dodgeSafe }, Step=5,
+    Callback=function(v) C.dodgeSafe=v end })
 CombatTab:Toggle({ Title="Strafe Dodge", Desc="Sidestep perpendicular instead of straight back (harder to catch).",
     Value=C.dodgeStrafe, Callback=function(v) C.dodgeStrafe=v end })
 CombatTab:Toggle({ Title="Dodge Jump", Desc="Also hop while dodging.",
     Value=C.dodgeJump, Callback=function(v) C.dodgeJump=v end })
-CombatTab:Slider({ Title="Dodge Cooldown (ms)", Desc="Min gap between dodges.",
+CombatTab:Toggle({ Title="Prediction Mode (optional)", Desc="OFF = full real dodging, never miss (default). ON = only react to incoming tackles.",
+    Value=C.dodgePredict, Callback=function(v) C.dodgePredict=v end })
+CombatTab:Slider({ Title="Prediction Cooldown (ms)", Desc="Only used when Prediction Mode is ON.",
     Value={ Min=100, Max=1000, Default=math.floor(C.dodgeCooldown*1000) }, Step=25,
     Callback=function(v) C.dodgeCooldown=v/1000 end })
 
@@ -368,50 +372,55 @@ task.spawn(function()
             if not catcher then catcher, d = nearestPlayer(C.dodgeRange) end
             local ch = catcher and catcher.Character and catcher.Character:FindFirstChild("HumanoidRootPart")
             if ch then
-                -- closing-velocity prediction
-                local prev = _lastPos[catcher]
-                local closing = true
+                -- dodge direction (strafe-aware): mostly away, biased to their weak side
+                local away = (root.Position - ch.Position)
+                local dir = Vector3.new(0,0,1)
+                if away.Magnitude > 0 then
+                    away = away.Unit
+                    if C.dodgeStrafe then
+                        local perp = away:Cross(Vector3.new(0,1,0))
+                        if perp.Magnitude > 0 then
+                            perp = perp.Unit
+                            local lv = ch.CFrame.LookVector
+                            if (perp:Dot(lv)) > (-perp:Dot(lv)) then perp = -perp end
+                            dir = (perp + away*0.6); if dir.Magnitude>0 then dir=dir.Unit end
+                        else dir = away end
+                    else dir = away end
+                end
+
                 if C.dodgePredict then
-                    closing = false
+                    -- optional reactive mode (closing velocity / tackle flags) with cooldown
+                    local prev = _lastPos[catcher]
+                    local closing = false
                     local toMe = (root.Position - ch.Position)
                     if toMe.Magnitude > 0 and prev then
                         local vel = (ch.Position - prev) / (dt or 0.05)
-                        -- catcher moving toward me?
                         if vel:Dot(toMe.Unit) > 6 then closing = true end
                     end
-                    -- or they're mid-tackle / we're being caught
                     local function attr(inst,k) local ok2,v=pcall(function() return inst:GetAttribute(k) end) return ok2 and v end
                     if attr(catcher,"TackleActive") or attr(catcher.Character,"TackleActive")
                        or attr(LP,"Caught") or attr(LP,"TackleActive") then closing = true end
-                end
-                if closing and (os.clock() - _lastDodge) >= C.dodgeCooldown then
-                    _lastDodge = os.clock()
-                    local away = (root.Position - ch.Position)
-                    local dir
-                    if away.Magnitude > 0 then
-                        away = away.Unit
-                        if C.dodgeStrafe then
-                            -- perpendicular sidestep, pick the side that opens distance vs their facing
-                            local perp = away:Cross(Vector3.new(0,1,0))
-                            if perp.Magnitude > 0 then
-                                perp = perp.Unit
-                                local lv = ch.CFrame.LookVector
-                                -- step to whichever perpendicular is less aligned with their look
-                                if (perp:Dot(lv)) > (-perp:Dot(lv)) then perp = -perp end
-                                dir = (perp + away*0.5)
-                                if dir.Magnitude>0 then dir = dir.Unit end
-                            else dir = away end
-                        else
-                            dir = away
-                        end
-                        if C.faceTarget then
-                            pcall(function() root.CFrame=CFrame.lookAt(root.Position, root.Position+dir) end)
-                        end
-                        -- client nudge in dodge direction (reliable), then fire boost/dodge remotes
-                        pcall(function() root.CFrame = root.CFrame + dir * 4 end)
+                    if closing and (os.clock() - _lastDodge) >= C.dodgeCooldown then
+                        _lastDodge = os.clock()
+                        if C.faceTarget then pcall(function() root.CFrame=CFrame.lookAt(root.Position, root.Position+dir) end) end
+                        pcall(function() root.CFrame = root.CFrame + dir * 6 end)
+                        if h and C.dodgeJump then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+                        if not fireRemote("BoostRequest") then fireRemote("PerfectDodge") end
                     end
-                    if h and C.dodgeJump then h:ChangeState(Enum.HumanoidStateType.Jumping) end
-                    if not fireRemote("BoostRequest") then fireRemote("PerfectDodge") end
+                else
+                    -- FULL REAL DODGE (no prediction, no miss): every tick, keep the
+                    -- catcher outside Keep-Distance by snapping to a safe ring around them.
+                    if (d or math.huge) < C.dodgeSafe then
+                        local target = ch.Position + dir * C.dodgeSafe
+                        target = Vector3.new(target.X, root.Position.Y, target.Z)
+                        local faceP = C.faceTarget and ch.Position or (target + root.CFrame.LookVector)
+                        pcall(function()
+                            root.CFrame = CFrame.new(target, Vector3.new(faceP.X, target.Y, faceP.Z))
+                            root.AssemblyLinearVelocity = Vector3.zero
+                        end)
+                        if h and C.dodgeJump then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+                        fireRemote("BoostRequest")
+                    end
                 end
             end
         end
