@@ -1,5 +1,5 @@
 -- ============================================================
---  SimpleSpy.lua  —  v2 · sleek dark remote spy
+--  SimpleSpy v4  —  sleek dark remote spy  (SimpleSpy.lua)
 --
 --  Logs RemoteEvent / RemoteFunction traffic in both directions:
 --    • Outgoing — :FireServer / :InvokeServer  (what YOUR client sends)
@@ -154,7 +154,7 @@ local getcallingscript_fn  = getcallingscript
 local function notify(t)
     print("[SimpleSpy] " .. t)
     pcall(function()
-        StarterGui:SetCore("SendNotification", { Title = "SimpleSpy", Text = t, Duration = 4 })
+        StarterGui:SetCore("SendNotification", { Title = "SimpleSpy v4", Text = t, Duration = 4 })
     end)
 end
 
@@ -464,7 +464,7 @@ local titleGroup = mk("Frame", {
 mk("TextLabel", {
     Parent = titleGroup, LayoutOrder = 1, BackgroundTransparency = 1,
     AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0),
-    Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = C.text, Text = "SimpleSpy",
+    Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = C.text, Text = "SimpleSpy v4",
 })
 mk("TextLabel", {
     Parent = titleGroup, LayoutOrder = 2, BackgroundTransparency = 1,
