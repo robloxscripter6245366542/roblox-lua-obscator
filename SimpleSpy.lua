@@ -23,7 +23,7 @@
 
 local CONFIG_JSON = [[
 {
-  "window": { "width": 640, "height": 400 },
+  "window": { "width": 754, "height": 400 },
 
   "settings": {
     "logOutgoing":  true,
@@ -55,15 +55,18 @@ local CONFIG_JSON = [[
   },
 
   "tabs": [
-    { "id": "out",      "title": "Outgoing", "icon": "arrow_up"   },
-    { "id": "in",       "title": "Incoming", "icon": "arrow_down" },
-    { "id": "ignored",  "title": "Ignored",  "icon": "ban"        },
-    { "id": "settings", "title": "Settings", "icon": "sliders"    }
+    { "id": "out",      "title": "Outgoing", "icon": "send",    "color": "accent"         },
+    { "id": "in",       "title": "Incoming", "icon": "receive", "color": "incoming"       },
+    { "id": "ignored",  "title": "Ignored",  "icon": "ban",     "color": "danger"         },
+    { "id": "settings", "title": "Settings", "icon": "gear",    "color": "remoteFunction" }
   ]
 }
 ]]
 -- Tab ids: out, in, ignored, settings.
--- Icons:   arrow_up, arrow_down, ban, sliders, search, lens, close, minimize.
+-- Icons:   send, receive, ban, gear, arrow_up, arrow_down, sliders, search, lens.
+-- Colors:  any key from "theme" (accent, incoming, danger, remoteFunction, ...).
+
+local VERSION = "v4"
 
 --// Services
 local Players          = game:GetService("Players")
@@ -78,7 +81,7 @@ local LocalPlayer      = Players.LocalPlayer
 --  CONFIG  (JSON -> Lua, merged over safe defaults)
 -- ============================================================
 local DEFAULTS = {
-    window = { width = 640, height = 400 },
+    window = { width = 754, height = 400 },
     settings = {
         logOutgoing = true, logIncoming = true, acrylic = true, blur = false,
         blurSize = 12, maxRows = 300, maxStringLen = 5000, maxDepth = 6,
@@ -92,13 +95,14 @@ local DEFAULTS = {
         incoming = "#4ED18F", danger = "#FF6B6B", counter = "#FFB35C",
     },
     tabs = {
-        { id = "out",      title = "Outgoing", icon = "arrow_up" },
-        { id = "in",       title = "Incoming", icon = "arrow_down" },
-        { id = "ignored",  title = "Ignored",  icon = "ban" },
-        { id = "settings", title = "Settings", icon = "sliders" },
+        { id = "out",      title = "Outgoing", icon = "send",    color = "accent" },
+        { id = "in",       title = "Incoming", icon = "receive", color = "incoming" },
+        { id = "ignored",  title = "Ignored",  icon = "ban",     color = "danger" },
+        { id = "settings", title = "Settings", icon = "gear",    color = "remoteFunction" },
     },
 }
 local KNOWN_TABS = { out = true, ["in"] = true, ignored = true, settings = true }
+local DEFAULT_TAB_COLOR = { out = "accent", ["in"] = "incoming", ignored = "danger", settings = "remoteFunction" }
 
 local function loadConfig()
     local ok, data = pcall(function() return HttpService:JSONDecode(CONFIG_JSON) end)
@@ -119,6 +123,7 @@ local function loadConfig()
             if type(t) == "table" and KNOWN_TABS[t.id] then
                 cfg.tabs[#cfg.tabs + 1] = {
                     id = t.id, title = tostring(t.title or t.id), icon = tostring(t.icon or "lens"),
+                    color = tostring(t.color or DEFAULT_TAB_COLOR[t.id]),
                 }
             end
         end
@@ -154,7 +159,7 @@ local getcallingscript_fn  = getcallingscript
 local function notify(t)
     print("[SimpleSpy] " .. t)
     pcall(function()
-        StarterGui:SetCore("SendNotification", { Title = "SimpleSpy v4", Text = t, Duration = 4 })
+        StarterGui:SetCore("SendNotification", { Title = "SimpleSpy " .. VERSION, Text = t, Duration = 4 })
     end)
 end
 
@@ -343,11 +348,11 @@ local function applyAcrylic(on)
 end
 
 -- ── Icons: drawn from rounded frames, so they always render (no image IDs) ──
-local function iconBar(holder, fills, x, y, w, h, rot)
+local function iconBar(holder, fills, x, y, w, h, rot, radius)
     local f = mk("Frame", {
         Parent = holder, BorderSizePixel = 0, Size = UDim2.new(0, w, 0, h),
         Position = UDim2.new(0, x, 0, y), Rotation = rot or 0,
-    }, { corner(math.floor(math.min(w, h) / 2)) })
+    }, { corner(radius or math.floor(math.min(w, h) / 2)) })
     fills[#fills + 1] = f
 end
 local function iconRing(holder, strokes, x, y, d, thick)
@@ -359,6 +364,23 @@ local function iconRing(holder, strokes, x, y, d, thick)
 end
 
 local ICONS = {
+    send = function(h, f)               -- arrow out, up-right
+        iconBar(h, f, 3.5, 9, 13, 2, -45)
+        iconBar(h, f, 8, 4, 8, 2)
+        iconBar(h, f, 14, 4, 2, 8)
+    end,
+    receive = function(h, f)            -- arrow in, down-left
+        iconBar(h, f, 3.5, 9, 13, 2, -45)
+        iconBar(h, f, 4, 14, 8, 2)
+        iconBar(h, f, 4, 8, 2, 8)
+    end,
+    gear = function(h, f, s)            -- ring + 8 teeth
+        iconRing(h, s, 6, 6, 8, 3)
+        for i = 0, 7 do
+            local a = math.rad(i * 45)
+            iconBar(h, f, 10 + 7.5 * math.cos(a) - 2, 10 + 7.5 * math.sin(a) - 2, 4, 4, i * 45, 1)
+        end
+    end,
     arrow_up = function(h, f)
         iconBar(h, f, 9, 5, 2, 12)
         iconBar(h, f, 3.5, 5.5, 8, 2, -45)
@@ -411,6 +433,39 @@ local function drawIcon(name, parent, color)
     return setColor
 end
 
+-- Logo: gradient tile with a "broadcast" mark (a dot sending two signal arcs).
+local function makeLogo(parent, size)
+    local s = size / 30
+    local tile = mk("Frame", {
+        Name = "Logo", Parent = parent, Size = UDim2.new(0, size, 0, size),
+        BackgroundColor3 = WHITE, BorderSizePixel = 0,
+    }, {
+        corner(math.floor(size * 0.3)),
+        mk("UIGradient", { Rotation = 45, Color = ColorSequence.new(C.accent, C.remoteFunction) }),
+    })
+    local cx, cy = 10.5 * s, 19.5 * s
+    mk("Frame", {
+        Parent = tile, BorderSizePixel = 0, BackgroundColor3 = WHITE,
+        Size = UDim2.new(0, 5 * s, 0, 5 * s), Position = UDim2.new(0, cx - 2.5 * s, 0, cy - 2.5 * s),
+    }, { corner(math.ceil(2.5 * s)) })
+    for _, d in ipairs({ 10, 18 }) do
+        local ring = mk("Frame", {
+            Parent = tile, BackgroundTransparency = 1, Size = UDim2.new(0, d * s, 0, d * s),
+            Position = UDim2.new(0, cx - d * s / 2, 0, cy - d * s / 2),
+        }, { corner(math.ceil(d * s / 2)) })
+        mk("UIStroke", { Parent = ring, Color = WHITE, Thickness = 2.2 * s }, {
+            mk("UIGradient", {
+                Rotation = -45,
+                Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.64, 1),
+                    NumberSequenceKeypoint.new(0.7, 0), NumberSequenceKeypoint.new(1, 0),
+                }),
+            }),
+        })
+    end
+    return tile
+end
+
 -- ============================================================
 --  WINDOW
 -- ============================================================
@@ -446,15 +501,12 @@ local uiScale = mk("UIScale", { Parent = main })
 -- ── top bar ──
 local top = mk("Frame", { Parent = main, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 44) })
 
-local logo = mk("Frame", {
-    Parent = top, Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(0, 14, 0.5, -13),
-    BackgroundColor3 = C.accent, BorderSizePixel = 0,
-}, { corner(8) })
-drawIcon("lens", logo, WHITE)
+local logo = makeLogo(top, 30)
+logo.Position = UDim2.new(0, 12, 0.5, -15)
 
 local titleGroup = mk("Frame", {
     Parent = top, BackgroundTransparency = 1,
-    Position = UDim2.new(0, 50, 0, 0), Size = UDim2.new(1, -260, 1, 0),
+    Position = UDim2.new(0, 52, 0, 0), Size = UDim2.new(1, -260, 1, 0),
 }, {
     mk("UIListLayout", {
         FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center,
@@ -462,26 +514,31 @@ local titleGroup = mk("Frame", {
     }),
 })
 mk("TextLabel", {
-    Parent = titleGroup, LayoutOrder = 1, BackgroundTransparency = 1,
+    Name = "Title", Parent = titleGroup, LayoutOrder = 1, BackgroundTransparency = 1,
     AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0),
-    Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = C.text, Text = "SimpleSpy v4",
+    Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = C.text, Text = "SimpleSpy",
 })
 mk("TextLabel", {
-    Parent = titleGroup, LayoutOrder = 2, BackgroundTransparency = 1,
-    AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0),
-    Font = Enum.Font.Gotham, TextSize = 14, TextColor3 = C.stroke, Text = "/",
-})
-local tabLabel = mk("TextLabel", {
-    Parent = titleGroup, LayoutOrder = 3, BackgroundTransparency = 1,
-    AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0),
-    Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = C.subtext, Text = "",
-})
+    Name = "Version", Parent = titleGroup, LayoutOrder = 2,
+    AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 0, 18),
+    BackgroundColor3 = C.accent, BackgroundTransparency = 0.8, BorderSizePixel = 0,
+    Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = C.accent, Text = VERSION,
+}, { corner(9), mk("UIPadding", { PaddingLeft = UDim.new(0, 7), PaddingRight = UDim.new(0, 7) }) })
 
-local stats = mk("TextLabel", {
-    Parent = top, BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5),
-    Position = UDim2.new(1, -84, 0.5, 0), Size = UDim2.new(0, 160, 0, 20),
-    Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = C.subtext,
-    TextXAlignment = Enum.TextXAlignment.Right, Text = "",
+-- Live / Paused pill: one tap pauses all capture.
+local statusBtn = mk("TextButton", {
+    Name = "Status", Parent = top, AutoButtonColor = false, Text = "", AnchorPoint = Vector2.new(1, 0.5),
+    Position = UDim2.new(1, -84, 0.5, 0), Size = UDim2.new(0, 82, 0, 24),
+    BackgroundColor3 = C.incoming, BackgroundTransparency = 0.85, BorderSizePixel = 0,
+}, { corner(12) })
+local statusDot = mk("Frame", {
+    Parent = statusBtn, Size = UDim2.new(0, 8, 0, 8), Position = UDim2.new(0, 11, 0.5, -4),
+    BackgroundColor3 = C.incoming, BorderSizePixel = 0,
+}, { corner(4) })
+local statusText = mk("TextLabel", {
+    Parent = statusBtn, BackgroundTransparency = 1, Position = UDim2.new(0, 25, 0, 0),
+    Size = UDim2.new(1, -31, 1, 0), Font = Enum.Font.GothamBold, TextSize = 12,
+    TextColor3 = C.incoming, TextXAlignment = Enum.TextXAlignment.Left, Text = "Live",
 })
 
 local function winBtn(xOff, iconName)
@@ -509,22 +566,27 @@ local body = mk("Frame", {
     Position = UDim2.new(0, 0, 0, 52), Size = UDim2.new(1, 0, 1, -52),
 })
 
+local SIDEBAR_W = 164
 local sidebar = mk("Frame", {
-    Parent = body, Position = UDim2.new(0, 8, 0, 0), Size = UDim2.new(0, 52, 1, -8),
+    Name = "Sidebar", Parent = body, Position = UDim2.new(0, 8, 0, 0), Size = UDim2.new(0, SIDEBAR_W, 1, -8),
     BackgroundColor3 = C.surface, BorderSizePixel = 0,
-}, {
-    corner(12),
-    mk("UIListLayout", {
-        Padding = UDim.new(0, 6), HorizontalAlignment = Enum.HorizontalAlignment.Center,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-    }),
-    mk("UIPadding", { PaddingTop = UDim.new(0, 8) }),
-})
+}, { corner(12) })
 glass(sidebar, 0.4)
+local tabList = mk("Frame", {
+    Parent = sidebar, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -30),
+}, {
+    mk("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+    mk("UIPadding", { PaddingTop = UDim.new(0, 8), PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }),
+})
+mk("TextLabel", {
+    Parent = sidebar, BackgroundTransparency = 1, Position = UDim2.new(0, 0, 1, -30),
+    Size = UDim2.new(1, 0, 0, 24), Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = C.subtext,
+    Text = tostring(S.toggleKey) .. " to hide",
+})
 
 -- list panel
 local listPanel = mk("Frame", {
-    Parent = body, Position = UDim2.new(0, 68, 0, 0), Size = UDim2.new(0, 230, 1, -8),
+    Parent = body, Position = UDim2.new(0, SIDEBAR_W + 16, 0, 0), Size = UDim2.new(0, 230, 1, -8),
     BackgroundColor3 = C.surface, BorderSizePixel = 0,
 }, { corner(12) })
 glass(listPanel, 0.4)
@@ -564,7 +626,7 @@ local emptyLabel = mk("TextLabel", {
 
 -- detail panel
 local detail = mk("Frame", {
-    Parent = body, Position = UDim2.new(0, 306, 0, 0), Size = UDim2.new(1, -314, 1, -8),
+    Parent = body, Position = UDim2.new(0, SIDEBAR_W + 254, 0, 0), Size = UDim2.new(1, -(SIDEBAR_W + 262), 1, -8),
     BackgroundColor3 = C.surface, BorderSizePixel = 0,
 }, { corner(12) })
 glass(detail, 0.4)
@@ -653,7 +715,7 @@ local ignoreBtn = actBtn(3, "Ignore", C.surfaceAlt, C.danger)
 
 -- settings panel (replaces list + detail on the Settings tab)
 local settingsPanel = mk("ScrollingFrame", {
-    Parent = body, Position = UDim2.new(0, 68, 0, 0), Size = UDim2.new(1, -76, 1, -8),
+    Parent = body, Position = UDim2.new(0, SIDEBAR_W + 16, 0, 0), Size = UDim2.new(1, -(SIDEBAR_W + 24), 1, -8),
     BackgroundColor3 = C.surface, BorderSizePixel = 0, ScrollBarThickness = 3,
     ScrollBarImageColor3 = C.stroke, CanvasSize = UDim2.new(0, 0, 0, 0),
     AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollingDirection = Enum.ScrollingDirection.Y,
@@ -674,11 +736,9 @@ local dock = mk("TextButton", {
     mk("UIStroke", { Color = C.accent, Thickness = 1.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
 })
 glass(dock, 0.2)
-local dockLogo = mk("Frame", {
-    Parent = dock, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
-    Size = UDim2.new(0, 28, 0, 28), BackgroundColor3 = C.accent, BorderSizePixel = 0,
-}, { corner(8) })
-drawIcon("lens", dockLogo, WHITE)
+local dockLogo = makeLogo(dock, 32)
+dockLogo.AnchorPoint = Vector2.new(0.5, 0.5)
+dockLogo.Position = UDim2.new(0.5, 0, 0.5, 0)
 
 -- ============================================================
 --  STATE
@@ -690,6 +750,8 @@ local currentTab = CFG.tabs[1].id
 local searchText = ""
 local active = true
 local blur = nil
+local paused = false
+local tabs = {}          -- id -> sidebar tab
 local setTab             -- forward declaration
 
 local CLASS = {
@@ -714,8 +776,21 @@ local function rowSub(r)
     return ":" .. r.method .. "()" .. (r.srcShort and ("  ·  " .. r.srcShort) or "")
 end
 
+-- Live counts on the sidebar tabs (unique remotes per tab).
 local function updateStats()
-    stats.Text = ("%d out  ·  %d in"):format(outCount, inCount)
+    local n = { out = 0, ["in"] = 0, ignored = 0 }
+    for _, r in pairs(rows) do
+        if r.ignored then n.ignored = n.ignored + 1
+        elseif r.incoming then n["in"] = n["in"] + 1
+        else n.out = n.out + 1 end
+    end
+    for id, t in pairs(tabs) do
+        if t.badge then
+            local c = n[id] or 0
+            t.badge.Visible = c > 0
+            t.badge.Text = c > 999 and "999+" or tostring(c)
+        end
+    end
 end
 
 local function buildCode(r)
@@ -882,6 +957,7 @@ local function makeRow(key, remote, method)
 end
 
 local function record(remote, method, args, argCount, retText, src)
+    if paused then return end
     local okKey, key = pcall(function() return remote:GetDebugId(0) .. "::" .. method end)
     if not okKey then key = tostring(remote) .. "::" .. method end
 
@@ -915,23 +991,52 @@ end
 -- ============================================================
 --  SIDEBAR TABS (built from the JSON "tabs" list)
 -- ============================================================
-local tabs, tabTitle = {}, {}
 for i, t in ipairs(CFG.tabs) do
-    tabTitle[t.id] = t.title
+    local col = C[t.color] or C.accent
+    if t.id == "settings" and i > 1 then        -- a thin divider above Settings
+        mk("Frame", {
+            Parent = tabList, LayoutOrder = i * 2 - 1, Size = UDim2.new(1, 0, 0, 9),
+            BackgroundTransparency = 1,
+        }, {
+            mk("Frame", {
+                Position = UDim2.new(0, 6, 0.5, 0), Size = UDim2.new(1, -12, 0, 1),
+                BackgroundColor3 = C.stroke, BorderSizePixel = 0,
+            }),
+        })
+    end
     local b = mk("TextButton", {
-        Parent = sidebar, LayoutOrder = i, AutoButtonColor = false, Text = "",
-        Size = UDim2.new(0, 38, 0, 38), BackgroundColor3 = C.hover, BackgroundTransparency = 1,
+        Name = "Tab_" .. t.id, Parent = tabList, LayoutOrder = i * 2, AutoButtonColor = false, Text = "",
+        Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = col, BackgroundTransparency = 1,
         BorderSizePixel = 0,
     }, { corner(10) })
     local indicator = mk("Frame", {
-        Parent = b, Size = UDim2.new(0, 3, 0, 16), Position = UDim2.new(0, -7, 0.5, -8),
-        BackgroundColor3 = C.accent, BorderSizePixel = 0, Visible = false,
+        Parent = b, Size = UDim2.new(0, 3, 0, 18), Position = UDim2.new(0, -8, 0.5, -9),
+        BackgroundColor3 = col, BorderSizePixel = 0, Visible = false,
     }, { corner(2) })
-    local setColor = drawIcon(t.icon, b, C.subtext)
-    tabs[t.id] = { button = b, indicator = indicator, setColor = setColor }
+    local iconHolder = mk("Frame", {
+        Parent = b, BackgroundTransparency = 1,
+        Position = UDim2.new(0, 9, 0.5, -10), Size = UDim2.new(0, 20, 0, 20),
+    })
+    local setColor = drawIcon(t.icon, iconHolder, C.subtext)
+    local label = mk("TextLabel", {
+        Parent = b, BackgroundTransparency = 1,
+        Position = UDim2.new(0, 37, 0, 0), Size = UDim2.new(1, -71, 1, 0),
+        Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = C.subtext,
+        TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Text = t.title,
+    })
+    local badge
+    if t.id ~= "settings" then
+        badge = mk("TextLabel", {
+            Name = "Count", Parent = b, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0),
+            Size = UDim2.new(0, 0, 0, 18), AutomaticSize = Enum.AutomaticSize.X,
+            BackgroundColor3 = col, BackgroundTransparency = 0.85, BorderSizePixel = 0,
+            Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = col, Text = "0", Visible = false,
+        }, { corner(9), mk("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }) })
+    end
+    tabs[t.id] = { button = b, indicator = indicator, setColor = setColor, label = label, badge = badge, color = col }
     connect(b.MouseButton1Click, function() setTab(t.id) end)
     connect(b.MouseEnter, function()
-        if currentTab ~= t.id then tween(b, 0.12, { BackgroundTransparency = 0.5 }) end
+        if currentTab ~= t.id then tween(b, 0.12, { BackgroundTransparency = 0.93 }) end
     end)
     connect(b.MouseLeave, function()
         if currentTab ~= t.id then tween(b, 0.12, { BackgroundTransparency = 1 }) end
@@ -942,11 +1047,13 @@ setTab = function(id)
     currentTab = id
     for tid, t in pairs(tabs) do
         local on = (tid == id)
-        tween(t.button, 0.12, { BackgroundTransparency = on and 0 or 1 })
+        tween(t.button, 0.12, { BackgroundTransparency = on and 0.84 or 1 })
         t.indicator.Visible = on
-        t.setColor(on and C.accent or C.subtext)
+        t.setColor(on and t.color or C.subtext)
+        t.label.TextColor3 = on and C.text or C.subtext
+        t.label.Font = on and Enum.Font.GothamBold or Enum.Font.GothamMedium
+        if t.badge then t.badge.BackgroundTransparency = on and 0.7 or 0.85 end
     end
-    tabLabel.Text = tabTitle[id] or id
     local isSettings = (id == "settings")
     settingsPanel.Visible = isSettings
     listPanel.Visible = not isSettings
@@ -1089,11 +1196,22 @@ connect(runBtn.MouseButton1Click, function()
     task.delay(1.2, function() runBtn.Text = "Execute" end)
 end)
 
+local function setPaused(v)
+    paused = v
+    local col = v and C.subtext or C.incoming
+    statusBtn.BackgroundColor3 = col
+    statusDot.BackgroundColor3 = col
+    statusText.TextColor3 = col
+    statusText.Text = v and "Paused" or "Live"
+end
+connect(statusBtn.MouseButton1Click, function() setPaused(not paused) end)
+
 connect(ignoreBtn.MouseButton1Click, function()
     local r = selected and rows[selected]
     if not r then return end
     r.ignored = not r.ignored
     notify((r.ignored and "Ignoring " or "Stopped ignoring ") .. r.name)
+    updateStats()
     refilter()
     if selected == r.key then showDetail(r) end
 end)
