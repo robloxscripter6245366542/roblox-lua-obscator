@@ -31,6 +31,7 @@ local CONFIG_JSON = [[
   "settings": {
     "logOutgoing":    true,
     "logIncoming":    true,
+    "logExecutor":    false,
     "acrylic":        true,
     "animatedBorder": true,
     "blur":           false,
@@ -122,7 +123,7 @@ end
 local DEFAULTS = {
     window = { width = 820, height = 470 },
     settings = {
-        logOutgoing = true, logIncoming = true, acrylic = true, animatedBorder = true,
+        logOutgoing = true, logIncoming = true, logExecutor = false, acrylic = true, animatedBorder = true,
         blur = false, blurSize = 12, maxRows = 300, maxStringLen = 5000, maxDepth = 6,
         historySize = 30, toggleKey = "RightShift", saveSettings = true,
     },
@@ -183,7 +184,7 @@ S.accentIndex = 0                 -- 0 = the accent from CONFIG_JSON
 -- ── executor file API (for saved settings) ──
 local writefile_fn, readfile_fn, isfile_fn = writefile, readfile, isfile
 
-local SAVED_KEYS = { "logOutgoing", "logIncoming", "acrylic", "animatedBorder", "blur" }
+local SAVED_KEYS = { "logOutgoing", "logIncoming", "logExecutor", "acrylic", "animatedBorder", "blur" }
 if S.saveSettings and readfile_fn and isfile_fn then
     pcall(function()
         if not isfile_fn(SAVE_FILE) then return end
@@ -230,6 +231,11 @@ local setclipboard_fn      = setclipboard or toclipboard or writeclipboard
 local loadstring_fn        = loadstring
 local gethui_fn            = gethui
 local getcallingscript_fn  = getcallingscript
+local newcclosure_fn       = newcclosure
+local hookfunction_fn      = hookfunction or replaceclosure
+local getrawmetatable_fn   = getrawmetatable
+local setreadonly_fn       = setreadonly
+local identify_fn          = identifyexecutor or getexecutorname
 
 local function scriptName(inst)
     if typeof(inst) ~= "Instance" then return nil end
@@ -753,7 +759,10 @@ local generatedText = ""
 local unseen = 0
 local fitScale = 1
 local tabs = {}                -- id -> sidebar tab
-local setTab, setPage, notify  -- forward declarations
+local executingOwn = false     -- true while our own Execute button runs a snippet
+-- Capture health, shown in Settings > Diagnostics.
+local HOOK = { namecall = "not installed", fnHooks = 0, seenCalls = 0, seenRemote = 0, captured = 0, actors = 0 }
+local setTab, setPage, notify, refreshDiagnostics  -- forward declarations
 
 local UI = {}   -- every widget lives here (keeps us under Luau's 200-locals limit)
 
@@ -1683,6 +1692,7 @@ local function record(key, remote, method, args, argCount, retText, src, wasBloc
     end
 
     local now = os.clock()
+    if not r.incoming then HOOK.captured = HOOK.captured + 1 end
     r.count = r.count + 1
     r.countLabel.Text = fmtCount(r.count)
     if not r.winStart then r.winStart, r.winCount = now, 0 end
@@ -2084,12 +2094,16 @@ connect(UI.runBtn.MouseButton1Click, function()
             notify("Compile error: " .. tostring(compileErr), "error")
             return
         end
+        executingOwn = true
         ran, result = pcall(fn)
+        executingOwn = false
     else
+        executingOwn = true
         ran, result = pcall(function()
             local e = currentEntry(r) or {}
             return r.remote[r.method](r.remote, table.unpack(e.args or {}, 1, e.argCount or 0))
         end)
+        executingOwn = false
     end
     if ran then
         UI.runLabel.Text = "Sent"
@@ -2151,6 +2165,7 @@ do
                 refreshMeta(r)
                 if currentPage == "history" then renderHistory(r) end
             end
+            if refreshDiagnostics and UI.settingsPanel.Visible then refreshDiagnostics() end
         end
     end)
 end
@@ -2158,65 +2173,163 @@ end
 -- ============================================================
 --  CAPTURE: outgoing (__namecall hook) + incoming (OnClientEvent)
 -- ============================================================
-local installHook, startIncoming
+local installHook, startIncoming, runSelfTest
 do
     local FIRE = { FireServer = true, fireServer = true, SendToServer = true }
     local INVK = { InvokeServer = true, invokeServer = true }
     local oldNamecall
+    local busy = setmetatable({}, { __mode = "k" })   -- thread -> depth: stops one call being logged by both paths
+    local selfTesting, selfTestRemote, selfTestHits = false, nil, {}
+    local fnRefs = {}
 
-    local function serializeReturn(res)
-        local n = res.n or select("#", table.unpack(res))
-        if n == 0 then return "" end
+    local function wrapC(f)
+        if newcclosure_fn then
+            local ok, w = pcall(newcclosure_fn, f)
+            if ok and w then return w end
+        end
+        return f
+    end
+
+    local function serializeReturn(res, from)
         local p = {}
-        for i = 1, n do p[i] = toLua(res[i], 2) end
+        for i = from, res.n do p[#p + 1] = toLua(res[i], 2) end
         return table.concat(p, ", ")
     end
 
-    installHook = function()
-        if not (hookmetamethod_fn and getnamecallmethod_fn) then
-            notify("This executor has no hookmetamethod - outgoing capture is off", "warn")
-            return false
+    -- Should a remote call on this thread be logged?
+    local function shouldCapture()
+        if not active then return false end
+        if selfTesting then return true end
+        if checkcaller_fn and checkcaller_fn() then
+            return S.logExecutor and not executingOwn     -- other executor scripts (opt-in)
         end
-        local ok, err = pcall(function()
-            oldNamecall = hookmetamethod_fn(game, "__namecall", function(self, ...)
-                if active and not (checkcaller_fn and checkcaller_fn()) then
-                    local m = getnamecallmethod_fn()
-                    if (FIRE[m] or INVK[m]) and typeof(self) == "Instance" then
-                        -- Capture everything first with NO :Method() calls, run the
-                        -- original, and only then log (logging makes method calls).
-                        local key = keyFor(self, m)
-                        local args, count, src = { ... }, select("#", ...), callingScript()
-                        if blockedKeys[key] then
-                            if S.logOutgoing then
-                                pcall(record, key, self, m, args, count, INVK[m] and "nil --[[ blocked ]]" or nil, src, true)
-                            end
-                            return nil
-                        end
-                        if FIRE[m] then
-                            oldNamecall(self, ...)
-                            if S.logOutgoing then pcall(record, key, self, m, args, count, nil, src, false) end
-                            return
-                        end
-                        local res = table.pack(oldNamecall(self, ...))
-                        if S.logOutgoing then
-                            local rt = ""
-                            pcall(function() rt = serializeReturn(res) end)
-                            pcall(record, key, self, m, args, count, rt, src, false)
-                        end
-                        return table.unpack(res, 1, res.n)
-                    end
-                end
-                return oldNamecall(self, ...)
-            end)
+        return true                                       -- the game's own scripts
+    end
+
+    -- Shared by both capture paths. IMPORTANT: no :Method() calls before
+    -- `original` runs - a method call here would overwrite the pending
+    -- namecall method and could turn the game's :FireServer() into another call.
+    local function onRemoteCall(original, via, self, m, ...)
+        if self == selfTestRemote then
+            selfTestHits[via] = true
+            return nil
+        end
+        HOOK.seenRemote = HOOK.seenRemote + 1
+        local key = keyFor(self, m)
+        local args, count, src = { ... }, select("#", ...), callingScript()
+        local isInvoke = INVK[m] == true
+        if blockedKeys[key] then
+            if S.logOutgoing then
+                pcall(record, key, self, m, args, count, isInvoke and "nil --[[ blocked ]]" or nil, src, true)
+            end
+            return nil
+        end
+        local co = coroutine.running()
+        busy[co] = (busy[co] or 0) + 1
+        local res = table.pack(pcall(original, self, ...))
+        busy[co] = busy[co] - 1
+        if busy[co] <= 0 then busy[co] = nil end
+        if not res[1] then error(res[2], 0) end
+        if S.logOutgoing then
+            local rt
+            if isInvoke then
+                rt = ""
+                pcall(function() rt = serializeReturn(res, 2) end)
+            end
+            pcall(record, key, self, m, args, count, rt, src, false)
+        end
+        return table.unpack(res, 2, res.n)
+    end
+
+    -- Path 1: __namecall  ->  remote:FireServer(...)
+    local function namecallHook(self, ...)
+        HOOK.seenCalls = HOOK.seenCalls + 1
+        if shouldCapture() then
+            local m = getnamecallmethod_fn()
+            if (FIRE[m] or INVK[m]) and typeof(self) == "Instance" and not busy[coroutine.running()] then
+                return onRemoteCall(oldNamecall, "namecall", self, m, ...)
+            end
+        end
+        return oldNamecall(self, ...)
+    end
+
+    -- Path 2: the FireServer / InvokeServer functions  ->  remote.FireServer(remote, ...),
+    -- task.spawn(remote.FireServer, remote, ...), cached method references, etc.
+    local function hookRemoteFunction(cls, m, seen)
+        local ok, inst = pcall(Instance.new, cls)
+        if not ok or not inst then return end
+        local fn
+        pcall(function() fn = inst[m] end)
+        pcall(function() inst:Destroy() end)
+        if type(fn) ~= "function" or seen[fn] then return end
+        seen[fn] = true
+        local old
+        local hooked = wrapC(function(self, ...)
+            if shouldCapture() and typeof(self) == "Instance" and not busy[coroutine.running()] then
+                return onRemoteCall(old, "function", self, m, ...)
+            end
+            return old(self, ...)
         end)
-        if not ok then notify("Hook failed: " .. tostring(err), "error") return false end
-        return true
+        pcall(function() old = hookfunction_fn(fn, hooked) end)
+        if old then
+            HOOK.fnHooks = HOOK.fnHooks + 1
+            fnRefs[#fnRefs + 1] = { m = m, fn = fn }
+        end
+    end
+
+    installHook = function()
+        if getnamecallmethod_fn and (hookmetamethod_fn or getrawmetatable_fn) then
+            local ok, err = pcall(function()
+                local hook = wrapC(namecallHook)
+                if hookmetamethod_fn then
+                    oldNamecall = hookmetamethod_fn(game, "__namecall", hook)
+                    HOOK.namecall = "hookmetamethod"
+                else
+                    local mt = getrawmetatable_fn(game)
+                    if setreadonly_fn then setreadonly_fn(mt, false) end
+                    oldNamecall = mt.__namecall
+                    mt.__namecall = hook
+                    if setreadonly_fn then setreadonly_fn(mt, true) end
+                    HOOK.namecall = "raw metatable"
+                end
+            end)
+            if not ok or not oldNamecall then HOOK.namecall = "failed: " .. tostring(err) end
+        else
+            HOOK.namecall = "unavailable"
+        end
+        if hookfunction_fn then
+            local seen = {}
+            pcall(hookRemoteFunction, "RemoteEvent", "FireServer", seen)
+            pcall(hookRemoteFunction, "UnreliableRemoteEvent", "FireServer", seen)
+            pcall(hookRemoteFunction, "RemoteFunction", "InvokeServer", seen)
+        end
+        local okAny = (oldNamecall ~= nil) or HOOK.fnHooks > 0
+        if not okAny then
+            notify("Couldn't hook outgoing remotes on this executor - see Settings > Diagnostics", "warn")
+        end
+        return okAny
+    end
+
+    -- Fires a throwaway remote through both paths (it never reaches the server).
+    runSelfTest = function()
+        local r = Instance.new("RemoteEvent")
+        r.Name = "SimpleSpy_SelfTest"
+        selfTestHits, selfTestRemote, selfTesting = {}, r, true
+        pcall(function() r:FireServer("self-test") end)
+        for _, ref in ipairs(fnRefs) do
+            if ref.m == "FireServer" then pcall(ref.fn, r, "self-test") break end
+        end
+        selfTesting, selfTestRemote = false, nil
+        pcall(function() r:Destroy() end)
+        HOOK.selfTest = { namecall = selfTestHits.namecall == true, fn = selfTestHits["function"] == true }
+        return HOOK.selfTest
     end
 
     local watched = setmetatable({}, { __mode = "k" })
     local function watchIncoming(remote)
         if watched[remote] then return end
         local cn = remote.ClassName
+        if cn == "Actor" then HOOK.actors = HOOK.actors + 1 return end
         if cn ~= "RemoteEvent" and cn ~= "UnreliableRemoteEvent" then return end
         watched[remote] = true
         pcall(function()
@@ -2346,6 +2459,8 @@ do  -- settings page: builders + content (scoped to keep the local count low)
         function() return S.logOutgoing end, function(v) S.logOutgoing = v end)
     sToggle(capture, "Log incoming", "OnClientEvent fired to you by the server",
         function() return S.logIncoming end, function(v) S.logIncoming = v end)
+    sToggle(capture, "Log executor scripts", "Also capture remotes fired by scripts you run in your executor",
+        function() return S.logExecutor end, function(v) S.logExecutor = v end)
 
     local look = sCard("Appearance")
     do
@@ -2398,6 +2513,67 @@ do  -- settings page: builders + content (scoped to keep the local count low)
         function() return S.animatedBorder end, function(v) S.animatedBorder = v end)
     sToggle(look, "Screen blur", "Frosted blur - Roblox blurs the WHOLE screen",
         function() return S.blur end, function(v) S.blur = v; setBlur(v) end)
+
+    local diag = sCard("Diagnostics")
+    do
+        local function diagRow(name, title)
+            local rowF = mk("Frame", { Name = "Diag_" .. name, Parent = diag, LayoutOrder = nextOrder(), BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18) })
+            label({ Parent = rowF, Size = UDim2.new(0.45, 0, 1, 0), TextSize = 12, TextColor3 = C.subtext, Text = title })
+            local dot = mk("Frame", {
+                Parent = rowF, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0),
+                Size = UDim2.new(0, 8, 0, 8), BackgroundColor3 = C.muted, BorderSizePixel = 0,
+            }, { corner(4) })
+            local val = label({
+                Name = "DiagValue", Parent = rowF, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 0),
+                Size = UDim2.new(0.55, -16, 1, 0), Font = Enum.Font.GothamMedium, TextSize = 12,
+                TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd, Text = "",
+            })
+            return function(text, state)
+                val.Text = text
+                dot.BackgroundColor3 = (state == "ok" and C.incoming) or (state == "bad" and C.danger)
+                                    or (state == "warn" and C.warning) or C.muted
+            end
+        end
+        local setExec    = diagRow("Executor", "Executor")
+        local setNC      = diagRow("Namecall", "Namecall hook")
+        local setFn      = diagRow("Functions", "Function hooks")
+        local setSeen    = diagRow("Seen", "Remote calls seen")
+        local setActors  = diagRow("Actors", "Actors in game")
+        local setTest    = diagRow("SelfTest", "Self-test")
+        local execName = "Unknown"
+        pcall(function()
+            local n, v = identify_fn()
+            if n then execName = tostring(n) .. (v and (" " .. tostring(v)) or "") end
+        end)
+        refreshDiagnostics = function()
+            setExec(execName, "info")
+            local ncOk = HOOK.namecall == "hookmetamethod" or HOOK.namecall == "raw metatable"
+            setNC(ncOk and ("on (" .. HOOK.namecall .. ")") or HOOK.namecall, ncOk and "ok" or "bad")
+            setFn(HOOK.fnHooks > 0 and (HOOK.fnHooks .. " hooked") or "none", HOOK.fnHooks > 0 and "ok" or "warn")
+            setSeen(("%d seen  ·  %d logged"):format(HOOK.seenRemote, HOOK.captured), HOOK.seenRemote > 0 and "ok" or "warn")
+            setActors(HOOK.actors > 0 and (HOOK.actors .. " (parallel scripts can't be hooked)") or "0", HOOK.actors > 0 and "warn" or "ok")
+            local t = HOOK.selfTest
+            if not t then setTest("not run yet", "info")
+            elseif t.namecall and t.fn then setTest("both paths work", "ok")
+            elseif t.namecall or t.fn then setTest((t.namecall and "namecall" or "function") .. " path works", "warn")
+            else setTest("no path caught it", "bad") end
+        end
+        local btnRow = mk("Frame", { Parent = diag, LayoutOrder = nextOrder(), BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36) })
+        sButton(btnRow, "SelfTest", "Run self-test", C.hover, C.text, 1, UDim2.new(1, 0, 1, 0), function()
+            local t = runSelfTest()
+            refreshDiagnostics()
+            if t.namecall and t.fn then notify("Self-test passed - outgoing capture works", "success")
+            elseif t.namecall or t.fn then notify("Self-test: one capture path works", "warn")
+            else notify("Self-test failed - this executor's hooks aren't catching remotes", "error") end
+        end)
+        mk("TextLabel", {
+            Parent = diag, LayoutOrder = nextOrder(), BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y,
+            Size = UDim2.new(1, 0, 0, 0), Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.muted,
+            TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+            Text = "If 'Remote calls seen' stays at 0 while you play, the game isn't calling remotes through anything the hook can reach - usually scripts running inside Actors.",
+        })
+        refreshDiagnostics()
+    end
 
     local dataCard = sCard("Data")
     do
