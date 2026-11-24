@@ -761,8 +761,11 @@ local fitScale = 1
 local tabs = {}                -- id -> sidebar tab
 local executingOwn = false     -- true while our own Execute button runs a snippet
 -- Capture health, shown in Settings > Diagnostics.
-local HOOK = { namecall = "not installed", fnHooks = 0, seenCalls = 0, seenRemote = 0, captured = 0, actors = 0 }
-local setTab, setPage, notify, refreshDiagnostics  -- forward declarations
+local HOOK = {
+    namecall = "not installed", fnHooks = 0, seenCalls = 0, seenRemote = 0, captured = 0, actors = 0,
+    noMethod = 0, skipped = 0, compat = false, rehooked = false,
+}
+local setTab, setPage, notify, refreshDiagnostics, repaintSwitches, autoTune  -- forward declarations
 
 local UI = {}   -- every widget lives here (keeps us under Luau's 200-locals limit)
 
@@ -1549,7 +1552,7 @@ end
 --  FILTERING
 -- ============================================================
 local EMPTY = {
-    out     = { "No outgoing remotes yet", "Do something in-game and they'll appear here.", "send", "accent" },
+    out     = { "No outgoing remotes yet", "Do something in-game. Nothing showing? Open Settings > Diagnostics.", "send", "accent" },
     ["in"]  = { "No incoming remotes yet", "They appear when the server fires to you.", "receive", "incoming" },
     ignored = { "Nothing ignored", "Select a remote and tap Ignore to park it here.", "ban", "danger" },
 }
@@ -2165,6 +2168,7 @@ do
                 refreshMeta(r)
                 if currentPage == "history" then renderHistory(r) end
             end
+            if autoTune and autoTune() and repaintSwitches then repaintSwitches() end
             if refreshDiagnostics and UI.settingsPanel.Visible then refreshDiagnostics() end
         end
     end)
@@ -2196,14 +2200,15 @@ do
         return table.concat(p, ", ")
     end
 
-    -- Should a remote call on this thread be logged?
-    local function shouldCapture()
-        if not active then return false end
+    -- Was this remote call made by the game (log it) or by an executor script?
+    local function passesCaller()
         if selfTesting then return true end
         if checkcaller_fn and checkcaller_fn() then
-            return S.logExecutor and not executingOwn     -- other executor scripts (opt-in)
+            if S.logExecutor and not executingOwn then return true end   -- opt-in / compat mode
+            HOOK.skipped = HOOK.skipped + 1
+            return false
         end
-        return true                                       -- the game's own scripts
+        return true
     end
 
     -- Shared by both capture paths. IMPORTANT: no :Method() calls before
@@ -2242,16 +2247,23 @@ do
     end
 
     -- Path 1: __namecall  ->  remote:FireServer(...)
-    local function namecallHook(self, ...)
-        HOOK.seenCalls = HOOK.seenCalls + 1
-        if shouldCapture() then
-            local m = getnamecallmethod_fn()
-            if (FIRE[m] or INVK[m]) and typeof(self) == "Instance" and not busy[coroutine.running()] then
-                return onRemoteCall(oldNamecall, "namecall", self, m, ...)
+    -- `ref.fn` is the original __namecall this hook sits on top of.
+    local function makeNamecallHook(ref)
+        return function(self, ...)
+            HOOK.seenCalls = HOOK.seenCalls + 1
+            if active then
+                local m = getnamecallmethod_fn()
+                if type(m) ~= "string" then
+                    HOOK.noMethod = HOOK.noMethod + 1
+                elseif (FIRE[m] or INVK[m]) and typeof(self) == "Instance"
+                   and not busy[coroutine.running()] and passesCaller() then
+                    return onRemoteCall(ref.fn, "namecall", self, m, ...)
+                end
             end
+            return ref.fn(self, ...)
         end
-        return oldNamecall(self, ...)
     end
+    local nc = { fn = nil }
 
     -- Path 2: the FireServer / InvokeServer functions  ->  remote.FireServer(remote, ...),
     -- task.spawn(remote.FireServer, remote, ...), cached method references, etc.
@@ -2265,7 +2277,7 @@ do
         seen[fn] = true
         local old
         local hooked = wrapC(function(self, ...)
-            if shouldCapture() and typeof(self) == "Instance" and not busy[coroutine.running()] then
+            if active and typeof(self) == "Instance" and not busy[coroutine.running()] and passesCaller() then
                 return onRemoteCall(old, "function", self, m, ...)
             end
             return old(self, ...)
@@ -2280,18 +2292,21 @@ do
     installHook = function()
         if getnamecallmethod_fn and (hookmetamethod_fn or getrawmetatable_fn) then
             local ok, err = pcall(function()
-                local hook = wrapC(namecallHook)
+                local raw = makeNamecallHook(nc)
+                local hook = wrapC(raw)
+                HOOK.wrapped = hook ~= raw
                 if hookmetamethod_fn then
-                    oldNamecall = hookmetamethod_fn(game, "__namecall", hook)
+                    nc.fn = hookmetamethod_fn(game, "__namecall", hook)
                     HOOK.namecall = "hookmetamethod"
                 else
                     local mt = getrawmetatable_fn(game)
                     if setreadonly_fn then setreadonly_fn(mt, false) end
-                    oldNamecall = mt.__namecall
+                    nc.fn = mt.__namecall
                     mt.__namecall = hook
                     if setreadonly_fn then setreadonly_fn(mt, true) end
                     HOOK.namecall = "raw metatable"
                 end
+                oldNamecall = nc.fn
             end)
             if not ok or not oldNamecall then HOOK.namecall = "failed: " .. tostring(err) end
         else
@@ -2308,6 +2323,31 @@ do
             notify("Couldn't hook outgoing remotes on this executor - see Settings > Diagnostics", "warn")
         end
         return okAny
+    end
+
+    -- Runs on a timer: works around executor quirks we can detect from the counters.
+    autoTune = function()
+        -- getnamecallmethod() returns nothing inside the newcclosure wrapper:
+        -- stack a second, unwrapped hook on top.
+        if HOOK.wrapped and not HOOK.rehooked and hookmetamethod_fn
+           and HOOK.seenCalls >= 50 and HOOK.noMethod >= HOOK.seenCalls * 0.9 then
+            HOOK.rehooked = true
+            local ref = { fn = nil }
+            local ok = pcall(function() ref.fn = hookmetamethod_fn(game, "__namecall", makeNamecallHook(ref)) end)
+            if ok and ref.fn then
+                HOOK.namecall = "hookmetamethod"
+                notify("Re-hooked outgoing remotes in compatibility mode", "warn")
+            end
+        end
+        -- checkcaller() flags the game's own calls as executor calls: log them anyway.
+        if not S.logExecutor and not HOOK.compat and S.logOutgoing and not paused
+           and HOOK.captured == 0 and HOOK.skipped >= 15 then
+            HOOK.compat = true
+            S.logExecutor = true
+            notify("No game remotes were getting through - turned on 'Log executor scripts' (compatibility mode)", "warn")
+            return true
+        end
+        return false
     end
 
     -- Fires a throwaway remote through both paths (it never reaches the server).
@@ -2440,6 +2480,8 @@ do  -- settings page: builders + content (scoped to keep the local count low)
         end)
     end
 
+    repaintSwitches = function() for _, paintSwitch in ipairs(switches) do paintSwitch(false) end end
+
     local function sButton(parent, name, text, bg, fg, order, width, fn)
         local b = mk("TextButton", {
             Name = name, Parent = parent, LayoutOrder = order, AutoButtonColor = false, Size = width,
@@ -2537,7 +2579,9 @@ do  -- settings page: builders + content (scoped to keep the local count low)
         local setExec    = diagRow("Executor", "Executor")
         local setNC      = diagRow("Namecall", "Namecall hook")
         local setFn      = diagRow("Functions", "Function hooks")
+        local setActive  = diagRow("Activity", "Hook activity")
         local setSeen    = diagRow("Seen", "Remote calls seen")
+        local setSkip    = diagRow("Skipped", "Skipped as executor")
         local setActors  = diagRow("Actors", "Actors in game")
         local setTest    = diagRow("SelfTest", "Self-test")
         local execName = "Unknown"
@@ -2548,7 +2592,10 @@ do  -- settings page: builders + content (scoped to keep the local count low)
         refreshDiagnostics = function()
             setExec(execName, "info")
             local ncOk = HOOK.namecall == "hookmetamethod" or HOOK.namecall == "raw metatable"
-            setNC(ncOk and ("on (" .. HOOK.namecall .. ")") or HOOK.namecall, ncOk and "ok" or "bad")
+            setNC(ncOk and ("on (" .. HOOK.namecall .. (HOOK.rehooked and ", re-hooked" or "") .. ")") or HOOK.namecall,
+                  ncOk and "ok" or "bad")
+            setActive(HOOK.seenCalls .. " method calls", HOOK.seenCalls > 0 and "ok" or "bad")
+            setSkip(HOOK.skipped .. (HOOK.compat and "  ·  compat mode on" or ""), HOOK.compat and "warn" or "info")
             setFn(HOOK.fnHooks > 0 and (HOOK.fnHooks .. " hooked") or "none", HOOK.fnHooks > 0 and "ok" or "warn")
             setSeen(("%d seen  ·  %d logged"):format(HOOK.seenRemote, HOOK.captured), HOOK.seenRemote > 0 and "ok" or "warn")
             setActors(HOOK.actors > 0 and (HOOK.actors .. " (parallel scripts can't be hooked)") or "0", HOOK.actors > 0 and "warn" or "ok")
