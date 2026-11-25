@@ -1,0 +1,5 @@
+-- Works now (branch):
+loadstring(game:HttpGet("https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/claude/remote-spy-game-debug-j5w0mi/SimpleSpy_Obfuscated.lua"))()
+
+-- Works after you merge to main:
+loadstring(game:HttpGet("https://raw.githubusercontent.com/robloxscripter6245366542/roblox-lua-obscator/main/SimpleSpy_Obfuscated.lua"))()
