@@ -19,6 +19,10 @@
 --  For studying your OWN game's client<->server traffic. It shows the
 --  interface the client uses; it can't read server source.
 --
+--  Capture works like the original SimpleSpy: the hooks run on the game's
+--  own thread, so they only snapshot the call and queue it; the rows are
+--  drawn from the spy's Heartbeat (the game's thread can't touch the GUI).
+--
 --  Executor: Delta, or anything with hookmetamethod + getnamecallmethod.
 --  Show/hide: RightShift (configurable), or the floating button on mobile.
 --  "/" focuses search.
@@ -233,6 +237,8 @@ local gethui_fn            = gethui
 local getcallingscript_fn  = getcallingscript
 local newcclosure_fn       = newcclosure
 local hookfunction_fn      = hookfunction or replaceclosure
+local setidentity_fn       = setthreadidentity or setidentity or set_thread_identity or (syn and syn.set_thread_identity)
+local getidentity_fn       = getthreadidentity or getidentity or get_thread_identity or (syn and syn.get_thread_identity)
 local getrawmetatable_fn   = getrawmetatable
 local setreadonly_fn       = setreadonly
 local identify_fn          = identifyexecutor or getexecutorname
@@ -764,8 +770,9 @@ local executingOwn = false     -- true while our own Execute button runs a snipp
 local HOOK = {
     namecall = "not installed", fnHooks = 0, seenCalls = 0, seenRemote = 0, captured = 0, actors = 0,
     noMethod = 0, skipped = 0, compat = false, rehooked = false,
+    gameCalls = 0, queued = 0, dropped = 0, recordErrors = 0,
 }
-local setTab, setPage, notify, refreshDiagnostics, repaintSwitches, autoTune  -- forward declarations
+local setTab, setPage, notify, refreshDiagnostics, repaintSwitches, autoTune, drainQueue  -- forward declarations
 
 local UI = {}   -- every widget lives here (keeps us under Luau's 200-locals limit)
 
@@ -2157,6 +2164,7 @@ end)
 do
     local acc = 0
     connect(RunService.Heartbeat, function(dt)
+        if drainQueue then drainQueue(400) end
         if S.animatedBorder and UI.root.Visible then
             UI.borderGrad.Rotation = (UI.borderGrad.Rotation + dt * 40) % 360
         end
@@ -2183,7 +2191,7 @@ do
     local INVK = { InvokeServer = true, invokeServer = true }
     local oldNamecall
     local busy = setmetatable({}, { __mode = "k" })   -- thread -> depth: stops one call being logged by both paths
-    local selfTesting, selfTestRemote, selfTestHits = false, nil, {}
+    local selfTesting, selfTestRemote, selfTestHits, selfTestAs = false, nil, {}, nil
     local fnRefs = {}
 
     local function wrapC(f)
@@ -2200,6 +2208,75 @@ do
         return table.concat(p, ", ")
     end
 
+    -- ── capture queue (the SimpleSpy way) ──────────────────────────────
+    -- The hooks below run on the GAME's thread, with the game script's low
+    -- security identity. From there, touching the spy's GUI (which lives in
+    -- gethui()/CoreGui) throws - and that was swallowed, so game remotes never
+    -- showed up while executor ones did. So, like SimpleSpy's schedule() +
+    -- taskscheduler, the hook only takes a pure-Lua snapshot and queues it;
+    -- drainQueue() builds the rows from the spy's own Heartbeat connection,
+    -- which runs with the executor's identity.
+    local Q = { head = 1, tail = 0, cap = 5000 }   -- FIFO ring of call snapshots
+    local function enqueue(e)
+        if Q.tail - Q.head + 1 >= Q.cap then HOOK.dropped = HOOK.dropped + 1 return end
+        Q.tail = Q.tail + 1
+        Q[Q.tail] = e
+        if not e.selftest then HOOK.queued = HOOK.queued + 1 end
+    end
+
+    -- Deep copy of the arguments, taken inside the hook (pure Lua - safe at any
+    -- identity). Games often reuse/mutate the table they fire, so a later look
+    -- at the original would show the wrong values. Cycle-safe; very big
+    -- payloads fall back to references past a node budget.
+    local function copyValue(v, seen, budget)
+        if typeof(v) ~= "table" then return v end   -- values (Vector3, Instance...) are immutable / by reference
+        if seen[v] then return seen[v] end
+        if budget.n <= 0 then return v end
+        local c = {}
+        seen[v] = c
+        for k, val in next, v do
+            budget.n = budget.n - 1
+            c[copyValue(k, seen, budget)] = copyValue(val, seen, budget)
+        end
+        return c
+    end
+    local function snapshot(...)
+        local out = table.pack(...)
+        local n, seen, budget = out.n, {}, { n = 3000 }
+        out.n = nil
+        for i = 1, n do out[i] = copyValue(out[i], seen, budget) end
+        return out, n
+    end
+
+    -- Runs on the spy's thread (Heartbeat, or the self-test button).
+    drainQueue = function(budget)
+        local done = 0
+        while Q.head <= Q.tail and done < budget do
+            local e = Q[Q.head]
+            Q[Q.head] = nil
+            Q.head = Q.head + 1
+            done = done + 1
+            if e.selftest then
+                selfTestHits[e.selftest] = true
+            elseif active then
+                local rt = e.retText
+                if e.ret then
+                    rt = ""
+                    pcall(function() rt = serializeReturn(e.ret, 2) end)
+                end
+                local ok, err = pcall(record, e.key, e.remote, e.m, e.args, e.count, rt, e.src, e.blocked)
+                if not ok then
+                    HOOK.recordErrors = HOOK.recordErrors + 1
+                    if HOOK.recordErrors == 1 then
+                        print("[SimpleSpy] couldn't log " .. tostring(e.m) .. ": " .. tostring(err))
+                    end
+                end
+            end
+        end
+        if Q.head > Q.tail then Q.head, Q.tail = 1, 0 end
+        return done
+    end
+
     -- Was this remote call made by the game (log it) or by an executor script?
     local function passesCaller()
         if selfTesting then return true end
@@ -2208,26 +2285,35 @@ do
             HOOK.skipped = HOOK.skipped + 1
             return false
         end
+        HOOK.gameCalls = HOOK.gameCalls + 1
         return true
     end
 
     -- Shared by both capture paths. IMPORTANT: no :Method() calls before
     -- `original` runs - a method call here would overwrite the pending
     -- namecall method and could turn the game's :FireServer() into another call.
+    -- And no GUI work at all: this runs on the game's thread (see the queue above).
     local function onRemoteCall(original, via, self, m, ...)
         if self == selfTestRemote then
-            selfTestHits[via] = true
+            enqueue({ selftest = selfTestAs or via })
             return nil
         end
         HOOK.seenRemote = HOOK.seenRemote + 1
         local key = keyFor(self, m)
-        local args, count, src = { ... }, select("#", ...), callingScript()
         local isInvoke = INVK[m] == true
+        local logIt = S.logOutgoing and not paused
+        local args, count
+        if logIt then args, count = snapshot(...) end   -- before the call, like SimpleSpy
         if blockedKeys[key] then
-            if S.logOutgoing then
-                pcall(record, key, self, m, args, count, isInvoke and "nil --[[ blocked ]]" or nil, src, true)
+            if logIt then
+                enqueue({ key = key, remote = self, m = m, args = args, count = count, src = callingScript(),
+                          retText = isInvoke and "nil --[[ blocked ]]" or nil, blocked = true })
             end
             return nil
+        end
+        local src = logIt and callingScript() or nil
+        if logIt and not isInvoke then
+            enqueue({ key = key, remote = self, m = m, args = args, count = count, src = src, blocked = false })
         end
         local co = coroutine.running()
         busy[co] = (busy[co] or 0) + 1
@@ -2235,13 +2321,11 @@ do
         busy[co] = busy[co] - 1
         if busy[co] <= 0 then busy[co] = nil end
         if not res[1] then error(res[2], 0) end
-        if S.logOutgoing then
-            local rt
-            if isInvoke then
-                rt = ""
-                pcall(function() rt = serializeReturn(res, 2) end)
-            end
-            pcall(record, key, self, m, args, count, rt, src, false)
+        if logIt and isInvoke then
+            local seen, budget = {}, { n = 3000 }
+            local ret = { n = res.n }
+            for i = 2, res.n do ret[i] = copyValue(res[i], seen, budget) end
+            enqueue({ key = key, remote = self, m = m, args = args, count = count, src = src, ret = ret, blocked = false })
         end
         return table.unpack(res, 2, res.n)
     end
@@ -2341,7 +2425,7 @@ do
         end
         -- checkcaller() flags the game's own calls as executor calls: log them anyway.
         if not S.logExecutor and not HOOK.compat and S.logOutgoing and not paused
-           and HOOK.captured == 0 and HOOK.skipped >= 15 then
+           and HOOK.queued == 0 and HOOK.captured == 0 and HOOK.skipped >= 15 then
             HOOK.compat = true
             S.logExecutor = true
             notify("No game remotes were getting through - turned on 'Log executor scripts' (compatibility mode)", "warn")
@@ -2350,7 +2434,9 @@ do
         return false
     end
 
-    -- Fires a throwaway remote through both paths (it never reaches the server).
+    -- Fires a throwaway remote through both paths (it never reaches the server),
+    -- plus once from a thread lowered to the game's identity (2) - the case that
+    -- matters for the game's own remotes - then drains the queue right here.
     runSelfTest = function()
         local r = Instance.new("RemoteEvent")
         r.Name = "SimpleSpy_SelfTest"
@@ -2359,9 +2445,25 @@ do
         for _, ref in ipairs(fnRefs) do
             if ref.m == "FireServer" then pcall(ref.fn, r, "self-test") break end
         end
+        local gameTested = false
+        if setidentity_fn then
+            pcall(task.spawn, function()
+                local old = getidentity_fn and select(2, pcall(getidentity_fn)) or 8
+                if not pcall(setidentity_fn, 2) then return end
+                gameTested = true
+                selfTestAs = "game"
+                pcall(function() r:FireServer("self-test") end)
+                selfTestAs = nil
+                pcall(setidentity_fn, tonumber(old) or 8)
+            end)
+        end
         selfTesting, selfTestRemote = false, nil
+        drainQueue(Q.cap)
         pcall(function() r:Destroy() end)
-        HOOK.selfTest = { namecall = selfTestHits.namecall == true, fn = selfTestHits["function"] == true }
+        HOOK.selfTest = {
+            namecall = selfTestHits.namecall == true, fn = selfTestHits["function"] == true,
+            game = gameTested and (selfTestHits.game == true) or nil,
+        }
         return HOOK.selfTest
     end
 
@@ -2581,6 +2683,7 @@ do  -- settings page: builders + content (scoped to keep the local count low)
         local setFn      = diagRow("Functions", "Function hooks")
         local setActive  = diagRow("Activity", "Hook activity")
         local setSeen    = diagRow("Seen", "Remote calls seen")
+        local setGame    = diagRow("Game", "From game scripts")
         local setSkip    = diagRow("Skipped", "Skipped as executor")
         local setActors  = diagRow("Actors", "Actors in game")
         local setTest    = diagRow("SelfTest", "Self-test")
@@ -2597,19 +2700,25 @@ do  -- settings page: builders + content (scoped to keep the local count low)
             setActive(HOOK.seenCalls .. " method calls", HOOK.seenCalls > 0 and "ok" or "bad")
             setSkip(HOOK.skipped .. (HOOK.compat and "  ·  compat mode on" or ""), HOOK.compat and "warn" or "info")
             setFn(HOOK.fnHooks > 0 and (HOOK.fnHooks .. " hooked") or "none", HOOK.fnHooks > 0 and "ok" or "warn")
-            setSeen(("%d seen  ·  %d logged"):format(HOOK.seenRemote, HOOK.captured), HOOK.seenRemote > 0 and "ok" or "warn")
+            setSeen(("%d seen  ·  %d logged"):format(HOOK.seenRemote, HOOK.captured)
+                    .. (HOOK.dropped > 0 and ("  ·  %d dropped"):format(HOOK.dropped) or ""), HOOK.seenRemote > 0 and "ok" or "warn")
+            setGame(HOOK.gameCalls .. " calls" .. (HOOK.recordErrors > 0 and ("  ·  %d errors"):format(HOOK.recordErrors) or ""),
+                    HOOK.recordErrors > 0 and "bad" or (HOOK.gameCalls > 0 and "ok" or "warn"))
             setActors(HOOK.actors > 0 and (HOOK.actors .. " (parallel scripts can't be hooked)") or "0", HOOK.actors > 0 and "warn" or "ok")
             local t = HOOK.selfTest
+            local gameTxt = t and (t.game == true and "  ·  game thread OK" or t.game == false and "  ·  game thread FAILED" or "") or ""
             if not t then setTest("not run yet", "info")
-            elseif t.namecall and t.fn then setTest("both paths work", "ok")
-            elseif t.namecall or t.fn then setTest((t.namecall and "namecall" or "function") .. " path works", "warn")
+            elseif t.game == false then setTest("game thread not caught", "bad")
+            elseif t.namecall and t.fn then setTest("both paths work" .. gameTxt, "ok")
+            elseif t.namecall or t.fn then setTest((t.namecall and "namecall" or "function") .. " path works" .. gameTxt, "warn")
             else setTest("no path caught it", "bad") end
         end
         local btnRow = mk("Frame", { Parent = diag, LayoutOrder = nextOrder(), BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36) })
         sButton(btnRow, "SelfTest", "Run self-test", C.hover, C.text, 1, UDim2.new(1, 0, 1, 0), function()
             local t = runSelfTest()
             refreshDiagnostics()
-            if t.namecall and t.fn then notify("Self-test passed - outgoing capture works", "success")
+            if t.game == false then notify("Self-test: calls from game scripts aren't reaching the spy", "error")
+            elseif t.namecall and t.fn then notify("Self-test passed - outgoing capture works", "success")
             elseif t.namecall or t.fn then notify("Self-test: one capture path works", "warn")
             else notify("Self-test failed - this executor's hooks aren't catching remotes", "error") end
         end)
@@ -2617,7 +2726,7 @@ do  -- settings page: builders + content (scoped to keep the local count low)
             Parent = diag, LayoutOrder = nextOrder(), BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y,
             Size = UDim2.new(1, 0, 0, 0), Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.muted,
             TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
-            Text = "If 'Remote calls seen' stays at 0 while you play, the game isn't calling remotes through anything the hook can reach - usually scripts running inside Actors.",
+            Text = "'From game scripts' counts remotes the game itself fired. If it stays at 0 while you play, the game isn't calling remotes through anything the hook can reach - usually scripts running inside Actors.",
         })
         refreshDiagnostics()
     end
